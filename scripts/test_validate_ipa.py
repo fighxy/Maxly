@@ -12,17 +12,24 @@ spec.loader.exec_module(validator)
 
 
 class IpaValidationTests(unittest.TestCase):
-    def check_archive(self, *, missing=(), platform="iPhoneOS", executable_mode=0o100755):
+    def check_archive(self, *, missing=(), platform="iPhoneOS", executable_mode=0o100755,
+                      alternates=("AppIconLight",), required=()):
         info = {
             "CFBundleIdentifier": "app.orbitl.ios",
             "CFBundleExecutable": "Orbitl",
             "CFBundleSupportedPlatforms": [platform],
-            "CFBundleIcons": {"CFBundlePrimaryIcon": {"CFBundleIconFiles": ["AppIcon60x60"]}},
+            "CFBundleIcons": {
+                "CFBundlePrimaryIcon": {"CFBundleIconFiles": ["AppIcon60x60"]},
+                "CFBundleAlternateIcons": {
+                    name: {"CFBundleIconFiles": [name + "60x60"]} for name in alternates
+                },
+            },
         }
         files = {
             "Info.plist": plistlib.dumps(info), "Orbitl": b"test executable",
             "Assets.car": b"test catalog", "AppIcon60x60@2x.png": b"test icon",
         }
+        files.update({name + "60x60@2x.png": b"test icon" for name in alternates})
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / "Orbitl.ipa"
             with zipfile.ZipFile(path, "w") as archive:
@@ -32,7 +39,7 @@ class IpaValidationTests(unittest.TestCase):
                         entry.create_system = 3
                         entry.external_attr = (executable_mode if name == "Orbitl" else 0o100644) << 16
                         archive.writestr(entry, data)
-            return validator.validate(path)
+            return validator.validate(path, required)
 
     def test_complete_device_bundle(self):
         self.assertEqual(self.check_archive(), "app.orbitl.ios")
@@ -44,6 +51,13 @@ class IpaValidationTests(unittest.TestCase):
     def test_missing_icon(self):
         with self.assertRaisesRegex(ValueError, "icon PNG"):
             self.check_archive(missing=("AppIcon60x60@2x.png",))
+
+    def test_alternate_icons(self):
+        self.assertEqual(self.check_archive(required=("AppIconLight",)), "app.orbitl.ios")
+        with self.assertRaisesRegex(ValueError, "no alternate app icon AppIconBlue"):
+            self.check_archive(required=("AppIconLight", "AppIconBlue"))
+        with self.assertRaisesRegex(ValueError, "AppIconLight PNG"):
+            self.check_archive(missing=("AppIconLight60x60@2x.png",), required=("AppIconLight",))
 
     def test_simulator_bundle(self):
         with self.assertRaisesRegex(ValueError, "Simulator"):

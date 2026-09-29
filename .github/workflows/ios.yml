@@ -123,7 +123,7 @@ jobs:
           rm -rf build/ipa build/Orbitl.ipa && mkdir -p build/ipa/Payload
           cp -R "$app" build/ipa/Payload/
           (cd build/ipa && zip -qry ../Orbitl.ipa Payload)
-          python3 scripts/validate-ipa.py build/Orbitl.ipa
+          python3 scripts/validate-ipa.py build/Orbitl.ipa --alternate-icon AppIconLight --alternate-icon AppIconBlue
           ls -lh build/Orbitl.ipa
       - name: Upload IPA
         if: ${{ !cancelled() && steps.ipa.outcome == 'success' }}

@@ -7,7 +7,7 @@ import sys
 import zipfile
 
 
-def validate(path):
+def validate(path, alternate_icons=()):
     with zipfile.ZipFile(path) as archive:
         bad = archive.testzip()
         if bad:
@@ -38,15 +38,25 @@ def validate(path):
                 if name.startswith(root) and name.endswith(".png")]
         if not any(png.startswith(icon_file) for icon_file in files for png in pngs):
             raise ValueError("Primary app icon PNG is missing from the bundle")
+        # Alternate icons for setAlternateIconName: listed in the compiled Info.plist, with a PNG.
+        alternates = info.get("CFBundleIcons", {}).get("CFBundleAlternateIcons", {})
+        for name in alternate_icons:
+            alternate = alternates.get(name, {}).get("CFBundleIconFiles", [])
+            if not alternate:
+                raise ValueError(f"Compiled Info.plist has no alternate app icon {name}")
+            if not any(png.startswith(icon_file) for icon_file in alternate for png in pngs):
+                raise ValueError(f"Alternate app icon {name} PNG is missing from the bundle")
         return info["CFBundleIdentifier"]
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("ipa")
+    parser.add_argument("--alternate-icon", action="append", default=[],
+                        help="alternate app icon name that must be in the bundle (repeatable)")
     args = parser.parse_args()
     try:
-        bundle = validate(args.ipa)
+        bundle = validate(args.ipa, args.alternate_icon)
     except (OSError, ValueError, KeyError, zipfile.BadZipFile, plistlib.InvalidFileException) as error:
         print(f"IPA validation failed: {error}", file=sys.stderr)
         sys.exit(1)
