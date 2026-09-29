@@ -4,11 +4,14 @@ import OrbitlDomain
 
 /// Реализация `ChatRepository` поверх SwiftData.
 ///
-/// Swift 6: модели SwiftData не Sendable, поэтому репозиторий сделан как
-/// `@ModelActor`. У него свой фоновый `ModelContext`, и все записи идут вне
-/// главного актора. Наружу выходят только доменные модели и Sendable-записи.
-@ModelActor
-public actor ChatRepositoryImpl: ChatRepository {
+/// Swift 6: модели SwiftData не Sendable, поэтому репозиторий — `ModelActor`
+/// со своим фоновым `ModelContext`. Макрос `@ModelActor` всегда добавляет
+/// `init(modelContainer:)` и не видит `api`, поэтому соответствие написано вручную.
+/// Наружу выходят только доменные модели и Sendable-записи.
+public actor ChatRepositoryImpl: ChatRepository, ModelActor {
+    public nonisolated let modelContainer: ModelContainer
+    public nonisolated let modelExecutor: any ModelExecutor
+
     private var observers: [UUID: AsyncStream<[Chat]>.Continuation] = [:]
     private let api: any MaxAPI
 

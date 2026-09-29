@@ -17,7 +17,11 @@ let package = Package(
         .target(name: "OrbitlDomain"),
         // Ядро не линкуется здесь: XCFramework собирает скрипт из core.lock,
         // а вызывает его только таргет приложения (OrbitlApp/Core).
-        .target(name: "OrbitlData", dependencies: ["OrbitlDomain"]),
+        .target(
+            name: "OrbitlData",
+            dependencies: ["OrbitlDomain"],
+            exclude: ["Storage/README.md"]
+        ),
         .target(name: "OrbitlUI", dependencies: ["OrbitlDomain"]),
         .testTarget(name: "OrbitlDomainTests", dependencies: ["OrbitlDomain"]),
         .testTarget(name: "OrbitlDataTests", dependencies: ["OrbitlData"]),
