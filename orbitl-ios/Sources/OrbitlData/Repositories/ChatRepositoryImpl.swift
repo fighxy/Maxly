@@ -243,7 +243,9 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         return true
     }
 
-    public func prepareDialog(_ draft: DialogDraft) {
+    /// `async`, как в протоколе: иначе в асинхронном контексте Swift выбрал бы пустую
+    /// реализацию по умолчанию из расширения протокола, а не эту.
+    public func prepareDialog(_ draft: DialogDraft) async {
         pendingDialogs[draft.chatId] = draft
     }
 
