@@ -17,15 +17,41 @@ public struct CallCapabilities: OptionSet, Sendable {
 
 public protocol CallHistoryRepository: Sendable {
     var capabilities: CallCapabilities { get }
-    /// История, новые звонки сверху, и все её изменения.
+    /// История, новые звонки сверху, и все её изменения, пока подписка жива.
     func calls() -> AsyncStream<[CallRecord]>
+    /// Загрузить историю с сервера заново: новый список приходит в `calls()`, звонки,
+    /// удалённые на другом устройстве, из него пропадают.
+    func refresh() async
     func delete(ids: [String]) async throws(OrbitlError)
     func createCallLink() async throws(OrbitlError) -> URL
     func join(link: String) async throws(OrbitlError)
 }
 
 public extension CallHistoryRepository {
+    func refresh() async {}
     func delete(ids: [String]) async throws(OrbitlError) { throw .invalidRequest }
     func createCallLink() async throws(OrbitlError) -> URL { throw .invalidRequest }
     func join(link: String) async throws(OrbitlError) { throw .invalidRequest }
+}
+
+/// Отметки журнала звонков на устройстве, у каждого аккаунта свои.
+@MainActor
+public protocol CallHistoryMarks: AnyObject {
+    /// Звонки не новее этого времени пользователь уже видел на вкладке «Звонки».
+    /// `nil`, пока вкладка у этого аккаунта ещё ни разу не считала.
+    var lastSeen: Date? { get set }
+    /// Звонки, скрытые на устройстве: без удаления на сервере они иначе вернулись бы.
+    var hiddenIds: Set<String> { get set }
+}
+
+/// Отметки только в памяти: для тестов и превью.
+@MainActor
+public final class InMemoryCallHistoryMarks: CallHistoryMarks {
+    public var lastSeen: Date?
+    public var hiddenIds: Set<String>
+
+    public init(lastSeen: Date? = nil, hiddenIds: Set<String> = []) {
+        self.lastSeen = lastSeen
+        self.hiddenIds = hiddenIds
+    }
 }
