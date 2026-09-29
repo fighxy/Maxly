@@ -80,6 +80,7 @@ struct MainTabView: View {
     @Bindable var router: AppRouter
     @Bindable var list: ChatListViewModel
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         TabView(selection: $router.tab) {
@@ -165,6 +166,9 @@ struct MainTabView: View {
     private var chats: some View {
         NavigationSplitView {
             ChatListView(viewModel: list, selection: $router.chatId)
+                // В свёрнутом NavigationSplitView (iPhone) скрытие панели вкладок из самого
+                // чата не срабатывает: панель скрывается из корня вкладки, пока открыт чат.
+                .toolbar(sizeClass == .compact && router.chatId != nil ? .hidden : .automatic, for: .tabBar)
         } detail: {
             if let id = router.chatId, let model = container.chatViewModel(id: id) {
                 // Свой экран на каждый чат: иначе при смене выбора SwiftUI переиспользует
@@ -174,7 +178,6 @@ struct MainTabView: View {
                     container.profileViewModel(chatId: id)
                 }
                     .id(id)
-                    .toolbar(.hidden, for: .tabBar)
             } else {
                 ContentUnavailableView {
                     Label {
