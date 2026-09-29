@@ -62,7 +62,11 @@ struct MainTabView: View {
     }
 
     private func badge(for tab: AppTab) -> Int {
-        tab == .chats ? list.tabBadge : 0
+        switch tab {
+        case .chats: list.tabBadge
+        case .calls: container.callsViewModel().missedCount
+        case .contacts, .settings: 0
+        }
     }
 
     @ViewBuilder
@@ -72,13 +76,15 @@ struct MainTabView: View {
             chats
         case .contacts:
             NavigationStack {
-                ContentUnavailableView("Контакты", systemImage: "person.crop.circle", description: Text("Список контактов пока недоступен"))
-                    .navigationTitle("Контакты")
+                ContactsView(viewModel: container.contactsViewModel()) { chatId in
+                    router.openChat(chatId)
+                }
             }
         case .calls:
             NavigationStack {
-                ContentUnavailableView("Звонки", systemImage: "phone", description: Text("История звонков пока недоступна"))
-                    .navigationTitle("Звонки")
+                CallsView(viewModel: container.callsViewModel()) { chatId in
+                    router.openChat(chatId)
+                }
             }
         case .settings:
             NavigationStack {

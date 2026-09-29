@@ -57,7 +57,8 @@ public struct FlatSearchField: View {
             if value { isActive = true }
         }
         .onChange(of: isActive) { _, value in
-            if !value { focused = false }
+            // Поиск можно включить снаружи (кнопкой с лупой): тогда поле получает фокус.
+            focused = value
         }
     }
 }
