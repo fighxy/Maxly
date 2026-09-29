@@ -28,10 +28,10 @@ jobs:
       - name: Test libraries
         run: |
           swift test --package-path orbitl-ios \
-            --Xlinker=-sectcreate \
-            --Xlinker=__TEXT \
-            --Xlinker=__info_plist \
-            --Xlinker="$GITHUB_WORKSPACE/orbitl-ios/Tests/OrbitlDataTests/Info.plist"
+            -Xlinker=-sectcreate \
+            -Xlinker=__TEXT \
+            -Xlinker=__info_plist \
+            -Xlinker="$GITHUB_WORKSPACE/orbitl-ios/Tests/OrbitlDataTests/Info.plist"
 
   app:
     name: App and MaxIos
