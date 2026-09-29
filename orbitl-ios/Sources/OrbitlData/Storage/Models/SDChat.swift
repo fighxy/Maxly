@@ -22,6 +22,8 @@ final class SDChat {
     var lastAuthorId: String?
     /// Последнее сообщение — своё.
     var lastOutgoing: Bool = false
+    /// Локальный id своего сообщения, которое строка показывает, пока сервер его не принял.
+    var lastLocalId: String?
     /// `DeliveryState` своего последнего сообщения.
     var lastDeliveryRaw: String?
     /// Время (мс) последней отметки прочтения собеседником.
