@@ -156,3 +156,21 @@ public extension View {
         #endif
     }
 }
+
+public extension View {
+    /// Главная кнопка экрана. На iOS 26 — системное стекло с заливкой акцентом
+    /// (`.glassProminent`), раньше — `.borderedProminent`. Выключенная кнопка
+    /// серая сама по себе.
+    @ViewBuilder
+    func orbitlProminentButtonStyle() -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            buttonStyle(.glassProminent)
+        } else {
+            buttonStyle(.borderedProminent)
+        }
+        #else
+        buttonStyle(.borderedProminent)
+        #endif
+    }
+}

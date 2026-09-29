@@ -1,149 +1,190 @@
 import SwiftUI
 import OrbitlPresentation
+import OrbitlUI
 
-/// Экран входа. Вся логика шагов в `AuthViewModel`, здесь только раскладка и фокус.
+/// Вход и регистрация. Шаги живут в `AuthViewModel`, экран превращает их в стек
+/// навигации: номер — корень, код, пароль и регистрация открываются поверх него,
+/// поэтому «назад» — системная кнопка панели навигации.
 struct AuthView: View {
     @Bindable var viewModel: AuthViewModel
-
-    private enum Field: Hashable {
-        case phone, code, password, firstName, lastName
-    }
-
-    @FocusState private var focus: Field?
+    /// Закрыть вход. Передаётся, только когда экран открыт поверх приложения
+    /// (например, добавление аккаунта). На первом экране свежего запуска кнопки нет.
+    var onClose: (() -> Void)?
 
     var body: some View {
-        NavigationStack {
-            Form {
-                if viewModel.sessionExpired {
-                    Section {
-                        Text("Сессия истекла. Войдите снова. Переписка на устройстве сохранится, пока вы сами не выйдете.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+        NavigationStack(path: path) {
+            AuthPhoneStep(viewModel: viewModel)
+                .toolbar {
+                    if let onClose {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button(action: onClose) {
+                                Image(systemName: "xmark")
+                            }
+                            .accessibilityLabel("Закрыть")
+                        }
                     }
                 }
-                switch viewModel.step {
-                case .phone:
-                    phoneSection
-                case .code:
-                    codeSection
-                case .password:
-                    passwordSection
-                case .registration:
-                    registrationSection
+                .navigationDestination(for: AuthRoute.self) { route in
+                    destination(route)
+                        .navigationBarTitleDisplayMode(.inline)
+                        // Только шеврон, без подписи «Назад».
+                        .toolbarRole(.editor)
                 }
-                if let message = viewModel.errorMessage {
-                    Section {
-                        Label(message, systemImage: "exclamationmark.circle")
-                            .foregroundStyle(.red)
-                            .font(.footnote)
-                    }
-                    .accessibilityAddTraits(.isStaticText)
-                }
-            }
-            .navigationTitle(viewModel.title)
-            .toolbar {
-                if viewModel.canGoBack {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Назад") { Task { await viewModel.goBack() } }
-                    }
-                }
-                if viewModel.isBusy {
-                    ToolbarItem(placement: .topBarTrailing) { ProgressView() }
-                }
-            }
         }
+        .tint(Color.orbitlAccent)
         .task { viewModel.activate() }
-        .onChange(of: viewModel.step, initial: true) { _, step in
-            focus = field(for: step)
+    }
+
+    @ViewBuilder
+    private func destination(_ route: AuthRoute) -> some View {
+        switch route {
+        case .code: AuthCodeStep(viewModel: viewModel)
+        case .password: AuthPasswordStep(viewModel: viewModel)
+        case .registration: AuthRegistrationStep(viewModel: viewModel)
         }
     }
 
-    /// Куда поставить курсор на новом шаге.
-    private func field(for step: AuthViewModel.Step) -> Field {
-        switch step {
-        case .phone: .phone
-        case .code: .code
-        case .password: .password
-        case .registration: .firstName
-        }
-    }
-
-    private var phoneSection: some View {
-        Section {
-            TextField("+7 900 000-00-00", text: $viewModel.phone)
-                .textContentType(.telephoneNumber)
-                .keyboardType(.phonePad)
-                .focused($focus, equals: .phone)
-                .submitLabel(.continue)
-                .onSubmit { Task { await viewModel.requestCode() } }
-            Button("Получить код") { Task { await viewModel.requestCode() } }
-                .disabled(!viewModel.canRequestCode)
-        } header: {
-            Text("Номер телефона")
-        } footer: {
-            Text(viewModel.phoneHint ?? "Пришлём код в SMS")
-        }
-    }
-
-    private var codeSection: some View {
-        Section {
-            TextField("Код", text: $viewModel.code)
-                .keyboardType(.numberPad)
-                .textContentType(.oneTimeCode)
-                .focused($focus, equals: .code)
-                .submitLabel(.continue)
-                .onSubmit { Task { await viewModel.verify() } }
-            Button("Продолжить") { Task { await viewModel.verify() } }
-                .disabled(!viewModel.canVerify)
-            // Обратный отсчёт перерисовывается раз в секунду без таймера в модели.
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                Button(viewModel.resendTitle(at: context.date)) {
-                    Task { await viewModel.resendCode() }
-                }
-                .disabled(!viewModel.canResend(at: context.date))
-                .monospacedDigit()
+    /// Стек навигации — прямое отражение шага. Системное «назад» возвращает к номеру.
+    private var path: Binding<[AuthRoute]> {
+        Binding(
+            get: { AuthRoute(viewModel.step).map { [$0] } ?? [] },
+            set: { newPath in
+                if newPath.isEmpty { viewModel.backToPhone() }
             }
-        } header: {
-            Text("Код из SMS")
-        } footer: {
-            Text(viewModel.codePrompt)
+        )
+    }
+}
+
+/// Экраны поверх ввода номера.
+enum AuthRoute: Hashable {
+    case code, password, registration
+
+    init?(_ step: AuthViewModel.Step) {
+        switch step {
+        case .phone: return nil
+        case .code: self = .code
+        case .password: self = .password
+        case .registration: self = .registration
         }
     }
+}
 
-    private var passwordSection: some View {
-        Section {
-            SecureField("Пароль", text: $viewModel.password)
-                .textContentType(.password)
-                .focused($focus, equals: .password)
-                .submitLabel(.go)
-                .onSubmit { Task { await viewModel.submitPassword() } }
-            Button("Войти") { Task { await viewModel.submitPassword() } }
-                .disabled(!viewModel.canSubmitPassword)
-        } header: {
-            Text("Облачный пароль")
-        } footer: {
-            Text(viewModel.passwordPrompt)
+// MARK: Общие части шагов
+
+/// Прокручиваемая колонка шага: на маленьком экране клавиатура не прячет кнопку.
+struct AuthStepScroll<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                content
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 24)
+            .frame(maxWidth: 500)
+            .frame(maxWidth: .infinity)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .scrollDismissesKeyboard(.never)
+        .background(Color.orbitlBackground)
+    }
+}
+
+/// Название приложения вместо картинки над заголовком.
+struct AuthWordmark: View {
+    var body: some View {
+        Text(verbatim: "Orbitl")
+            .font(.system(size: 44, weight: .bold))
+            .foregroundStyle(.primary)
+            .padding(.bottom, 12)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// Заголовок шага и пояснение под ним.
+struct AuthHeader: View {
+    let title: String
+    let subtitle: Text
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text(title)
+                .font(.title.bold())
+                .accessibilityAddTraits(.isHeader)
+            subtitle
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
+}
 
-    private var registrationSection: some View {
-        Section {
-            TextField("Имя", text: $viewModel.firstName)
-                .textContentType(.givenName)
-                .focused($focus, equals: .firstName)
-                .submitLabel(.next)
-                .onSubmit { focus = .lastName }
-            TextField("Фамилия (необязательно)", text: $viewModel.lastName)
-                .textContentType(.familyName)
-                .focused($focus, equals: .lastName)
-                .submitLabel(.done)
-                .onSubmit { Task { await viewModel.register() } }
-            Button("Создать аккаунт") { Task { await viewModel.register() } }
-                .disabled(!viewModel.canRegister)
-        } header: {
-            Text("Новый аккаунт")
-        } footer: {
-            Text("Номер ещё не зарегистрирован. Укажите имя, его увидят собеседники.")
+/// Строка формы с разделителями как на экране номера.
+struct AuthFieldRow<Content: View>: View {
+    var showsTopDivider = false
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if showsTopDivider { Divider() }
+            content
+                .frame(minHeight: 52)
+            Divider()
+        }
+    }
+}
+
+/// Широкая главная кнопка шага. Пока идёт запрос, вместо текста крутится индикатор.
+struct AuthPrimaryButton: View {
+    let title: String
+    let isEnabled: Bool
+    let isBusy: Bool
+    let action: @MainActor () async -> Void
+
+    var body: some View {
+        Button {
+            Task { await action() }
+        } label: {
+            ZStack {
+                Text(title)
+                    .font(.headline)
+                    .opacity(isBusy ? 0 : 1)
+                if isBusy {
+                    ProgressView()
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+        }
+        .orbitlProminentButtonStyle()
+        .buttonBorderShape(.roundedRectangle(radius: 14))
+        .controlSize(.large)
+        .disabled(!isEnabled || isBusy)
+    }
+}
+
+/// Ошибка или подсказка под кнопкой.
+struct AuthMessage: View {
+    let error: String?
+    var hint: String?
+
+    var body: some View {
+        if let error {
+            Label(error, systemImage: "exclamationmark.circle")
+                .font(.footnote)
+                .foregroundStyle(.red)
+                .multilineTextAlignment(.center)
+                .padding(.top, 14)
+                .accessibilityAddTraits(.isStaticText)
+        } else if let hint {
+            Text(hint)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.top, 14)
         }
     }
 }
