@@ -252,10 +252,15 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
 
     // MARK: Наблюдатели
 
+    /// Подписчик мог уйти раньше, чем эта задача добралась до актора: тогда его снятие
+    /// уже отработало, и сохранять его нельзя.
     private func addObserver(_ id: UUID, _ continuation: AsyncStream<[Chat]>.Continuation) {
+        if case .terminated = continuation.yield(snapshot()) { return }
         observers[id] = continuation
-        continuation.yield(snapshot())
     }
+
+    /// Сколько подписчиков сейчас получают снимки. Для тестов.
+    var observerCount: Int { observers.count }
 
     private func removeObserver(_ id: UUID) {
         observers[id] = nil

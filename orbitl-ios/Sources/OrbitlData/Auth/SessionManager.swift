@@ -383,9 +383,11 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         }
     }
 
+    /// Подписчик мог уйти раньше, чем эта задача добралась до актора: тогда его снятие
+    /// уже отработало, и сохранять его нельзя, иначе он останется в словаре навсегда.
     private func add(_ id: UUID, _ continuation: AsyncStream<AuthPhase>.Continuation) {
+        if case .terminated = continuation.yield(phase) { return }
         continuations[id] = continuation
-        continuation.yield(phase)
     }
 
     private func remove(_ id: UUID) {
@@ -393,8 +395,8 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
     }
 
     private func addConnection(_ id: UUID, _ continuation: AsyncStream<ConnectionState>.Continuation) {
+        if case .terminated = continuation.yield(connection) { return }
         connectionContinuations[id] = continuation
-        continuation.yield(connection)
     }
 
     private func removeConnection(_ id: UUID) {
