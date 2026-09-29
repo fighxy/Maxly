@@ -291,6 +291,7 @@ actor FakeMessageRepository: MessageRepository {
     var sendError: OrbitleError?
     var latestError: OrbitleError?
     private(set) var sent: [String] = []
+    private(set) var replyIds: [String?] = []
 
     nonisolated func messages(chatId: String) -> AsyncStream<[Message]> { AsyncStream { _ in } }
     func loadOlder(chatId: String) async throws(OrbitleError) {}
@@ -299,8 +300,9 @@ actor FakeMessageRepository: MessageRepository {
         if let latestError { throw latestError }
     }
 
-    func send(text: String, chatId: String) async throws(OrbitleError) {
+    func send(text: String, chatId: String, replyTo: String?) async throws(OrbitleError) {
         sent.append(text)
+        replyIds.append(replyTo)
         if let sendError { throw sendError }
     }
 

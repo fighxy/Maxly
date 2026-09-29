@@ -1,10 +1,12 @@
 import SwiftUI
+import OrbitleDomain
 import OrbitlePresentation
 import OrbitleUI
 
 struct ChatView: View {
     @Bindable var viewModel: ChatViewModel
     var title: String
+    var allowsComments = false
     /// Модель профиля чата для перехода по нажатию на заголовок.
     var makeProfile: (() -> ChatProfileViewModel?)?
     @Environment(\.scenePhase) private var scenePhase
@@ -12,44 +14,49 @@ struct ChatView: View {
 
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    if let hint = viewModel.emptyHint {
-                        VStack(spacing: 12) {
-                            OrbitleMark(size: 56)
-                                .foregroundStyle(.tertiary)
-                            Text(hint)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
+            GeometryReader { geo in
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        if let hint = viewModel.emptyHint {
+                            VStack(spacing: 12) {
+                                OrbitleMark(size: 56)
+                                    .foregroundStyle(.tertiary)
+                                Text(hint)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .padding(.horizontal, 24)
+                            .padding(.top, 80)
+                        } else {
+                            Button("Раньше") { Task { await viewModel.loadOlder() } }
+                                .font(.footnote)
+                                .padding(.top, 8)
                         }
-                        .padding(.horizontal, 24)
-                        .padding(.top, 80)
-                    } else {
-                        Button("Раньше") { Task { await viewModel.loadOlder() } }
-                            .font(.footnote)
-                            .padding(.top, 8)
-                    }
-                    ForEach(viewModel.messages) { message in
-                        MessageBubble(message: message, isOutgoing: viewModel.isOutgoing(message)) {
-                            Task { await viewModel.retry(id: message.id) }
+                        ForEach(viewModel.messages) { message in
+                            TranscriptBubble(
+                                message: message,
+                                viewModel: viewModel,
+                                maxWidth: geo.size.width * OrbitleTheme.bubbleMax,
+                                allowsComments: allowsComments
+                            )
+                            .id(message.id)
                         }
-                        .id(message.id)
                     }
+                    .padding(.horizontal, OrbitleTheme.pad)
+                    .padding(.bottom, 8)
                 }
-                .padding(.horizontal, OrbitleTheme.pad)
-                .padding(.bottom, 8)
-            }
-            .onChange(of: viewModel.messages.last?.id) { _, id in
-                guard viewModel.stickToBottom, let id else { return }
-                proxy.scrollTo(id, anchor: .bottom)
+                .onChange(of: viewModel.messages.last?.id) { _, id in
+                    guard viewModel.stickToBottom, let id else { return }
+                    proxy.scrollTo(id, anchor: .bottom)
+                }
+                .onChange(of: viewModel.scrollToken) { _, _ in
+                    guard let id = viewModel.scrollTarget else { return }
+                    proxy.scrollTo(id, anchor: .center)
+                }
             }
         }
-        // Поле ввода плавает над сообщениями: лента прокручивается под стеклом, а вставка
-        // поднимается вместе с клавиатурой.
         .safeAreaInset(edge: .bottom, spacing: 0) { composer }
-        // В открытом чате на iPhone панели вкладок нет: она уезжает при переходе и
-        // возвращается при возврате к списку. На iPad список и чат видны вместе, панель остаётся.
         .toolbar(sizeClass == .compact ? .hidden : .automatic, for: .tabBar)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
@@ -68,13 +75,21 @@ struct ChatView: View {
                 }
             }
         }
+        .navigationDestination(item: $viewModel.openedCommentId) { postId in
+            CommentsView(
+                model: viewModel.commentsModel(for: postId),
+                currentUserId: viewModel.currentUserId
+            )
+        }
+        .fullScreenCover(item: $viewModel.viewer) { request in
+            MediaViewer(request: request) { viewModel.viewer = nil }
+        }
         .task {
             viewModel.activate()
             await viewModel.loadLatest()
         }
         .onDisappear { viewModel.deactivate() }
         .onChange(of: scenePhase) { _, phase in
-            // Приложение уходит в фон: черновик не должен ждать паузы в наборе.
             if phase != .active { viewModel.flushDraft() }
         }
     }
@@ -90,6 +105,9 @@ struct ChatView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
                     .orbitleGlassCapsule()
+            }
+            if let reply = viewModel.replyTarget {
+                replyBar(reply)
             }
             OrbitleGlassGroup(spacing: 8) {
                 HStack(alignment: .bottom, spacing: 8) {
@@ -118,5 +136,61 @@ struct ChatView: View {
         .padding(.horizontal, OrbitleTheme.pad)
         .padding(.top, 6)
         .padding(.bottom, 8)
+    }
+
+    private func replyBar(_ message: Message) -> some View {
+        HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Color.orbitleAccent)
+                .frame(width: 3)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Ответ")
+                    .font(.caption.weight(.semibold))
+                Text(message.replySnippet)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Button {
+                viewModel.cancelReply()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.bold))
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Отменить ответ")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .orbitleGlassCapsule()
+    }
+}
+
+/// Пузырь ленты. Отделён от `ChatView`, чтобы замыкания не раздували её тело.
+private struct TranscriptBubble: View {
+    let message: Message
+    let viewModel: ChatViewModel
+    let maxWidth: CGFloat
+    let allowsComments: Bool
+
+    var body: some View {
+        let voiceId = message.content.voices.first?.id
+        MessageBubble(
+            message: message,
+            isOutgoing: viewModel.isOutgoing(message),
+            maxWidth: maxWidth,
+            phase: voiceId.map { viewModel.voicePhase(for: $0) } ?? .idle,
+            allowsComments: allowsComments,
+            highlighted: viewModel.highlightedId == message.id,
+            onRetry: { Task { await viewModel.retry(id: message.id) } },
+            onReply: { viewModel.beginReply(to: message) },
+            onReact: { emoji in Task { await viewModel.toggleReaction(messageId: message.id, emoji: emoji) } },
+            onComments: { viewModel.openComments(message) },
+            onOpen: { viewModel.presentMedia(message, startId: $0) },
+            onVoice: { viewModel.toggleVoice(message) },
+            onFocusReply: { viewModel.focusReply($0) }
+        )
     }
 }

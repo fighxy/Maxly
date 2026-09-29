@@ -61,4 +61,68 @@ struct ChatViewModelTests {
         #expect(existing.error == .server(code: "x"))
         #expect(existing.emptyHint == nil)
     }
+
+    @Test("Ошибка отправки возвращает и черновик, и цитату")
+    func sendRestoresReply() async {
+        let repository = FakeMessageRepository()
+        let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
+        let target = Message(id: "p", chatId: "c", authorId: "bob", text: "Исходное", timestamp: .now, status: .sent)
+        model.beginReply(to: target)
+        model.draft = "Ответ"
+        await repository.set(sendError: .storageError)
+        await model.send()
+        #expect(model.draft == "Ответ")
+        #expect(model.replyTarget?.id == "p")
+        #expect(await repository.sent == ["Ответ"])
+        #expect(await repository.replyIds == ["p"])
+    }
+
+    @Test("Фото и видео открываются отдельными кадрами, постер не подменяет ролик")
+    func presentMedia() throws {
+        let photo = PhotoContent(id: "p", url: URL(string: "https://cdn.example/p.jpg"), width: 800, height: 600)
+        let video = VideoContent(
+            id: "v",
+            url: URL(string: "https://cdn.example/v.mp4"),
+            posterURL: URL(string: "https://cdn.example/t.jpg"),
+            durationMs: 3200
+        )
+        let posterOnly = VideoContent(id: "poster", url: nil, posterURL: URL(string: "https://cdn.example/only.jpg"))
+        let message = Message(
+            id: "m",
+            chatId: "c",
+            authorId: "bob",
+            text: "",
+            timestamp: .now,
+            status: .sent,
+            content: MessageContent(attachments: [.photo(photo), .video(video), .video(posterOnly)])
+        )
+        let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository())
+        model.presentMedia(message, startId: "v")
+        let slides = try #require(model.viewer?.slides)
+        #expect(model.viewer?.id == "v")
+        #expect(slides.map(\.id) == ["p", "v", "poster"])
+        #expect(slides[1].stillURL == video.posterURL)
+        #expect(slides[1].playURL == video.url)
+        #expect(slides[1].isVideo == true)
+        #expect(slides[2].isVideo == false)
+        #expect(slides[2].playURL == nil)
+    }
+
+    @Test("Голос без файла и без кэша помечает пузырь ошибкой")
+    func voiceFailsWithoutFile() async {
+        let repository = FakeMessageRepository()
+        let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
+        let voice = VoiceContent(id: "a", url: URL(string: "https://cdn.example/a.ogg"), durationMs: 3200)
+        let message = Message(
+            id: "m",
+            chatId: "c",
+            authorId: "bob",
+            text: "",
+            timestamp: .now,
+            status: .sent,
+            content: MessageContent(attachments: [.voice(voice)])
+        )
+        model.toggleVoice(message)
+        #expect(await eventually { model.voicePhase(for: "a") == .failed })
+    }
 }

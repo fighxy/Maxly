@@ -108,8 +108,21 @@ public struct MessageRecord: Sendable, Hashable {
     public var timestamp: Date
     public var status: MessageStatus
     public var mediaId: String?
+    public var contentJSON: String
+    public var threadOf: String
 
-    public init(id: String, serverId: String? = nil, chatId: String, authorId: String, text: String, timestamp: Date, status: MessageStatus, mediaId: String? = nil) {
+    public init(
+        id: String,
+        serverId: String? = nil,
+        chatId: String,
+        authorId: String,
+        text: String,
+        timestamp: Date,
+        status: MessageStatus,
+        mediaId: String? = nil,
+        contentJSON: String = "",
+        threadOf: String = ""
+    ) {
         self.id = id
         self.serverId = serverId
         self.chatId = chatId
@@ -118,13 +131,38 @@ public struct MessageRecord: Sendable, Hashable {
         self.timestamp = timestamp
         self.status = status
         self.mediaId = mediaId
+        self.contentJSON = contentJSON
+        self.threadOf = threadOf
     }
 
     public init(_ message: Message) {
-        self.init(id: message.id, serverId: message.serverId, chatId: message.chatId, authorId: message.authorId, text: message.text, timestamp: message.timestamp, status: message.status, mediaId: message.mediaId)
+        self.init(
+            id: message.id,
+            serverId: message.serverId,
+            chatId: message.chatId,
+            authorId: message.authorId,
+            text: message.text,
+            timestamp: message.timestamp,
+            status: message.status,
+            mediaId: message.mediaId,
+            contentJSON: MessageContentCodec.encode(message.content),
+            threadOf: message.content.threadOf ?? ""
+        )
     }
 
     public var domain: Message {
-        Message(id: id, serverId: serverId, chatId: chatId, authorId: authorId, text: text, timestamp: timestamp, status: status, mediaId: mediaId)
+        var content = MessageContentCodec.decode(contentJSON)
+        if !threadOf.isEmpty { content.threadOf = threadOf }
+        return Message(
+            id: id,
+            serverId: serverId,
+            chatId: chatId,
+            authorId: authorId,
+            text: text,
+            timestamp: timestamp,
+            status: status,
+            mediaId: mediaId,
+            content: content
+        )
     }
 }

@@ -174,7 +174,11 @@ struct MainTabView: View {
                 // Свой экран на каждый чат: иначе при смене выбора SwiftUI переиспользует
                 // прежний ChatView, его `.task` не перезапускается, и модель нового чата
                 // так и не подписывается на сообщения.
-                ChatView(viewModel: model, title: container.chatTitle(id: id)) {
+                ChatView(
+                    viewModel: model,
+                    title: container.chatTitle(id: id),
+                    allowsComments: container.allowsComments(id: id)
+                ) {
                     container.profileViewModel(chatId: id)
                 }
                     .id(id)
