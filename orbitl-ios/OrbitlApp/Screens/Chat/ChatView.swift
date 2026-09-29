@@ -8,52 +8,49 @@ struct ChatView: View {
     /// Модель профиля чата для перехода по нажатию на заголовок.
     var makeProfile: (() -> ChatProfileViewModel?)?
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 8) {
-                        if let hint = viewModel.emptyHint {
-                            VStack(spacing: 12) {
-                                OrbitlMark(size: 56)
-                                    .foregroundStyle(.tertiary)
-                                Text(hint)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.center)
-                            }
-                            .padding(.horizontal, 24)
-                            .padding(.top, 80)
-                        } else {
-                            Button("Раньше") { Task { await viewModel.loadOlder() } }
-                                .font(.footnote)
-                                .padding(.top, 8)
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    if let hint = viewModel.emptyHint {
+                        VStack(spacing: 12) {
+                            OrbitlMark(size: 56)
+                                .foregroundStyle(.tertiary)
+                            Text(hint)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
                         }
-                        ForEach(viewModel.messages) { message in
-                            MessageBubble(message: message, isOutgoing: viewModel.isOutgoing(message)) {
-                                Task { await viewModel.retry(id: message.id) }
-                            }
-                            .id(message.id)
-                        }
+                        .padding(.horizontal, 24)
+                        .padding(.top, 80)
+                    } else {
+                        Button("Раньше") { Task { await viewModel.loadOlder() } }
+                            .font(.footnote)
+                            .padding(.top, 8)
                     }
-                    .padding(.horizontal, OrbitlTheme.pad)
-                    .padding(.bottom, 8)
+                    ForEach(viewModel.messages) { message in
+                        MessageBubble(message: message, isOutgoing: viewModel.isOutgoing(message)) {
+                            Task { await viewModel.retry(id: message.id) }
+                        }
+                        .id(message.id)
+                    }
                 }
-                .onChange(of: viewModel.messages.last?.id) { _, id in
-                    guard viewModel.stickToBottom, let id else { return }
-                    proxy.scrollTo(id, anchor: .bottom)
-                }
+                .padding(.horizontal, OrbitlTheme.pad)
+                .padding(.bottom, 8)
             }
-            if let message = viewModel.errorMessage {
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, OrbitlTheme.pad)
+            .onChange(of: viewModel.messages.last?.id) { _, id in
+                guard viewModel.stickToBottom, let id else { return }
+                proxy.scrollTo(id, anchor: .bottom)
             }
-            composer
         }
+        // Поле ввода плавает над сообщениями: лента прокручивается под стеклом, а вставка
+        // поднимается вместе с клавиатурой.
+        .safeAreaInset(edge: .bottom, spacing: 0) { composer }
+        // В открытом чате на iPhone панели вкладок нет: она уезжает при переходе и
+        // возвращается при возврате к списку. На iPad список и чат видны вместе, панель остаётся.
+        .toolbar(sizeClass == .compact ? .hidden : .automatic, for: .tabBar)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -82,24 +79,44 @@ struct ChatView: View {
         }
     }
 
+    /// Плавающий пузырь ввода: капсула поля и кнопка отправки на стекле (iOS 26),
+    /// на iOS 17–18 — на материале.
     private var composer: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            TextField("Сообщение", text: $viewModel.draft, axis: .vertical)
-                .lineLimit(1...5)
-                .textFieldStyle(.plain)
-                .padding(10)
-                .background(Color.orbitlIncoming, in: RoundedRectangle(cornerRadius: OrbitlTheme.radius))
-            Button {
-                Task { await viewModel.send() }
-            } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 30))
-                    .foregroundStyle(Color.orbitlAccent)
+        VStack(alignment: .leading, spacing: 6) {
+            if let message = viewModel.errorMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    .orbitlGlassCapsule()
             }
-            .disabled(!viewModel.canSend)
-            .accessibilityLabel("Отправить")
+            OrbitlGlassGroup(spacing: 8) {
+                HStack(alignment: .bottom, spacing: 8) {
+                    TextField("Сообщение", text: $viewModel.draft, axis: .vertical)
+                        .lineLimit(1...5)
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 11)
+                        .frame(minHeight: 44)
+                        .orbitlGlassCapsule()
+                    Button {
+                        Task { await viewModel.send() }
+                    } label: {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 17, weight: .semibold))
+                            .frame(width: 30, height: 30)
+                    }
+                    .orbitlProminentButtonStyle()
+                    .buttonBorderShape(.circle)
+                    .tint(Color.orbitlAccent)
+                    .disabled(!viewModel.canSend)
+                    .accessibilityLabel("Отправить")
+                }
+            }
         }
-        .padding(OrbitlTheme.pad)
-        .background(.bar)
+        .padding(.horizontal, OrbitlTheme.pad)
+        .padding(.top, 6)
+        .padding(.bottom, 8)
     }
 }

@@ -158,6 +158,30 @@ public extension View {
     }
 }
 
+/// Группа стеклянных элементов: на iOS 26 `GlassEffectContainer`, чтобы соседнее стекло
+/// рисовалось и сливалось вместе; раньше — просто содержимое.
+public struct OrbitlGlassGroup<Content: View>: View {
+    private let spacing: CGFloat?
+    private let content: Content
+
+    public init(spacing: CGFloat? = nil, @ViewBuilder content: () -> Content) {
+        self.spacing = spacing
+        self.content = content()
+    }
+
+    public var body: some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            GlassEffectContainer(spacing: spacing) { content }
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
+    }
+}
+
 public extension View {
     /// Главная кнопка экрана. На iOS 26 — системное стекло с заливкой акцентом
     /// (`.glassProminent`), раньше — `.borderedProminent`. Выключенная кнопка
