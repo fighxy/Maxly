@@ -13,7 +13,7 @@ ViewModel
  ▼
 Repository
  │   единственная точка доступа к данным
- ├──► локальная база   (Core Data или GRDB / Room / аналог на desktop)
+ ├──► локальная база   (SwiftData / Room / аналог на desktop)
  ├──► KMP-core         (протокол Max, сессия, события сервера)
  └──► сеть             (URLSession / OkHttp / Ktor, медиа и прочие HTTP-запросы)
 ```
@@ -43,7 +43,7 @@ Repository
 
 ### iOS (`orbit-ios/`)
 - **UI:** SwiftUI. ViewModel сделаны как `ObservableObject` или `@Observable`, экраны подписываются на их состояние.
-- **База:** Core Data или GRDB (выбор ещё не сделан).
+- **База:** SwiftData.
 - **Сеть:** URLSession.
 - **Ядро:** подключается как XCFramework через SPM или CocoaPods. Потоки Kotlin (`Flow`) и `suspend`-функции оборачиваются в репозитории в Swift-обёртки (async/await, AsyncSequence), поэтому типы Kotlin выше репозитория не видны.
 
