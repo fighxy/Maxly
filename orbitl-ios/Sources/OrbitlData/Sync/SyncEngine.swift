@@ -18,6 +18,8 @@ public actor SyncEngine {
     private var acceptEvents = false
     /// Сколько пушей из потока сейчас пишется в базу. `stopEvents` ждёт, пока их не станет.
     private var eventsInFlight = 0
+    /// Кто ждёт в `stopEvents`, пока допишутся начатые пуши.
+    private var idleWaiters: [CheckedContinuation<Void, Never>] = []
     /// Последний сигнал о сети. `networkLost`, пришедший, пока `networkBecameAvailable`
     /// отправляла очередь, отменяет запуск опроса.
     private var isOnline = false
@@ -84,8 +86,9 @@ public actor SyncEngine {
     /// заканчивается до возврата, чтобы не лечь поверх очистки базы.
     public func stopEvents() async {
         acceptEvents = false
-        while eventsInFlight > 0 {
-            await Task.yield()
+        guard eventsInFlight > 0 else { return }
+        await withCheckedContinuation { continuation in
+            idleWaiters.append(continuation)
         }
     }
 
@@ -114,8 +117,12 @@ public actor SyncEngine {
     private func deliver(_ event: CoreEvent) async {
         guard acceptEvents else { return }
         eventsInFlight += 1
-        defer { eventsInFlight -= 1 }
         await consume(event)
+        eventsInFlight -= 1
+        guard eventsInFlight == 0 else { return }
+        let waiters = idleWaiters
+        idleWaiters.removeAll()
+        waiters.forEach { $0.resume() }
     }
 
     /// Записывает одно событие ядра в базу. Опрос остаётся запасным путём.
