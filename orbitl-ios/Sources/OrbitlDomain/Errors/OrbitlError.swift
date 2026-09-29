@@ -53,3 +53,9 @@ extension OrbitlError {
         }
     }
 }
+
+extension OrbitlError {
+    /// Код устарел, и сервис входа уже выслал новый. Экран стирает поле и заново
+    /// запускает таймер повторной отправки.
+    public static let codeRenewed = OrbitlError.rejected("Код устарел — выслали новый")
+}

@@ -19,6 +19,7 @@ actor FakeMaxCore: MaxCore {
     var authStep: CoreAuthStep = .loggedIn(userId: "u1")
     var authError: CoreFailure?
     var verifyGate: Gate?
+    var verifyError: CoreFailure?
     var logoutError: CoreFailure?
     private(set) var marked: [String] = []
     private(set) var didLogout = false
@@ -48,7 +49,7 @@ actor FakeMaxCore: MaxCore {
     func verifyCode(token: String, code: String) async throws -> CoreAuthStep {
         verifiedCodes.append(code)
         if let verifyGate { await verifyGate.wait() }
-        if let authError { throw authError }
+        if let error = verifyError ?? authError { throw error }
         return authStep
     }
 
@@ -339,6 +340,7 @@ extension FakeMaxCore {
     func setAuthStep(_ step: CoreAuthStep) { authStep = step }
     func setAuthError(_ error: CoreFailure?) { authError = error }
     func setVerifyGate(_ gate: Gate?) { verifyGate = gate }
+    func setVerifyError(_ error: CoreFailure?) { verifyError = error }
     func setCode(_ value: CoreCode) { code = value }
     func setLogoutError(_ error: CoreFailure?) { logoutError = error }
 }

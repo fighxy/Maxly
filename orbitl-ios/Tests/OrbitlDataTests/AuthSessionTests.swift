@@ -115,6 +115,33 @@ struct SessionLoginTests {
         }
     }
 
+    @Test("Устаревший код сразу заменяется новым на тот же номер")
+    func expiredCodeRenews() async throws {
+        try await withSession { parts in
+            try await parts.session.requestCode(phone: "+79990001122")
+            await parts.core.setVerifyError(CoreFailure(kind: "SERVER", key: "verify.code.expired"))
+            await parts.core.setCode(CoreCode(token: "fresh", codeLength: 4))
+            #expect(await failure { try await parts.session.verifyCode("111111") } == .codeRenewed)
+            #expect(await parts.core.requestedPhones == ["+79990001122", "+79990001122"])
+            #expect(await parts.session.currentPhase == .codeSent(codeLength: 4))
+
+            await parts.core.setVerifyError(nil)
+            await parts.core.setAuthStep(.loggedIn(userId: "3"))
+            try await parts.session.verifyCode("2222")
+            #expect(await parts.session.currentPhase == .signedIn(userId: "3"))
+        }
+    }
+
+    @Test("Если новый код не получить, остаётся текст «запросите новый»")
+    func expiredCodeRenewalFails() async throws {
+        try await withSession { parts in
+            try await parts.session.requestCode(phone: "+79990001122")
+            await parts.core.setAuthError(CoreFailure(kind: "SESSION_EXPIRED", key: nil))
+            #expect(await failure { try await parts.session.verifyCode("111111") } == .rejected("Код устарел. Запросите новый"))
+            #expect(await parts.session.currentPhase == .codeSent(codeLength: 6))
+        }
+    }
+
     @Test("Назад к номеру забывает попытку")
     func cancelLogin() async throws {
         try await withSession { parts in

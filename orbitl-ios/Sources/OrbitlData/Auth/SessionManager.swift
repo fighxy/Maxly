@@ -163,9 +163,23 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         do {
             step = try await core.verifyCode(token: codeToken, code: code)
         } catch {
+            if AuthErrors.isExpiredCode(error), await renewCode(generation: generation) {
+                throw .codeRenewed
+            }
             throw AuthErrors.map(error, during: .verifyCode)
         }
         try await apply(step, generation: generation)
+    }
+
+    /// Устаревший код заменяется новым на тот же номер, чтобы не гонять человека назад
+    /// к вводу номера. `false`, если новый код получить не удалось.
+    private func renewCode(generation: Int) async -> Bool {
+        guard !phone.isEmpty, generation == attempt else { return false }
+        guard let code = try? await core.requestCode(phone: phone, resend: false) else { return false }
+        guard generation == attempt, !isLoggingOut else { return false }
+        codeToken = code.token
+        publish(.codeSent(codeLength: code.codeLength))
+        return true
     }
 
     public func submitPassword(_ password: String) async throws(OrbitlError) {
