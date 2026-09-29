@@ -46,6 +46,36 @@ enum CoreMapping {
         )
     }
 
+    static func profile(_ core: CoreProfile) -> ChatProfile {
+        let presence: Contact.Presence
+        if core.online {
+            presence = .online
+        } else if core.lastSeenMs > 0 {
+            presence = .lastSeen(Date(unixMillis: core.lastSeenMs))
+        } else {
+            presence = .unknown
+        }
+        func text(_ value: String) -> String? {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        return ChatProfile(
+            kind: ChatProfile.Kind(rawValue: core.kind) ?? .user,
+            chatId: core.chatId,
+            peerId: text(core.peerId),
+            title: core.title,
+            avatarURL: text(core.avatarURL).flatMap(URL.init(string:)),
+            description: text(core.description),
+            link: text(core.link),
+            phone: text(core.phone).map { "+" + $0 },
+            participants: core.participants > 0 ? core.participants : nil,
+            presence: presence,
+            isOfficial: core.official,
+            isPublic: core.isPublic,
+            commands: core.commands.map { ChatProfile.BotCommand(name: $0.name, description: text($0.description)) }
+        )
+    }
+
     /// Звонок для экрана. Исход по `hangupType`, как у официального клиента: входящий без
     /// ответа — пропущенный, исходящий без ответа — отменённый, `REJECTED` у исходящего —
     /// собеседник отклонил.

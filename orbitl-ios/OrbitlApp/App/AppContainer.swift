@@ -40,6 +40,7 @@ final class AppContainer {
     @ObservationIgnored private var calls: any CallHistoryRepository = UnavailableCallHistoryRepository()
     @ObservationIgnored private var coreContacts: CoreContactRepository?
     @ObservationIgnored private var coreCalls: CoreCallHistoryRepository?
+    @ObservationIgnored private var profiles: (any ChatProfileRepository)?
     @ObservationIgnored private var phaseTask: Task<Void, Never>?
     /// Журнал для отладки. `nil`, если каталог журнала не удалось открыть.
     let logs: FileLogStore?
@@ -96,6 +97,7 @@ final class AppContainer {
             self.coreCalls = coreCalls
             self.contacts = coreContacts
             self.calls = coreCalls
+            self.profiles = CoreChatProfileRepository(core: core)
             self.session = session
             self.chats = chats
             self.messages = messages
@@ -157,6 +159,38 @@ final class AppContainer {
         dialogDrafts[draft.chatId] = draft
         let chats = chats
         Task { await chats?.prepareDialog(draft) }
+    }
+
+    /// Профиль чата. Шапка сразу берётся из списка чатов или из черновика диалога.
+    func profileViewModel(chatId: String) -> ChatProfileViewModel? {
+        guard let profiles else { return nil }
+        let chat = listModel?.chat(id: chatId)
+        let kind: ChatProfile.Kind?
+        switch chat?.type {
+        case .private?: kind = chat?.isBot == true ? .bot : .user
+        case .group?: kind = .group
+        case .channel?: kind = .channel
+        case nil: kind = dialogDrafts[chatId] == nil ? nil : .user
+        }
+        return ChatProfileViewModel(
+            chatId: chatId,
+            title: chatTitle(id: chatId),
+            avatarURL: chat?.avatarURL ?? dialogDrafts[chatId]?.avatarURL,
+            kind: kind,
+            repository: profiles
+        )
+    }
+
+    /// Профиль контакта из вкладки «Контакты»: до открытия диалога его может не быть в списке.
+    func profileViewModel(dialog: DialogDraft) -> ChatProfileViewModel? {
+        guard let profiles else { return nil }
+        return ChatProfileViewModel(
+            chatId: dialog.chatId,
+            title: dialog.title,
+            avatarURL: dialog.avatarURL,
+            kind: .user,
+            repository: profiles
+        )
     }
 
     /// Заголовок экрана чата: из списка, а для нового диалога — имя контакта.

@@ -71,4 +71,26 @@ struct DirectoryRepositoryTests {
         #expect(list[3].title == "Групповой звонок")
         #expect(list[3].peerId == "7")
     }
+
+    @Test("Карточка из ядра: пустые поля становятся nil, номер получает плюс")
+    func profileMapping() {
+        let bot = CoreMapping.profile(CoreProfile(
+            kind: "bot", chatId: "5", peerId: "77", title: "Помощник", description: "  ", link: "helper_bot",
+            official: true, commands: [.init(name: "start", description: "Начать"), .init(name: "help", description: "")]
+        ))
+        #expect(bot.kind == .bot)
+        #expect(bot.peerId == "77")
+        #expect(bot.description == nil)
+        #expect(bot.linkURL == URL(string: "https://max.ru/helper_bot"))
+        #expect(bot.isOfficial)
+        #expect(bot.commands == [.init(name: "start", description: "Начать"), .init(name: "help")])
+        let user = CoreMapping.profile(CoreProfile(kind: "user", chatId: "13", phone: "79991234567", lastSeenMs: 1_000))
+        #expect(user.phone == "+79991234567")
+        #expect(user.presence == .lastSeen(Date(unixMillis: 1_000)))
+        #expect(user.participants == nil)
+        let channel = CoreMapping.profile(CoreProfile(kind: "channel", chatId: "-9", participants: 12))
+        #expect(channel.kind == .channel)
+        #expect(channel.peerId == nil)
+        #expect(channel.participants == 12)
+    }
 }

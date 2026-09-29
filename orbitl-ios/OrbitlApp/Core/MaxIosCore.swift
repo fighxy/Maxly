@@ -170,6 +170,20 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func loadProfile(chatId: String) async throws -> CoreProfile {
+        try await call("loadProfile") { done in
+            self.client.loadProfile(chatId: chatId) { profile, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else if let profile {
+                    done(.success(Self.profile(profile)))
+                } else {
+                    done(.failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)))
+                }
+            }
+        }
+    }
+
     func phases() -> AsyncStream<CorePhase> {
         AsyncStream { continuation in
             continuation.yield(CorePhase(raw: client.phaseName()))
@@ -247,6 +261,25 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             avatarURL: contact.avatarUrl,
             lastSeenMs: contact.lastSeenMs,
             online: contact.online
+        )
+    }
+
+    private static func profile(_ profile: IosProfile) -> CoreProfile {
+        CoreProfile(
+            kind: profile.kind,
+            chatId: profile.chatId,
+            peerId: profile.peerId,
+            title: profile.title,
+            avatarURL: profile.avatarUrl,
+            description: profile.description_,
+            link: profile.link,
+            phone: profile.phone,
+            participants: Int(profile.participants),
+            lastSeenMs: profile.lastSeenMs,
+            online: profile.online,
+            official: profile.official,
+            isPublic: profile.isPublic,
+            commands: profile.commands.map { CoreProfile.Command(name: $0.name, description: $0.description_) }
         )
     }
 

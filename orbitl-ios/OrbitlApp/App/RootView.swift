@@ -97,7 +97,10 @@ struct MainTabView: View {
             chats
         case .contacts:
             NavigationStack {
-                ContactsView(viewModel: container.contactsViewModel()) { dialog in
+                ContactsView(
+                    viewModel: container.contactsViewModel(),
+                    makeProfile: { container.profileViewModel(dialog: $0) }
+                ) { dialog in
                     container.openDialog(dialog)
                     router.openChat(dialog.chatId)
                 }
@@ -128,7 +131,9 @@ struct MainTabView: View {
                 // Свой экран на каждый чат: иначе при смене выбора SwiftUI переиспользует
                 // прежний ChatView, его `.task` не перезапускается, и модель нового чата
                 // так и не подписывается на сообщения.
-                ChatView(viewModel: model, title: container.chatTitle(id: id))
+                ChatView(viewModel: model, title: container.chatTitle(id: id)) {
+                    container.profileViewModel(chatId: id)
+                }
                     .id(id)
                     .toolbar(.hidden, for: .tabBar)
             } else {
