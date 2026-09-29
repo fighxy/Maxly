@@ -225,7 +225,7 @@ public struct DeliveryMark: View {
     }
 
     /// Имя символа для состояния. Для тестов и мест без SwiftUI.
-    public static func symbol(for state: DeliveryState) -> String {
+    public nonisolated static func symbol(for state: DeliveryState) -> String {
         switch state {
         case .sending: "clock"
         case .sent, .read: "checkmark"
