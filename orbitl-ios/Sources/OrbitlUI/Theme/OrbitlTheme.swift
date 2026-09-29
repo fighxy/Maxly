@@ -6,7 +6,6 @@ public enum OrbitlTheme {
     public static let row: CGFloat = 76
     public static let avatar: CGFloat = 52
     public static let radius: CGFloat = 18
-    public static let bubbleMax: CGFloat = 0.78
 }
 
 public enum AvatarInitials {

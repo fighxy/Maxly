@@ -60,15 +60,6 @@ public actor SyncEngine {
         await task?.value
     }
 
-    /// Чат открыт на экране, его сообщения нужно опрашивать.
-    public func watch(chatId: String) {
-        watchedChats.insert(chatId)
-    }
-
-    public func unwatch(chatId: String) {
-        watchedChats.remove(chatId)
-    }
-
     /// Подписка на пуши ядра. Повторный вызов снова включает запись: поток горячий и живёт вместе с клиентом.
     public func startEvents(_ core: any MaxCore) {
         acceptEvents = true

@@ -6,13 +6,14 @@ import SwiftData
 public enum StorageError: Error {
     /// Не удалось создать или открыть хранилище SwiftData (например, сломана миграция).
     case containerCreationFailed(underlying: any Error)
+    /// Не удалось записать изменения.
+    case writeFailed(underlying: any Error)
 }
 
 /// Контейнер SwiftData для всего клиента.
 ///
-/// Один экземпляр на приложение, создаётся в `AppContainer`. Главный контекст
-/// нужен только для чтения на главном акторе. Все записи идут через репозитории
-/// с `ModelActor`, у каждого из которых свой фоновый контекст.
+/// Один экземпляр на приложение, создаётся в `AppContainer`. Чтение и запись идут
+/// через репозитории с `ModelActor`, у каждого из которых свой фоновый контекст.
 public final class SwiftDataStack: Sendable {
     /// Все модели локальной базы. Новую модель нужно добавить сюда.
     static func makeSchema() -> Schema {
@@ -91,41 +92,16 @@ public final class SwiftDataStack: Sendable {
         }
     }
 
-    /// Контекст главного актора для чтения из UI-слоя (например, превью).
-    @MainActor
-    public var mainContext: ModelContext {
-        container.mainContext
-    }
-
-    /// Новый контекст для разовой работы вне главного актора.
-    /// Для постоянной фоновой работы используйте репозитории с `ModelActor`.
-    public func makeContext() -> ModelContext {
-        ModelContext(container)
-    }
-
-    /// Пользователи и медиа-записи. Чаты и сообщения стирают свои репозитории, своим контекстом.
+    /// Пользователи и медиа-записи. Чаты и сообщения стирают свои репозитории, своим контекстом,
+    /// иначе их `ModelActor` остались бы со старыми объектами.
     public func eraseUsersAndMedia() throws(StorageError) {
-        let context = makeContext()
+        let context = ModelContext(container)
         do {
             try context.delete(model: SDUser.self)
             try context.delete(model: SDMediaItem.self)
             try context.save()
         } catch {
-            throw .containerCreationFailed(underlying: error)
-        }
-    }
-
-    /// Полная очистка базы при выходе из аккаунта (architecture.md, «Аутентификация и сессии»).
-    public func eraseAll() throws(StorageError) {
-        let context = makeContext()
-        do {
-            try context.delete(model: SDMessage.self)
-            try context.delete(model: SDChat.self)
-            try context.delete(model: SDUser.self)
-            try context.delete(model: SDMediaItem.self)
-            try context.save()
-        } catch {
-            throw .containerCreationFailed(underlying: error)
+            throw .writeFailed(underlying: error)
         }
     }
 }
