@@ -76,6 +76,23 @@ actor FakeMaxAPI: MaxAPI {
         markReadCalls.append(chatId)
         return .success(())
     }
+
+    /// Списки закреплённых, ушедшие на сервер, по порядку.
+    private(set) var pinCalls: [[String]] = []
+    /// Ошибка следующих запросов закреплённых. `nil`: сервер подтверждает присланный список.
+    var pinError: MaxAPIError?
+    /// Если задан, ответ сервера на закреплённые ждёт, пока тест его не откроет.
+    var pinGate: Gate?
+
+    func setPinError(_ error: MaxAPIError?) { pinError = error }
+    func setPinGate(_ gate: Gate?) { pinGate = gate }
+
+    func setPinnedChats(_ chatIds: [String]) async -> Result<[String], MaxAPIError> {
+        pinCalls.append(chatIds)
+        if let pinGate { await pinGate.wait() }
+        if let pinError { return .failure(pinError) }
+        return .success(chatIds)
+    }
 }
 
 /// Репозиторий сообщений на базе в памяти с подключённой очередью без реальных задержек.

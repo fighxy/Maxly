@@ -195,6 +195,27 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func setPinnedChats(_ chatIds: [String]) async throws -> [String] {
+        try await call("setPinnedChats") { done in
+            self.client.setPinnedChats(chatIds: chatIds) { ids, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(ids))
+                }
+            }
+        }
+    }
+
+    func pinnedChats() -> AsyncStream<[String]> {
+        AsyncStream { continuation in
+            let watch = WatchBox(client.watchPinnedChats { ids in
+                continuation.yield(ids)
+            })
+            continuation.onTermination = { _ in watch.cancel() }
+        }
+    }
+
     func phases() -> AsyncStream<CorePhase> {
         AsyncStream { continuation in
             continuation.yield(CorePhase(raw: client.phaseName()))

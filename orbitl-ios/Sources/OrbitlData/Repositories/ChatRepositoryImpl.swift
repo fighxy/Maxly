@@ -26,9 +26,17 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// Диалоги, открытые из контактов, которых ещё нет в базе: id чата → черновик.
     private var pendingDialogs: [String: DialogDraft] = [:]
 
-    /// Закрепление, порядок закреплённых и ручная пометка «непрочитано» хранятся на
-    /// устройстве. Остальное (звук, архив, удаление, поиск, страницы) идёт через сервер
-    /// и доступно, только если его умеет `api`.
+    /// Закреплённые чаты сервера сверху вниз, как их прислало ядро (`nil`, пока неизвестны).
+    /// В списке могут быть чаты, которых ещё нет в базе: строка получит место, когда появится.
+    private var serverPins: [String]?
+    /// Список, отправленный на сервер последним и ещё не подтверждённый. Следующее действие
+    /// строится от него, иначе два быстрых закрепления потеряли бы первое.
+    private var requestedPins: [String]?
+    private var pinRequests = 0
+
+    /// Закрепление и порядок закреплённых синхронизируются с сервером (папка «Все чаты»),
+    /// ручная пометка «непрочитано» хранится на устройстве. Остальное (звук, архив, удаление,
+    /// поиск, страницы) доступно, только если его умеет `api`.
     public nonisolated let capabilities: ChatListCapabilities
 
     /// `typingTTL` — сколько держать «печатает…» без повторного пуша.
@@ -122,6 +130,10 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
                     modelContext.insert(chat)
                     existing[record.id] = chat
                 }
+                // Строки списка приходят без закрепления: место берётся из списка сервера.
+                if !record.pinsKnown, let serverPins, let chat = existing[record.id] {
+                    chat.pinOrder = serverPins.firstIndex(of: record.id)
+                }
             }
             try modelContext.save()
         } catch {
@@ -181,6 +193,8 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// Стирает чаты в контексте этого актора. Каскад забирает их сообщения в базе.
     public func removeAll() throws(OrbitlError) {
         generation += 1
+        serverPins = nil
+        requestedPins = nil
         pendingDialogs.removeAll()
         typingUntil.removeAll()
         publishTyping()
@@ -376,43 +390,99 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         notify()
     }
 
-    // MARK: Закреплённые и пометки (на устройстве)
+    // MARK: Закреплённые (сервер) и пометки (на устройстве)
 
-    /// Закрепить или открепить. Новый закреплённый встаёт первым.
-    public func setPinned(_ pinned: Bool, chatId: String) async throws(OrbitlError) {
+    /// Закреплённые чаты с сервера сверху вниз: вход, свой запрос или пуш с другого устройства.
+    /// Список заменяет локальное закрепление целиком: чаты не из списка откреплены.
+    public func applyServerPins(_ chatIds: [String]) throws(OrbitlError) {
+        var seen = Set<String>()
+        let ids = chatIds.filter { !$0.isEmpty && seen.insert($0).inserted }
+        serverPins = ids
         do {
-            guard let chat = try chat(id: chatId) else { throw OrbitlError.invalidRequest }
-            if pinned {
-                guard chat.pinOrder == nil else { return }
-                let top = try modelContext.fetch(FetchDescriptor<SDChat>(predicate: #Predicate { $0.pinOrder != nil }))
-                    .compactMap(\.pinOrder).min() ?? 1
-                chat.pinOrder = top - 1
-            } else {
-                guard chat.pinOrder != nil else { return }
+            let pinned = try modelContext.fetch(FetchDescriptor<SDChat>(predicate: #Predicate { $0.pinOrder != nil }))
+            let listed = try chats(ids: ids)
+            var changed = false
+            for chat in pinned where !seen.contains(chat.id) {
                 chat.pinOrder = nil
+                changed = true
             }
+            for (index, id) in ids.enumerated() {
+                guard let chat = listed[id], chat.pinOrder != index else { continue }
+                chat.pinOrder = index
+                changed = true
+            }
+            guard changed else { return }
             try modelContext.save()
-        } catch let error as OrbitlError {
-            throw error
         } catch {
             throw .storageError
         }
         notify()
     }
 
-    /// Новый порядок закреплённых сверху вниз. Чаты не из списка не трогаются.
-    public func reorderPinned(_ chatIds: [String]) async throws(OrbitlError) {
+    /// Закрепить или открепить. Новый закреплённый встаёт первым. На сервер уходит весь новый
+    /// список; база меняется только после ответа сервера, так что при ошибке всё остаётся как было,
+    /// а экран откатывает своё оптимистичное изменение.
+    public func setPinned(_ pinned: Bool, chatId: String) async throws(OrbitlError) {
+        let current: [String]
         do {
-            let rows = try chats(ids: chatIds)
-            for (index, id) in chatIds.enumerated() {
-                guard let chat = rows[id], chat.pinOrder != nil else { continue }
-                chat.pinOrder = index
-            }
-            try modelContext.save()
+            guard try chat(id: chatId) != nil else { throw OrbitlError.invalidRequest }
+            current = try currentPins()
+        } catch let error as OrbitlError {
+            throw error
         } catch {
             throw .storageError
         }
-        notify()
+        if pinned {
+            guard !current.contains(chatId) else { return }
+            try await sendPins([chatId] + current)
+        } else {
+            guard current.contains(chatId) else { return }
+            try await sendPins(current.filter { $0 != chatId })
+        }
+    }
+
+    /// Новый порядок закреплённых сверху вниз. Закреплённые, которых нет в `chatIds` (архив или
+    /// ещё не загруженные строки), остаются в списке сервера после них в прежнем порядке.
+    public func reorderPinned(_ chatIds: [String]) async throws(OrbitlError) {
+        let current: [String]
+        do {
+            current = try currentPins()
+        } catch {
+            throw .storageError
+        }
+        let moved = chatIds.filter { current.contains($0) }
+        let next = moved + current.filter { !moved.contains($0) }
+        guard next != current else { return }
+        try await sendPins(next)
+    }
+
+    /// Список, от которого строится следующее действие: неподтверждённый запрос, список сервера,
+    /// а если сервер ещё не прислал его — закреплённые строки базы.
+    private func currentPins() throws -> [String] {
+        if let requestedPins { return requestedPins }
+        if let serverPins { return serverPins }
+        let rows = try modelContext.fetch(FetchDescriptor<SDChat>(predicate: #Predicate { $0.pinOrder != nil }))
+        return rows.sorted { ($0.pinOrder ?? 0, $0.id) < ($1.pinOrder ?? 0, $1.id) }.map(\.id)
+    }
+
+    private func sendPins(_ ids: [String]) async throws(OrbitlError) {
+        let started = generation
+        pinRequests += 1
+        let request = pinRequests
+        requestedPins = ids
+        let result = await api.setPinnedChats(ids)
+        if request == pinRequests { requestedPins = nil }
+        switch result {
+        case .success(let confirmed):
+            try ensureCurrent(started)
+            // Ответ на более ранний запрос не перетирает более поздний: его применит свой ответ
+            // или поток закреплённых из ядра.
+            guard request == pinRequests else { return }
+            try applyServerPins(confirmed)
+        case .failure(let error):
+            Log.warning(.chats, "Закреплённые не сохранены на сервере: \(error)")
+            throw error.orbitlError
+        }
     }
 
     public func setMarkedUnread(_ unread: Bool, chatId: String) async throws(OrbitlError) {

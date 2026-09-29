@@ -256,6 +256,14 @@ public protocol MaxCore: Sendable {
     func loadContacts() async throws -> [CoreContact]
     func loadCallHistory() async throws -> [CoreCall]
     func loadProfile(chatId: String) async throws -> CoreProfile
+    /// Задать закреплённые чаты сервера целиком, сверху вниз (`FOLDERS_UPDATE`, поле `favorites`
+    /// папки «Все чаты»). Закрепить, открепить и переставить — это один и тот же вызов.
+    /// Возвращает список, который подтвердил сервер. При ошибке ядро оставляет прежний список.
+    func setPinnedChats(_ chatIds: [String]) async throws -> [String]
+    /// Закреплённые чаты сервера сверху вниз: сразу при подписке, если уже известны, и после
+    /// каждого изменения (вход, свой вызов, пуш с другого устройства). Пока список неизвестен,
+    /// поток молчит, поэтому пустой массив всегда значит «ничего не закреплено».
+    func pinnedChats() -> AsyncStream<[String]>
 }
 
 public extension MaxCore {
@@ -265,4 +273,8 @@ public extension MaxCore {
     func loadProfile(chatId: String) async throws -> CoreProfile {
         throw CoreFailure(kind: "NOT_FOUND", key: nil)
     }
+    func setPinnedChats(_ chatIds: [String]) async throws -> [String] {
+        throw CoreFailure(kind: "UNKNOWN", key: nil)
+    }
+    func pinnedChats() -> AsyncStream<[String]> { AsyncStream { $0.finish() } }
 }

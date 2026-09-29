@@ -114,6 +114,42 @@ struct ChatListPinTests {
         repository.emit([pinned("p2", order: 0), pinned("p3", order: 1), pinned("p1", order: 2), chat("c", at: 6)])
         #expect(await eventually { model.items.map(\.id) == ["p2", "p3", "p1", "c"] })
     }
+
+    @Test("Ошибка сервера при перестановке возвращает прежний порядок")
+    func reorderFailure() async {
+        let (model, repository) = makeFeatureList()
+        repository.emit([pinned("p1", order: 0), pinned("p2", order: 1), chat("c", at: 5)])
+        #expect(await eventually { model.items.count == 3 })
+        model.isEditing = true
+        await repository.set(actionError: .networkUnavailable)
+        await model.movePinned(from: IndexSet(integer: 1), to: 0)
+        #expect(await repository.actions == ["order p2,p1"])
+        #expect(model.items.map(\.id) == ["p1", "p2", "c"])
+        #expect(model.error == .networkUnavailable)
+    }
+
+    @Test("Ошибка открепления оставляет чат закреплённым")
+    func unpinFailure() async {
+        let (model, repository) = makeFeatureList()
+        repository.emit([pinned("p1", order: 0), chat("c", at: 5)])
+        #expect(await eventually { model.items.count == 2 })
+        await repository.set(actionError: .networkUnavailable)
+        await model.togglePin(chatId: "p1")
+        #expect(await repository.actions == ["unpin p1"])
+        #expect(model.items.map(\.id) == ["p1", "c"])
+        #expect(model.items.first?.isPinned == true)
+    }
+
+    @Test("Закрепление с другого устройства сразу меняет список")
+    func remotePins() async {
+        let (model, repository) = makeFeatureList()
+        repository.emit([pinned("p1", order: 0), chat("a", at: 900), chat("b", at: 100)])
+        #expect(await eventually { model.items.map(\.id) == ["p1", "a", "b"] })
+        repository.emit([chat("p1", at: 1), chat("a", at: 900), pinned("b", order: 0, at: 100)])
+        #expect(await eventually { model.items.map(\.id) == ["b", "a", "p1"] })
+        #expect(model.pinnedCount == 1)
+        #expect(await repository.actions.isEmpty)
+    }
 }
 
 @Suite("Список чатов: прочитано и непрочитано")
