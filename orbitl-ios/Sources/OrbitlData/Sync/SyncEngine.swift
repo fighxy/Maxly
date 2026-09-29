@@ -98,9 +98,17 @@ public actor SyncEngine {
         await messages.setOutgoingHandler { change in
             switch change {
             case .queued(let record):
-                _ = try? await chats.noteMessage(chatId: record.chatId, messageId: nil, preview: record.text, at: record.timestamp, incoming: false)
+                _ = try? await chats.noteMessage(
+                    chatId: record.chatId, messageId: nil, preview: record.text, at: record.timestamp, incoming: false,
+                    authorId: record.authorId, outgoing: true, delivery: .sending
+                )
             case .sent(let record):
-                _ = try? await chats.noteMessage(chatId: record.chatId, messageId: record.serverId, preview: record.text, at: record.timestamp, incoming: false)
+                _ = try? await chats.noteMessage(
+                    chatId: record.chatId, messageId: record.serverId, preview: record.text, at: record.timestamp, incoming: false,
+                    authorId: record.authorId, outgoing: true, delivery: .sent
+                )
+            case .failed(let record):
+                try? await chats.noteSendFailed(chatId: record.chatId, at: record.timestamp)
             }
         }
     }
@@ -125,12 +133,18 @@ public actor SyncEngine {
             let inserted: Set<String> = (try? await messages.upsert([record])) ?? []
             let mine = await messages.currentUser()
             let fromOther = !mine.isEmpty && !event.authorId.isEmpty && event.authorId != mine
+            let own = !mine.isEmpty && event.authorId == mine
+            // Пришло сообщение — автор больше не печатает.
+            await chats.stopTyping(chatId: event.chatId, userId: event.authorId)
             let known = (try? await chats.noteMessage(
                 chatId: event.chatId,
                 messageId: event.messageId,
                 preview: event.text,
                 at: Date(unixMillis: event.timeMs),
-                incoming: fromOther && inserted.contains(record.id)
+                incoming: fromOther && inserted.contains(record.id),
+                authorId: event.authorId.isEmpty ? nil : event.authorId,
+                outgoing: own,
+                delivery: own ? .sent : nil
             )) ?? false
             if !known {
                 // Чата ещё нет в базе: подтянуть его строку, иначе сообщение не будет видно в списке.
@@ -151,7 +165,8 @@ public actor SyncEngine {
             try? await chats.refresh(chatId: event.chatId)
             if await chats.lastMessageId(chatId: event.chatId) == event.messageId {
                 let latest = await messages.latest(chatId: event.chatId)
-                try? await chats.replaceLast(chatId: event.chatId, with: latest)
+                let mine = await messages.currentUser()
+                try? await chats.replaceLast(chatId: event.chatId, with: latest, currentUser: mine)
             }
         case .chat:
             guard let record = ChatRecord(event) else { return }
@@ -159,11 +174,18 @@ public actor SyncEngine {
         case .read:
             // Пуш прочтения приходит и когда собеседник прочитал наши сообщения. Наш счётчик
             // непрочитанных меняет только своя отметка (с другого устройства).
+            // Отметка собеседника ставит галочки «прочитано» на свои сообщения.
             let mine = await messages.currentUser()
-            guard !mine.isEmpty, event.authorId == mine else { return }
+            guard !mine.isEmpty, !event.authorId.isEmpty else { return }
+            if event.authorId != mine {
+                try? await chats.applyPeerRead(chatId: event.chatId, mark: event.timeMs)
+                return
+            }
             try? await chats.applyOwnRead(chatId: event.chatId, mark: event.timeMs, setAsUnread: event.unread > 0)
         case .typing:
-            break
+            let mine = await messages.currentUser()
+            guard !event.authorId.isEmpty, event.authorId != mine else { return }
+            await chats.noteTyping(chatId: event.chatId, userId: event.authorId)
         }
     }
 
