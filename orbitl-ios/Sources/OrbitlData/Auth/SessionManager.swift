@@ -93,12 +93,14 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         watchCore()
         let stored = await core.hasStoredToken()
         let remembered = rememberedUserId
+        Log.info(.auth, "Восстановление сессии: токен \(stored ? "есть" : "нет")")
         let started: CorePhase?
         do {
             started = try await core.start()
         } catch {
             started = nil
         }
+        Log.info(.auth, "Старт ядра: \(started?.rawValue ?? "ошибка")")
         // Пока ядро подключалось, фазу мог сменить поток ядра (отказ токена) или выход.
         guard phase == .restoring else { return }
         switch started {
@@ -130,13 +132,16 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         guard !phone.isEmpty else { throw .rejected("Введите номер телефона") }
         guard !isAuthorized else { throw .invalidRequest }
         let generation = attempt
+        Log.info(.auth, "Запрос кода на \(Log.mask(phone: phone))")
         let code: CoreCode
         do {
             code = try await core.requestCode(phone: phone, resend: false)
         } catch {
+            Log.warning(.auth, "Код не отправлен")
             throw AuthErrors.map(error, during: .requestCode)
         }
         try ensureCurrent(generation)
+        Log.info(.auth, "Код отправлен, длина \(code.codeLength.map(String.init) ?? "не указана")")
         self.phone = phone
         codeToken = code.token
         trackId = nil
@@ -147,6 +152,7 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
     public func resendCode() async throws(OrbitlError) {
         guard !phone.isEmpty, codeToken != nil else { throw .invalidRequest }
         let generation = attempt
+        Log.info(.auth, "Повторная отправка кода")
         let code: CoreCode
         do {
             code = try await core.requestCode(phone: phone, resend: true)
@@ -165,9 +171,11 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         let generation = attempt
         let epoch = logouts
         let step: CoreAuthStep
+        Log.info(.auth, "Проверка кода")
         do {
             step = try await core.verifyCode(token: codeToken, code: code)
         } catch {
+            Log.warning(.auth, "Код не принят")
             if AuthErrors.isExpiredCode(error), await renewCode(generation: generation) {
                 throw .codeRenewed
             }
@@ -193,9 +201,11 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         let generation = attempt
         let epoch = logouts
         let step: CoreAuthStep
+        Log.info(.auth, "Проверка облачного пароля")
         do {
             step = try await core.checkPassword(trackId: trackId, password: password)
         } catch {
+            Log.warning(.auth, "Облачный пароль не принят")
             throw AuthErrors.map(error, during: .password)
         }
         try await apply(step, generation: generation, epoch: epoch)
@@ -225,6 +235,7 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
     }
 
     public func logout() async {
+        Log.info(.auth, "Выход из аккаунта")
         attempt += 1
         logouts += 1
         isLoggingOut = true
@@ -266,6 +277,11 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
 
     private func apply(_ step: CoreAuthStep, generation: Int, epoch: Int) async throws(OrbitlError) {
         switch step {
+        case .loggedIn: Log.info(.auth, "Шаг входа: вход выполнен")
+        case .password: Log.info(.auth, "Шаг входа: нужен облачный пароль")
+        case .register: Log.info(.auth, "Шаг входа: регистрация")
+        }
+        switch step {
         case .loggedIn(let userId):
             // Токен уже в Keychain ядра. Отменённая попытка всё равно входит, иначе
             // приложение показало бы вход при живой сессии ядра. Выход важнее.
@@ -292,7 +308,9 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         guard epoch == logouts else { return }
         let previous = defaults.string(forKey: Self.userDefaultsKey)
         let id = userId.isEmpty ? (previous ?? "") : userId
+        Log.info(.auth, "Вход: пользователь \(id.isEmpty ? "?" : id)")
         if let previous, !id.isEmpty, previous != id {
+            Log.info(.auth, "Другой аккаунт: локальный кэш прежнего стирается")
             await sync.stopEvents()
             await sync.networkLost()
             await sync.reset()
@@ -315,6 +333,7 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
 
     /// Токен ядра отклонён. База остаётся, пока пользователь сам не выйдет.
     private func expire() async {
+        Log.warning(.auth, "Сервер отклонил сохранённый токен")
         await sync.networkLost()
         forgetLoginAttempt()
         publish(.expired)
@@ -356,6 +375,7 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
 
     /// Фаза ядра после старта: сеть для синхронизации, индикатор соединения и отказ токена.
     func observe(_ next: CorePhase) async {
+        Log.debug(.core, "Фаза ядра: \(next.rawValue)")
         switch next {
         case .tokenRejected:
             setConnection(.offline)

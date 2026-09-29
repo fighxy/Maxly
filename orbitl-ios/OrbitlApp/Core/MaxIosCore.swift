@@ -1,5 +1,6 @@
 import Foundation
 import OrbitlData
+import OrbitlDomain
 import MaxIos
 
 /// Живой мост к `MaxIosClient`. Колбэки ядра приходят не с главного потока.
@@ -19,7 +20,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     }
 
     func start() async throws -> CorePhase {
-        try await call { done in
+        try await call("start") { done in
             self.client.start { phase, kind, key in
                 if let kind {
                     done(.failure(CoreFailure(kind: kind, key: key)))
@@ -31,7 +32,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     }
 
     func requestCode(phone: String, resend: Bool) async throws -> CoreCode {
-        try await call { done in
+        try await call("requestCode") { done in
             self.client.requestCode(phone: phone, resend: resend) { code, kind, key in
                 if let kind {
                     done(.failure(CoreFailure(kind: kind, key: key)))
@@ -46,7 +47,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     }
 
     func verifyCode(token: String, code: String) async throws -> CoreAuthStep {
-        try await call { done in
+        try await call("verifyCode") { done in
             self.client.verifyCode(token: token, code: code) { step, kind, key in
                 done(Self.step(step, kind: kind, key: key))
             }
@@ -54,7 +55,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     }
 
     func checkPassword(trackId: String, password: String) async throws -> CoreAuthStep {
-        try await call { done in
+        try await call("checkPassword") { done in
             self.client.checkPassword(trackId: trackId, password: password) { step, kind, key in
                 done(Self.step(step, kind: kind, key: key))
             }
@@ -62,7 +63,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     }
 
     func register(token: String, firstName: String, lastName: String) async throws -> CoreAuthStep {
-        try await call { done in
+        try await call("register") { done in
             self.client.register(registerToken: token, firstName: firstName, lastName: lastName) { step, kind, key in
                 done(Self.step(step, kind: kind, key: key))
             }
@@ -70,7 +71,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     }
 
     func logout() async throws {
-        let _: Void = try await call { done in
+        let _: Void = try await call("logout") { done in
             self.client.logout { kind, key in
                 if let kind {
                     done(.failure(CoreFailure(kind: kind, key: key)))
@@ -82,7 +83,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     }
 
     func loadChats() async throws -> [CoreChat] {
-        try await call { done in
+        try await call("loadChats") { done in
             self.client.loadChats { chats, kind, key in
                 if let kind {
                     done(.failure(CoreFailure(kind: kind, key: key)))
@@ -94,7 +95,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     }
 
     func loadChat(id: String) async throws -> CoreChat {
-        try await call { done in
+        try await call("loadChat") { done in
             self.client.loadChat(chatId: id) { chat, kind, key in
                 if let kind {
                     done(.failure(CoreFailure(kind: kind, key: key)))
@@ -108,7 +109,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     }
 
     func loadHistory(chatId: String, beforeMs: Int64, limit: Int) async throws -> [CoreMessage] {
-        try await call { done in
+        try await call("loadHistory") { done in
             self.client.loadHistory(chatId: chatId, beforeMs: beforeMs, limit: Int32(limit)) { messages, kind, key in
                 if let kind {
                     done(.failure(CoreFailure(kind: kind, key: key)))
@@ -120,7 +121,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     }
 
     func sendText(chatId: String, text: String) async throws -> CoreMessage {
-        try await call { done in
+        try await call("sendText") { done in
             self.client.sendText(chatId: chatId, text: text) { message, kind, key in
                 if let kind {
                     done(.failure(CoreFailure(kind: kind, key: key)))
@@ -134,7 +135,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     }
 
     func markRead(chatId: String, messageId: String) async throws {
-        let _: Void = try await call { done in
+        let _: Void = try await call("markRead") { done in
             self.client.markRead(chatId: chatId, messageId: messageId) { kind, key in
                 if let kind {
                     done(.failure(CoreFailure(kind: kind, key: key)))
@@ -166,11 +167,20 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
-    private func call<T: Sendable>(_ start: @escaping (@escaping (Result<T, Error>) -> Void) -> Void) async throws -> T {
+    /// Вызов ядра с колбэком. Неудача пишется в журнал видом ошибки и ключом сервера.
+    private func call<T: Sendable>(_ name: String, _ start: @escaping (@escaping (Result<T, Error>) -> Void) -> Void) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in
             let gate = ResumeGate()
             start { result in
                 gate.run {
+                    if case .failure(let error) = result {
+                        if let failure = error as? CoreFailure {
+                            let level: Log.Level = failure.kind == "CANCELLED" ? .debug : .warning
+                            Log.write(level, .core, "\(name): \(failure.kind)\(failure.key.map { " (\($0))" } ?? "")")
+                        } else {
+                            Log.warning(.core, "\(name): \(error)")
+                        }
+                    }
                     continuation.resume(with: result)
                 }
             }

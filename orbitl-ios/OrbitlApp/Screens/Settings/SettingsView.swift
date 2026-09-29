@@ -2,7 +2,7 @@ import SwiftUI
 import OrbitlPresentation
 import OrbitlUI
 
-/// Настройки: профиль, вид списка чатов и выход.
+/// Настройки: профиль, вид списка чатов, журнал для отладки и выход.
 struct SettingsView: View {
     @Bindable var container: AppContainer
     @Bindable var list: ChatListViewModel
@@ -39,6 +39,7 @@ struct SettingsView: View {
             } footer: {
                 Text("Над списком появятся вкладки «Личные», «Группы», «Каналы», «Боты» и «Непрочитанные». Серверные папки, если они есть, показываются вместо них.")
             }
+            LogSettingsSection(container: container)
             Section {
                 Button("Выйти", role: .destructive) { confirmLogout = true }
             }

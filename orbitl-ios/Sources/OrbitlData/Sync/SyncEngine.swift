@@ -45,6 +45,7 @@ public actor SyncEngine {
 
     /// Сеть появилась: отправить очередь и включить опрос.
     public func networkBecameAvailable() async {
+        Log.info(.sync, "Сеть есть: отправка очереди и опрос")
         isOnline = true
         await outbox.process()
         guard isOnline else { return }
@@ -202,9 +203,17 @@ public actor SyncEngine {
 
     /// Один цикл опроса. Ошибки не прерывают синхронизацию, следующий цикл повторит запрос.
     public func pollOnce() async {
-        try? await chats.refresh()
+        do {
+            try await chats.refresh()
+        } catch {
+            if error != .cancelled { Log.warning(.sync, "Опрос списка чатов: \(error)") }
+        }
         for chatId in watchedChats {
-            try? await messages.fetchLatest(chatId: chatId)
+            do {
+                try await messages.fetchLatest(chatId: chatId)
+            } catch {
+                if error != .cancelled { Log.warning(.sync, "Опрос истории чата \(chatId): \(error)") }
+            }
         }
         await outbox.process()
     }
