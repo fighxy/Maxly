@@ -4,3 +4,4 @@ orbitl-ios/Vendor/
 xcuserdata/
 *.xcuserstate
 DerivedData/
+build/

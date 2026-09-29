@@ -27,6 +27,13 @@ public enum Log {
         public let level: Level
         public let category: Category
         public let message: String
+
+        public init(date: Date, level: Level, category: Category, message: String) {
+            self.date = date
+            self.level = level
+            self.category = category
+            self.message = message
+        }
     }
 
     /// Приёмник записей. Меняется только при запуске приложения.

@@ -12,6 +12,12 @@ if [[ -z "$revision" || -z "$repository" ]]; then
   exit 1
 fi
 
+# Локальная копия ядра вместо GitHub: MAX_KMP_CORE_DIR=~/src/max-kmp-core bash scripts/fetch-core.sh
+# Собирается то, что лежит в этой папке сейчас, ревизия из core.lock не проверяется.
+if [[ -n "${MAX_KMP_CORE_DIR:-}" ]]; then
+  dest="$(cd "$MAX_KMP_CORE_DIR" && pwd)"
+  echo "Ядро из локальной папки $dest ($(git -C "$dest" rev-parse --short HEAD 2>/dev/null || echo 'без git')), core.lock: $revision"
+else
 dest="$root/.build/max-kmp-core"
 rm -rf "$dest"
 mkdir -p "$dest"
@@ -31,6 +37,7 @@ core_git() {
 core_git remote add origin "$repository"
 core_git fetch --depth 1 origin "$revision"
 git -C "$dest" checkout --detach FETCH_HEAD
+fi
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "Ядро $revision лежит в $dest."
