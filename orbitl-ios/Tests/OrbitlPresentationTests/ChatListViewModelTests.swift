@@ -37,7 +37,7 @@ struct ChatListStateTests {
         #expect(model.content == .loading)
         await gate.open()
         await refresh.value
-        #expect(model.content == .empty)
+        #expect(await eventually { model.content == .empty })
     }
 
     @Test("Чаты сортируются по времени, при равенстве по id")
@@ -72,7 +72,8 @@ struct ChatListStateTests {
         repository.emit([])
         await repository.set(refreshError: .server(code: "500"))
         await model.refresh()
-        #expect(model.content == .failed("Ошибка сервера (500). Попробуйте позже"))
+        // Снимок из потока может прийти позже ответа обновления.
+        #expect(await eventually { model.content == .failed("Ошибка сервера (500). Попробуйте позже") })
         #expect(model.inlineError == nil)
 
         repository.emit([chat("a", at: 1)])
@@ -94,7 +95,7 @@ struct ChatListStateTests {
         await repository.set(refreshError: .cancelled)
         await model.refresh()
         #expect(model.error == nil)
-        #expect(model.content == .empty)
+        #expect(await eventually { model.content == .empty })
     }
 
     @Test("Повторное обновление во время текущего не запускается")
