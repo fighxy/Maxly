@@ -46,6 +46,9 @@ jobs:
   app:
     name: App and MaxIos
     runs-on: macos-14
+    # Выпуск с .ipa (шаг «Publish IPA») создаёт релиз в этом репозитории.
+    permissions:
+      contents: write
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -105,3 +108,25 @@ jobs:
           path: build/Orbitl.ipa
           if-no-files-found: error
           retention-days: 30
+          compression-level: 0
+      # Артефакт всегда скачивается ZIP-архивом, и «Файлы» на iPhone его часто не открывают.
+      # Поэтому .ipa публикуется и отдельным файлом в пререлизе: в Safari на iPhone ссылка
+      # скачивает саму .ipa, её сразу можно открыть в eSign. Хранятся последние 5 сборок.
+      - name: Publish IPA
+        if: ${{ !cancelled() && steps.token.outputs.present == 'true' && github.event_name != 'pull_request' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          short="${GITHUB_SHA::7}"
+          ipa="build/Orbitl-${short}.ipa"
+          cp build/Orbitl.ipa "$ipa"
+          gh release delete "build-${short}" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "build-${short}" "$ipa" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --prerelease --title "Orbitl ${short}" \
+            --notes "Неподписанная сборка ${GITHUB_SHA}. Скачайте Orbitl-${short}.ipa в Safari на iPhone и откройте в eSign."
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | startswith("build-"))] | sort_by(.createdAt) | reverse | .[5:] | .[].tagName' |
+            while read -r old; do
+              gh release delete "$old" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+            done
