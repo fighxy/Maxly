@@ -3,13 +3,17 @@ import Testing
 import OrbitlDomain
 @testable import OrbitlData
 
-/// Ошибка вызова с типизированным `throws(OrbitlError)`. `nil`, если вызов прошёл.
-func failure(_ body: () async throws(OrbitlError) -> Void) async -> OrbitlError? {
+/// Ошибка вызова сервиса. `nil`, если вызов прошёл. Замыкания в Swift 6.0 не выводят
+/// типизированный `throws` из контекста, поэтому здесь обычный `throws`.
+func failure(_ body: () async throws -> Void) async -> OrbitlError? {
     do {
         try await body()
         return nil
-    } catch {
+    } catch let error as OrbitlError {
         return error
+    } catch {
+        Issue.record("не OrbitlError: \(error)")
+        return .unknown
     }
 }
 
