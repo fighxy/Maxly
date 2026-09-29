@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Собирает статический MaxIos.xcframework из ревизии orbitl-ios/core.lock.
+# Собирает статический MaxIos.xcframework из ревизии orbitle-ios/core.lock.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-lock="$root/orbitl-ios/core.lock"
+lock="$root/orbitle-ios/core.lock"
 revision="$(grep '^revision=' "$lock" | head -n 1 | cut -d= -f2- | tr -d '[:space:]')"
 repository="$(grep '^repository=' "$lock" | head -n 1 | cut -d= -f2- | tr -d '[:space:]')"
 
@@ -59,7 +59,7 @@ if [[ ! -d "$framework" ]]; then
   exit 1
 fi
 
-mkdir -p "$root/orbitl-ios/Vendor"
-rm -rf "$root/orbitl-ios/Vendor/MaxIos.xcframework"
-cp -R "$framework" "$root/orbitl-ios/Vendor/MaxIos.xcframework"
-echo "MaxIos.xcframework из $revision лежит в orbitl-ios/Vendor."
+mkdir -p "$root/orbitle-ios/Vendor"
+rm -rf "$root/orbitle-ios/Vendor/MaxIos.xcframework"
+cp -R "$framework" "$root/orbitle-ios/Vendor/MaxIos.xcframework"
+echo "MaxIos.xcframework из $revision лежит в orbitle-ios/Vendor."

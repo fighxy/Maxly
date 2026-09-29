@@ -1,8 +1,8 @@
-# Клонирует max-kmp-core на ревизию из orbitl-ios/core.lock.
+# Клонирует max-kmp-core на ревизию из orbitle-ios/core.lock.
 # XCFramework на Windows не собирается: для него нужен macOS, JDK 17 и Xcode.
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
-$lockPath = Join-Path $root "orbitl-ios\core.lock"
+$lockPath = Join-Path $root "orbitle-ios\core.lock"
 $revision = $null
 $repository = $null
 foreach ($line in Get-Content -Path $lockPath) {
