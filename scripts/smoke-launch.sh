@@ -11,9 +11,16 @@ bundle="app.orbitl.ios"
 out="$(mktemp -d)"
 
 # Самая новая среда iOS и последний iPhone из тех, что она поддерживает.
+# ORBITL_SIM_RUNTIME=26.2 выбирает среду этой версии (под SDK выбранного Xcode).
+export ORBITL_SIM_RUNTIME="${ORBITL_SIM_RUNTIME:-}"
 read -r runtime device_type < <(xcrun simctl list runtimes -j | python3 -c '
-import json, sys
+import json, os, sys
 runtimes = [r for r in json.load(sys.stdin)["runtimes"] if r["platform"] == "iOS" and r["isAvailable"]]
+wanted = os.environ.get("ORBITL_SIM_RUNTIME", "")
+if wanted:
+    runtimes = [r for r in runtimes if r["version"] == wanted or r["version"].startswith(wanted + ".")]
+if not runtimes:
+    sys.exit("Нет среды iOS " + (wanted or "в симуляторе"))
 runtime = runtimes[-1]
 phones = [d for d in runtime.get("supportedDeviceTypes", []) if d.get("productFamily") == "iPhone"]
 print(runtime["identifier"], phones[-1]["identifier"])
