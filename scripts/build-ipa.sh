@@ -39,5 +39,6 @@ rm -rf build/ipa build/Orbitl.ipa
 mkdir -p build/ipa/Payload
 cp -R "$app" build/ipa/Payload/
 (cd build/ipa && zip -qry ../Orbitl.ipa Payload)
+python3 scripts/validate-ipa.py build/Orbitl.ipa
 rm -rf build/ipa
 echo "Готово: $root/build/Orbitl.ipa ($(du -h build/Orbitl.ipa | cut -f1))"
