@@ -1,4 +1,5 @@
 import SwiftUI
+import Contacts
 import OrbitlPresentation
 import OrbitlUI
 
@@ -12,6 +13,8 @@ struct ContactsView: View {
 
     @State private var isAdding = false
     @State private var showsAddUnavailable = false
+    @State private var contactsAccess = CNContactStore.authorizationStatus(for: .contacts)
+    @State private var isPickingContacts = false
 
     private static let searchRowId = "search"
 
@@ -22,6 +25,9 @@ struct ContactsView: View {
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
                     .id(Self.searchRowId)
+                if !viewModel.isFiltering {
+                    ContactsAccessRow(status: contactsAccess) { isPickingContacts = true }
+                }
                 content
             }
             .listStyle(.plain)
@@ -60,6 +66,7 @@ struct ContactsView: View {
             }
         }
         .task { viewModel.activate() }
+        .contactsAccess(status: $contactsAccess, isPickingMore: $isPickingContacts)
         .sheet(isPresented: $isAdding) {
             AddContactSheet(viewModel: viewModel)
         }

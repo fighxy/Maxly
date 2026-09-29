@@ -21,7 +21,58 @@ enum CoreMapping {
             lastMessageId: chat.lastMessageId.isEmpty ? nil : chat.lastMessageId,
             unreadCount: chat.unread,
             updatedAt: Date(unixMillis: chat.updatedAtMs),
-            preview: chat.lastText.isEmpty ? nil : chat.lastText
+            preview: chat.lastText.isEmpty ? nil : chat.lastText,
+            lastAuthorId: chat.lastAuthorId.isEmpty ? nil : chat.lastAuthorId,
+            avatarURL: chat.avatarURL.isEmpty ? nil : URL(string: chat.avatarURL)
+        )
+    }
+
+    static func contact(_ contact: CoreContact, now: Date = Date()) -> Contact {
+        let presence: Contact.Presence
+        if contact.online {
+            presence = .online
+        } else if contact.lastSeenMs > 0 {
+            presence = .lastSeen(Date(unixMillis: contact.lastSeenMs))
+        } else {
+            presence = .unknown
+        }
+        return Contact(
+            id: contact.id,
+            firstName: contact.firstName,
+            lastName: contact.lastName,
+            phone: contact.phone.isEmpty ? nil : "+" + contact.phone,
+            avatarURL: contact.avatarURL.isEmpty ? nil : URL(string: contact.avatarURL),
+            presence: presence
+        )
+    }
+
+    /// Звонок для экрана. Исход по `hangupType`, как у официального клиента: входящий без
+    /// ответа — пропущенный, исходящий без ответа — отменённый, `REJECTED` у исходящего —
+    /// собеседник отклонил.
+    static func call(_ call: CoreCall) -> CallRecord {
+        let outcome: CallRecord.Outcome
+        if call.outgoing {
+            switch call.hangupType {
+            case "REJECTED": outcome = .declined
+            case "CANCELED": outcome = .cancelled
+            default: outcome = call.duration > 0 ? .answered : .cancelled
+            }
+        } else {
+            outcome = call.missed ? .missed : .answered
+        }
+        let title = call.title.isEmpty ? (call.isGroup ? "Групповой звонок" : "Звонок") : call.title
+        return CallRecord(
+            id: call.id,
+            peerId: call.peerId.isEmpty ? call.chatId : call.peerId,
+            title: title,
+            avatarURL: call.avatarURL.isEmpty ? nil : URL(string: call.avatarURL),
+            isGroup: call.isGroup,
+            chatId: call.chatId.isEmpty ? nil : call.chatId,
+            direction: call.outgoing ? .outgoing : .incoming,
+            outcome: outcome,
+            isVideo: call.video,
+            date: Date(unixMillis: call.timeMs),
+            duration: nil
         )
     }
 

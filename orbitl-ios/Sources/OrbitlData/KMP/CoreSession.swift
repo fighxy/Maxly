@@ -50,8 +50,15 @@ public struct CoreChat: Sendable, Equatable {
     public var lastText: String
     public var updatedAtMs: Int64
     public var unread: Int
+    /// Картинка чата, у диалога — собеседника. Пусто, если её нет.
+    public var avatarURL: String
+    /// Автор последнего сообщения. Пусто, если неизвестен.
+    public var lastAuthorId: String
 
-    public init(id: String, title: String, type: String, lastMessageId: String, lastText: String, updatedAtMs: Int64, unread: Int) {
+    public init(
+        id: String, title: String, type: String, lastMessageId: String, lastText: String, updatedAtMs: Int64, unread: Int,
+        avatarURL: String = "", lastAuthorId: String = ""
+    ) {
         self.id = id
         self.title = title
         self.type = type
@@ -59,6 +66,69 @@ public struct CoreChat: Sendable, Equatable {
         self.lastText = lastText
         self.updatedAtMs = updatedAtMs
         self.unread = unread
+        self.avatarURL = avatarURL
+        self.lastAuthorId = lastAuthorId
+    }
+}
+
+/// Контакт из списка аккаунта (`contacts` ответа `LOGIN`).
+public struct CoreContact: Sendable, Equatable {
+    public var id: String
+    public var firstName: String
+    public var lastName: String
+    /// Цифры без `+`, пусто, если номер скрыт.
+    public var phone: String
+    public var avatarURL: String
+    /// Последний визит, мс Unix; 0 — неизвестно.
+    public var lastSeenMs: Int64
+    public var online: Bool
+
+    public init(id: String, firstName: String, lastName: String, phone: String, avatarURL: String, lastSeenMs: Int64, online: Bool) {
+        self.id = id
+        self.firstName = firstName
+        self.lastName = lastName
+        self.phone = phone
+        self.avatarURL = avatarURL
+        self.lastSeenMs = lastSeenMs
+        self.online = online
+    }
+}
+
+/// Звонок из журнала (`VIDEO_CHAT_HISTORY`).
+public struct CoreCall: Sendable, Equatable {
+    public var id: String
+    /// Пусто, если сервер не прислал чат.
+    public var chatId: String
+    /// Пусто у группового звонка.
+    public var peerId: String
+    public var title: String
+    public var avatarURL: String
+    public var isGroup: Bool
+    public var outgoing: Bool
+    public var missed: Bool
+    public var video: Bool
+    /// `HUNGUP`, `CANCELED`, `REJECTED`, `MISSED`…
+    public var hangupType: String
+    /// Длительность как её прислал сервер; 0 — не ответили.
+    public var duration: Int64
+    public var timeMs: Int64
+
+    public init(
+        id: String, chatId: String, peerId: String, title: String, avatarURL: String, isGroup: Bool,
+        outgoing: Bool, missed: Bool, video: Bool, hangupType: String, duration: Int64, timeMs: Int64
+    ) {
+        self.id = id
+        self.chatId = chatId
+        self.peerId = peerId
+        self.title = title
+        self.avatarURL = avatarURL
+        self.isGroup = isGroup
+        self.outgoing = outgoing
+        self.missed = missed
+        self.video = video
+        self.hangupType = hangupType
+        self.duration = duration
+        self.timeMs = timeMs
     }
 }
 
@@ -131,4 +201,12 @@ public protocol MaxCore: Sendable {
     func markRead(chatId: String, messageId: String) async throws
     func phases() -> AsyncStream<CorePhase>
     func events() -> AsyncStream<CoreEvent>
+    func loadContacts() async throws -> [CoreContact]
+    func loadCallHistory() async throws -> [CoreCall]
+}
+
+public extension MaxCore {
+    /// Фейки в тестах, которым контакты не нужны.
+    func loadContacts() async throws -> [CoreContact] { [] }
+    func loadCallHistory() async throws -> [CoreCall] { [] }
 }
