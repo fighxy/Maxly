@@ -82,7 +82,8 @@ jobs:
       # Неподписанный .ipa для iPhone: подписать его можно своим сертификатом
       # (Sideloadly, AltStore, eSign и т. п.) и поставить на устройство.
       - name: Build unsigned IPA
-        if: steps.token.outputs.present == 'true'
+        # Файл нужен и тогда, когда проверка запуска красная: по нему проверяют на телефоне.
+        if: ${{ !cancelled() && steps.token.outputs.present == 'true' }}
         run: |
           set -euo pipefail
           xcodebuild -project orbitl-ios/Orbitl.xcodeproj -scheme Orbitl -configuration Release \
@@ -95,7 +96,7 @@ jobs:
           (cd build/ipa && zip -qry ../Orbitl.ipa Payload)
           ls -lh build/Orbitl.ipa
       - name: Upload IPA
-        if: steps.token.outputs.present == 'true'
+        if: ${{ !cancelled() && steps.token.outputs.present == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: Orbitl-unsigned-ipa-${{ github.sha }}

@@ -10,8 +10,14 @@ wait_seconds="${2:-25}"
 bundle="app.orbitl.ios"
 out="$(mktemp -d)"
 
-runtime="$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; r=[x for x in json.load(sys.stdin)["runtimes"] if x["platform"]=="iOS" and x["isAvailable"]]; print(r[-1]["identifier"])')"
-device_type="$(xcrun simctl list devicetypes -j | python3 -c 'import json,sys; d=[x for x in json.load(sys.stdin)["devicetypes"] if x["name"].startswith("iPhone") and "Pro" not in x["name"] and "Plus" not in x["name"]]; print(d[-1]["identifier"])')"
+# Самая новая среда iOS и последний iPhone из тех, что она поддерживает.
+read -r runtime device_type < <(xcrun simctl list runtimes -j | python3 -c '
+import json, sys
+runtimes = [r for r in json.load(sys.stdin)["runtimes"] if r["platform"] == "iOS" and r["isAvailable"]]
+runtime = runtimes[-1]
+phones = [d for d in runtime.get("supportedDeviceTypes", []) if d.get("productFamily") == "iPhone"]
+print(runtime["identifier"], phones[-1]["identifier"])
+')
 udid="$(xcrun simctl create orbitl-smoke "$device_type" "$runtime")"
 echo "Симулятор $udid ($device_type, $runtime)"
 cleanup() { xcrun simctl shutdown "$udid" >/dev/null 2>&1; xcrun simctl delete "$udid" >/dev/null 2>&1; }
