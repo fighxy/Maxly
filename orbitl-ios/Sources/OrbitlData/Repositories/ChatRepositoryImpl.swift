@@ -8,21 +8,41 @@ import OrbitlDomain
 /// со своим фоновым `ModelContext`. Макрос `@ModelActor` всегда добавляет
 /// `init(modelContainer:)` и не видит `api`, поэтому соответствие написано вручную.
 /// Наружу выходят только доменные модели и Sendable-записи.
-public actor ChatRepositoryImpl: ChatRepository, ModelActor {
+public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     public nonisolated let modelContainer: ModelContainer
     public nonisolated let modelExecutor: any ModelExecutor
 
     private var observers: [UUID: AsyncStream<[Chat]>.Continuation] = [:]
+    private var typingObservers: [UUID: AsyncStream<[String: [String]]>.Continuation] = [:]
+    /// Кто печатает: id чата → id пользователя → когда это перестанет быть правдой.
+    private var typingUntil: [String: [String: Date]] = [:]
+    private var typingExpiry: Task<Void, Never>?
+    private let typingTTL: TimeInterval
+    private let clock: @Sendable () -> Date
     private let api: any MaxAPI
     /// Растёт при каждой очистке базы. Ответ сервера на запрос, начатый до очистки
     /// (например, до выхода), в базу уже не пишется.
     private var generation = 0
 
-    public init(modelContainer: ModelContainer, api: any MaxAPI) {
+    /// Закрепление, порядок закреплённых и ручная пометка «непрочитано» хранятся на
+    /// устройстве. Остальное (звук, архив, удаление, поиск, страницы) идёт через сервер
+    /// и доступно, только если его умеет `api`.
+    public nonisolated let capabilities: ChatListCapabilities
+
+    /// `typingTTL` — сколько держать «печатает…» без повторного пуша.
+    public init(
+        modelContainer: ModelContainer,
+        api: any MaxAPI,
+        typingTTL: TimeInterval = 6,
+        clock: @escaping @Sendable () -> Date = { Date() }
+    ) {
         let context = ModelContext(modelContainer)
         self.modelExecutor = DefaultSerialModelExecutor(modelContext: context)
         self.modelContainer = modelContainer
         self.api = api
+        self.typingTTL = typingTTL
+        self.clock = clock
+        self.capabilities = [.pin, .reorderPins, .markUnread]
     }
 
     public static func make(stack: SwiftDataStack, api: any MaxAPI) -> ChatRepositoryImpl {
@@ -95,6 +115,8 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
                         updatedAt: record.updatedAt,
                         preview: record.preview
                     )
+                    chat.lastAuthorId = record.lastAuthorId
+                    Self.mergeFlags(record, into: chat)
                     modelContext.insert(chat)
                     existing[record.id] = chat
                 }
@@ -110,11 +132,33 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
     private static func merge(_ record: ChatRecord, into chat: SDChat) {
         if !record.title.isEmpty { chat.title = record.title }
         chat.type = record.type
+        mergeFlags(record, into: chat)
         guard record.updatedAt >= chat.updatedAt else { return }
-        if let lastMessageId = record.lastMessageId { chat.lastMessageId = lastMessageId }
+        if let lastMessageId = record.lastMessageId {
+            if lastMessageId != chat.lastMessageId {
+                // Сменилось последнее сообщение: прежние автор и галочки к нему не относятся.
+                chat.lastAuthorId = record.lastAuthorId
+                chat.lastOutgoing = false
+                chat.lastDeliveryRaw = nil
+            } else if let author = record.lastAuthorId {
+                chat.lastAuthorId = author
+            }
+            chat.lastMessageId = lastMessageId
+        }
         if let preview = record.preview { chat.preview = preview }
         chat.updatedAt = record.updatedAt
         chat.unreadCount = max(record.unreadCount, 0)
+    }
+
+    /// Флаги, которые сервер присылает не всегда: `nil` оставляет известное значение.
+    /// Закрепление с сервера заменяет локальное, только если сервер его прислал.
+    private static func mergeFlags(_ record: ChatRecord, into chat: SDChat) {
+        if let url = record.avatarURL { chat.avatarURLString = url.absoluteString }
+        if let muted = record.isMuted { chat.isMuted = muted }
+        if let archived = record.isArchived { chat.isArchived = archived }
+        if let bot = record.isBot { chat.isBot = bot }
+        if let verified = record.isVerified { chat.isVerified = verified }
+        if record.pinsKnown { chat.pinOrder = record.pinOrder }
     }
 
     /// Удаляет чат вместе с сообщениями. Сообщения без связи с чатом (записанные раньше
@@ -134,6 +178,8 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
     /// Стирает чаты в контексте этого актора. Каскад забирает их сообщения в базе.
     public func removeAll() throws(OrbitlError) {
         generation += 1
+        typingUntil.removeAll()
+        publishTyping()
         do {
             try modelContext.delete(model: SDChat.self)
             try modelContext.save()
@@ -159,13 +205,28 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
     /// не откатывает список. `messageId == nil` (своё сообщение ещё в очереди) оставляет
     /// прежний `lastMessageId`, чтобы отметка прочтения не ушла с локальным id.
     /// `incoming` увеличивает счётчик; дубль пуша сюда приходит с `incoming == false`.
-    public func noteMessage(chatId: String, messageId: String?, preview: String, at: Date, incoming: Bool) throws(OrbitlError) -> Bool {
+    ///
+    /// `authorId`, `outgoing` и `delivery` описывают сообщение для строки: автор в группе
+    /// и галочки своего сообщения.
+    public func noteMessage(
+        chatId: String,
+        messageId: String?,
+        preview: String,
+        at: Date,
+        incoming: Bool,
+        authorId: String? = nil,
+        outgoing: Bool = false,
+        delivery: DeliveryState? = nil
+    ) throws(OrbitlError) -> Bool {
         do {
             guard let chat = try chat(id: chatId) else { return false }
             if at >= chat.updatedAt {
                 if let messageId { chat.lastMessageId = messageId }
                 chat.preview = preview
                 chat.updatedAt = at
+                chat.lastAuthorId = authorId
+                chat.lastOutgoing = outgoing
+                chat.lastDeliveryRaw = outgoing ? (delivery ?? .sent).rawValue : nil
             }
             if incoming { chat.unreadCount += 1 }
             try modelContext.save()
@@ -196,10 +257,14 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
 
     /// Строка после удаления последнего сообщения, когда сервер недоступен:
     /// превью берётся из самого свежего сообщения в кэше, время строки не меняется.
-    public func replaceLast(chatId: String, with message: MessageRecord?) throws(OrbitlError) {
+    public func replaceLast(chatId: String, with message: MessageRecord?, currentUser: String = "") throws(OrbitlError) {
         do {
             guard let chat = try chat(id: chatId) else { return }
             chat.lastMessageId = message?.serverId
+            let author = message.flatMap { $0.authorId.isEmpty ? nil : $0.authorId }
+            chat.lastAuthorId = author
+            chat.lastOutgoing = author != nil && author == currentUser
+            chat.lastDeliveryRaw = chat.lastOutgoing ? DeliveryState.sent.rawValue : nil
             chat.preview = message?.text
             try modelContext.save()
         } catch {
@@ -228,6 +293,178 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
             throw .storageError
         }
         notify()
+    }
+
+    /// Собеседник прочитал сообщения до `mark` (мс): свои сообщения до этого времени прочитаны.
+    public func applyPeerRead(chatId: String, mark: Int64) throws(OrbitlError) {
+        do {
+            guard mark > 0, let chat = try chat(id: chatId), mark > chat.peerReadMark else { return }
+            chat.peerReadMark = mark
+            try modelContext.save()
+        } catch {
+            throw .storageError
+        }
+        notify()
+    }
+
+    /// Своё сообщение не ушло: строка показывает ошибку вместо галочек.
+    public func noteSendFailed(chatId: String, at: Date) throws(OrbitlError) {
+        do {
+            guard let chat = try chat(id: chatId), chat.lastOutgoing, chat.updatedAt <= at else { return }
+            chat.lastDeliveryRaw = DeliveryState.failed.rawValue
+            try modelContext.save()
+        } catch {
+            throw .storageError
+        }
+        notify()
+    }
+
+    // MARK: Закреплённые и пометки (на устройстве)
+
+    /// Закрепить или открепить. Новый закреплённый встаёт первым.
+    public func setPinned(_ pinned: Bool, chatId: String) async throws(OrbitlError) {
+        do {
+            guard let chat = try chat(id: chatId) else { throw OrbitlError.invalidRequest }
+            if pinned {
+                guard chat.pinOrder == nil else { return }
+                let top = try modelContext.fetch(FetchDescriptor<SDChat>(predicate: #Predicate { $0.pinOrder != nil }))
+                    .compactMap(\.pinOrder).min() ?? 1
+                chat.pinOrder = top - 1
+            } else {
+                guard chat.pinOrder != nil else { return }
+                chat.pinOrder = nil
+            }
+            try modelContext.save()
+        } catch let error as OrbitlError {
+            throw error
+        } catch {
+            throw .storageError
+        }
+        notify()
+    }
+
+    /// Новый порядок закреплённых сверху вниз. Чаты не из списка не трогаются.
+    public func reorderPinned(_ chatIds: [String]) async throws(OrbitlError) {
+        do {
+            let rows = try chats(ids: chatIds)
+            for (index, id) in chatIds.enumerated() {
+                guard let chat = rows[id], chat.pinOrder != nil else { continue }
+                chat.pinOrder = index
+            }
+            try modelContext.save()
+        } catch {
+            throw .storageError
+        }
+        notify()
+    }
+
+    public func setMarkedUnread(_ unread: Bool, chatId: String) async throws(OrbitlError) {
+        do {
+            guard let chat = try chat(id: chatId), chat.isMarkedUnread != unread else { return }
+            chat.isMarkedUnread = unread
+            try modelContext.save()
+        } catch {
+            throw .storageError
+        }
+        notify()
+    }
+
+    // MARK: Черновики
+
+    public func draft(chatId: String) async -> String? {
+        (try? chat(id: chatId))?.draftText
+    }
+
+    /// Пустой текст удаляет черновик. Чата ещё нет в базе — черновик не сохраняется.
+    public func saveDraft(_ text: String, chatId: String) async {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let chat = try? chat(id: chatId), (chat.draftText ?? "") != trimmed else { return }
+        chat.draftText = trimmed.isEmpty ? nil : trimmed
+        chat.draftAt = trimmed.isEmpty ? nil : clock()
+        guard (try? modelContext.save()) != nil else { return }
+        notify()
+    }
+
+    // MARK: Набор текста
+
+    public nonisolated func typing() -> AsyncStream<[String: [String]]> {
+        AsyncStream { continuation in
+            let id = UUID()
+            Task { await self.addTypingObserver(id, continuation) }
+            continuation.onTermination = { _ in
+                Task { await self.removeTypingObserver(id) }
+            }
+        }
+    }
+
+    /// Пуш «печатает» от `userId`. Повторный пуш продлевает срок.
+    public func noteTyping(chatId: String, userId: String) {
+        guard !chatId.isEmpty, !userId.isEmpty else { return }
+        typingUntil[chatId, default: [:]][userId] = clock().addingTimeInterval(typingTTL)
+        publishTyping()
+        scheduleTypingExpiry()
+    }
+
+    /// Сообщение от пользователя: он больше не печатает.
+    public func stopTyping(chatId: String, userId: String) {
+        guard typingUntil[chatId]?[userId] != nil else { return }
+        typingUntil[chatId]?[userId] = nil
+        if typingUntil[chatId]?.isEmpty == true { typingUntil[chatId] = nil }
+        publishTyping()
+    }
+
+    /// Снимает истёкшие отметки. Вызывается таймером и тестами.
+    func expireTyping() {
+        let now = clock()
+        var changed = false
+        for (chatId, users) in typingUntil {
+            let alive = users.filter { $0.value > now }
+            if alive.count != users.count {
+                changed = true
+                typingUntil[chatId] = alive.isEmpty ? nil : alive
+            }
+        }
+        if changed { publishTyping() }
+    }
+
+    private func scheduleTypingExpiry() {
+        guard typingExpiry == nil else { return }
+        typingExpiry = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, await self.tickTyping() else { return }
+            }
+        }
+    }
+
+    /// `false`, когда печатающих не осталось и таймер можно остановить.
+    private func tickTyping() -> Bool {
+        expireTyping()
+        if typingUntil.isEmpty {
+            typingExpiry = nil
+            return false
+        }
+        return true
+    }
+
+    private func typingSnapshot() -> [String: [String]] {
+        typingUntil.mapValues { $0.keys.sorted() }
+    }
+
+    private func publishTyping() {
+        let value = typingSnapshot()
+        for continuation in typingObservers.values {
+            continuation.yield(value)
+        }
+    }
+
+    private func addTypingObserver(_ id: UUID, _ continuation: AsyncStream<[String: [String]]>.Continuation) {
+        if case .terminated = continuation.yield(typingSnapshot()) { return }
+        typingObservers[id] = continuation
+    }
+
+    private func removeTypingObserver(_ id: UUID) {
+        typingObservers[id] = nil
     }
 
     private struct ReadMark {
@@ -299,15 +536,36 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
         return chats.map(Self.domain)
     }
 
-    private static func domain(_ chat: SDChat) -> Chat {
-        Chat(
+    static func domain(_ chat: SDChat) -> Chat {
+        var last: ChatLastMessage?
+        if chat.lastOutgoing || chat.lastAuthorId != nil {
+            var delivery = chat.lastOutgoing ? DeliveryState(rawValue: chat.lastDeliveryRaw ?? "") ?? .sent : nil
+            // Собеседник прочитал всё до своей отметки: отправленное раньше неё прочитано.
+            if delivery == .sent, chat.peerReadMark > 0, chat.peerReadMark >= chat.updatedAt.unixMillis {
+                delivery = .read
+            }
+            last = ChatLastMessage(authorId: chat.lastAuthorId, isOutgoing: chat.lastOutgoing, delivery: delivery)
+        }
+        let draft: ChatDraft? = chat.draftText.flatMap { text in
+            text.isEmpty ? nil : ChatDraft(text: text, updatedAt: chat.draftAt ?? chat.updatedAt)
+        }
+        return Chat(
             id: chat.id,
             title: chat.title,
             type: chat.type,
             lastMessageId: chat.lastMessageId,
             unreadCount: chat.unreadCount,
             updatedAt: chat.updatedAt,
-            preview: chat.preview
+            preview: chat.preview,
+            lastMessage: last,
+            avatarURL: chat.avatarURLString.flatMap(URL.init(string:)),
+            pinOrder: chat.pinOrder,
+            isMuted: chat.isMuted,
+            isMarkedUnread: chat.isMarkedUnread,
+            isArchived: chat.isArchived,
+            isBot: chat.isBot,
+            isVerified: chat.isVerified,
+            draft: draft
         )
     }
 }

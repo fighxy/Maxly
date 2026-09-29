@@ -47,6 +47,8 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         case queued(MessageRecord)
         /// Сервер принял, у записи уже есть `serverId` и время сервера.
         case sent(MessageRecord)
+        /// Отправка не удалась, сообщение ждёт повтора.
+        case failed(MessageRecord)
     }
 
     public init(modelContainer: ModelContainer, api: any MaxAPI) {
@@ -135,6 +137,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             throw .storageError
         }
         notify(chatId: message.chatId)
+        await outgoingHandler?(.queued(Self.record(message)))
         await outbox?.enqueue(messageId)
     }
 
@@ -319,11 +322,12 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         await outgoingHandler?(.sent(Self.record(message)))
     }
 
-    public func markFailed(localId: String) {
+    public func markFailed(localId: String) async {
         guard let message = try? message(id: localId) else { return }
         message.status = .failed
         try? modelContext.save()
         notify(chatId: message.chatId)
+        await outgoingHandler?(.failed(Self.record(message)))
     }
 
     // MARK: Внутреннее
