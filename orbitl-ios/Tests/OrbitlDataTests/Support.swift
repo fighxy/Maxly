@@ -17,8 +17,17 @@ actor FakeMaxAPI: MaxAPI {
         history = records
     }
 
+    var chats: [ChatRecord] = []
+
     func fetchChats() async -> Result<[ChatRecord], MaxAPIError> {
-        .success([])
+        .success(chats)
+    }
+
+    func fetchChat(id: String) async -> Result<ChatRecord, MaxAPIError> {
+        if let chat = chats.first(where: { $0.id == id }) {
+            return .success(chat)
+        }
+        return .failure(.invalidResponse)
     }
 
     func fetchMessages(chatId: String, before: Date?, limit: Int) async -> Result<[MessageRecord], MaxAPIError> {
@@ -34,7 +43,7 @@ actor FakeMaxAPI: MaxAPI {
         return sendResults[index]
     }
 
-    func markRead(chatId: String) async -> Result<Void, MaxAPIError> {
+    func markRead(chatId: String, messageId: String?) async -> Result<Void, MaxAPIError> {
         .success(())
     }
 }
@@ -66,5 +75,13 @@ func makeHistory(chatId: String, count: Int) -> [MessageRecord] {
 
 /// Чат для тестов.
 func makeChat(id: String = "c1") -> ChatRecord {
-    ChatRecord(id: id, title: "Команда Orbitl", type: .group, lastMessageId: "m99", unreadCount: 3, updatedAt: Date(timeIntervalSince1970: 100))
+    ChatRecord(
+        id: id,
+        title: "Команда Orbitl",
+        type: .group,
+        lastMessageId: "m99",
+        unreadCount: 3,
+        updatedAt: Date(timeIntervalSince1970: 100),
+        preview: "Последнее"
+    )
 }

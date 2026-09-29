@@ -1,0 +1,103 @@
+import Foundation
+import OrbitlDomain
+
+extension Date {
+    /// Время сообщения и `from` истории в ядре — миллисекунды Unix.
+    public init(unixMillis: Int64) {
+        self.init(timeIntervalSince1970: Double(unixMillis) / 1000)
+    }
+
+    public var unixMillis: Int64 {
+        Int64((timeIntervalSince1970 * 1000).rounded())
+    }
+}
+
+enum CoreMapping {
+    static func chat(_ chat: CoreChat) -> ChatRecord {
+        ChatRecord(
+            id: chat.id,
+            title: chat.title,
+            type: ChatType.fromCore(chat.type),
+            lastMessageId: chat.lastMessageId.isEmpty ? nil : chat.lastMessageId,
+            unreadCount: chat.unread,
+            updatedAt: Date(unixMillis: chat.updatedAtMs),
+            preview: chat.lastText.isEmpty ? nil : chat.lastText
+        )
+    }
+
+    static func message(_ message: CoreMessage) -> MessageRecord {
+        MessageRecord(
+            id: message.id,
+            serverId: message.id,
+            chatId: message.chatId,
+            authorId: message.authorId,
+            text: message.text,
+            timestamp: Date(unixMillis: message.timeMs),
+            status: .sent
+        )
+    }
+
+    static func apiError(_ error: Error) -> MaxAPIError {
+        guard let failure = error as? CoreFailure else { return .invalidResponse }
+        switch failure.kind {
+        case "NETWORK", "TIMEOUT", "CLOSED":
+            return .offline
+        case "SESSION_EXPIRED":
+            return .sessionExpired
+        case "AUTH":
+            return .rejected("Неверный пароль")
+        case "SERVER", "UPLOAD":
+            return .server(code: failure.key ?? failure.kind)
+        case "NOT_FOUND", "MALFORMED_REPLY":
+            return .invalidResponse
+        case "CANCELLED":
+            return .offline
+        default:
+            return .invalidResponse
+        }
+    }
+}
+
+extension MessageRecord {
+    init?(_ event: CoreEvent) {
+        guard event.kind == .message || event.kind == .edited, !event.messageId.isEmpty else { return nil }
+        self.init(
+            id: event.messageId,
+            serverId: event.messageId,
+            chatId: event.chatId,
+            authorId: event.authorId,
+            text: event.text,
+            timestamp: Date(unixMillis: event.timeMs),
+            status: .sent
+        )
+    }
+}
+
+extension ChatRecord {
+    init?(_ event: CoreEvent) {
+        guard event.kind == .chat, !event.chatId.isEmpty else { return nil }
+        self.init(
+            id: event.chatId,
+            title: event.title,
+            type: ChatType.fromCore(event.chatType),
+            lastMessageId: event.messageId.isEmpty ? nil : event.messageId,
+            unreadCount: max(event.unread, 0),
+            updatedAt: Date(unixMillis: event.timeMs),
+            preview: event.text.isEmpty ? nil : event.text
+        )
+    }
+}
+
+enum CoreErrors {
+    static func orbitl(_ error: Error) -> OrbitlError {
+        if let error = error as? OrbitlError { return error }
+        switch CoreMapping.apiError(error) {
+        case .offline: return .networkUnavailable
+        case .sessionExpired: return .authExpired
+        case .rejected(let message): return .rejected(message)
+        case .server(let code): return .server(code: code)
+        case .invalidResponse: return .invalidRequest
+        case .notImplemented: return .syncFailed
+        }
+    }
+}

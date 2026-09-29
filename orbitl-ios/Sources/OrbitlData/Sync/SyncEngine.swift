@@ -2,12 +2,9 @@ import Foundation
 
 /// Синхронизация с сервером (architecture.md, «Синхронизация с сервером»).
 ///
-/// Когда сеть появляется, движок отправляет накопленные исходящие и запускает
-/// периодический опрос: список чатов и свежие сообщения открытых чатов.
-/// Когда сети нет, опрос останавливается.
-// TODO: заменить опрос на поток событий ядра (новые сообщения, статусы),
-// оставив опрос как запасной вариант. Состояние сети передаёт OrbitlApp
-// (например, через NWPathMonitor).
+/// Когда соединение ядра онлайн, движок отправляет очередь и опрашивает открытый чат.
+/// Пуши пишутся в базу сразу. Опрос остаётся запасным путём, если пуш потерялся.
+/// Состояние сети передаёт `SessionManager` по фазе ядра.
 public actor SyncEngine {
     private let outbox: OutboxQueue
     private let chats: ChatRepositoryImpl
@@ -15,7 +12,11 @@ public actor SyncEngine {
     private let pollInterval: Duration
 
     private var pollTask: Task<Void, Never>?
+    private var eventTask: Task<Void, Never>?
+    /// Пока ложь, подписка на пуши молчит. Прямой `consume` для тестов это не смотрит.
+    private var acceptEvents = false
     private var watchedChats: Set<String> = []
+    private var focused: String?
 
     public init(
         outbox: OutboxQueue,
@@ -37,10 +38,12 @@ public actor SyncEngine {
         startPolling()
     }
 
-    /// Сеть пропала: остановить опрос. Исходящие остаются в очереди.
-    public func networkLost() {
-        pollTask?.cancel()
+    /// Сеть пропала: остановить опрос и дождаться уже начатого цикла, чтобы он не записал поверх очистки.
+    public func networkLost() async {
+        let task = pollTask
         pollTask = nil
+        task?.cancel()
+        await task?.value
     }
 
     /// Чат открыт на экране, его сообщения нужно опрашивать.
@@ -52,6 +55,69 @@ public actor SyncEngine {
         watchedChats.remove(chatId)
     }
 
+    /// Подписка на пуши ядра. Повторный вызов снова включает запись: поток горячий и живёт вместе с клиентом.
+    public func startEvents(_ core: any MaxCore) {
+        acceptEvents = true
+        guard eventTask == nil else { return }
+        eventTask = Task { [weak self] in
+            guard let self else { return }
+            let events = await self.coreEvents(core)
+            for await event in events {
+                guard await self.acceptsEvents() else { continue }
+                await self.consume(event)
+            }
+        }
+    }
+
+    /// Выход и смена аккаунта. Уже идущая запись заканчивается, следующие пуши не попадают в базу.
+    public func stopEvents() {
+        acceptEvents = false
+    }
+
+    private func acceptsEvents() -> Bool { acceptEvents }
+
+    /// Записывает одно событие ядра в базу. Опрос остаётся запасным путём.
+    public func consume(_ event: CoreEvent) async {
+        switch event.kind {
+        case .message, .edited:
+            guard let record = MessageRecord(event) else { return }
+            try? await messages.upsert([record])
+            let mine = await messages.currentUser()
+            let incoming = event.kind == .message && !mine.isEmpty && !event.authorId.isEmpty && event.authorId != mine
+            let known = (try? await chats.noteMessage(
+                chatId: event.chatId,
+                messageId: event.messageId,
+                preview: event.text,
+                at: Date(unixMillis: event.timeMs),
+                incoming: incoming
+            )) ?? false
+            if !known, event.kind == .message {
+                try? await chats.refresh(chatId: event.chatId)
+            }
+        case .deleted:
+            guard !event.messageId.isEmpty else { return }
+            try? await messages.delete(messageId: event.messageId)
+        case .chat:
+            guard let record = ChatRecord(event) else { return }
+            try? await chats.upsert([record])
+        case .read:
+            try? await chats.applyRemoteUnread(chatId: event.chatId, unread: event.unread)
+        case .typing:
+            break
+        }
+    }
+
+    /// Чат, который сейчас на экране. Опрос свежей истории идёт только по нему.
+    public func focus(_ chatId: String?) {
+        if let focused, focused != chatId {
+            watchedChats.remove(focused)
+        }
+        focused = chatId
+        if let chatId {
+            watchedChats.insert(chatId)
+        }
+    }
+
     /// Один цикл опроса. Ошибки не прерывают синхронизацию, следующий цикл повторит запрос.
     public func pollOnce() async {
         try? await chats.refresh()
@@ -61,10 +127,18 @@ public actor SyncEngine {
         await outbox.process()
     }
 
+    private func coreEvents(_ core: any MaxCore) -> AsyncStream<CoreEvent> {
+        core.events()
+    }
+
     private func startPolling() {
         guard pollTask == nil else { return }
-        let interval = pollInterval
-        pollTask = Task { [weak self] in
+        pollTask = makePollTask(interval: pollInterval)
+    }
+
+    /// Задача вне этого актора: `networkLost` ждёт её завершения и не должен занимать актор.
+    private nonisolated func makePollTask(interval: Duration) -> Task<Void, Never> {
+        Task { [weak self] in
             while !Task.isCancelled {
                 await self?.pollOnce()
                 try? await Task.sleep(for: interval)

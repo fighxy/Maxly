@@ -12,22 +12,24 @@ public struct ChatRecord: Sendable, Hashable {
     public var lastMessageId: String?
     public var unreadCount: Int
     public var updatedAt: Date
+    public var preview: String?
 
-    public init(id: String, title: String, type: ChatType, lastMessageId: String? = nil, unreadCount: Int = 0, updatedAt: Date) {
+    public init(id: String, title: String, type: ChatType, lastMessageId: String? = nil, unreadCount: Int = 0, updatedAt: Date, preview: String? = nil) {
         self.id = id
         self.title = title
         self.type = type
         self.lastMessageId = lastMessageId
         self.unreadCount = unreadCount
         self.updatedAt = updatedAt
+        self.preview = preview
     }
 
     public init(_ chat: Chat) {
-        self.init(id: chat.id, title: chat.title, type: chat.type, lastMessageId: chat.lastMessageId, unreadCount: chat.unreadCount, updatedAt: chat.updatedAt)
+        self.init(id: chat.id, title: chat.title, type: chat.type, lastMessageId: chat.lastMessageId, unreadCount: chat.unreadCount, updatedAt: chat.updatedAt, preview: chat.preview)
     }
 
     public var domain: Chat {
-        Chat(id: id, title: title, type: type, lastMessageId: lastMessageId, unreadCount: unreadCount, updatedAt: updatedAt)
+        Chat(id: id, title: title, type: type, lastMessageId: lastMessageId, unreadCount: unreadCount, updatedAt: updatedAt, preview: preview)
     }
 }
 

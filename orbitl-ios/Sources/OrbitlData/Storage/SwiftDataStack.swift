@@ -27,14 +27,31 @@ public final class SwiftDataStack: Sendable {
 
     /// - Parameter inMemory: `true` для тестов и превью, данные не пишутся на диск.
     public init(inMemory: Bool = false) throws(StorageError) {
-        let configuration = ModelConfiguration(
-            schema: Self.schema,
-            isStoredInMemoryOnly: inMemory
-            // TODO: architecture.md, «Безопасность». Файл хранилища должен лежать
-            // под Data Protection (completeUnlessOpen или complete).
-        )
         do {
-            container = try ModelContainer(for: Self.schema, configurations: [configuration])
+            if inMemory {
+                let configuration = ModelConfiguration(schema: Self.schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+                container = try ModelContainer(for: Self.schema, configurations: [configuration])
+            } else {
+                let support = try FileManager.default.url(
+                    for: .applicationSupportDirectory,
+                    in: .userDomainMask,
+                    appropriateFor: nil,
+                    create: true
+                )
+                let directory = support.appending(path: "Orbitl", directoryHint: .isDirectory)
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                #if os(iOS)
+                try FileManager.default.setAttributes(
+                    [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                    ofItemAtPath: directory.path
+                )
+                #endif
+                let storeURL = directory.appending(path: "Orbitl.store")
+                let configuration = ModelConfiguration(schema: Self.schema, url: storeURL, cloudKitDatabase: .none)
+                container = try ModelContainer(for: Self.schema, configurations: [configuration])
+            }
+        } catch let error as StorageError {
+            throw error
         } catch {
             throw .containerCreationFailed(underlying: error)
         }
@@ -50,6 +67,18 @@ public final class SwiftDataStack: Sendable {
     /// Для постоянной фоновой работы используйте репозитории с `@ModelActor`.
     public func makeContext() -> ModelContext {
         ModelContext(container)
+    }
+
+    /// Пользователи и медиа-записи. Чаты и сообщения стирают свои репозитории, своим контекстом.
+    public func eraseUsersAndMedia() throws(StorageError) {
+        let context = makeContext()
+        do {
+            try context.delete(model: SDUser.self)
+            try context.delete(model: SDMediaItem.self)
+            try context.save()
+        } catch {
+            throw .containerCreationFailed(underlying: error)
+        }
     }
 
     /// Полная очистка базы при выходе из аккаунта (architecture.md, «Аутентификация и сессии»).

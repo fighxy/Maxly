@@ -11,6 +11,8 @@ public enum OrbitlError: Error, Sendable, Equatable {
     case server(code: String)
     /// Запрос отклонён как неверный.
     case invalidRequest
+    /// Пользовательский ввод отклонён, например неверный пароль. Текст можно показать как есть.
+    case rejected(String)
     /// Не удалось прочитать или записать локальную базу.
     case storageError
     /// Синхронизация с сервером не удалась.
@@ -25,6 +27,7 @@ extension OrbitlError: LocalizedError {
         case .authExpired: "Сессия истекла, войдите снова"
         case .server(let code): "Ошибка сервера (\(code))"
         case .invalidRequest: "Сервер отклонил запрос"
+        case .rejected(let message): message
         case .storageError: "Не удалось сохранить данные на устройстве"
         case .syncFailed: "Не удалось синхронизироваться с сервером"
         case .unknown: "Что-то пошло не так"

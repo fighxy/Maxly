@@ -4,7 +4,7 @@
 
 | Модель | Поля | Связи |
 |---|---|---|
-| `SDChat` | id, title, type (private, group), lastMessageId, unreadCount, updatedAt | messages, каскадное удаление |
+| `SDChat` | id, title, type (private, group, channel), lastMessageId, unreadCount, updatedAt, preview | messages, каскадное удаление |
 | `SDMessage` | id, serverId, chatId, authorId, text, timestamp, status (sending, sent, failed), mediaId | chat, media (nullify) |
 | `SDUser` | id, name, avatarUrl | нет |
 | `SDMediaItem` | id, type (image, video, audio, file), url, size, localPath | нет |
@@ -31,3 +31,4 @@ SwiftData встроена в iOS 17+, работает со Swift 6 и SwiftUI,
 2. `refresh()` и `SyncEngine` в фоне запрашивают сервер и пишут результат через `upsert(_:)`.
 3. После каждой записи репозиторий заново отдаёт снимок всем подписчикам, и экран обновляется сам.
 4. Исходящее сообщение сначала записывается со статусом `sending` и локальным id, затем уходит через `OutboxQueue`. После ответа сервера статус меняется на `sent`, при ошибке на `failed`.
+5. `SyncEngine` пишет пуши ядра сразу: новое и изменённое сообщение, удаление, обновление чата, чужой счётчик непрочитанных. «Печатает» в базу не кладётся. Опрос раз в 30 секунд остаётся запасным путём.

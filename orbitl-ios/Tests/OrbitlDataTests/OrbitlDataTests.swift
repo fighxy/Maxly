@@ -119,6 +119,7 @@ struct ChatRepositoryTests {
         #expect(chat.type == .group)
         #expect(chat.unreadCount == 3)
         #expect(chat.lastMessageId == "m99")
+        #expect(chat.preview == "Последнее")
 
         try await repository.markAsRead(chatId: "c1")
         let updated = try #require(await iterator.next())

@@ -5,26 +5,19 @@ import PackageDescription
 
 let package = Package(
     name: "Orbitl",
-    platforms: [.iOS(.v17)],
+    // macOS 14 нужен, чтобы `swift test` собирал SwiftData на CI. Приложение остаётся iOS 17.
+    platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
         .library(name: "OrbitlDomain", targets: ["OrbitlDomain"]),
         .library(name: "OrbitlData", targets: ["OrbitlData"]),
         .library(name: "OrbitlUI", targets: ["OrbitlUI"]),
     ],
-    dependencies: [
-        // TODO: заглушка. Заменить на реальный адрес SPM-пакета с XCFramework
-        // ядра max-kmp-core и зафиксировать версию (см. «Версионирование ядра»).
-        .package(url: "https://github.com/fighxy/max-kmp-core-spm.git", exact: "0.1.0"),
-    ],
+    dependencies: [],
     targets: [
         .target(name: "OrbitlDomain"),
-        .target(
-            name: "OrbitlData",
-            dependencies: [
-                "OrbitlDomain",
-                .product(name: "MaxCore", package: "max-kmp-core-spm"),
-            ]
-        ),
+        // Ядро не линкуется здесь: XCFramework собирает скрипт из core.lock,
+        // а вызывает его только таргет приложения (OrbitlApp/Core).
+        .target(name: "OrbitlData", dependencies: ["OrbitlDomain"]),
         .target(name: "OrbitlUI", dependencies: ["OrbitlDomain"]),
         .testTarget(name: "OrbitlDomainTests", dependencies: ["OrbitlDomain"]),
         .testTarget(name: "OrbitlDataTests", dependencies: ["OrbitlData"]),

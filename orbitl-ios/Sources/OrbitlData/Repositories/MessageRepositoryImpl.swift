@@ -30,7 +30,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore {
     private var windows: [String: Int] = [:]
     /// Текущий автор исходящих. Задаётся после входа.
     private var currentUserId = ""
-    private var api: any MaxAPI = MaxAPIClient()
+    private let api: any MaxAPI
     private var outbox: OutboxQueue?
 
     public init(modelContainer: ModelContainer, api: any MaxAPI) {
@@ -52,6 +52,10 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore {
 
     public func setCurrentUser(id: String) {
         currentUserId = id
+    }
+
+    public func currentUser() -> String {
+        currentUserId
     }
 
     // MARK: MessageRepository
@@ -192,9 +196,24 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore {
         touched.forEach(notify(chatId:))
     }
 
+    /// Стирает сообщения в контексте этого актора. Выход зовёт это до удаления чатов.
+    public func removeAll() throws(OrbitlError) {
+        do {
+            try modelContext.delete(model: SDMessage.self)
+            try modelContext.save()
+        } catch {
+            throw .storageError
+        }
+        let chatIds = Set(observers.values.map(\.chatId))
+        windows.removeAll()
+        for chatId in chatIds {
+            notify(chatId: chatId)
+        }
+    }
+
     public func delete(messageId: String) throws(OrbitlError) {
         do {
-            guard let message = try message(id: messageId) else { return }
+            guard let message = try message(id: messageId) ?? message(serverId: messageId) else { return }
             let chatId = message.chatId
             modelContext.delete(message)
             try modelContext.save()
@@ -257,11 +276,12 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore {
     }
 
     private func fetchPage(chatId: String, before: Date?, limit: Int) throws -> [SDMessage] {
+        let id = chatId
         let predicate: Predicate<SDMessage>
         if let cursor = before {
-            predicate = #Predicate { $0.chatId == chatId && $0.timestamp < cursor }
+            predicate = #Predicate { $0.chatId == id && $0.timestamp < cursor }
         } else {
-            predicate = #Predicate { $0.chatId == chatId }
+            predicate = #Predicate { $0.chatId == id }
         }
         var descriptor = FetchDescriptor<SDMessage>(
             predicate: predicate,

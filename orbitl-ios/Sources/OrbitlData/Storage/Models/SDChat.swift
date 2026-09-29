@@ -12,6 +12,8 @@ final class SDChat {
     var unreadCount: Int
     /// Время последней активности, по нему сортируется список чатов.
     var updatedAt: Date
+    /// Текст последнего сообщения. Сервер может прислать пустую строку, тогда поле nil.
+    var preview: String?
 
     /// Сообщения чата. При удалении чата удаляются вместе с ним.
     @Relationship(deleteRule: .cascade, inverse: \SDMessage.chat)
@@ -28,7 +30,8 @@ final class SDChat {
         type: ChatType,
         lastMessageId: String? = nil,
         unreadCount: Int = 0,
-        updatedAt: Date
+        updatedAt: Date,
+        preview: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -36,5 +39,6 @@ final class SDChat {
         self.lastMessageId = lastMessageId
         self.unreadCount = unreadCount
         self.updatedAt = updatedAt
+        self.preview = preview
     }
 }
