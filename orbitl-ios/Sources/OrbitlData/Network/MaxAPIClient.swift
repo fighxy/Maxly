@@ -3,8 +3,6 @@ import OrbitlDomain
 
 /// Ошибки серверных вызовов.
 public enum MaxAPIError: Error, Sendable, Equatable {
-    /// Реальный вызов ещё не реализован.
-    case notImplemented
     /// Нет сети или соединение с сервером потеряно.
     case offline
     /// Сервер вернул ошибку с кодом.
@@ -24,7 +22,7 @@ public enum MaxAPIError: Error, Sendable, Equatable {
     public var isRetryable: Bool {
         switch self {
         case .offline, .server: true
-        case .notImplemented, .invalidResponse, .sessionExpired, .rejected, .cancelled, .unknown: false
+        case .invalidResponse, .sessionExpired, .rejected, .cancelled, .unknown: false
         }
     }
 
@@ -36,7 +34,6 @@ public enum MaxAPIError: Error, Sendable, Equatable {
         case .sessionExpired: .authExpired
         case .rejected(let message): .rejected(message)
         case .invalidResponse: .invalidRequest
-        case .notImplemented: .syncFailed
         case .cancelled: .cancelled
         case .unknown: .unknown
         }

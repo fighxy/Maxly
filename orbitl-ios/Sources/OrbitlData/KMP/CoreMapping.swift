@@ -98,10 +98,3 @@ extension ChatRecord {
         )
     }
 }
-
-enum CoreErrors {
-    static func orbitl(_ error: Error) -> OrbitlError {
-        if let error = error as? OrbitlError { return error }
-        return CoreMapping.apiError(error).orbitlError
-    }
-}

@@ -263,8 +263,7 @@ struct CoreMappingTests {
         #expect(MaxAPIError.unknown.orbitlError == .unknown)
         #expect(MaxAPIError.offline.isRetryable)
         #expect(!MaxAPIError.sessionExpired.isRetryable)
-        #expect(CoreErrors.orbitl(CoreFailure(kind: "AUTH", key: nil)) == .invalidRequest)
-        #expect(CoreErrors.orbitl(OrbitlError.storageError) == .storageError)
+        #expect(MaxAPIError.invalidResponse.orbitlError == .invalidRequest)
     }
 
     @Test("События сообщения и чата")

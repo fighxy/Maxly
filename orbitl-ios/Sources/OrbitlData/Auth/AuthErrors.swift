@@ -13,13 +13,13 @@ enum AuthStep: Sendable {
 ///
 /// Ядро различает только вид ошибки (`ErrorKind`) и ключ сервера. Неверный код приходит
 /// как `SERVER`, неверный пароль как `AUTH`, поэтому один и тот же вид значит разное
-/// на разных шагах. Сеть, отмена и сбои без категории идут общим путём (`CoreErrors`).
+/// на разных шагах. Сеть, отмена и сбои без категории идут общим путём (`CoreMapping.apiError`).
 enum AuthErrors {
     static let tooManyAttempts = "Слишком много попыток. Подождите немного и попробуйте снова"
 
     static func map(_ error: Error, during step: AuthStep) -> OrbitlError {
         if let error = error as? OrbitlError { return error }
-        guard let failure = error as? CoreFailure else { return CoreErrors.orbitl(error) }
+        guard let failure = error as? CoreFailure else { return CoreMapping.apiError(error).orbitlError }
         let key = failure.key?.lowercased() ?? ""
         switch failure.kind {
         case "AUTH", "SERVER", "NOT_FOUND":
@@ -32,7 +32,7 @@ enum AuthErrors {
             case .requestCode, .password, .register: return .rejected("Попытка входа устарела. Начните заново")
             }
         default:
-            return CoreErrors.orbitl(error)
+            return CoreMapping.apiError(error).orbitlError
         }
     }
 

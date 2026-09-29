@@ -328,11 +328,6 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
 
     // MARK: Внутреннее
 
-    /// Серверный id сообщения, если оно уже отправлено.
-    func serverId(of localId: String) -> String? {
-        (try? message(id: localId))?.serverId
-    }
-
     /// База не очищалась с начала запроса. Иначе ответ устарел, и вызов считается отменённым.
     private func ensureCurrent(_ started: Int) throws(OrbitlError) {
         guard started == generation else { throw .cancelled }
