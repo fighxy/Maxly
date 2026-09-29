@@ -65,11 +65,16 @@ public protocol MaxAPI: Sendable {
     func markRead(chatId: String, messageId: String?) async -> Result<Void, MaxAPIError>
     /// Закреплённые чаты целиком, сверху вниз. Ответ — список, который подтвердил сервер.
     func setPinnedChats(_ chatIds: [String]) async -> Result<[String], MaxAPIError>
+    /// Серверные папки для полосы над списком, без «Все»: сразу, если известны, и после
+    /// каждого изменения. Пустой массив — папок нет.
+    func folderUpdates() -> AsyncStream<[ChatFolder]>
 }
 
 public extension MaxAPI {
     /// Источник без серверных закреплённых: запрос отклоняется.
     func setPinnedChats(_ chatIds: [String]) async -> Result<[String], MaxAPIError> { .failure(.invalidResponse) }
+    /// Источник без серверных папок.
+    func folderUpdates() -> AsyncStream<[ChatFolder]> { AsyncStream { $0.yield([]); $0.finish() } }
 }
 
 /// Клиент API Max поверх `MaxCore`. Типы Kotlin сюда не попадают.
@@ -117,6 +122,19 @@ public final class MaxAPIClient: MaxAPI, Sendable {
     public func setPinnedChats(_ chatIds: [String]) async -> Result<[String], MaxAPIError> {
         await catching {
             try await core.setPinnedChats(chatIds)
+        }
+    }
+
+    public func folderUpdates() -> AsyncStream<[ChatFolder]> {
+        let source = core.folders()
+        return AsyncStream { continuation in
+            let task = Task {
+                for await folders in source {
+                    continuation.yield(folders.filter { !$0.isAllChats }.map(\.chatFolder))
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 

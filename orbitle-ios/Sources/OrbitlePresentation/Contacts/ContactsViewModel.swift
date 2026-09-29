@@ -111,6 +111,14 @@ public final class ContactsViewModel {
         watch = nil
     }
 
+    /// Синхронизировать контакты с сервером и перечитать список.
+    /// Неудача синхронизации не мешает: показывается прежний список.
+    public func sync() async {
+        try? await repository.sync()
+        deactivate()
+        activate()
+    }
+
     /// Раздел, к которому прокрутить по букве указателя: сама буква, если в ней есть
     /// контакты, иначе ближайшая следующая, иначе последняя непустая.
     public func sectionId(forIndexTitle title: String) -> String? {

@@ -43,6 +43,13 @@ final class AppContainer {
     @ObservationIgnored private var coreContacts: CoreContactRepository?
     @ObservationIgnored private var coreCalls: CoreCallHistoryRepository?
     @ObservationIgnored private var profiles: (any ChatProfileRepository)?
+    // Свой аккаунт и серверные папки для «Настроек» (docs/settings.md).
+    @ObservationIgnored private var accounts: any AccountRepository = UnavailableAccountRepository()
+    @ObservationIgnored private var folderRepository: any FolderRepository = UnavailableFolderRepository()
+    @ObservationIgnored private var accountModel: AccountSettingsModel?
+    @ObservationIgnored private var securityModel: SecuritySettingsModel?
+    @ObservationIgnored private var devicesScreenModel: DevicesModel?
+    @ObservationIgnored private var foldersScreenModel: FoldersModel?
     @ObservationIgnored private var phaseTask: Task<Void, Never>?
     /// Журнал для отладки. `nil`, если каталог журнала не удалось открыть.
     let logs: FileLogStore?
@@ -55,6 +62,9 @@ final class AppContainer {
 
     /// Отчёт о сбое прошлого запуска. Пока он есть, экран показывает его вместо запуска ядра.
     private(set) var crashReport: String?
+
+    /// Бывший переключатель «Папки по типам чатов»: папки теперь только серверные.
+    private static let retiredLocalFiltersKey = "orbitle.chatList.localFilters"
 
     init() {
         let enabled = UserDefaults.standard.object(forKey: Self.loggingKey) as? Bool ?? true
@@ -72,6 +82,7 @@ final class AppContainer {
         if let pending { dumps?.save(pending) }
         crashDumps = dumps
         appearance = AppearanceSettings(store: UserDefaultsAppearanceStore())
+        UserDefaults.standard.removeObject(forKey: Self.retiredLocalFiltersKey)
         logs = directory.map { FileLogStore(directory: $0, enabled: enabled) }
         if let logs { Log.sink = logs.sink }
         Log.info(.app, "Запуск: \(Self.appVersion), \(ProcessInfo.processInfo.operatingSystemVersionString)")
@@ -141,6 +152,8 @@ final class AppContainer {
             self.contacts = coreContacts
             self.calls = coreCalls
             self.profiles = CoreChatProfileRepository(core: core)
+            self.accounts = CoreAccountRepository(core: core)
+            self.folderRepository = CoreFolderRepository(core: core)
             self.session = session
             self.chats = chats
             self.messages = messages
@@ -189,7 +202,6 @@ final class AppContainer {
         guard let chats else { return nil }
         if let listModel { return listModel }
         let model = ChatListViewModel(chats: chats, connection: session, recentSearches: recentSearches)
-        model.usesLocalFilters = UserDefaults.standard.bool(forKey: Self.localFiltersKey)
         listModel = model
         return model
     }
@@ -310,12 +322,50 @@ final class AppContainer {
         }
     }
 
-    static let localFiltersKey = "orbitle.chatList.localFilters"
+    // MARK: Настройки
 
-    /// Папки по типам чатов, когда серверных нет. Настройка живёт на устройстве.
-    func setLocalFilters(_ enabled: Bool) {
-        UserDefaults.standard.set(enabled, forKey: Self.localFiltersKey)
-        listModel?.usesLocalFilters = enabled
+    /// Шапка и настройки аккаунта. Одна модель на вход: номер скрыт при каждом входе.
+    func accountSettingsModel() -> AccountSettingsModel {
+        if let accountModel { return accountModel }
+        let model = AccountSettingsModel(repository: accounts)
+        accountModel = model
+        return model
+    }
+
+    func securitySettingsModel() -> SecuritySettingsModel {
+        if let securityModel { return securityModel }
+        let model = SecuritySettingsModel(repository: accounts)
+        securityModel = model
+        return model
+    }
+
+    /// Каждая смена почты начинается заново: шаги сервера живут в одном треке.
+    func recoveryEmailFlow() -> RecoveryEmailFlow {
+        RecoveryEmailFlow(repository: accounts)
+    }
+
+    func devicesModel() -> DevicesModel {
+        if let devicesScreenModel { return devicesScreenModel }
+        let model = DevicesModel(repository: accounts)
+        devicesScreenModel = model
+        return model
+    }
+
+    func foldersModel() -> FoldersModel {
+        if let foldersScreenModel { return foldersScreenModel }
+        let model = FoldersModel(repository: folderRepository)
+        foldersScreenModel = model
+        return model
+    }
+
+    /// Новый запуск мини-приложения на каждое открытие листа.
+    func miniAppModel(_ kind: MiniApp.Kind) -> MiniAppModel {
+        MiniAppModel(kind: kind, repository: accounts)
+    }
+
+    /// Строка «Контакты»: `CONTACTS_GET` и свежий список во вкладке. Ошибка не мешает переходу.
+    func syncContacts() async {
+        await contactsViewModel().sync()
     }
 
     var currentUserId: String {
@@ -359,5 +409,11 @@ final class AppContainer {
         contactsModel = nil
         callsModel?.deactivate()
         callsModel = nil
+        accountModel?.deactivate()
+        accountModel = nil
+        securityModel = nil
+        devicesScreenModel = nil
+        foldersScreenModel?.deactivate()
+        foldersScreenModel = nil
     }
 }

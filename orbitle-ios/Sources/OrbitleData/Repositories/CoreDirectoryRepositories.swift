@@ -26,6 +26,19 @@ public actor CoreContactRepository: ContactRepository {
         cached = nil
     }
 
+    /// Запросить у сервера свежий список (`CONTACT_UPDATE` с `contactsSync`) и запомнить его.
+    /// Следующая подписка получит уже его. Если сервер отказал, остаётся прежний список.
+    public func sync() async throws(OrbitleError) {
+        do {
+            let list = try await core.syncContacts().map { CoreMapping.contact($0) }
+            Log.info(.contacts, "Синхронизация контактов: \(list.count)")
+            if !list.isEmpty { cached = list }
+        } catch {
+            Log.warning(.contacts, "Синхронизация контактов не удалась: \(error)")
+            throw CoreMapping.apiError(error).orbitleError
+        }
+    }
+
     private func feed(_ continuation: AsyncStream<[Contact]>.Continuation) async {
         if let cached { continuation.yield(cached) }
         do {

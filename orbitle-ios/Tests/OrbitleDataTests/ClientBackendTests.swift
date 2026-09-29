@@ -45,6 +45,27 @@ actor FakeMaxCore: MaxCore {
         return callLog
     }
 
+    // Настройки аккаунта (docs/settings.md).
+    nonisolated let folderList: [ServerFolder] = [
+        ServerFolder(id: "all.chat.folder", title: "Все", isAllChats: true),
+        ServerFolder(id: "w", title: "Работа", chatIds: ["g"], filters: ["2"]),
+    ]
+    var sessionList: [DeviceSession] = []
+
+    nonisolated func folders() -> AsyncStream<[ServerFolder]> {
+        let list = folderList
+        return AsyncStream { $0.yield(list); $0.finish() }
+    }
+
+    func loadSessions() async throws -> [DeviceSession] { sessionList }
+
+    func setSessions(_ list: [DeviceSession]) { sessionList = list }
+
+    func startEmailChange(password: String) async throws -> String {
+        guard password == "ok" else { throw CoreFailure(kind: "AUTH", key: "error.password.invalid") }
+        return "track-1"
+    }
+
     func setDirectory(contacts: [CoreContact] = [], calls: [CoreCall] = [], error: CoreFailure? = nil) {
         contactList = contacts
         callLog = calls

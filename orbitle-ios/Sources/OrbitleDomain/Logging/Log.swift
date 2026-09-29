@@ -19,7 +19,7 @@ public enum Log {
 
     /// Раздел, откуда пришла запись. По нему удобно фильтровать выгруженный журнал.
     public enum Category: String, Sendable {
-        case app, auth, core, sync, chats, messages, contacts, calls, media, ui
+        case app, auth, core, sync, chats, messages, contacts, calls, media, ui, settings
     }
 
     public struct Entry: Sendable {

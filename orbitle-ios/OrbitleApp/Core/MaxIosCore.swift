@@ -5,7 +5,7 @@ import MaxIos
 
 /// Живой мост к `MaxIosClient`. Колбэки ядра приходят не с главного потока.
 final class MaxIosCore: MaxCore, @unchecked Sendable {
-    private let client = MaxIosClient(namespace: "default")
+    let client = MaxIosClient(namespace: "default")
 
     /// Необработанное исключение ядра Kotlin попадает в аварийный журнал до завершения процесса.
     static func installCrashHandler() {
@@ -238,7 +238,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     }
 
     /// Вызов ядра с колбэком. Неудача пишется в журнал видом ошибки и ключом сервера.
-    private func call<T: Sendable>(_ name: String, _ start: @escaping (@escaping (Result<T, Error>) -> Void) -> Void) async throws -> T {
+    func call<T: Sendable>(_ name: String, _ start: @escaping (@escaping (Result<T, Error>) -> Void) -> Void) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in
             let gate = ResumeGate()
             start { result in
@@ -284,7 +284,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         )
     }
 
-    private static func contact(_ contact: IosContact) -> CoreContact {
+    static func contact(_ contact: IosContact) -> CoreContact {
         CoreContact(
             id: contact.id,
             firstName: contact.firstName,
@@ -375,7 +375,7 @@ private final class ResumeGate: @unchecked Sendable {
 
 /// `IosWatch` из ядра не помечен Sendable. Отмена в ядре потокобезопасна,
 /// поэтому подписку можно отменить из `onTermination` с любого потока.
-private final class WatchBox: @unchecked Sendable {
+final class WatchBox: @unchecked Sendable {
     private let watch: IosWatch
     init(_ watch: IosWatch) { self.watch = watch }
     func cancel() { watch.cancel() }
