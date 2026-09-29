@@ -23,8 +23,14 @@ actor FakeMaxAPI: MaxAPI {
         chats = records
     }
 
+    /// Если задан, запросы чатов и истории ждут, пока тест его не откроет.
+    var fetchGate: Gate?
+
+    func setFetchGate(_ gate: Gate?) { fetchGate = gate }
+
     func fetchChats() async -> Result<[ChatRecord], MaxAPIError> {
-        .success(chats)
+        if let fetchGate { await fetchGate.wait() }
+        return .success(chats)
     }
 
     /// Ошибка `CHAT_INFO`, например нет сети.
@@ -36,6 +42,7 @@ actor FakeMaxAPI: MaxAPI {
 
     func fetchChat(id: String) async -> Result<ChatRecord, MaxAPIError> {
         chatRequests.append(id)
+        if let fetchGate { await fetchGate.wait() }
         if let chatError { return .failure(chatError) }
         if let chat = chats.first(where: { $0.id == id }) {
             return .success(chat)
@@ -44,6 +51,7 @@ actor FakeMaxAPI: MaxAPI {
     }
 
     func fetchMessages(chatId: String, before: Date?, limit: Int) async -> Result<[MessageRecord], MaxAPIError> {
+        if let fetchGate { await fetchGate.wait() }
         let older = history
             .filter { message in
                 message.chatId == chatId && (before.map { message.timestamp < $0 } ?? true)

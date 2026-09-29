@@ -35,6 +35,8 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     private var currentUserId = ""
     private let api: any MaxAPI
     private var outbox: OutboxQueue?
+    /// Растёт при каждой очистке базы. История, запрошенная до очистки, в базу не пишется.
+    private var generation = 0
     /// Своё сообщение поставлено в очередь или ушло на сервер. Через это строка чата
     /// в списке сдвигается сразу, не дожидаясь пуша. Подключает `SyncEngine`.
     private var outgoingHandler: (@Sendable (OutgoingChange) async -> Void)?
@@ -147,7 +149,10 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         guard local.count < Self.pageSize else { return local.map(\.domain) }
 
         let cursor = local.last?.timestamp ?? before
-        switch await api.fetchMessages(chatId: chatId, before: cursor, limit: Self.pageSize - local.count) {
+        let started = generation
+        let response = await api.fetchMessages(chatId: chatId, before: cursor, limit: Self.pageSize - local.count)
+        try ensureCurrent(started)
+        switch response {
         case .success(let records):
             guard !records.isEmpty else { return local.map(\.domain) }
             try upsert(records)
@@ -162,8 +167,10 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
 
     /// Самые свежие сообщения чата с сервера (для периодического опроса).
     public func fetchLatest(chatId: String) async throws(OrbitlError) {
+        let started = generation
         switch await api.fetchMessages(chatId: chatId, before: nil, limit: Self.pageSize) {
         case .success(let records):
+            try ensureCurrent(started)
             try upsert(records)
         case .failure(let error):
             throw error.orbitlError
@@ -245,6 +252,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
 
     /// Стирает сообщения в контексте этого актора. Выход зовёт это до удаления чатов.
     public func removeAll() throws(OrbitlError) {
+        generation += 1
         do {
             try modelContext.delete(model: SDMessage.self)
             try modelContext.save()
@@ -308,6 +316,11 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// Серверный id сообщения, если оно уже отправлено.
     func serverId(of localId: String) -> String? {
         (try? message(id: localId))?.serverId
+    }
+
+    /// База не очищалась с начала запроса. Иначе ответ устарел, и вызов считается отменённым.
+    private func ensureCurrent(_ started: Int) throws(OrbitlError) {
+        guard started == generation else { throw .cancelled }
     }
 
     func message(id: String) throws -> SDMessage? {

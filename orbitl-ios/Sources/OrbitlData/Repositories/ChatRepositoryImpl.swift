@@ -14,6 +14,9 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
 
     private var observers: [UUID: AsyncStream<[Chat]>.Continuation] = [:]
     private let api: any MaxAPI
+    /// Растёт при каждой очистке базы. Ответ сервера на запрос, начатый до очистки
+    /// (например, до выхода), в базу уже не пишется.
+    private var generation = 0
 
     public init(modelContainer: ModelContainer, api: any MaxAPI) {
         let context = ModelContext(modelContainer)
@@ -42,8 +45,10 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
 
     /// Обновление с сервера. Кэш уже показан, здесь только фоновая догрузка.
     public func refresh() async throws(OrbitlError) {
+        let started = generation
         switch await api.fetchChats() {
         case .success(let records):
+            try ensureCurrent(started)
             try upsert(records)
         case .failure(let error):
             throw error.orbitlError
@@ -52,8 +57,10 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
 
     /// Один чат с сервера (`CHAT_INFO`).
     public func refresh(chatId: String) async throws(OrbitlError) {
+        let started = generation
         switch await api.fetchChat(id: chatId) {
         case .success(let record):
+            try ensureCurrent(started)
             try upsert([record])
         case .failure(let error):
             throw error.orbitlError
@@ -117,6 +124,7 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
 
     /// Стирает чаты в контексте этого актора. Каскад забирает их сообщения в базе.
     public func removeAll() throws(OrbitlError) {
+        generation += 1
         do {
             try modelContext.delete(model: SDChat.self)
             try modelContext.save()
@@ -229,6 +237,11 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
         } catch {
             throw .storageError
         }
+    }
+
+    /// База не очищалась с начала запроса. Иначе ответ устарел, и вызов считается отменённым.
+    private func ensureCurrent(_ started: Int) throws(OrbitlError) {
+        guard started == generation else { throw .cancelled }
     }
 
     private func chat(id: String) throws -> SDChat? {
