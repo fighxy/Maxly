@@ -31,10 +31,11 @@ final class AppContainer {
     @ObservationIgnored private var chatModels: [String: ChatViewModel] = [:]
     @ObservationIgnored private var contactsModel: ContactsViewModel?
     @ObservationIgnored private var callsModel: CallsViewModel?
-    // Мост ядра пока не отдаёт ни контакты, ни звонки. Когда отдаст, здесь
-    // появятся настоящие репозитории, экраны менять не придётся.
-    private let contacts: any ContactRepository = UnavailableContactRepository()
-    private let calls: any CallHistoryRepository = UnavailableCallHistoryRepository()
+    // Контакты и журнал звонков из ядра. До сборки зависимостей экраны видят «недоступно».
+    @ObservationIgnored private var contacts: any ContactRepository = UnavailableContactRepository()
+    @ObservationIgnored private var calls: any CallHistoryRepository = UnavailableCallHistoryRepository()
+    @ObservationIgnored private var coreContacts: CoreContactRepository?
+    @ObservationIgnored private var coreCalls: CoreCallHistoryRepository?
     @ObservationIgnored private var phaseTask: Task<Void, Never>?
     /// Журнал для отладки. `nil`, если каталог журнала не удалось открыть.
     let logs: FileLogStore?
@@ -85,6 +86,12 @@ final class AppContainer {
                 sync: sync,
                 media: media
             )
+            let coreContacts = CoreContactRepository(core: core)
+            let coreCalls = CoreCallHistoryRepository(core: core)
+            self.coreContacts = coreContacts
+            self.coreCalls = coreCalls
+            self.contacts = coreContacts
+            self.calls = coreCalls
             self.session = session
             self.chats = chats
             self.messages = messages
@@ -201,6 +208,12 @@ final class AppContainer {
 
     /// Модели экранов прежнего аккаунта не должны пережить выход.
     private func dropScreenModels() {
+        let contacts = coreContacts
+        let calls = coreCalls
+        Task {
+            await contacts?.reset()
+            await calls?.reset()
+        }
         chatModels.values.forEach { $0.deactivate() }
         chatModels.removeAll()
         listModel?.deactivate()

@@ -146,6 +146,30 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func loadContacts() async throws -> [CoreContact] {
+        try await call("loadContacts") { done in
+            self.client.loadContacts { contacts, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(contacts.map(Self.contact)))
+                }
+            }
+        }
+    }
+
+    func loadCallHistory() async throws -> [CoreCall] {
+        try await call("loadCallHistory") { done in
+            self.client.loadCallHistory { calls, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(calls.map(Self.callRecord)))
+                }
+            }
+        }
+    }
+
     func phases() -> AsyncStream<CorePhase> {
         AsyncStream { continuation in
             continuation.yield(CorePhase(raw: client.phaseName()))
@@ -208,7 +232,38 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             lastMessageId: chat.lastMessageId,
             lastText: chat.lastText,
             updatedAtMs: chat.updatedAtMs,
-            unread: Int(chat.unread)
+            unread: Int(chat.unread),
+            avatarURL: chat.avatarUrl,
+            lastAuthorId: chat.lastAuthorId
+        )
+    }
+
+    private static func contact(_ contact: IosContact) -> CoreContact {
+        CoreContact(
+            id: contact.id,
+            firstName: contact.firstName,
+            lastName: contact.lastName,
+            phone: contact.phone,
+            avatarURL: contact.avatarUrl,
+            lastSeenMs: contact.lastSeenMs,
+            online: contact.online
+        )
+    }
+
+    private static func callRecord(_ call: IosCall) -> CoreCall {
+        CoreCall(
+            id: call.id,
+            chatId: call.chatId,
+            peerId: call.peerId,
+            title: call.title,
+            avatarURL: call.avatarUrl,
+            isGroup: call.isGroup,
+            outgoing: call.outgoing,
+            missed: call.missed,
+            video: call.video,
+            hangupType: call.hangupType,
+            duration: call.duration,
+            timeMs: call.timeMs
         )
     }
 

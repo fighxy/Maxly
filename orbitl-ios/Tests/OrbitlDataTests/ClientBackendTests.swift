@@ -21,6 +21,9 @@ actor FakeMaxCore: MaxCore {
     var verifyGate: Gate?
     var verifyError: CoreFailure?
     var logoutError: CoreFailure?
+    var contactList: [CoreContact] = []
+    var callLog: [CoreCall] = []
+    var directoryError: CoreFailure?
     private(set) var marked: [String] = []
     private(set) var didLogout = false
     private(set) var lastText = ""
@@ -31,6 +34,22 @@ actor FakeMaxCore: MaxCore {
     /// Пуши, которые шлёт тест. `nil`: поток событий сразу закрыт.
     nonisolated let pushes: AsyncStream<CoreEvent>.Continuation?
     private nonisolated let pushStream: AsyncStream<CoreEvent>?
+
+    func loadContacts() async throws -> [CoreContact] {
+        if let directoryError { throw directoryError }
+        return contactList
+    }
+
+    func loadCallHistory() async throws -> [CoreCall] {
+        if let directoryError { throw directoryError }
+        return callLog
+    }
+
+    func setDirectory(contacts: [CoreContact] = [], calls: [CoreCall] = [], error: CoreFailure? = nil) {
+        contactList = contacts
+        callLog = calls
+        directoryError = error
+    }
 
     init(livePushes: Bool = false) {
         if livePushes {

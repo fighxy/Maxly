@@ -31,6 +31,8 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Orbitl показывает, кто из ваших контактов уже в Max. Можно дать доступ только к выбранным контактам.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
