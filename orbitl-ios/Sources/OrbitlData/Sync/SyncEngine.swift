@@ -64,10 +64,11 @@ public actor SyncEngine {
     public func startEvents(_ core: any MaxCore) {
         acceptEvents = true
         guard eventTask == nil else { return }
+        // Сильная ссылка берётся только на время одного пуша: поток ядра бесконечен.
         eventTask = Task { [weak self] in
-            guard let self else { return }
-            let events = await self.coreEvents(core)
+            guard let events = await self?.coreEvents(core) else { return }
             for await event in events {
+                guard let self else { return }
                 await self.deliver(event)
             }
         }
