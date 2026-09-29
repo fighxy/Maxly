@@ -252,7 +252,9 @@ struct AuthPasswordTests {
         await reachCode(model)
         await service.set(afterVerify: .registration)
         model.code = "123456"
-        #expect(await eventually { model.step == .registration })
+        // Полный код уходит сам: ждём, пока автоотправка закончится, иначе шаг ещё занят.
+        await model.pendingAutoSubmit?.value
+        #expect(await eventually { model.step == .registration && !model.isBusy })
         #expect(model.title == "Новый аккаунт")
         #expect(!model.canRegister)
         model.firstName = "   "
@@ -272,7 +274,9 @@ struct AuthPasswordTests {
         await reachCode(model)
         await service.set(afterVerify: .registration)
         model.code = "123456"
-        #expect(await eventually { model.step == .registration })
+        // Полный код уходит сам: ждём, пока автоотправка закончится, иначе шаг ещё занят.
+        await model.pendingAutoSubmit?.value
+        #expect(await eventually { model.step == .registration && !model.isBusy })
         model.firstName = String(repeating: "а", count: 61)
         #expect(!model.canRegister)
         await model.register()
@@ -286,7 +290,8 @@ struct AuthPasswordTests {
         await reachCode(model)
         await service.set(afterVerify: .password(hint: nil))
         model.code = "123456"
-        #expect(await eventually { model.step == .password(hint: nil) })
+        await model.pendingAutoSubmit?.value
+        #expect(await eventually { model.step == .password(hint: nil) && !model.isBusy })
         model.password = "p"
         #expect(model.canGoBack)
         await model.goBack()
@@ -302,7 +307,8 @@ struct AuthPasswordTests {
         await reachCode(model)
         await service.set(afterVerify: .password(hint: nil))
         model.code = "123456"
-        #expect(await eventually { model.step == .password(hint: nil) })
+        await model.pendingAutoSubmit?.value
+        #expect(await eventually { model.step == .password(hint: nil) && !model.isBusy })
         model.password = "secret"
         await model.submitPassword()
         #expect(await eventually { model.password.isEmpty })
