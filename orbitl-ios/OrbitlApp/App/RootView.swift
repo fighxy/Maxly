@@ -26,6 +26,14 @@ struct RootView: View {
         }
         .task { await container.bootstrap() }
         .task(id: router.chatId) { await container.focus(chatId: router.chatId) }
+        .onChange(of: container.phase) { old, phase in
+            // Сессия истекла или вошёл другой аккаунт: открытый чат прежнего аккаунта
+            // не должен открыться. Выход из настроек сбрасывает его сам.
+            if phase == .expired { router.chatId = nil }
+            if case .signedIn(let was) = old, case .signedIn(let now) = phase, was != now {
+                router.chatId = nil
+            }
+        }
         .onOpenURL { url in router.open(DeepLink.parse(url)) }
     }
 
@@ -40,6 +48,8 @@ struct RootView: View {
     private var main: some View {
         if let list = container.chatListViewModel() {
             MainTabView(container: container, router: router, list: list)
+                // Другой аккаунт — новые модели экранов, и их `.task` должны запуститься заново.
+                .id(container.currentUserId)
         }
     }
 }
