@@ -5,6 +5,8 @@ import OrbitlUI
 struct ChatView: View {
     @Bindable var viewModel: ChatViewModel
     var title: String
+    /// Модель профиля чата для перехода по нажатию на заголовок.
+    var makeProfile: (() -> ChatProfileViewModel?)?
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -54,6 +56,21 @@ struct ChatView: View {
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let makeProfile {
+                ToolbarItem(placement: .principal) {
+                    NavigationLink {
+                        ProfileDestination(make: makeProfile)
+                    } label: {
+                        Text(title)
+                            .font(.headline)
+                            .lineLimit(1)
+                            .foregroundStyle(.primary)
+                    }
+                    .accessibilityLabel("\(title), открыть профиль")
+                }
+            }
+        }
         .task {
             viewModel.activate()
             await viewModel.loadLatest()

@@ -94,6 +94,58 @@ public struct CoreContact: Sendable, Equatable {
     }
 }
 
+/// Карточка чата из ядра (`loadProfile`). Пустые строки и нули — «нет данных».
+public struct CoreProfile: Sendable, Equatable {
+    public struct Command: Sendable, Equatable {
+        public var name: String
+        public var description: String
+
+        public init(name: String, description: String) {
+            self.name = name
+            self.description = description
+        }
+    }
+
+    /// `user`, `bot`, `group`, `channel` или `saved`.
+    public var kind: String
+    public var chatId: String
+    public var peerId: String
+    public var title: String
+    public var avatarURL: String
+    public var description: String
+    public var link: String
+    /// Цифры без `+`.
+    public var phone: String
+    public var participants: Int
+    public var lastSeenMs: Int64
+    public var online: Bool
+    public var official: Bool
+    public var isPublic: Bool
+    public var commands: [Command]
+
+    public init(
+        kind: String, chatId: String, peerId: String = "", title: String = "", avatarURL: String = "",
+        description: String = "", link: String = "", phone: String = "", participants: Int = 0,
+        lastSeenMs: Int64 = 0, online: Bool = false, official: Bool = false, isPublic: Bool = false,
+        commands: [Command] = []
+    ) {
+        self.kind = kind
+        self.chatId = chatId
+        self.peerId = peerId
+        self.title = title
+        self.avatarURL = avatarURL
+        self.description = description
+        self.link = link
+        self.phone = phone
+        self.participants = participants
+        self.lastSeenMs = lastSeenMs
+        self.online = online
+        self.official = official
+        self.isPublic = isPublic
+        self.commands = commands
+    }
+}
+
 /// Звонок из журнала (`VIDEO_CHAT_HISTORY`).
 public struct CoreCall: Sendable, Equatable {
     public var id: String
@@ -203,10 +255,14 @@ public protocol MaxCore: Sendable {
     func events() -> AsyncStream<CoreEvent>
     func loadContacts() async throws -> [CoreContact]
     func loadCallHistory() async throws -> [CoreCall]
+    func loadProfile(chatId: String) async throws -> CoreProfile
 }
 
 public extension MaxCore {
     /// Фейки в тестах, которым контакты не нужны.
     func loadContacts() async throws -> [CoreContact] { [] }
     func loadCallHistory() async throws -> [CoreCall] { [] }
+    func loadProfile(chatId: String) async throws -> CoreProfile {
+        throw CoreFailure(kind: "NOT_FOUND", key: nil)
+    }
 }

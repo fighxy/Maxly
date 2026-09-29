@@ -9,6 +9,8 @@ import OrbitlUI
 /// буквам с алфавитным указателем справа.
 struct ContactsView: View {
     @Bindable var viewModel: ContactsViewModel
+    /// Модель профиля контакта для пункта «Профиль» в меню строки.
+    var makeProfile: ((DialogDraft) -> ChatProfileViewModel?)? = nil
     /// Открыть диалог с контактом (существующий или новый).
     let onOpenDialog: (DialogDraft) -> Void
 
@@ -16,6 +18,7 @@ struct ContactsView: View {
     @State private var showsAddUnavailable = false
     @State private var contactsAccess = CNContactStore.authorizationStatus(for: .contacts)
     @State private var isPickingContacts = false
+    @State private var profileDialog: DialogDraft?
 
     private static let searchRowId = "search"
 
@@ -68,6 +71,12 @@ struct ContactsView: View {
         }
         .task { viewModel.activate() }
         .contactsAccess(status: $contactsAccess, isPickingMore: $isPickingContacts)
+        .navigationDestination(item: $profileDialog) { dialog in
+            ProfileDestination(make: { makeProfile?(dialog) }) {
+                profileDialog = nil
+                onOpenDialog(dialog)
+            }
+        }
         .sheet(isPresented: $isAdding) {
             AddContactSheet(viewModel: viewModel)
         }
@@ -147,6 +156,14 @@ struct ContactsView: View {
             }
         } label: {
             ContactRowView(row: row)
+        }
+        .contextMenu {
+            if let dialog = viewModel.dialog(forContact: row.id) {
+                Button("Написать", systemImage: "message") { onOpenDialog(dialog) }
+                if makeProfile != nil {
+                    Button("Профиль", systemImage: "person.crop.circle") { profileDialog = dialog }
+                }
+            }
         }
         .accessibilityLabel("\(row.title), \(row.status)")
     }
