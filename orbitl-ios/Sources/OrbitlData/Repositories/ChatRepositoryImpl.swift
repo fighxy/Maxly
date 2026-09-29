@@ -140,6 +140,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
                 chat.lastAuthorId = record.lastAuthorId
                 chat.lastOutgoing = false
                 chat.lastDeliveryRaw = nil
+                chat.lastLocalId = nil
             } else if let author = record.lastAuthorId {
                 chat.lastAuthorId = author
             }
@@ -216,7 +217,8 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         incoming: Bool,
         authorId: String? = nil,
         outgoing: Bool = false,
-        delivery: DeliveryState? = nil
+        delivery: DeliveryState? = nil,
+        localId: String? = nil
     ) throws(OrbitlError) -> Bool {
         do {
             guard let chat = try chat(id: chatId) else { return false }
@@ -227,6 +229,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
                 chat.lastAuthorId = authorId
                 chat.lastOutgoing = outgoing
                 chat.lastDeliveryRaw = outgoing ? (delivery ?? .sent).rawValue : nil
+                chat.lastLocalId = localId
             }
             if incoming { chat.unreadCount += 1 }
             try modelContext.save()
@@ -307,10 +310,36 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         notify()
     }
 
-    /// Своё сообщение не ушло: строка показывает ошибку вместо галочек.
-    public func noteSendFailed(chatId: String, at: Date) throws(OrbitlError) {
+    /// Сервер принял своё сообщение. Если строка показывает именно его (по локальному id),
+    /// у неё появляются серверный id и галочка, даже когда время сервера чуть раньше
+    /// времени телефона. Иначе это обычное новое сообщение.
+    public func noteSent(chatId: String, localId: String, serverId: String?, preview: String, at: Date, authorId: String?) throws(OrbitlError) {
         do {
-            guard let chat = try chat(id: chatId), chat.lastOutgoing, chat.updatedAt <= at else { return }
+            guard let chat = try chat(id: chatId) else { return }
+            guard chat.lastLocalId == localId else {
+                _ = try noteMessage(
+                    chatId: chatId, messageId: serverId, preview: preview, at: at, incoming: false,
+                    authorId: authorId, outgoing: true, delivery: .sent
+                )
+                return
+            }
+            if let serverId { chat.lastMessageId = serverId }
+            chat.lastDeliveryRaw = DeliveryState.sent.rawValue
+            chat.lastLocalId = nil
+            if at > chat.updatedAt { chat.updatedAt = at }
+            try modelContext.save()
+        } catch let error as OrbitlError {
+            throw error
+        } catch {
+            throw .storageError
+        }
+        notify()
+    }
+
+    /// Своё сообщение не ушло: строка показывает ошибку вместо галочек, если оно последнее.
+    public func noteSendFailed(chatId: String, localId: String) throws(OrbitlError) {
+        do {
+            guard let chat = try chat(id: chatId), chat.lastOutgoing, chat.lastLocalId == localId else { return }
             chat.lastDeliveryRaw = DeliveryState.failed.rawValue
             try modelContext.save()
         } catch {

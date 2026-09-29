@@ -100,15 +100,15 @@ public actor SyncEngine {
             case .queued(let record):
                 _ = try? await chats.noteMessage(
                     chatId: record.chatId, messageId: nil, preview: record.text, at: record.timestamp, incoming: false,
-                    authorId: record.authorId, outgoing: true, delivery: .sending
+                    authorId: record.authorId, outgoing: true, delivery: .sending, localId: record.id
                 )
             case .sent(let record):
-                _ = try? await chats.noteMessage(
-                    chatId: record.chatId, messageId: record.serverId, preview: record.text, at: record.timestamp, incoming: false,
-                    authorId: record.authorId, outgoing: true, delivery: .sent
+                try? await chats.noteSent(
+                    chatId: record.chatId, localId: record.id, serverId: record.serverId, preview: record.text,
+                    at: record.timestamp, authorId: record.authorId
                 )
             case .failed(let record):
-                try? await chats.noteSendFailed(chatId: record.chatId, at: record.timestamp)
+                try? await chats.noteSendFailed(chatId: record.chatId, localId: record.id)
             }
         }
     }
