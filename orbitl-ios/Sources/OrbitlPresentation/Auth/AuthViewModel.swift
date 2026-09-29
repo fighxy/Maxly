@@ -34,18 +34,121 @@ public final class AuthViewModel {
     /// Когда можно запросить код повторно.
     public private(set) var resendAvailableAt: Date?
 
-    private var phoneText = ""
+    /// Код страны без плюса и цифры национальной части. Из них собирается номер.
+    private var countryDigits = PhoneCountry.russia.code
+    private var nationalDigits = ""
     private var codeText = ""
 
-    /// Номер в поле ввода, всегда с маской `+7 999 123-45-67`.
+    /// Страна номера. `nil`, если такого кода нет в списке.
+    public private(set) var country: PhoneCountry? = .russia
+
+    /// Номер одной строкой с маской `+7 999 123-45-67` (для `+7`) или `+375…`.
+    /// Запись разбирает строку на код страны и номер.
     public var phone: String {
         get { phoneText }
         set {
             let edited = PhoneNumber.edit(from: phoneText, to: newValue)
             guard edited != phoneText else { return }
-            phoneText = edited
+            split(edited)
             error = nil
         }
+    }
+
+    /// Поле кода страны: только цифры, до четырёх. Вставленный целиком номер разбирается.
+    public var countryCode: String {
+        get { countryDigits }
+        set {
+            let digits = String(newValue.filter(\.isASCIIDigit))
+            if digits.count > 4 {
+                split(PhoneNumber.formatted("+" + digits))
+                error = nil
+                return
+            }
+            guard digits != countryDigits else { return }
+            countryDigits = digits
+            syncCountry()
+            nationalDigits = String(nationalDigits.prefix(maxNationalDigits))
+            error = nil
+        }
+    }
+
+    /// Поле номера без кода, с маской страны (`999 123 4567`).
+    public var nationalNumber: String {
+        get { formatNational(nationalDigits) }
+        set {
+            var digits = String(newValue.filter(\.isASCIIDigit))
+            let old = formatNational(nationalDigits)
+            if newValue.count < old.count, digits == nationalDigits, !digits.isEmpty {
+                // Стёрли разделитель: убираем цифру перед ним.
+                digits.removeLast()
+            }
+            digits = String(digits.prefix(maxNationalDigits))
+            guard digits != nationalDigits else { return }
+            nationalDigits = digits
+            error = nil
+        }
+    }
+
+    /// Серый пример номера в пустом поле.
+    public var phonePlaceholder: String { country?.pattern ?? "000 000 0000" }
+
+    /// Строка страны над полем номера. Код не из списка тоже принимается:
+    /// список стран неполный, а номер проверят общие правила E.164.
+    public var countryTitle: String {
+        if let country { return country.name }
+        return countryDigits.isEmpty ? "Выберите страну" : "Другая страна"
+    }
+
+    /// Код набран до конца: экран может перевести курсор в поле номера.
+    public var isCountryCodeComplete: Bool { PhoneCountry.isComplete(code: countryDigits) }
+
+    public func selectCountry(_ selected: PhoneCountry) {
+        country = selected
+        countryDigits = selected.code
+        nationalDigits = String(nationalDigits.prefix(maxNationalDigits))
+        error = nil
+    }
+
+    private var phoneText: String {
+        if countryDigits == PhoneCountry.russia.code {
+            return nationalDigits.isEmpty ? "" : PhoneNumber.formatted("+7" + nationalDigits)
+        }
+        if countryDigits.isEmpty, nationalDigits.isEmpty { return "" }
+        return "+" + countryDigits + nationalDigits
+    }
+
+    private var maxNationalDigits: Int {
+        if let country { return country.maxDigits }
+        return max(0, 15 - countryDigits.count)
+    }
+
+    private func formatNational(_ digits: String) -> String {
+        guard let country else { return digits }
+        return country.format(digits)
+    }
+
+    /// Разбирает номер одной строкой (маска `PhoneNumber`) на код и национальную часть.
+    private func split(_ formatted: String) {
+        let digits = String(formatted.filter(\.isASCIIDigit))
+        if formatted.isEmpty {
+            countryDigits = country?.code ?? PhoneCountry.russia.code
+            nationalDigits = ""
+        } else if formatted.hasPrefix("+7") || !formatted.hasPrefix("+") {
+            countryDigits = "7"
+            nationalDigits = String(digits.dropFirst())
+        } else {
+            let code = PhoneCountry.longestCode(in: digits) ?? String(digits.prefix(3))
+            countryDigits = code
+            nationalDigits = String(digits.dropFirst(code.count))
+        }
+        syncCountry()
+        nationalDigits = String(nationalDigits.prefix(maxNationalDigits))
+    }
+
+    /// Страна под код. Уже выбранная страна с тем же кодом (Казахстан для `+7`) остаётся.
+    private func syncCountry() {
+        if country?.code == countryDigits { return }
+        country = PhoneCountry.preferred(forCode: countryDigits)
     }
 
     /// Код из SMS: только цифры, не длиннее ожидаемого. Полный код отправляется сам.
@@ -73,6 +176,16 @@ public final class AuthViewModel {
     public var lastName = "" {
         didSet { if lastName != oldValue { error = nil } }
     }
+
+    /// Фото профиля, выбранное при регистрации. Ядро пока не умеет загружать фото,
+    /// поэтому оно только показывается на экране и живёт до конца попытки входа.
+    public var registrationPhoto: Data?
+
+    /// Сколько ячеек показать на шаге кода: длина от сервера или шесть.
+    public var codeCellCount: Int { expectedCodeLength ?? 6 }
+
+    /// Номер, на который ушёл код, в виде для экрана.
+    public var sentToDisplay: String? { sentTo.map(PhoneNumber.display) }
 
     @ObservationIgnored private let auth: any AuthService
     @ObservationIgnored private let resendInterval: TimeInterval
@@ -103,15 +216,31 @@ public final class AuthViewModel {
         }
     }
 
-    public var normalizedPhone: String? { PhoneNumber.normalized(phoneText) }
+    /// Номер в E.164 или `nil`, если он неполный. Для `+7` действуют российские правила,
+    /// для известной страны — длина её номеров, для неизвестного кода — общие 8–15 цифр.
+    public var normalizedPhone: String? {
+        if countryDigits == PhoneCountry.russia.code {
+            return PhoneNumber.normalized("+7" + nationalDigits)
+        }
+        guard !countryDigits.isEmpty, countryDigits.first != "0" else { return nil }
+        if let country {
+            guard (country.minDigits...country.maxDigits).contains(nationalDigits.count) else { return nil }
+            return "+" + countryDigits + nationalDigits
+        }
+        return PhoneNumber.normalized("+" + countryDigits + nationalDigits)
+    }
 
     /// Подсказка под полем номера, когда цифр уже достаточно, а номер не распознан.
     public var phoneHint: String? {
-        let digits = phoneText.filter(\.isASCIIDigit).count
-        guard normalizedPhone == nil, digits >= 11 || (phoneText.hasPrefix("+") && !phoneText.hasPrefix("+7") && digits >= 8) else {
-            return nil
+        guard normalizedPhone == nil else { return nil }
+        if countryDigits == PhoneCountry.russia.code {
+            guard nationalDigits.count >= 10 else { return nil }
+            return "Проверьте номер: например, +7 900 000-00-00"
         }
-        return "Проверьте номер: например, +7 900 000-00-00"
+        if country == nil, !countryDigits.isEmpty, nationalDigits.count >= 6 {
+            return "Проверьте код страны"
+        }
+        return nil
     }
 
     public var canRequestCode: Bool { !isBusy && normalizedPhone != nil }
@@ -172,7 +301,7 @@ public final class AuthViewModel {
     public func resendTitle(at date: Date) -> String {
         let left = resendSecondsLeft(at: date)
         guard left > 0 else { return "Отправить код ещё раз" }
-        return "Отправить ещё раз через \(left / 60):\(String(format: "%02d", left % 60))"
+        return "Отправить код ещё раз через \(left / 60):\(String(format: "%02d", left % 60))"
     }
 
     // MARK: Жизненный цикл
@@ -199,7 +328,7 @@ public final class AuthViewModel {
     public func requestCode() async {
         guard !isBusy else { return }
         guard let number = normalizedPhone else {
-            error = .rejected("Введите номер в формате +7 900 000-00-00")
+            error = .rejected(countryDigits == PhoneCountry.russia.code ? "Введите номер в формате +7 900 000-00-00" : "Проверьте код страны и номер")
             return
         }
         let auth = auth
@@ -320,6 +449,7 @@ public final class AuthViewModel {
     private func resetSecrets() {
         codeText = ""
         password = ""
+        registrationPhoto = nil
     }
 
     /// Запускает вызов сервиса как отменяемую задачу. `true`, если вызов прошёл
