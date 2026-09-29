@@ -69,6 +69,29 @@ struct AuthCountryTests {
         #expect(model.nationalNumber == "29 123 4567")
     }
 
+    @Test("Автозаполнение номера целиком в поле номера")
+    func autofillNumber() {
+        let (model, _, _) = makeAuth()
+        model.nationalNumber = "+7 999 123-45-67"
+        #expect(model.countryCode == "7")
+        #expect(model.nationalNumber == "999 123 4567")
+        model.nationalNumber = "89991234567"
+        #expect(model.nationalNumber == "999 123 4567")
+        model.nationalNumber = "+375291234567"
+        #expect(model.country?.id == "BY")
+        #expect(model.nationalNumber == "29 123 4567")
+    }
+
+    @Test("Системная кнопка «назад» сразу возвращает к номеру")
+    func backToPhone() async {
+        let (model, service, _) = makeAuth()
+        await reachCode(model)
+        model.backToPhone()
+        #expect(model.step == .phone)
+        #expect(model.sentTo == nil)
+        _ = await eventually { await service.calls.contains("cancel") }
+    }
+
     @Test("Поиск стран по названию и коду")
     func search() {
         #expect(PhoneCountry.search("казах").map(\.id) == ["KZ"])

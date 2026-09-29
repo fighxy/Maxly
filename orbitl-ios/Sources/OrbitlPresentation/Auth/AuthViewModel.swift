@@ -76,11 +76,20 @@ public final class AuthViewModel {
     public var nationalNumber: String {
         get { formatNational(nationalDigits) }
         set {
+            if newValue.hasPrefix("+") {
+                // Автозаполнение или вставка номера целиком, с кодом страны.
+                split(PhoneNumber.formatted(newValue))
+                error = nil
+                return
+            }
             var digits = String(newValue.filter(\.isASCIIDigit))
             let old = formatNational(nationalDigits)
             if newValue.count < old.count, digits == nationalDigits, !digits.isEmpty {
                 // Стёрли разделитель: убираем цифру перед ним.
                 digits.removeLast()
+            } else if countryDigits == PhoneCountry.russia.code, digits.count == 11, digits.first == "8" || digits.first == "7" {
+                // Российский номер целиком: `8 999 …` или `7 999 …`.
+                digits.removeFirst()
             }
             digits = String(digits.prefix(maxNationalDigits))
             guard digits != nationalDigits else { return }
@@ -394,7 +403,20 @@ public final class AuthViewModel {
 
     /// Назад к вводу номера. Идущий запрос отменяется, его поздний ответ шаг не меняет.
     public func goBack() async {
-        guard step != .phone else { return }
+        guard resetToPhone() else { return }
+        await auth.cancelLogin()
+    }
+
+    /// То же, что `goBack()`, но шаг меняется сразу. Для системной кнопки «назад»:
+    /// стек навигации должен совпасть с шагом до следующей отрисовки.
+    public func backToPhone() {
+        guard resetToPhone() else { return }
+        let auth = auth
+        Task { await auth.cancelLogin() }
+    }
+
+    private func resetToPhone() -> Bool {
+        guard step != .phone else { return false }
         operation?.cancel()
         operation = nil
         pendingAutoSubmit?.cancel()
@@ -405,7 +427,7 @@ public final class AuthViewModel {
         resendAvailableAt = nil
         sentTo = nil
         step = .phone
-        await auth.cancelLogin()
+        return true
     }
 
     // MARK: Внутреннее
