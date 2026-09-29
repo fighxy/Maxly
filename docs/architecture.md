@@ -13,7 +13,7 @@ ViewModel
  ▼
 Repository
  │   единственная точка доступа к данным
- ├──► локальная база   (SwiftData / Room / аналог на desktop)
+ ├──► локальная база   (SwiftData / Room / SQLDelight)
  ├──► KMP-core         (протокол Max, сессия, события сервера)
  └──► сеть             (URLSession / OkHttp / Ktor, медиа и прочие HTTP-запросы)
 ```
@@ -55,7 +55,7 @@ Repository
 
 ### Desktop (`orbit-desktop/`)
 - **UI:** Compose Multiplatform на JVM, ViewModel держат состояние в `StateFlow`.
-- **База:** аналог Room для JVM, например SQLDelight или Room KMP (выбор ещё не сделан).
+- **База:** SQLDelight.
 - **Сеть:** Ktor или OkHttp.
 - **Ядро:** подключается напрямую как JVM-артефакт, без промежуточных обёрток.
 
