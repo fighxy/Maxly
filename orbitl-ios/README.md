@@ -41,4 +41,4 @@ swift test --package-path orbitl-ios
 
 ## CI
 
-Workflow `.github/workflows/ios.yml` на `macos-14` выбирает Xcode 16.2 (образ по умолчанию отдаёт Xcode 15.4 и Swift 5.10) и гоняет `swift test` и сборку приложения. Сборка приложения клонирует приватный `fighxy/max-kmp-core`, поэтому в секретах репозитория Orbitl нужен `MAX_KMP_CORE_TOKEN`: PAT с правом чтения `fighxy/max-kmp-core`. Без секрета шаг сборки приложения останавливается с этой причиной. `GITHUB_TOKEN` самого Orbitl к ядру доступа не имеет.
+Workflow `.github/workflows/ios.yml` на `macos-14` выбирает Xcode 16.2 (образ по умолчанию отдаёт Xcode 15.4 и Swift 5.10) и гоняет `swift test` и сборку приложения. Для `swift test` задаётся `ORBITL_SWIFTDATA_PLIST=1`: SwiftData требует `CFBundleName`, а тестовый бинарник иначе его не имеет. Сборка приложения клонирует приватный `fighxy/max-kmp-core`, поэтому в секретах репозитория Orbitl нужен `MAX_KMP_CORE_TOKEN`: PAT с правом чтения `fighxy/max-kmp-core`. Без секрета шаг сборки приложения останавливается с этой причиной. `GITHUB_TOKEN` самого Orbitl к ядру доступа не имеет.
