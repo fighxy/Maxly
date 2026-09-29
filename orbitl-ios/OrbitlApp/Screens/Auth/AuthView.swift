@@ -92,14 +92,20 @@ struct AuthStepScroll<Content: View>: View {
     }
 }
 
-/// Название приложения вместо картинки над заголовком.
+/// Логотип и название приложения над заголовком шага.
 struct AuthWordmark: View {
     var body: some View {
-        Text(verbatim: "Orbitl")
-            .font(.system(size: 44, weight: .bold))
-            .foregroundStyle(.primary)
-            .padding(.bottom, 12)
-            .accessibilityAddTraits(.isHeader)
+        VStack(spacing: 12) {
+            OrbitlLogoTile(size: 88)
+                .shadow(color: .black.opacity(0.18), radius: 12, y: 6)
+                .accessibilityHidden(true)
+            Text(verbatim: "Orbitl")
+                .font(.system(size: 34, weight: .bold))
+                .foregroundStyle(.primary)
+        }
+        .padding(.bottom, 16)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 }
 
