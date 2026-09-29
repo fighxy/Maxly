@@ -72,6 +72,9 @@ public protocol ChatRepository: Sendable {
     func folders() -> AsyncStream<[ChatFolder]>
     /// Кто сейчас печатает: id чата → id пользователей.
     func typing() -> AsyncStream<[String: [String]]>
+    /// Запомнить диалог, которого может не быть в списке: с первым своим сообщением в нём
+    /// строка чата появится сразу, не дожидаясь сервера.
+    func prepareDialog(_ draft: DialogDraft) async
 }
 
 /// Без поддержки источника необязательные действия недоступны: набор пуст,
@@ -88,6 +91,7 @@ public extension ChatRepository {
     func search(query: String) async throws(OrbitlError) -> [ChatSearchResult] { [] }
     func folders() -> AsyncStream<[ChatFolder]> { AsyncStream { $0.yield([]); $0.finish() } }
     func typing() -> AsyncStream<[String: [String]]> { AsyncStream { $0.yield([:]); $0.finish() } }
+    func prepareDialog(_ draft: DialogDraft) async {}
 }
 
 /// Черновики полей ввода. Хранятся только на устройстве.

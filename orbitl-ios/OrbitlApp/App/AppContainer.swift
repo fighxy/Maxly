@@ -31,6 +31,8 @@ final class AppContainer {
     @ObservationIgnored private var authModel: AuthViewModel?
     @ObservationIgnored private var listModel: ChatListViewModel?
     @ObservationIgnored private var chatModels: [String: ChatViewModel] = [:]
+    /// Диалоги, открытые из контактов: по ним экран знает имя собеседника, пока чата нет в списке.
+    @ObservationIgnored private var dialogDrafts: [String: DialogDraft] = [:]
     @ObservationIgnored private var contactsModel: ContactsViewModel?
     @ObservationIgnored private var callsModel: CallsViewModel?
     // Контакты и журнал звонков из ядра. До сборки зависимостей экраны видят «недоступно».
@@ -146,12 +148,30 @@ final class AppContainer {
         return model
     }
 
+    /// Диалог с контактом: существующий открывается как есть, новый запоминается, чтобы
+    /// после первого сообщения сразу появиться в списке.
+    func openDialog(_ draft: DialogDraft) {
+        let known = listModel?.chat(id: draft.chatId) != nil
+        Log.info(.chats, "Диалог с контактом \(draft.peerId): \(known ? "уже есть" : "новый")")
+        guard !known else { return }
+        dialogDrafts[draft.chatId] = draft
+        let chats = chats
+        Task { await chats?.prepareDialog(draft) }
+    }
+
+    /// Заголовок экрана чата: из списка, а для нового диалога — имя контакта.
+    func chatTitle(id: String) -> String {
+        if listModel?.chat(id: id) == nil, let draft = dialogDrafts[id] { return draft.title }
+        return listModel?.title(chatId: id) ?? "Чат"
+    }
+
     func chatViewModel(id: String) -> ChatViewModel? {
         if let existing = chatModels[id] { return existing }
         guard let messages else { return nil }
         let me: String
         if case .signedIn(let userId) = phase { me = userId } else { me = "" }
-        let model = ChatViewModel(chatId: id, currentUserId: me, messages: messages, drafts: chats)
+        let isNew = dialogDrafts[id] != nil && listModel?.chat(id: id) == nil
+        let model = ChatViewModel(chatId: id, currentUserId: me, messages: messages, drafts: chats, isNewDialog: isNew)
         chatModels[id] = model
         return model
     }
@@ -222,6 +242,7 @@ final class AppContainer {
 
     /// Модели экранов прежнего аккаунта не должны пережить выход.
     private func dropScreenModels() {
+        dialogDrafts.removeAll()
         let contacts = coreContacts
         let calls = coreCalls
         Task {

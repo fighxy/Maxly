@@ -23,6 +23,8 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// Растёт при каждой очистке базы. Ответ сервера на запрос, начатый до очистки
     /// (например, до выхода), в базу уже не пишется.
     private var generation = 0
+    /// Диалоги, открытые из контактов, которых ещё нет в базе: id чата → черновик.
+    private var pendingDialogs: [String: DialogDraft] = [:]
 
     /// Закрепление, порядок закреплённых и ручная пометка «непрочитано» хранятся на
     /// устройстве. Остальное (звук, архив, удаление, поиск, страницы) идёт через сервер
@@ -179,6 +181,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// Стирает чаты в контексте этого актора. Каскад забирает их сообщения в базе.
     public func removeAll() throws(OrbitlError) {
         generation += 1
+        pendingDialogs.removeAll()
         typingUntil.removeAll()
         publishTyping()
         do {
@@ -221,7 +224,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         localId: String? = nil
     ) throws(OrbitlError) -> Bool {
         do {
-            guard let chat = try chat(id: chatId) else { return false }
+            guard let chat = try chat(id: chatId) ?? insertPendingDialog(chatId: chatId, at: at) else { return false }
             if at >= chat.updatedAt {
                 if let messageId { chat.lastMessageId = messageId }
                 chat.preview = preview
@@ -238,6 +241,29 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         }
         notify()
         return true
+    }
+
+    public func prepareDialog(_ draft: DialogDraft) {
+        pendingDialogs[draft.chatId] = draft
+    }
+
+    /// Строка для диалога из `prepareDialog`, когда в нём появилось первое сообщение.
+    /// Сервер пришлёт свою строку позже, она сольётся с этой по id.
+    private func insertPendingDialog(chatId: String, at: Date) throws -> SDChat? {
+        guard let draft = pendingDialogs.removeValue(forKey: chatId) else { return nil }
+        Log.info(.chats, "Новый диалог \(chatId) появился в списке")
+        let chat = SDChat(
+            id: chatId,
+            title: draft.title,
+            type: .private,
+            lastMessageId: nil,
+            unreadCount: 0,
+            updatedAt: at,
+            preview: nil
+        )
+        chat.avatarURLString = draft.avatarURL?.absoluteString
+        modelContext.insert(chat)
+        return chat
     }
 
     /// Правка сообщения меняет превью, только если это последнее сообщение чата.

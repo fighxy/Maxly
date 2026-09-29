@@ -18,6 +18,9 @@ public final class ChatViewModel {
     }
     public private(set) var error: OrbitlError?
     public private(set) var stickToBottom = true
+    /// Диалог открыт из контактов, и на сервере его может ещё не быть: пустая история не
+    /// ошибка, экран предлагает написать первое сообщение.
+    public let isNewDialog: Bool
 
     @ObservationIgnored private let repository: any MessageRepository
     @ObservationIgnored private let drafts: (any ChatDraftStore)?
@@ -34,8 +37,10 @@ public final class ChatViewModel {
         currentUserId: String,
         messages: any MessageRepository,
         drafts: (any ChatDraftStore)? = nil,
-        draftDelay: Duration = .milliseconds(500)
+        draftDelay: Duration = .milliseconds(500),
+        isNewDialog: Bool = false
     ) {
+        self.isNewDialog = isNewDialog
         self.chatId = chatId
         self.currentUserId = currentUserId
         self.repository = messages
@@ -44,6 +49,12 @@ public final class ChatViewModel {
     }
 
     public var errorMessage: String? { error?.userMessage }
+
+    /// Подсказка вместо пустой истории нового диалога.
+    public var emptyHint: String? {
+        guard isNewDialog, messages.isEmpty else { return nil }
+        return "Здесь пока нет сообщений. Напишите первое — диалог появится в списке чатов."
+    }
 
     public var canSend: Bool {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -118,6 +129,8 @@ public final class ChatViewModel {
             try await repository.fetchLatest(chatId: chatId)
             error = nil
         } catch {
+            // Истории нового диалога на сервере может не быть: это не ошибка для экрана.
+            if isNewDialog, messages.isEmpty, error != .networkUnavailable { return }
             show(error)
         }
     }
@@ -127,6 +140,7 @@ public final class ChatViewModel {
         do {
             try await repository.loadOlder(chatId: chatId)
         } catch {
+            if isNewDialog, messages.isEmpty, error != .networkUnavailable { return }
             show(error)
         }
     }

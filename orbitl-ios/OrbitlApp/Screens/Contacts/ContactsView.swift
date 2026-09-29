@@ -1,5 +1,6 @@
 import SwiftUI
 import Contacts
+import OrbitlDomain
 import OrbitlPresentation
 import OrbitlUI
 
@@ -8,8 +9,8 @@ import OrbitlUI
 /// буквам с алфавитным указателем справа.
 struct ContactsView: View {
     @Bindable var viewModel: ContactsViewModel
-    /// Открыть диалог с контактом.
-    let onOpenChat: (String) -> Void
+    /// Открыть диалог с контактом (существующий или новый).
+    let onOpenDialog: (DialogDraft) -> Void
 
     @State private var isAdding = false
     @State private var showsAddUnavailable = false
@@ -141,8 +142,8 @@ struct ContactsView: View {
 
     private func contactButton(_ row: ContactRow) -> some View {
         Button {
-            if let chatId = viewModel.chatId(forContact: row.id) {
-                onOpenChat(chatId)
+            if let dialog = viewModel.dialog(forContact: row.id) {
+                onOpenDialog(dialog)
             }
         } label: {
             ContactRowView(row: row)

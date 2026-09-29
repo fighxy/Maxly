@@ -128,6 +128,12 @@ public final class ContactsViewModel {
         return String(me ^ other)
     }
 
+    /// Диалог с контактом: имя и аватар для экрана чата, пока диалога нет в списке.
+    public func dialog(forContact id: String) -> DialogDraft? {
+        guard let contact = contacts.first(where: { $0.id == id }) else { return nil }
+        return DialogDraft.with(peerId: id, me: currentUserId, title: contact.displayName, avatarURL: contact.avatarURL)
+    }
+
     public func addContact(phone: String, firstName: String, lastName: String) async -> Bool {
         do {
             _ = try await repository.addContact(phone: phone, firstName: firstName, lastName: lastName)

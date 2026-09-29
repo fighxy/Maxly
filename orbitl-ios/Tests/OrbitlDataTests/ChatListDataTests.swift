@@ -211,4 +211,22 @@ struct ChatListDataTests {
         #expect(await store.recent().isEmpty)
         UserDefaults().removePersistentDomain(forName: suite)
     }
+
+    @Test("Новый диалог из контактов появляется в списке с первым своим сообщением")
+    func newDialogAppearsWithFirstMessage() async throws {
+        let parts = try await makeParts(user: "10")
+        let draft = try #require(DialogDraft.with(peerId: "3", me: "10", title: "Анна", avatarURL: URL(string: "https://a/b.jpg")))
+        #expect(draft.chatId == String(Int64(10) ^ Int64(3)))
+        await parts.chats.prepareDialog(draft)
+        // Пока ничего не отправлено, диалога в списке нет.
+        #expect(await chatRow(parts.chats, draft.chatId) == nil)
+
+        try await parts.messages.send(text: "Привет", chatId: draft.chatId)
+        let row = try #require(await chatRow(parts.chats, draft.chatId))
+        #expect(row.title == "Анна")
+        #expect(row.type == .private)
+        #expect(row.preview == "Привет")
+        #expect(row.avatarURL == URL(string: "https://a/b.jpg"))
+        #expect(row.lastMessage?.isOutgoing == true)
+    }
 }
