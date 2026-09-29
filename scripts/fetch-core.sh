@@ -19,7 +19,10 @@ git init "$dest" >/dev/null
 
 core_git() {
   if [[ -n "${MAX_KMP_CORE_TOKEN:-}" ]]; then
-    git -C "$dest" -c "http.extraheader=AUTHORIZATION: bearer ${MAX_KMP_CORE_TOKEN}" "$@"
+    # Git по HTTPS принимает токен только как Basic-авторизацию, Bearer GitHub отклоняет.
+    local basic
+    basic="$(printf 'x-access-token:%s' "$MAX_KMP_CORE_TOKEN" | base64 | tr -d '\n')"
+    git -C "$dest" -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${basic}" "$@"
   else
     git -C "$dest" "$@"
   fi
