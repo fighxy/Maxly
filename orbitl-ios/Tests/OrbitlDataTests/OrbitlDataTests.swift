@@ -175,3 +175,26 @@ struct OutboxQueueTests {
         #expect(policy.delay(afterAttempt: 8) == .seconds(30))
     }
 }
+
+@Suite("База")
+struct StorageTests {
+    @Test("Базы в памяти, созданные параллельно, не мешают друг другу")
+    func parallelContainers() async throws {
+        try await withThrowingTaskGroup(of: [String].self) { group in
+            for index in 0..<16 {
+                group.addTask {
+                    let stack = try SwiftDataStack(inMemory: true)
+                    let chats = ChatRepositoryImpl.make(stack: stack, api: FakeMaxAPI())
+                    try await chats.upsert([makeChat(id: "c\(index)")])
+                    return await snapshot(chats).map(\.id)
+                }
+            }
+            var seen = Set<String>()
+            for try await ids in group {
+                #expect(ids.count == 1)
+                seen.formUnion(ids)
+            }
+            #expect(seen.count == 16)
+        }
+    }
+}

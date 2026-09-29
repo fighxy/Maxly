@@ -15,7 +15,7 @@ public enum StorageError: Error {
 /// с `ModelActor`, у каждого из которых свой фоновый контекст.
 public final class SwiftDataStack: Sendable {
     /// Все модели локальной базы. Новую модель нужно добавить сюда.
-    static var schema: Schema {
+    static func makeSchema() -> Schema {
         Schema([
             SDChat.self,
             SDMessage.self,
@@ -26,13 +26,27 @@ public final class SwiftDataStack: Sendable {
 
     public let container: ModelContainer
 
+    private static let creationLock = NSLock()
+
     /// - Parameter inMemory: `true` для тестов и превью, данные не пишутся на диск.
     public init(inMemory: Bool = false) throws(StorageError) {
         BundleNameFallback.installIfNeeded()
+        // Контейнеры создаются по одному. SwiftData строит модель схемы из метаданных `@Model`
+        // не потокобезопасно, и параллельные тесты, каждый со своим контейнером, роняли
+        // процесс с signal 11. В приложении контейнер один, лишней задержки нет.
+        Self.creationLock.lock()
+        defer { Self.creationLock.unlock() }
+        let schema = Self.makeSchema()
         do {
             if inMemory {
-                let configuration = ModelConfiguration(schema: Self.schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-                container = try ModelContainer(for: Self.schema, configurations: [configuration])
+                // Своё имя у каждой базы в памяти: хранилища разных контейнеров не пересекаются.
+                let configuration = ModelConfiguration(
+                    "Orbitl-\(UUID().uuidString)",
+                    schema: schema,
+                    isStoredInMemoryOnly: true,
+                    cloudKitDatabase: .none
+                )
+                container = try ModelContainer(for: schema, configurations: [configuration])
             } else {
                 let support = try FileManager.default.url(
                     for: .applicationSupportDirectory,
@@ -49,8 +63,8 @@ public final class SwiftDataStack: Sendable {
                 )
                 #endif
                 let storeURL = directory.appending(path: "Orbitl.store")
-                let configuration = ModelConfiguration(schema: Self.schema, url: storeURL, cloudKitDatabase: .none)
-                container = try ModelContainer(for: Self.schema, configurations: [configuration])
+                let configuration = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
+                container = try ModelContainer(for: schema, configurations: [configuration])
             }
         } catch let error as StorageError {
             throw error
