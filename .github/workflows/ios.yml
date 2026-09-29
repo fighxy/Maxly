@@ -20,12 +20,16 @@ permissions:
 jobs:
   test:
     name: Swift tests
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Select Xcode 16.2
-        run: sudo xcode-select -s /Applications/Xcode_16.2.app
+      # Xcode 26 и SDK iOS 26: код под #available(iOS 26) (Liquid Glass) компилируется только с ним.
+      - name: Select Xcode 26.3
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.3.app
+          xcodebuild -version
+          swift --version
       - name: Test libraries
         run: |
           swift test --package-path orbitl-ios \
@@ -47,7 +51,7 @@ jobs:
 
   app:
     name: App and MaxIos
-    runs-on: macos-14
+    runs-on: macos-15
     # Выпуск с .ipa (шаг «Publish IPA») создаёт релиз в этом репозитории.
     permissions:
       contents: write
@@ -58,8 +62,15 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - name: Select Xcode 16.2
-        run: sudo xcode-select -s /Applications/Xcode_16.2.app
+      # Приложение собирается Xcode 26 с SDK iOS 26, иначе стекло iOS 26 (#available(iOS 26))
+      # в сборку не попадает. Минимальная версия iOS остаётся прежней.
+      - name: Select Xcode 26.3
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.3.app
+          xcodebuild -version
+          sdk="$(xcrun --sdk iphoneos --show-sdk-version)"
+          echo "SDK iOS $sdk, симулятор $(xcrun --sdk iphonesimulator --show-sdk-version)"
+          if [ "${sdk%%.*}" -lt 26 ]; then echo "::error::Нужен SDK iOS 26, выбран $sdk"; exit 1; fi
       - name: Check core token
         id: token
         env:
@@ -75,6 +86,10 @@ jobs:
         if: steps.token.outputs.present == 'true'
         env:
           MAX_KMP_CORE_TOKEN: ${{ secrets.MAX_KMP_CORE_TOKEN }}
+          # Kotlin/Native 2.1.10 в ядре не читает заголовки SDK 26 (cinterop), поэтому
+          # MaxIos.xcframework собирается Xcode 16.2, как раньше. Статическую библиотеку
+          # потом компонует Xcode 26.
+          DEVELOPER_DIR: /Applications/Xcode_16.2.app
         run: bash scripts/fetch-core.sh
       # Подпись ad-hoc нужна симулятору для Keychain: без неё ядро не создаётся, и запуск
       # не доходит до подключения к серверу.
@@ -85,6 +100,8 @@ jobs:
       # закрылось, шаг печатает отчёт о сбое (стек) и журнал приложения.
       - name: Launch in Simulator
         if: steps.token.outputs.present == 'true'
+        env:
+          ORBITL_SIM_RUNTIME: "26.2"
         run: bash scripts/smoke-launch.sh build/sim/Build/Products/Debug-iphonesimulator/Orbitl.app
       # Неподписанный .ipa для iPhone: подписать его можно своим сертификатом
       # (Sideloadly, AltStore, eSign и т. п.) и поставить на устройство.
@@ -99,6 +116,10 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
           app="build/device/Build/Products/Release-iphoneos/Orbitl.app"
           test -d "$app"
+          # Стекло iOS 26 действительно в сборке: бинарник ссылается на API SwiftUI iOS 26.
+          glass="$(nm -u "$app/Orbitl" | grep -c -E 'glassEffect|GlassProminent' || true)"
+          echo "Символов стекла iOS 26 в Orbitl: $glass"
+          if [ "$glass" -eq 0 ]; then echo "::error::В сборке нет кода iOS 26 (glassEffect)"; exit 1; fi
           rm -rf build/ipa build/Orbitl.ipa && mkdir -p build/ipa/Payload
           cp -R "$app" build/ipa/Payload/
           (cd build/ipa && zip -qry ../Orbitl.ipa Payload)
