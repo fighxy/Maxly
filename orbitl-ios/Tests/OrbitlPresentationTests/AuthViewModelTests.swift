@@ -179,6 +179,8 @@ struct AuthCodeTests {
         await service.set(gate: gate)
         await service.set(afterVerify: .password(hint: nil))
         model.code = "123456"
+        let submit = model.pendingAutoSubmit
+        #expect(submit != nil)
         #expect(await eventually { await gate.arrivals == 1 })
         await model.goBack()
         #expect(model.step == .phone)
@@ -187,7 +189,7 @@ struct AuthCodeTests {
         #expect(model.phone == "+7 999 123-45-67")
         #expect(await service.calls.contains("cancel"))
         await gate.open()
-        try? await Task.sleep(for: .milliseconds(50))
+        await submit?.value
         #expect(model.step == .phone)
         #expect(model.error == nil)
     }
@@ -215,8 +217,8 @@ struct AuthCodeTests {
         await reachCode(model)
         await service.set(verifyError: .cancelled)
         model.code = "123456"
-        #expect(await eventually { await service.calls.contains("verify 123456") })
-        try? await Task.sleep(for: .milliseconds(20))
+        await model.pendingAutoSubmit?.value
+        #expect(await service.calls.contains("verify 123456"))
         #expect(model.error == nil)
         #expect(model.errorMessage == nil)
     }

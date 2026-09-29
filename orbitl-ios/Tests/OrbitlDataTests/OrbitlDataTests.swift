@@ -52,6 +52,39 @@ struct PaginationTests {
     }
 }
 
+@Suite("Окно истории")
+struct HistoryWindowTests {
+    private func first(_ stream: AsyncStream<[Message]>) async -> [Message]? {
+        var iterator = stream.makeAsyncIterator()
+        return await iterator.next()
+    }
+
+    @Test("loadOlder расширяет окно на страницу и догружает недостающее с сервера")
+    func loadOlderGrowsWindow() async throws {
+        let api = FakeMaxAPI()
+        let history = makeHistory(chatId: "c1", count: 120)
+        await api.setHistory(history)
+        let (repository, _) = try await makeMessageStack(api: api)
+        try await repository.upsert(Array(history.suffix(50)))
+
+        let initial = try #require(await first(repository.messages(chatId: "c1")))
+        #expect(initial.count == 50)
+        #expect(initial.first?.id == "m70")
+        #expect(initial.last?.id == "m119")
+
+        try await repository.loadOlder(chatId: "c1")
+        let grown = try #require(await first(repository.messages(chatId: "c1")))
+        #expect(grown.count == 100)
+        #expect(grown.first?.id == "m20")
+        #expect(grown.last?.id == "m119")
+
+        try await repository.loadOlder(chatId: "c1")
+        let all = try #require(await first(repository.messages(chatId: "c1")))
+        #expect(all.count == 120)
+        #expect(all.first?.id == "m0")
+    }
+}
+
 @Suite("Оптимистичная отправка")
 struct OptimisticSendTests {
     @Test("Без сети сообщение остаётся sending, после появления сети становится sent")
@@ -234,6 +267,39 @@ struct OutboxQueueTests {
         #expect(stored.first?.status == .failed)
         #expect(stored.first?.serverId == nil)
         #expect(stored.first?.text == "Два")
+    }
+
+    @Test("Повтор неотправленного: failed снова уходит в очередь и становится sent")
+    func retryFailed() async throws {
+        let api = FakeMaxAPI()
+        await api.setSendResults([.failure(.server(code: "500"))])
+        let (repository, outbox) = try await makeMessageStack(api: api)
+        try await repository.send(text: "Три", chatId: "c1")
+        let failed = try #require(try await repository.loadMore(chatId: "c1", before: nil).first)
+        #expect(failed.status == .failed)
+
+        await api.setSendResults([.success(SentMessage(serverId: "srv-9", timestamp: .now))])
+        try await repository.retry(messageId: failed.id)
+
+        #expect(await outbox.pendingCount == 0)
+        let stored = try await repository.loadMore(chatId: "c1", before: nil)
+        #expect(stored.count == 1)
+        #expect(stored.first?.id == failed.id)
+        #expect(stored.first?.status == .sent)
+        #expect(stored.first?.serverId == "srv-9")
+    }
+
+    @Test("Повтор уже отправленного ничего не делает")
+    func retrySentIsNoop() async throws {
+        let api = FakeMaxAPI()
+        let (repository, _) = try await makeMessageStack(api: api)
+        try await repository.send(text: "Четыре", chatId: "c1")
+        let sent = try #require(try await repository.loadMore(chatId: "c1", before: nil).first)
+        #expect(sent.status == .sent)
+
+        try await repository.retry(messageId: sent.id)
+
+        #expect(await api.sendCalls == 1)
     }
 
     @Test("Задержка растёт экспоненциально и ограничена сверху")

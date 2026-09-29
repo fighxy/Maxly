@@ -79,7 +79,8 @@ public final class AuthViewModel {
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var watch: Task<Void, Never>?
     @ObservationIgnored private var operation: Task<OrbitlError?, Never>?
-    @ObservationIgnored private var pendingAutoSubmit: Task<Void, Never>?
+    /// Автоотправка полного кода. Внутренний доступ — чтобы тесты дожидались её, а не спали.
+    @ObservationIgnored private(set) var pendingAutoSubmit: Task<Void, Never>?
 
     public init(
         auth: any AuthService,
