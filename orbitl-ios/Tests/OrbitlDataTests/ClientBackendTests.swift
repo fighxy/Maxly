@@ -133,6 +133,63 @@ actor FakeMaxCore: MaxCore {
     nonisolated func events() -> AsyncStream<CoreEvent> {
         pushStream ?? AsyncStream { $0.finish() }
     }
+
+    /// Закреплённые чаты ядра: как `StateFlow`, новый подписчик сразу получает текущий список.
+    nonisolated let pins = PinBox()
+    var pinError: CoreFailure?
+    private(set) var pinRequests: [[String]] = []
+
+    func setPinError(_ error: CoreFailure?) { pinError = error }
+
+    func setPinnedChats(_ chatIds: [String]) async throws -> [String] {
+        pinRequests.append(chatIds)
+        if let pinError { throw pinError }
+        pins.publish(chatIds)
+        return chatIds
+    }
+
+    nonisolated func pinnedChats() -> AsyncStream<[String]> {
+        pins.subscribe()
+    }
+}
+
+/// Текущий список закреплённых и подписчики фейкового ядра.
+final class PinBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: [String]?
+    private var subscribers: [UUID: AsyncStream<[String]>.Continuation] = [:]
+
+    var subscriberCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return subscribers.count
+    }
+
+    /// Новый список: вход, свой запрос или изменение с другого устройства.
+    func publish(_ ids: [String]) {
+        lock.lock()
+        current = ids
+        let targets = Array(subscribers.values)
+        lock.unlock()
+        targets.forEach { $0.yield(ids) }
+    }
+
+    func subscribe() -> AsyncStream<[String]> {
+        let (stream, continuation) = AsyncStream.makeStream(of: [String].self)
+        let id = UUID()
+        lock.lock()
+        subscribers[id] = continuation
+        let value = current
+        lock.unlock()
+        if let value { continuation.yield(value) }
+        continuation.onTermination = { [weak self] _ in
+            guard let self else { return }
+            self.lock.lock()
+            self.subscribers[id] = nil
+            self.lock.unlock()
+        }
+        return stream
+    }
 }
 
 actor FakeMedia: MediaRepository {

@@ -63,6 +63,13 @@ public protocol MaxAPI: Sendable {
     func sendMessage(chatId: String, text: String, clientId: String) async -> Result<SentMessage, MaxAPIError>
     /// `messageId` nil значит, что локально нечего отмечать: сервер не вызывается.
     func markRead(chatId: String, messageId: String?) async -> Result<Void, MaxAPIError>
+    /// Закреплённые чаты целиком, сверху вниз. Ответ — список, который подтвердил сервер.
+    func setPinnedChats(_ chatIds: [String]) async -> Result<[String], MaxAPIError>
+}
+
+public extension MaxAPI {
+    /// Источник без серверных закреплённых: запрос отклоняется.
+    func setPinnedChats(_ chatIds: [String]) async -> Result<[String], MaxAPIError> { .failure(.invalidResponse) }
 }
 
 /// Клиент API Max поверх `MaxCore`. Типы Kotlin сюда не попадают.
@@ -104,6 +111,12 @@ public final class MaxAPIClient: MaxAPI, Sendable {
         guard let messageId, !messageId.isEmpty else { return .success(()) }
         return await catching {
             try await core.markRead(chatId: chatId, messageId: messageId)
+        }
+    }
+
+    public func setPinnedChats(_ chatIds: [String]) async -> Result<[String], MaxAPIError> {
+        await catching {
+            try await core.setPinnedChats(chatIds)
         }
     }
 
