@@ -37,8 +37,14 @@ enum CoreMapping {
         )
     }
 
+    /// Категория ошибки для репозиториев. `kind` — имя `ErrorKind` ядра.
     static func apiError(_ error: Error) -> MaxAPIError {
-        guard let failure = error as? CoreFailure else { return .invalidResponse }
+        if let error = error as? MaxAPIError { return error }
+        if error is CancellationError { return .cancelled }
+        if let error = error as? URLError {
+            return error.code == .cancelled ? .cancelled : .offline
+        }
+        guard let failure = error as? CoreFailure else { return .unknown }
         switch failure.kind {
         case "NETWORK", "TIMEOUT", "CLOSED":
             return .offline
@@ -48,19 +54,22 @@ enum CoreMapping {
             return .rejected("Неверный пароль")
         case "SERVER", "UPLOAD":
             return .server(code: failure.key ?? failure.kind)
-        case "NOT_FOUND", "MALFORMED_REPLY":
+        case "NOT_FOUND":
             return .invalidResponse
+        case "MALFORMED_REPLY":
+            // Сервер ответил без нужных полей: это его сбой, а не ошибка пользователя.
+            return .server(code: failure.kind)
         case "CANCELLED":
-            return .offline
+            return .cancelled
         default:
-            return .invalidResponse
+            return .unknown
         }
     }
 }
 
 extension MessageRecord {
     init?(_ event: CoreEvent) {
-        guard event.kind == .message || event.kind == .edited, !event.messageId.isEmpty else { return nil }
+        guard event.kind == .message || event.kind == .edited, !event.messageId.isEmpty, !event.chatId.isEmpty else { return nil }
         self.init(
             id: event.messageId,
             serverId: event.messageId,
@@ -91,13 +100,6 @@ extension ChatRecord {
 enum CoreErrors {
     static func orbitl(_ error: Error) -> OrbitlError {
         if let error = error as? OrbitlError { return error }
-        switch CoreMapping.apiError(error) {
-        case .offline: return .networkUnavailable
-        case .sessionExpired: return .authExpired
-        case .rejected(let message): return .rejected(message)
-        case .server(let code): return .server(code: code)
-        case .invalidResponse: return .invalidRequest
-        case .notImplemented: return .syncFailed
-        }
+        return CoreMapping.apiError(error).orbitlError
     }
 }

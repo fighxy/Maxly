@@ -136,7 +136,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             guard !records.isEmpty else { return local.map(\.domain) }
             try upsert(records)
             return try page(chatId: chatId, before: before).map(\.domain)
-        case .failure(.offline):
+        case .failure(.offline), .failure(.cancelled):
             return local.map(\.domain)
         case .failure(let error):
             if local.isEmpty { throw error.orbitlError }

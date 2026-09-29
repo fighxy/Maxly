@@ -91,3 +91,38 @@ func makeChat(id: String = "c1") -> ChatRecord {
         preview: "Последнее"
     )
 }
+
+/// Задержка, которую тест открывает сам: так видно ответ ядра, пришедший после действия пользователя.
+actor Gate {
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var isOpen = false
+    private(set) var arrivals = 0
+
+    func wait() async {
+        arrivals += 1
+        guard !isOpen else { return }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func open() {
+        isOpen = true
+        let pending = waiters
+        waiters.removeAll()
+        for waiter in pending {
+            waiter.resume()
+        }
+    }
+}
+
+/// Ждёт условие не дольше `timeout`. Нужен там, где значение приходит из фоновой задачи.
+func eventually(timeout: Duration = .seconds(3), _ condition: @Sendable () async -> Bool) async -> Bool {
+    let clock = ContinuousClock()
+    let deadline = clock.now + timeout
+    while clock.now < deadline {
+        if await condition() { return true }
+        try? await Task.sleep(for: .milliseconds(5))
+    }
+    return await condition()
+}

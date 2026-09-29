@@ -103,8 +103,8 @@ public actor OutboxQueue {
                     await store.markSent(localId: localId, serverId: sent.serverId, timestamp: sent.timestamp)
                     pending.removeFirst()
                     break attempts
-                case .failure(.offline):
-                    // Сети нет: оставляем сообщение в sending и ждём SyncEngine.
+                case .failure(.offline), .failure(.cancelled):
+                    // Сети нет или вызов отменён: оставляем сообщение в sending и ждём SyncEngine.
                     return
                 case .failure(let error):
                     attempt += 1
