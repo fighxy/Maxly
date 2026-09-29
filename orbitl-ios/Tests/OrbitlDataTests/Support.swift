@@ -19,6 +19,10 @@ actor FakeMaxAPI: MaxAPI {
 
     var chats: [ChatRecord] = []
 
+    func setChats(_ records: [ChatRecord]) {
+        chats = records
+    }
+
     func fetchChats() async -> Result<[ChatRecord], MaxAPIError> {
         .success(chats)
     }
@@ -32,7 +36,9 @@ actor FakeMaxAPI: MaxAPI {
 
     func fetchMessages(chatId: String, before: Date?, limit: Int) async -> Result<[MessageRecord], MaxAPIError> {
         let older = history
-            .filter { $0.chatId == chatId && (before.map { cursor in $0.timestamp < cursor } ?? true) }
+            .filter { message in
+                message.chatId == chatId && (before.map { message.timestamp < $0 } ?? true)
+            }
             .sorted { $0.timestamp > $1.timestamp }
         return .success(Array(older.prefix(limit)))
     }
