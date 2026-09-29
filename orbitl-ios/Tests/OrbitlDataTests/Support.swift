@@ -27,7 +27,16 @@ actor FakeMaxAPI: MaxAPI {
         .success(chats)
     }
 
+    /// Ошибка `CHAT_INFO`, например нет сети.
+    var chatError: MaxAPIError?
+    private(set) var chatRequests: [String] = []
+    private(set) var markReadCalls: [String] = []
+
+    func setChatError(_ error: MaxAPIError?) { chatError = error }
+
     func fetchChat(id: String) async -> Result<ChatRecord, MaxAPIError> {
+        chatRequests.append(id)
+        if let chatError { return .failure(chatError) }
         if let chat = chats.first(where: { $0.id == id }) {
             return .success(chat)
         }
@@ -50,7 +59,8 @@ actor FakeMaxAPI: MaxAPI {
     }
 
     func markRead(chatId: String, messageId: String?) async -> Result<Void, MaxAPIError> {
-        .success(())
+        markReadCalls.append(chatId)
+        return .success(())
     }
 }
 

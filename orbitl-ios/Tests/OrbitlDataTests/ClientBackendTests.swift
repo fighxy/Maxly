@@ -140,6 +140,7 @@ func makeSession() async throws -> SessionParts {
     let outbox = OutboxQueue(api: api, sleep: { _ in })
     await messages.attach(outbox: outbox)
     let sync = SyncEngine(outbox: outbox, chats: chats, messages: messages, pollInterval: .seconds(3600))
+    await sync.connectOutgoing()
     let media = FakeMedia()
     let suite = "orbitl.tests.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))
@@ -522,7 +523,7 @@ struct SyncEventTests {
 
         await sync.consume(CoreEvent(
             kind: .read, chatId: "c1", messageId: "", authorId: "me", text: "",
-            title: "", chatType: "", timeMs: 0, unread: 0
+            title: "", chatType: "", timeMs: 1_700_000_000_500, unread: 0
         ))
         #expect(await snapshot(chats).first?.unreadCount == 0)
 

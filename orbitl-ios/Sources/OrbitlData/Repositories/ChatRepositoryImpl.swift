@@ -63,26 +63,32 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
     // MARK: Запись (вызывается из SyncEngine)
 
     /// Вставляет новые чаты и обновляет существующие по id.
+    ///
+    /// Пуш чата бывает неполным, а ответ списка может быть старше уже записанного пуша,
+    /// поэтому существующая строка сливается по правилам:
+    /// - пустой заголовок не затирает известный;
+    /// - запись старше строки (`updatedAt` меньше) не трогает превью, последнее сообщение,
+    ///   время и счётчик, чтобы список не откатывался назад;
+    /// - пустые `lastMessageId` и `preview` оставляют прежние значения;
+    /// - отрицательный счётчик считается нулём.
     public func upsert(_ records: [ChatRecord]) throws(OrbitlError) {
         do {
             for record in records {
-                let id = record.id
-                var descriptor = FetchDescriptor<SDChat>(predicate: #Predicate { $0.id == id })
-                descriptor.fetchLimit = 1
-                if let chat = try modelContext.fetch(descriptor).first {
-                    chat.title = record.title
+                if let chat = try chat(id: record.id) {
+                    if !record.title.isEmpty { chat.title = record.title }
                     chat.type = record.type
-                    chat.lastMessageId = record.lastMessageId
-                    chat.unreadCount = record.unreadCount
+                    guard record.updatedAt >= chat.updatedAt else { continue }
+                    if let lastMessageId = record.lastMessageId { chat.lastMessageId = lastMessageId }
+                    if let preview = record.preview { chat.preview = preview }
                     chat.updatedAt = record.updatedAt
-                    chat.preview = record.preview
+                    chat.unreadCount = max(record.unreadCount, 0)
                 } else {
                     modelContext.insert(SDChat(
                         id: record.id,
                         title: record.title,
                         type: record.type,
                         lastMessageId: record.lastMessageId,
-                        unreadCount: record.unreadCount,
+                        unreadCount: max(record.unreadCount, 0),
                         updatedAt: record.updatedAt,
                         preview: record.preview
                     ))
@@ -95,10 +101,12 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
         notify()
     }
 
-    /// Удаляет чат вместе с сообщениями (каскадное удаление).
+    /// Удаляет чат вместе с сообщениями. Сообщения без связи с чатом (записанные раньше
+    /// самого чата) каскад не видит, поэтому они удаляются по `chatId` явно.
     public func delete(chatId: String) throws(OrbitlError) {
         do {
             let id = chatId
+            try modelContext.delete(model: SDMessage.self, where: #Predicate { $0.chatId == id })
             try modelContext.delete(model: SDChat.self, where: #Predicate { $0.id == id })
             try modelContext.save()
         } catch {
@@ -119,24 +127,29 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
     }
 
     /// Сбрасывает счётчик непрочитанных локально и отправляет отметку на сервер.
-    /// Если сервер ответил ошибкой, локальное изменение остаётся, а ошибка пробрасывается.
+    /// Если читать нечего, сервер не дёргается. Если сервер ответил ошибкой,
+    /// локальное изменение остаётся, а ошибка пробрасывается.
     public func markAsRead(chatId: String) async throws(OrbitlError) {
-        let messageId = try markReadLocally(chatId: chatId)
-        if case .failure(let error) = await api.markRead(chatId: chatId, messageId: messageId) {
+        guard let mark = try markReadLocally(chatId: chatId) else { return }
+        if case .failure(let error) = await api.markRead(chatId: chatId, messageId: mark.messageId) {
             throw error.orbitlError
         }
     }
 
-    /// Сдвигает строку чата, когда пришло сообщение. `false`, если чата ещё нет в базе.
-    public func noteMessage(chatId: String, messageId: String, preview: String, at: Date, incoming: Bool) throws(OrbitlError) -> Bool {
+    /// Сдвигает строку чата, когда пришло или ушло сообщение. `false`, если чата ещё нет в базе.
+    ///
+    /// Превью и время меняются, только если сообщение не старше строки: запоздавший пуш
+    /// не откатывает список. `messageId == nil` (своё сообщение ещё в очереди) оставляет
+    /// прежний `lastMessageId`, чтобы отметка прочтения не ушла с локальным id.
+    /// `incoming` увеличивает счётчик; дубль пуша сюда приходит с `incoming == false`.
+    public func noteMessage(chatId: String, messageId: String?, preview: String, at: Date, incoming: Bool) throws(OrbitlError) -> Bool {
         do {
-            let id = chatId
-            var descriptor = FetchDescriptor<SDChat>(predicate: #Predicate { $0.id == id })
-            descriptor.fetchLimit = 1
-            guard let chat = try modelContext.fetch(descriptor).first else { return false }
-            chat.lastMessageId = messageId
-            chat.preview = preview
-            chat.updatedAt = at
+            guard let chat = try chat(id: chatId) else { return false }
+            if at >= chat.updatedAt {
+                if let messageId { chat.lastMessageId = messageId }
+                chat.preview = preview
+                chat.updatedAt = at
+            }
             if incoming { chat.unreadCount += 1 }
             try modelContext.save()
         } catch {
@@ -146,15 +159,12 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
         return true
     }
 
-    /// Непрочитанные из пуша `read`. Отрицательное значение не меняет счётчик.
-    public func applyRemoteUnread(chatId: String, unread: Int) throws(OrbitlError) {
-        guard unread >= 0 else { return }
+    /// Правка сообщения меняет превью, только если это последнее сообщение чата.
+    /// Время строки не меняется: правка не поднимает чат в списке.
+    public func noteEdit(chatId: String, messageId: String, text: String) throws(OrbitlError) {
         do {
-            let id = chatId
-            var descriptor = FetchDescriptor<SDChat>(predicate: #Predicate { $0.id == id })
-            descriptor.fetchLimit = 1
-            guard let chat = try modelContext.fetch(descriptor).first else { return }
-            chat.unreadCount = unread
+            guard let chat = try chat(id: chatId), chat.lastMessageId == messageId, chat.preview != text else { return }
+            chat.preview = text
             try modelContext.save()
         } catch {
             throw .storageError
@@ -162,20 +172,69 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
         notify()
     }
 
-    private func markReadLocally(chatId: String) throws(OrbitlError) -> String? {
+    /// Последнее сообщение чата, как его знает строка списка.
+    public func lastMessageId(chatId: String) -> String? {
+        (try? chat(id: chatId))?.lastMessageId
+    }
+
+    /// Строка после удаления последнего сообщения, когда сервер недоступен:
+    /// превью берётся из самого свежего сообщения в кэше, время строки не меняется.
+    public func replaceLast(chatId: String, with message: MessageRecord?) throws(OrbitlError) {
         do {
-            let id = chatId
-            var descriptor = FetchDescriptor<SDChat>(predicate: #Predicate { $0.id == id })
-            descriptor.fetchLimit = 1
-            guard let chat = try modelContext.fetch(descriptor).first else { return nil }
+            guard let chat = try chat(id: chatId) else { return }
+            chat.lastMessageId = message?.serverId
+            chat.preview = message?.text
+            try modelContext.save()
+        } catch {
+            throw .storageError
+        }
+        notify()
+    }
+
+    /// Своя отметка прочтения с другого устройства (пуш `read` с нашим id).
+    ///
+    /// `mark` — время прочитанного сообщения в миллисекундах. Счётчик обнуляется, только
+    /// если отметка не раньше последнего сообщения строки, иначе после неё пришли новые
+    /// и счётчик не трогается. `setAsUnread` — чат помечен непрочитанным вручную.
+    public func applyOwnRead(chatId: String, mark: Int64, setAsUnread: Bool) throws(OrbitlError) {
+        do {
+            guard let chat = try chat(id: chatId) else { return }
+            if setAsUnread {
+                guard chat.unreadCount == 0 else { return }
+                chat.unreadCount = 1
+            } else {
+                guard mark > 0, mark >= chat.updatedAt.unixMillis, chat.unreadCount != 0 else { return }
+                chat.unreadCount = 0
+            }
+            try modelContext.save()
+        } catch {
+            throw .storageError
+        }
+        notify()
+    }
+
+    private struct ReadMark {
+        let messageId: String?
+    }
+
+    /// Отметка для сервера, если было что читать. Иначе `nil`.
+    private func markReadLocally(chatId: String) throws(OrbitlError) -> ReadMark? {
+        do {
+            guard let chat = try chat(id: chatId), chat.unreadCount > 0 else { return nil }
             let messageId = chat.lastMessageId
             chat.unreadCount = 0
             try modelContext.save()
             notify()
-            return messageId
+            return ReadMark(messageId: messageId)
         } catch {
             throw .storageError
         }
+    }
+
+    private func chat(id: String) throws -> SDChat? {
+        var descriptor = FetchDescriptor<SDChat>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try modelContext.fetch(descriptor).first
     }
 
     // MARK: Наблюдатели
@@ -199,7 +258,7 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
 
     private func snapshot() -> [Chat] {
         let descriptor = FetchDescriptor<SDChat>(
-            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
+            sortBy: [SortDescriptor(\.updatedAt, order: .reverse), SortDescriptor(\.id)]
         )
         let chats = (try? modelContext.fetch(descriptor)) ?? []
         return chats.map(Self.domain)
