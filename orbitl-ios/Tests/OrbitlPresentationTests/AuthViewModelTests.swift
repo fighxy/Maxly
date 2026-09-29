@@ -61,7 +61,7 @@ struct AuthPhoneTests {
         #expect(model.title == "Код из SMS")
         #expect(model.resendSecondsLeft(at: clock.now) == 60)
         #expect(!model.canResend(at: clock.now))
-        #expect(model.resendTitle(at: clock.now) == "Отправить ещё раз через 1:00")
+        #expect(model.resendTitle(at: clock.now) == "Отправить код ещё раз через 1:00")
         #expect(!model.isBusy)
     }
 
@@ -97,7 +97,7 @@ struct AuthCodeTests {
         await reachCode(model)
         clock.advance(30)
         #expect(model.resendSecondsLeft(at: clock.now) == 30)
-        #expect(model.resendTitle(at: clock.now) == "Отправить ещё раз через 0:30")
+        #expect(model.resendTitle(at: clock.now) == "Отправить код ещё раз через 0:30")
         await model.resendCode()
         #expect(await service.calls == ["code +79991234567"])
 
