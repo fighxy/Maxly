@@ -2,7 +2,9 @@ import SwiftUI
 import OrbitlePresentation
 import OrbitleUI
 
-/// Настройки: профиль, вид списка чатов, журнал для отладки и выход.
+/// Настройки: профиль, «Оформление», вид списка чатов, «О приложении» и выход.
+///
+/// Корень короткий: темы собраны в отдельные экраны за ссылками (см. `docs/settings.md`).
 struct SettingsView: View {
     @Bindable var container: AppContainer
     @Bindable var list: ChatListViewModel
@@ -28,6 +30,13 @@ struct SettingsView: View {
                 .accessibilityElement(children: .combine)
             }
             Section {
+                NavigationLink {
+                    AppearanceView(settings: container.appearance)
+                } label: {
+                    Label("Оформление", systemImage: "textformat.size")
+                }
+            }
+            Section {
                 Toggle(isOn: Binding(
                     get: { list.usesLocalFilters },
                     set: { container.setLocalFilters($0) }
@@ -39,25 +48,19 @@ struct SettingsView: View {
             } footer: {
                 Text("Над списком появятся вкладки «Личные», «Группы», «Каналы», «Боты» и «Непрочитанные». Серверные папки, если они есть, показываются вместо них.")
             }
-            LogSettingsSection(container: container)
             Section {
-                Button("Выйти", role: .destructive) { confirmLogout = true }
-            }
-            Section {
-                HStack(spacing: 14) {
-                    OrbitleLogoTile(size: 44)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(verbatim: "Orbitle")
-                            .font(.headline)
-                        Text(AppContainer.appVersion.replacingOccurrences(of: "Orbitle ", with: "Версия "))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                NavigationLink {
+                    AboutView(container: container)
+                } label: {
+                    LabeledContent {
+                        Text(AppContainer.versionNumber)
+                    } label: {
+                        Label("О приложении", systemImage: "info.circle")
                     }
                 }
-                .padding(.vertical, 2)
-                .accessibilityElement(children: .combine)
-            } header: {
-                Text("О приложении")
+            }
+            Section {
+                Button("Выйти", role: .destructive) { confirmLogout = true }
             }
         }
         .navigationTitle("Настройки")

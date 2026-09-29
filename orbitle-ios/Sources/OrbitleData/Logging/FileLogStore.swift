@@ -89,7 +89,7 @@ public final class FileLogStore: @unchecked Sendable {
         }
     }
 
-    /// ZIP со всеми файлами журнала и `info.txt` (версия, устройство, время выгрузки) во временном
+    /// ZIP со всеми файлами журнала, отчётами о сбоях и `info.txt` (версия, устройство, время выгрузки) во временном
     /// каталоге. Архив собирает система (`NSFileCoordinator` с `.forUploading`), без сторонних библиотек.
     public func makeArchive(info: String, now: Date = Date()) throws -> URL {
         let stamp = Self.fileStamp(now)
@@ -100,6 +100,11 @@ public final class FileLogStore: @unchecked Sendable {
             try? handle?.synchronize()
             for file in existingFiles() + reportFiles() {
                 try? FileManager.default.copyItem(at: file, to: staging.appendingPathComponent(file.lastPathComponent))
+            }
+            // Архив отчётов о сбоях (`CrashDumpStore`) — отдельной папкой.
+            let crashes = directory.appendingPathComponent(CrashDumpStore.directoryName, isDirectory: true)
+            if FileManager.default.fileExists(atPath: crashes.path) {
+                try? FileManager.default.copyItem(at: crashes, to: staging.appendingPathComponent(CrashDumpStore.directoryName, isDirectory: true))
             }
         }
         try Data(info.utf8).write(to: staging.appendingPathComponent("info.txt"))
