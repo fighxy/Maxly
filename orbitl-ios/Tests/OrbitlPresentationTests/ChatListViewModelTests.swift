@@ -109,6 +109,28 @@ struct ChatListStateTests {
         #expect(await repository.refreshCount == 2)
     }
 
+    @Test("Долгая догрузка после обрыва не задерживает новые состояния соединения")
+    func catchUpDoesNotBlockConnection() async {
+        let connection = FakeConnection()
+        let (model, repository) = makeList(connection: connection)
+        repository.emit([chat("a", at: 1)])
+        #expect(await eventually { model.connection == .online })
+        await model.refresh()
+        connection.emit(.offline)
+        #expect(await eventually { model.connection == .offline })
+
+        let gate = Gate()
+        await repository.set(refreshGate: gate)
+        connection.emit(.online)
+        #expect(await eventually { await gate.arrivals == 1 })
+        // Догрузка висит на сервере, а связь снова пропала: плашка должна это показать.
+        connection.emit(.offline)
+        #expect(await eventually { model.connection == .offline })
+        #expect(model.banner == "Нет соединения. Показаны сохранённые чаты")
+        await gate.open()
+        #expect(await eventually { !model.isCatchingUp })
+    }
+
     @Test("Отмена обновления не показывается")
     func cancelledRefresh() async {
         let (model, repository) = makeList()
