@@ -23,7 +23,10 @@ if not runtimes:
     sys.exit("Нет среды iOS " + (wanted or "в симуляторе"))
 runtime = runtimes[-1]
 phones = [d for d in runtime.get("supportedDeviceTypes", []) if d.get("productFamily") == "iPhone"]
-print(runtime["identifier"], phones[-1]["identifier"])
+# Порядок в списке не по году: сначала ищется iPhone 17, затем 16, иначе последний в списке.
+names = {d["name"]: d for d in phones}
+phone = next((names[n] for n in ("iPhone 17", "iPhone 16") if n in names), phones[-1])
+print(runtime["identifier"], phone["identifier"])
 ')
 udid="$(xcrun simctl create orbitl-smoke "$device_type" "$runtime")"
 echo "Симулятор $udid ($device_type, $runtime)"

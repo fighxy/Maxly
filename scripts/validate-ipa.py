@@ -38,14 +38,21 @@ def validate(path, alternate_icons=()):
                 if name.startswith(root) and name.endswith(".png")]
         if not any(png.startswith(icon_file) for icon_file in files for png in pngs):
             raise ValueError("Primary app icon PNG is missing from the bundle")
-        # Alternate icons for setAlternateIconName: listed in the compiled Info.plist, with a PNG.
-        alternates = info.get("CFBundleIcons", {}).get("CFBundleAlternateIcons", {})
+        # Alternate icons for setAlternateIconName must be listed in the compiled Info.plist.
+        # A single-size icon from the asset catalog lives only in Assets.car and is named by
+        # CFBundleIconName; legacy entries list CFBundleIconFiles, whose PNGs must be present.
+        icons = info.get("CFBundleIcons", {})
+        alternates = icons.get("CFBundleAlternateIcons", {})
         for name in alternate_icons:
-            alternate = alternates.get(name, {}).get("CFBundleIconFiles", [])
-            if not alternate:
-                raise ValueError(f"Compiled Info.plist has no alternate app icon {name}")
-            if not any(png.startswith(icon_file) for icon_file in alternate for png in pngs):
-                raise ValueError(f"Alternate app icon {name} PNG is missing from the bundle")
+            alternate = alternates.get(name)
+            if not isinstance(alternate, dict):
+                raise ValueError(f"Compiled Info.plist has no alternate app icon {name}; CFBundleIcons: {icons!r}")
+            files = alternate.get("CFBundleIconFiles", [])
+            if files:
+                if not any(png.startswith(icon_file) for icon_file in files for png in pngs):
+                    raise ValueError(f"Alternate app icon {name} PNG is missing from the bundle")
+            elif alternate.get("CFBundleIconName") != name:
+                raise ValueError(f"Alternate app icon {name} has neither icon files nor CFBundleIconName: {alternate!r}")
         return info["CFBundleIdentifier"]
 
 
