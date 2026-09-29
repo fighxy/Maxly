@@ -13,7 +13,10 @@ public enum MessageStatus: String, Codable, Sendable {
 /// Сообщение в локальной базе.
 @Model
 final class SDMessage {
+    /// Локальный id. У исходящих это `local-<uuid>` до и после отправки.
     @Attribute(.unique) var id: String
+    /// id на сервере. У входящих совпадает с `id`, у исходящих появляется после отправки.
+    var serverId: String?
     /// Дублирует `chat?.id`, чтобы фильтровать без обхода связи.
     var chatId: String
     var authorId: String
@@ -41,9 +44,11 @@ final class SDMessage {
         text: String,
         timestamp: Date,
         status: MessageStatus,
-        mediaId: String? = nil
+        mediaId: String? = nil,
+        serverId: String? = nil
     ) {
         self.id = id
+        self.serverId = serverId
         self.chatId = chatId
         self.authorId = authorId
         self.text = text

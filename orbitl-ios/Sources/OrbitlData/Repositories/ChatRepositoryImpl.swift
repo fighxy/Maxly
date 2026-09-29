@@ -10,9 +10,17 @@ import OrbitlDomain
 @ModelActor
 public actor ChatRepositoryImpl: ChatRepository {
     private var observers: [UUID: AsyncStream<[Chat]>.Continuation] = [:]
+    private var api: any MaxAPI = MaxAPIClient()
 
-    public static func make(stack: SwiftDataStack) -> ChatRepositoryImpl {
-        ChatRepositoryImpl(modelContainer: stack.container)
+    public init(modelContainer: ModelContainer, api: any MaxAPI) {
+        let context = ModelContext(modelContainer)
+        self.modelExecutor = DefaultSerialModelExecutor(modelContext: context)
+        self.modelContainer = modelContainer
+        self.api = api
+    }
+
+    public static func make(stack: SwiftDataStack, api: any MaxAPI) -> ChatRepositoryImpl {
+        ChatRepositoryImpl(modelContainer: stack.container, api: api)
     }
 
     // MARK: ChatRepository
@@ -31,8 +39,23 @@ public actor ChatRepositoryImpl: ChatRepository {
 
     /// Обновление с сервера. Кэш уже показан, здесь только фоновая догрузка.
     public func refresh() async throws(OrbitlError) {
-        // TODO: запросить список чатов через MaxAPIClient или SyncEngine
-        // и передать результат в upsert(_:). Ошибки MaxError перевести в OrbitlError.
+        switch await api.fetchChats() {
+        case .success(let records):
+            try upsert(records)
+        case .failure(let error):
+            throw error.orbitlError
+        }
+    }
+
+    /// Обновление одного чата: запрашивает список и обновляет только этот чат.
+    // TODO: заменить на точечный запрос чата, когда он появится в MaxAPI.
+    public func refresh(chatId: String) async throws(OrbitlError) {
+        switch await api.fetchChats() {
+        case .success(let records):
+            try upsert(records.filter { $0.id == chatId })
+        case .failure(let error):
+            throw error.orbitlError
+        }
     }
 
     // MARK: Запись (вызывается из SyncEngine)
@@ -79,8 +102,16 @@ public actor ChatRepositoryImpl: ChatRepository {
         notify()
     }
 
-    /// Сбрасывает счётчик непрочитанных.
-    public func markRead(chatId: String) throws(OrbitlError) {
+    /// Сбрасывает счётчик непрочитанных локально и отправляет отметку на сервер.
+    /// Если сервер ответил ошибкой, локальное изменение остаётся, а ошибка пробрасывается.
+    public func markAsRead(chatId: String) async throws(OrbitlError) {
+        try markReadLocally(chatId: chatId)
+        if case .failure(let error) = await api.markRead(chatId: chatId) {
+            throw error.orbitlError
+        }
+    }
+
+    private func markReadLocally(chatId: String) throws(OrbitlError) {
         do {
             var descriptor = FetchDescriptor<SDChat>(predicate: #Predicate { $0.id == chatId })
             descriptor.fetchLimit = 1
