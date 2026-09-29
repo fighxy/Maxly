@@ -296,6 +296,12 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
 
     public func markSent(localId: String, serverId: String, timestamp: Date) async {
         guard let message = try? message(id: localId) else { return }
+        // Эхо своего сообщения (пуш или опрос истории) могло прийти раньше ответа на отправку
+        // и лечь отдельной строкой с серверным id. Остаётся локальная строка: экран уже
+        // показывает её под локальным id.
+        for echo in (try? echoes(of: serverId, except: localId)) ?? [] {
+            modelContext.delete(echo)
+        }
         message.status = .sent
         message.serverId = serverId
         message.timestamp = timestamp
@@ -327,6 +333,15 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         var descriptor = FetchDescriptor<SDMessage>(predicate: #Predicate { $0.id == id })
         descriptor.fetchLimit = 1
         return try modelContext.fetch(descriptor).first
+    }
+
+    /// Строки с тем же серверным id, кроме `localId`.
+    private func echoes(of serverId: String, except localId: String) throws -> [SDMessage] {
+        let optionalId: String? = serverId
+        let descriptor = FetchDescriptor<SDMessage>(
+            predicate: #Predicate { $0.id == serverId || $0.serverId == optionalId }
+        )
+        return try modelContext.fetch(descriptor).filter { $0.id != localId }
     }
 
     private func message(serverId: String) throws -> SDMessage? {

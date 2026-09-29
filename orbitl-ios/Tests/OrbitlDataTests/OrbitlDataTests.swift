@@ -104,6 +104,34 @@ struct ServerMatchTests {
     }
 }
 
+@Suite("Эхо своего сообщения")
+struct EchoTests {
+    @Test("Эхо, пришедшее раньше ответа на отправку, не дублирует сообщение")
+    func echoBeforeResponse() async throws {
+        let api = FakeMaxAPI()
+        let gate = Gate()
+        await api.setSendGate(gate)
+        await api.setSendResults([.success(SentMessage(serverId: "srv-7", timestamp: Date(timeIntervalSince1970: 500)))])
+        let (repository, _) = try await makeMessageStack(api: api)
+        await repository.setCurrentUser(id: "alice")
+
+        let send = Task { await failure { try await repository.send(text: "Эхо", chatId: "c1") } }
+        #expect(await eventually { await gate.arrivals == 1 })
+        try await repository.upsert([MessageRecord(
+            id: "srv-7", serverId: "srv-7", chatId: "c1", authorId: "alice",
+            text: "Эхо", timestamp: Date(timeIntervalSince1970: 500), status: .sent
+        )])
+        await gate.open()
+        #expect(await send.value == nil)
+
+        let stored = try await repository.loadMore(chatId: "c1", before: nil)
+        #expect(stored.count == 1)
+        #expect(stored.first?.id.hasPrefix("local-") == true)
+        #expect(stored.first?.serverId == "srv-7")
+        #expect(stored.first?.status == .sent)
+    }
+}
+
 @Suite("Чаты")
 struct ChatRepositoryTests {
     @Test("Поля чата доходят до доменной модели, markAsRead сбрасывает счётчик")
