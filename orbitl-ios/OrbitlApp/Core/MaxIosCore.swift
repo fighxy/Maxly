@@ -7,6 +7,13 @@ import MaxIos
 final class MaxIosCore: MaxCore, @unchecked Sendable {
     private let client = MaxIosClient(namespace: "default")
 
+    /// Необработанное исключение ядра Kotlin попадает в аварийный журнал до завершения процесса.
+    static func installCrashHandler() {
+        IosDiagnostics.shared.installCrashHandler { text in
+            CrashReporter.record(text)
+        }
+    }
+
     func phaseName() async -> CorePhase {
         CorePhase(raw: client.phaseName())
     }
