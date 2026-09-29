@@ -209,6 +209,12 @@ public final class ChatListViewModel {
         isEditing && selectedFolderId == ChatFolder.allId && capabilities.contains(.reorderPins) && pinnedCount > 1
     }
 
+    /// Строки архива, для экрана «Архив чатов».
+    public var archivedItems: [ChatListItem] {
+        let date = now()
+        return chats.filter(\.isArchived).map { item($0, at: date) }
+    }
+
     public func title(chatId: String) -> String {
         chats.first { $0.id == chatId }.map(formatter.title(for:)) ?? "Чат"
     }

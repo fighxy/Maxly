@@ -23,7 +23,8 @@ let package = Package(
             dependencies: ["OrbitlDomain"],
             exclude: ["Storage/README.md"]
         ),
-        .target(name: "OrbitlUI", dependencies: ["OrbitlDomain"]),
+        // Компоненты рисуют готовые строки из ViewModel (например, `ChatListItem`).
+        .target(name: "OrbitlUI", dependencies: ["OrbitlDomain", "OrbitlPresentation"]),
         // ViewModel экранов: чистый Swift поверх протоколов домена, без SwiftUI и ядра.
         // Так логика экранов проходит `swift test` без Xcode-таргета приложения.
         .target(name: "OrbitlPresentation", dependencies: ["OrbitlDomain"]),

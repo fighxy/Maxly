@@ -1,11 +1,17 @@
 import SwiftUI
 
-/// Отступы и размеры каркаса. Это не копия Komet, только общая сетка экранов.
+/// Отступы и размеры каркаса.
 public enum OrbitlTheme {
     public static let pad: CGFloat = 16
-    public static let row: CGFloat = 76
-    public static let avatar: CGFloat = 52
+    /// Высота трёхстрочной строки списка чатов.
+    public static let row: CGFloat = 78
+    /// Аватар строки чата.
+    public static let avatar: CGFloat = 60
+    /// Аватар контактов и звонков.
+    public static let smallAvatar: CGFloat = 50
     public static let radius: CGFloat = 18
+    /// Отступ разделителя строки: от начала текста, а не от края.
+    public static let separatorInset: CGFloat = pad + avatar + 12
 }
 
 public enum AvatarInitials {
