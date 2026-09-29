@@ -41,11 +41,17 @@ struct RootView: View {
         if let list = container.chatListViewModel() {
             NavigationSplitView {
                 ChatListView(viewModel: list, selection: $router.chatId) {
+                    // Открытый чат прежнего аккаунта не должен открыться после следующего входа.
+                    router.chatId = nil
                     Task { await container.logout() }
                 }
             } detail: {
                 if let id = router.chatId, let model = container.chatViewModel(id: id) {
+                    // Свой экран на каждый чат: иначе при смене выбора SwiftUI переиспользует
+                    // прежний ChatView, его `.task` не перезапускается, и модель нового чата
+                    // так и не подписывается на сообщения.
                     ChatView(viewModel: model, title: container.chatTitle(id: id))
+                        .id(id)
                 } else {
                     ContentUnavailableView("Выберите чат", systemImage: "bubble.left.and.bubble.right")
                 }
