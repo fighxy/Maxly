@@ -12,6 +12,10 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         IosDiagnostics.shared.installCrashHandler { text in
             CrashReporter.record(text)
         }
+        // Колбэки ядра несут только вид ошибки; причину (исключение и его стек) ядро пишет сюда.
+        IosDiagnostics.shared.installErrorLogger { text in
+            Log.warning(.core, "Причина: \(text)")
+        }
     }
 
     func phaseName() async -> CorePhase {
