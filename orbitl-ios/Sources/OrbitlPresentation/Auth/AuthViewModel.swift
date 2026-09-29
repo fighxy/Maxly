@@ -87,8 +87,10 @@ public final class AuthViewModel {
             if newValue.count < old.count, digits == nationalDigits, !digits.isEmpty {
                 // Стёрли разделитель: убираем цифру перед ним.
                 digits.removeLast()
-            } else if countryDigits == PhoneCountry.russia.code, digits.count == 11, digits.first == "8" || digits.first == "7" {
-                // Российский номер целиком: `8 999 …` или `7 999 …`.
+            } else if countryDigits == PhoneCountry.russia.code, digits.count == 11, digits.first == "8" || digits.first == "7",
+                      !(nationalDigits.count == maxNationalDigits && digits.hasPrefix(nationalDigits)) {
+                // Российский номер целиком: `8 999 …` или `7 999 …`. Лишняя цифра после
+                // полного номера на `7…` или `8…` (Казахстан, 800) его не сдвигает.
                 digits.removeFirst()
             }
             digits = String(digits.prefix(maxNationalDigits))
