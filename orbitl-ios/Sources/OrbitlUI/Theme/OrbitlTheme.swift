@@ -17,15 +17,3 @@ public enum AvatarInitials {
         return String(name.prefix(1)).uppercased()
     }
 }
-
-public enum ChatTime {
-    public static func label(for date: Date, now: Date = .now, calendar: Calendar = .current) -> String {
-        if calendar.isDate(date, inSameDayAs: now) {
-            return date.formatted(date: .omitted, time: .shortened)
-        }
-        if let weekAgo = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: now)), date >= weekAgo {
-            return date.formatted(.dateTime.weekday(.abbreviated))
-        }
-        return date.formatted(date: .numeric, time: .omitted)
-    }
-}

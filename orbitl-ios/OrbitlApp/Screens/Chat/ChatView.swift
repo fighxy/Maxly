@@ -1,8 +1,10 @@
 import SwiftUI
+import OrbitlPresentation
 import OrbitlUI
 
 struct ChatView: View {
     @Bindable var viewModel: ChatViewModel
+    var title: String
 
     var body: some View {
         VStack(spacing: 0) {
@@ -13,7 +15,7 @@ struct ChatView: View {
                             .font(.footnote)
                             .padding(.top, 8)
                         ForEach(viewModel.messages) { message in
-                            MessageBubble(message: message, isOutgoing: message.authorId == viewModel.currentUserId) {
+                            MessageBubble(message: message, isOutgoing: viewModel.isOutgoing(message)) {
                                 Task { await viewModel.retry(id: message.id) }
                             }
                             .id(message.id)
@@ -27,8 +29,8 @@ struct ChatView: View {
                     proxy.scrollTo(id, anchor: .bottom)
                 }
             }
-            if let error = viewModel.error {
-                Text(error.localizedDescription)
+            if let message = viewModel.errorMessage {
+                Text(message)
                     .font(.caption)
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -36,12 +38,13 @@ struct ChatView: View {
             }
             composer
         }
-        .navigationTitle("Чат")
+        .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .task {
             viewModel.activate()
             await viewModel.loadLatest()
         }
+        .onDisappear { viewModel.deactivate() }
     }
 
     private var composer: some View {
@@ -58,7 +61,8 @@ struct ChatView: View {
                     .font(.system(size: 30))
                     .foregroundStyle(Color.orbitlAccent)
             }
-            .disabled(viewModel.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(!viewModel.canSend)
+            .accessibilityLabel("Отправить")
         }
         .padding(OrbitlTheme.pad)
         .background(.bar)

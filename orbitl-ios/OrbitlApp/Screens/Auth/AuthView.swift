@@ -1,77 +1,149 @@
 import SwiftUI
-import OrbitlUI
+import OrbitlPresentation
 
+/// Экран входа. Вся логика шагов в `AuthViewModel`, здесь только раскладка и фокус.
 struct AuthView: View {
     @Bindable var viewModel: AuthViewModel
-    var expired: Bool
+
+    private enum Field: Hashable {
+        case phone, code, password, firstName, lastName
+    }
+
+    @FocusState private var focus: Field?
 
     var body: some View {
         NavigationStack {
             Form {
-                if expired {
-                    Text("Сессия истекла. Войдите снова. Переписка на устройстве сохранится, пока вы сами не выйдете.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                if viewModel.sessionExpired {
+                    Section {
+                        Text("Сессия истекла. Войдите снова. Переписка на устройстве сохранится, пока вы сами не выйдете.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 switch viewModel.step {
-                case .codeSent(let length):
-                    codeFields(length: length)
-                case .password(let hint):
-                    passwordFields(hint: hint)
+                case .phone:
+                    phoneSection
+                case .code:
+                    codeSection
+                case .password:
+                    passwordSection
                 case .registration:
-                    registerFields
-                default:
-                    phoneFields
+                    registrationSection
                 }
-                if let error = viewModel.error {
-                    Text(error.localizedDescription)
-                        .foregroundStyle(.red)
-                        .font(.footnote)
+                if let message = viewModel.errorMessage {
+                    Section {
+                        Label(message, systemImage: "exclamationmark.circle")
+                            .foregroundStyle(.red)
+                            .font(.footnote)
+                    }
+                    .accessibilityAddTraits(.isStaticText)
                 }
             }
-            .navigationTitle("Вход")
-            .disabled(viewModel.isBusy)
-            .overlay {
-                if viewModel.isBusy { ProgressView() }
+            .navigationTitle(viewModel.title)
+            .toolbar {
+                if viewModel.canGoBack {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Назад") { Task { await viewModel.goBack() } }
+                    }
+                }
+                if viewModel.isBusy {
+                    ToolbarItem(placement: .topBarTrailing) { ProgressView() }
+                }
             }
         }
         .task { viewModel.activate() }
-    }
-
-    private var phoneFields: some View {
-        Section("Телефон") {
-            TextField("+7…", text: $viewModel.phone)
-                .textContentType(.telephoneNumber)
-                .keyboardType(.phonePad)
-            Button("Получить код") { Task { await viewModel.requestCode() } }
-                .disabled(viewModel.phone.trimmingCharacters(in: .whitespaces).isEmpty)
+        .onChange(of: viewModel.step, initial: true) { _, step in
+            focus = field(for: step)
         }
     }
 
-    private func codeFields(length: Int?) -> some View {
-        Section(length.map { "Код из \($0) цифр" } ?? "Код из SMS") {
+    /// Куда поставить курсор на новом шаге.
+    private func field(for step: AuthViewModel.Step) -> Field {
+        switch step {
+        case .phone: .phone
+        case .code: .code
+        case .password: .password
+        case .registration: .firstName
+        }
+    }
+
+    private var phoneSection: some View {
+        Section {
+            TextField("+7 900 000-00-00", text: $viewModel.phone)
+                .textContentType(.telephoneNumber)
+                .keyboardType(.phonePad)
+                .focused($focus, equals: .phone)
+                .submitLabel(.continue)
+                .onSubmit { Task { await viewModel.requestCode() } }
+            Button("Получить код") { Task { await viewModel.requestCode() } }
+                .disabled(!viewModel.canRequestCode)
+        } header: {
+            Text("Номер телефона")
+        } footer: {
+            Text(viewModel.phoneHint ?? "Пришлём код в SMS")
+        }
+    }
+
+    private var codeSection: some View {
+        Section {
             TextField("Код", text: $viewModel.code)
                 .keyboardType(.numberPad)
                 .textContentType(.oneTimeCode)
+                .focused($focus, equals: .code)
+                .submitLabel(.continue)
+                .onSubmit { Task { await viewModel.verify() } }
             Button("Продолжить") { Task { await viewModel.verify() } }
-                .disabled(viewModel.code.trimmingCharacters(in: .whitespaces).isEmpty)
-            Button("Отправить ещё раз") { Task { await viewModel.resendCode() } }
+                .disabled(!viewModel.canVerify)
+            // Обратный отсчёт перерисовывается раз в секунду без таймера в модели.
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                Button(viewModel.resendTitle(at: context.date)) {
+                    Task { await viewModel.resendCode() }
+                }
+                .disabled(!viewModel.canResend(at: context.date))
+                .monospacedDigit()
+            }
+        } header: {
+            Text("Код из SMS")
+        } footer: {
+            Text(viewModel.codePrompt)
         }
     }
 
-    private func passwordFields(hint: String?) -> some View {
-        Section(hint.map { "Пароль (\($0))" } ?? "Пароль") {
+    private var passwordSection: some View {
+        Section {
             SecureField("Пароль", text: $viewModel.password)
+                .textContentType(.password)
+                .focused($focus, equals: .password)
+                .submitLabel(.go)
+                .onSubmit { Task { await viewModel.submitPassword() } }
             Button("Войти") { Task { await viewModel.submitPassword() } }
-                .disabled(viewModel.password.isEmpty)
+                .disabled(!viewModel.canSubmitPassword)
+        } header: {
+            Text("Облачный пароль")
+        } footer: {
+            Text(viewModel.passwordPrompt)
         }
     }
 
-    private var registerFields: some View {
-        Section("Новый аккаунт") {
+    private var registrationSection: some View {
+        Section {
             TextField("Имя", text: $viewModel.firstName)
-            TextField("Фамилия", text: $viewModel.lastName)
-            Button("Создать") { Task { await viewModel.register() } }
+                .textContentType(.givenName)
+                .focused($focus, equals: .firstName)
+                .submitLabel(.next)
+                .onSubmit { focus = .lastName }
+            TextField("Фамилия (необязательно)", text: $viewModel.lastName)
+                .textContentType(.familyName)
+                .focused($focus, equals: .lastName)
+                .submitLabel(.done)
+                .onSubmit { Task { await viewModel.register() } }
+            Button("Создать аккаунт") { Task { await viewModel.register() } }
+                .disabled(!viewModel.canRegister)
+        } header: {
+            Text("Новый аккаунт")
+        } footer: {
+            Text("Номер ещё не зарегистрирован. Укажите имя, его увидят собеседники.")
         }
     }
 }
