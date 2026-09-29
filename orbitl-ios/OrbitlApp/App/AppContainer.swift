@@ -244,7 +244,15 @@ final class AppContainer {
 
     func callsViewModel() -> CallsViewModel {
         if let callsModel { return callsModel }
-        let model = CallsViewModel(calls: calls)
+        let userId = currentUserId
+        // Время просмотра вкладки и скрытые звонки у каждого аккаунта свои.
+        let marks: any CallHistoryMarks
+        if userId.isEmpty {
+            marks = InMemoryCallHistoryMarks()
+        } else {
+            marks = UserDefaultsCallHistoryMarks(userId: userId)
+        }
+        let model = CallsViewModel(calls: calls, marks: marks)
         callsModel = model
         return model
     }
@@ -291,7 +299,9 @@ final class AppContainer {
     }
 
     func logout() async {
+        let userId = currentUserId
         await session?.logout()
+        if !userId.isEmpty { UserDefaultsCallHistoryMarks.erase(userId: userId) }
         await recentSearches.clear()
         await ImagePipeline.shared.removeAll()
         dropScreenModels()
