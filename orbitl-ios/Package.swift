@@ -1,4 +1,4 @@
-// swift-tools-version: 5.10
+// swift-tools-version: 6.0
 // Локальные пакеты iOS-клиента Orbitl. Приложение (OrbitlApp) собирается
 // отдельным Xcode-таргетом и подключает эти библиотеки.
 import PackageDescription
