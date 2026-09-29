@@ -1,6 +1,7 @@
 import SwiftUI
 import OrbitleDomain
 import OrbitlePresentation
+import OrbitleUI
 
 struct RootView: View {
     @Bindable var container: AppContainer
@@ -14,6 +15,9 @@ struct RootView: View {
                 content
             }
         }
+        // Размер текста и тема из «Оформления» — на всё приложение, включая экран сбоя.
+        .dynamicTypeSize(container.appearance.textSize.dynamicTypeSize)
+        .background(InterfaceStyleOverride(theme: container.appearance.theme))
         .task { await container.bootstrap() }
         .task(id: router.chatId) { await container.focus(chatId: router.chatId) }
         .onChange(of: container.phase) { old, phase in
