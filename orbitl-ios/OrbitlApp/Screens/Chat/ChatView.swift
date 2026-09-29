@@ -5,6 +5,7 @@ import OrbitlUI
 struct ChatView: View {
     @Bindable var viewModel: ChatViewModel
     var title: String
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         VStack(spacing: 0) {
@@ -45,6 +46,10 @@ struct ChatView: View {
             await viewModel.loadLatest()
         }
         .onDisappear { viewModel.deactivate() }
+        .onChange(of: scenePhase) { _, phase in
+            // Приложение уходит в фон: черновик не должен ждать паузы в наборе.
+            if phase != .active { viewModel.flushDraft() }
+        }
     }
 
     private var composer: some View {

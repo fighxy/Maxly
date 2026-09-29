@@ -3,6 +3,7 @@ import Observation
 import OrbitlData
 import OrbitlDomain
 import OrbitlPresentation
+import OrbitlUI
 
 /// Собирает ядро, базу и репозитории. Экраны получают только протоколы.
 @MainActor
@@ -24,6 +25,7 @@ final class AppContainer {
     @ObservationIgnored private var chats: ChatRepositoryImpl?
     @ObservationIgnored private var messages: MessageRepositoryImpl?
     @ObservationIgnored private var sync: SyncEngine?
+    private let recentSearches = RecentSearchesStore()
     @ObservationIgnored private var authModel: AuthViewModel?
     @ObservationIgnored private var listModel: ChatListViewModel?
     @ObservationIgnored private var chatModels: [String: ChatViewModel] = [:]
@@ -80,7 +82,8 @@ final class AppContainer {
     func chatListViewModel() -> ChatListViewModel? {
         guard let chats else { return nil }
         if let listModel { return listModel }
-        let model = ChatListViewModel(chats: chats, connection: session)
+        let model = ChatListViewModel(chats: chats, connection: session, recentSearches: recentSearches)
+        model.usesLocalFilters = UserDefaults.standard.bool(forKey: Self.localFiltersKey)
         listModel = model
         return model
     }
@@ -90,14 +93,22 @@ final class AppContainer {
         guard let messages else { return nil }
         let me: String
         if case .signedIn(let userId) = phase { me = userId } else { me = "" }
-        let model = ChatViewModel(chatId: id, currentUserId: me, messages: messages)
+        let model = ChatViewModel(chatId: id, currentUserId: me, messages: messages, drafts: chats)
         chatModels[id] = model
         return model
     }
 
-    /// Заголовок открытого чата, как он показан в списке.
-    func chatTitle(id: String) -> String {
-        listModel?.items.first { $0.id == id }?.title ?? "Чат"
+    static let localFiltersKey = "orbitl.chatList.localFilters"
+
+    /// Папки по типам чатов, когда серверных нет. Настройка живёт на устройстве.
+    func setLocalFilters(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: Self.localFiltersKey)
+        listModel?.usesLocalFilters = enabled
+    }
+
+    var currentUserId: String {
+        if case .signedIn(let userId) = phase { return userId }
+        return ""
     }
 
     /// Открытый чат: опрос его истории и отметка прочтения, в том числе для сообщений,
@@ -109,6 +120,8 @@ final class AppContainer {
 
     func logout() async {
         await session?.logout()
+        await recentSearches.clear()
+        await ImagePipeline.shared.removeAll()
         dropScreenModels()
         authModel?.deactivate()
         authModel = nil
