@@ -17,14 +17,17 @@ final class AppContainer {
     private(set) var boot: Boot = .loading
     private(set) var phase: AuthPhase = .restoring
 
-    private var session: SessionManager?
-    private var chats: ChatRepositoryImpl?
-    private var messages: MessageRepositoryImpl?
-    private var sync: SyncEngine?
-    private var authModel: AuthViewModel?
-    private var listModel: ChatListViewModel?
-    private var chatModels: [String: ChatViewModel] = [:]
-    private var phaseTask: Task<Void, Never>?
+    // Зависимости и кэш моделей экранов не наблюдаются: модели создаются лениво прямо
+    // во время отрисовки `RootView`, и запись в наблюдаемое свойство там заставила бы
+    // SwiftUI перерисовывать экран ещё раз. Экран следит только за `boot` и `phase`.
+    @ObservationIgnored private var session: SessionManager?
+    @ObservationIgnored private var chats: ChatRepositoryImpl?
+    @ObservationIgnored private var messages: MessageRepositoryImpl?
+    @ObservationIgnored private var sync: SyncEngine?
+    @ObservationIgnored private var authModel: AuthViewModel?
+    @ObservationIgnored private var listModel: ChatListViewModel?
+    @ObservationIgnored private var chatModels: [String: ChatViewModel] = [:]
+    @ObservationIgnored private var phaseTask: Task<Void, Never>?
 
     func bootstrap() async {
         guard boot == .loading else { return }
