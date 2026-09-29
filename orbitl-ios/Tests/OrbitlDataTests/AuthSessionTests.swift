@@ -330,6 +330,31 @@ struct SessionLogoutTests {
         }
     }
 
+    @Test("Выход посреди входа под другим аккаунтом не даёт этому входу завершиться")
+    func logoutDuringAccountSwitch() async throws {
+        try await withSession { parts in
+            parts.defaults.set("a", forKey: SessionManager.userDefaultsKey)
+            try await parts.chats.upsert([makeChat(id: "old")])
+            await parts.core.setUser("b")
+            await parts.api.setChats([makeChat(id: "fresh")])
+            let gate = Gate()
+            await parts.media.holdNextClear(gate)
+
+            // Вход под «b» стирает кэш «a» и застревает на очистке медиа.
+            let restore = Task { await parts.session.restoreSession() }
+            #expect(await eventually { await gate.arrivals == 1 })
+            await parts.session.logout()
+            await gate.open()
+            await restore.value
+
+            #expect(await parts.session.currentPhase == .signedOut)
+            #expect(parts.defaults.string(forKey: SessionManager.userDefaultsKey) == nil)
+            #expect(await parts.messages.currentUser() == "")
+            #expect(await snapshot(parts.chats).isEmpty)
+            #expect(await parts.sync.isPolling == false)
+        }
+    }
+
     @Test("Вход после выхода тем же номером проходит заново")
     func loginAfterLogout() async throws {
         try await withSession { parts in

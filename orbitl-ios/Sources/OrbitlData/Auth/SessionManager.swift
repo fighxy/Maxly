@@ -33,6 +33,9 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
     private var registerToken: String?
     private var attempt = 0
     private var isLoggingOut = false
+    /// Растёт в начале каждого выхода. Вход, начатый до выхода, после него не продолжается:
+    /// между шагами входа актор отпускается, и выход может пройти целиком.
+    private var logouts = 0
     private var coreWatch: Task<Void, Never>?
 
     public init(
@@ -85,6 +88,7 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
     // MARK: Восстановление
 
     public func restoreSession() async {
+        let epoch = logouts
         publish(.restoring)
         watchCore()
         let stored = await core.hasStoredToken()
@@ -101,7 +105,7 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         case .ready:
             setConnection(.online)
             let id = await core.currentUserId()
-            await enter(userId: id.isEmpty ? remembered : id)
+            await enter(userId: id.isEmpty ? remembered : id, epoch: epoch)
         case .tokenRejected:
             await expire()
         case .awaitingAuth:
@@ -112,7 +116,7 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
                 setConnection(.offline)
             }
             if stored {
-                await showCache(userId: remembered)
+                await showCache(userId: remembered, epoch: epoch)
             } else {
                 publish(.signedOut)
             }
@@ -159,6 +163,7 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         guard !code.isEmpty else { throw .rejected("Введите код из SMS") }
         guard let codeToken else { throw .invalidRequest }
         let generation = attempt
+        let epoch = logouts
         let step: CoreAuthStep
         do {
             step = try await core.verifyCode(token: codeToken, code: code)
@@ -168,7 +173,7 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
             }
             throw AuthErrors.map(error, during: .verifyCode)
         }
-        try await apply(step, generation: generation)
+        try await apply(step, generation: generation, epoch: epoch)
     }
 
     /// Устаревший код заменяется новым на тот же номер, чтобы не гонять человека назад
@@ -186,13 +191,14 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         guard !password.isEmpty else { throw .rejected("Введите пароль") }
         guard let trackId else { throw .invalidRequest }
         let generation = attempt
+        let epoch = logouts
         let step: CoreAuthStep
         do {
             step = try await core.checkPassword(trackId: trackId, password: password)
         } catch {
             throw AuthErrors.map(error, during: .password)
         }
-        try await apply(step, generation: generation)
+        try await apply(step, generation: generation, epoch: epoch)
     }
 
     public func register(firstName rawFirst: String, lastName rawLast: String) async throws(OrbitlError) {
@@ -201,13 +207,14 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         guard !firstName.isEmpty else { throw .rejected("Введите имя") }
         guard let registerToken else { throw .invalidRequest }
         let generation = attempt
+        let epoch = logouts
         let step: CoreAuthStep
         do {
             step = try await core.register(token: registerToken, firstName: firstName, lastName: lastName)
         } catch {
             throw AuthErrors.map(error, during: .register)
         }
-        try await apply(step, generation: generation)
+        try await apply(step, generation: generation, epoch: epoch)
     }
 
     public func cancelLogin() async {
@@ -219,6 +226,7 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
 
     public func logout() async {
         attempt += 1
+        logouts += 1
         isLoggingOut = true
         defer { isLoggingOut = false }
         await sync.stopEvents()
@@ -256,14 +264,14 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         phone = ""
     }
 
-    private func apply(_ step: CoreAuthStep, generation: Int) async throws(OrbitlError) {
+    private func apply(_ step: CoreAuthStep, generation: Int, epoch: Int) async throws(OrbitlError) {
         switch step {
         case .loggedIn(let userId):
             // Токен уже в Keychain ядра. Отменённая попытка всё равно входит, иначе
             // приложение показало бы вход при живой сессии ядра. Выход важнее.
-            guard !isLoggingOut else { throw .cancelled }
+            guard !isLoggingOut, epoch == logouts else { throw .cancelled }
             let id = userId.isEmpty ? await core.currentUserId() : userId
-            await enter(userId: id)
+            await enter(userId: id, epoch: epoch)
         case .password(let track, let hint):
             try ensureCurrent(generation)
             trackId = track
@@ -276,7 +284,12 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
     }
 
     /// Вход. Чужой user id стирает кэш предыдущего аккаунта до загрузки его чатов.
-    private func enter(userId: String) async {
+    ///
+    /// `epoch` — число выходов на момент начала операции. Если между шагами прошёл выход,
+    /// вход обрывается: иначе он снова включил бы пуши и опрос и показал бы список чатов
+    /// уже после экрана входа.
+    private func enter(userId: String, epoch: Int) async {
+        guard epoch == logouts else { return }
         let previous = defaults.string(forKey: Self.userDefaultsKey)
         let id = userId.isEmpty ? (previous ?? "") : userId
         if let previous, !id.isEmpty, previous != id {
@@ -284,15 +297,19 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
             await sync.networkLost()
             await sync.reset()
             await eraseLocal()
+            guard epoch == logouts else { return }
         }
         if !id.isEmpty {
             defaults.set(id, forKey: Self.userDefaultsKey)
         }
         forgetLoginAttempt()
         await messages.setCurrentUser(id: id)
+        guard epoch == logouts else { return }
         await sync.startEvents(core)
+        guard epoch == logouts else { return }
         publish(.signedIn(userId: id))
         await sync.networkBecameAvailable()
+        guard epoch == logouts else { return }
         try? await chats.refresh()
     }
 
@@ -312,9 +329,11 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
     }
 
     /// Токен есть, сокет ещё не онлайн: показываем кэш и не трогаем базу.
-    private func showCache(userId: String) async {
+    private func showCache(userId: String, epoch: Int) async {
         await messages.setCurrentUser(id: userId)
+        guard epoch == logouts else { return }
         await sync.startEvents(core)
+        guard epoch == logouts else { return }
         publish(.signedIn(userId: userId))
     }
 
@@ -344,11 +363,12 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         case .ready:
             setConnection(.online)
             guard let current = signedInUserId else { return }
+            let epoch = logouts
             let id = await core.currentUserId()
             guard signedInUserId == current else { return }
             if !id.isEmpty, id != current {
                 // Кэш показывался под запомненным id, а ядро вошло другим аккаунтом.
-                await enter(userId: id)
+                await enter(userId: id, epoch: epoch)
             } else {
                 await sync.networkBecameAvailable()
             }
