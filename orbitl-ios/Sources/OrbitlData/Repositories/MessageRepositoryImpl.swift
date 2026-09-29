@@ -197,12 +197,19 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         var touched = Set<String>()
         var inserted = Set<String>()
         do {
+            // Три выборки на весь пакет (по id, по серверному id и чаты), а не по три на запись.
+            var byId = try messages(ids: records.map(\.id))
+            var byServerId = try messages(serverIds: records.map { $0.serverId ?? $0.id })
+            let chatRows = try chats(ids: records.map(\.chatId))
             for record in records {
-                if let message = try message(id: record.id) ?? message(serverId: record.serverId ?? record.id) {
+                if let message = byId[record.id] ?? byServerId[record.serverId ?? record.id] {
                     message.text = record.text
                     message.status = record.status
                     message.mediaId = record.mediaId
-                    if let serverId = record.serverId { message.serverId = serverId }
+                    if let serverId = record.serverId {
+                        message.serverId = serverId
+                        byServerId[serverId] = message
+                    }
                 } else {
                     let message = SDMessage(
                         id: record.id,
@@ -214,8 +221,10 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
                         mediaId: record.mediaId,
                         serverId: record.serverId ?? record.id
                     )
-                    message.chat = try chat(id: record.chatId)
+                    message.chat = chatRows[record.chatId]
                     modelContext.insert(message)
+                    byId[record.id] = message
+                    byServerId[record.serverId ?? record.id] = message
                     inserted.insert(record.id)
                 }
                 touched.insert(record.chatId)
@@ -349,6 +358,36 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         var descriptor = FetchDescriptor<SDMessage>(predicate: #Predicate { $0.serverId == optionalId })
         descriptor.fetchLimit = 1
         return try modelContext.fetch(descriptor).first
+    }
+
+    /// Сообщения с этими локальными id, по id.
+    private func messages(ids: [String]) throws -> [String: SDMessage] {
+        guard !ids.isEmpty else { return [:] }
+        let wanted = Array(Set(ids))
+        let rows = try modelContext.fetch(FetchDescriptor<SDMessage>(predicate: #Predicate { wanted.contains($0.id) }))
+        return Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// Сообщения с этими серверными id, по серверному id.
+    private func messages(serverIds: [String]) throws -> [String: SDMessage] {
+        guard !serverIds.isEmpty else { return [:] }
+        let wanted = Array(Set(serverIds))
+        let rows = try modelContext.fetch(FetchDescriptor<SDMessage>(predicate: #Predicate { message in
+            message.serverId.flatMap { serverId in wanted.contains(serverId) } ?? false
+        }))
+        var result: [String: SDMessage] = [:]
+        for row in rows {
+            guard let serverId = row.serverId, result[serverId] == nil else { continue }
+            result[serverId] = row
+        }
+        return result
+    }
+
+    private func chats(ids: [String]) throws -> [String: SDChat] {
+        guard !ids.isEmpty else { return [:] }
+        let wanted = Array(Set(ids))
+        let rows = try modelContext.fetch(FetchDescriptor<SDChat>(predicate: #Predicate { wanted.contains($0.id) }))
+        return Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     private func fetchPage(chatId: String, before: Date?, limit: Int) throws -> [SDMessage] {

@@ -80,17 +80,13 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
     /// - отрицательный счётчик считается нулём.
     public func upsert(_ records: [ChatRecord]) throws(OrbitlError) {
         do {
+            // Одна выборка на весь пакет, а не по запросу на каждую запись.
+            var existing = try chats(ids: records.map(\.id))
             for record in records {
-                if let chat = try chat(id: record.id) {
-                    if !record.title.isEmpty { chat.title = record.title }
-                    chat.type = record.type
-                    guard record.updatedAt >= chat.updatedAt else { continue }
-                    if let lastMessageId = record.lastMessageId { chat.lastMessageId = lastMessageId }
-                    if let preview = record.preview { chat.preview = preview }
-                    chat.updatedAt = record.updatedAt
-                    chat.unreadCount = max(record.unreadCount, 0)
+                if let chat = existing[record.id] {
+                    Self.merge(record, into: chat)
                 } else {
-                    modelContext.insert(SDChat(
+                    let chat = SDChat(
                         id: record.id,
                         title: record.title,
                         type: record.type,
@@ -98,7 +94,9 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
                         unreadCount: max(record.unreadCount, 0),
                         updatedAt: record.updatedAt,
                         preview: record.preview
-                    ))
+                    )
+                    modelContext.insert(chat)
+                    existing[record.id] = chat
                 }
             }
             try modelContext.save()
@@ -106,6 +104,17 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
             throw .storageError
         }
         notify()
+    }
+
+    /// Правила слияния записи с уже известной строкой (см. `upsert`).
+    private static func merge(_ record: ChatRecord, into chat: SDChat) {
+        if !record.title.isEmpty { chat.title = record.title }
+        chat.type = record.type
+        guard record.updatedAt >= chat.updatedAt else { return }
+        if let lastMessageId = record.lastMessageId { chat.lastMessageId = lastMessageId }
+        if let preview = record.preview { chat.preview = preview }
+        chat.updatedAt = record.updatedAt
+        chat.unreadCount = max(record.unreadCount, 0)
     }
 
     /// Удаляет чат вместе с сообщениями. Сообщения без связи с чатом (записанные раньше
@@ -242,6 +251,14 @@ public actor ChatRepositoryImpl: ChatRepository, ModelActor {
     /// База не очищалась с начала запроса. Иначе ответ устарел, и вызов считается отменённым.
     private func ensureCurrent(_ started: Int) throws(OrbitlError) {
         guard started == generation else { throw .cancelled }
+    }
+
+    /// Строки чатов с этими id, по id.
+    private func chats(ids: [String]) throws -> [String: SDChat] {
+        guard !ids.isEmpty else { return [:] }
+        let wanted = Array(Set(ids))
+        let rows = try modelContext.fetch(FetchDescriptor<SDChat>(predicate: #Predicate { wanted.contains($0.id) }))
+        return Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     private func chat(id: String) throws -> SDChat? {
