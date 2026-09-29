@@ -2,13 +2,13 @@ import Foundation
 
 /// Вкладки нижней панели.
 enum AppTab: String, CaseIterable, Hashable {
-    case contacts
-    case calls
     case chats
+    case calls
+    case contacts
     case settings
 
     /// Порядок вкладок слева направо. Меняется только здесь.
-    static let order: [AppTab] = [.contacts, .calls, .chats, .settings]
+    static let order: [AppTab] = [.chats, .calls, .contacts, .settings]
 
     var title: String {
         switch self {
