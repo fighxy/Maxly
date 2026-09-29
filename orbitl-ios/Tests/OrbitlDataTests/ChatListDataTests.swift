@@ -58,7 +58,7 @@ private func chatRow(_ chats: ChatRepositoryImpl, _ id: String = "c1") async -> 
 
 @Suite("Список чатов: данные строки")
 struct ChatListDataTests {
-    @Test("Закрепление на устройстве: новый первым, порядок и открепление переживают обновление с сервера")
+    @Test("Закрепление уходит на сервер целиком: новый первым, порядок, открепление")
     func pins() async throws {
         let parts = try await makeParts()
         try await parts.chats.upsert([makeChat(id: "a"), makeChat(id: "b"), makeChat(id: "c")])
@@ -67,26 +67,139 @@ struct ChatListDataTests {
 
         try await parts.chats.setPinned(true, chatId: "b")
         try await parts.chats.setPinned(true, chatId: "c")
+        #expect(await parts.api.pinCalls == [["b"], ["c", "b"]])
         var rows = try #require(await first(parts.chats.chats()))
-        let order = rows.filter(\.isPinned).sorted(by: Chat.listOrder).map(\.id)
-        #expect(order == ["c", "b"])
+        #expect(rows.filter(\.isPinned).sorted(by: Chat.listOrder).map(\.id) == ["c", "b"])
 
         try await parts.chats.reorderPinned(["b", "c"])
-        // Ответ сервера без сведений о закреплённых их не сбрасывает.
+        #expect(await parts.api.pinCalls.last == ["b", "c"])
+        // Ответ списка чатов без сведений о закреплённых их не сбрасывает.
         try await parts.chats.upsert([makeChat(id: "b"), makeChat(id: "c")])
         rows = try #require(await first(parts.chats.chats()))
         #expect(rows.filter(\.isPinned).sorted(by: Chat.listOrder).map(\.id) == ["b", "c"])
 
         try await parts.chats.setPinned(false, chatId: "b")
+        #expect(await parts.api.pinCalls.last == ["c"])
         #expect(await chatRow(parts.chats, "b")?.isPinned == false)
         #expect(await chatRow(parts.chats, "c")?.isPinned == true)
 
-        // Закрепление, пришедшее с сервера, главнее локального.
-        var record = makeChat(id: "c")
-        record.pinsKnown = true
-        record.pinOrder = nil
-        try await parts.chats.upsert([record])
-        #expect(await chatRow(parts.chats, "c")?.isPinned == false)
+        // Повтор уже сделанного на сервер не уходит.
+        try await parts.chats.setPinned(true, chatId: "c")
+        try await parts.chats.setPinned(false, chatId: "a")
+        try await parts.chats.reorderPinned(["c"])
+        #expect(await parts.api.pinCalls.count == 4)
+        // Неизвестный чат закрепить нельзя.
+        await #expect(throws: OrbitlError.invalidRequest) { try await parts.chats.setPinned(true, chatId: "missing") }
+    }
+
+    @Test("Закреплённые с сервера: порядок сервера, остальные откреплены, догруженные чаты встают на место")
+    func serverPins() async throws {
+        let parts = try await makeParts()
+        try await parts.chats.upsert([makeChat(id: "a"), makeChat(id: "b"), makeChat(id: "c")])
+        try await parts.chats.setPinned(true, chatId: "a")
+
+        // С другого устройства: закреплены c, потом d (его ещё нет в базе), потом b.
+        try await parts.chats.applyServerPins(["c", "d", "b", "c", ""])
+        var rows = try #require(await first(parts.chats.chats()))
+        #expect(rows.filter(\.isPinned).sorted(by: Chat.listOrder).map(\.id) == ["c", "b"])
+        #expect(rows.first { $0.id == "a" }?.isPinned == false)
+
+        // d приходит следующей страницей и сразу встаёт между c и b.
+        try await parts.chats.upsert([makeChat(id: "d"), makeChat(id: "e")])
+        rows = try #require(await first(parts.chats.chats()))
+        #expect(rows.filter(\.isPinned).sorted(by: Chat.listOrder).map(\.id) == ["c", "d", "b"])
+        #expect(rows.first { $0.id == "e" }?.isPinned == false)
+
+        // Следующее действие строится от списка сервера, а не только от строк базы.
+        try await parts.chats.setPinned(true, chatId: "e")
+        #expect(await parts.api.pinCalls.last == ["e", "c", "d", "b"])
+        // Перестановка видимых сохраняет остальных закреплённых после них.
+        try await parts.chats.reorderPinned(["b", "e"])
+        #expect(await parts.api.pinCalls.last == ["b", "e", "c", "d"])
+
+        // Всё открепили на другом устройстве.
+        try await parts.chats.applyServerPins([])
+        rows = try #require(await first(parts.chats.chats()))
+        #expect(rows.allSatisfy { !$0.isPinned })
+    }
+
+    @Test("Ошибка сервера: закреплённые в базе не меняются, ошибка доходит до экрана")
+    func pinFailure() async throws {
+        let parts = try await makeParts()
+        try await parts.chats.upsert([makeChat(id: "a"), makeChat(id: "b")])
+        try await parts.chats.applyServerPins(["a"])
+        await parts.api.setPinError(.offline)
+
+        await #expect(throws: OrbitlError.networkUnavailable) { try await parts.chats.setPinned(true, chatId: "b") }
+        await #expect(throws: OrbitlError.networkUnavailable) { try await parts.chats.setPinned(false, chatId: "a") }
+        let rows = try #require(await first(parts.chats.chats()))
+        #expect(rows.filter(\.isPinned).map(\.id) == ["a"])
+
+        // После ошибки следующее действие снова строится от подтверждённого списка.
+        await parts.api.setPinError(nil)
+        try await parts.chats.setPinned(true, chatId: "b")
+        #expect(await parts.api.pinCalls.last == ["b", "a"])
+    }
+
+    @Test("Два быстрых закрепления: второе строится от первого, ещё не подтверждённого")
+    func pinsInFlight() async throws {
+        let parts = try await makeParts()
+        try await parts.chats.upsert([makeChat(id: "a"), makeChat(id: "b")])
+        try await parts.chats.applyServerPins([])
+        let gate = Gate()
+        await parts.api.setPinGate(gate)
+        let chats = parts.chats
+        let pinA = Task { try await chats.setPinned(true, chatId: "a") }
+        #expect(await eventually { await gate.arrivals == 1 })
+        let pinB = Task { try await chats.setPinned(true, chatId: "b") }
+        #expect(await eventually { await gate.arrivals == 2 })
+        await gate.open()
+        try await pinA.value
+        try await pinB.value
+        #expect(await parts.api.pinCalls == [["a"], ["b", "a"]])
+        let rows = try #require(await first(parts.chats.chats()))
+        #expect(rows.filter(\.isPinned).sorted(by: Chat.listOrder).map(\.id) == ["b", "a"])
+    }
+
+    @Test("Поток закреплённых ядра пишется в базу, пока включены пуши")
+    func pinsFromCore() async throws {
+        let parts = try await makeParts()
+        try await parts.chats.upsert([makeChat(id: "a"), makeChat(id: "b")])
+        let core = FakeMaxCore()
+        // Вход уже прислал список до подписки: подписчик получает его сразу.
+        core.pins.publish(["b"])
+        await parts.sync.startEvents(core)
+        #expect(await eventually { await chatRow(parts.chats, "b")?.isPinned == true })
+
+        // Изменение с другого устройства.
+        core.pins.publish(["a", "b"])
+        #expect(await eventually {
+            let rows = await first(parts.chats.chats()) ?? []
+            return rows.filter(\.isPinned).sorted(by: Chat.listOrder).map(\.id) == ["a", "b"]
+        })
+
+        // После выхода список больше не пишется, подписка закрыта.
+        await parts.sync.stopEvents()
+        #expect(await eventually { core.pins.subscriberCount == 0 })
+        core.pins.publish([])
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await chatRow(parts.chats, "a")?.isPinned == true)
+
+        // Новый вход подписывается заново и сразу получает текущий список.
+        await parts.sync.startEvents(core)
+        #expect(await eventually { await chatRow(parts.chats, "a")?.isPinned == false })
+        #expect(core.pins.subscriberCount == 1)
+        await parts.sync.stopEvents()
+    }
+
+    @Test("Клиент ядра передаёт закреплённые и ошибку ядра")
+    func pinsThroughClient() async throws {
+        let core = FakeMaxCore()
+        let client = MaxAPIClient(core: core)
+        #expect(await client.setPinnedChats(["x", "y"]) == .success(["x", "y"]))
+        #expect(await core.pinRequests == [["x", "y"]])
+        await core.setPinError(CoreFailure(kind: "NETWORK", key: nil))
+        #expect(await client.setPinnedChats(["y"]) == .failure(.offline))
     }
 
     @Test("Ручная пометка «непрочитано» хранится и снимается")

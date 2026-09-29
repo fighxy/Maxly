@@ -14,6 +14,9 @@ public actor SyncEngine {
 
     private var pollTask: Task<Void, Never>?
     private var eventTask: Task<Void, Never>?
+    /// Подписка на закреплённые чаты ядра. Создаётся заново при каждом `startEvents`:
+    /// ядро сразу присылает текущий список, так что вход, случившийся до подписки, не теряется.
+    private var pinsTask: Task<Void, Never>?
     /// Пока ложь, подписка на пуши молчит. Прямой `consume` для тестов это не смотрит.
     private var acceptEvents = false
     /// Сколько пушей из потока сейчас пишется в базу. `stopEvents` ждёт, пока их не станет.
@@ -64,6 +67,7 @@ public actor SyncEngine {
     /// Подписка на пуши ядра. Повторный вызов снова включает запись: поток горячий и живёт вместе с клиентом.
     public func startEvents(_ core: any MaxCore) {
         acceptEvents = true
+        watchPins(core)
         guard eventTask == nil else { return }
         // Сильная ссылка берётся только на время одного пуша: поток ядра бесконечен.
         eventTask = Task { [weak self] in
@@ -79,6 +83,10 @@ public actor SyncEngine {
     /// заканчивается до возврата, чтобы не лечь поверх очистки базы.
     public func stopEvents() async {
         acceptEvents = false
+        let pins = pinsTask
+        pinsTask = nil
+        pins?.cancel()
+        await pins?.value
         guard eventsInFlight > 0 else { return }
         await withCheckedContinuation { continuation in
             idleWaiters.append(continuation)
@@ -220,6 +228,27 @@ public actor SyncEngine {
 
     private func coreEvents(_ core: any MaxCore) -> AsyncStream<CoreEvent> {
         core.events()
+    }
+
+    /// Закреплённые с сервера: вход, свой запрос и изменения с других устройств.
+    private func watchPins(_ core: any MaxCore) {
+        pinsTask?.cancel()
+        let stream = core.pinnedChats()
+        pinsTask = Task { [weak self] in
+            for await ids in stream {
+                guard !Task.isCancelled, let self else { return }
+                await self.applyPins(ids)
+            }
+        }
+    }
+
+    private func applyPins(_ ids: [String]) async {
+        guard acceptEvents, !Task.isCancelled else { return }
+        do {
+            try await chats.applyServerPins(ids)
+        } catch {
+            Log.warning(.sync, "Закреплённые с сервера не записаны: \(error)")
+        }
     }
 
     private func startPolling() {
