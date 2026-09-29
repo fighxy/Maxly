@@ -24,6 +24,8 @@ public final class ChatListViewModel {
     public private(set) var connection: ConnectionState
     /// Чат, открытый сейчас на экране. Его новые сообщения сразу отмечаются прочитанными.
     public private(set) var openChatId: String?
+    /// Идёт догрузка после восстановления соединения: плашка говорит «Обновление…».
+    public private(set) var isCatchingUp = false
 
     /// Первое значение из репозитория уже пришло.
     private var hasSnapshot = false
@@ -65,7 +67,7 @@ public final class ChatListViewModel {
     public var banner: String? {
         guard content != .offline else { return nil }
         switch connection {
-        case .online: return nil
+        case .online: return isCatchingUp && content == .list ? "Обновление…" : nil
         case .connecting: return "Подключение…"
         case .offline: return "Нет соединения. Показаны сохранённые чаты"
         }
@@ -99,7 +101,12 @@ public final class ChatListViewModel {
             watches.append(Task { [weak self] in
                 for await state in states {
                     guard let self else { return }
+                    let previous = self.connection
                     self.connection = state
+                    if state == .online, previous != .online, self.hasRefreshed {
+                        // Связь вернулась после обрыва: список мог устареть, догружаем сразу.
+                        await self.catchUp()
+                    }
                 }
             })
         }
@@ -136,6 +143,12 @@ public final class ChatListViewModel {
         guard let chatId else { return }
         if let chat = chats.first(where: { $0.id == chatId }), chat.unreadCount == 0 { return }
         await markRead(chatId)
+    }
+
+    private func catchUp() async {
+        isCatchingUp = true
+        defer { isCatchingUp = false }
+        await refresh()
     }
 
     public func dismissError() {

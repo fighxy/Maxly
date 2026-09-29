@@ -11,10 +11,18 @@ struct ChatListView: View {
     var body: some View {
         List(selection: $selection) {
             if let banner = viewModel.banner {
-                Label(banner, systemImage: "wifi.exclamationmark")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .listRowSeparator(.hidden)
+                HStack(spacing: 8) {
+                    if viewModel.connection == .offline {
+                        Image(systemName: "wifi.slash")
+                    } else {
+                        ProgressView().controlSize(.small)
+                    }
+                    Text(banner)
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .listRowSeparator(.hidden)
+                .accessibilityElement(children: .combine)
             }
             if let message = viewModel.inlineError {
                 Button {
@@ -37,6 +45,9 @@ struct ChatListView: View {
                 .tag(item.id)
             }
         }
+        // Новое сообщение поднимает строку наверх плавно, а не скачком.
+        .animation(.default, value: viewModel.items)
+        .animation(.default, value: viewModel.banner)
         .navigationTitle("Чаты")
         .overlay { placeholder }
         .toolbar {
