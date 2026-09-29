@@ -43,16 +43,30 @@ log_pid=$!
 sleep 2
 
 touch "$out/started"
-if ! xcrun simctl launch "$udid" "$bundle"; then
-  echo "::error::Orbitl не запустился"
-fi
+# simctl launch печатает «app.orbitl.ios: <pid>»; процессы симулятора — процессы хоста.
+pid="$(xcrun simctl launch "$udid" "$bundle" | tee /dev/stderr | awk -F': ' -v b="$bundle" '$1 == b { print $2 }')"
+[[ -n "$pid" ]] || echo "::error::Orbitl не запустился"
 sleep "$wait_seconds"
 
+# Жив, если жив его pid или launchd симулятора ещё держит задание приложения.
 alive=0
-if xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -q "UIKitApplication:$bundle"; then
+if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+  alive=1
+elif xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -q "UIKitApplication:$bundle"; then
   alive=1
 fi
 kill "$log_pid" >/dev/null 2>&1
+
+if [[ "$alive" != 1 ]]; then
+  # Причина завершения (runningboardd, SpringBoard, launchd): сбой, watchdog, jetsam или выход.
+  echo "::group::Завершение процесса (pid ${pid:-?})"
+  ps -p "${pid:-0}" -o pid,stat,etime,command 2>/dev/null || echo "(процесса $pid нет)"
+  xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -i orbitl || echo "(в launchctl list нет задания Orbitl)"
+  xcrun simctl spawn "$udid" log show --last 3m --style compact --predicate \
+    '(process == "runningboardd" OR process == "SpringBoard" OR process == "launchd" OR process == "ReportCrash") AND (eventMessage CONTAINS[c] "orbitl" OR eventMessage CONTAINS[c] "'"${pid:-orbitl}"'")' \
+    2>/dev/null | grep -Ei "termin|exit|kill|crash|watchdog|jetsam|signal|reason|invalidat" | tail -n 80
+  echo "::endgroup::"
+fi
 
 # Собственный журнал Orbitl (Application Support/Logs): фазы входа и ядра, соединение, ошибки.
 container="$(xcrun simctl get_app_container "$udid" "$bundle" data 2>/dev/null)"
