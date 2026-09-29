@@ -25,6 +25,8 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
 
     private struct Observer {
         let chatId: String
+        /// Пустая строка — основная лента, иначе id поста.
+        let threadOf: String
         let continuation: AsyncStream<[Message]>.Continuation
     }
 
@@ -85,9 +87,17 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// Сообщения чата от старых к новым, в пределах текущего окна.
     /// Первое значение приходит сразу из кэша.
     public nonisolated func messages(chatId: String) -> AsyncStream<[Message]> {
+        stream(chatId: chatId, threadOf: "")
+    }
+
+    public nonisolated func comments(chatId: String, postId: String) -> AsyncStream<[Message]> {
+        stream(chatId: chatId, threadOf: postId)
+    }
+
+    private nonisolated func stream(chatId: String, threadOf: String) -> AsyncStream<[Message]> {
         AsyncStream { continuation in
             let id = UUID()
-            Task { await self.addObserver(id, chatId: chatId, continuation) }
+            Task { await self.addObserver(id, chatId: chatId, threadOf: threadOf, continuation) }
             continuation.onTermination = { _ in
                 Task { await self.removeObserver(id) }
             }
@@ -106,7 +116,22 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// Оптимистичная отправка: сообщение сразу попадает в базу со статусом `sending`
     /// и ставится в очередь. Результат отправки подписчики увидят через смену статуса.
     public func send(text: String, chatId: String) async throws(OrbitleError) {
+        try await send(text: text, chatId: chatId, replyTo: nil)
+    }
+
+    /// Текст уходит в очередь. Цитата хранится локально: фасад пока отправляет только текст.
+    public func send(text: String, chatId: String, replyTo: String?) async throws(OrbitleError) {
         let localId = "local-\(UUID().uuidString)"
+        var content = MessageContent.empty
+        if let replyTo, let target = (try? message(id: replyTo)) ?? (try? message(serverId: replyTo)) {
+            let quoted = Self.record(target).domain
+            content.reply = MessageReply(
+                messageId: quoted.serverId ?? quoted.id,
+                authorName: "Сообщение",
+                preview: quoted.replySnippet,
+                kind: quoted.replyKind
+            )
+        }
         let message = SDMessage(
             id: localId,
             chatId: chatId,
@@ -115,6 +140,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             timestamp: .now,
             status: .sending
         )
+        message.contentJSON = MessageContentCodec.encode(content)
         do {
             message.chat = try chat(id: chatId)
             modelContext.insert(message)
@@ -125,6 +151,65 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         notify(chatId: chatId)
         await outgoingHandler?(.queued(Self.record(message)))
         await outbox?.enqueue(localId)
+    }
+
+    public func setReaction(messageId: String, emoji: String) async throws(OrbitleError) {
+        do {
+            guard let message = try message(id: messageId) ?? message(serverId: messageId) else { return }
+            var content = Self.content(of: message)
+            content.reactions = content.reactions.toggled(emoji)
+            message.contentJSON = MessageContentCodec.encode(content)
+            try modelContext.save()
+            notify(chatId: message.chatId)
+        } catch {
+            throw .storageError
+        }
+    }
+
+    public func sendComment(text: String, chatId: String, postId: String) async throws(OrbitleError) {
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { return }
+        let message = SDMessage(
+            id: "local-\(UUID().uuidString)",
+            chatId: chatId,
+            authorId: currentUserId,
+            text: body,
+            timestamp: .now,
+            status: .sent
+        )
+        message.contentJSON = MessageContentCodec.encode(MessageContent(threadOf: postId))
+        message.threadOf = postId
+        do {
+            message.chat = try chat(id: chatId)
+            modelContext.insert(message)
+            if let parent = try message(id: postId) ?? message(serverId: postId) {
+                var parentContent = Self.content(of: parent)
+                parentContent.comments = CommentSummary(count: (parentContent.comments?.count ?? 0) + 1)
+                parent.contentJSON = MessageContentCodec.encode(parentContent)
+            }
+            try modelContext.save()
+        } catch {
+            throw .storageError
+        }
+        notify(chatId: chatId)
+    }
+
+    public func noteDownloaded(messageId: String, attachmentId: String, localPath: String) async {
+        guard let message = try? message(id: messageId) ?? message(serverId: messageId) else { return }
+        var content = Self.content(of: message)
+        content = content.settingLocalPath(localPath, attachmentId: attachmentId)
+        message.contentJSON = MessageContentCodec.encode(content)
+        try? modelContext.save()
+        notify(chatId: message.chatId)
+    }
+
+    /// Комментарии поста, от старых к новым.
+    public func commentPage(chatId: String, postId: String) throws(OrbitleError) -> [Message] {
+        do {
+            return try fetchThread(chatId: chatId, threadOf: postId, limit: 200).map { Self.record($0).domain }
+        } catch {
+            throw .storageError
+        }
     }
 
     /// Повторная отправка сообщения со статусом `failed`.
@@ -209,6 +294,11 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
                     message.text = record.text
                     message.status = record.status
                     message.mediaId = record.mediaId
+                    // Пустой фрагмент значит «фасад его не прислал», а не «вложений больше нет».
+                    if !record.contentJSON.isEmpty {
+                        message.contentJSON = record.contentJSON
+                        message.threadOf = record.threadOf
+                    }
                     if let serverId = record.serverId {
                         message.serverId = serverId
                         byServerId[serverId] = message
@@ -224,6 +314,8 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
                         mediaId: record.mediaId,
                         serverId: record.serverId ?? record.id
                     )
+                    message.contentJSON = record.contentJSON
+                    message.threadOf = record.threadOf
                     message.chat = chatRows[record.chatId]
                     modelContext.insert(message)
                     byId[record.id] = message
@@ -391,15 +483,27 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
 
     private func fetchPage(chatId: String, before: Date?, limit: Int) throws -> [SDMessage] {
         let id = chatId
+        let root = ""
         let predicate: Predicate<SDMessage>
         if let cursor = before {
-            predicate = #Predicate { $0.chatId == id && $0.timestamp < cursor }
+            predicate = #Predicate { $0.chatId == id && $0.threadOf == root && $0.timestamp < cursor }
         } else {
-            predicate = #Predicate { $0.chatId == id }
+            predicate = #Predicate { $0.chatId == id && $0.threadOf == root }
         }
         var descriptor = FetchDescriptor<SDMessage>(
             predicate: predicate,
             sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+        )
+        descriptor.fetchLimit = limit
+        return try modelContext.fetch(descriptor)
+    }
+
+    private func fetchThread(chatId: String, threadOf: String, limit: Int) throws -> [SDMessage] {
+        let id = chatId
+        let thread = threadOf
+        var descriptor = FetchDescriptor<SDMessage>(
+            predicate: #Predicate { $0.chatId == id && $0.threadOf == thread },
+            sortBy: [SortDescriptor(\.timestamp, order: .forward)]
         )
         descriptor.fetchLimit = limit
         return try modelContext.fetch(descriptor)
@@ -413,9 +517,9 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
 
     /// Подписчик мог уйти раньше, чем эта задача добралась до актора: тогда его снятие
     /// уже отработало, и сохранять его нельзя.
-    private func addObserver(_ id: UUID, chatId: String, _ continuation: AsyncStream<[Message]>.Continuation) {
-        if case .terminated = continuation.yield(snapshot(chatId: chatId)) { return }
-        observers[id] = Observer(chatId: chatId, continuation: continuation)
+    private func addObserver(_ id: UUID, chatId: String, threadOf: String, _ continuation: AsyncStream<[Message]>.Continuation) {
+        if case .terminated = continuation.yield(snapshot(chatId: chatId, threadOf: threadOf)) { return }
+        observers[id] = Observer(chatId: chatId, threadOf: threadOf, continuation: continuation)
     }
 
     private func removeObserver(_ id: UUID) {
@@ -425,21 +529,37 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     private func notify(chatId: String) {
         let targets = observers.values.filter { $0.chatId == chatId }
         guard !targets.isEmpty else { return }
-        let messages = snapshot(chatId: chatId)
+        var cache: [String: [Message]] = [:]
         for observer in targets {
-            observer.continuation.yield(messages)
+            if cache[observer.threadOf] == nil {
+                cache[observer.threadOf] = snapshot(chatId: chatId, threadOf: observer.threadOf)
+            }
+            if let messages = cache[observer.threadOf] {
+                observer.continuation.yield(messages)
+            }
         }
     }
 
-    /// Последние `windows[chatId]` сообщений, от старых к новым.
-    private func snapshot(chatId: String) -> [Message] {
-        let limit = windows[chatId] ?? Self.pageSize
-        let newestFirst = (try? fetchPage(chatId: chatId, before: nil, limit: limit)) ?? []
-        return newestFirst.reversed().map { Self.record($0).domain }
+    /// Основная лента — последние сообщения окна от старых к новым. Тред — хронологически.
+    private func snapshot(chatId: String, threadOf: String) -> [Message] {
+        if threadOf.isEmpty {
+            let limit = windows[chatId] ?? Self.pageSize
+            let newestFirst = (try? fetchPage(chatId: chatId, before: nil, limit: limit)) ?? []
+            return newestFirst.reversed().map { Self.record($0).domain }
+        }
+        let rows = (try? fetchThread(chatId: chatId, threadOf: threadOf, limit: 200)) ?? []
+        return rows.map { Self.record($0).domain }
+    }
+
+    private static func content(of message: SDMessage) -> MessageContent {
+        var content = MessageContentCodec.decode(message.contentJSON)
+        if !message.threadOf.isEmpty { content.threadOf = message.threadOf }
+        return content
     }
 
     private static func record(_ message: SDMessage) -> MessageRecord {
-        MessageRecord(
+        let content = content(of: message)
+        return MessageRecord(
             id: message.id,
             serverId: message.serverId,
             chatId: message.chatId,
@@ -447,7 +567,9 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             text: message.text,
             timestamp: message.timestamp,
             status: message.status,
-            mediaId: message.mediaId
+            mediaId: message.mediaId,
+            contentJSON: MessageContentCodec.encode(content),
+            threadOf: content.threadOf ?? ""
         )
     }
 }
