@@ -167,6 +167,11 @@ func phase(of session: SessionManager) async -> AuthPhase {
     return .restoring
 }
 
+func isSuccess(_ result: Result<Void, MaxAPIError>) -> Bool {
+    if case .success = result { return true }
+    return false
+}
+
 @Suite("Ядро и маппинг")
 struct CoreMappingTests {
     @Test("Миллисекунды Unix переживают круг через Date")
@@ -280,12 +285,12 @@ struct MaxAPIClientTests {
         let client = MaxAPIClient(core: core)
         let skipped = await client.markRead(chatId: "1", messageId: nil)
         let empty = await client.markRead(chatId: "1", messageId: "")
-        #expect(skipped == .success(()))
-        #expect(empty == .success(()))
+        #expect(isSuccess(skipped))
+        #expect(isSuccess(empty))
         #expect(await core.marked.isEmpty)
 
         let marked = await client.markRead(chatId: "1", messageId: "55")
-        #expect(marked == .success(()))
+        #expect(isSuccess(marked))
         #expect(await core.marked == ["55"])
 
         await core.failSend()
@@ -304,6 +309,12 @@ extension FakeMaxCore {
 
     func failSend() { sendError = CoreFailure(kind: "NETWORK", key: nil) }
     func failSession() { loadError = CoreFailure(kind: "SESSION_EXPIRED", key: nil) }
+    func setUser(_ id: String) { userId = id }
+    func setStoredToken(_ value: Bool) { storedToken = value }
+    func setStartPhase(_ phase: CorePhase) { startPhase = phase }
+    func setStartError(_ error: CoreFailure?) { startError = error }
+    func setAuthStep(_ step: CoreAuthStep) { authStep = step }
+    func setAuthError(_ error: CoreFailure?) { authError = error }
 }
 
 @Suite("Сессия")
@@ -311,9 +322,9 @@ struct SessionManagerTests {
     @Test("Готовое ядро показывает чаты и запоминает пользователя")
     func restoreReady() async throws {
         try await withSession { parts in
-            await parts.core.userId = "42"
-            await parts.core.storedToken = true
-            await parts.api.chats = [makeChat()]
+            await parts.core.setUser("42")
+            await parts.core.setStoredToken(true)
+            await parts.api.setChats([makeChat()])
             await parts.session.restoreSession()
             #expect(await phase(of: parts.session) == .signedIn(userId: "42"))
             let chats = await snapshot(parts.chats)
@@ -328,8 +339,8 @@ struct SessionManagerTests {
     func tokenRejectedKeepsCache() async throws {
         try await withSession { parts in
             try await parts.chats.upsert([makeChat(id: "keep")])
-            await parts.core.startPhase = .tokenRejected
-            await parts.core.storedToken = true
+            await parts.core.setStartPhase(.tokenRejected)
+            await parts.core.setStoredToken(true)
             await parts.session.restoreSession()
             #expect(await phase(of: parts.session) == .expired)
             let kept = await snapshot(parts.chats)
@@ -344,8 +355,8 @@ struct SessionManagerTests {
         try await withSession { parts in
             parts.defaults.set("u1", forKey: SessionManager.userDefaultsKey)
             try await parts.chats.upsert([makeChat(id: "cached")])
-            await parts.core.storedToken = true
-            await parts.core.startError = CoreFailure(kind: "NETWORK", key: nil)
+            await parts.core.setStoredToken(true)
+            await parts.core.setStartError(CoreFailure(kind: "NETWORK", key: nil))
             await parts.session.restoreSession()
             #expect(await phase(of: parts.session) == .signedIn(userId: "u1"))
             let cached = await snapshot(parts.chats)
@@ -357,8 +368,8 @@ struct SessionManagerTests {
     @Test("Выход стирает чаты, медиа и id")
     func logoutClears() async throws {
         try await withSession { parts in
-            await parts.core.userId = "42"
-            await parts.api.chats = [makeChat()]
+            await parts.core.setUser("42")
+            await parts.api.setChats([makeChat()])
             await parts.session.restoreSession()
             await parts.session.logout()
             #expect(await phase(of: parts.session) == .signedOut)
@@ -374,8 +385,8 @@ struct SessionManagerTests {
         try await withSession { parts in
             parts.defaults.set("user-a", forKey: SessionManager.userDefaultsKey)
             try await parts.chats.upsert([makeChat(id: "old")])
-            await parts.core.userId = "user-b"
-            await parts.api.chats = [makeChat(id: "fresh")]
+            await parts.core.setUser("user-b")
+            await parts.api.setChats([makeChat(id: "fresh")])
             await parts.session.restoreSession()
             let chats = await snapshot(parts.chats)
             #expect(chats.contains(where: { $0.id == "fresh" }))
@@ -390,7 +401,7 @@ struct SessionManagerTests {
         try await withSession { parts in
             parts.defaults.set("u1", forKey: SessionManager.userDefaultsKey)
             try await parts.chats.upsert([makeChat(id: "mine")])
-            await parts.core.userId = "u1"
+            await parts.core.setUser("u1")
             await parts.session.restoreSession()
             let mine = await snapshot(parts.chats)
             #expect(mine.contains(where: { $0.id == "mine" }))
@@ -404,16 +415,16 @@ struct SessionManagerTests {
             try await parts.session.requestCode(phone: "+79990001122")
             #expect(await phase(of: parts.session) == .codeSent(codeLength: 6))
 
-            await parts.core.authStep = .password(trackId: "track", hint: "смс")
+            await parts.core.setAuthStep(.password(trackId: "track", hint: "смс"))
             try await parts.session.verifyCode("1234")
             #expect(await phase(of: parts.session) == .password(hint: "смс"))
 
-            await parts.core.authStep = .register(token: "reg")
+            await parts.core.setAuthStep(.register(token: "reg"))
             try await parts.session.submitPassword("secret")
             #expect(await phase(of: parts.session) == .registration)
 
-            await parts.core.authStep = .loggedIn(userId: "7")
-            await parts.core.userId = "7"
+            await parts.core.setAuthStep(.loggedIn(userId: "7"))
+            await parts.core.setUser("7")
             try await parts.session.register(firstName: "Иван", lastName: "К")
             #expect(await phase(of: parts.session) == .signedIn(userId: "7"))
         }
@@ -425,15 +436,19 @@ struct SessionManagerTests {
             do {
                 try await parts.session.resendCode()
                 Issue.record("повтор без номера")
-            } catch {
+            } catch let error as OrbitlError {
                 #expect(error == .invalidRequest)
+            } catch {
+                Issue.record("повтор \(error)")
             }
-            await parts.core.authError = CoreFailure(kind: "NETWORK", key: nil)
+            await parts.core.setAuthError(CoreFailure(kind: "NETWORK", key: nil))
             do {
                 try await parts.session.requestCode(phone: "+7")
                 Issue.record("сеть")
-            } catch {
+            } catch let error as OrbitlError {
                 #expect(error == .networkUnavailable)
+            } catch {
+                Issue.record("сеть \(error)")
             }
         }
     }
