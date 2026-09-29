@@ -339,10 +339,12 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
 
     private func watchCore() {
         guard coreWatch == nil else { return }
+        // Сильная ссылка берётся только на время одной фазы: поток ядра бесконечен,
+        // и сессия не должна жить из-за него вечно.
         coreWatch = Task { [weak self] in
-            guard let self else { return }
-            let phases = await self.corePhases()
+            guard let phases = await self?.corePhases() else { return }
             for await next in phases {
+                guard let self else { return }
                 await self.observe(next)
             }
         }
