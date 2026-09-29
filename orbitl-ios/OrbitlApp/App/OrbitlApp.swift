@@ -1,12 +1,13 @@
 import SwiftUI
 
-/// Точка входа приложения.
-// TODO: собрать AppContainer, передать зависимости через @Environment.
 @main
 struct OrbitlApp: App {
+    @State private var container = AppContainer()
+    @State private var router = AppRouter()
+
     var body: some Scene {
         WindowGroup {
-            Text("Orbitl")
+            RootView(container: container, router: router)
         }
     }
 }

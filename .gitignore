@@ -1,0 +1,6 @@
+.build/
+orbitl-ios/Vendor/
+.swiftpm/
+xcuserdata/
+*.xcuserstate
+DerivedData/
