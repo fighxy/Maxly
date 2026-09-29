@@ -51,7 +51,9 @@ enum CoreMapping {
         case "SESSION_EXPIRED":
             return .sessionExpired
         case "AUTH":
-            return .rejected("Неверный пароль")
+            // Отказ шага входа. Вход переводит его сам (`AuthErrors`) с текстом для шага,
+            // а вне входа это просто отклонённый запрос, а не «неверный пароль».
+            return .invalidResponse
         case "SERVER", "UPLOAD":
             return .server(code: failure.key ?? failure.kind)
         case "NOT_FOUND":
