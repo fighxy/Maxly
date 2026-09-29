@@ -14,10 +14,13 @@ import OrbitlDomain
 /// и ставится в `OutboxQueue`. Очередь сообщает результат через `OutboxStore`:
 /// при успехе статус `sent` и `serverId`, при ошибке `failed`.
 ///
-/// Swift 6: это `@ModelActor` со своим фоновым контекстом. Модели SwiftData
-/// не покидают актор, наружу выходят доменные модели и `MessageRecord`.
-@ModelActor
-public actor MessageRepositoryImpl: MessageRepository, OutboxStore {
+/// Swift 6: это `ModelActor` со своим фоновым контекстом. Макрос `@ModelActor`
+/// не умеет инициализатор с `api`, поэтому `modelExecutor` и `modelContainer`
+/// заданы явно. Модели SwiftData не покидают актор.
+public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
+    public nonisolated let modelContainer: ModelContainer
+    public nonisolated let modelExecutor: any ModelExecutor
+
     public static let pageSize = 50
 
     private struct Observer {

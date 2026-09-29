@@ -11,7 +11,7 @@ public enum StorageError: Error {
 ///
 /// Один экземпляр на приложение, создаётся в `AppContainer`. Главный контекст
 /// нужен только для чтения на главном акторе. Все записи идут через репозитории
-/// с `@ModelActor`, у каждого из которых свой фоновый контекст.
+/// с `ModelActor`, у каждого из которых свой фоновый контекст.
 public final class SwiftDataStack: Sendable {
     /// Все модели локальной базы. Новую модель нужно добавить сюда.
     static var schema: Schema {
@@ -64,7 +64,7 @@ public final class SwiftDataStack: Sendable {
     }
 
     /// Новый контекст для разовой работы вне главного актора.
-    /// Для постоянной фоновой работы используйте репозитории с `@ModelActor`.
+    /// Для постоянной фоновой работы используйте репозитории с `ModelActor`.
     public func makeContext() -> ModelContext {
         ModelContext(container)
     }
