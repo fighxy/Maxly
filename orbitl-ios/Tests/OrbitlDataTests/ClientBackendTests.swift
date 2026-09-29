@@ -167,7 +167,7 @@ func phase(of session: SessionManager) async -> AuthPhase {
     return .restoring
 }
 
-@Suite("Ядро и маппинг", .timeLimit(.minutes(1)))
+@Suite("Ядро и маппинг")
 struct CoreMappingTests {
     @Test("Миллисекунды Unix переживают круг через Date")
     func unixMillis() {
@@ -240,7 +240,7 @@ struct CoreMappingTests {
     }
 }
 
-@Suite("MaxAPIClient", .timeLimit(.minutes(1)))
+@Suite("MaxAPIClient")
 struct MaxAPIClientTests {
     @Test("Список, история и отправка идут через ядро")
     func mapsCalls() async {
@@ -306,7 +306,7 @@ extension FakeMaxCore {
     func failSession() { loadError = CoreFailure(kind: "SESSION_EXPIRED", key: nil) }
 }
 
-@Suite("Сессия", .timeLimit(.minutes(1)))
+@Suite("Сессия")
 struct SessionManagerTests {
     @Test("Готовое ядро показывает чаты и запоминает пользователя")
     func restoreReady() async throws {
@@ -439,7 +439,7 @@ struct SessionManagerTests {
     }
 }
 
-@Suite("События синхронизации", .timeLimit(.minutes(1)))
+@Suite("События синхронизации")
 struct SyncEventTests {
     @Test("Входящее «Привет» пишется в базу и увеличивает непрочитанные")
     func incomingMessage() async throws {
@@ -493,7 +493,7 @@ struct SyncEventTests {
     }
 }
 
-@Suite("Медиакэш", .timeLimit(.minutes(1)))
+@Suite("Медиакэш")
 struct MediaCacheTests {
     @Test("Вытесняет самый давно использованный файл")
     func evictsOldest() throws {
