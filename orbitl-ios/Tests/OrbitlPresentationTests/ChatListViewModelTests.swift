@@ -88,6 +88,27 @@ struct ChatListStateTests {
         #expect(await repository.refreshCount == 2)
     }
 
+    @Test("После восстановления связи список догружается, плашка говорит «Обновление…»")
+    func catchUpAfterReconnect() async {
+        let connection = FakeConnection()
+        let (model, repository) = makeList(connection: connection)
+        repository.emit([chat("a", at: 1)])
+        connection.emit(.online)
+        #expect(await eventually { model.connection == .online })
+        await model.refresh()
+        #expect(await repository.refreshCount == 1)
+
+        connection.emit(.offline)
+        #expect(await eventually { model.connection == .offline })
+        let gate = Gate()
+        await repository.set(refreshGate: gate)
+        connection.emit(.online)
+        #expect(await eventually { model.banner == "Обновление…" })
+        await gate.open()
+        #expect(await eventually { model.banner == nil && !model.isCatchingUp })
+        #expect(await repository.refreshCount == 2)
+    }
+
     @Test("Отмена обновления не показывается")
     func cancelledRefresh() async {
         let (model, repository) = makeList()
