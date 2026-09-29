@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "OrbitlDomain", targets: ["OrbitlDomain"]),
         .library(name: "OrbitlData", targets: ["OrbitlData"]),
         .library(name: "OrbitlUI", targets: ["OrbitlUI"]),
+        .library(name: "OrbitlPresentation", targets: ["OrbitlPresentation"]),
     ],
     dependencies: [],
     targets: [
@@ -23,6 +24,9 @@ let package = Package(
             exclude: ["Storage/README.md"]
         ),
         .target(name: "OrbitlUI", dependencies: ["OrbitlDomain"]),
+        // ViewModel экранов: чистый Swift поверх протоколов домена, без SwiftUI и ядра.
+        // Так логика экранов проходит `swift test` без Xcode-таргета приложения.
+        .target(name: "OrbitlPresentation", dependencies: ["OrbitlDomain"]),
         .testTarget(name: "OrbitlDomainTests", dependencies: ["OrbitlDomain"]),
         .testTarget(
             name: "OrbitlDataTests",
@@ -30,5 +34,6 @@ let package = Package(
             exclude: ["Info.plist"]
         ),
         .testTarget(name: "OrbitlUITests", dependencies: ["OrbitlUI"]),
+        .testTarget(name: "OrbitlPresentationTests", dependencies: ["OrbitlPresentation"]),
     ]
 )
