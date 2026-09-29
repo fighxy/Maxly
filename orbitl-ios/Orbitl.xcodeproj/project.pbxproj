@@ -87,6 +87,7 @@
 				AA0000000000000000000019 /* Check MaxIos */,
 				AA0000000000000000000002 /* Sources */,
 				AA0000000000000000000003 /* Frameworks */,
+				AA000000000000000000001C /* Resources */,
 			);
 			buildRules = (
 			);
@@ -144,6 +145,16 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AA000000000000000000001C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
 		AA0000000000000000000019 /* Check MaxIos */ = {
