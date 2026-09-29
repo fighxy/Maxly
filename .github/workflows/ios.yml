@@ -5,12 +5,12 @@ on:
   push:
     branches: [main]
     paths:
-      - "orbitl-ios/**"
+      - "orbitle-ios/**"
       - "scripts/**"
       - ".github/workflows/ios.yml"
   pull_request:
     paths:
-      - "orbitl-ios/**"
+      - "orbitle-ios/**"
       - "scripts/**"
       - ".github/workflows/ios.yml"
 
@@ -32,11 +32,11 @@ jobs:
           swift --version
       - name: Test libraries
         run: |
-          swift test --package-path orbitl-ios \
+          swift test --package-path orbitle-ios \
             -Xlinker=-sectcreate \
             -Xlinker=__TEXT \
             -Xlinker=__info_plist \
-            -Xlinker="$GITHUB_WORKSPACE/orbitl-ios/Tests/OrbitlDataTests/Info.plist"
+            -Xlinker="$GITHUB_WORKSPACE/orbitle-ios/Tests/OrbitleDataTests/Info.plist"
       - name: Test IPA validation
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Crash reports
@@ -93,16 +93,16 @@ jobs:
         run: bash scripts/fetch-core.sh
       # Подпись ad-hoc нужна симулятору для Keychain: без неё ядро не создаётся, и запуск
       # не доходит до подключения к серверу.
-      - name: Build Orbitl
+      - name: Build Orbitle
         if: steps.token.outputs.present == 'true'
-        run: xcodebuild -project orbitl-ios/Orbitl.xcodeproj -scheme Orbitl -destination 'generic/platform=iOS Simulator' -derivedDataPath build/sim ARCHS=arm64 CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- build
+        run: xcodebuild -project orbitle-ios/Orbitle.xcodeproj -scheme Orbitle -destination 'generic/platform=iOS Simulator' -derivedDataPath build/sim ARCHS=arm64 CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- build
       # Запуск в симуляторе ловит падения, которых не видно при сборке. Если приложение
       # закрылось, шаг печатает отчёт о сбое (стек) и журнал приложения.
       - name: Launch in Simulator
         if: steps.token.outputs.present == 'true'
         env:
-          ORBITL_SIM_RUNTIME: "26.2"
-        run: bash scripts/smoke-launch.sh build/sim/Build/Products/Debug-iphonesimulator/Orbitl.app
+          ORBITLE_SIM_RUNTIME: "26.2"
+        run: bash scripts/smoke-launch.sh build/sim/Build/Products/Debug-iphonesimulator/Orbitle.app
       # Неподписанный .ipa для iPhone: подписать его можно своим сертификатом
       # (Sideloadly, AltStore, eSign и т. п.) и поставить на устройство.
       - name: Build unsigned IPA
@@ -111,26 +111,26 @@ jobs:
         if: ${{ !cancelled() && steps.token.outputs.present == 'true' }}
         run: |
           set -euo pipefail
-          xcodebuild -project orbitl-ios/Orbitl.xcodeproj -scheme Orbitl -configuration Release \
+          xcodebuild -project orbitle-ios/Orbitle.xcodeproj -scheme Orbitle -configuration Release \
             -destination 'generic/platform=iOS' -derivedDataPath build/device ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
-          app="build/device/Build/Products/Release-iphoneos/Orbitl.app"
+          app="build/device/Build/Products/Release-iphoneos/Orbitle.app"
           test -d "$app"
           # Стекло iOS 26 действительно в сборке: бинарник ссылается на API SwiftUI iOS 26.
-          glass="$(nm -u "$app/Orbitl" | grep -c -E 'glassEffect|GlassProminent' || true)"
-          echo "Символов стекла iOS 26 в Orbitl: $glass"
+          glass="$(nm -u "$app/Orbitle" | grep -c -E 'glassEffect|GlassProminent' || true)"
+          echo "Символов стекла iOS 26 в Orbitle: $glass"
           if [ "$glass" -eq 0 ]; then echo "::error::В сборке нет кода iOS 26 (glassEffect)"; exit 1; fi
-          rm -rf build/ipa build/Orbitl.ipa && mkdir -p build/ipa/Payload
+          rm -rf build/ipa build/Orbitle.ipa && mkdir -p build/ipa/Payload
           cp -R "$app" build/ipa/Payload/
-          (cd build/ipa && zip -qry ../Orbitl.ipa Payload)
-          python3 scripts/validate-ipa.py build/Orbitl.ipa --alternate-icon AppIconLight --alternate-icon AppIconBlue
-          ls -lh build/Orbitl.ipa
+          (cd build/ipa && zip -qry ../Orbitle.ipa Payload)
+          python3 scripts/validate-ipa.py build/Orbitle.ipa --alternate-icon AppIconLight --alternate-icon AppIconBlue
+          ls -lh build/Orbitle.ipa
       - name: Upload IPA
         if: ${{ !cancelled() && steps.ipa.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
-          name: Orbitl-unsigned-ipa-${{ github.sha }}
-          path: build/Orbitl.ipa
+          name: Orbitle-unsigned-ipa-${{ github.sha }}
+          path: build/Orbitle.ipa
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
@@ -144,12 +144,12 @@ jobs:
         run: |
           set -euo pipefail
           short="${GITHUB_SHA::7}"
-          ipa="build/Orbitl-${short}.ipa"
-          cp build/Orbitl.ipa "$ipa"
+          ipa="build/Orbitle-${short}.ipa"
+          cp build/Orbitle.ipa "$ipa"
           gh release delete "build-${short}" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
           gh release create "build-${short}" "$ipa" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --prerelease --title "Orbitl ${short}" \
-            --notes "Неподписанная сборка ${GITHUB_SHA}. Скачайте Orbitl-${short}.ipa в Safari на iPhone и откройте в eSign."
+            --prerelease --title "Orbitle ${short}" \
+            --notes "Неподписанная сборка ${GITHUB_SHA}. Скачайте Orbitle-${short}.ipa в Safari на iPhone и откройте в eSign."
           gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
             --jq '[.[] | select(.tagName | startswith("build-"))] | sort_by(.createdAt) | reverse | .[5:] | .[].tagName' |
             while read -r old; do
