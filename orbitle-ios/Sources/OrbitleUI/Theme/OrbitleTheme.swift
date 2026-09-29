@@ -10,6 +10,8 @@ public enum OrbitleTheme {
     /// Аватар контактов и звонков.
     public static let smallAvatar: CGFloat = 50
     public static let radius: CGFloat = 18
+    /// Доля ширины ленты, которую занимает пузырь.
+    public static let bubbleMax: CGFloat = 0.78
     /// Отступ разделителя строки: от начала текста, а не от края.
     public static let separatorInset: CGFloat = pad + avatar + 12
 }

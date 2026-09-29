@@ -107,14 +107,17 @@ enum CoreMapping {
     }
 
     static func message(_ message: CoreMessage) -> MessageRecord {
-        MessageRecord(
+        let content = MessageContentCodec.decode(message.contentJSON)
+        return MessageRecord(
             id: message.id,
             serverId: message.id,
             chatId: message.chatId,
             authorId: message.authorId,
             text: message.text,
             timestamp: Date(unixMillis: message.timeMs),
-            status: .sent
+            status: .sent,
+            contentJSON: MessageContentCodec.encode(content),
+            threadOf: content.threadOf ?? ""
         )
     }
 

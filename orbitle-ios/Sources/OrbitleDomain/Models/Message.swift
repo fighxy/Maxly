@@ -19,6 +19,7 @@ public struct Message: Identifiable, Hashable, Sendable {
     public var timestamp: Date
     public var status: MessageStatus
     public var mediaId: String?
+    public var content: MessageContent
 
     public init(
         id: String,
@@ -28,7 +29,8 @@ public struct Message: Identifiable, Hashable, Sendable {
         text: String,
         timestamp: Date,
         status: MessageStatus,
-        mediaId: String? = nil
+        mediaId: String? = nil,
+        content: MessageContent = .empty
     ) {
         self.id = id
         self.serverId = serverId
@@ -38,5 +40,25 @@ public struct Message: Identifiable, Hashable, Sendable {
         self.timestamp = timestamp
         self.status = status
         self.mediaId = mediaId
+        self.content = content
+    }
+
+    /// Короткая подпись для цитаты: текст, иначе вид вложения.
+    public var replySnippet: String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        if !content.voices.isEmpty { return "Голосовое сообщение" }
+        if content.attachments.contains(where: { $0.video != nil }) { return "Видео" }
+        if content.attachments.contains(where: { $0.photo != nil }) { return "Фото" }
+        return "Сообщение"
+    }
+
+    public var replyKind: MessageReply.Kind {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return .text }
+        if !content.voices.isEmpty { return .voice }
+        if content.attachments.contains(where: { $0.video != nil }) { return .video }
+        if content.attachments.contains(where: { $0.photo != nil }) { return .photo }
+        return .text
     }
 }

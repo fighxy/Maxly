@@ -17,6 +17,10 @@ final class SDMessage {
     var timestamp: Date
     var statusRaw: String
     var mediaId: String?
+    /// Канонический JSON ответа, вложений, реакций и комментариев. Пустая строка — фрагмента нет.
+    var contentJSON: String = ""
+    /// Id поста, если это комментарий. Пустая строка — сообщение основной ленты.
+    var threadOf: String = ""
 
     var chat: SDChat?
 

@@ -26,6 +26,8 @@ final class AppContainer {
     @ObservationIgnored private var session: SessionManager?
     @ObservationIgnored private var chats: ChatRepositoryImpl?
     @ObservationIgnored private var messages: MessageRepositoryImpl?
+    @ObservationIgnored private var media: MediaRepositoryImpl?
+    @ObservationIgnored private let voicePlayer = SystemVoicePlayer()
     @ObservationIgnored private var sync: SyncEngine?
     private let recentSearches = RecentSearchesStore()
     @ObservationIgnored private var authModel: AuthViewModel?
@@ -126,6 +128,7 @@ final class AppContainer {
             self.session = session
             self.chats = chats
             self.messages = messages
+            self.media = media
             self.sync = sync
             boot = .ready
             phaseTask = Task {
@@ -218,6 +221,11 @@ final class AppContainer {
         )
     }
 
+    /// Комментарии есть у постов канала.
+    func allowsComments(id: String) -> Bool {
+        listModel?.chat(id: id)?.type == .channel
+    }
+
     /// Заголовок экрана чата: из списка, а для нового диалога — имя контакта.
     func chatTitle(id: String) -> String {
         if listModel?.chat(id: id) == nil, let draft = dialogDrafts[id] { return draft.title }
@@ -230,7 +238,15 @@ final class AppContainer {
         let me: String
         if case .signedIn(let userId) = phase { me = userId } else { me = "" }
         let isNew = dialogDrafts[id] != nil && listModel?.chat(id: id) == nil
-        let model = ChatViewModel(chatId: id, currentUserId: me, messages: messages, drafts: chats, isNewDialog: isNew)
+        let model = ChatViewModel(
+            chatId: id,
+            currentUserId: me,
+            messages: messages,
+            drafts: chats,
+            media: media,
+            voice: voicePlayer,
+            isNewDialog: isNew
+        )
         chatModels[id] = model
         return model
     }
@@ -318,6 +334,7 @@ final class AppContainer {
             await contacts?.reset()
             await calls?.reset()
         }
+        voicePlayer.stop()
         chatModels.values.forEach { $0.deactivate() }
         chatModels.removeAll()
         listModel?.deactivate()

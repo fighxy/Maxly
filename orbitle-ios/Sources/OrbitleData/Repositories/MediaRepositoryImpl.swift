@@ -84,7 +84,12 @@ public actor MediaRepositoryImpl: MediaRepository {
 
     private func destination(for item: MediaItem) -> URL {
         let name = item.id.filter { $0.isLetter || $0.isNumber }
-        return directory.appending(path: name.isEmpty ? "file" : name)
+        var url = directory.appending(path: name.isEmpty ? "file" : name)
+        let ext = item.url.pathExtension
+        if !ext.isEmpty, ext.allSatisfy({ $0.isLetter || $0.isNumber }) {
+            url.appendPathExtension(ext)
+        }
+        return url
     }
 
     private func touch(_ url: URL) {

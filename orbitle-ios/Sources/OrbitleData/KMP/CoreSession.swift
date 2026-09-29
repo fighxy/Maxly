@@ -190,13 +190,16 @@ public struct CoreMessage: Sendable, Equatable {
     public var authorId: String
     public var text: String
     public var timeMs: Int64
+    /// Фрагмент вложений и реакций. Пустая строка значит, что фасад его не прислал.
+    public var contentJSON: String
 
-    public init(id: String, chatId: String, authorId: String, text: String, timeMs: Int64) {
+    public init(id: String, chatId: String, authorId: String, text: String, timeMs: Int64, contentJSON: String = "") {
         self.id = id
         self.chatId = chatId
         self.authorId = authorId
         self.text = text
         self.timeMs = timeMs
+        self.contentJSON = contentJSON
     }
 }
 

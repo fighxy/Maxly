@@ -18,12 +18,24 @@ public final class ChatViewModel {
     }
     public private(set) var error: OrbitleError?
     public private(set) var stickToBottom = true
+    /// Цитата над полем ввода.
+    public private(set) var replyTarget: Message?
+    public private(set) var voicePhases: [String: VoicePhase] = [:]
+    public private(set) var scrollTarget: String?
+    public private(set) var scrollToken = 0
+    public private(set) var highlightedId: String?
+    /// Пост, чьи комментарии открыты.
+    public var openedCommentId: String?
+    /// Просмотр фото и видео.
+    public var viewer: MediaViewerRequest?
     /// Диалог открыт из контактов, и на сервере его может ещё не быть: пустая история не
     /// ошибка, экран предлагает написать первое сообщение.
     public let isNewDialog: Bool
 
     @ObservationIgnored private let repository: any MessageRepository
     @ObservationIgnored private let drafts: (any ChatDraftStore)?
+    @ObservationIgnored private let media: (any MediaRepository)?
+    @ObservationIgnored private let voice: (any VoicePlaying)?
     @ObservationIgnored private let draftDelay: Duration
     @ObservationIgnored private var watch: Task<Void, Never>?
     @ObservationIgnored private var draftSave: Task<Void, Never>?
@@ -31,6 +43,10 @@ public final class ChatViewModel {
     @ObservationIgnored private var saveChain: Task<Void, Never>?
     /// Последний текст, отданный хранилищу: не пишем одно и то же дважды.
     @ObservationIgnored private var savedDraft: String?
+    @ObservationIgnored private var activeVoiceId: String?
+    @ObservationIgnored private var voiceTask: Task<Void, Never>?
+    @ObservationIgnored private var voiceToggle: Task<Void, Never>?
+    @ObservationIgnored private var commentsModel: CommentsViewModel?
 
     public init(
         chatId: String,
@@ -38,6 +54,8 @@ public final class ChatViewModel {
         messages: any MessageRepository,
         drafts: (any ChatDraftStore)? = nil,
         draftDelay: Duration = .milliseconds(500),
+        media: (any MediaRepository)? = nil,
+        voice: (any VoicePlaying)? = nil,
         isNewDialog: Bool = false
     ) {
         self.isNewDialog = isNewDialog
@@ -46,6 +64,8 @@ public final class ChatViewModel {
         self.repository = messages
         self.drafts = drafts
         self.draftDelay = draftDelay
+        self.media = media
+        self.voice = voice
     }
 
     public var errorMessage: String? { error?.userMessage }
@@ -89,6 +109,7 @@ public final class ChatViewModel {
     public func deactivate() {
         watch?.cancel()
         watch = nil
+        stopVoice()
         flushDraft()
     }
 
@@ -148,14 +169,182 @@ public final class ChatViewModel {
     public func send() async {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        let reply = replyTarget
         draft = ""
+        replyTarget = nil
         stickToBottom = true
         do {
-            try await repository.send(text: text, chatId: chatId)
+            try await repository.send(text: text, chatId: chatId, replyTo: reply?.id)
             error = nil
         } catch {
             draft = text
+            replyTarget = reply
             show(error)
+        }
+    }
+
+    public func beginReply(to message: Message) {
+        replyTarget = message
+    }
+
+    public func cancelReply() {
+        replyTarget = nil
+    }
+
+    public func toggleReaction(messageId: String, emoji: String) async {
+        do {
+            try await repository.setReaction(messageId: messageId, emoji: emoji)
+        } catch {
+            show(error)
+        }
+    }
+
+    /// Прокрутить к цитате, если она уже в загруженном окне.
+    public func focusReply(_ messageId: String) {
+        guard let match = messages.first(where: { $0.id == messageId || $0.serverId == messageId }) else { return }
+        scrollTarget = match.id
+        scrollToken += 1
+        highlightedId = match.id
+        let token = match.id
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(1200))
+            guard let self, self.highlightedId == token else { return }
+            self.highlightedId = nil
+        }
+    }
+
+    public func openComments(_ message: Message) {
+        openedCommentId = message.id
+    }
+
+    public func commentsModel(for postId: String) -> CommentsViewModel {
+        if let commentsModel, commentsModel.postId == postId { return commentsModel }
+        let model = CommentsViewModel(chatId: chatId, postId: postId, messages: repository)
+        commentsModel = model
+        return model
+    }
+
+    public func presentMedia(_ message: Message, startId: String) {
+        let slides = message.content.visuals.compactMap { attachment -> MediaSlide? in
+            if let photo = attachment.photo {
+                guard photo.displayURL != nil else { return nil }
+                return MediaSlide(id: photo.id, stillURL: photo.displayURL, playURL: nil, isVideo: false)
+            }
+            if let video = attachment.video {
+                guard video.displayURL != nil || video.playbackURL != nil else { return nil }
+                return MediaSlide(id: video.id, stillURL: video.displayURL, playURL: video.playbackURL, isVideo: video.playbackURL != nil)
+            }
+            return nil
+        }
+        guard slides.contains(where: { $0.id == startId }) else { return }
+        viewer = MediaViewerRequest(id: startId, slides: slides)
+    }
+
+    public func voicePhase(for id: String) -> VoicePhase {
+        voicePhases[id] ?? .idle
+    }
+
+    public func toggleVoice(_ message: Message) {
+        voiceToggle?.cancel()
+        voiceToggle = Task { await self.playVoice(message) }
+    }
+
+    public func stopVoice() {
+        voiceToggle?.cancel()
+        voiceToggle = nil
+        voiceTask?.cancel()
+        voiceTask = nil
+        voice?.stop()
+        if let id = activeVoiceId { voicePhases[id] = .idle }
+        activeVoiceId = nil
+    }
+
+    private func playVoice(_ message: Message) async {
+        guard let clip = message.content.voices.first else { return }
+        if activeVoiceId == clip.id, voicePhase(for: clip.id).isPlaying {
+            voice?.pause()
+            voicePhases[clip.id] = .paused(voice?.progress ?? voicePhase(for: clip.id).progress)
+            voiceTask?.cancel()
+            voiceTask = nil
+            return
+        }
+        if activeVoiceId == clip.id, case .paused = voicePhase(for: clip.id) {
+            if voice?.resume() == true {
+                voicePhases[clip.id] = .playing(voice?.progress ?? 0)
+                trackVoice(clip.id)
+            } else {
+                voicePhases[clip.id] = .failed
+            }
+            return
+        }
+        stopVoicePlayback()
+        activeVoiceId = clip.id
+        if let file = clip.fileURL {
+            startPlayback(clip.id, url: file)
+            return
+        }
+        guard let item = clip.cacheItem(), let media else {
+            voicePhases[clip.id] = .failed
+            activeVoiceId = nil
+            return
+        }
+        voicePhases[clip.id] = .downloading(0)
+        do {
+            let file = try await media.preview(for: item)
+            guard !Task.isCancelled, activeVoiceId == clip.id else { return }
+            await repository.noteDownloaded(messageId: message.id, attachmentId: clip.id, localPath: file.path)
+            guard !Task.isCancelled, activeVoiceId == clip.id else { return }
+            startPlayback(clip.id, url: file)
+        } catch {
+            guard activeVoiceId == clip.id else { return }
+            voicePhases[clip.id] = .failed
+            activeVoiceId = nil
+        }
+    }
+
+    /// Останавливает плеер, не отменяя задачу, которая сейчас качает следующий файл.
+    private func stopVoicePlayback() {
+        voiceTask?.cancel()
+        voiceTask = nil
+        voice?.stop()
+        if let id = activeVoiceId { voicePhases[id] = .idle }
+        activeVoiceId = nil
+    }
+
+    private func startPlayback(_ id: String, url: URL) {
+        guard let voice, voice.play(url: url) else {
+            voicePhases[id] = .failed
+            activeVoiceId = nil
+            return
+        }
+        voicePhases[id] = .playing(0)
+        trackVoice(id)
+    }
+
+    private func trackVoice(_ id: String) {
+        voiceTask?.cancel()
+        voiceTask = Task { @MainActor [weak self] in
+            var seenPlaying = false
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(100))
+                guard let self, self.activeVoiceId == id else { return }
+                if self.voice?.failed == true {
+                    self.voicePhases[id] = .failed
+                    self.activeVoiceId = nil
+                    return
+                }
+                let playing = self.voice?.isPlaying ?? false
+                let progress = self.voice?.progress ?? 0
+                if playing { seenPlaying = true }
+                if playing {
+                    self.voicePhases[id] = .playing(progress)
+                } else if seenPlaying {
+                    self.voicePhases[id] = .idle
+                    self.activeVoiceId = nil
+                    self.voice?.stop()
+                    return
+                }
+            }
         }
     }
 
