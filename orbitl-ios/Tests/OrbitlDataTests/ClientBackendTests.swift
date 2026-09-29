@@ -104,6 +104,10 @@ actor FakeMaxCore: MaxCore {
 
 actor FakeMedia: MediaRepository {
     private(set) var clearCount = 0
+    /// Следующая очистка кэша ждёт, пока тест не откроет задвижку.
+    private var clearGate: Gate?
+
+    func holdNextClear(_ gate: Gate) { clearGate = gate }
 
     func preview(for item: MediaItem) async throws(OrbitlError) -> URL {
         throw .networkUnavailable
@@ -115,6 +119,10 @@ actor FakeMedia: MediaRepository {
 
     func clearCache() async {
         clearCount += 1
+        if let gate = clearGate {
+            clearGate = nil
+            await gate.wait()
+        }
     }
 }
 
