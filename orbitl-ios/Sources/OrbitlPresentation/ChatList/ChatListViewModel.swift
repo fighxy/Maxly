@@ -38,6 +38,7 @@ public final class ChatListViewModel {
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var watches: [Task<Void, Never>] = []
     @ObservationIgnored private var marking: Set<String> = []
+    @ObservationIgnored private var catchUpTask: Task<Void, Never>?
 
     public init(
         chats: any ChatRepository,
@@ -105,7 +106,9 @@ public final class ChatListViewModel {
                     self.connection = state
                     if state == .online, previous != .online, self.hasRefreshed {
                         // Связь вернулась после обрыва: список мог устареть, догружаем сразу.
-                        await self.catchUp()
+                        // Отдельной задачей, чтобы долгий запрос не задерживал следующие
+                        // состояния соединения.
+                        self.startCatchUp()
                     }
                 }
             })
@@ -115,6 +118,8 @@ public final class ChatListViewModel {
     public func deactivate() {
         watches.forEach { $0.cancel() }
         watches.removeAll()
+        catchUpTask?.cancel()
+        catchUpTask = nil
     }
 
     // MARK: Действия
@@ -143,6 +148,11 @@ public final class ChatListViewModel {
         guard let chatId else { return }
         if let chat = chats.first(where: { $0.id == chatId }), chat.unreadCount == 0 { return }
         await markRead(chatId)
+    }
+
+    private func startCatchUp() {
+        catchUpTask?.cancel()
+        catchUpTask = Task { [weak self] in await self?.catchUp() }
     }
 
     private func catchUp() async {
