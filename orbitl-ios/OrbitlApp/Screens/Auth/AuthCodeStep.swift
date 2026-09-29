@@ -2,7 +2,8 @@ import SwiftUI
 import OrbitlPresentation
 import OrbitlUI
 
-/// Шаг кода из SMS. Полный код отправляется сам, кнопки «Продолжить» нет.
+/// Шаг кода из SMS. Полный код отправляется сам. Кнопка «Продолжить» есть, только
+/// если сервер не сообщил длину кода.
 struct AuthCodeStep: View {
     @Bindable var viewModel: AuthViewModel
     @FocusState private var isCodeFocused: Bool
@@ -17,7 +18,19 @@ struct AuthCodeStep: View {
             OneTimeCodeField(code: $viewModel.code, length: viewModel.codeCellCount, isFocused: $isCodeFocused)
                 .disabled(viewModel.isBusy)
                 .padding(.top, 28)
-            if viewModel.isBusy {
+            if viewModel.needsManualCodeSubmit {
+                // Длина кода неизвестна: сам код не отправится, нужна кнопка.
+                AuthPrimaryButton(
+                    title: "Продолжить",
+                    isEnabled: viewModel.canVerify,
+                    isBusy: viewModel.isBusy
+                ) {
+                    await viewModel.verify()
+                }
+                .padding(.top, 24)
+                resend
+                    .padding(.top, 16)
+            } else if viewModel.isBusy {
                 ProgressView()
                     .padding(.top, 20)
             } else {

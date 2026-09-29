@@ -132,7 +132,11 @@ struct AuthCodeTests {
         await model.requestCode()
         #expect(await eventually { model.step == .code(length: nil) })
         #expect(model.codePrompt == "Мы отправили код на +7 999 123-45-67")
+        #expect(model.needsManualCodeSubmit)
+        model.code = "12345678"
+        #expect(model.codeCellCount == 8)
         model.code = "123"
+        #expect(model.codeCellCount == 6)
         #expect(!model.canVerify)
         model.code = "12345"
         #expect(model.canVerify)
@@ -144,6 +148,7 @@ struct AuthCodeTests {
     func wrongCode() async {
         let (model, service, _) = makeAuth()
         await reachCode(model)
+        #expect(!model.needsManualCodeSubmit)
         await service.set(verifyError: .rejected("Неверный код"))
         model.code = "000000"
         #expect(await eventually { model.errorMessage == "Неверный код" })

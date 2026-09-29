@@ -190,8 +190,15 @@ public final class AuthViewModel {
     /// поэтому оно только показывается на экране и живёт до конца попытки входа.
     public var registrationPhoto: Data?
 
-    /// Сколько ячеек показать на шаге кода: длина от сервера или шесть.
-    public var codeCellCount: Int { expectedCodeLength ?? 6 }
+    /// Сколько ячеек показать на шаге кода: длина от сервера, иначе шесть и больше,
+    /// если набрано длиннее.
+    public var codeCellCount: Int { expectedCodeLength ?? max(6, codeText.count) }
+
+    /// Сервер не сообщил длину кода: автоотправки нет, экран показывает кнопку.
+    public var needsManualCodeSubmit: Bool {
+        guard case .code(nil) = step else { return false }
+        return true
+    }
 
     /// Номер, на который ушёл код, в виде для экрана.
     public var sentToDisplay: String? { sentTo.map(PhoneNumber.display) }
