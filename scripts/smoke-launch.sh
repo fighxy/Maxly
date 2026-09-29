@@ -44,8 +44,15 @@ if xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -q "UIKitApplica
 fi
 kill "$log_pid" >/dev/null 2>&1
 
-echo "::group::Журнал приложения"
-tail -n 300 "$out/app.log"
+# Собственный журнал Orbitl (Application Support/Logs): фазы входа и ядра, соединение, ошибки.
+container="$(xcrun simctl get_app_container "$udid" "$bundle" data 2>/dev/null)"
+echo "::group::Журнал Orbitl"
+cat "$container/Library/Application Support/Logs/"orbitl-*.log 2>/dev/null || echo "(файла журнала нет)"
+cat "$container/Library/Application Support/Logs/"*.txt 2>/dev/null
+echo "::endgroup::"
+
+echo "::group::Системный журнал процесса (записи Orbitl и ошибки)"
+grep -E "app\.orbitl\.ios|[Ee]rror|[Ff]ault|Kotlin|exception" "$out/app.log" | grep -v "KeyboardVisualMode" | tail -n 200
 echo "::endgroup::"
 
 # Отчёты о сбоях симулятора пишутся в отчёты хоста.

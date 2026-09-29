@@ -59,7 +59,6 @@ final class AppContainer {
             CrashReporter.install(directory: directory)
             crashReport = CrashReporter.pendingReport()
         }
-        MaxIosCore.installCrashHandler()
         logs = directory.map { FileLogStore(directory: $0, enabled: enabled) }
         if let logs { Log.sink = logs.sink }
         Log.info(.app, "Запуск: \(Self.appVersion), \(ProcessInfo.processInfo.operatingSystemVersionString)")
@@ -93,9 +92,14 @@ final class AppContainer {
     func bootstrap() async {
         guard boot == .loading, crashReport == nil else { return }
         Log.info(.app, "Подготовка базы и ядра")
+        // Ядро Kotlin впервые трогается здесь, а не в init: если сбой случается уже при его
+        // запуске, экран прошлого сбоя всё равно откроется, не трогая ядро.
+        MaxIosCore.installCrashHandler()
+        Log.info(.app, "Обработчик сбоев ядра установлен")
         do {
             let stack = try SwiftDataStack()
             let core = MaxIosCore()
+            Log.info(.app, "Ядро создано")
             let api = MaxAPIClient(core: core)
             let chats = ChatRepositoryImpl.make(stack: stack, api: api)
             let messages = MessageRepositoryImpl.make(stack: stack, api: api)
