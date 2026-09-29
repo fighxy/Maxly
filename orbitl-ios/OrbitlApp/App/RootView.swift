@@ -10,15 +10,23 @@ struct RootView: View {
         Group {
             switch container.boot {
             case .loading:
-                ProgressView("Orbitl")
+                OrbitlSplash()
             case .failed(let message):
-                ContentUnavailableView("Orbitl", systemImage: "externaldrive.badge.exclamationmark", description: Text(message))
+                ContentUnavailableView {
+                    Label {
+                        Text("Orbitl не запустился")
+                    } icon: {
+                        OrbitlMark(size: 72)
+                    }
+                } description: {
+                    Text(message)
+                }
             case .ready:
                 switch container.phase {
                 case .signedIn:
                     main
                 case .restoring:
-                    ProgressView("Подключение")
+                    OrbitlSplash(caption: "Подключение…")
                 default:
                     auth
                 }
@@ -123,7 +131,14 @@ struct MainTabView: View {
                     .id(id)
                     .toolbar(.hidden, for: .tabBar)
             } else {
-                ContentUnavailableView("Выберите чат", systemImage: "bubble.left.and.bubble.right")
+                ContentUnavailableView {
+                    Label {
+                        Text("Выберите чат")
+                    } icon: {
+                        OrbitlMark(size: 72)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
             }
         }
     }

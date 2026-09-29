@@ -11,9 +11,16 @@ struct NewSessionNoticeSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Image(systemName: "lock.shield.fill")
-                .font(.system(size: 48))
-                .foregroundStyle(.tint)
+            OrbitlLogoTile(size: 76)
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(Color.orbitlAccent))
+                        .overlay(Circle().strokeBorder(Color.orbitlBackground, lineWidth: 2.5))
+                        .offset(x: 6, y: 6)
+                }
                 .padding(.top, 28)
                 .accessibilityHidden(true)
             Text("Новый сеанс")

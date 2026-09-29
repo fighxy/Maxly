@@ -43,6 +43,22 @@ struct SettingsView: View {
             Section {
                 Button("Выйти", role: .destructive) { confirmLogout = true }
             }
+            Section {
+                HStack(spacing: 14) {
+                    OrbitlLogoTile(size: 44)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(verbatim: "Orbitl")
+                            .font(.headline)
+                        Text(AppContainer.appVersion.replacingOccurrences(of: "Orbitl ", with: "Версия "))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 2)
+                .accessibilityElement(children: .combine)
+            } header: {
+                Text("О приложении")
+            }
         }
         .navigationTitle("Настройки")
         .confirmationDialog("Выйти из аккаунта?", isPresented: $confirmLogout, titleVisibility: .visible) {
