@@ -103,7 +103,7 @@ actor FakeMedia: MediaRepository {
     }
 }
 
-struct SessionParts {
+struct SessionParts: Sendable {
     var core: FakeMaxCore
     var api: FakeMaxAPI
     var stack: SwiftDataStack

@@ -1,6 +1,9 @@
 import Foundation
 import OrbitlDomain
 
+/// `UserDefaults` потокобезопасен. Сессия и тесты держат один и тот же suite.
+extension UserDefaults: @retroactive @unchecked Sendable {}
+
 /// Сессия приложения: шаги входа через ядро, кэш в базе, очистка только при явном выходе.
 ///
 /// Токен и device id лежат в Keychain ядра (`com.max.kmp.default`). Здесь их нет.
