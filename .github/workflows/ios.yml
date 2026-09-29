@@ -71,9 +71,11 @@ jobs:
         env:
           MAX_KMP_CORE_TOKEN: ${{ secrets.MAX_KMP_CORE_TOKEN }}
         run: bash scripts/fetch-core.sh
+      # Подпись ad-hoc нужна симулятору для Keychain: без неё ядро не создаётся, и запуск
+      # не доходит до подключения к серверу.
       - name: Build Orbitl
         if: steps.token.outputs.present == 'true'
-        run: xcodebuild -project orbitl-ios/Orbitl.xcodeproj -scheme Orbitl -destination 'generic/platform=iOS Simulator' -derivedDataPath build/sim ARCHS=arm64 CODE_SIGNING_ALLOWED=NO build
+        run: xcodebuild -project orbitl-ios/Orbitl.xcodeproj -scheme Orbitl -destination 'generic/platform=iOS Simulator' -derivedDataPath build/sim ARCHS=arm64 CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- build
       # Запуск в симуляторе ловит падения, которых не видно при сборке. Если приложение
       # закрылось, шаг печатает отчёт о сбое (стек) и журнал приложения.
       - name: Launch in Simulator
