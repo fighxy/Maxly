@@ -267,7 +267,7 @@ extension Array where Element == MessageReaction {
             return next.filter { $0.count > 0 }
         }
         for index in next.indices where next[index].mine {
-            next[index].count = max(0, next[index].count - 1)
+            next[index].count = Swift.max(0, next[index].count - 1)
             next[index].mine = false
         }
         next.removeAll { $0.count <= 0 }
