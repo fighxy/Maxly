@@ -104,6 +104,48 @@ struct ServerMatchTests {
     }
 }
 
+@Suite("Запись пакетом")
+struct BatchUpsertTests {
+    @Test("Пакет сообщений: новые, известные по id, своё по серверному id и повтор внутри пакета")
+    func mixedMessageBatch() async throws {
+        let api = FakeMaxAPI()
+        await api.setSendResults([.success(SentMessage(serverId: "srv-1", timestamp: Date(timeIntervalSince1970: 50)))])
+        let (repository, _) = try await makeMessageStack(api: api)
+        try await repository.send(text: "своё", chatId: "c1")
+        try await repository.upsert([makeHistory(chatId: "c1", count: 1)[0]])
+
+        let inserted = try await repository.upsert([
+            MessageRecord(id: "m0", serverId: "m0", chatId: "c1", authorId: "alice", text: "правка", timestamp: Date(timeIntervalSince1970: 1), status: .sent),
+            MessageRecord(id: "srv-1", serverId: "srv-1", chatId: "c1", authorId: "me", text: "своё с сервера", timestamp: Date(timeIntervalSince1970: 50), status: .sent),
+            MessageRecord(id: "m5", serverId: "m5", chatId: "c1", authorId: "bob", text: "новое", timestamp: Date(timeIntervalSince1970: 60), status: .sent),
+            MessageRecord(id: "m5", serverId: "m5", chatId: "c1", authorId: "bob", text: "новое, повтор", timestamp: Date(timeIntervalSince1970: 60), status: .sent),
+        ])
+
+        #expect(inserted == ["m5"])
+        let stored = try await repository.page(chatId: "c1", before: nil)
+        #expect(stored.count == 3)
+        #expect(stored.first { $0.id == "m0" }?.text == "правка")
+        #expect(stored.first { $0.serverId == "srv-1" }?.id.hasPrefix("local-") == true)
+        #expect(stored.first { $0.serverId == "srv-1" }?.text == "своё с сервера")
+        #expect(stored.first { $0.id == "m5" }?.text == "новое, повтор")
+    }
+
+    @Test("Пакет чатов с повтором одного id даёт одну строку")
+    func duplicateChatsInBatch() async throws {
+        let chats = ChatRepositoryImpl.make(stack: try SwiftDataStack(inMemory: true), api: FakeMaxAPI())
+        try await chats.upsert([
+            ChatRecord(id: "a", title: "Первый", type: .group, updatedAt: Date(timeIntervalSince1970: 1)),
+            ChatRecord(id: "b", title: "Второй", type: .channel, updatedAt: Date(timeIntervalSince1970: 2)),
+            ChatRecord(id: "a", title: "", type: .group, unreadCount: 2, updatedAt: Date(timeIntervalSince1970: 3), preview: "свежее"),
+        ])
+        let rows = await snapshot(chats)
+        #expect(rows.map(\.id) == ["a", "b"])
+        #expect(rows.first?.title == "Первый")
+        #expect(rows.first?.preview == "свежее")
+        #expect(rows.first?.unreadCount == 2)
+    }
+}
+
 @Suite("Эхо своего сообщения")
 struct EchoTests {
     @Test("Эхо, пришедшее раньше ответа на отправку, не дублирует сообщение")
