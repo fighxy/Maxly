@@ -1,6 +1,7 @@
 name: iOS
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -73,3 +74,26 @@ jobs:
       - name: Build Orbitl
         if: steps.token.outputs.present == 'true'
         run: xcodebuild -project orbitl-ios/Orbitl.xcodeproj -scheme Orbitl -destination 'generic/platform=iOS Simulator' ARCHS=arm64 CODE_SIGNING_ALLOWED=NO build
+      # Неподписанный .ipa для iPhone: подписать его можно своим сертификатом
+      # (Sideloadly, AltStore, eSign и т. п.) и поставить на устройство.
+      - name: Build unsigned IPA
+        if: steps.token.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          xcodebuild -project orbitl-ios/Orbitl.xcodeproj -scheme Orbitl -configuration Release \
+            -destination 'generic/platform=iOS' -derivedDataPath build/device ARCHS=arm64 \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+          app="build/device/Build/Products/Release-iphoneos/Orbitl.app"
+          test -d "$app"
+          rm -rf build/ipa && mkdir -p build/ipa/Payload
+          cp -R "$app" build/ipa/Payload/
+          (cd build/ipa && zip -qry ../Orbitl.ipa Payload)
+          ls -lh build/Orbitl.ipa
+      - name: Upload IPA
+        if: steps.token.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Orbitl-unsigned-ipa-${{ github.sha }}
+          path: build/Orbitl.ipa
+          if-no-files-found: error
+          retention-days: 30
