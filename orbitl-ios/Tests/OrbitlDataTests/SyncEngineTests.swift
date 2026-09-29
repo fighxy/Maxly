@@ -39,3 +39,41 @@ struct SyncNetworkTests {
         #expect(await sync.isPolling == false)
     }
 }
+
+@Suite("Синхронизация: пуши")
+struct SyncPushTests {
+    @Test("stopEvents возвращается, только когда начатый пуш записан целиком")
+    func stopWaitsForInFlightPush() async throws {
+        let api = FakeMaxAPI()
+        await api.setChats([makeChat(id: "c9")])
+        let gate = Gate()
+        await api.setFetchGate(gate)
+        let (messages, outbox) = try await makeMessageStack(api: api)
+        let chats = ChatRepositoryImpl.make(stack: try SwiftDataStack(inMemory: true), api: api)
+        let sync = SyncEngine(outbox: outbox, chats: chats, messages: messages, pollInterval: .seconds(3600))
+        let core = FakeMaxCore(livePushes: true)
+        await sync.startEvents(core)
+
+        // Сообщение в неизвестный чат: движок подтягивает строку чата и ждёт сервер.
+        core.pushes?.yield(CoreEvent(
+            kind: .message, chatId: "c9", messageId: "m1", authorId: "bob", text: "Привет",
+            title: "", chatType: "", timeMs: 1_000, unread: -1
+        ))
+        #expect(await eventually { await gate.arrivals == 1 })
+        let stop = Task { await sync.stopEvents() }
+        await gate.open()
+        await stop.value
+        #expect(await snapshot(chats).map(\.id) == ["c9"])
+    }
+
+    @Test("stopEvents без начатых пушей возвращается сразу")
+    func stopWhenIdle() async throws {
+        let api = FakeMaxAPI()
+        let (messages, outbox) = try await makeMessageStack(api: api)
+        let chats = ChatRepositoryImpl.make(stack: try SwiftDataStack(inMemory: true), api: api)
+        let sync = SyncEngine(outbox: outbox, chats: chats, messages: messages, pollInterval: .seconds(3600))
+        await sync.startEvents(FakeMaxCore(livePushes: true))
+        await sync.stopEvents()
+        await sync.stopEvents()
+    }
+}

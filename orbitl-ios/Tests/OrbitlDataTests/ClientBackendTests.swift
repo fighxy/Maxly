@@ -28,6 +28,20 @@ actor FakeMaxCore: MaxCore {
     private(set) var resendCount = 0
     private(set) var verifiedCodes: [String] = []
     private(set) var registeredNames: [String] = []
+    /// Пуши, которые шлёт тест. `nil`: поток событий сразу закрыт.
+    nonisolated let pushes: AsyncStream<CoreEvent>.Continuation?
+    private nonisolated let pushStream: AsyncStream<CoreEvent>?
+
+    init(livePushes: Bool = false) {
+        if livePushes {
+            let pair = AsyncStream.makeStream(of: CoreEvent.self)
+            pushStream = pair.stream
+            pushes = pair.continuation
+        } else {
+            pushStream = nil
+            pushes = nil
+        }
+    }
 
     func phaseName() async -> CorePhase { phase }
     func currentUserId() async -> String { userId }
@@ -98,7 +112,7 @@ actor FakeMaxCore: MaxCore {
     }
 
     nonisolated func events() -> AsyncStream<CoreEvent> {
-        AsyncStream { $0.finish() }
+        pushStream ?? AsyncStream { $0.finish() }
     }
 }
 
