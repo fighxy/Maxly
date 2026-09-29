@@ -72,7 +72,7 @@
 | Статус «в сети» | `PrivacySettings.hideOnlineStatus` | чтение `config.user` | `CONFIG` 22 `{HIDDEN: bool}` | готово |
 | Кто видит номер | `PrivacySettings.phoneNumberVisibility` (писал `_NONE_`) | значение «Никто» как в Komet: `NOBODY` | `CONFIG` 22 `{PHONE_NUMBER_PRIVACY: ALL/CONTACTS/NOBODY}` | готово |
 | Чёрный список | нет | `UsersApi.blockedContacts`, `setBlocked`; мост | `CONTACT_LIST` 36 `{status:"BLOCKED", count, from}` → `{contacts}`; `CONTACT_UPDATE` 34 `{contactId, action:"UNBLOCK"}` | готово |
-| Сеансы | нет | `AccountApi.sessions()`; мост | `SESSIONS_INFO` 96 `{}` → `{sessions:[…]}` | готово |
+| Сеансы | `UsersApi.getSessions` без полей `client`, `info`, `time` | поля `client`, `info`, `time` и `lastSeen` в `SessionInfo`; `MaxClient.loadSessions`; мост | `SESSIONS_INFO` 96 `{}` → `{sessions:[…]}` | готово |
 | Завершить остальные | `MaxClient.closeOtherSessions` (новый токен сохраняется) | мост | `SESSIONS_CLOSE` 97 `{}` | готово |
 | Войти по QR-коду | `MaxClient.approveQrLogin` без подготовки | перед подтверждением `PING {interactive:true}`, `SESSIONS_INFO`, пауза 300 мс (без этого сервер отклоняет); мост | 1, 96, `AUTH_QR_APPROVE` 290 `{qrLink}` | готово |
 | Сообщения | — | — | — | заглушка по постановке |
@@ -124,7 +124,7 @@
 
 ### 6.1. Пароль для входа
 
-- При открытии экрана: `AUTH_CREATE_TRACK` 112 `{type:0}` → `trackId`, затем `AUTH_2FA_DETAILS` 104 `{trackId}` → `{password:{enabled, email, hint}}`. Текущий пароль для этого не нужен. Если запрос не удался, состояние берётся из `profileOptions` профиля (значение 2 — пароль включён), а почта не показывается.
+- При открытии экрана: `AUTH_CREATE_TRACK` 112 `{type:0}` → `trackId`, затем `AUTH_2FA_DETAILS` 104 `{trackId}` → `{password:{enabled, email, hint}}`. Текущий пароль для этого не нужен. Если запрос не удался, строка показывает «Неизвестно» и текст ошибки, экран обновляется жестом «потянуть вниз».
 - Строка «Пароль для входа» со значением «Включён» / «Выключен». Включение, смена и отключение пароля — «Скоро» (протокол известен, 107/108/111, но это отдельный сценарий с подсказкой и почтой).
 - Если пароль включён — строка «Почта для восстановления»:
   - почты нет: кнопка «Укажите почту для восстановления»;
@@ -243,10 +243,10 @@
 | Ядро `core` | `AccountConfig`; `AccountApi`: `updateUserSettings`, `sessions`, `setAvatar`, `removePhoto`, `requestProfileDeletion`, `reorderFolders`, `updateFolder` с `favorites`; `UsersApi`: `blockedContacts`, `setBlocked`, `syncContacts`; `TwoFactorApi`: `details`, `status`, `commitEmail`; `BotsApi`: необязательный `queryId`, `externalCallback`, `EntryBannerApps` |
 | Ядро `shared` | `MaxClient.accountConfig`, `updateUserSettings`, `uploadAvatar`, `removeAvatar`, `syncContacts`, папки, подготовка QR-входа |
 | Мост `ios` | `IosMyProfile`, `IosAccountSettings`, `IosSession`, `IosBlockedUser`, `IosTwoFactor`, `IosMiniApp`, `IosFolder` и методы `MaxIosClient` к ним |
-| Orbitle Domain | модели `MyProfile`, `AccountSettings` (конфиденциальность, безопасный режим, `InactiveTTL`), `DeviceSession`, `BlockedUser`, `TwoFactorStatus`, `ChatFolder` с фильтрами; протокол `AccountRepository` |
-| Orbitle Data | `CoreAccountRepository` поверх `MaxCore` |
-| Orbitle Presentation | модели экранов: `ProfileSettingsModel`, `SecuritySettingsModel`, `DevicesModel`, `FoldersModel`, `AppearanceSettings` |
-| Orbitle App | экраны `OrbitleApp/Screens/Settings/*`, `MaxIosCore` (обёртки моста) |
+| Orbitle Domain | модели `MyProfile`, `PhoneFormatting`, `AccountSettings` (конфиденциальность, безопасный режим, `InactiveTTL`), `DeviceSession`, `BlockedUser`, `TwoFactorStatus`, `MiniApp`, `ServerFolder`, `ChatFolderRules` (фильтры сервера); протоколы `AccountRepository`, `FolderRepository`, `ContactRepository.sync()` |
+| Orbitle Data | `CoreAccountRepository`, `CoreFolderRepository` поверх `MaxCore`; `CoreContactRepository.sync()`; `MaxAPI.folderUpdates()` — серверные папки для полосы над списком чатов |
+| Orbitle Presentation | модели экранов: `AccountSettingsModel` (шапка, профиль, настройки конфига), `SecuritySettingsModel`, `RecoveryEmailFlow`, `DevicesModel`, `FoldersModel`, `MiniAppModel`, `MiniAppBridge` (разбор событий страницы), `AppearanceSettings` |
+| Orbitle App | экраны `OrbitleApp/Screens/Settings/*` (`SettingsView`, `EditProfileView`, `AvatarActions`, `SecurityView`, `DevicesView` со сканером, `FoldersView`, `MiniAppSheet`, `AppearanceView`, `AboutView`), `MaxIosCore+Settings` (обёртки моста), `Info.plist`: `NSCameraUsageDescription`, `NSPhotoLibraryAddUsageDescription` |
 
 ## 14. Что есть в Komet и пока не сделано
 

@@ -157,12 +157,19 @@ struct MainTabView: View {
             }
         case .settings:
             NavigationStack {
-                SettingsView(container: container, list: list) {
-                    // Открытый чат прежнего аккаунта не должен открыться после следующего входа.
-                    router.chatId = nil
-                    router.tab = .chats
-                    Task { await container.logout() }
-                }
+                SettingsView(
+                    container: container,
+                    account: container.accountSettingsModel(),
+                    list: list,
+                    onOpenChat: { id in router.openChat(id) },
+                    onOpenContacts: { router.tab = .contacts },
+                    onLogout: {
+                        // Открытый чат прежнего аккаунта не должен открыться после следующего входа.
+                        router.chatId = nil
+                        router.tab = .chats
+                        Task { await container.logout() }
+                    }
+                )
             }
         }
     }

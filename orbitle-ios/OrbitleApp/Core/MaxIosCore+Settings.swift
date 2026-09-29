@@ -1,0 +1,314 @@
+import Foundation
+import OrbitleData
+import OrbitleDomain
+import MaxIos
+
+/// Настройки аккаунта через `MaxIosClient` (docs/settings.md).
+/// Числа в колбэках Kotlin приходят упакованными (`KotlinLong`, `KotlinInt`).
+extension MaxIosCore {
+    func loadMyProfile() async throws -> MyProfile {
+        try await call("loadMyProfile") { done in
+            self.client.loadMyProfile { done(Self.profileResult($0, $1, $2)) }
+        }
+    }
+
+    func updateProfile(firstName: String, lastName: String, about: String) async throws -> MyProfile {
+        try await call("updateProfile") { done in
+            self.client.updateProfile(firstName: firstName, lastName: lastName, description: about) {
+                done(Self.profileResult($0, $1, $2))
+            }
+        }
+    }
+
+    func uploadAvatar(jpeg: Data) async throws -> MyProfile {
+        try await call("uploadAvatar") { done in
+            self.client.uploadAvatar(image: jpeg) { done(Self.profileResult($0, $1, $2)) }
+        }
+    }
+
+    func removeAvatar() async throws -> MyProfile {
+        try await call("removeAvatar") { done in
+            self.client.removeAvatar { done(Self.profileResult($0, $1, $2)) }
+        }
+    }
+
+    func deleteAccount() async throws -> Int64 {
+        try await call("deleteAccount") { done in
+            self.client.deleteAccount { ms, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(ms.int64Value))
+                }
+            }
+        }
+    }
+
+    func accountSettings() -> AsyncStream<AccountSettings> {
+        AsyncStream { continuation in
+            continuation.yield(Self.settings(client.accountSettings()))
+            let watch = WatchBox(client.watchAccountSettings { value in
+                continuation.yield(Self.settings(value))
+            })
+            continuation.onTermination = { _ in watch.cancel() }
+        }
+    }
+
+    func setPhonePrivacy(_ access: PrivacyAccess) async throws -> AccountSettings {
+        try await call("setPhonePrivacy") { done in
+            self.client.setPhonePrivacy(value: access.rawValue) { done(Self.settingsResult($0, $1, $2)) }
+        }
+    }
+
+    func setOnlineHidden(_ hidden: Bool) async throws -> AccountSettings {
+        try await call("setOnlineHidden") { done in
+            self.client.setOnlineHidden(hidden: hidden) { done(Self.settingsResult($0, $1, $2)) }
+        }
+    }
+
+    func setSafeMode(_ enabled: Bool) async throws -> AccountSettings {
+        try await call("setSafeMode") { done in
+            self.client.setSafeMode(enabled: enabled) { done(Self.settingsResult($0, $1, $2)) }
+        }
+    }
+
+    func setInactiveTTL(_ ttl: InactiveTTL) async throws -> AccountSettings {
+        try await call("setInactiveTtl") { done in
+            self.client.setInactiveTtl(value: ttl.rawValue) { done(Self.settingsResult($0, $1, $2)) }
+        }
+    }
+
+    func loadSessions() async throws -> [DeviceSession] {
+        try await call("loadSessions") { done in
+            self.client.loadSessions { sessions, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(sessions.map(Self.session)))
+                }
+            }
+        }
+    }
+
+    func closeOtherSessions() async throws {
+        let _: Void = try await call("closeOtherSessions") { done in
+            self.client.closeOtherSessions { done(Self.voidResult($0, $1)) }
+        }
+    }
+
+    func approveQrLogin(_ link: String) async throws {
+        let _: Void = try await call("approveQrLogin") { done in
+            self.client.approveQrLogin(qrLink: link) { done(Self.voidResult($0, $1)) }
+        }
+    }
+
+    func loadBlockedUsers() async throws -> [BlockedUser] {
+        try await call("loadBlockedUsers") { done in
+            self.client.loadBlockedUsers { users, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(users.map {
+                        BlockedUser(id: $0.id, name: $0.name, phone: $0.phone, avatarURL: URL(string: $0.avatarUrl))
+                    }))
+                }
+            }
+        }
+    }
+
+    func unblockUser(_ userId: String) async throws {
+        let _: Void = try await call("unblockUser") { done in
+            self.client.unblockUser(userId: userId) { done(Self.voidResult($0, $1)) }
+        }
+    }
+
+    func syncContacts() async throws -> [CoreContact] {
+        try await call("syncContacts") { done in
+            self.client.syncContacts { contacts, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(contacts.map(Self.contact)))
+                }
+            }
+        }
+    }
+
+    func loadTwoFactor() async throws -> TwoFactorStatus {
+        try await call("loadTwoFactor") { done in
+            self.client.loadTwoFactor { done(Self.twoFactorResult($0, $1, $2)) }
+        }
+    }
+
+    func startEmailChange(password: String) async throws -> String {
+        try await call("startEmailChange") { done in
+            self.client.startEmailChange(password: password) { trackId, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else if let trackId, !trackId.isEmpty {
+                    done(.success(trackId))
+                } else {
+                    done(.failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)))
+                }
+            }
+        }
+    }
+
+    func sendEmailCode(trackId: String, email: String) async throws -> Int {
+        try await call("sendEmailCode") { done in
+            self.client.sendEmailCode(trackId: trackId, email: email) { seconds, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(Int(seconds.int32Value)))
+                }
+            }
+        }
+    }
+
+    func confirmEmail(trackId: String, code: String) async throws -> TwoFactorStatus {
+        try await call("confirmEmail") { done in
+            self.client.confirmEmail(trackId: trackId, code: code) { done(Self.twoFactorResult($0, $1, $2)) }
+        }
+    }
+
+    func launchMiniApp(_ kind: MiniApp.Kind) async throws -> MiniApp {
+        try await call("launchMiniApp") { done in
+            self.client.launchMiniApp(app: kind.rawValue) { done(Self.miniAppResult($0, $1, $2)) }
+        }
+    }
+
+    func miniAppCallback(url: String) async throws -> MiniApp {
+        try await call("miniAppCallback") { done in
+            self.client.miniAppCallback(url: url) { done(Self.miniAppResult($0, $1, $2)) }
+        }
+    }
+
+    func folders() -> AsyncStream<[ServerFolder]> {
+        AsyncStream { continuation in
+            let watch = WatchBox(client.watchFolders { folders in
+                continuation.yield(folders.map(Self.folder))
+            })
+            continuation.onTermination = { _ in watch.cancel() }
+        }
+    }
+
+    func loadFolders() async throws -> [ServerFolder] {
+        try await call("loadFolders") { done in
+            self.client.loadFolders { folders, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(folders.map(Self.folder)))
+                }
+            }
+        }
+    }
+
+    func createFolder(title: String, chatIds: [String], filters: [String]) async throws {
+        let _: Void = try await call("createFolder") { done in
+            self.client.createFolder(title: title, chatIds: chatIds, filters: filters) { done(Self.voidResult($0, $1)) }
+        }
+    }
+
+    func renameFolder(_ folderId: String, title: String) async throws {
+        let _: Void = try await call("renameFolder") { done in
+            self.client.renameFolder(folderId: folderId, title: title) { done(Self.voidResult($0, $1)) }
+        }
+    }
+
+    func setFolderChats(_ folderId: String, chatIds: [String]) async throws {
+        let _: Void = try await call("setFolderChats") { done in
+            self.client.setFolderChats(folderId: folderId, chatIds: chatIds) { done(Self.voidResult($0, $1)) }
+        }
+    }
+
+    func deleteFolder(_ folderId: String) async throws {
+        let _: Void = try await call("deleteFolder") { done in
+            self.client.deleteFolder(folderId: folderId) { done(Self.voidResult($0, $1)) }
+        }
+    }
+
+    func reorderFolders(_ order: [String]) async throws {
+        let _: Void = try await call("reorderFolders") { done in
+            self.client.reorderFolders(order: order) { done(Self.voidResult($0, $1)) }
+        }
+    }
+
+    // MARK: Преобразования
+
+    private static func voidResult(_ kind: String?, _ key: String?) -> Result<Void, Error> {
+        if let kind { return .failure(CoreFailure(kind: kind, key: key)) }
+        return .success(())
+    }
+
+    private static func profileResult(_ value: IosMyProfile?, _ kind: String?, _ key: String?) -> Result<MyProfile, Error> {
+        if let kind { return .failure(CoreFailure(kind: kind, key: key)) }
+        guard let value else { return .failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)) }
+        return .success(MyProfile(
+            id: value.id,
+            firstName: value.firstName,
+            lastName: value.lastName,
+            about: value.description_,
+            phone: value.phone,
+            avatarURL: value.avatarUrl.isEmpty ? nil : URL(string: value.avatarUrl),
+            hasPhoto: !value.photoId.isEmpty || !value.avatarUrl.isEmpty,
+            link: value.link.isEmpty ? nil : URL(string: value.link)
+        ))
+    }
+
+    private static func settingsResult(_ value: IosAccountSettings?, _ kind: String?, _ key: String?) -> Result<AccountSettings, Error> {
+        if let kind { return .failure(CoreFailure(kind: kind, key: key)) }
+        guard let value else { return .failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)) }
+        return .success(settings(value))
+    }
+
+    private static func settings(_ value: IosAccountSettings) -> AccountSettings {
+        AccountSettings(
+            isKnown: value.known,
+            phonePrivacy: PrivacyAccess(rawValue: value.phonePrivacy) ?? .everybody,
+            onlineHidden: value.onlineHidden,
+            safeMode: value.safeMode,
+            familyProtection: value.familyProtection == "ON",
+            inactiveTTL: InactiveTTL(rawValue: value.inactiveTtl) ?? .sixMonths,
+            inviteLink: value.inviteLink.isEmpty ? nil : URL(string: value.inviteLink),
+            sferumBotId: value.sferumBotId,
+            digitalIdBotId: value.digitalIdBotId
+        )
+    }
+
+    private static func session(_ value: IosSession) -> DeviceSession {
+        DeviceSession(
+            id: value.id,
+            client: value.client,
+            info: value.info,
+            location: value.location,
+            isCurrent: value.current,
+            lastSeen: value.lastSeenMs > 0 ? Date(timeIntervalSince1970: Double(value.lastSeenMs) / 1000) : nil
+        )
+    }
+
+    private static func twoFactorResult(_ value: IosTwoFactor?, _ kind: String?, _ key: String?) -> Result<TwoFactorStatus, Error> {
+        if let kind { return .failure(CoreFailure(kind: kind, key: key)) }
+        guard let value else { return .failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)) }
+        return .success(TwoFactorStatus(isEnabled: value.enabled, email: value.email, hint: value.hint))
+    }
+
+    private static func miniAppResult(_ value: IosMiniApp?, _ kind: String?, _ key: String?) -> Result<MiniApp, Error> {
+        if let kind { return .failure(CoreFailure(kind: kind, key: key)) }
+        guard let value, let url = URL(string: value.url) else {
+            return .failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil))
+        }
+        return .success(MiniApp(botId: value.botId, url: url, queryId: value.queryId.isEmpty ? nil : value.queryId))
+    }
+
+    private static func folder(_ value: IosFolder) -> ServerFolder {
+        ServerFolder(
+            id: value.id,
+            title: value.title,
+            chatIds: value.chatIds,
+            filters: value.filters,
+            isAllChats: value.isAllChats
+        )
+    }
+}
