@@ -20,7 +20,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
 
     func start() async throws -> CorePhase {
         try await call { done in
-            client.start { phase, kind, key in
+            self.client.start { phase, kind, key in
                 if let kind {
                     done(.failure(CoreFailure(kind: kind, key: key)))
                 } else {
@@ -32,7 +32,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
 
     func requestCode(phone: String, resend: Bool) async throws -> CoreCode {
         try await call { done in
-            client.requestCode(phone: phone, resend: resend) { code, kind, key in
+            self.client.requestCode(phone: phone, resend: resend) { code, kind, key in
                 if let kind {
                     done(.failure(CoreFailure(kind: kind, key: key)))
                 } else if let code {
@@ -47,7 +47,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
 
     func verifyCode(token: String, code: String) async throws -> CoreAuthStep {
         try await call { done in
-            client.verifyCode(token: token, code: code) { step, kind, key in
+            self.client.verifyCode(token: token, code: code) { step, kind, key in
                 done(Self.step(step, kind: kind, key: key))
             }
         }
@@ -55,7 +55,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
 
     func checkPassword(trackId: String, password: String) async throws -> CoreAuthStep {
         try await call { done in
-            client.checkPassword(trackId: trackId, password: password) { step, kind, key in
+            self.client.checkPassword(trackId: trackId, password: password) { step, kind, key in
                 done(Self.step(step, kind: kind, key: key))
             }
         }
@@ -63,15 +63,15 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
 
     func register(token: String, firstName: String, lastName: String) async throws -> CoreAuthStep {
         try await call { done in
-            client.register(registerToken: token, firstName: firstName, lastName: lastName) { step, kind, key in
+            self.client.register(registerToken: token, firstName: firstName, lastName: lastName) { step, kind, key in
                 done(Self.step(step, kind: kind, key: key))
             }
         }
     }
 
     func logout() async throws {
-        try await call { done in
-            client.logout { kind, key in
+        let _: Void = try await call { done in
+            self.client.logout { kind, key in
                 if let kind {
                     done(.failure(CoreFailure(kind: kind, key: key)))
                 } else {
@@ -83,7 +83,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
 
     func loadChats() async throws -> [CoreChat] {
         try await call { done in
-            client.loadChats { chats, kind, key in
+            self.client.loadChats { chats, kind, key in
                 if let kind {
                     done(.failure(CoreFailure(kind: kind, key: key)))
                 } else {
@@ -95,7 +95,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
 
     func loadChat(id: String) async throws -> CoreChat {
         try await call { done in
-            client.loadChat(chatId: id) { chat, kind, key in
+            self.client.loadChat(chatId: id) { chat, kind, key in
                 if let kind {
                     done(.failure(CoreFailure(kind: kind, key: key)))
                 } else if let chat {
@@ -109,7 +109,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
 
     func loadHistory(chatId: String, beforeMs: Int64, limit: Int) async throws -> [CoreMessage] {
         try await call { done in
-            client.loadHistory(chatId: chatId, beforeMs: beforeMs, limit: Int32(limit)) { messages, kind, key in
+            self.client.loadHistory(chatId: chatId, beforeMs: beforeMs, limit: Int32(limit)) { messages, kind, key in
                 if let kind {
                     done(.failure(CoreFailure(kind: kind, key: key)))
                 } else {
@@ -121,7 +121,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
 
     func sendText(chatId: String, text: String) async throws -> CoreMessage {
         try await call { done in
-            client.sendText(chatId: chatId, text: text) { message, kind, key in
+            self.client.sendText(chatId: chatId, text: text) { message, kind, key in
                 if let kind {
                     done(.failure(CoreFailure(kind: kind, key: key)))
                 } else if let message {
@@ -134,8 +134,8 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     }
 
     func markRead(chatId: String, messageId: String) async throws {
-        try await call { done in
-            client.markRead(chatId: chatId, messageId: messageId) { kind, key in
+        let _: Void = try await call { done in
+            self.client.markRead(chatId: chatId, messageId: messageId) { kind, key in
                 if let kind {
                     done(.failure(CoreFailure(kind: kind, key: key)))
                 } else {
@@ -148,20 +148,20 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     func phases() -> AsyncStream<CorePhase> {
         AsyncStream { continuation in
             continuation.yield(CorePhase(raw: client.phaseName()))
-            let watch = client.watchState { name in
+            let watch = WatchBox(client.watchState { name in
                 continuation.yield(CorePhase(raw: name))
-            }
+            })
             continuation.onTermination = { _ in watch.cancel() }
         }
     }
 
     func events() -> AsyncStream<CoreEvent> {
         AsyncStream { continuation in
-            let watch = client.watchEvents { event in
+            let watch = WatchBox(client.watchEvents { event in
                 if let mapped = Self.event(event) {
                     continuation.yield(mapped)
                 }
-            }
+            })
             continuation.onTermination = { _ in watch.cancel() }
         }
     }
@@ -241,4 +241,12 @@ private final class ResumeGate: @unchecked Sendable {
         lock.unlock()
         body()
     }
+}
+
+/// `IosWatch` из ядра не помечен Sendable. Отмена в ядре потокобезопасна,
+/// поэтому подписку можно отменить из `onTermination` с любого потока.
+private final class WatchBox: @unchecked Sendable {
+    private let watch: IosWatch
+    init(_ watch: IosWatch) { self.watch = watch }
+    func cancel() { watch.cancel() }
 }
