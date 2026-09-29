@@ -183,7 +183,7 @@ final class AppContainer {
         switch phase {
         case .restoring: "restoring"
         case .signedOut: "signedOut"
-        case .codeSent(let length): "codeSent(length: \(length.map(String.init) ?? "nil"))"
+        case .codeSent(let length): "codeSent(length: \(length.map { String($0) } ?? "nil"))"
         case .password: "password"
         case .registration: "registration"
         case .signedIn(let id): "signedIn(\(id))"

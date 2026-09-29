@@ -141,7 +141,7 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
             throw AuthErrors.map(error, during: .requestCode)
         }
         try ensureCurrent(generation)
-        Log.info(.auth, "Код отправлен, длина \(code.codeLength.map(String.init) ?? "не указана")")
+        Log.info(.auth, "Код отправлен, длина \(code.codeLength.map { String($0) } ?? "не указана")")
         self.phone = phone
         codeToken = code.token
         trackId = nil
