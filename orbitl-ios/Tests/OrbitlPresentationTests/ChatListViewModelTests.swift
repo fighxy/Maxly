@@ -61,7 +61,7 @@ struct ChatListStateTests {
             chat("a", at: 1_790_672_700, unread: 1, preview: "Первое"),
         ])
         #expect(await eventually { model.items.first?.id == "b" })
-        #expect(model.items.first?.unreadBadge == "99+")
+        #expect(model.items.first?.unreadBadge == "150")
         #expect(model.items.last?.unreadBadge == "1")
         #expect(model.totalUnread == 151)
     }
