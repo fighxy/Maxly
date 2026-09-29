@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import SwiftUI
 import OrbitleDomain
 import OrbitlePresentation
 @testable import OrbitleUI
@@ -42,5 +43,18 @@ struct ChatRowPartsTests {
         #expect(await pipeline.image(for: url) === image)
         await pipeline.removeAll()
         #expect(pipeline.cached(url) == nil)
+    }
+}
+
+@Suite("Размер текста в SwiftUI")
+struct TextSizeDynamicTypeTests {
+    @Test("Каждому шагу свой размер Dynamic Type по возрастанию, стандарт — .large")
+    func mapping() {
+        let sizes = TextSizeStep.allCases.map(\.dynamicTypeSize)
+        #expect(sizes == [.xSmall, .small, .medium, .large, .xLarge, .xxLarge, .xxxLarge])
+        #expect(sizes == sizes.sorted())
+        #expect(Set(sizes).count == sizes.count)
+        #expect(TextSizeStep.standard.dynamicTypeSize == .large)
+        #expect(sizes.allSatisfy { !$0.isAccessibilitySize })
     }
 }

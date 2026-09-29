@@ -46,6 +46,10 @@ final class AppContainer {
     @ObservationIgnored private var phaseTask: Task<Void, Never>?
     /// Журнал для отладки. `nil`, если каталог журнала не удалось открыть.
     let logs: FileLogStore?
+    /// Архив отчётов о сбоях для «О приложении». `nil` без каталога журнала.
+    let crashDumps: CrashDumpStore?
+    /// Размер текста и тема: одни на устройство, выход из аккаунта их не трогает.
+    let appearance: AppearanceSettings
 
     static let loggingKey = "orbitle.debug.logging"
 
@@ -56,11 +60,18 @@ final class AppContainer {
         let enabled = UserDefaults.standard.object(forKey: Self.loggingKey) as? Bool ?? true
         let directory = try? FileLogStore.defaultDirectory()
         // Аварийный журнал включается первым: сбой при запуске тоже должен оставить отчёт.
+        var pending: String?
         if let directory {
             CrashReporter.loadPreviousSignalReport(directory: directory)
             CrashReporter.install(directory: directory)
-            crashReport = CrashReporter.pendingReport()
+            pending = CrashReporter.pendingReport()
         }
+        crashReport = pending
+        let dumps = directory.map { CrashDumpStore(logsDirectory: $0) }
+        // Отчёт остаётся в архиве и после «Продолжить запуск».
+        if let pending { dumps?.save(pending) }
+        crashDumps = dumps
+        appearance = AppearanceSettings(store: UserDefaultsAppearanceStore())
         logs = directory.map { FileLogStore(directory: $0, enabled: enabled) }
         if let logs { Log.sink = logs.sink }
         Log.info(.app, "Запуск: \(Self.appVersion), \(ProcessInfo.processInfo.operatingSystemVersionString)")
@@ -82,6 +93,11 @@ final class AppContainer {
         let version = info?["CFBundleShortVersionString"] as? String ?? "?"
         let build = info?["CFBundleVersion"] as? String ?? "?"
         return "Orbitle \(version) (\(build))"
+    }
+
+    /// `0.1.0 (1)` для настроек и «О приложении».
+    static var versionNumber: String {
+        appVersion.replacingOccurrences(of: "Orbitle ", with: "")
     }
 
     /// Писать журнал в файлы. Настройка живёт на устройстве.
