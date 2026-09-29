@@ -1,4 +1,5 @@
 import Foundation
+import OrbitleDomain
 
 /// Фаза `MaxClient`, как её отдаёт iOS-фасад ядра.
 public enum CorePhase: String, Sendable, Equatable {
@@ -267,6 +268,41 @@ public protocol MaxCore: Sendable {
     /// каждого изменения (вход, свой вызов, пуш с другого устройства). Пока список неизвестен,
     /// поток молчит, поэтому пустой массив всегда значит «ничего не закреплено».
     func pinnedChats() -> AsyncStream<[String]>
+
+    // MARK: Настройки аккаунта (docs/settings.md)
+
+    func loadMyProfile() async throws -> MyProfile
+    func updateProfile(firstName: String, lastName: String, about: String) async throws -> MyProfile
+    func uploadAvatar(jpeg: Data) async throws -> MyProfile
+    func removeAvatar() async throws -> MyProfile
+    /// Мс Unix момента удаления, 0 — сервер не назвал.
+    func deleteAccount() async throws -> Int64
+    /// Настройки сейчас и после каждого изменения.
+    func accountSettings() -> AsyncStream<AccountSettings>
+    func setPhonePrivacy(_ access: PrivacyAccess) async throws -> AccountSettings
+    func setOnlineHidden(_ hidden: Bool) async throws -> AccountSettings
+    func setSafeMode(_ enabled: Bool) async throws -> AccountSettings
+    func setInactiveTTL(_ ttl: InactiveTTL) async throws -> AccountSettings
+    func loadSessions() async throws -> [DeviceSession]
+    func closeOtherSessions() async throws
+    func approveQrLogin(_ link: String) async throws
+    func loadBlockedUsers() async throws -> [BlockedUser]
+    func unblockUser(_ userId: String) async throws
+    func syncContacts() async throws -> [CoreContact]
+    func loadTwoFactor() async throws -> TwoFactorStatus
+    func startEmailChange(password: String) async throws -> String
+    func sendEmailCode(trackId: String, email: String) async throws -> Int
+    func confirmEmail(trackId: String, code: String) async throws -> TwoFactorStatus
+    func launchMiniApp(_ kind: MiniApp.Kind) async throws -> MiniApp
+    func miniAppCallback(url: String) async throws -> MiniApp
+    /// Папки сервера: сразу, если уже известны, и после каждого изменения.
+    func folders() -> AsyncStream<[ServerFolder]>
+    func loadFolders() async throws -> [ServerFolder]
+    func createFolder(title: String, chatIds: [String], filters: [String]) async throws
+    func renameFolder(_ folderId: String, title: String) async throws
+    func setFolderChats(_ folderId: String, chatIds: [String]) async throws
+    func deleteFolder(_ folderId: String) async throws
+    func reorderFolders(_ order: [String]) async throws
 }
 
 public extension MaxCore {
@@ -280,4 +316,36 @@ public extension MaxCore {
         throw CoreFailure(kind: "UNKNOWN", key: nil)
     }
     func pinnedChats() -> AsyncStream<[String]> { AsyncStream { $0.finish() } }
+
+    // Фейки в тестах, которым настройки аккаунта не нужны.
+    private var unsupported: CoreFailure { CoreFailure(kind: "UNKNOWN", key: "unsupported") }
+    func loadMyProfile() async throws -> MyProfile { throw unsupported }
+    func updateProfile(firstName: String, lastName: String, about: String) async throws -> MyProfile { throw unsupported }
+    func uploadAvatar(jpeg: Data) async throws -> MyProfile { throw unsupported }
+    func removeAvatar() async throws -> MyProfile { throw unsupported }
+    func deleteAccount() async throws -> Int64 { throw unsupported }
+    func accountSettings() -> AsyncStream<AccountSettings> { AsyncStream { $0.finish() } }
+    func setPhonePrivacy(_ access: PrivacyAccess) async throws -> AccountSettings { throw unsupported }
+    func setOnlineHidden(_ hidden: Bool) async throws -> AccountSettings { throw unsupported }
+    func setSafeMode(_ enabled: Bool) async throws -> AccountSettings { throw unsupported }
+    func setInactiveTTL(_ ttl: InactiveTTL) async throws -> AccountSettings { throw unsupported }
+    func loadSessions() async throws -> [DeviceSession] { throw unsupported }
+    func closeOtherSessions() async throws { throw unsupported }
+    func approveQrLogin(_ link: String) async throws { throw unsupported }
+    func loadBlockedUsers() async throws -> [BlockedUser] { throw unsupported }
+    func unblockUser(_ userId: String) async throws { throw unsupported }
+    func syncContacts() async throws -> [CoreContact] { throw unsupported }
+    func loadTwoFactor() async throws -> TwoFactorStatus { throw unsupported }
+    func startEmailChange(password: String) async throws -> String { throw unsupported }
+    func sendEmailCode(trackId: String, email: String) async throws -> Int { throw unsupported }
+    func confirmEmail(trackId: String, code: String) async throws -> TwoFactorStatus { throw unsupported }
+    func launchMiniApp(_ kind: MiniApp.Kind) async throws -> MiniApp { throw unsupported }
+    func miniAppCallback(url: String) async throws -> MiniApp { throw unsupported }
+    func folders() -> AsyncStream<[ServerFolder]> { AsyncStream { $0.finish() } }
+    func loadFolders() async throws -> [ServerFolder] { throw unsupported }
+    func createFolder(title: String, chatIds: [String], filters: [String]) async throws { throw unsupported }
+    func renameFolder(_ folderId: String, title: String) async throws { throw unsupported }
+    func setFolderChats(_ folderId: String, chatIds: [String]) async throws { throw unsupported }
+    func deleteFolder(_ folderId: String) async throws { throw unsupported }
+    func reorderFolders(_ order: [String]) async throws { throw unsupported }
 }

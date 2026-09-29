@@ -18,10 +18,14 @@ public protocol ContactRepository: Sendable {
     /// Текущий список и все его изменения.
     func contacts() -> AsyncStream<[Contact]>
     func addContact(phone: String, firstName: String, lastName: String) async throws(OrbitleError) -> Contact
+    /// Попросить сервер прислать список заново. Новые подписки получат уже его.
+    func sync() async throws(OrbitleError)
 }
 
 public extension ContactRepository {
     func addContact(phone: String, firstName: String, lastName: String) async throws(OrbitleError) -> Contact {
         throw .invalidRequest
     }
+
+    func sync() async throws(OrbitleError) {}
 }

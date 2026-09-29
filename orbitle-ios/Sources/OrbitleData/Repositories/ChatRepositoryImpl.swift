@@ -19,7 +19,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     private var typingExpiry: Task<Void, Never>?
     private let typingTTL: TimeInterval
     private let clock: @Sendable () -> Date
-    private let api: any MaxAPI
+    private nonisolated let api: any MaxAPI
     /// Растёт при каждой очистке базы. Ответ сервера на запрос, начатый до очистки
     /// (например, до выхода), в базу уже не пишется.
     private var generation = 0
@@ -513,6 +513,11 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     }
 
     // MARK: Набор текста
+
+    /// Серверные папки (`FOLDERS_GET` при входе, `NOTIF_FOLDERS` и свои изменения).
+    public nonisolated func folders() -> AsyncStream<[ChatFolder]> {
+        api.folderUpdates()
+    }
 
     public nonisolated func typing() -> AsyncStream<[String: [String]]> {
         AsyncStream { continuation in
