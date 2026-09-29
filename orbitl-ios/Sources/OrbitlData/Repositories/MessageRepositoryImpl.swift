@@ -373,9 +373,11 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         return try modelContext.fetch(descriptor).first
     }
 
+    /// Подписчик мог уйти раньше, чем эта задача добралась до актора: тогда его снятие
+    /// уже отработало, и сохранять его нельзя.
     private func addObserver(_ id: UUID, chatId: String, _ continuation: AsyncStream<[Message]>.Continuation) {
+        if case .terminated = continuation.yield(snapshot(chatId: chatId)) { return }
         observers[id] = Observer(chatId: chatId, continuation: continuation)
-        continuation.yield(snapshot(chatId: chatId))
     }
 
     private func removeObserver(_ id: UUID) {

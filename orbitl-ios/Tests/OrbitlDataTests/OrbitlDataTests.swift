@@ -226,3 +226,24 @@ struct StorageTests {
         }
     }
 }
+
+@Suite("Подписки")
+struct SubscriptionTests {
+    @Test("Ушедший подписчик снимается и больше не получает снимки")
+    func finishedObserverRemoved() async throws {
+        let chats = ChatRepositoryImpl.make(stack: try SwiftDataStack(inMemory: true), api: FakeMaxAPI())
+        let reader = Task {
+            for await _ in chats.chats() { return }
+        }
+        await reader.value
+        #expect(await eventually { await chats.observerCount == 0 })
+
+        // Поток, брошенный до первого значения, тоже не остаётся в подписчиках.
+        let cancelled = Task {
+            for await _ in chats.chats() {}
+        }
+        cancelled.cancel()
+        await cancelled.value
+        #expect(await eventually { await chats.observerCount == 0 })
+    }
+}
