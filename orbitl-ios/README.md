@@ -51,6 +51,20 @@ bash scripts/fetch-core.sh
 
 Скрипт кладёт статический `Vendor/MaxIos.xcframework` (каталог в `.gitignore`) и не линкует `MaxShared` отдельно: он уже внутри `MaxIos`. Дальше открывается `Orbitl.xcodeproj`, схема `Orbitl`.
 
+Ядро из локальной папки вместо GitHub (ревизия `core.lock` тогда не проверяется):
+
+```bash
+MAX_KMP_CORE_DIR=~/src/max-kmp-core bash scripts/fetch-core.sh
+```
+
+### Установка на iPhone
+
+```bash
+bash scripts/build-ipa.sh            # или MAX_KMP_CORE_DIR=… / SKIP_CORE=1
+```
+
+Скрипт собирает Release для устройства без подписи и кладёт `build/Orbitl.ipa`. Его подписывают своим сертификатом (Sideloadly, AltStore, eSign и т. п.) и ставят на телефон. CI делает то же и выкладывает `.ipa` в артефакты прогона.
+
 Тесты библиотек (`OrbitlDomainTests`, `OrbitlDataTests`, `OrbitlPresentationTests`) ядро не требуют:
 
 ```bash
