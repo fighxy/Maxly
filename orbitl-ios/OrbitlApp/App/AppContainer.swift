@@ -47,11 +47,32 @@ final class AppContainer {
 
     static let loggingKey = "orbitl.debug.logging"
 
+    /// Отчёт о сбое прошлого запуска. Пока он есть, экран показывает его вместо запуска ядра.
+    private(set) var crashReport: String?
+
     init() {
         let enabled = UserDefaults.standard.object(forKey: Self.loggingKey) as? Bool ?? true
-        logs = (try? FileLogStore.defaultDirectory()).map { FileLogStore(directory: $0, enabled: enabled) }
+        let directory = try? FileLogStore.defaultDirectory()
+        // Аварийный журнал включается первым: сбой при запуске тоже должен оставить отчёт.
+        if let directory {
+            CrashReporter.loadPreviousSignalReport(directory: directory)
+            CrashReporter.install(directory: directory)
+            crashReport = CrashReporter.pendingReport()
+        }
+        MaxIosCore.installCrashHandler()
+        logs = directory.map { FileLogStore(directory: $0, enabled: enabled) }
         if let logs { Log.sink = logs.sink }
         Log.info(.app, "Запуск: \(Self.appVersion), \(ProcessInfo.processInfo.operatingSystemVersionString)")
+        if let crashReport {
+            Log.error(.app, "Прошлый запуск завершился сбоем:\n\(crashReport)")
+        }
+    }
+
+    /// Отчёт показан: забыть его и запустить приложение как обычно.
+    func continueAfterCrash() async {
+        CrashReporter.clearPendingReport()
+        crashReport = nil
+        await bootstrap()
     }
 
     /// `1.0 (7)` из Info.plist.
@@ -70,7 +91,7 @@ final class AppContainer {
     }
 
     func bootstrap() async {
-        guard boot == .loading else { return }
+        guard boot == .loading, crashReport == nil else { return }
         Log.info(.app, "Подготовка базы и ядра")
         do {
             let stack = try SwiftDataStack()

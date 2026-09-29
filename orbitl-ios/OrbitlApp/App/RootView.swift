@@ -8,28 +8,10 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            switch container.boot {
-            case .loading:
-                OrbitlSplash()
-            case .failed(let message):
-                ContentUnavailableView {
-                    Label {
-                        Text("Orbitl не запустился")
-                    } icon: {
-                        OrbitlMark(size: 72)
-                    }
-                } description: {
-                    Text(message)
-                }
-            case .ready:
-                switch container.phase {
-                case .signedIn:
-                    main
-                case .restoring:
-                    OrbitlSplash(caption: "Подключение…")
-                default:
-                    auth
-                }
+            if let report = container.crashReport {
+                CrashReportView(container: container, report: report)
+            } else {
+                content
             }
         }
         .task { await container.bootstrap() }
@@ -43,6 +25,33 @@ struct RootView: View {
             }
         }
         .onOpenURL { url in router.open(DeepLink.parse(url)) }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch container.boot {
+        case .loading:
+            OrbitlSplash()
+        case .failed(let message):
+            ContentUnavailableView {
+                Label {
+                    Text("Orbitl не запустился")
+                } icon: {
+                    OrbitlMark(size: 72)
+                }
+            } description: {
+                Text(message)
+            }
+        case .ready:
+            switch container.phase {
+            case .signedIn:
+                main
+            case .restoring:
+                OrbitlSplash(caption: "Подключение…")
+            default:
+                auth
+            }
+        }
     }
 
     @ViewBuilder

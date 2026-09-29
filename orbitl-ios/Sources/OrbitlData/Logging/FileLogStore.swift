@@ -98,7 +98,7 @@ public final class FileLogStore: @unchecked Sendable {
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
         queue.sync {
             try? handle?.synchronize()
-            for file in existingFiles() {
+            for file in existingFiles() + reportFiles() {
                 try? FileManager.default.copyItem(at: file, to: staging.appendingPathComponent(file.lastPathComponent))
             }
         }
@@ -131,6 +131,12 @@ public final class FileLogStore: @unchecked Sendable {
 
     private func fileURL(_ index: Int) -> URL {
         directory.appendingPathComponent("orbitl-\(index).\(Self.fileExtension)")
+    }
+
+    /// Отчёты о сбоях (`*.txt`), которые аварийный журнал кладёт в тот же каталог.
+    private func reportFiles() -> [URL] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        return names.filter { $0.hasSuffix(".txt") }.sorted().map { directory.appendingPathComponent($0) }
     }
 
     private func existingFiles() -> [URL] {
