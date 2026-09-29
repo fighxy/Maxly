@@ -169,7 +169,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     public func sendComment(text: String, chatId: String, postId: String) async throws(OrbitleError) {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
-        let message = SDMessage(
+        let comment = SDMessage(
             id: "local-\(UUID().uuidString)",
             chatId: chatId,
             authorId: currentUserId,
@@ -177,11 +177,11 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             timestamp: .now,
             status: .sent
         )
-        message.contentJSON = MessageContentCodec.encode(MessageContent(threadOf: postId))
-        message.threadOf = postId
+        comment.contentJSON = MessageContentCodec.encode(MessageContent(threadOf: postId))
+        comment.threadOf = postId
         do {
-            message.chat = try chat(id: chatId)
-            modelContext.insert(message)
+            comment.chat = try chat(id: chatId)
+            modelContext.insert(comment)
             if let parent = try message(id: postId) ?? message(serverId: postId) {
                 var parentContent = Self.content(of: parent)
                 parentContent.comments = CommentSummary(count: (parentContent.comments?.count ?? 0) + 1)
