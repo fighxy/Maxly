@@ -35,3 +35,23 @@ struct OrbitlErrorTests {
         #expect(OrbitlError.networkUnavailable.errorDescription == "Нет соединения с сервером")
     }
 }
+
+@Suite("Ошибки для экрана")
+struct OrbitlErrorMessageTests {
+    @Test("Отмену экран не показывает, остальное показывает по-русски")
+    func userMessage() {
+        #expect(OrbitlError.cancelled.userMessage == nil)
+        #expect(OrbitlError.authExpired.userMessage == "Сессия истекла, войдите снова")
+        #expect(OrbitlError.server(code: "proto.bad").userMessage == "Ошибка сервера (proto.bad). Попробуйте позже")
+        #expect(OrbitlError.unknown.userMessage == "Что-то пошло не так")
+    }
+
+    @Test("Временные ошибки отличаются от постоянных")
+    func transient() {
+        #expect(OrbitlError.networkUnavailable.isTransient)
+        #expect(OrbitlError.server(code: "x").isTransient)
+        #expect(!OrbitlError.rejected("Неверный код").isTransient)
+        #expect(!OrbitlError.authExpired.isTransient)
+        #expect(!OrbitlError.cancelled.isTransient)
+    }
+}

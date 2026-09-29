@@ -13,14 +13,18 @@ public enum MaxAPIError: Error, Sendable, Equatable {
     case sessionExpired
     /// Ввод отклонён, например неверный пароль.
     case rejected(String)
-    /// Ответ не удалось разобрать.
+    /// Запрос неверен или объект не найден.
     case invalidResponse
+    /// Вызов отменён (задача отменена, ядро закрыто или ответ пришёл на устаревший запрос).
+    case cancelled
+    /// Ошибка без категории (сбой ядра, неверный аргумент).
+    case unknown
 
     /// Имеет ли смысл повторить запрос позже.
     public var isRetryable: Bool {
         switch self {
         case .offline, .server: true
-        case .notImplemented, .invalidResponse, .sessionExpired, .rejected: false
+        case .notImplemented, .invalidResponse, .sessionExpired, .rejected, .cancelled, .unknown: false
         }
     }
 
@@ -33,6 +37,8 @@ public enum MaxAPIError: Error, Sendable, Equatable {
         case .rejected(let message): .rejected(message)
         case .invalidResponse: .invalidRequest
         case .notImplemented: .syncFailed
+        case .cancelled: .cancelled
+        case .unknown: .unknown
         }
     }
 }

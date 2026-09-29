@@ -18,9 +18,15 @@ actor FakeMaxCore: MaxCore {
     var code = CoreCode(token: "code-token", codeLength: 6)
     var authStep: CoreAuthStep = .loggedIn(userId: "u1")
     var authError: CoreFailure?
+    var verifyGate: Gate?
+    var logoutError: CoreFailure?
     private(set) var marked: [String] = []
     private(set) var didLogout = false
     private(set) var lastText = ""
+    private(set) var requestedPhones: [String] = []
+    private(set) var resendCount = 0
+    private(set) var verifiedCodes: [String] = []
+    private(set) var registeredNames: [String] = []
 
     func phaseName() async -> CorePhase { phase }
     func currentUserId() async -> String { userId }
@@ -34,10 +40,14 @@ actor FakeMaxCore: MaxCore {
 
     func requestCode(phone: String, resend: Bool) async throws -> CoreCode {
         if let authError { throw authError }
+        requestedPhones.append(phone)
+        if resend { resendCount += 1 }
         return code
     }
 
     func verifyCode(token: String, code: String) async throws -> CoreAuthStep {
+        verifiedCodes.append(code)
+        if let verifyGate { await verifyGate.wait() }
         if let authError { throw authError }
         return authStep
     }
@@ -49,10 +59,14 @@ actor FakeMaxCore: MaxCore {
 
     func register(token: String, firstName: String, lastName: String) async throws -> CoreAuthStep {
         if let authError { throw authError }
+        registeredNames.append("\(firstName)|\(lastName)")
         return authStep
     }
 
-    func logout() async throws { didLogout = true }
+    func logout() async throws {
+        didLogout = true
+        if let logoutError { throw logoutError }
+    }
     func loadChats() async throws -> [CoreChat] {
         if let loadError { throw loadError }
         return chats
@@ -109,6 +123,7 @@ struct SessionParts: Sendable {
     var stack: SwiftDataStack
     var chats: ChatRepositoryImpl
     var messages: MessageRepositoryImpl
+    var sync: SyncEngine
     var media: FakeMedia
     var session: SessionManager
     var defaults: UserDefaults
@@ -142,6 +157,7 @@ func makeSession() async throws -> SessionParts {
         stack: stack,
         chats: chats,
         messages: messages,
+        sync: sync,
         media: media,
         session: session,
         defaults: defaults,
@@ -207,13 +223,20 @@ struct CoreMappingTests {
         #expect(CoreMapping.apiError(CoreFailure(kind: "NETWORK", key: nil)) == .offline)
         #expect(CoreMapping.apiError(CoreFailure(kind: "TIMEOUT", key: nil)) == .offline)
         #expect(CoreMapping.apiError(CoreFailure(kind: "CLOSED", key: nil)) == .offline)
-        #expect(CoreMapping.apiError(CoreFailure(kind: "CANCELLED", key: nil)) == .offline)
+        #expect(CoreMapping.apiError(CoreFailure(kind: "CANCELLED", key: nil)) == .cancelled)
         #expect(CoreMapping.apiError(CoreFailure(kind: "SESSION_EXPIRED", key: nil)) == .sessionExpired)
         #expect(CoreMapping.apiError(CoreFailure(kind: "AUTH", key: nil)) == .rejected("Неверный пароль"))
         #expect(CoreMapping.apiError(CoreFailure(kind: "SERVER", key: "proto.bad")) == .server(code: "proto.bad"))
         #expect(CoreMapping.apiError(CoreFailure(kind: "SERVER", key: "")) == .server(code: "SERVER"))
         #expect(CoreMapping.apiError(CoreFailure(kind: "NOT_FOUND", key: nil)) == .invalidResponse)
-        #expect(CoreMapping.apiError(URLError(.badURL)) == .invalidResponse)
+        #expect(CoreMapping.apiError(CoreFailure(kind: "MALFORMED_REPLY", key: nil)) == .server(code: "MALFORMED_REPLY"))
+        #expect(CoreMapping.apiError(CoreFailure(kind: "UNKNOWN", key: nil)) == .unknown)
+        #expect(CoreMapping.apiError(URLError(.notConnectedToInternet)) == .offline)
+        #expect(CoreMapping.apiError(URLError(.cancelled)) == .cancelled)
+        #expect(CoreMapping.apiError(CancellationError()) == .cancelled)
+        #expect(!MaxAPIError.cancelled.isRetryable)
+        #expect(MaxAPIError.cancelled.orbitlError == .cancelled)
+        #expect(MaxAPIError.unknown.orbitlError == .unknown)
         #expect(MaxAPIError.offline.isRetryable)
         #expect(!MaxAPIError.sessionExpired.isRetryable)
         #expect(CoreErrors.orbitl(CoreFailure(kind: "AUTH", key: nil)) == .rejected("Неверный пароль"))
@@ -315,6 +338,9 @@ extension FakeMaxCore {
     func setStartError(_ error: CoreFailure?) { startError = error }
     func setAuthStep(_ step: CoreAuthStep) { authStep = step }
     func setAuthError(_ error: CoreFailure?) { authError = error }
+    func setVerifyGate(_ gate: Gate?) { verifyGate = gate }
+    func setCode(_ value: CoreCode) { code = value }
+    func setLogoutError(_ error: CoreFailure?) { logoutError = error }
 }
 
 @Suite("Сессия")
