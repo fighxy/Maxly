@@ -249,7 +249,7 @@ struct CoreMappingTests {
         #expect(CoreMapping.apiError(CoreFailure(kind: "CLOSED", key: nil)) == .offline)
         #expect(CoreMapping.apiError(CoreFailure(kind: "CANCELLED", key: nil)) == .cancelled)
         #expect(CoreMapping.apiError(CoreFailure(kind: "SESSION_EXPIRED", key: nil)) == .sessionExpired)
-        #expect(CoreMapping.apiError(CoreFailure(kind: "AUTH", key: nil)) == .rejected("Неверный пароль"))
+        #expect(CoreMapping.apiError(CoreFailure(kind: "AUTH", key: nil)) == .invalidResponse)
         #expect(CoreMapping.apiError(CoreFailure(kind: "SERVER", key: "proto.bad")) == .server(code: "proto.bad"))
         #expect(CoreMapping.apiError(CoreFailure(kind: "SERVER", key: "")) == .server(code: "SERVER"))
         #expect(CoreMapping.apiError(CoreFailure(kind: "NOT_FOUND", key: nil)) == .invalidResponse)
@@ -263,7 +263,7 @@ struct CoreMappingTests {
         #expect(MaxAPIError.unknown.orbitlError == .unknown)
         #expect(MaxAPIError.offline.isRetryable)
         #expect(!MaxAPIError.sessionExpired.isRetryable)
-        #expect(CoreErrors.orbitl(CoreFailure(kind: "AUTH", key: nil)) == .rejected("Неверный пароль"))
+        #expect(CoreErrors.orbitl(CoreFailure(kind: "AUTH", key: nil)) == .invalidRequest)
         #expect(CoreErrors.orbitl(OrbitlError.storageError) == .storageError)
     }
 
@@ -344,6 +344,8 @@ struct MaxAPIClientTests {
         #expect(await client.sendMessage(chatId: "1", text: "x", clientId: "local") == .failure(.offline))
         await core.failSession()
         #expect(await client.fetchChats() == .failure(.sessionExpired))
+        await core.failLoad(kind: "AUTH")
+        #expect(await client.fetchChats() == .failure(.invalidResponse))
     }
 }
 
@@ -356,6 +358,7 @@ extension FakeMaxCore {
 
     func failSend() { sendError = CoreFailure(kind: "NETWORK", key: nil) }
     func failSession() { loadError = CoreFailure(kind: "SESSION_EXPIRED", key: nil) }
+    func failLoad(kind: String) { loadError = CoreFailure(kind: kind, key: nil) }
     func setUser(_ id: String) { userId = id }
     func setStoredToken(_ value: Bool) { storedToken = value }
     func setStartPhase(_ phase: CorePhase) { startPhase = phase }
