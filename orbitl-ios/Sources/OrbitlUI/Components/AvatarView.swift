@@ -1,11 +1,18 @@
 import SwiftUI
 
-/// Общий компонент `AvatarView`.
-// TODO: реализовать, использовать OrbitlTheme.
 public struct AvatarView: View {
-    public init() {}
+    private let title: String
+
+    public init(title: String) {
+        self.title = title
+    }
 
     public var body: some View {
-        EmptyView()
+        Text(AvatarInitials.text(for: title))
+            .font(.headline)
+            .foregroundStyle(Color.orbitlAccent)
+            .frame(width: OrbitlTheme.avatar, height: OrbitlTheme.avatar)
+            .background(Color.orbitlAccent.opacity(0.16), in: Circle())
+            .accessibilityLabel(title)
     }
 }

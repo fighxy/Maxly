@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Собирает статический MaxIos.xcframework из ревизии orbitl-ios/core.lock.
+set -euo pipefail
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+lock="$root/orbitl-ios/core.lock"
+revision="$(grep '^revision=' "$lock" | head -n 1 | cut -d= -f2- | tr -d '[:space:]')"
+repository="$(grep '^repository=' "$lock" | head -n 1 | cut -d= -f2- | tr -d '[:space:]')"
+
+if [[ -z "$revision" || -z "$repository" ]]; then
+  echo "В core.lock нужны строки revision= и repository=" >&2
+  exit 1
+fi
+
+dest="$root/.build/max-kmp-core"
+rm -rf "$dest"
+mkdir -p "$dest"
+git init "$dest" >/dev/null
+
+core_git() {
+  if [[ -n "${MAX_KMP_CORE_TOKEN:-}" ]]; then
+    git -C "$dest" -c "http.extraheader=AUTHORIZATION: bearer ${MAX_KMP_CORE_TOKEN}" "$@"
+  else
+    git -C "$dest" "$@"
+  fi
+}
+
+core_git remote add origin "$repository"
+core_git fetch --depth 1 origin "$revision"
+git -C "$dest" checkout --detach FETCH_HEAD
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "Ядро $revision лежит в $dest."
+  echo "MaxIos.xcframework собирается только на macOS с JDK 17 и Xcode."
+  exit 0
+fi
+
+if ! command -v java >/dev/null 2>&1; then
+  echo "Нужен JDK 17, чтобы собрать XCFramework." >&2
+  exit 1
+fi
+
+chmod +x "$dest/gradlew"
+( cd "$dest" && ./gradlew :ios:assembleMaxIosReleaseXCFramework --no-daemon --stacktrace )
+
+framework="$dest/ios/build/XCFrameworks/release/MaxIos.xcframework"
+if [[ ! -d "$framework" ]]; then
+  echo "Gradle не положил $framework" >&2
+  exit 1
+fi
+
+mkdir -p "$root/orbitl-ios/Vendor"
+rm -rf "$root/orbitl-ios/Vendor/MaxIos.xcframework"
+cp -R "$framework" "$root/orbitl-ios/Vendor/MaxIos.xcframework"
+echo "MaxIos.xcframework из $revision лежит в orbitl-ios/Vendor."

@@ -1,10 +1,18 @@
-import SwiftUI
+import Foundation
 import Observation
+import OrbitlDomain
 
-/// Роутер: держит путь навигации и разбирает диплинки в маршруты.
-// TODO: architecture.md, «iOS-клиент», пункт 4; «Восстановление состояния».
 @MainActor
 @Observable
 final class AppRouter {
-    var path = NavigationPath()
+    var chatId: String?
+
+    func open(_ link: DeepLink?) {
+        switch link {
+        case .chat(let id), .message(let id, _):
+            chatId = id
+        case .user, .none:
+            break
+        }
+    }
 }
