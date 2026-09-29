@@ -36,9 +36,36 @@ final class AppContainer {
     private let contacts: any ContactRepository = UnavailableContactRepository()
     private let calls: any CallHistoryRepository = UnavailableCallHistoryRepository()
     @ObservationIgnored private var phaseTask: Task<Void, Never>?
+    /// Журнал для отладки. `nil`, если каталог журнала не удалось открыть.
+    let logs: FileLogStore?
+
+    static let loggingKey = "orbitl.debug.logging"
+
+    init() {
+        let enabled = UserDefaults.standard.object(forKey: Self.loggingKey) as? Bool ?? true
+        logs = (try? FileLogStore.defaultDirectory()).map { FileLogStore(directory: $0, enabled: enabled) }
+        if let logs { Log.sink = logs.sink }
+        Log.info(.app, "Запуск: \(Self.appVersion), \(ProcessInfo.processInfo.operatingSystemVersionString)")
+    }
+
+    /// `1.0 (7)` из Info.plist.
+    static var appVersion: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "Orbitl \(version) (\(build))"
+    }
+
+    /// Писать журнал в файлы. Настройка живёт на устройстве.
+    func setLogging(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: Self.loggingKey)
+        Log.info(.app, "Запись журнала: \(enabled ? "включена" : "выключена")")
+        logs?.isEnabled = enabled
+    }
 
     func bootstrap() async {
         guard boot == .loading else { return }
+        Log.info(.app, "Подготовка базы и ядра")
         do {
             let stack = try SwiftDataStack()
             let core = MaxIosCore()
@@ -67,6 +94,7 @@ final class AppContainer {
                 for await next in session.phases() {
                     let previous = self.phase
                     self.phase = next
+                    Log.info(.auth, "Фаза входа: \(Self.describe(next))")
                     switch next {
                     case .signedOut, .expired:
                         self.dropScreenModels()
@@ -83,6 +111,7 @@ final class AppContainer {
             }
             await session.restoreSession()
         } catch {
+            Log.error(.app, "Не удалось открыть локальную базу: \(error)")
             boot = .failed("Не удалось открыть локальную базу")
         }
     }
@@ -126,6 +155,19 @@ final class AppContainer {
         let model = CallsViewModel(calls: calls)
         callsModel = model
         return model
+    }
+
+    /// Фаза для журнала: без номера и прочих личных данных.
+    static func describe(_ phase: AuthPhase) -> String {
+        switch phase {
+        case .restoring: "restoring"
+        case .signedOut: "signedOut"
+        case .codeSent(let length): "codeSent(length: \(length.map(String.init) ?? "nil"))"
+        case .password: "password"
+        case .registration: "registration"
+        case .signedIn(let id): "signedIn(\(id))"
+        case .expired: "expired"
+        }
     }
 
     static let localFiltersKey = "orbitl.chatList.localFilters"

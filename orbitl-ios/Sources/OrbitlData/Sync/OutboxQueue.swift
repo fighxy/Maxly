@@ -1,4 +1,5 @@
 import Foundation
+import OrbitlDomain
 
 /// Хранилище исходящих для очереди. Его реализует `MessageRepositoryImpl`.
 ///
@@ -109,6 +110,7 @@ public actor OutboxQueue {
                 case .failure(let error):
                     attempt += 1
                     if !error.isRetryable || attempt >= policy.maxAttempts {
+                        Log.warning(.messages, "Сообщение не отправлено после \(attempt) попыток: \(error)")
                         await store.markFailed(localId: localId)
                         pending.removeFirst()
                         break attempts
