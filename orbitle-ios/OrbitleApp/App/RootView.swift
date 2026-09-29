@@ -1,0 +1,193 @@
+import SwiftUI
+import OrbitleDomain
+import OrbitlePresentation
+
+struct RootView: View {
+    @Bindable var container: AppContainer
+    @Bindable var router: AppRouter
+
+    var body: some View {
+        Group {
+            if let report = container.crashReport {
+                CrashReportView(container: container, report: report)
+            } else {
+                content
+            }
+        }
+        .task { await container.bootstrap() }
+        .task(id: router.chatId) { await container.focus(chatId: router.chatId) }
+        .onChange(of: container.phase) { old, phase in
+            // Сессия истекла или вошёл другой аккаунт: открытый чат прежнего аккаунта
+            // не должен открыться. Выход из настроек сбрасывает его сам.
+            if phase == .expired { router.chatId = nil }
+            if case .signedIn(let was) = old, case .signedIn(let now) = phase, was != now {
+                router.chatId = nil
+            }
+        }
+        .onOpenURL { url in router.open(DeepLink.parse(url)) }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch container.boot {
+        case .loading:
+            OrbitleSplash()
+        case .failed(let message):
+            ContentUnavailableView {
+                Label {
+                    Text("Orbitle не запустился")
+                } icon: {
+                    OrbitleMark(size: 72)
+                }
+            } description: {
+                Text(message)
+            }
+        case .ready:
+            switch container.phase {
+            case .signedIn:
+                main
+            case .restoring:
+                OrbitleSplash(caption: "Подключение…")
+            default:
+                auth
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var auth: some View {
+        if let model = container.authViewModel() {
+            AuthView(viewModel: model)
+        }
+    }
+
+    @ViewBuilder
+    private var main: some View {
+        if let list = container.chatListViewModel() {
+            MainTabView(container: container, router: router, list: list)
+                // Другой аккаунт — новые модели экранов, и их `.task` должны запуститься заново.
+                .id(container.currentUserId)
+                .sheet(isPresented: $container.showsNewSessionNotice) {
+                    NewSessionNoticeSheet()
+                }
+        }
+    }
+}
+
+/// Нижняя панель вкладок. На iOS 26 система рисует её плавающей стеклянной капсулой.
+struct MainTabView: View {
+    @Bindable var container: AppContainer
+    @Bindable var router: AppRouter
+    @Bindable var list: ChatListViewModel
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    var body: some View {
+        TabView(selection: $router.tab) {
+            ForEach(AppTab.order, id: \.self) { tab in
+                content(for: tab)
+                    .tabItem { Label(tab.title, systemImage: tab.systemImage) }
+                    .tag(tab)
+                    .badge(badge(for: tab))
+            }
+        }
+        // Бейдж «Звонков» нужен и до первого открытия вкладки.
+        .task {
+            let calls = container.callsViewModel()
+            calls.activate()
+            if router.tab == .calls { await calls.appeared() }
+        }
+        .onChange(of: router.tab) { _, tab in
+            let calls = container.callsViewModel()
+            if tab == .calls {
+                Task { await calls.appeared() }
+            } else {
+                calls.disappeared()
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            let calls = container.callsViewModel()
+            switch phase {
+            case .active:
+                // Звонки могли пропустить или удалить на другом устройстве, пока приложение спало.
+                let visible = router.tab == .calls
+                Task {
+                    if visible { await calls.appeared() } else { await calls.refresh() }
+                }
+            case .background:
+                calls.disappeared()
+            default:
+                break
+            }
+        }
+    }
+
+    private func badge(for tab: AppTab) -> Int {
+        switch tab {
+        case .chats: list.tabBadge
+        case .calls: container.callsViewModel().unseenMissedCount
+        case .contacts, .settings: 0
+        }
+    }
+
+    @ViewBuilder
+    private func content(for tab: AppTab) -> some View {
+        switch tab {
+        case .chats:
+            chats
+        case .contacts:
+            NavigationStack {
+                ContactsView(
+                    viewModel: container.contactsViewModel(),
+                    makeProfile: { container.profileViewModel(dialog: $0) }
+                ) { dialog in
+                    container.openDialog(dialog)
+                    router.openChat(dialog.chatId)
+                }
+            }
+        case .calls:
+            NavigationStack {
+                CallsView(viewModel: container.callsViewModel()) { chatId in
+                    router.openChat(chatId)
+                }
+            }
+        case .settings:
+            NavigationStack {
+                SettingsView(container: container, list: list) {
+                    // Открытый чат прежнего аккаунта не должен открыться после следующего входа.
+                    router.chatId = nil
+                    router.tab = .chats
+                    Task { await container.logout() }
+                }
+            }
+        }
+    }
+
+    private var chats: some View {
+        NavigationSplitView {
+            ChatListView(viewModel: list, selection: $router.chatId)
+                // В свёрнутом NavigationSplitView (iPhone) скрытие панели вкладок из самого
+                // чата не срабатывает: панель скрывается из корня вкладки, пока открыт чат.
+                .toolbar(sizeClass == .compact && router.chatId != nil ? .hidden : .automatic, for: .tabBar)
+        } detail: {
+            if let id = router.chatId, let model = container.chatViewModel(id: id) {
+                // Свой экран на каждый чат: иначе при смене выбора SwiftUI переиспользует
+                // прежний ChatView, его `.task` не перезапускается, и модель нового чата
+                // так и не подписывается на сообщения.
+                ChatView(viewModel: model, title: container.chatTitle(id: id)) {
+                    container.profileViewModel(chatId: id)
+                }
+                    .id(id)
+            } else {
+                ContentUnavailableView {
+                    Label {
+                        Text("Выберите чат")
+                    } icon: {
+                        OrbitleMark(size: 72)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+        }
+    }
+}

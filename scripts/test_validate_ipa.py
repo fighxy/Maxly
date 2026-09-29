@@ -15,8 +15,8 @@ class IpaValidationTests(unittest.TestCase):
     def check_archive(self, *, missing=(), platform="iPhoneOS", executable_mode=0o100755,
                       alternates=("AppIconLight",), catalog_only=(), required=()):
         info = {
-            "CFBundleIdentifier": "app.orbitl.ios",
-            "CFBundleExecutable": "Orbitl",
+            "CFBundleIdentifier": "app.orbitle.ios",
+            "CFBundleExecutable": "Orbitle",
             "CFBundleSupportedPlatforms": [platform],
             "CFBundleIcons": {
                 "CFBundlePrimaryIcon": {"CFBundleIconFiles": ["AppIcon60x60"]},
@@ -27,23 +27,23 @@ class IpaValidationTests(unittest.TestCase):
             },
         }
         files = {
-            "Info.plist": plistlib.dumps(info), "Orbitl": b"test executable",
+            "Info.plist": plistlib.dumps(info), "Orbitle": b"test executable",
             "Assets.car": b"test catalog", "AppIcon60x60@2x.png": b"test icon",
         }
         files.update({name + "60x60@2x.png": b"test icon" for name in alternates})
         with tempfile.TemporaryDirectory() as directory:
-            path = pathlib.Path(directory) / "Orbitl.ipa"
+            path = pathlib.Path(directory) / "Orbitle.ipa"
             with zipfile.ZipFile(path, "w") as archive:
                 for name, data in files.items():
                     if name not in missing:
-                        entry = zipfile.ZipInfo("Payload/Orbitl.app/" + name)
+                        entry = zipfile.ZipInfo("Payload/Orbitle.app/" + name)
                         entry.create_system = 3
-                        entry.external_attr = (executable_mode if name == "Orbitl" else 0o100644) << 16
+                        entry.external_attr = (executable_mode if name == "Orbitle" else 0o100644) << 16
                         archive.writestr(entry, data)
             return validator.validate(path, required)
 
     def test_complete_device_bundle(self):
-        self.assertEqual(self.check_archive(), "app.orbitl.ios")
+        self.assertEqual(self.check_archive(), "app.orbitle.ios")
 
     def test_missing_catalog(self):
         with self.assertRaisesRegex(ValueError, "Assets.car"):
@@ -54,7 +54,7 @@ class IpaValidationTests(unittest.TestCase):
             self.check_archive(missing=("AppIcon60x60@2x.png",))
 
     def test_alternate_icons(self):
-        self.assertEqual(self.check_archive(required=("AppIconLight",)), "app.orbitl.ios")
+        self.assertEqual(self.check_archive(required=("AppIconLight",)), "app.orbitle.ios")
         with self.assertRaisesRegex(ValueError, "no alternate app icon AppIconBlue"):
             self.check_archive(required=("AppIconLight", "AppIconBlue"))
         with self.assertRaisesRegex(ValueError, "AppIconLight PNG"):
@@ -63,7 +63,7 @@ class IpaValidationTests(unittest.TestCase):
     def test_catalog_only_alternate_icon(self):
         # Single-size icon: only the name in the Info.plist, the image is in Assets.car.
         self.assertEqual(self.check_archive(alternates=(), catalog_only=("AppIconBlue",),
-                                            required=("AppIconBlue",)), "app.orbitl.ios")
+                                            required=("AppIconBlue",)), "app.orbitle.ios")
 
     def test_simulator_bundle(self):
         with self.assertRaisesRegex(ValueError, "Simulator"):
@@ -77,7 +77,7 @@ class IpaValidationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / "artifact.zip"
             with zipfile.ZipFile(path, "w") as archive:
-                archive.writestr("Orbitl.ipa", b"nested archive")
+                archive.writestr("Orbitle.ipa", b"nested archive")
             with self.assertRaisesRegex(ValueError, "outer Actions ZIP"):
                 validator.validate(path)
 
