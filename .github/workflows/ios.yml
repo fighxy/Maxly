@@ -26,6 +26,8 @@ jobs:
       - name: Select Xcode 16.2
         run: sudo xcode-select -s /Applications/Xcode_16.2.app
       - name: Test libraries
+        env:
+          ORBITL_SWIFTDATA_PLIST: "1"
         run: swift test --package-path orbitl-ios
 
   app:
