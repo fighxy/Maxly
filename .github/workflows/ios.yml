@@ -45,17 +45,22 @@ jobs:
           java-version: "17"
       - name: Select Xcode 16.2
         run: sudo xcode-select -s /Applications/Xcode_16.2.app
-      - name: Require core token
+      - name: Check core token
+        id: token
         env:
           MAX_KMP_CORE_TOKEN: ${{ secrets.MAX_KMP_CORE_TOKEN }}
         run: |
           if [ -z "$MAX_KMP_CORE_TOKEN" ]; then
-            echo "Нет секрета MAX_KMP_CORE_TOKEN. Добавьте PAT с чтением fighxy/max-kmp-core: Settings, Secrets and variables, Actions."
-            exit 1
+            echo "::warning::Нет секрета MAX_KMP_CORE_TOKEN (PAT с чтением fighxy/max-kmp-core). Сборка приложения пропущена."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Fetch MaxIos.xcframework
+        if: steps.token.outputs.present == 'true'
         env:
           MAX_KMP_CORE_TOKEN: ${{ secrets.MAX_KMP_CORE_TOKEN }}
         run: bash scripts/fetch-core.sh
       - name: Build Orbitl
+        if: steps.token.outputs.present == 'true'
         run: xcodebuild -project orbitl-ios/Orbitl.xcodeproj -scheme Orbitl -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
