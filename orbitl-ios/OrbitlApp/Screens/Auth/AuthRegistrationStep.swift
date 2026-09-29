@@ -63,13 +63,16 @@ struct AuthRegistrationStep: View {
     }
 
     private var photoPicker: some View {
-        PhotosPicker(selection: $photoItem, matching: .images) {
-            VStack(spacing: 10) {
-                avatar
-                Text(photo == nil ? "Добавить фото" : "Изменить фото")
-                    .font(.body)
-                    .foregroundStyle(.tint)
-            }
+        // Замыкание подписи PhotosPicker не привязано к главному актору, поэтому
+        // подпись собирается заранее.
+        let label = VStack(spacing: 10) {
+            avatar
+            Text(photo == nil ? "Добавить фото" : "Изменить фото")
+                .font(.body)
+                .foregroundStyle(.tint)
+        }
+        return PhotosPicker(selection: $photoItem, matching: .images) {
+            label
         }
         .buttonStyle(.plain)
         .contextMenu {
