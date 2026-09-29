@@ -1,11 +1,14 @@
 import Foundation
 
-/// Доменная модель `User`. Чистый Swift, без SwiftData и типов Kotlin.
-// TODO: поля по модели ядра max-kmp-core (architecture.md, «Слои»).
+/// Пользователь: контакт или участник чата.
 public struct User: Identifiable, Hashable, Sendable {
     public let id: String
+    public var name: String
+    public var avatarUrl: URL?
 
-    public init(id: String) {
+    public init(id: String, name: String, avatarUrl: URL? = nil) {
         self.id = id
+        self.name = name
+        self.avatarUrl = avatarUrl
     }
 }

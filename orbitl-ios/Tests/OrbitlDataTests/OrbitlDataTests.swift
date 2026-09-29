@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import OrbitlDomain
 @testable import OrbitlData
 
 @Suite("Пагинация")
@@ -13,12 +14,21 @@ struct PaginationTests {
         let first = try await repository.loadMore(chatId: "c1", before: nil)
         #expect(first.count == 50)
         #expect(first.first?.id == "m99")
+        #expect(first.first?.text == "Сообщение 99")
+        #expect(first.first?.authorId == "bob")
+        #expect(first.first?.timestamp == Date(timeIntervalSince1970: 100))
         #expect(first.last?.id == "m50")
+        #expect(first.last?.mediaId == "media50")
+        #expect(first.allSatisfy { $0.status == .sent && $0.chatId == "c1" })
+        // Страница идёт от новых к старым.
+        #expect(zip(first, first.dropFirst()).allSatisfy { $0.timestamp > $1.timestamp })
 
         let second = try await repository.loadMore(chatId: "c1", before: first.last?.timestamp)
         #expect(second.count == 50)
         #expect(second.first?.id == "m49")
         #expect(second.last?.id == "m0")
+        #expect(second.last?.text == "Сообщение 0")
+        #expect(second.last?.serverId == "m0")
 
         let third = try await repository.loadMore(chatId: "c1", before: second.last?.timestamp)
         #expect(third.isEmpty)
@@ -50,21 +60,69 @@ struct OptimisticSendTests {
         await api.setSendResults([.failure(.offline)])
         let (repository, outbox) = try await makeMessageStack(api: api)
 
+        await repository.setCurrentUser(id: "alice")
         try await repository.send(text: "Привет", chatId: "c1")
         let pending = await repository.pendingOutgoing()
         #expect(pending.count == 1)
         #expect(pending.first?.status == .sending)
+        #expect(pending.first?.text == "Привет")
+        #expect(pending.first?.authorId == "alice")
+        #expect(pending.first?.serverId == nil)
         let localId = try #require(pending.first?.id)
+        #expect(localId.hasPrefix("local-"))
 
         await api.setSendResults([.success(SentMessage(serverId: "srv-42", timestamp: .now))])
         await outbox.process()
 
-        let stored = try await repository.page(chatId: "c1", before: nil)
+        let stored = try await repository.loadMore(chatId: "c1", before: nil)
+        #expect(stored.count == 1)
         #expect(stored.first?.id == localId)
+        #expect(stored.first?.text == "Привет")
         #expect(stored.first?.status == .sent)
-        let serverId = await repository.serverId(of: localId)
-        #expect(serverId == "srv-42")
+        #expect(stored.first?.serverId == "srv-42")
         #expect(await repository.pendingOutgoing().isEmpty)
+    }
+}
+
+@Suite("Сопоставление с сервером")
+struct ServerMatchTests {
+    @Test("Своё отправленное сообщение, пришедшее с сервера, не дублируется")
+    func noDuplicateAfterEcho() async throws {
+        let api = FakeMaxAPI()
+        await api.setSendResults([.success(SentMessage(serverId: "srv-7", timestamp: Date(timeIntervalSince1970: 500)))])
+        let (repository, _) = try await makeMessageStack(api: api)
+
+        try await repository.send(text: "Эхо", chatId: "c1")
+        try await repository.upsert([MessageRecord(
+            id: "srv-7", serverId: "srv-7", chatId: "c1", authorId: "alice",
+            text: "Эхо", timestamp: Date(timeIntervalSince1970: 500), status: .sent
+        )])
+
+        let stored = try await repository.loadMore(chatId: "c1", before: nil)
+        #expect(stored.count == 1)
+        #expect(stored.first?.serverId == "srv-7")
+    }
+}
+
+@Suite("Чаты")
+struct ChatRepositoryTests {
+    @Test("Поля чата доходят до доменной модели, markAsRead сбрасывает счётчик")
+    func chatFields() async throws {
+        let stack = try SwiftDataStack(inMemory: true)
+        let repository = ChatRepositoryImpl.make(stack: stack, api: FakeMaxAPI())
+        try await repository.upsert([makeChat()])
+
+        var iterator = repository.chats().makeAsyncIterator()
+        let chats = try #require(await iterator.next())
+        let chat = try #require(chats.first)
+        #expect(chat.title == "Команда Orbitl")
+        #expect(chat.type == .group)
+        #expect(chat.unreadCount == 3)
+        #expect(chat.lastMessageId == "m99")
+
+        try await repository.markAsRead(chatId: "c1")
+        let updated = try #require(await iterator.next())
+        #expect(updated.first?.unreadCount == 0)
     }
 }
 
@@ -85,8 +143,10 @@ struct OutboxQueueTests {
         #expect(await api.sendCalls == 3)
         #expect(await outbox.pendingCount == 0)
         #expect(await repository.pendingOutgoing().isEmpty)
-        let stored = try await repository.page(chatId: "c1", before: nil)
+        let stored = try await repository.loadMore(chatId: "c1", before: nil)
         #expect(stored.first?.status == .sent)
+        #expect(stored.first?.serverId == "srv-1")
+        #expect(stored.first?.text == "Раз")
     }
 
     @Test("После исчерпания попыток сообщение становится failed и уходит из очереди")
@@ -99,8 +159,10 @@ struct OutboxQueueTests {
 
         #expect(await api.sendCalls == OutboxQueue.RetryPolicy().maxAttempts)
         #expect(await outbox.pendingCount == 0)
-        let stored = try await repository.page(chatId: "c1", before: nil)
+        let stored = try await repository.loadMore(chatId: "c1", before: nil)
         #expect(stored.first?.status == .failed)
+        #expect(stored.first?.serverId == nil)
+        #expect(stored.first?.text == "Два")
     }
 
     @Test("Задержка растёт экспоненциально и ограничена сверху")

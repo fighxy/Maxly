@@ -94,7 +94,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore {
             modelContext.insert(message)
             try modelContext.save()
         } catch {
-            throw .unknown
+            throw .storageError
         }
         notify(chatId: chatId)
         await outbox?.enqueue(localId)
@@ -107,7 +107,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore {
             message.status = .sending
             try modelContext.save()
         } catch {
-            throw .unknown
+            throw .storageError
         }
         notify(chatId: message.chatId)
         await outbox?.enqueue(messageId)
@@ -119,21 +119,21 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore {
     /// Сначала берётся из кэша. Если в кэше меньше `pageSize`, недостающее
     /// догружается с сервера, сохраняется и страница читается заново.
     /// Без сети возвращается то, что есть в кэше.
-    public func loadMore(chatId: String, before: Date?) async throws(OrbitlError) -> [MessageRecord] {
+    public func loadMore(chatId: String, before: Date?) async throws(OrbitlError) -> [Message] {
         let local = try page(chatId: chatId, before: before)
-        guard local.count < Self.pageSize else { return local }
+        guard local.count < Self.pageSize else { return local.map(\.domain) }
 
         let cursor = local.last?.timestamp ?? before
         switch await api.fetchMessages(chatId: chatId, before: cursor, limit: Self.pageSize - local.count) {
         case .success(let records):
-            guard !records.isEmpty else { return local }
+            guard !records.isEmpty else { return local.map(\.domain) }
             try upsert(records)
-            return try page(chatId: chatId, before: before)
+            return try page(chatId: chatId, before: before).map(\.domain)
         case .failure(.offline):
-            return local
+            return local.map(\.domain)
         case .failure(let error):
             if local.isEmpty { throw error.orbitlError }
-            return local
+            return local.map(\.domain)
         }
     }
 
@@ -152,7 +152,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore {
         do {
             return try fetchPage(chatId: chatId, before: before, limit: limit).map(Self.record)
         } catch {
-            throw .unknown
+            throw .storageError
         }
     }
 
@@ -164,10 +164,11 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore {
         var touched = Set<String>()
         do {
             for record in records {
-                if let message = try message(id: record.id) ?? message(serverId: record.id) {
+                if let message = try message(id: record.id) ?? message(serverId: record.serverId ?? record.id) {
                     message.text = record.text
                     message.status = record.status
                     message.mediaId = record.mediaId
+                    if let serverId = record.serverId { message.serverId = serverId }
                 } else {
                     let message = SDMessage(
                         id: record.id,
@@ -177,7 +178,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore {
                         timestamp: record.timestamp,
                         status: record.status,
                         mediaId: record.mediaId,
-                        serverId: record.id
+                        serverId: record.serverId ?? record.id
                     )
                     message.chat = try chat(id: record.chatId)
                     modelContext.insert(message)
@@ -186,7 +187,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore {
             }
             try modelContext.save()
         } catch {
-            throw .unknown
+            throw .storageError
         }
         touched.forEach(notify(chatId:))
     }
@@ -199,7 +200,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore {
             try modelContext.save()
             notify(chatId: chatId)
         } catch {
-            throw .unknown
+            throw .storageError
         }
     }
 
@@ -298,13 +299,13 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore {
     private func snapshot(chatId: String) -> [Message] {
         let limit = windows[chatId] ?? Self.pageSize
         let newestFirst = (try? fetchPage(chatId: chatId, before: nil, limit: limit)) ?? []
-        // TODO: когда в доменной модели Message появятся поля, переносить их сюда.
-        return newestFirst.reversed().map { Message(id: $0.id) }
+        return newestFirst.reversed().map { Self.record($0).domain }
     }
 
     private static func record(_ message: SDMessage) -> MessageRecord {
         MessageRecord(
             id: message.id,
+            serverId: message.serverId,
             chatId: message.chatId,
             authorId: message.authorId,
             text: message.text,

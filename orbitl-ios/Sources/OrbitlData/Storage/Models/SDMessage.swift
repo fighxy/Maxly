@@ -1,14 +1,6 @@
 import Foundation
 import SwiftData
-
-/// Статус сообщения. `sending` и `failed` бывают только у исходящих.
-public enum MessageStatus: String, Codable, Sendable {
-    case sending
-    case sent
-    case delivered
-    case read
-    case failed
-}
+import OrbitlDomain
 
 /// Сообщение в локальной базе.
 @Model

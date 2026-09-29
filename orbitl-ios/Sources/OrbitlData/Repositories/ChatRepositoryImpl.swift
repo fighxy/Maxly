@@ -69,7 +69,7 @@ public actor ChatRepositoryImpl: ChatRepository {
                 descriptor.fetchLimit = 1
                 if let chat = try modelContext.fetch(descriptor).first {
                     chat.title = record.title
-                    chat.kind = record.kind
+                    chat.type = record.type
                     chat.lastMessageId = record.lastMessageId
                     chat.unreadCount = record.unreadCount
                     chat.updatedAt = record.updatedAt
@@ -77,7 +77,7 @@ public actor ChatRepositoryImpl: ChatRepository {
                     modelContext.insert(SDChat(
                         id: record.id,
                         title: record.title,
-                        kind: record.kind,
+                        type: record.type,
                         lastMessageId: record.lastMessageId,
                         unreadCount: record.unreadCount,
                         updatedAt: record.updatedAt
@@ -86,7 +86,7 @@ public actor ChatRepositoryImpl: ChatRepository {
             }
             try modelContext.save()
         } catch {
-            throw .unknown
+            throw .storageError
         }
         notify()
     }
@@ -97,7 +97,7 @@ public actor ChatRepositoryImpl: ChatRepository {
             try modelContext.delete(model: SDChat.self, where: #Predicate { $0.id == chatId })
             try modelContext.save()
         } catch {
-            throw .unknown
+            throw .storageError
         }
         notify()
     }
@@ -119,7 +119,7 @@ public actor ChatRepositoryImpl: ChatRepository {
             chat.unreadCount = 0
             try modelContext.save()
         } catch {
-            throw .unknown
+            throw .storageError
         }
         notify()
     }
@@ -148,7 +148,17 @@ public actor ChatRepositoryImpl: ChatRepository {
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
         let chats = (try? modelContext.fetch(descriptor)) ?? []
-        // TODO: когда в доменной модели Chat появятся поля, переносить их сюда.
-        return chats.map { Chat(id: $0.id) }
+        return chats.map(Self.domain)
+    }
+
+    private static func domain(_ chat: SDChat) -> Chat {
+        Chat(
+            id: chat.id,
+            title: chat.title,
+            type: chat.type,
+            lastMessageId: chat.lastMessageId,
+            unreadCount: chat.unreadCount,
+            updatedAt: chat.updatedAt
+        )
     }
 }

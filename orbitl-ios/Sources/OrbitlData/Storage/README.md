@@ -4,12 +4,12 @@
 
 | Модель | Поля | Связи |
 |---|---|---|
-| `SDChat` | id, title, kind (dialog, group, channel), lastMessageId, unreadCount, updatedAt | messages, каскадное удаление |
-| `SDMessage` | id, chatId, authorId, text, timestamp, status (sending, sent, delivered, read, failed), mediaId | chat, media (nullify) |
+| `SDChat` | id, title, type (private, group), lastMessageId, unreadCount, updatedAt | messages, каскадное удаление |
+| `SDMessage` | id, serverId, chatId, authorId, text, timestamp, status (sending, sent, failed), mediaId | chat, media (nullify) |
 | `SDUser` | id, name, avatarUrl | нет |
-| `SDMediaItem` | id, kind (photo, video, audio, file, sticker), url, size, localPath | нет |
+| `SDMediaItem` | id, type (image, video, audio, file), url, size, localPath | нет |
 
-Все `id` уникальны (`@Attribute(.unique)`). В `SDMessage` лежит и связь `chat`, и поле `chatId`: по полю быстрее фильтровать. Перечисления хранятся строками (`*Raw`), чтобы новые значения не ломали схему. Контейнер создаётся в `SwiftDataStack`, который умеет работать в памяти для тестов и полностью очищать базу при выходе.
+Все `id` уникальны (`@Attribute(.unique)`). В `SDMessage` лежит и связь `chat`, и поле `chatId`: по полю быстрее фильтровать. Перечисления берутся из `OrbitlDomain` и хранятся строками (`*Raw`), чтобы новые значения не ломали схему. Контейнер создаётся в `SwiftDataStack`, который умеет работать в памяти для тестов и полностью очищать базу при выходе.
 
 ## Почему SwiftData
 

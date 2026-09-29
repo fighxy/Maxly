@@ -23,10 +23,10 @@ public enum MaxAPIError: Error, Sendable, Equatable {
     /// Категория ошибки для UI (architecture.md, «Ошибки и офлайн»).
     public var orbitlError: OrbitlError {
         switch self {
-        case .offline: .offline
+        case .offline: .networkUnavailable
         case .server(let code): .server(code: code)
         case .invalidResponse: .invalidRequest
-        case .notImplemented: .unknown
+        case .notImplemented: .syncFailed
         }
     }
 }

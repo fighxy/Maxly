@@ -1,4 +1,5 @@
 import Foundation
+import OrbitlDomain
 @testable import OrbitlData
 
 /// Фейковый API: отвечает заранее заданными результатами и считает вызовы.
@@ -52,12 +53,18 @@ func makeHistory(chatId: String, count: Int) -> [MessageRecord] {
     (0..<count).map { index in
         MessageRecord(
             id: "m\(index)",
+            serverId: "m\(index)",
             chatId: chatId,
-            authorId: "u1",
+            authorId: index.isMultiple(of: 2) ? "alice" : "bob",
             text: "Сообщение \(index)",
             timestamp: Date(timeIntervalSince1970: TimeInterval(index + 1)),
             status: .sent,
-            mediaId: nil
+            mediaId: index.isMultiple(of: 10) ? "media\(index)" : nil
         )
     }
+}
+
+/// Чат для тестов.
+func makeChat(id: String = "c1") -> ChatRecord {
+    ChatRecord(id: id, title: "Команда Orbitl", type: .group, lastMessageId: "m99", unreadCount: 3, updatedAt: Date(timeIntervalSince1970: 100))
 }
