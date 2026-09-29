@@ -65,9 +65,19 @@ final class AppContainer {
             boot = .ready
             phaseTask = Task {
                 for await next in session.phases() {
+                    let previous = self.phase
                     self.phase = next
-                    if case .signedOut = next {
+                    switch next {
+                    case .signedOut, .expired:
                         self.dropScreenModels()
+                    case .signedIn(let id):
+                        // Кэш показывался под запомненным id, а ядро вошло другим аккаунтом
+                        // (или вход после истёкшей сессии): модели чатов помнят прежнего автора.
+                        if case .signedIn(let old) = previous, old != id {
+                            self.dropScreenModels()
+                        }
+                    default:
+                        break
                     }
                 }
             }
