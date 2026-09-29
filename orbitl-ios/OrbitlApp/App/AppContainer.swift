@@ -37,6 +37,7 @@ final class AppContainer {
             await messages.attach(outbox: outbox)
             let media = MediaRepositoryImpl(http: URLSessionClient(), directory: try MediaRepositoryImpl.defaultDirectory())
             let sync = SyncEngine(outbox: outbox, chats: chats, messages: messages)
+            await sync.connectOutgoing()
             let session = SessionManager(
                 core: core,
                 stack: stack,

@@ -35,6 +35,17 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     private var currentUserId = ""
     private let api: any MaxAPI
     private var outbox: OutboxQueue?
+    /// Своё сообщение поставлено в очередь или ушло на сервер. Через это строка чата
+    /// в списке сдвигается сразу, не дожидаясь пуша. Подключает `SyncEngine`.
+    private var outgoingHandler: (@Sendable (OutgoingChange) async -> Void)?
+
+    /// Что случилось со своим сообщением.
+    public enum OutgoingChange: Sendable, Equatable {
+        /// Записано локально и ждёт отправки.
+        case queued(MessageRecord)
+        /// Сервер принял, у записи уже есть `serverId` и время сервера.
+        case sent(MessageRecord)
+    }
 
     public init(modelContainer: ModelContainer, api: any MaxAPI) {
         let context = ModelContext(modelContainer)
@@ -59,6 +70,10 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
 
     public func currentUser() -> String {
         currentUserId
+    }
+
+    public func setOutgoingHandler(_ handler: (@Sendable (OutgoingChange) async -> Void)?) {
+        outgoingHandler = handler
     }
 
     // MARK: MessageRepository
@@ -104,6 +119,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             throw .storageError
         }
         notify(chatId: chatId)
+        await outgoingHandler?(.queued(Self.record(message)))
         await outbox?.enqueue(localId)
     }
 
@@ -167,8 +183,12 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
 
     /// Вставляет новые сообщения и обновляет существующие. Сообщение с сервера
     /// совпадает с локальным по `id` или по `serverId` (своё отправленное).
-    public func upsert(_ records: [MessageRecord]) throws(OrbitlError) {
+    /// Возвращает id действительно вставленных записей: повторный пуш того же
+    /// сообщения ничего не вставляет и не должен второй раз увеличить счётчик.
+    @discardableResult
+    public func upsert(_ records: [MessageRecord]) throws(OrbitlError) -> Set<String> {
         var touched = Set<String>()
+        var inserted = Set<String>()
         do {
             for record in records {
                 if let message = try message(id: record.id) ?? message(serverId: record.serverId ?? record.id) {
@@ -189,6 +209,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
                     )
                     message.chat = try chat(id: record.chatId)
                     modelContext.insert(message)
+                    inserted.insert(record.id)
                 }
                 touched.insert(record.chatId)
             }
@@ -197,6 +218,29 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             throw .storageError
         }
         touched.forEach(notify(chatId:))
+        return inserted
+    }
+
+    /// Правка из пуша. Меняет только текст уже известного сообщения: правка того,
+    /// чего нет в кэше, не должна появляться в истории как новое сообщение.
+    /// `false`, если сообщения в кэше нет.
+    @discardableResult
+    public func applyEdit(_ record: MessageRecord) throws(OrbitlError) -> Bool {
+        do {
+            guard let message = try message(id: record.id) ?? message(serverId: record.serverId ?? record.id) else { return false }
+            message.text = record.text
+            if let mediaId = record.mediaId { message.mediaId = mediaId }
+            try modelContext.save()
+            notify(chatId: message.chatId)
+            return true
+        } catch {
+            throw .storageError
+        }
+    }
+
+    /// Самое свежее сообщение чата в кэше.
+    public func latest(chatId: String) -> MessageRecord? {
+        ((try? fetchPage(chatId: chatId, before: nil, limit: 1)) ?? []).first.map(Self.record)
     }
 
     /// Стирает сообщения в контексте этого актора. Выход зовёт это до удаления чатов.
@@ -242,13 +286,14 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         return Self.record(message)
     }
 
-    public func markSent(localId: String, serverId: String, timestamp: Date) {
+    public func markSent(localId: String, serverId: String, timestamp: Date) async {
         guard let message = try? message(id: localId) else { return }
         message.status = .sent
         message.serverId = serverId
         message.timestamp = timestamp
         try? modelContext.save()
         notify(chatId: message.chatId)
+        await outgoingHandler?(.sent(Self.record(message)))
     }
 
     public func markFailed(localId: String) {

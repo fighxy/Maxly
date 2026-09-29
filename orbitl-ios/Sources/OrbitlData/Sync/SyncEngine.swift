@@ -1,4 +1,5 @@
 import Foundation
+import OrbitlDomain
 
 /// Синхронизация с сервером (architecture.md, «Синхронизация с сервером»).
 ///
@@ -88,6 +89,21 @@ public actor SyncEngine {
         focused = nil
     }
 
+    /// Свои сообщения сразу сдвигают строку чата: при постановке в очередь меняются
+    /// превью и время, после ответа сервера ещё и `lastMessageId`. Вызывается один раз
+    /// при сборке зависимостей.
+    public func connectOutgoing() async {
+        let chats = chats
+        await messages.setOutgoingHandler { change in
+            switch change {
+            case .queued(let record):
+                _ = try? await chats.noteMessage(chatId: record.chatId, messageId: nil, preview: record.text, at: record.timestamp, incoming: false)
+            case .sent(let record):
+                _ = try? await chats.noteMessage(chatId: record.chatId, messageId: record.serverId, preview: record.text, at: record.timestamp, incoming: false)
+            }
+        }
+    }
+
     /// Пуш из потока ядра. Молчит, пока запись выключена.
     private func deliver(_ event: CoreEvent) async {
         guard acceptEvents else { return }
@@ -99,29 +115,48 @@ public actor SyncEngine {
     /// Записывает одно событие ядра в базу. Опрос остаётся запасным путём.
     public func consume(_ event: CoreEvent) async {
         switch event.kind {
-        case .message, .edited:
+        case .message:
             guard let record = MessageRecord(event) else { return }
-            try? await messages.upsert([record])
+            let inserted: Set<String> = (try? await messages.upsert([record])) ?? []
             let mine = await messages.currentUser()
-            let incoming = event.kind == .message && !mine.isEmpty && !event.authorId.isEmpty && event.authorId != mine
+            let fromOther = !mine.isEmpty && !event.authorId.isEmpty && event.authorId != mine
             let known = (try? await chats.noteMessage(
                 chatId: event.chatId,
                 messageId: event.messageId,
                 preview: event.text,
                 at: Date(unixMillis: event.timeMs),
-                incoming: incoming
+                incoming: fromOther && inserted.contains(record.id)
             )) ?? false
-            if !known, event.kind == .message {
+            if !known {
+                // Чата ещё нет в базе: подтянуть его строку, иначе сообщение не будет видно в списке.
                 try? await chats.refresh(chatId: event.chatId)
             }
+        case .edited:
+            guard let record = MessageRecord(event) else { return }
+            _ = try? await messages.applyEdit(record)
+            try? await chats.noteEdit(chatId: event.chatId, messageId: event.messageId, text: event.text)
         case .deleted:
             guard !event.messageId.isEmpty else { return }
+            let last = event.chatId.isEmpty ? nil : await chats.lastMessageId(chatId: event.chatId)
             try? await messages.delete(messageId: event.messageId)
+            guard last == event.messageId else { return }
+            // Превью показывало удалённое сообщение. Сервер знает новое последнее,
+            // если он недоступен или
+            // ещё не знает об удалении, берём самое свежее из кэша.
+            try? await chats.refresh(chatId: event.chatId)
+            if await chats.lastMessageId(chatId: event.chatId) == event.messageId {
+                let latest = await messages.latest(chatId: event.chatId)
+                try? await chats.replaceLast(chatId: event.chatId, with: latest)
+            }
         case .chat:
             guard let record = ChatRecord(event) else { return }
             try? await chats.upsert([record])
         case .read:
-            try? await chats.applyRemoteUnread(chatId: event.chatId, unread: event.unread)
+            // Пуш прочтения приходит и когда собеседник прочитал наши сообщения. Наш счётчик
+            // непрочитанных меняет только своя отметка (с другого устройства).
+            let mine = await messages.currentUser()
+            guard !mine.isEmpty, event.authorId == mine else { return }
+            try? await chats.applyOwnRead(chatId: event.chatId, mark: event.timeMs, setAsUnread: event.unread > 0)
         case .typing:
             break
         }
