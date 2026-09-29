@@ -26,9 +26,12 @@ jobs:
       - name: Select Xcode 16.2
         run: sudo xcode-select -s /Applications/Xcode_16.2.app
       - name: Test libraries
-        env:
-          ORBITL_SWIFTDATA_PLIST: "1"
-        run: swift test --package-path orbitl-ios
+        run: |
+          swift test --package-path orbitl-ios \
+            --Xlinker -sectcreate \
+            --Xlinker __TEXT \
+            --Xlinker __info_plist \
+            --Xlinker "$GITHUB_WORKSPACE/orbitl-ios/Tests/OrbitlDataTests/Info.plist"
 
   app:
     name: App and MaxIos

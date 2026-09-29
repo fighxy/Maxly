@@ -1,25 +1,7 @@
 // swift-tools-version: 6.0
 // Локальные пакеты iOS-клиента Orbitl. Приложение (OrbitlApp) собирается
 // отдельным Xcode-таргетом и подключает эти библиотеки.
-import Foundation
 import PackageDescription
-
-// SwiftData падает без CFBundleName. `swift test` собирает голый бинарник,
-// поэтому CI задаёт ORBITL_SWIFTDATA_PLIST=1 и вшивает plist. Без переменной
-// флагов нет: Xcode не любит unsafeFlags у пакета приложения.
-let embedSwiftDataPlist = ProcessInfo.processInfo.environment["ORBITL_SWIFTDATA_PLIST"] == "1"
-let testInfoPlist = URL(fileURLWithPath: #filePath)
-    .deletingLastPathComponent()
-    .appendingPathComponent("Tests/OrbitlDataTests/Info.plist")
-    .path
-let dataTestLinker: [LinkerSetting] = embedSwiftDataPlist
-    ? [.unsafeFlags([
-        "-Xlinker", "-sectcreate",
-        "-Xlinker", "__TEXT",
-        "-Xlinker", "__info_plist",
-        "-Xlinker", testInfoPlist,
-    ])]
-    : []
 
 let package = Package(
     name: "Orbitl",
@@ -45,8 +27,7 @@ let package = Package(
         .testTarget(
             name: "OrbitlDataTests",
             dependencies: ["OrbitlData"],
-            exclude: ["Info.plist"],
-            linkerSettings: dataTestLinker
+            exclude: ["Info.plist"]
         ),
         .testTarget(name: "OrbitlUITests", dependencies: ["OrbitlUI"]),
     ]
