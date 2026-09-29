@@ -35,9 +35,9 @@ public actor MediaRepositoryImpl: MediaRepository {
         do {
             return try await fetch(item) { _ in }
         } catch is CancellationError {
-            throw .networkUnavailable
-        } catch is URLError {
-            throw .networkUnavailable
+            throw .cancelled
+        } catch let error as URLError {
+            throw error.code == .cancelled ? .cancelled : .networkUnavailable
         } catch {
             throw .storageError
         }
