@@ -12,9 +12,22 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 8) {
-                        Button("Раньше") { Task { await viewModel.loadOlder() } }
-                            .font(.footnote)
-                            .padding(.top, 8)
+                        if let hint = viewModel.emptyHint {
+                            VStack(spacing: 12) {
+                                OrbitlMark(size: 56)
+                                    .foregroundStyle(.tertiary)
+                                Text(hint)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .padding(.horizontal, 24)
+                            .padding(.top, 80)
+                        } else {
+                            Button("Раньше") { Task { await viewModel.loadOlder() } }
+                                .font(.footnote)
+                                .padding(.top, 8)
+                        }
                         ForEach(viewModel.messages) { message in
                             MessageBubble(message: message, isOutgoing: viewModel.isOutgoing(message)) {
                                 Task { await viewModel.retry(id: message.id) }

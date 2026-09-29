@@ -41,4 +41,24 @@ struct ChatViewModelTests {
         #expect(ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository()).isOutgoing(message))
         #expect(!ChatViewModel(chatId: "c", currentUserId: "", messages: FakeMessageRepository()).isOutgoing(message))
     }
+
+    @Test("Новый диалог: пустая история не ошибка, экран предлагает первое сообщение")
+    func newDialog() async {
+        let repository = FakeMessageRepository()
+        await repository.set(latestError: .server(code: "chat.not.found"))
+        let model = ChatViewModel(chatId: "13", currentUserId: "10", messages: repository, isNewDialog: true)
+        await model.loadLatest()
+        #expect(model.error == nil)
+        #expect(model.emptyHint != nil)
+        // Без сети ошибка по-прежнему видна.
+        await repository.set(latestError: .networkUnavailable)
+        await model.loadLatest()
+        #expect(model.error == .networkUnavailable)
+
+        let existing = ChatViewModel(chatId: "13", currentUserId: "10", messages: repository)
+        await repository.set(latestError: .server(code: "x"))
+        await existing.loadLatest()
+        #expect(existing.error == .server(code: "x"))
+        #expect(existing.emptyHint == nil)
+    }
 }

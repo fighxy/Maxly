@@ -289,12 +289,15 @@ final class FakeConnection: ConnectionStatusProvider {
 /// Репозиторий сообщений для экрана чата.
 actor FakeMessageRepository: MessageRepository {
     var sendError: OrbitlError?
+    var latestError: OrbitlError?
     private(set) var sent: [String] = []
 
     nonisolated func messages(chatId: String) -> AsyncStream<[Message]> { AsyncStream { _ in } }
     func loadOlder(chatId: String) async throws(OrbitlError) {}
     func loadMore(chatId: String, before: Date?) async throws(OrbitlError) -> [Message] { [] }
-    func fetchLatest(chatId: String) async throws(OrbitlError) {}
+    func fetchLatest(chatId: String) async throws(OrbitlError) {
+        if let latestError { throw latestError }
+    }
 
     func send(text: String, chatId: String) async throws(OrbitlError) {
         sent.append(text)
@@ -303,6 +306,7 @@ actor FakeMessageRepository: MessageRepository {
 
     func retry(messageId: String) async throws(OrbitlError) {}
     func set(sendError: OrbitlError?) { self.sendError = sendError }
+    func set(latestError: OrbitlError?) { self.latestError = latestError }
 }
 
 func chat(_ id: String, at seconds: TimeInterval, unread: Int = 0, title: String = "Чат", preview: String? = "Привет", type: ChatType = .group) -> Chat {
