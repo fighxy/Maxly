@@ -59,6 +59,12 @@ struct AuthCountryTests {
         #expect(model.countryCode == "7")
         model.nationalNumber = "7011234567"
         #expect(model.country?.id == "KZ")
+        // Лишняя цифра после полного номера не сдвигает его, как `8 …` или `7 …` целиком.
+        model.nationalNumber = "701 123 45679"
+        #expect(model.nationalNumber == "701 123 4567")
+        model.nationalNumber = ""
+        model.nationalNumber = "87011234567"
+        #expect(model.nationalNumber == "701 123 4567")
     }
 
     @Test("Вставленный целиком номер разбирается на код и номер")
