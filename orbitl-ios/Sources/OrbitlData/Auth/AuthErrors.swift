@@ -50,6 +50,14 @@ enum AuthErrors {
         }
     }
 
+    /// Код из SMS больше не действует: сервер сообщил об истечении, либо попытка входа
+    /// пропала вместе с сессией. Тогда сессия сама запрашивает новый код.
+    static func isExpiredCode(_ error: Error) -> Bool {
+        guard let failure = error as? CoreFailure else { return false }
+        if failure.kind == "SESSION_EXPIRED" { return true }
+        return failure.kind == "SERVER" && (failure.key?.lowercased().contains("expire") ?? false)
+    }
+
     /// Ключи сервера про лимиты попыток. Точных ключей Max нет в референсах, поэтому по словам.
     static func isRateLimit(_ key: String) -> Bool {
         ["limit", "many", "flood", "attempt", "frequent"].contains { key.contains($0) }
