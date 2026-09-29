@@ -17,6 +17,8 @@ final class AppContainer {
 
     private(set) var boot: Boot = .loading
     private(set) var phase: AuthPhase = .restoring
+    /// Только что вошли по коду (не восстановили сессию): экран показывает ограничения нового сеанса.
+    var showsNewSessionNotice = false
 
     // Зависимости и кэш моделей экранов не наблюдаются: модели создаются лениво прямо
     // во время отрисовки `RootView`, и запись в наблюдаемое свойство там заставила бы
@@ -106,6 +108,10 @@ final class AppContainer {
                     case .signedOut, .expired:
                         self.dropScreenModels()
                     case .signedIn(let id):
+                        if Self.isLoginStep(previous) {
+                            Log.info(.auth, "Новый сеанс на этом устройстве")
+                            self.showsNewSessionNotice = true
+                        }
                         // Кэш показывался под запомненным id, а ядро вошло другим аккаунтом
                         // (или вход после истёкшей сессии): модели чатов помнят прежнего автора.
                         if case .signedIn(let old) = previous, old != id {
@@ -162,6 +168,14 @@ final class AppContainer {
         let model = CallsViewModel(calls: calls)
         callsModel = model
         return model
+    }
+
+    /// Шаг входа по коду: из него `signedIn` значит новый сеанс, а не восстановление.
+    static func isLoginStep(_ phase: AuthPhase) -> Bool {
+        switch phase {
+        case .codeSent, .password, .registration: true
+        case .restoring, .signedOut, .signedIn, .expired: false
+        }
     }
 
     /// Фаза для журнала: без номера и прочих личных данных.

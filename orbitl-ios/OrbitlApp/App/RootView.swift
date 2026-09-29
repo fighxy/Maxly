@@ -50,6 +50,9 @@ struct RootView: View {
             MainTabView(container: container, router: router, list: list)
                 // Другой аккаунт — новые модели экранов, и их `.task` должны запуститься заново.
                 .id(container.currentUserId)
+                .sheet(isPresented: $container.showsNewSessionNotice) {
+                    NewSessionNoticeSheet()
+                }
         }
     }
 }
