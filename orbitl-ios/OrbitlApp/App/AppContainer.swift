@@ -29,6 +29,12 @@ final class AppContainer {
     @ObservationIgnored private var authModel: AuthViewModel?
     @ObservationIgnored private var listModel: ChatListViewModel?
     @ObservationIgnored private var chatModels: [String: ChatViewModel] = [:]
+    @ObservationIgnored private var contactsModel: ContactsViewModel?
+    @ObservationIgnored private var callsModel: CallsViewModel?
+    // Мост ядра пока не отдаёт ни контакты, ни звонки. Когда отдаст, здесь
+    // появятся настоящие репозитории, экраны менять не придётся.
+    private let contacts: any ContactRepository = UnavailableContactRepository()
+    private let calls: any CallHistoryRepository = UnavailableCallHistoryRepository()
     @ObservationIgnored private var phaseTask: Task<Void, Never>?
 
     func bootstrap() async {
@@ -98,6 +104,20 @@ final class AppContainer {
         return model
     }
 
+    func contactsViewModel() -> ContactsViewModel {
+        if let contactsModel { return contactsModel }
+        let model = ContactsViewModel(contacts: contacts, currentUserId: currentUserId)
+        contactsModel = model
+        return model
+    }
+
+    func callsViewModel() -> CallsViewModel {
+        if let callsModel { return callsModel }
+        let model = CallsViewModel(calls: calls)
+        callsModel = model
+        return model
+    }
+
     static let localFiltersKey = "orbitl.chatList.localFilters"
 
     /// Папки по типам чатов, когда серверных нет. Настройка живёт на устройстве.
@@ -133,5 +153,9 @@ final class AppContainer {
         chatModels.removeAll()
         listModel?.deactivate()
         listModel = nil
+        contactsModel?.deactivate()
+        contactsModel = nil
+        callsModel?.deactivate()
+        callsModel = nil
     }
 }
