@@ -15,6 +15,8 @@ public actor SyncEngine {
     private var eventTask: Task<Void, Never>?
     /// Пока ложь, подписка на пуши молчит. Прямой `consume` для тестов это не смотрит.
     private var acceptEvents = false
+    /// Сколько пушей из потока сейчас пишется в базу. `stopEvents` ждёт, пока их не станет.
+    private var eventsInFlight = 0
     private var watchedChats: Set<String> = []
     private var focused: String?
 
@@ -31,6 +33,9 @@ public actor SyncEngine {
     }
 
     public var isPolling: Bool { pollTask != nil }
+
+    /// Чаты, история которых сейчас опрашивается.
+    public var watched: Set<String> { watchedChats }
 
     /// Сеть появилась: отправить очередь и включить опрос.
     public func networkBecameAvailable() async {
@@ -63,18 +68,33 @@ public actor SyncEngine {
             guard let self else { return }
             let events = await self.coreEvents(core)
             for await event in events {
-                guard await self.acceptsEvents() else { continue }
-                await self.consume(event)
+                await self.deliver(event)
             }
         }
     }
 
-    /// Выход и смена аккаунта. Уже идущая запись заканчивается, следующие пуши не попадают в базу.
-    public func stopEvents() {
+    /// Выход и смена аккаунта. Следующие пуши не попадают в базу, а уже начатая запись
+    /// заканчивается до возврата, чтобы не лечь поверх очистки базы.
+    public func stopEvents() async {
         acceptEvents = false
+        while eventsInFlight > 0 {
+            await Task.yield()
+        }
     }
 
-    private func acceptsEvents() -> Bool { acceptEvents }
+    /// Забыть открытые чаты. Выход и смена аккаунта не должны опрашивать чужие чаты.
+    public func reset() {
+        watchedChats.removeAll()
+        focused = nil
+    }
+
+    /// Пуш из потока ядра. Молчит, пока запись выключена.
+    private func deliver(_ event: CoreEvent) async {
+        guard acceptEvents else { return }
+        eventsInFlight += 1
+        defer { eventsInFlight -= 1 }
+        await consume(event)
+    }
 
     /// Записывает одно событие ядра в базу. Опрос остаётся запасным путём.
     public func consume(_ event: CoreEvent) async {
