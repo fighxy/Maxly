@@ -18,6 +18,9 @@ public actor SyncEngine {
     private var acceptEvents = false
     /// Сколько пушей из потока сейчас пишется в базу. `stopEvents` ждёт, пока их не станет.
     private var eventsInFlight = 0
+    /// Последний сигнал о сети. `networkLost`, пришедший, пока `networkBecameAvailable`
+    /// отправляла очередь, отменяет запуск опроса.
+    private var isOnline = false
     private var watchedChats: Set<String> = []
     private var focused: String?
 
@@ -40,12 +43,15 @@ public actor SyncEngine {
 
     /// Сеть появилась: отправить очередь и включить опрос.
     public func networkBecameAvailable() async {
+        isOnline = true
         await outbox.process()
+        guard isOnline else { return }
         startPolling()
     }
 
     /// Сеть пропала: остановить опрос и дождаться уже начатого цикла, чтобы он не записал поверх очистки.
     public func networkLost() async {
+        isOnline = false
         let task = pollTask
         pollTask = nil
         task?.cancel()

@@ -60,7 +60,13 @@ actor FakeMaxAPI: MaxAPI {
         return .success(Array(older.prefix(limit)))
     }
 
+    /// Если задан, отправка ждёт, пока тест его не откроет.
+    var sendGate: Gate?
+
+    func setSendGate(_ gate: Gate?) { sendGate = gate }
+
     func sendMessage(chatId: String, text: String, clientId: String) async -> Result<SentMessage, MaxAPIError> {
+        if let sendGate { await sendGate.wait() }
         let index = min(sendCalls, sendResults.count - 1)
         sendCalls += 1
         return sendResults[index]
