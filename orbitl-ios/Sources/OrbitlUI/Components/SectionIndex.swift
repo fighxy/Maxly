@@ -5,9 +5,10 @@ import SwiftUI
 /// На iOS 26 это системный указатель `List` (`sectionIndexLabel`), на прежних
 /// версиях SwiftUI его нет, и вместо него рисуется `SectionIndexStrip`.
 public enum SectionIndexSupport {
+    /// Системный указатель есть только на iOS: в macOS SDK нет `listSectionIndexVisibility`.
     public static var isNative: Bool {
-        #if compiler(>=6.2)
-        if #available(iOS 26.0, macOS 26.0, *) { return true }
+        #if compiler(>=6.2) && os(iOS)
+        if #available(iOS 26.0, *) { return true }
         #endif
         return false
     }
@@ -31,8 +32,8 @@ public extension View {
     /// Показывает системный указатель списка (iOS 26).
     @ViewBuilder
     func orbitlSectionIndexVisible(_ visible: Bool) -> some View {
-        #if compiler(>=6.2)
-        if #available(iOS 26.0, macOS 26.0, *) {
+        #if compiler(>=6.2) && os(iOS)
+        if #available(iOS 26.0, *) {
             listSectionIndexVisibility(visible ? .visible : .hidden)
         } else {
             self
