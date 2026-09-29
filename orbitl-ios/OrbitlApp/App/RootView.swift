@@ -1,5 +1,6 @@
 import SwiftUI
 import OrbitlDomain
+import OrbitlPresentation
 
 struct RootView: View {
     @Bindable var container: AppContainer
@@ -31,7 +32,7 @@ struct RootView: View {
     @ViewBuilder
     private var auth: some View {
         if let model = container.authViewModel() {
-            AuthView(viewModel: model, expired: container.phase == .expired)
+            AuthView(viewModel: model)
         }
     }
 
@@ -44,7 +45,7 @@ struct RootView: View {
                 }
             } detail: {
                 if let id = router.chatId, let model = container.chatViewModel(id: id) {
-                    ChatView(viewModel: model)
+                    ChatView(viewModel: model, title: container.chatTitle(id: id))
                 } else {
                     ContentUnavailableView("Выберите чат", systemImage: "bubble.left.and.bubble.right")
                 }

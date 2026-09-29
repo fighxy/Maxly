@@ -1,34 +1,44 @@
 import SwiftUI
-import OrbitlDomain
 
+/// Строка списка чатов. Тексты уже готовы (`ChatListFormatter` в OrbitlPresentation),
+/// компонент только раскладывает их.
 public struct ChatRow: View {
-    private let chat: Chat
+    private let title: String
+    private let preview: String
+    private let time: String
+    private let badge: String?
+    private let accessibilityText: String
 
-    public init(chat: Chat) {
-        self.chat = chat
+    public init(title: String, preview: String, time: String, badge: String?, accessibilityLabel: String) {
+        self.title = title
+        self.preview = preview
+        self.time = time
+        self.badge = badge
+        self.accessibilityText = accessibilityLabel
     }
 
     public var body: some View {
         HStack(spacing: 12) {
-            AvatarView(title: chat.title.isEmpty ? "Чат" : chat.title)
+            AvatarView(title: title)
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(chat.title.isEmpty ? "Чат" : chat.title)
+                    Text(title)
                         .font(.body.weight(.semibold))
                         .lineLimit(1)
                     Spacer(minLength: 8)
-                    Text(ChatTime.label(for: chat.updatedAt))
+                    Text(time)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(badge == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.orbitlAccent))
+                        .monospacedDigit()
                 }
                 HStack {
-                    Text(chat.preview ?? "Нет сообщений")
+                    Text(preview)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                     Spacer(minLength: 8)
-                    if chat.unreadCount > 0 {
-                        Text("\(chat.unreadCount)")
+                    if let badge {
+                        Text(badge)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 7)
@@ -39,6 +49,7 @@ public struct ChatRow: View {
             }
         }
         .frame(minHeight: OrbitlTheme.row)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
     }
 }

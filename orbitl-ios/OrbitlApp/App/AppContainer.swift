@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import OrbitlData
 import OrbitlDomain
+import OrbitlPresentation
 
 /// Собирает ядро, базу и репозитории. Экраны получают только протоколы.
 @MainActor
@@ -55,8 +56,7 @@ final class AppContainer {
                 for await next in session.phases() {
                     self.phase = next
                     if case .signedOut = next {
-                        self.chatModels.removeAll()
-                        self.listModel = nil
+                        self.dropScreenModels()
                     }
                 }
             }
@@ -77,7 +77,7 @@ final class AppContainer {
     func chatListViewModel() -> ChatListViewModel? {
         guard let chats else { return nil }
         if let listModel { return listModel }
-        let model = ChatListViewModel(chats: chats)
+        let model = ChatListViewModel(chats: chats, connection: session)
         listModel = model
         return model
     }
@@ -92,17 +92,30 @@ final class AppContainer {
         return model
     }
 
+    /// Заголовок открытого чата, как он показан в списке.
+    func chatTitle(id: String) -> String {
+        listModel?.items.first { $0.id == id }?.title ?? "Чат"
+    }
+
+    /// Открытый чат: опрос его истории и отметка прочтения, в том числе для сообщений,
+    /// пришедших, пока он на экране (это делает `ChatListViewModel`).
     func focus(chatId: String?) async {
         await sync?.focus(chatId)
-        if let chatId {
-            try? await chats?.markAsRead(chatId: chatId)
-        }
+        await listModel?.open(chatId: chatId)
     }
 
     func logout() async {
         await session?.logout()
-        chatModels.removeAll()
-        listModel = nil
+        dropScreenModels()
+        authModel?.deactivate()
         authModel = nil
+    }
+
+    /// Модели экранов прежнего аккаунта не должны пережить выход.
+    private func dropScreenModels() {
+        chatModels.values.forEach { $0.deactivate() }
+        chatModels.removeAll()
+        listModel?.deactivate()
+        listModel = nil
     }
 }

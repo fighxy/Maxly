@@ -11,6 +11,7 @@
 		AA000000000000000000000A /* OrbitlDomain in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000007 /* OrbitlDomain */; };
 		AA000000000000000000000B /* OrbitlData in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000008 /* OrbitlData */; };
 		AA000000000000000000000C /* OrbitlUI in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000009 /* OrbitlUI */; };
+		AA000000000000000000001A /* OrbitlPresentation in Frameworks */ = {isa = PBXBuildFile; productRef = AA000000000000000000001B /* OrbitlPresentation */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -51,6 +52,7 @@
 				AA000000000000000000000A /* OrbitlDomain in Frameworks */,
 				AA000000000000000000000B /* OrbitlData in Frameworks */,
 				AA000000000000000000000C /* OrbitlUI in Frameworks */,
+				AA000000000000000000001A /* OrbitlPresentation in Frameworks */,
 				AA0000000000000000000006 /* MaxIos.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -98,6 +100,7 @@
 				AA0000000000000000000007 /* OrbitlDomain */,
 				AA0000000000000000000008 /* OrbitlData */,
 				AA0000000000000000000009 /* OrbitlUI */,
+				AA000000000000000000001B /* OrbitlPresentation */,
 			);
 			productName = Orbitl;
 			productReference = AA0000000000000000000004 /* Orbitl.app */;
@@ -313,6 +316,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = AA000000000000000000000D /* XCLocalSwiftPackageReference "." */;
 			productName = OrbitlUI;
+		};
+		AA000000000000000000001B /* OrbitlPresentation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA000000000000000000000D /* XCLocalSwiftPackageReference "." */;
+			productName = OrbitlPresentation;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
