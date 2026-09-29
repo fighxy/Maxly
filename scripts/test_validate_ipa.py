@@ -13,7 +13,7 @@ spec.loader.exec_module(validator)
 
 class IpaValidationTests(unittest.TestCase):
     def check_archive(self, *, missing=(), platform="iPhoneOS", executable_mode=0o100755,
-                      alternates=("AppIconLight",), required=()):
+                      alternates=("AppIconLight",), catalog_only=(), required=()):
         info = {
             "CFBundleIdentifier": "app.orbitl.ios",
             "CFBundleExecutable": "Orbitl",
@@ -21,7 +21,8 @@ class IpaValidationTests(unittest.TestCase):
             "CFBundleIcons": {
                 "CFBundlePrimaryIcon": {"CFBundleIconFiles": ["AppIcon60x60"]},
                 "CFBundleAlternateIcons": {
-                    name: {"CFBundleIconFiles": [name + "60x60"]} for name in alternates
+                    **{name: {"CFBundleIconFiles": [name + "60x60"], "CFBundleIconName": name} for name in alternates},
+                    **{name: {"CFBundleIconName": name} for name in catalog_only},
                 },
             },
         }
@@ -58,6 +59,11 @@ class IpaValidationTests(unittest.TestCase):
             self.check_archive(required=("AppIconLight", "AppIconBlue"))
         with self.assertRaisesRegex(ValueError, "AppIconLight PNG"):
             self.check_archive(missing=("AppIconLight60x60@2x.png",), required=("AppIconLight",))
+
+    def test_catalog_only_alternate_icon(self):
+        # Single-size icon: only the name in the Info.plist, the image is in Assets.car.
+        self.assertEqual(self.check_archive(alternates=(), catalog_only=("AppIconBlue",),
+                                            required=("AppIconBlue",)), "app.orbitl.ios")
 
     def test_simulator_bundle(self):
         with self.assertRaisesRegex(ValueError, "Simulator"):
