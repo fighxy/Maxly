@@ -1,4 +1,5 @@
 import Foundation
+import ObjectiveC
 import SwiftData
 
 /// Ошибки слоя хранения.
@@ -27,6 +28,7 @@ public final class SwiftDataStack: Sendable {
 
     /// - Parameter inMemory: `true` для тестов и превью, данные не пишутся на диск.
     public init(inMemory: Bool = false) throws(StorageError) {
+        BundleNameFallback.installIfNeeded()
         do {
             if inMemory {
                 let configuration = ModelConfiguration(schema: Self.schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
@@ -54,6 +56,24 @@ public final class SwiftDataStack: Sendable {
             throw error
         } catch {
             throw .containerCreationFailed(underlying: error)
+        }
+    }
+
+    /// `swift test` собирает бинарник без `CFBundleName`, и SwiftData из-за этого
+    /// вызывает fatalError. В приложении имя уже есть в Info.plist, подмена не нужна.
+    private enum BundleNameFallback {
+        private static let once: Void = {
+            let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
+            guard name?.isEmpty != false else { return }
+            guard
+                let original = class_getInstanceMethod(Bundle.self, #selector(Bundle.object(forInfoDictionaryKey:))),
+                let replacement = class_getInstanceMethod(Bundle.self, #selector(Bundle.orbitl_object(forInfoDictionaryKey:)))
+            else { return }
+            method_exchangeImplementations(original, replacement)
+        }()
+
+        static func installIfNeeded() {
+            _ = once
         }
     }
 
@@ -93,5 +113,19 @@ public final class SwiftDataStack: Sendable {
         } catch {
             throw .containerCreationFailed(underlying: error)
         }
+    }
+}
+
+private extension Bundle {
+    @objc func orbitl_object(forInfoDictionaryKey key: String) -> Any? {
+        let value = orbitl_object(forInfoDictionaryKey: key)
+        guard self === Bundle.main else { return value }
+        if key == "CFBundleName", (value as? String)?.isEmpty != false {
+            return "Orbitl"
+        }
+        if key == "CFBundleIdentifier", (value as? String)?.isEmpty != false {
+            return "app.orbitl.ios"
+        }
+        return value
     }
 }
