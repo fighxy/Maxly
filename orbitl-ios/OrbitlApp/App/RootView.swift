@@ -79,6 +79,7 @@ struct MainTabView: View {
     @Bindable var container: AppContainer
     @Bindable var router: AppRouter
     @Bindable var list: ChatListViewModel
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         TabView(selection: $router.tab) {
@@ -89,12 +90,41 @@ struct MainTabView: View {
                     .badge(badge(for: tab))
             }
         }
+        // Бейдж «Звонков» нужен и до первого открытия вкладки.
+        .task {
+            let calls = container.callsViewModel()
+            calls.activate()
+            if router.tab == .calls { await calls.appeared() }
+        }
+        .onChange(of: router.tab) { _, tab in
+            let calls = container.callsViewModel()
+            if tab == .calls {
+                Task { await calls.appeared() }
+            } else {
+                calls.disappeared()
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            let calls = container.callsViewModel()
+            switch phase {
+            case .active:
+                // Звонки могли пропустить или удалить на другом устройстве, пока приложение спало.
+                let visible = router.tab == .calls
+                Task {
+                    if visible { await calls.appeared() } else { await calls.refresh() }
+                }
+            case .background:
+                calls.disappeared()
+            default:
+                break
+            }
+        }
     }
 
     private func badge(for tab: AppTab) -> Int {
         switch tab {
         case .chats: list.tabBadge
-        case .calls: container.callsViewModel().missedCount
+        case .calls: container.callsViewModel().unseenMissedCount
         case .contacts, .settings: 0
         }
     }

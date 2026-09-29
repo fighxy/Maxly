@@ -37,7 +37,11 @@ final class FakeCallSource: CallHistoryRepository, @unchecked Sendable {
     let capabilities: CallCapabilities
     private let lock = NSLock()
     private let initial: [CallRecord]
+    private var continuation: AsyncStream<[CallRecord]>.Continuation?
     private(set) var deleted: [[String]] = []
+    private(set) var refreshes = 0
+    /// Что вернёт следующая загрузка с сервера (`refresh`). `nil`: прежний список.
+    var server: [CallRecord]?
     var failDelete = false
 
     init(_ calls: [CallRecord] = [], capabilities: CallCapabilities = [.history, .delete]) {
@@ -46,7 +50,23 @@ final class FakeCallSource: CallHistoryRepository, @unchecked Sendable {
     }
 
     func calls() -> AsyncStream<[CallRecord]> {
-        AsyncStream { continuation in continuation.yield(initial) }
+        AsyncStream { continuation in
+            lock.withLock { self.continuation = continuation }
+            continuation.yield(initial)
+        }
+    }
+
+    /// Новый список, как после загрузки с сервера или пуша.
+    func send(_ calls: [CallRecord]) {
+        lock.withLock { continuation }?.yield(calls)
+    }
+
+    func refresh() async {
+        let next: [CallRecord]? = lock.withLock {
+            refreshes += 1
+            return server
+        }
+        if let next { send(next) }
     }
 
     func delete(ids: [String]) async throws(OrbitlError) {
@@ -183,9 +203,15 @@ struct ContactsViewModelTests {
 @Suite("Звонки")
 @MainActor
 struct CallsViewModelTests {
-    func make(_ calls: [CallRecord], capabilities: CallCapabilities = [.history, .delete]) -> (CallsViewModel, FakeCallSource) {
+    func make(
+        _ calls: [CallRecord],
+        capabilities: CallCapabilities = [.history, .delete],
+        marks: InMemoryCallHistoryMarks? = nil
+    ) -> (CallsViewModel, FakeCallSource) {
         let source = FakeCallSource(calls, capabilities: capabilities)
-        let model = CallsViewModel(calls: source, calendar: moscowCalendar(), now: { referenceNow })
+        // По умолчанию вкладку смотрели месяц назад.
+        let marks = marks ?? InMemoryCallHistoryMarks(lastSeen: date(daysAgo: 30, hour: 0))
+        let model = CallsViewModel(calls: source, marks: marks, calendar: moscowCalendar(), now: { referenceNow })
         model.activate()
         return (model, source)
     }
@@ -219,7 +245,8 @@ struct CallsViewModelTests {
         #expect(!model.rows[1].isMissed)
         #expect(model.rows[3].callIds == ["3", "4"])
         #expect(model.rows[2].isGroup)
-        #expect(model.missedCount == 2)
+        // Пропущенный 400 дней назад старше последнего просмотра, в бейдж идёт только свежий.
+        #expect(model.unseenMissedCount == 1)
     }
 
     @Test("«Пропущенные» оставляют только пропущенные входящие")
@@ -254,6 +281,105 @@ struct CallsViewModelTests {
         await model.delete(model.rows[0])
         #expect(model.rows.count == 4)
         #expect(source.deleted.isEmpty)
+    }
+
+    @Test("Бейдж: удаление и скрытие на устройстве сразу его уменьшают, скрытые не возвращаются")
+    func badgeAfterDelete() async {
+        let marks = InMemoryCallHistoryMarks(lastSeen: date(daysAgo: 30, hour: 0))
+        let missed = [
+            call("m1", "10", "Иван", .incoming, .missed, date(daysAgo: 0, hour: 9)),
+            call("m2", "20", "Анна", .incoming, .missed, date(daysAgo: 1, hour: 9)),
+            call("m3", "30", "Олег", .incoming, .missed, date(daysAgo: 2, hour: 9)),
+        ]
+        let (model, source) = make(missed, capabilities: [.history], marks: marks)
+        _ = await eventually { model.unseenMissedCount == 3 }
+        #expect(model.unseenMissedCount == 3)
+        for row in model.rows { await model.delete(row) }
+        #expect(model.rows.isEmpty)
+        #expect(model.unseenMissedCount == 0)
+        #expect(marks.hiddenIds == ["m1", "m2", "m3"])
+
+        // Перезапуск: сервер по-прежнему отдаёт эти звонки, но они скрыты.
+        model.deactivate()
+        let (again, _) = make(missed, capabilities: [.history], marks: marks)
+        _ = await eventually { again.state == .empty }
+        #expect(again.state == .empty)
+        #expect(again.unseenMissedCount == 0)
+        _ = source
+    }
+
+    @Test("Бейдж: звонки, удалённые на другом устройстве, пропадают после загрузки истории")
+    func badgeAfterRemoteDelete() async {
+        let first = call("m1", "10", "Иван", .incoming, .missed, date(daysAgo: 0, hour: 9))
+        let second = call("m2", "20", "Анна", .incoming, .missed, date(daysAgo: 1, hour: 9))
+        let (model, source) = make([first, second])
+        _ = await eventually { model.unseenMissedCount == 2 }
+        source.send([second])
+        _ = await eventually { model.unseenMissedCount == 1 }
+        #expect(model.unseenMissedCount == 1)
+        #expect(model.rows.map(\.id) == ["m2"])
+
+        // Скрытый на устройстве звонок, которого больше нет на сервере, из отметок убирается.
+        let marks = InMemoryCallHistoryMarks(lastSeen: date(daysAgo: 30, hour: 0), hiddenIds: ["m1", "gone"])
+        let (other, otherSource) = make([first, second], capabilities: [.history], marks: marks)
+        _ = await eventually { other.state == .ready }
+        #expect(marks.hiddenIds == ["m1"])
+        otherSource.send([])
+        _ = await eventually { other.state == .empty }
+        // Пустой ответ может быть ошибкой загрузки: скрытые остаются.
+        #expect(marks.hiddenIds == ["m1"])
+    }
+
+    @Test("Бейдж считает только непросмотренные: открытая вкладка их просматривает и грузит историю")
+    func badgeUnseen() async {
+        let marks = InMemoryCallHistoryMarks(lastSeen: date(daysAgo: 1, hour: 12))
+        let old = call("m1", "10", "Иван", .incoming, .missed, date(daysAgo: 2, hour: 9))
+        let fresh = call("m2", "20", "Анна", .incoming, .missed, date(daysAgo: 0, hour: 9))
+        let (model, source) = make([old, fresh], marks: marks)
+        _ = await eventually { model.state == .ready }
+        #expect(model.unseenMissedCount == 1)
+
+        let newer = call("m3", "30", "Олег", .incoming, .missed, date(daysAgo: 0, hour: 10))
+        source.server = [newer, fresh, old]
+        await model.appeared()
+        #expect(source.refreshes == 1)
+        _ = await eventually { model.rows.count == 3 }
+        // Пришёл, пока вкладка открыта: сразу просмотрен.
+        #expect(model.unseenMissedCount == 0)
+        #expect(marks.lastSeen == newer.date)
+
+        model.disappeared()
+        let latest = call("m4", "40", "Мария", .incoming, .missed, date(daysAgo: 0, hour: 11))
+        source.send([latest, newer, fresh, old])
+        _ = await eventually { model.unseenMissedCount == 1 }
+        #expect(model.unseenMissedCount == 1)
+        // Отвеченные и исходящие в бейдж не идут.
+        source.send([call("a1", "50", "Пётр", .incoming, .answered, date(daysAgo: 0, hour: 12)), latest])
+        _ = await eventually { model.rows.count == 2 }
+        #expect(model.unseenMissedCount == 1)
+
+        await model.refresh()
+        #expect(source.refreshes == 2)
+    }
+
+    @Test("Первый запуск у аккаунта: прежняя история просмотрена, бейдж пуст")
+    func badgeFirstRun() async {
+        let marks = InMemoryCallHistoryMarks()
+        let (model, _) = make([call("m1", "10", "Иван", .incoming, .missed, date(daysAgo: 0, hour: 9))], marks: marks)
+        _ = await eventually { model.state == .ready }
+        #expect(marks.lastSeen == referenceNow)
+        #expect(model.unseenMissedCount == 0)
+    }
+
+    @Test("Ошибка удаления на сервере возвращает звонок и в бейдж, и в отметки")
+    func badgeDeleteFailure() async {
+        let marks = InMemoryCallHistoryMarks(lastSeen: date(daysAgo: 30, hour: 0))
+        let (model, source) = make([call("m1", "10", "Иван", .incoming, .missed, date(daysAgo: 0, hour: 9))], marks: marks)
+        _ = await eventually { model.unseenMissedCount == 1 }
+        source.failDelete = true
+        await model.delete(model.rows[0])
+        #expect(model.unseenMissedCount == 1)
+        #expect(marks.hiddenIds.isEmpty)
     }
 
     @Test("Пустая история и недоступный источник")

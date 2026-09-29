@@ -11,6 +11,72 @@ struct DirectoryRepositoryTests {
         return values
     }
 
+    /// Первое значение потока, который сам не заканчивается.
+    private func next<T: Sendable>(_ stream: AsyncStream<T>) async -> T? {
+        for await value in stream { return value }
+        return nil
+    }
+
+    private func coreCall(_ id: String, time: Int64, missed: Bool = true) -> CoreCall {
+        CoreCall(id: id, chatId: "7", peerId: "20", title: "Анна", avatarURL: "", isGroup: false,
+                 outgoing: false, missed: missed, video: false, hangupType: missed ? "MISSED" : "HUNGUP", duration: 0, timeMs: time)
+    }
+
+    @Test("Журнал звонков: загрузка заново раздаёт новый список живым подпискам")
+    func callsRefresh() async {
+        let core = FakeMaxCore()
+        await core.setDirectory(calls: [coreCall("1", time: 2_000), coreCall("2", time: 1_000)])
+        let repository = CoreCallHistoryRepository(core: core)
+        var iterator = repository.calls().makeAsyncIterator()
+        #expect(await iterator.next()?.map(\.id) == ["1", "2"])
+
+        // Звонок «1» удалили на другом устройстве.
+        await core.setDirectory(calls: [coreCall("2", time: 1_000)])
+        await repository.refresh()
+        #expect(await iterator.next()?.map(\.id) == ["2"])
+
+        // Новая подписка сразу получает известный список, затем свежий.
+        var second = repository.calls().makeAsyncIterator()
+        #expect(await second.next()?.map(\.id) == ["2"])
+        #expect(await second.next()?.map(\.id) == ["2"])
+        // Эта загрузка досталась и первой подписке.
+        #expect(await iterator.next()?.map(\.id) == ["2"])
+
+        // Упавшая загрузка не затирает известный список.
+        await core.setDirectory(error: CoreFailure(kind: "NETWORK", key: nil))
+        await repository.refresh()
+        await core.setDirectory(calls: [coreCall("3", time: 3_000)])
+        await repository.refresh()
+        #expect(await iterator.next()?.map(\.id) == ["3"])
+
+        // После выхода прежний список новой подписке не достаётся.
+        await repository.reset()
+        await core.setDirectory(error: CoreFailure(kind: "NETWORK", key: nil))
+        var third = repository.calls().makeAsyncIterator()
+        #expect(await third.next() == [])
+    }
+
+    @Test("Отметки звонков: у каждого аккаунта свои, выход их стирает")
+    @MainActor
+    func callMarks() throws {
+        let suite = "orbitl.tests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let first = UserDefaultsCallHistoryMarks(userId: "1", defaults: defaults)
+        #expect(first.lastSeen == nil)
+        first.lastSeen = Date(timeIntervalSince1970: 1_000)
+        first.hiddenIds = ["a", "b"]
+        let again = UserDefaultsCallHistoryMarks(userId: "1", defaults: defaults)
+        #expect(again.lastSeen == Date(timeIntervalSince1970: 1_000))
+        #expect(again.hiddenIds == ["a", "b"])
+        let other = UserDefaultsCallHistoryMarks(userId: "2", defaults: defaults)
+        #expect(other.lastSeen == nil)
+        #expect(other.hiddenIds.isEmpty)
+        UserDefaultsCallHistoryMarks.erase(userId: "1", defaults: defaults)
+        #expect(again.lastSeen == nil)
+        #expect(again.hiddenIds.isEmpty)
+    }
+
     @Test("Контакты приходят из ядра, со статусом и номером")
     func contacts() async {
         let core = FakeMaxCore()
@@ -60,7 +126,7 @@ struct DirectoryRepositoryTests {
             call("4", outgoing: true, hangup: "CANCELED", time: 500, group: true),
         ])
         let repository = CoreCallHistoryRepository(core: core)
-        let list = await first(repository.calls()).last ?? []
+        let list = await next(repository.calls()) ?? []
         #expect(list.map(\.id) == ["2", "3", "1", "4"])
         #expect(list[0].isMissed)
         #expect(list[1].outcome == .declined)

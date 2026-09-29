@@ -60,8 +60,9 @@ public final class CallsViewModel {
 
     public var canCreateCall: Bool { repository.capabilities.contains(.createLink) }
     public var canJoin: Bool { repository.capabilities.contains(.join) }
-    /// Пропущенные звонки для бейджа вкладки.
-    public var missedCount: Int { visible.filter(\.isMissed).count }
+    /// Бейдж вкладки: пропущенные звонки новее последнего просмотра вкладки, без удалённых
+    /// и скрытых. Хранимое свойство, чтобы панель вкладок перерисовывалась при его смене.
+    public private(set) var unseenMissedCount = 0
 
     @ObservationIgnored private let repository: any CallHistoryRepository
     @ObservationIgnored private let now: () -> Date
@@ -69,14 +70,21 @@ public final class CallsViewModel {
     @ObservationIgnored private var watch: Task<Void, Never>?
     @ObservationIgnored private var records: [CallRecord] = []
     /// Удалённые на экране, пока сервер не подтвердил (или навсегда, если сервер не умеет).
-    @ObservationIgnored private var hidden: Set<String> = []
+    /// Хранятся в `marks`, чтобы скрытые звонки не возвращались после перезапуска.
+    @ObservationIgnored private var hidden: Set<String>
+    @ObservationIgnored private let marks: any CallHistoryMarks
+    /// Вкладка «Звонки» на экране: всё, что пришло, пока она видна, считается просмотренным.
+    @ObservationIgnored private var isVisible = false
 
     public init(
         calls: any CallHistoryRepository,
+        marks: any CallHistoryMarks = InMemoryCallHistoryMarks(),
         calendar: Calendar = ChatListFormatter.defaultCalendar(),
         now: @escaping () -> Date = { Date() }
     ) {
         self.repository = calls
+        self.marks = marks
+        self.hidden = marks.hiddenIds
         self.calendar = calendar
         self.now = now
     }
@@ -87,12 +95,14 @@ public final class CallsViewModel {
             state = .unavailable
             return
         }
+        // Первый запуск у аккаунта: прежняя история считается просмотренной, бейдж —
+        // только для звонков, пропущенных после этого.
+        if marks.lastSeen == nil { marks.lastSeen = now() }
         let stream = repository.calls()
         watch = Task { [weak self] in
             for await list in stream {
                 guard let self else { return }
-                self.records = list
-                self.rebuild()
+                self.receive(list)
             }
         }
     }
@@ -100,6 +110,24 @@ public final class CallsViewModel {
     public func deactivate() {
         watch?.cancel()
         watch = nil
+        isVisible = false
+    }
+
+    /// Вкладка «Звонки» открылась: пропущенные просмотрены, история грузится заново.
+    public func appeared() async {
+        isVisible = true
+        markSeen()
+        await repository.refresh()
+    }
+
+    /// Вкладка ушла с экрана: новые пропущенные снова попадают в бейдж.
+    public func disappeared() {
+        isVisible = false
+    }
+
+    /// Загрузить историю заново (например, приложение вернулось на передний план).
+    public func refresh() async {
+        await repository.refresh()
     }
 
     /// Удаляет строку со всеми звонками группы. Без поддержки сервера запись
@@ -107,12 +135,14 @@ public final class CallsViewModel {
     public func delete(_ row: CallRow) async {
         let ids = Set(row.callIds)
         hidden.formUnion(ids)
+        marks.hiddenIds = hidden
         rebuild()
         guard repository.capabilities.contains(.delete) else { return }
         do {
             try await repository.delete(ids: row.callIds)
         } catch {
             hidden.subtract(ids)
+            marks.hiddenIds = hidden
             errorMessage = error.userMessage
             rebuild()
         }
@@ -148,8 +178,37 @@ public final class CallsViewModel {
         records.filter { !hidden.contains($0.id) }
     }
 
+    private func receive(_ list: [CallRecord]) {
+        records = list
+        // Звонки, которых больше нет на сервере, скрывать уже незачем. Пустой список может
+        // быть ошибкой загрузки, по нему скрытые не чистятся.
+        if !list.isEmpty {
+            let pruned = hidden.intersection(list.map(\.id))
+            if pruned != hidden {
+                hidden = pruned
+                marks.hiddenIds = pruned
+            }
+        }
+        rebuild()
+    }
+
+    /// Всё видимое сейчас просмотрено: отметка сдвигается до самого нового звонка.
+    private func markSeen() {
+        if let newest = visible.map(\.date).max(), newest > (marks.lastSeen ?? .distantPast) {
+            marks.lastSeen = newest
+        }
+        updateBadge()
+    }
+
+    private func updateBadge() {
+        let seen = marks.lastSeen ?? .distantPast
+        let count = visible.filter { $0.isMissed && $0.date > seen }.count
+        if count != unseenMissedCount { unseenMissedCount = count }
+    }
+
     private func rebuild() {
         guard repository.capabilities.contains(.history) else { return }
+        if isVisible { markSeen() } else { updateBadge() }
         let list = visible
             .filter { filter == .all || $0.isMissed }
             .sorted { $0.date != $1.date ? $0.date > $1.date : $0.id > $1.id }
