@@ -139,13 +139,16 @@ public struct PhotoContent: Hashable, Sendable, Codable {
     public var width: Int?
     public var height: Int?
     public var localPath: String?
+    /// Крошечная миниатюра (WebP) из самого вложения: её видно, пока грузится фото.
+    public var preview: Data?
 
-    public init(id: String, url: URL?, width: Int? = nil, height: Int? = nil, localPath: String? = nil) {
+    public init(id: String, url: URL?, width: Int? = nil, height: Int? = nil, localPath: String? = nil, preview: Data? = nil) {
         self.id = id
         self.url = url
         self.width = width
         self.height = height
         self.localPath = localPath
+        self.preview = preview
     }
 
     public var displayURL: URL? {
@@ -171,6 +174,8 @@ public struct VideoContent: Hashable, Sendable, Codable {
     /// Круглое видеосообщение.
     public var isRound: Bool
     public var localPath: String?
+    /// Крошечная миниатюра (WebP) из самого вложения.
+    public var preview: Data?
 
     public init(
         id: String,
@@ -180,7 +185,8 @@ public struct VideoContent: Hashable, Sendable, Codable {
         height: Int? = nil,
         durationMs: Int64 = 0,
         isRound: Bool = false,
-        localPath: String? = nil
+        localPath: String? = nil,
+        preview: Data? = nil
     ) {
         self.id = id
         self.url = url
@@ -190,6 +196,7 @@ public struct VideoContent: Hashable, Sendable, Codable {
         self.durationMs = durationMs
         self.isRound = isRound
         self.localPath = localPath
+        self.preview = preview
     }
 
     /// Постер остаётся картинкой пузыря. Скачанный ролик — это файл видео, его не подставляем вместо кадра.

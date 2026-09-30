@@ -150,6 +150,17 @@ struct MessageContentCodecTests {
         }
         """#
     }
+
+    @Test("Миниатюра previewData: массив байтов и data-адрес base64")
+    func previewData() throws {
+        let json = #"{"attaches":[{"_type":"PHOTO","photoId":1,"baseUrl":"https://i.example/1","previewData":[82,73,70,70]},{"_type":"VIDEO","videoId":2,"previewData":"data:image/webp;base64,UklGRg=="}]}"#
+        let content = MessageContentCodec.decode(json)
+        #expect(content.attachments.first?.photo?.preview == Data([82, 73, 70, 70]))
+        #expect(content.attachments.last?.video?.preview == Data([82, 73, 70, 70]))
+        #expect(content.attachments.last?.video?.url == nil)
+        let stored = MessageContentCodec.decode(MessageContentCodec.encode(content))
+        #expect(stored == content)
+    }
 }
 
 @Suite("Контент в базе")

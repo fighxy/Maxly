@@ -126,6 +126,19 @@ public struct OpenedFile: Identifiable, Hashable, Sendable {
     }
 }
 
+/// Склейка пузыря с соседями одного автора.
+public struct BubbleGroup: Hashable, Sendable {
+    public var joinsPrevious: Bool
+    public var joinsNext: Bool
+
+    public init(joinsPrevious: Bool = false, joinsNext: Bool = false) {
+        self.joinsPrevious = joinsPrevious
+        self.joinsNext = joinsNext
+    }
+
+    public static let single = BubbleGroup()
+}
+
 /// Подписи и размеры контента в пузыре. Без SwiftUI, чтобы их считали тесты.
 public enum ChatContentFormat {
     public static func clock(ms: Int64) -> String {
@@ -214,6 +227,55 @@ public enum ChatContentFormat {
         guard !outgoing else { return false }
         guard let nextAuthorId else { return true }
         return !sameAuthor(authorId, nextAuthorId)
+    }
+
+    /// Пузыри одного автора подряд (в пределах `window` и одного дня) слипаются: у склеенной
+    /// стороны угол меньше, имя стоит у первого, аватар у последнего.
+    public static func group(
+        authorId: String,
+        date: Date,
+        previous: (authorId: String, date: Date)?,
+        next: (authorId: String, date: Date)?,
+        window: TimeInterval = 10 * 60,
+        calendar: Calendar = .current
+    ) -> BubbleGroup {
+        func joins(_ other: (authorId: String, date: Date)?) -> Bool {
+            guard let other, sameAuthor(authorId, other.authorId) else { return false }
+            guard abs(other.date.timeIntervalSince(date)) <= window else { return false }
+            return calendar.isDate(other.date, inSameDayAs: date)
+        }
+        return BubbleGroup(joinsPrevious: joins(previous), joinsNext: joins(next))
+    }
+
+    /// Перед сообщением нужен заголовок дня: первое в ленте или первое за новый день.
+    public static func startsDay(_ date: Date, after previous: Date?, calendar: Calendar = .current) -> Bool {
+        guard let previous else { return true }
+        return !calendar.isDate(previous, inSameDayAs: date)
+    }
+
+    /// «Сегодня», «Вчера», «12 марта», в другом году — «12 марта 2025».
+    public static func dayTitle(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
+        if calendar.isDate(date, inSameDayAs: now) { return "Сегодня" }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) {
+            return "Вчера"
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
+        formatter.dateFormat = sameYear ? "d MMMM" : "d MMMM yyyy"
+        return formatter.string(from: date)
+    }
+
+    /// Прошедшее время голосового по ходу воспроизведения, иначе вся длительность.
+    public static func voiceClock(durationMs: Int64, phase: VoicePhase) -> String {
+        switch phase {
+        case .playing(let progress), .paused(let progress):
+            return clock(ms: Int64(Double(max(0, durationMs)) * min(max(progress, 0), 1)))
+        default:
+            return clock(ms: durationMs)
+        }
     }
 
     /// Альбом: пропорции кадров собираются в ряды, внешние углы скругляются, внутренние остаются прямыми.

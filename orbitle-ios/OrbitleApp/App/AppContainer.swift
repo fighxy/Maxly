@@ -27,6 +27,7 @@ final class AppContainer {
     @ObservationIgnored private var chats: ChatRepositoryImpl?
     @ObservationIgnored private var messages: MessageRepositoryImpl?
     @ObservationIgnored private var media: MediaRepositoryImpl?
+    @ObservationIgnored private var mediaLinks: CoreMediaLinkResolver?
     @ObservationIgnored private let voicePlayer = SystemVoicePlayer()
     @ObservationIgnored private var sync: SyncEngine?
     private let recentSearches = RecentSearchesStore()
@@ -158,6 +159,7 @@ final class AppContainer {
             self.chats = chats
             self.messages = messages
             self.media = media
+            self.mediaLinks = CoreMediaLinkResolver(core: core)
             self.sync = sync
             boot = .ready
             phaseTask = Task {
@@ -250,6 +252,11 @@ final class AppContainer {
     }
 
     /// Комментарии есть у постов канала.
+    /// Тип открытого чата. Новый диалог из контактов — личный.
+    func chatType(id: String) -> ChatType {
+        listModel?.chat(id: id)?.type ?? .private
+    }
+
     func allowsComments(id: String) -> Bool {
         listModel?.chat(id: id)?.type == .channel
     }
@@ -272,6 +279,7 @@ final class AppContainer {
             messages: messages,
             drafts: chats,
             media: media,
+            links: mediaLinks,
             voice: voicePlayer,
             isNewDialog: isNew
         )

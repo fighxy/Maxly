@@ -296,6 +296,9 @@ public protocol MaxCore: Sendable {
     /// Задать закреплённые чаты сервера целиком, сверху вниз (`FOLDERS_UPDATE`, поле `favorites`
     /// папки «Все чаты»). Закрепить, открепить и переставить — это один и тот же вызов.
     /// Возвращает список, который подтвердил сервер. При ошибке ядро оставляет прежний список.
+    /// Прямой адрес видео (`kind` = `video`, `VIDEO_PLAY`) или файла (`file`, `FILE_DOWNLOAD`)
+    /// сообщения. `attachmentId` — `videoId` или `fileId` вложения.
+    func mediaLink(chatId: String, messageId: String, kind: String, attachmentId: String) async throws -> String
     func setPinnedChats(_ chatIds: [String]) async throws -> [String]
     /// Закреплённые чаты сервера сверху вниз: сразу при подписке, если уже известны, и после
     /// каждого изменения (вход, свой вызов, пуш с другого устройства). Пока список неизвестен,
@@ -347,6 +350,9 @@ public extension MaxCore {
     }
     func setPinnedChats(_ chatIds: [String]) async throws -> [String] {
         throw CoreFailure(kind: "UNKNOWN", key: nil)
+    }
+    func mediaLink(chatId: String, messageId: String, kind: String, attachmentId: String) async throws -> String {
+        throw CoreFailure(kind: "NOT_FOUND", key: nil)
     }
     func pinnedChats() -> AsyncStream<[String]> { AsyncStream { $0.finish() } }
 

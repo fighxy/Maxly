@@ -68,7 +68,8 @@ enum MessageContentCodec {
                 url: url(map["baseUrl"]) ?? url(map["url"]) ?? url(map["fileUrl"]),
                 width: integer(map["width"]),
                 height: integer(map["height"]),
-                localPath: map["localPath"] as? String
+                localPath: map["localPath"] as? String,
+                preview: preview(map["previewData"])
             ))
         case "VIDEO":
             let videoType = integer(map["videoType"]) ?? 0
@@ -80,7 +81,8 @@ enum MessageContentCodec {
                 height: integer(map["height"]),
                 durationMs: durationMs(map["duration"]),
                 isRound: videoType == 1,
-                localPath: map["localPath"] as? String
+                localPath: map["localPath"] as? String,
+                preview: preview(map["previewData"])
             ))
         case "AUDIO":
             return .voice(VoiceContent(
@@ -145,6 +147,19 @@ enum MessageContentCodec {
         if attachments.contains(where: { $0.photo != nil }) { return .photo }
         if attachments.contains(where: { $0.file != nil }) { return .file }
         return .text
+    }
+
+    /// `previewData`: байты картинки массивом или строкой base64 (в том числе `data:`-адресом).
+    private static func preview(_ value: Any?) -> Data? {
+        if let list = value as? [Any] {
+            let bytes = list.compactMap { integer($0) }.map { UInt8(truncatingIfNeeded: $0) }
+            return bytes.isEmpty ? nil : Data(bytes)
+        }
+        guard var text = value as? String, !text.isEmpty else { return nil }
+        if text.hasPrefix("data:"), let comma = text.firstIndex(of: ",") {
+            text = String(text[text.index(after: comma)...])
+        }
+        return Data(base64Encoded: text)
     }
 
     private static func wave(_ value: Any?) -> [Int] {
