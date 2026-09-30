@@ -469,3 +469,24 @@ struct ReactionDeviceHistoryTests {
         #expect(post.first == MessageReaction(emoji: "👍", count: 27, mine: false))
     }
 }
+
+@Suite("Сверка удалений по свежей странице")
+struct PruneMissingTests {
+    @Test("Сообщение, которого нет в свежей странице сервера, убирается; старше страницы и неотправленные — нет")
+    func prunesDeleted() async throws {
+        let api = FakeMaxAPI()
+        let (repository, _) = try await makeMessageStack(api: api)
+        try await repository.upsert([
+            record("100", at: 1),
+            record("101", at: 2),
+            record("102", at: 3),
+            record("103", at: 4),
+            MessageRecord(id: "local-1", chatId: "c1", authorId: "me", text: "ждёт", timestamp: Date(timeIntervalSince1970: 3.5), status: .sending),
+        ])
+        // На другом устройстве удалили 102; 100 старше свежей страницы.
+        await api.setHistory([record("101", at: 2), record("103", at: 4)])
+        try await repository.fetchLatest(chatId: "c1")
+        let ids = try await repository.page(chatId: "c1", before: nil, limit: 50).map(\.id)
+        #expect(Set(ids) == ["100", "101", "103", "local-1"])
+    }
+}
