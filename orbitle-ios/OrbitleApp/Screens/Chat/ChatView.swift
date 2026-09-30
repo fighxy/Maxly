@@ -17,9 +17,12 @@ struct ChatView: View {
     var canWrite = true
     var isMuted = false
     var onToggleMute: (() -> Void)?
+    /// Контакты для вкладки «Контакт» листа вложений. `nil` — вкладка пустая.
+    var contactList: (() -> AsyncStream<[Contact]>)? = nil
     /// Модель профиля чата для перехода по нажатию на заголовок.
     var makeProfile: (() -> ChatProfileViewModel?)?
     @State private var forwardList: [ChatListItem] = []
+    @State private var attachmentsShown = false
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var composerFocused: Bool
     /// Низ ленты виден. Пока он виден, новые сообщения прокручивают ленту сами.
@@ -150,6 +153,18 @@ struct ChatView: View {
                 onClose: { viewModel.reactionPickerTarget = nil }
             )
         }
+        .sheet(isPresented: $attachmentsShown) {
+            AttachmentSheet(
+                contactList: contactList,
+                onSend: { drafts, caption in
+                    attachmentsShown = false
+                    Task { await viewModel.sendAttachments(drafts, caption: caption) }
+                },
+                onClose: { attachmentsShown = false }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
         .sheet(item: $viewModel.reactionUsers) { model in
             ReactionUsersView(model: model) { viewModel.reactionUsers = nil }
         }
@@ -253,6 +268,21 @@ struct ChatView: View {
         VStack(spacing: 0) {
             OrbitleGlassGroup(spacing: 8) {
                 HStack(alignment: .bottom, spacing: 8) {
+                    if viewModel.editTarget == nil {
+                        Button {
+                            composerFocused = false
+                            attachmentsShown = true
+                        } label: {
+                            Image(systemName: "paperclip")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundStyle(.primary)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .orbitleGlassCircle(size: 44)
+                        .accessibilityLabel("Прикрепить")
+                    }
                     TextField("Сообщение", text: $viewModel.draft, axis: .vertical)
                         .focused($composerFocused)
                         .lineLimit(1...5)
@@ -527,7 +557,9 @@ private struct TranscriptBubble: View {
             allowsReactions: reacts,
             quickReactions: viewModel.quickReactions(for: message),
             onMoreReactions: reacts ? { viewModel.showMoreReactions(message) } : nil,
-            onReactionUsers: reacts && showsReactionUsers ? { viewModel.showReactionUsers(message) } : nil
+            onReactionUsers: reacts && showsReactionUsers ? { viewModel.showReactionUsers(message) } : nil,
+            uploadProgress: viewModel.uploadFraction(of: message),
+            onCancelUpload: { Task { await viewModel.cancelUpload(message) } }
         )
     }
 }
