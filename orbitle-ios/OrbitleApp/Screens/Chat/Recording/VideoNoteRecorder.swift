@@ -15,7 +15,7 @@ struct VideoNoteRecording: Sendable {
 /// Запись круглого видеосообщения, как в Telegram: фронтальная камера, до минуты.
 ///
 /// Камера пишет обычный ролик, после остановки он обрезается по центру в квадрат
-/// 480×480 (`VideoNoteExporter`): круг рисует уже пузырь.
+/// 480×480 и перекодируется в MP4 как у Komet (`VideoNoteExporter`): круг рисует уже пузырь.
 @MainActor
 @Observable
 final class VideoNoteRecorder {
@@ -282,31 +282,12 @@ enum VideoNoteExporter {
         composition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(min(60, max(24, frameRate.rounded()))))
         composition.instructions = [instruction]
 
-        guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPreset960x540) else {
-            throw Failure.exportFailed(nil)
-        }
-        session.videoComposition = composition
-        session.shouldOptimizeForNetworkUse = true
         let caches = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         let folder = caches.appendingPathComponent("Outgoing", isDirectory: true).appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let target = folder.appendingPathComponent("note.mp4")
-        if #available(iOS 18.0, *) {
-            do {
-                try await session.export(to: target, as: .mp4)
-            } catch {
-                throw Failure.exportFailed(error.localizedDescription)
-            }
-        } else {
-            session.outputURL = target
-            session.outputFileType = .mp4
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                session.exportAsynchronously { continuation.resume() }
-            }
-            guard session.status == .completed else {
-                throw Failure.exportFailed(session.error?.localizedDescription)
-            }
-        }
+        let audioTrack = try? await asset.loadTracks(withMediaType: .audio).first
+        try await transcode(asset: asset, video: track, audio: audioTrack, composition: composition, side: Int(out), to: target)
         await writePoster(of: target, to: folder.appendingPathComponent("poster.jpg"))
         let seconds = CMTimeGetSeconds(duration)
         let durationMs = seconds.isFinite ? Int64((seconds * 1000).rounded()) : 0
@@ -315,6 +296,89 @@ enum VideoNoteExporter {
 }
 
 extension VideoNoteExporter {
+    /// Перекодирование в MP4 с параметрами Komet: сервер Max проверяет кружок
+    /// (`VIDEO_VALIDATION_FAILED` на ролик из `AVAssetExportSession`). Видео H.264 High,
+    /// квадрат, около 1 Мбит/с; звук AAC моно 44,1 кГц, 64 кбит/с.
+    static func transcode(
+        asset: AVAsset,
+        video: AVAssetTrack,
+        audio: AVAssetTrack?,
+        composition: AVVideoComposition,
+        side: Int,
+        to target: URL
+    ) async throws {
+        let reader = try AVAssetReader(asset: asset)
+        let videoOutput = AVAssetReaderVideoCompositionOutput(
+            videoTracks: [video],
+            videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange]
+        )
+        videoOutput.videoComposition = composition
+        videoOutput.alwaysCopiesSampleData = false
+        guard reader.canAdd(videoOutput) else { throw Failure.exportFailed("video output") }
+        reader.add(videoOutput)
+        var audioOutput: AVAssetReaderTrackOutput?
+        if let audio {
+            let output = AVAssetReaderTrackOutput(track: audio, outputSettings: [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: 44_100,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false,
+                AVLinearPCMIsNonInterleaved: false,
+            ])
+            output.alwaysCopiesSampleData = false
+            if reader.canAdd(output) {
+                reader.add(output)
+                audioOutput = output
+            }
+        }
+
+        let writer = try AVAssetWriter(outputURL: target, fileType: .mp4)
+        writer.shouldOptimizeForNetworkUse = true
+        let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: side,
+            AVVideoHeightKey: side,
+            AVVideoCompressionPropertiesKey: [
+                AVVideoAverageBitRateKey: 1_024_000,
+                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
+            ] as [String: Any],
+        ])
+        videoInput.expectsMediaDataInRealTime = false
+        guard writer.canAdd(videoInput) else { throw Failure.exportFailed("video input") }
+        writer.add(videoInput)
+        var audioInput: AVAssetWriterInput?
+        if audioOutput != nil {
+            let input = AVAssetWriterInput(mediaType: .audio, outputSettings: [
+                AVFormatIDKey: kAudioFormatMPEG4AAC,
+                AVNumberOfChannelsKey: 1,
+                AVSampleRateKey: 44_100,
+                AVEncoderBitRateKey: 64_000,
+            ])
+            input.expectsMediaDataInRealTime = false
+            if writer.canAdd(input) {
+                writer.add(input)
+                audioInput = input
+            }
+        }
+
+        guard reader.startReading() else { throw Failure.exportFailed(reader.error?.localizedDescription) }
+        guard writer.startWriting() else { throw Failure.exportFailed(writer.error?.localizedDescription) }
+        writer.startSession(atSourceTime: .zero)
+        let videoPump = SamplePump(input: videoInput, output: videoOutput, label: "video")
+        let audioPump = audioInput.flatMap { input in audioOutput.map { SamplePump(input: input, output: $0, label: "audio") } }
+        async let videoDone: Void = videoPump.run()
+        await audioPump?.run()
+        await videoDone
+        if reader.status == .failed {
+            writer.cancelWriting()
+            throw Failure.exportFailed(reader.error?.localizedDescription)
+        }
+        await writer.finishWriting()
+        guard writer.status == .completed else { throw Failure.exportFailed(writer.error?.localizedDescription) }
+    }
+
     /// Первый кадр кружка в JPEG: пузырь показывает его, пока сервер не прислал свой.
     static func writePoster(of video: URL, to target: URL) async {
         let generator = AVAssetImageGenerator(asset: AVURLAsset(url: video))
@@ -323,6 +387,37 @@ extension VideoNoteExporter {
         guard let image = try? await generator.image(at: CMTime(value: 1, timescale: 10)).image else { return }
         guard let data = UIImage(cgImage: image).jpegData(compressionQuality: 0.8) else { return }
         try? data.write(to: target)
+    }
+}
+
+/// Перекладывает отсчёты из чтения в запись, пока вход готов их принять.
+/// Чтение и запись живут только в этом перекодировании, поэтому `@unchecked Sendable`.
+private final class SamplePump: @unchecked Sendable {
+    private let input: AVAssetWriterInput
+    private let output: AVAssetReaderOutput
+    private let queue: DispatchQueue
+    private var done = false
+
+    init(input: AVAssetWriterInput, output: AVAssetReaderOutput, label: String) {
+        self.input = input
+        self.output = output
+        queue = DispatchQueue(label: "orbitle.note.\(label)")
+    }
+
+    func run() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            input.requestMediaDataWhenReady(on: queue) { [self] in
+                guard !done else { return }
+                while input.isReadyForMoreMediaData {
+                    guard let sample = output.copyNextSampleBuffer(), input.append(sample) else {
+                        done = true
+                        input.markAsFinished()
+                        continuation.resume()
+                        return
+                    }
+                }
+            }
+        }
     }
 }
 
