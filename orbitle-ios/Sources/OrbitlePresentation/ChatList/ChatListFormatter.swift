@@ -147,7 +147,7 @@ public struct ChatListFormatter: Sendable {
                     text = Self.mediaLabel(media)
                 } else if chat.lastMessageId == nil {
                     style = .empty
-                    text = "Нет сообщений"
+                    text = chat.isSavedMessages ? Self.savedMessagesEmpty : "Нет сообщений"
                 } else {
                     text = "Вложение"
                 }
@@ -208,8 +208,12 @@ public struct ChatListFormatter: Sendable {
         let text = Self.singleLine(chat.preview ?? "")
         if !text.isEmpty { return text }
         if let media = chat.lastMessage?.media { return Self.mediaLabel(media) }
-        return chat.lastMessageId == nil ? "Нет сообщений" : "Вложение"
+        guard chat.lastMessageId == nil else { return "Вложение" }
+        return chat.isSavedMessages ? Self.savedMessagesEmpty : "Нет сообщений"
     }
+
+    /// Превью пустого «Избранного», как в Max.
+    public static let savedMessagesEmpty = "Сохраните что-нибудь"
 
     /// Автор над текстом. В группах — «Вы» или имя, если оно известно. В личных чатах,
     /// каналах и «Избранном» автор очевиден, строка отдаётся тексту.

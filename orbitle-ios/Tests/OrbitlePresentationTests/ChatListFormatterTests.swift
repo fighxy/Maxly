@@ -44,6 +44,7 @@ struct ChatListFormatterTests {
         var media = chat("1", at: 1, preview: "")
         media.lastMessageId = "m1"
         #expect(formatter.preview(for: media) == "Вложение")
+        #expect(formatter.preview(for: chat(Chat.savedMessagesId, at: 1, preview: nil)) == "Сохраните что-нибудь")
     }
 
     @Test("Пустой заголовок заменяется типом чата")

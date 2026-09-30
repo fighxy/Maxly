@@ -48,7 +48,7 @@ struct ChatView: View {
                             }
                             .padding(.horizontal, 24)
                             .padding(.top, 80)
-                        } else {
+                        } else if !viewModel.showsSavedPlaceholder {
                             Button("Раньше") { Task { await viewModel.loadOlder() } }
                                 .font(.footnote)
                                 .padding(.top, 8)
@@ -102,6 +102,14 @@ struct ChatView: View {
                         withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
                     } else if id != old {
                         unseen += 1
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    if viewModel.showsSavedPlaceholder {
+                        savedPlaceholder
+                            .padding(.horizontal, OrbitleTheme.pad + 8)
+                            .padding(.bottom, 24)
+                            .transition(.opacity)
                     }
                 }
                 .overlay(alignment: .bottomTrailing) {
@@ -436,6 +444,28 @@ struct ChatView: View {
         case false?: return false
         case nil: return message.content.comments != nil || viewModel.commentCounts[message.serverId ?? message.id] != nil
         }
+    }
+
+    /// Плашка пустого «Избранного», как в Max: знак закладки и что сюда сохранять.
+    private var savedPlaceholder: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "bookmark.fill")
+                .font(.system(size: 30, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 64, height: 64)
+                .background(Color.orbitleAccent, in: Circle())
+            Text("Это избранное")
+                .font(.headline)
+            Text("Сохраняйте сообщения, медиа и файлы — доступ будет только у вас")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 20)
+        .frame(maxWidth: 360)
+        .orbitleGlassRounded(radius: 24)
+        .accessibilityElement(children: .combine)
     }
 
     /// В канале с комментариями счётчики постов спрашиваются у сервера, когда лента меняется.
