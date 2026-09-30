@@ -38,6 +38,11 @@ final class SDChat {
     var avatarURLString: String?
     var draftText: String?
     var draftAt: Date?
+    /// `MessageMediaKind` первого вложения последнего сообщения.
+    var lastMediaRaw: String?
+    var lastThumbnailURLString: String?
+    /// Комментарии канала: `1` включены, `0` выключены, `-1` неизвестно.
+    var commentsOption: Int = -1
 
     /// Сообщения чата. При удалении чата удаляются вместе с ним.
     @Relationship(deleteRule: .cascade, inverse: \SDMessage.chat)

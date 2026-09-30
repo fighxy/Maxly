@@ -145,6 +145,40 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func sendText(chatId: String, text: String, replyTo: String) async throws -> CoreMessage {
+        try await call("sendReply") { done in
+            self.client.sendText(chatId: chatId, text: text, replyTo: replyTo) { message, kind, key in
+                done(Self.single(message, kind: kind, key: key))
+            }
+        }
+    }
+
+    func loadComments(chatId: String, postId: String, beforeMs: Int64, limit: Int) async throws -> [CoreMessage] {
+        try await call("loadComments") { done in
+            self.client.loadComments(chatId: chatId, postId: postId, beforeMs: beforeMs, limit: Int32(limit)) { list, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(list.map(Self.message)))
+                }
+            }
+        }
+    }
+
+    func sendComment(chatId: String, postId: String, text: String) async throws -> CoreMessage {
+        try await call("sendComment") { done in
+            self.client.sendComment(chatId: chatId, postId: postId, text: text, replyTo: "") { message, kind, key in
+                done(Self.single(message, kind: kind, key: key))
+            }
+        }
+    }
+
+    private static func single(_ message: IosMessage?, kind: String?, key: String?) -> Result<CoreMessage, Error> {
+        if let kind { return .failure(CoreFailure(kind: kind, key: key)) }
+        guard let message else { return .failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)) }
+        return .success(Self.message(message))
+    }
+
     func markRead(chatId: String, messageId: String) async throws {
         let _: Void = try await call("markRead") { done in
             self.client.markRead(chatId: chatId, messageId: messageId) { kind, key in
@@ -294,7 +328,10 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             updatedAtMs: chat.updatedAtMs,
             unread: Int(chat.unread),
             avatarURL: chat.avatarUrl,
-            lastAuthorId: chat.lastAuthorId
+            lastAuthorId: chat.lastAuthorId,
+            lastMedia: chat.lastMedia,
+            lastThumbURL: chat.lastThumbUrl,
+            comments: Int(chat.comments)
         )
     }
 

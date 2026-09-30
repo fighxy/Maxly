@@ -33,6 +33,10 @@ public struct MessageBubble: View {
     private let onFile: (String) -> Void
     private let onFocusReply: (String) -> Void
 
+    /// Сдвиг пузыря при свайпе «ответить».
+    @State private var swipe: CGFloat = 0
+    private static let replyThreshold: CGFloat = 56
+
     private static let radius: CGFloat = 18
     private static let joined: CGFloat = 6
     private static let avatarSize: CGFloat = 34
@@ -96,15 +100,15 @@ public struct MessageBubble: View {
                 }
                 ReactionChips(reactions: message.content.reactions, onToggle: onReact)
                 if showsComments {
-                    Button(ChatContentFormat.comments(message.content.comments?.count ?? 0), action: onComments)
-                        .font(.footnote.weight(.medium))
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Color.orbitleAccent)
+                    commentsButton
                 }
             }
             .frame(maxWidth: bubbleWidth, alignment: isOutgoing ? .trailing : .leading)
             if !isOutgoing { Spacer(minLength: 40) }
         }
+        .offset(x: swipe)
+        .background(alignment: .trailing) { replyHint }
+        .simultaneousGesture(replySwipe)
         .padding(.top, group.joinsPrevious ? 0 : 4)
         .background(highlighted ? Color.orbitleAccent.opacity(0.12) : Color.clear)
         .animation(.easeInOut(duration: 0.25), value: highlighted)
@@ -122,6 +126,72 @@ public struct MessageBubble: View {
                 Button("Комментарии", systemImage: "bubble.left.and.bubble.right", action: onComments)
             }
         }
+    }
+
+    // MARK: Ответ свайпом
+
+    /// Свайп влево по пузырю — ответить. Вертикальная прокрутка ленты не мешает: жест
+    /// срабатывает, только когда палец идёт в основном по горизонтали.
+    private var replySwipe: some Gesture {
+        DragGesture(minimumDistance: 18, coordinateSpace: .local)
+            .onChanged { value in
+                let dx = value.translation.width
+                guard dx < 0, abs(dx) > abs(value.translation.height) * 1.5 else { return }
+                let pulled = min(-dx, Self.replyThreshold * 1.4)
+                if swipe > -Self.replyThreshold, pulled >= Self.replyThreshold {
+                    #if canImport(UIKit)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    #endif
+                }
+                swipe = -pulled
+            }
+            .onEnded { _ in
+                let reply = swipe <= -Self.replyThreshold
+                withAnimation(.spring(duration: 0.3)) { swipe = 0 }
+                if reply { onReply() }
+            }
+    }
+
+    @ViewBuilder
+    private var replyHint: some View {
+        if swipe < 0 {
+            let progress = min(1, -swipe / Self.replyThreshold)
+            Image(systemName: "arrowshape.turn.up.left.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+                .background(Color.orbitleAccent.opacity(0.4 + 0.6 * progress), in: Circle())
+                .scaleEffect(0.6 + 0.4 * progress)
+                .opacity(progress)
+                .padding(.trailing, 4)
+                .accessibilityHidden(true)
+        }
+    }
+
+    // MARK: Комментарии
+
+    /// Плашка под постом канала: число комментариев (или «Комментировать») и стрелка.
+    private var commentsButton: some View {
+        Button(action: onComments) {
+            HStack(spacing: 8) {
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                Text(ChatContentFormat.comments(message.content.comments?.count ?? 0))
+                    .font(.subheadline.weight(.medium))
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .foregroundStyle(Color.orbitleAccent)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .frame(maxWidth: bubbleWidth)
+            .background(Color.orbitleIncoming, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Открыть комментарии")
     }
 
     // MARK: Каркас
@@ -434,7 +504,7 @@ public struct MessageBubble: View {
     }
 
     private var showsComments: Bool {
-        allowsComments || message.content.comments != nil
+        allowsComments
     }
 
     private func copyText() {

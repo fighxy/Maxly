@@ -6,12 +6,15 @@ import OrbitleUI
 struct ChatView: View {
     @Bindable var viewModel: ChatViewModel
     var title: String
-    var allowsComments = false
+    /// Комментарии канала: `true` включены, `false` выключены, `nil` сервер не сказал —
+    /// тогда кнопка есть только у постов, к которым сервер прислал счётчик.
+    var commentsEnabled: Bool?
     /// В группе у чужих сообщений видны имя и аватар автора, в личном чате и канале — нет.
     var chatType: ChatType = .private
     /// Модель профиля чата для перехода по нажатию на заголовок.
     var makeProfile: (() -> ChatProfileViewModel?)?
     @Environment(\.scenePhase) private var scenePhase
+    @FocusState private var composerFocused: Bool
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
@@ -43,7 +46,7 @@ struct ChatView: View {
                                 message: message,
                                 viewModel: viewModel,
                                 maxWidth: geo.size.width * OrbitleTheme.bubbleMax,
-                                allowsComments: allowsComments,
+                                allowsComments: allowsComments(message),
                                 showsAuthorName: showsAuthors && authorName(at: index),
                                 showsAuthorAvatar: showsAuthors && authorAvatar(at: index),
                                 reservesAvatar: showsAuthors,
@@ -84,11 +87,11 @@ struct ChatView: View {
                 }
             }
         }
-        .navigationDestination(item: $viewModel.openedCommentId) { postId in
-            CommentsView(
-                model: viewModel.commentsModel(for: postId),
-                currentUserId: viewModel.currentUserId
-            )
+        .sheet(item: $viewModel.openedComments, onDismiss: { viewModel.closeComments() }) { post in
+            if let model = viewModel.commentsModel(for: post) {
+                CommentsView(model: model) { viewModel.closeComments() }
+                    .presentationDragIndicator(.visible)
+            }
         }
         .fullScreenCover(item: $viewModel.viewer) { request in
             MediaViewer(request: request) { viewModel.viewer = nil }
@@ -101,6 +104,10 @@ struct ChatView: View {
             await viewModel.loadLatest()
         }
         .onDisappear { viewModel.deactivate() }
+        // Выбрали сообщение для ответа — клавиатура сразу открывается.
+        .onChange(of: viewModel.replyTarget?.id) { _, id in
+            if id != nil { composerFocused = true }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { viewModel.flushDraft() }
         }
@@ -124,6 +131,7 @@ struct ChatView: View {
             OrbitleGlassGroup(spacing: 8) {
                 HStack(alignment: .bottom, spacing: 8) {
                     TextField("Сообщение", text: $viewModel.draft, axis: .vertical)
+                        .focused($composerFocused)
                         .lineLimit(1...5)
                         .textFieldStyle(.plain)
                         .padding(.horizontal, 16)
@@ -151,6 +159,16 @@ struct ChatView: View {
     }
 
     private var showsAuthors: Bool { chatType == .group }
+
+    /// Кнопка комментариев — только под постами канала с включёнными комментариями.
+    private func allowsComments(_ message: Message) -> Bool {
+        guard chatType == .channel else { return false }
+        switch commentsEnabled {
+        case true?: return true
+        case false?: return false
+        case nil: return message.content.comments != nil
+        }
+    }
 
     private func startsDay(at index: Int) -> Bool {
         let messages = viewModel.messages
@@ -193,14 +211,22 @@ struct ChatView: View {
         )
     }
 
+    private func replyTitle(_ message: Message) -> String {
+        if viewModel.isOutgoing(message) { return "Вы" }
+        let name = message.authorName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "Ответ" : name
+    }
+
     private func replyBar(_ message: Message) -> some View {
         HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 2)
                 .fill(Color.orbitleAccent)
                 .frame(width: 3)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Ответ")
+                Text(replyTitle(message))
                     .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.orbitleAccent)
+                    .lineLimit(1)
                 Text(message.replySnippet)
                     .font(.caption)
                     .lineLimit(1)
