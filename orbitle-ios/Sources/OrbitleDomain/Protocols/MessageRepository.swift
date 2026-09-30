@@ -25,6 +25,8 @@ public protocol MessageRepository: Sendable {
     /// Удалить сообщения: `forEveryone` — у всех участников, иначе только у себя.
     /// Неотправленные (без серверного id) удаляются только на устройстве.
     func delete(messageIds: [String], chatId: String, forEveryone: Bool) async throws(OrbitleError)
+    /// Заменить текст своего отправленного сообщения.
+    func edit(messageId: String, chatId: String, text: String) async throws(OrbitleError)
     /// Переслать сообщение `messageId` из `chatId` в чат `targetChatId`.
     func forward(messageId: String, from chatId: String, to targetChatId: String) async throws(OrbitleError)
 }
@@ -50,6 +52,10 @@ extension MessageRepository {
     }
 
     public func forward(messageId: String, from chatId: String, to targetChatId: String) async throws(OrbitleError) {
+        throw .invalidRequest
+    }
+
+    public func edit(messageId: String, chatId: String, text: String) async throws(OrbitleError) {
         throw .invalidRequest
     }
 }

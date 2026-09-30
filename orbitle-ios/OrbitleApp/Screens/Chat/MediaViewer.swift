@@ -1,16 +1,20 @@
 import AVKit
 import SwiftUI
 import UIKit
+import OrbitleDomain
 import OrbitlePresentation
 
 struct MediaViewer: View {
     let request: MediaViewerRequest
+    /// Скачать ролик целиком, если поток не открылся.
+    var download: (MediaSlide) async -> URL? = { $0.playURL }
     let onClose: () -> Void
     @State private var selection: String
     @State private var zoomed = false
 
-    init(request: MediaViewerRequest, onClose: @escaping () -> Void) {
+    init(request: MediaViewerRequest, download: @escaping (MediaSlide) async -> URL? = { $0.playURL }, onClose: @escaping () -> Void) {
         self.request = request
+        self.download = download
         self.onClose = onClose
         _selection = State(initialValue: request.id)
     }
@@ -65,26 +69,140 @@ struct MediaViewer: View {
     @ViewBuilder
     private func page(_ slide: MediaSlide) -> some View {
         if slide.isVideo, let url = slide.playURL {
-            PlayerPage(url: url)
+            VideoPage(url: url, poster: slide.stillURL, active: selection == slide.id) {
+                await download(slide)
+            }
         } else {
             ZoomableImage(url: slide.stillURL) { zoomed = $0 }
         }
     }
 }
 
-/// Плеер не меняет адрес после старта: подмена файла из кэша не должна перезапускать ролик.
-private struct PlayerPage: UIViewControllerRepresentable {
+/// Страница ролика: системный плеер с управлением, загрузка и ошибка поверх.
+///
+/// Если поток не открылся (`AVPlayerItem.status == .failed`), ролик один раз скачивается
+/// целиком и играет с диска. Если не вышло и так — видна ошибка с кнопкой «Повторить».
+/// Уходя со страницы (листание альбома), ролик ставится на паузу.
+private struct VideoPage: View {
     let url: URL
+    let poster: URL?
+    let active: Bool
+    let download: () async -> URL?
+    @State private var player = VideoPlayback()
+
+    var body: some View {
+        ZStack {
+            PlayerController(player: player.player)
+            switch player.state {
+            case .loading:
+                ProgressView()
+                    .controlSize(.large)
+                    .tint(.white)
+                    .allowsHitTesting(false)
+            case .failed:
+                VStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.largeTitle)
+                    Text("Не удалось воспроизвести видео")
+                        .font(.headline)
+                    Button("Повторить") { player.start(url: url, download: download) }
+                        .buttonStyle(.borderedProminent)
+                }
+                .foregroundStyle(.white)
+            case .ready:
+                EmptyView()
+            }
+        }
+        .onAppear { player.start(url: url, download: download) }
+        .onChange(of: active) { _, isActive in
+            if isActive { player.player.play() } else { player.player.pause() }
+        }
+        .onDisappear { player.stop() }
+    }
+}
+
+/// Состояние воспроизведения одного ролика.
+@MainActor
+@Observable
+private final class VideoPlayback {
+    enum State { case loading, ready, failed }
+
+    let player = AVPlayer()
+    private(set) var state: State = .loading
+    @ObservationIgnored private var observation: NSKeyValueObservation?
+    @ObservationIgnored private var triedDownload = false
+    @ObservationIgnored private var task: Task<Void, Never>?
+    @ObservationIgnored private var fallback: (() async -> URL?)?
+
+    func start(url: URL, download: @escaping () async -> URL?) {
+        triedDownload = false
+        fallback = download
+        play(url)
+    }
+
+    func stop() {
+        task?.cancel()
+        observation = nil
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+    }
+
+    private func play(_ url: URL) {
+        state = .loading
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        let item = AVPlayerItem(url: url)
+        observation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+            let status = item.status
+            let message = item.error.map { "\($0)" } ?? ""
+            Task { @MainActor [weak self] in self?.itemChanged(status, error: message) }
+        }
+        player.replaceCurrentItem(with: item)
+        player.play()
+    }
+
+    private func itemChanged(_ status: AVPlayerItem.Status, error: String) {
+        switch status {
+        case .readyToPlay:
+            state = .ready
+        case .failed:
+            Log.warning(.media, "Видео не открылось потоком: \(error)")
+            guard !triedDownload else {
+                state = .failed
+                return
+            }
+            triedDownload = true
+            guard let fallback else {
+                state = .failed
+                return
+            }
+            task = Task { [weak self] in
+                guard let file = await fallback(), !Task.isCancelled else {
+                    self?.state = .failed
+                    return
+                }
+                self?.play(file)
+            }
+        default:
+            break
+        }
+    }
+}
+
+/// Системный плеер с управлением. Плеер передаётся снаружи, чтобы подмена ролика
+/// (скачанный файл вместо потока) не пересоздавала экран.
+private struct PlayerController: UIViewControllerRepresentable {
+    let player: AVPlayer
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
-        let player = AVPlayer(url: url)
         controller.player = player
-        player.play()
+        controller.allowsPictureInPicturePlayback = true
         return controller
     }
 
-    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {}
+    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
+        if controller.player !== player { controller.player = player }
+    }
 }
 
 /// Фото с жестом увеличения. Пока масштаб больше единицы, экран не закрывается смахиванием.

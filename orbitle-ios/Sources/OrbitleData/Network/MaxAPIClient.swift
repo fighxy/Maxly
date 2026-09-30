@@ -63,6 +63,8 @@ public protocol MaxAPI: Sendable {
     func sendMessage(chatId: String, text: String, clientId: String) async -> Result<SentMessage, MaxAPIError>
     /// Ответ на сообщение `replyTo` (серверный id). `nil` — обычное сообщение.
     func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?) async -> Result<SentMessage, MaxAPIError>
+    /// Заменить текст отправленного сообщения (по серверному id).
+    func editMessage(chatId: String, messageId: String, text: String) async -> Result<MessageRecord, MaxAPIError>
     /// Удалить сообщения по серверным id: у себя или у всех.
     func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async -> Result<Void, MaxAPIError>
     /// Переслать сообщение. Ответ — новое сообщение в целевом чате.
@@ -82,6 +84,9 @@ public extension MaxAPI {
     /// Источник без серверных папок.
     func folderUpdates() -> AsyncStream<[ChatFolder]> { AsyncStream { $0.yield([]); $0.finish() } }
     func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async -> Result<Void, MaxAPIError> {
+        .failure(.invalidResponse)
+    }
+    func editMessage(chatId: String, messageId: String, text: String) async -> Result<MessageRecord, MaxAPIError> {
         .failure(.invalidResponse)
     }
     func forwardMessage(toChatId: String, fromChatId: String, messageId: String) async -> Result<MessageRecord, MaxAPIError> {
@@ -134,6 +139,12 @@ public final class MaxAPIClient: MaxAPI, Sendable {
                 sent = try await core.sendText(chatId: chatId, text: text)
             }
             return SentMessage(serverId: sent.id, timestamp: Date(unixMillis: sent.timeMs))
+        }
+    }
+
+    public func editMessage(chatId: String, messageId: String, text: String) async -> Result<MessageRecord, MaxAPIError> {
+        await catching {
+            CoreMapping.message(try await core.editMessage(chatId: chatId, messageId: messageId, text: text))
         }
     }
 

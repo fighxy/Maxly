@@ -35,6 +35,9 @@ public struct MessageBubble: View {
     private let onFocusReply: (String) -> Void
     private let onForward: (() -> Void)?
     private let onDelete: (() -> Void)?
+    private let onEdit: (() -> Void)?
+    /// «Ответить» и свайп ответа есть, только если в чат можно писать.
+    private let allowsReply: Bool
 
     /// Сдвиг пузыря при свайпе «ответить».
     @State private var swipe: CGFloat = 0
@@ -68,7 +71,9 @@ public struct MessageBubble: View {
         onFile: @escaping (String) -> Void = { _ in },
         onFocusReply: @escaping (String) -> Void = { _ in },
         onForward: (() -> Void)? = nil,
-        onDelete: (() -> Void)? = nil
+        onDelete: (() -> Void)? = nil,
+        onEdit: (() -> Void)? = nil,
+        allowsReply: Bool = true
     ) {
         self.message = message
         self.isOutgoing = isOutgoing
@@ -92,6 +97,8 @@ public struct MessageBubble: View {
         self.onFocusReply = onFocusReply
         self.onForward = onForward
         self.onDelete = onDelete
+        self.onEdit = onEdit
+        self.allowsReply = allowsReply
     }
 
     public var body: some View {
@@ -119,7 +126,9 @@ public struct MessageBubble: View {
         .background(highlighted ? Color.orbitleAccent.opacity(0.12) : Color.clear)
         .animation(.easeInOut(duration: 0.25), value: highlighted)
         .contextMenu {
-            Button("Ответить", systemImage: "arrowshape.turn.up.left", action: onReply)
+            if allowsReply {
+                Button("Ответить", systemImage: "arrowshape.turn.up.left", action: onReply)
+            }
             if hasText {
                 Button("Копировать", systemImage: "doc.on.doc") { copyText() }
             }
@@ -130,6 +139,9 @@ public struct MessageBubble: View {
             }
             if allowsComments {
                 Button("Комментарии", systemImage: "bubble.left.and.bubble.right", action: onComments)
+            }
+            if let onEdit {
+                Button("Изменить", systemImage: "pencil", action: onEdit)
             }
             if let onForward, message.status == .sent {
                 Button("Переслать", systemImage: "arrowshape.turn.up.right", action: onForward)
@@ -149,7 +161,7 @@ public struct MessageBubble: View {
         DragGesture(minimumDistance: 18, coordinateSpace: .local)
             .onChanged { value in
                 let dx = value.translation.width
-                guard dx < 0, abs(dx) > abs(value.translation.height) * 1.5 else { return }
+                guard allowsReply, dx < 0, abs(dx) > abs(value.translation.height) * 1.5 else { return }
                 let pulled = min(-dx, Self.replyThreshold * 1.4)
                 if swipe > -Self.replyThreshold, pulled >= Self.replyThreshold {
                     #if canImport(UIKit)
@@ -375,12 +387,16 @@ public struct MessageBubble: View {
     }
 
     private var metaPlaceholder: String {
-        let time = ChatContentFormat.time(message.timestamp)
+        let time = (isEdited ? "изм. " : "") + ChatContentFormat.time(message.timestamp)
         return isOutgoing ? time + "\u{2007}\u{2007}\u{2007}" : time
     }
 
     private var meta: some View {
         HStack(spacing: 3) {
+            if isEdited {
+                Text("изм.")
+                    .font(.caption2)
+            }
             Text(ChatContentFormat.time(message.timestamp))
                 .font(.caption2.monospacedDigit())
             if isOutgoing {
@@ -509,6 +525,10 @@ public struct MessageBubble: View {
     }
 
     // MARK: Цвета
+
+    private var isEdited: Bool {
+        message.content.edited == true
+    }
 
     private var hasText: Bool {
         !message.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

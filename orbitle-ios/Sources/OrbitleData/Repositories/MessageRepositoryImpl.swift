@@ -223,6 +223,37 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         notify(chatId: chatId)
     }
 
+    /// Правка текста: сначала сервер, затем база (текст, пометка «изменено», разметка сервера).
+    public func edit(messageId: String, chatId: String, text: String) async throws(OrbitleError) {
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { throw .invalidRequest }
+        let stored = (try? message(id: messageId)) ?? (try? message(serverId: messageId))
+        guard let stored, let serverId = stored.serverId, Int64(serverId) != nil else {
+            throw .rejected("Сообщение ещё не отправлено")
+        }
+        let localId = stored.id
+        switch await api.editMessage(chatId: chatId, messageId: serverId, text: body) {
+        case .success(let record):
+            do {
+                guard let message = try message(id: localId) else { return }
+                message.text = record.text.isEmpty ? body : record.text
+                var content = Self.content(of: message)
+                let fresh = MessageContentCodec.decode(record.contentJSON)
+                content.formatting = fresh.formatting
+                content.edited = true
+                message.contentJSON = MessageContentCodec.encode(content)
+                try modelContext.save()
+            } catch {
+                throw .storageError
+            }
+            Log.info(.messages, "Сообщение \(serverId) изменено")
+            notify(chatId: chatId)
+        case .failure(let error):
+            Log.warning(.messages, "Сообщение не изменено: \(error)")
+            throw error.orbitleError
+        }
+    }
+
     /// Пересылка по серверному id. Новое сообщение сразу записывается в целевой чат.
     public func forward(messageId: String, from chatId: String, to targetChatId: String) async throws(OrbitleError) {
         let stored = (try? message(id: messageId)) ?? (try? message(serverId: messageId))

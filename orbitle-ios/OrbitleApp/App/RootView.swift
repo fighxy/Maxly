@@ -224,7 +224,10 @@ struct MainTabView: View {
                 title: container.chatTitle(id: id),
                 commentsEnabled: container.commentsEnabled(id: id),
                 chatType: container.chatType(id: id),
-                forwardTargets: { container.forwardTargets(excluding: id) }
+                forwardTargets: { container.forwardTargets(excluding: id) },
+                canWrite: container.canWrite(id: id),
+                isMuted: container.isMuted(id: id),
+                onToggleMute: { Task { await container.toggleMute(id: id) } }
             ) {
                 container.profileViewModel(chatId: id)
             }

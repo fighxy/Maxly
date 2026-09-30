@@ -12,6 +12,8 @@ public struct MessageContent: Hashable, Sendable, Codable {
     public var formatting: [TextSpan]?
     /// Сообщение переслано: чьё и с каким текстом. Необязательное поле, как и `formatting`.
     public var forward: MessageForward?
+    /// Текст сообщения меняли после отправки.
+    public var edited: Bool?
 
     public init(
         reply: MessageReply? = nil,
@@ -20,7 +22,8 @@ public struct MessageContent: Hashable, Sendable, Codable {
         comments: CommentSummary? = nil,
         threadOf: String? = nil,
         formatting: [TextSpan]? = nil,
-        forward: MessageForward? = nil
+        forward: MessageForward? = nil,
+        edited: Bool? = nil
     ) {
         self.reply = reply
         self.attachments = attachments
@@ -29,13 +32,14 @@ public struct MessageContent: Hashable, Sendable, Codable {
         self.threadOf = threadOf
         self.formatting = formatting?.isEmpty == true ? nil : formatting
         self.forward = forward
+        self.edited = edited == true ? true : nil
     }
 
     public static let empty = MessageContent()
 
     public var isEmpty: Bool {
         reply == nil && attachments.isEmpty && reactions.isEmpty && comments == nil && (threadOf?.isEmpty != false)
-            && (formatting?.isEmpty != false) && forward == nil
+            && (formatting?.isEmpty != false) && forward == nil && edited != true
     }
 
     public var visuals: [ChatAttachment] {
