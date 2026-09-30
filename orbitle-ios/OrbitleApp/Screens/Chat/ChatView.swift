@@ -31,6 +31,10 @@ struct ChatView: View {
     /// Сообщения, пришедшие, пока лента прокручена вверх: число на кнопке «вниз».
     @State private var unseen = 0
     private static let bottomId = "transcript-bottom"
+    /// Отступ ленты от краёв: пузыри ближе к краю экрана.
+    private static let feedInset: CGFloat = 8
+    /// Отступ поля ввода от краёв.
+    private static let composerInset: CGFloat = 12
     @Environment(\.horizontalSizeClass) private var sizeClass
     /// Приватный режим: пузыри закрыты заглушкой или размытием, касание открывает на время.
     @Environment(\.privateMode) private var privateMode
@@ -87,7 +91,7 @@ struct ChatView: View {
                             }
                             .onDisappear { atBottom = false }
                     }
-                    .padding(.horizontal, OrbitleTheme.pad)
+                    .padding(.horizontal, Self.feedInset)
                     .padding(.bottom, 8)
                 }
                 // Чат открывается сразу внизу, а не сверху до загрузки истории.
@@ -376,7 +380,7 @@ struct ChatView: View {
                 readOnlyBar
             }
         }
-        .padding(.horizontal, OrbitleTheme.pad)
+        .padding(.horizontal, Self.composerInset)
         .padding(.top, 6)
         .padding(.bottom, 8)
         .animation(.default, value: viewModel.editTarget?.id)
