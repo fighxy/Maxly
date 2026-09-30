@@ -159,6 +159,21 @@ enum MessageContentCodec {
                 url: url(map["baseUrl"]) ?? url(map["url"]) ?? url(map["fileUrl"]),
                 localPath: map["localPath"] as? String
             ))
+        case "CONTACT":
+            // Карточку дополняет сервер: имя целиком или по частям, номер числом или строкой.
+            let full = (map["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let parts = [map["firstName"] as? String, map["lastName"] as? String]
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+            let userId = stringId(map["contactId"]) ?? stringId(map["userId"]) ?? ""
+            return .contact(ContactContent(
+                id: userId.isEmpty ? stableId(map) : "contact-\(userId)",
+                userId: userId,
+                name: full.isEmpty ? parts : full,
+                phone: stringId(map["phone"]) ?? stringId(map["phoneNumber"]) ?? "",
+                avatarURL: url(map["photoUrl"]) ?? url(map["baseUrl"])
+            ))
         default:
             return nil
         }
@@ -210,6 +225,7 @@ enum MessageContentCodec {
             let name = file.name.trimmingCharacters(in: .whitespacesAndNewlines)
             return name.isEmpty ? "Файл" : name
         }
+        if attachments.contains(where: { $0.contact != nil }) { return "Контакт" }
         return ""
     }
 

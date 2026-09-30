@@ -14,6 +14,9 @@ public struct MessageContent: Hashable, Sendable, Codable {
     public var forward: MessageForward?
     /// Текст сообщения меняли после отправки.
     public var edited: Bool?
+    /// Своё сообщение с вложениями, которые ещё не загружены: что и откуда отправлять.
+    /// Есть, пока сообщение не принято сервером; по нему работает повтор после сбоя.
+    public var drafts: [AttachmentDraft]?
 
     public init(
         reply: MessageReply? = nil,
@@ -23,7 +26,8 @@ public struct MessageContent: Hashable, Sendable, Codable {
         threadOf: String? = nil,
         formatting: [TextSpan]? = nil,
         forward: MessageForward? = nil,
-        edited: Bool? = nil
+        edited: Bool? = nil,
+        drafts: [AttachmentDraft]? = nil
     ) {
         self.reply = reply
         self.attachments = attachments
@@ -33,13 +37,19 @@ public struct MessageContent: Hashable, Sendable, Codable {
         self.formatting = formatting?.isEmpty == true ? nil : formatting
         self.forward = forward
         self.edited = edited == true ? true : nil
+        self.drafts = drafts?.isEmpty == true ? nil : drafts
     }
 
     public static let empty = MessageContent()
 
     public var isEmpty: Bool {
         reply == nil && attachments.isEmpty && reactions.isEmpty && comments == nil && (threadOf?.isEmpty != false)
-            && (formatting?.isEmpty != false) && forward == nil && edited != true
+            && (formatting?.isEmpty != false) && forward == nil && edited != true && (drafts?.isEmpty != false)
+    }
+
+    /// Вложения ещё загружаются или ждут повтора.
+    public var hasPendingUploads: Bool {
+        drafts?.isEmpty == false
     }
 
     public var visuals: [ChatAttachment] {
@@ -54,6 +64,10 @@ public struct MessageContent: Hashable, Sendable, Codable {
         attachments.compactMap(\.file)
     }
 
+    public var contacts: [ContactContent] {
+        attachments.compactMap(\.contact)
+    }
+
     /// Вид первого вложения для строки списка чатов.
     public var previewMedia: MessageMediaKind? {
         switch attachments.first {
@@ -61,6 +75,7 @@ public struct MessageContent: Hashable, Sendable, Codable {
         case .video(let video): video.isRound ? .videoMessage : .video
         case .voice: .voice
         case .file: .file
+        case .contact: .contact
         case nil: nil
         }
     }
@@ -152,6 +167,7 @@ public enum ChatAttachment: Hashable, Sendable, Codable {
     case video(VideoContent)
     case voice(VoiceContent)
     case file(FileContent)
+    case contact(ContactContent)
 
     public var id: String {
         switch self {
@@ -159,6 +175,7 @@ public enum ChatAttachment: Hashable, Sendable, Codable {
         case .video(let item): item.id
         case .voice(let item): item.id
         case .file(let item): item.id
+        case .contact(let item): item.id
         }
     }
 
@@ -186,6 +203,11 @@ public enum ChatAttachment: Hashable, Sendable, Codable {
         return nil
     }
 
+    public var contact: ContactContent? {
+        if case .contact(let item) = self { return item }
+        return nil
+    }
+
     public func withLocalPath(_ path: String, id: String) -> ChatAttachment {
         switch self {
         case .photo(var item):
@@ -204,6 +226,8 @@ public enum ChatAttachment: Hashable, Sendable, Codable {
             guard item.id == id else { return self }
             item.localPath = path
             return .file(item)
+        case .contact:
+            return self
         }
     }
 }
@@ -361,6 +385,99 @@ public struct FileContent: Hashable, Sendable, Codable {
     public func cacheItem() -> MediaItem? {
         guard let url else { return nil }
         return MediaItem(id: id, type: .file, url: url, size: size, localPath: localPath)
+    }
+}
+
+/// Карточка пользователя MAX, отправленная как вложение.
+public struct ContactContent: Hashable, Sendable, Codable {
+    /// id вложения в пузыре.
+    public var id: String
+    /// id пользователя MAX. Пусто, если сервер его не прислал.
+    public var userId: String
+    public var name: String
+    /// Номер как его прислал сервер, пусто — скрыт.
+    public var phone: String
+    public var avatarURL: URL?
+
+    public init(id: String, userId: String, name: String, phone: String = "", avatarURL: URL? = nil) {
+        self.id = id
+        self.userId = userId
+        self.name = name
+        self.phone = phone
+        self.avatarURL = avatarURL
+    }
+}
+
+/// Вложение своего сообщения до загрузки: локальный файл или карточка контакта.
+/// Лежит в `MessageContent.drafts`, пока сервер не принял сообщение.
+public struct AttachmentDraft: Hashable, Sendable, Codable {
+    public enum Kind: String, Hashable, Sendable, Codable {
+        /// Фото, сервер его пережимает.
+        case photo
+        case video
+        /// Документ как есть, без сжатия.
+        case file
+        /// Карточка пользователя MAX, файла нет.
+        case contact
+    }
+
+    public var kind: Kind
+    /// Путь к локальной копии файла. Пусто у контакта.
+    public var path: String
+    /// Имя, которое увидит получатель файла. У фото — ASCII-имя вида `image.jpg`.
+    public var fileName: String
+    public var size: Int64
+    public var width: Int?
+    public var height: Int?
+    public var durationMs: Int64
+    /// Контакт: id пользователя MAX, имя и номер для пузыря.
+    public var contactId: String
+    public var contactName: String
+    public var contactPhone: String
+
+    public init(
+        kind: Kind,
+        path: String = "",
+        fileName: String = "",
+        size: Int64 = 0,
+        width: Int? = nil,
+        height: Int? = nil,
+        durationMs: Int64 = 0,
+        contactId: String = "",
+        contactName: String = "",
+        contactPhone: String = ""
+    ) {
+        self.kind = kind
+        self.path = path
+        self.fileName = fileName
+        self.size = size
+        self.width = width
+        self.height = height
+        self.durationMs = durationMs
+        self.contactId = contactId
+        self.contactName = contactName
+        self.contactPhone = contactPhone
+    }
+
+    public static func contact(id: String, name: String, phone: String = "") -> AttachmentDraft {
+        AttachmentDraft(kind: .contact, contactId: id, contactName: name, contactPhone: phone)
+    }
+
+    /// Как вложение выглядит в пузыре до ответа сервера. `index` делает id уникальным в сообщении.
+    public func preview(index: Int) -> ChatAttachment {
+        let id = "draft-\(index)"
+        let local = path.isEmpty ? nil : path
+        switch kind {
+        case .photo:
+            return .photo(PhotoContent(id: id, url: nil, width: width, height: height, localPath: local))
+        case .video:
+            return .video(VideoContent(id: id, url: nil, width: width, height: height, durationMs: durationMs, localPath: local))
+        case .file:
+            let name = fileName.isEmpty ? (path as NSString).lastPathComponent : fileName
+            return .file(FileContent(id: id, name: name.isEmpty ? "Файл" : name, size: size, localPath: local))
+        case .contact:
+            return .contact(ContactContent(id: id, userId: contactId, name: contactName, phone: contactPhone))
+        }
     }
 }
 

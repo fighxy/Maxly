@@ -235,6 +235,20 @@ public struct CoreMessage: Sendable, Equatable {
     }
 }
 
+/// Локальный файл для `MaxCore.sendMedia`. `kind` — `photo`, `video` или `file`.
+public struct CoreOutgoingMedia: Sendable, Equatable {
+    public var path: String
+    public var kind: String
+    /// Имя, которое увидит получатель. Пусто — последний компонент пути.
+    public var fileName: String
+
+    public init(path: String, kind: String, fileName: String) {
+        self.path = path
+        self.kind = kind
+        self.fileName = fileName
+    }
+}
+
 /// Пуш, который клиент пишет в базу. Звонки, присутствие и неизвестные опкоды сюда не входят.
 public struct CoreEvent: Sendable, Equatable {
     public enum Kind: String, Sendable {
@@ -346,6 +360,13 @@ public protocol MaxCore: Sendable {
     /// Прямой адрес видео (`kind` = `video`, `VIDEO_PLAY`) или файла (`file`, `FILE_DOWNLOAD`)
     /// сообщения. `attachmentId` — `videoId` или `fileId` вложения.
     func mediaLink(chatId: String, messageId: String, kind: String, attachmentId: String) async throws -> String
+    /// Загрузить файлы по порядку и отправить одним сообщением с подписью (пустая — без неё).
+    /// `progress` получает долю 0…1 всей пачки не с главного потока. Отмена задачи
+    /// останавливает загрузку, тогда бросается `CANCELLED`, и ничего не отправляется.
+    func sendMedia(chatId: String, items: [CoreOutgoingMedia], caption: String, replyTo: String,
+                   progress: @escaping @Sendable (Double) -> Void) async throws -> CoreMessage
+    /// Карточка пользователя MAX `contactId` (`{_type: CONTACT, contactId}`).
+    func sendContact(chatId: String, contactId: String, replyTo: String) async throws -> CoreMessage
     func setPinnedChats(_ chatIds: [String]) async throws -> [String]
     /// Закреплённые чаты сервера сверху вниз: сразу при подписке, если уже известны, и после
     /// каждого изменения (вход, свой вызов, пуш с другого устройства). Пока список неизвестен,
@@ -420,6 +441,13 @@ public extension MaxCore {
         throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
     }
     func pinnedChats() -> AsyncStream<[String]> { AsyncStream { $0.finish() } }
+    func sendMedia(chatId: String, items: [CoreOutgoingMedia], caption: String, replyTo: String,
+                   progress: @escaping @Sendable (Double) -> Void) async throws -> CoreMessage {
+        throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
+    }
+    func sendContact(chatId: String, contactId: String, replyTo: String) async throws -> CoreMessage {
+        throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
+    }
 
     // Фейки в тестах, которым настройки аккаунта не нужны.
     private var unsupported: CoreFailure { CoreFailure(kind: "UNKNOWN", key: "unsupported") }

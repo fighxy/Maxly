@@ -38,6 +38,14 @@ public protocol MessageRepository: Sendable {
     func edit(messageId: String, chatId: String, text: String) async throws(OrbitleError)
     /// Переслать сообщение `messageId` из `chatId` в чат `targetChatId`.
     func forward(messageId: String, from chatId: String, to targetChatId: String) async throws(OrbitleError)
+    /// Одно сообщение с вложениями и подписью `caption` (пустая — без подписи). Пузырь со
+    /// статусом `sending` появляется сразу, загрузка идёт в фоне: ход виден в `uploadProgress`,
+    /// итог — сменой статуса. Ошибка бросается, только если сообщение не удалось записать.
+    func sendAttachments(_ drafts: [AttachmentDraft], caption: String, chatId: String, replyTo: String?) async throws(OrbitleError)
+    /// Остановить загрузку и убрать неотправленное сообщение с вложениями.
+    func cancelUpload(messageId: String) async
+    /// Ход загрузок: локальный id сообщения → доля 0…1. Сразу при подписке и после каждого шага.
+    func uploadProgress() -> AsyncStream<[String: Double]>
 }
 
 extension MessageRepository {
@@ -76,5 +84,15 @@ extension MessageRepository {
 
     public func edit(messageId: String, chatId: String, text: String) async throws(OrbitleError) {
         throw .invalidRequest
+    }
+
+    public func sendAttachments(_ drafts: [AttachmentDraft], caption: String, chatId: String, replyTo: String?) async throws(OrbitleError) {
+        throw .invalidRequest
+    }
+
+    public func cancelUpload(messageId: String) async {}
+
+    public func uploadProgress() -> AsyncStream<[String: Double]> {
+        AsyncStream { $0.finish() }
     }
 }

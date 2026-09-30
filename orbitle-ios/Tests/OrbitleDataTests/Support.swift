@@ -168,6 +168,37 @@ actor FakeMaxAPI: MaxAPI {
     }
 
     func reactionCatalog() async -> Result<[String], MaxAPIError> { .success(["👍", "👍", "", "🔥"]) }
+
+    // MARK: Вложения
+
+    struct AttachmentCall: Equatable, Sendable {
+        var chatId: String
+        var drafts: [AttachmentDraft]
+        var caption: String
+        var replyTo: String?
+    }
+
+    /// Ответы на отправку вложений по порядку; когда кончаются, повторяется последний.
+    var attachmentResults: [Result<MessageRecord, MaxAPIError>] = []
+    private(set) var attachmentCalls: [AttachmentCall] = []
+    /// Пока `true`, загрузка «идёт»: ответа нет, отмена задачи её прерывает.
+    var holdUploads = false
+
+    func setAttachmentResults(_ results: [Result<MessageRecord, MaxAPIError>]) { attachmentResults = results }
+    func setHoldUploads(_ value: Bool) { holdUploads = value }
+
+    func sendAttachments(chatId: String, drafts: [AttachmentDraft], caption: String, replyTo: String?,
+                         progress: @escaping @Sendable (Double) -> Void) async -> Result<MessageRecord, MaxAPIError> {
+        attachmentCalls.append(AttachmentCall(chatId: chatId, drafts: drafts, caption: caption, replyTo: replyTo))
+        progress(0.25)
+        while holdUploads {
+            if Task.isCancelled { return .failure(.cancelled) }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        progress(1)
+        guard !attachmentResults.isEmpty else { return .failure(.invalidResponse) }
+        return attachmentResults[min(attachmentCalls.count - 1, attachmentResults.count - 1)]
+    }
 }
 
 /// Репозиторий сообщений на базе в памяти с подключённой очередью без реальных задержек.

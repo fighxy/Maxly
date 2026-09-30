@@ -85,6 +85,10 @@ public protocol MaxAPI: Sendable {
     func reactionUsers(chatId: String, messageId: String) async -> Result<[ReactionUser], MaxAPIError>
     /// Эмодзи каталога реакций сервера.
     func reactionCatalog() async -> Result<[String], MaxAPIError>
+    /// Загрузить вложения и отправить одним сообщением с подписью. Контакт уходит один,
+    /// без подписи. `replyTo` — серверный id цитаты. Отмена задачи отменяет загрузку.
+    func sendAttachments(chatId: String, drafts: [AttachmentDraft], caption: String, replyTo: String?,
+                         progress: @escaping @Sendable (Double) -> Void) async -> Result<MessageRecord, MaxAPIError>
 }
 
 public extension MaxAPI {
@@ -112,6 +116,11 @@ public extension MaxAPI {
         .failure(.invalidResponse)
     }
     func reactionCatalog() async -> Result<[String], MaxAPIError> { .failure(.invalidResponse) }
+    /// Источник без загрузок.
+    func sendAttachments(chatId: String, drafts: [AttachmentDraft], caption: String, replyTo: String?,
+                         progress: @escaping @Sendable (Double) -> Void) async -> Result<MessageRecord, MaxAPIError> {
+        .failure(.invalidResponse)
+    }
     /// Источник без ответов отправляет просто текст.
     func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?) async -> Result<SentMessage, MaxAPIError> {
         await sendMessage(chatId: chatId, text: text, clientId: clientId)
@@ -210,6 +219,25 @@ public final class MaxAPIClient: MaxAPI, Sendable {
     public func reactionCatalog() async -> Result<[String], MaxAPIError> {
         await catching {
             try await core.loadReactionCatalog()
+        }
+    }
+
+    public func sendAttachments(chatId: String, drafts: [AttachmentDraft], caption: String, replyTo: String?,
+                                progress: @escaping @Sendable (Double) -> Void) async -> Result<MessageRecord, MaxAPIError> {
+        let reply = replyTo.flatMap { Int64($0) == nil ? nil : $0 } ?? ""
+        if let contact = drafts.first(where: { $0.kind == .contact }) {
+            // Карточка контакта — отдельное сообщение: у него нет файла и подписи.
+            guard drafts.count == 1, !contact.contactId.isEmpty else { return .failure(.invalidResponse) }
+            return await catching {
+                CoreMapping.message(try await core.sendContact(chatId: chatId, contactId: contact.contactId, replyTo: reply))
+            }
+        }
+        let items = drafts.map { draft in
+            CoreOutgoingMedia(path: draft.path, kind: draft.kind.rawValue, fileName: draft.fileName)
+        }
+        guard !items.isEmpty, !items.contains(where: { $0.path.isEmpty }) else { return .failure(.invalidResponse) }
+        return await catching {
+            CoreMapping.message(try await core.sendMedia(chatId: chatId, items: items, caption: caption, replyTo: reply, progress: progress))
         }
     }
 
