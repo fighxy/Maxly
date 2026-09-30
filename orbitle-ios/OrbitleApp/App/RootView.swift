@@ -95,6 +95,9 @@ struct MainTabView: View {
                     .badge(badge(for: tab))
             }
         }
+        // Приватный режим: вид для строк и пузырей, а сама настройка — для кнопок-переключателей.
+        .environment(\.privateMode, container.privateMode.display)
+        .environment(container.privateMode)
         // Бейдж «Звонков» нужен и до первого открытия вкладки.
         .task {
             let calls = container.callsViewModel()
@@ -171,6 +174,8 @@ struct MainTabView: View {
                     }
                 )
             }
+            // В настройках ничего не прячется: там включают и выключают сам режим.
+            .environment(\.privateMode, .visible)
         }
     }
 

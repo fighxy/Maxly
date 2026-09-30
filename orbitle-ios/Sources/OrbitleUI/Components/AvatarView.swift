@@ -6,6 +6,7 @@ public struct ChatAvatarView: View {
     private let avatar: ChatAvatar
     private let size: CGFloat
     private let isOnline: Bool
+    @Environment(\.privateMode) private var privateMode
 
     public init(avatar: ChatAvatar, size: CGFloat = OrbitleTheme.avatar, isOnline: Bool = false) {
         self.avatar = avatar
@@ -16,9 +17,12 @@ public struct ChatAvatarView: View {
     public var body: some View {
         content
             .frame(width: size, height: size)
+            // Размытие до обрезки: край круга остаётся ровным.
+            .blur(radius: blursPhoto ? size * PrivateModeBlur.avatar : 0)
             .clipShape(Circle())
             .overlay(alignment: .bottomTrailing) {
-                if isOnline {
+                // Точка «в сети» выдаёт, что чат личный и собеседник рядом.
+                if isOnline, !privateMode.isMasked {
                     Circle()
                         .fill(Color.orbitleOnline)
                         .frame(width: size * 0.26, height: size * 0.26)
@@ -31,9 +35,23 @@ public struct ChatAvatarView: View {
             .accessibilityHidden(true)
     }
 
+    /// В приватном режиме с заглушками — однотонный круг того же цвета.
+    private var shown: ChatAvatar {
+        privateMode == .placeholder ? PrivateModeMask.avatar(avatar) : avatar
+    }
+
+    /// Размываются фото и буквы; значки «Избранного» и архива ничего не выдают.
+    private var blursPhoto: Bool {
+        guard privateMode == .blur else { return false }
+        switch avatar.kind {
+        case .initials, .photo: return true
+        case .savedMessages, .archive: return false
+        }
+    }
+
     @ViewBuilder
     private var content: some View {
-        switch avatar.kind {
+        switch shown.kind {
         case .initials(let text):
             initials(text)
         case .photo(let url, let text):
@@ -78,6 +96,7 @@ public struct AvatarView: View {
     private let url: URL?
     private let size: CGFloat
     private let isOnline: Bool
+    @Environment(\.privateMode) private var privateMode
 
     public init(title: String, id: String? = nil, url: URL? = nil, size: CGFloat = OrbitleTheme.avatar, isOnline: Bool = false) {
         self.title = title
@@ -91,6 +110,6 @@ public struct AvatarView: View {
         let initials = ChatAvatar.initials(for: title)
         let kind: ChatAvatar.Kind = url.map { .photo($0, initials: initials) } ?? .initials(initials)
         ChatAvatarView(avatar: ChatAvatar(kind: kind, colorIndex: ChatAvatar.colorIndex(for: id)), size: size, isOnline: isOnline)
-            .accessibilityLabel(title)
+            .accessibilityLabel(privateMode.isMasked ? "" : title)
     }
 }

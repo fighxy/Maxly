@@ -19,6 +19,7 @@ struct ContactsView: View {
     @State private var contactsAccess = CNContactStore.authorizationStatus(for: .contacts)
     @State private var isPickingContacts = false
     @State private var profileDialog: DialogDraft?
+    @Environment(\.privateMode) private var privateMode
 
     private static let searchRowId = "search"
 
@@ -165,7 +166,7 @@ struct ContactsView: View {
                 }
             }
         }
-        .accessibilityLabel("\(row.title), \(row.status)")
+        .accessibilityLabel("\(privateMode.isMasked ? PrivateModeMask.contactTitle : row.title), \(row.status)")
     }
 
     private func placeholder(_ title: String, systemImage: String, description: String) -> some View {
@@ -176,6 +177,7 @@ struct ContactsView: View {
 }
 
 /// Строка контакта: аватар, имя, статус. Разделитель система выравнивает по тексту.
+/// В приватном режиме вместо имени «Контакт», аватар — однотонный круг.
 struct ContactRowView: View {
     let row: ContactRow
 
@@ -183,7 +185,7 @@ struct ContactRowView: View {
         HStack(spacing: 12) {
             AvatarView(title: row.title, id: row.id, url: row.avatarURL, size: OrbitleTheme.smallAvatar, isOnline: row.isOnline)
             VStack(alignment: .leading, spacing: 2) {
-                Text(row.title)
+                PrivateText(row.title, placeholder: PrivateModeMask.contactTitle)
                     .font(.body)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
