@@ -45,6 +45,10 @@ final class SDChat {
     var commentsOption: Int = -1
     /// Можно ли писать: `1` да, `0` нет, `-1` неизвестно.
     var canWriteOption: Int = -1
+    /// Имя автора последнего сообщения, если известно.
+    var lastAuthorName: String?
+    /// Последнее сообщение — пересылка.
+    var lastForwarded: Bool = false
 
     /// Сообщения чата. При удалении чата удаляются вместе с ним.
     @Relationship(deleteRule: .cascade, inverse: \SDMessage.chat)

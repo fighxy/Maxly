@@ -392,7 +392,10 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             lastThumbURL: chat.lastThumbUrl,
             comments: Int(chat.comments),
             canWrite: Int(chat.canWrite),
-            muted: Int(chat.muted)
+            muted: Int(chat.muted),
+            lastAuthorName: chat.lastAuthorName,
+            lastFromMe: Int(chat.lastFromMe),
+            lastForwarded: chat.lastForwarded == 1
         )
     }
 

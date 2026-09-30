@@ -28,7 +28,10 @@ enum CoreMapping {
             lastMedia: MessageMediaKind(rawValue: chat.lastMedia),
             lastThumbnailURL: chat.lastThumbURL.isEmpty ? nil : URL(string: chat.lastThumbURL),
             commentsEnabled: chat.comments < 0 ? nil : chat.comments == 1,
-            canWrite: chat.canWrite < 0 ? nil : chat.canWrite == 1
+            canWrite: chat.canWrite < 0 ? nil : chat.canWrite == 1,
+            lastAuthorName: chat.lastAuthorName.isEmpty ? nil : chat.lastAuthorName,
+            lastOutgoing: chat.lastFromMe < 0 ? nil : chat.lastFromMe == 1,
+            lastForwarded: chat.lastForwarded
         )
     }
 

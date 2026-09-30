@@ -433,12 +433,14 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     public func refreshReactions(chatId: String) async {
         let started = generation
         var covered = Set<String>()
+        let requestedAt = Date.now
         switch await api.fetchMessages(chatId: chatId, before: nil, limit: Self.pageSize) {
         case .success(let records):
             guard started == generation else { return }
             do {
                 try upsert(records)
-                let gone = pruneMissing(chatId: chatId, page: records)
+                // Пустую историю при возврате из фона за «чат пуст» не считаем.
+                let gone = records.isEmpty ? [] : pruneMissing(chatId: chatId, page: records, requestedAt: requestedAt)
                 if !gone.isEmpty { await outgoingHandler?(.deleted(chatId: chatId, ids: gone)) }
                 covered = Set(records.map { $0.serverId ?? $0.id })
             } catch {
@@ -702,11 +704,12 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// Самые свежие сообщения чата с сервера (для периодического опроса).
     public func fetchLatest(chatId: String) async throws(OrbitleError) {
         let started = generation
+        let requestedAt = Date.now
         switch await api.fetchMessages(chatId: chatId, before: nil, limit: Self.pageSize) {
         case .success(let records):
             try ensureCurrent(started)
             try upsert(records)
-            let gone = pruneMissing(chatId: chatId, page: records)
+            let gone = pruneMissing(chatId: chatId, page: records, requestedAt: requestedAt)
             if !gone.isEmpty { await outgoingHandler?(.deleted(chatId: chatId, ids: gone)) }
         case .failure(let error):
             throw error.orbitleError
@@ -715,14 +718,16 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
 
     /// Сверка удалений по свежей странице сервера. Пуш удаления приходит не всегда: удаление
     /// «у себя» с другого устройства сервер другим сессиям не рассылает, а пока приложение
-    /// в фоне, пуши теряются. Отправленные сообщения ленты в промежутке времени страницы,
-    /// которых в ней нет, удаляются. Раньше самого старого сообщения страницы ничего не
-    /// трогается; свои ещё не отправленные и комментарии — тоже.
-    /// Возвращает id убранных (локальные и серверные).
+    /// в фоне, пуши теряются. Страница — самые свежие сообщения на момент запроса, поэтому
+    /// отправленные сообщения ленты от самого старого в ней до момента запроса, которых
+    /// в ней нет, удаляются (последнее удалённое новее всех оставшихся). Пустая страница —
+    /// в чате ничего нет. Раньше самого старого сообщения страницы ничего не трогается,
+    /// как и свои ещё не отправленные и комментарии. Возвращает id убранных.
     @discardableResult
-    func pruneMissing(chatId: String, page records: [MessageRecord]) -> [String] {
-        guard let newest = records.map(\.timestamp).max(),
-              let oldest = records.map(\.timestamp).min() else { return [] }
+    func pruneMissing(chatId: String, page records: [MessageRecord], requestedAt: Date) -> [String] {
+        // Запас на расхождение часов: только что пришедшее сообщение не должно пропасть.
+        let newest = max(records.map(\.timestamp).max() ?? .distantPast, requestedAt.addingTimeInterval(-15))
+        let oldest = records.map(\.timestamp).min() ?? .distantPast
         let present = Set(records.flatMap { [$0.id, $0.serverId].compactMap { $0 } })
         let id = chatId
         let root = ""
