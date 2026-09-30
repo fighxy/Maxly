@@ -93,8 +93,11 @@ public final class FileLogStore: @unchecked Sendable {
     /// каталоге. Архив собирает система (`NSFileCoordinator` с `.forUploading`), без сторонних библиотек.
     public func makeArchive(info: String, now: Date = Date()) throws -> URL {
         let stamp = Self.fileStamp(now)
-        let staging = FileManager.default.temporaryDirectory.appendingPathComponent("orbitle-logs-\(stamp)", isDirectory: true)
-        try? FileManager.default.removeItem(at: staging)
+        // Своя папка на каждую выгрузку: две выгрузки в одну секунду не мешают друг другу.
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("orbitle-logs", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let staging = root.appendingPathComponent("orbitle-logs-\(stamp)", isDirectory: true)
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
         queue.sync {
             try? handle?.synchronize()
@@ -109,8 +112,7 @@ public final class FileLogStore: @unchecked Sendable {
         }
         try Data(info.utf8).write(to: staging.appendingPathComponent("info.txt"))
 
-        let archive = FileManager.default.temporaryDirectory.appendingPathComponent("orbitle-logs-\(stamp).zip")
-        try? FileManager.default.removeItem(at: archive)
+        let archive = root.appendingPathComponent("orbitle-logs-\(stamp).zip")
         var coordinationError: NSError?
         var copyError: Error?
         NSFileCoordinator().coordinate(readingItemAt: staging, options: .forUploading, error: &coordinationError) { zipped in
