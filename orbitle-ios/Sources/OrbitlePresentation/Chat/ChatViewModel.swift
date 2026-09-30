@@ -24,8 +24,8 @@ public final class ChatViewModel {
     public private(set) var scrollTarget: String?
     public private(set) var scrollToken = 0
     public private(set) var highlightedId: String?
-    /// Пост, чьи комментарии открыты.
-    public var openedCommentId: String?
+    /// Пост, чьи комментарии открыты в модальном окне.
+    public var openedComments: Message?
     /// Просмотр фото и видео.
     public var viewer: MediaViewerRequest?
     /// Открытый файл.
@@ -40,6 +40,7 @@ public final class ChatViewModel {
     @ObservationIgnored private let drafts: (any ChatDraftStore)?
     @ObservationIgnored private let media: (any MediaRepository)?
     @ObservationIgnored private let links: (any MediaLinkResolver)?
+    @ObservationIgnored private let comments: (any CommentsRepository)?
     /// Прямые адреса видео, полученные у сервера за время жизни экрана.
     @ObservationIgnored private var resolvedVideos: [String: URL] = [:]
     @ObservationIgnored private var mediaTask: Task<Void, Never>?
@@ -65,6 +66,7 @@ public final class ChatViewModel {
         draftDelay: Duration = .milliseconds(500),
         media: (any MediaRepository)? = nil,
         links: (any MediaLinkResolver)? = nil,
+        comments: (any CommentsRepository)? = nil,
         voice: (any VoicePlaying)? = nil,
         isNewDialog: Bool = false
     ) {
@@ -76,6 +78,7 @@ public final class ChatViewModel {
         self.draftDelay = draftDelay
         self.media = media
         self.links = links
+        self.comments = comments
         self.voice = voice
     }
 
@@ -231,14 +234,22 @@ public final class ChatViewModel {
     }
 
     public func openComments(_ message: Message) {
-        openedCommentId = message.id
+        guard comments != nil else { return }
+        openedComments = message
     }
 
-    public func commentsModel(for postId: String) -> CommentsViewModel {
-        if let commentsModel, commentsModel.postId == postId { return commentsModel }
-        let model = CommentsViewModel(chatId: chatId, postId: postId, messages: repository)
+    /// Модель окна комментариев открытого поста. Одна на пост, пока окно не закрыто.
+    public func commentsModel(for post: Message) -> CommentsViewModel? {
+        guard let comments else { return nil }
+        if let commentsModel, commentsModel.post.id == post.id { return commentsModel }
+        let model = CommentsViewModel(chatId: chatId, post: post, currentUserId: currentUserId, comments: comments)
         commentsModel = model
         return model
+    }
+
+    public func closeComments() {
+        openedComments = nil
+        commentsModel = nil
     }
 
     /// Открывает просмотр фото и видео сообщения. У видео из Max нет адреса в самом вложении:

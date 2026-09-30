@@ -126,6 +126,8 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
                         preview: record.preview
                     )
                     chat.lastAuthorId = record.lastAuthorId
+                    chat.lastMediaRaw = record.lastMedia?.rawValue
+                    chat.lastThumbnailURLString = record.lastThumbnailURL?.absoluteString
                     Self.mergeFlags(record, into: chat)
                     modelContext.insert(chat)
                     existing[record.id] = chat
@@ -155,8 +157,14 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
                 chat.lastOutgoing = false
                 chat.lastDeliveryRaw = nil
                 chat.lastLocalId = nil
-            } else if let author = record.lastAuthorId {
-                chat.lastAuthorId = author
+                chat.lastMediaRaw = record.lastMedia?.rawValue
+                chat.lastThumbnailURLString = record.lastThumbnailURL?.absoluteString
+            } else {
+                if let author = record.lastAuthorId { chat.lastAuthorId = author }
+                if let media = record.lastMedia {
+                    chat.lastMediaRaw = media.rawValue
+                    chat.lastThumbnailURLString = record.lastThumbnailURL?.absoluteString
+                }
             }
             chat.lastMessageId = lastMessageId
         }
@@ -173,6 +181,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         if let archived = record.isArchived { chat.isArchived = archived }
         if let bot = record.isBot { chat.isBot = bot }
         if let verified = record.isVerified { chat.isVerified = verified }
+        if let comments = record.commentsEnabled { chat.commentsOption = comments ? 1 : 0 }
         if record.pinsKnown { chat.pinOrder = record.pinOrder }
     }
 
@@ -235,7 +244,9 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         authorId: String? = nil,
         outgoing: Bool = false,
         delivery: DeliveryState? = nil,
-        localId: String? = nil
+        localId: String? = nil,
+        media: MessageMediaKind? = nil,
+        thumbnail: URL? = nil
     ) throws(OrbitleError) -> Bool {
         do {
             guard let chat = try chat(id: chatId) ?? insertPendingDialog(chatId: chatId, at: at) else { return false }
@@ -247,6 +258,8 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
                 chat.lastOutgoing = outgoing
                 chat.lastDeliveryRaw = outgoing ? (delivery ?? .sent).rawValue : nil
                 chat.lastLocalId = localId
+                chat.lastMediaRaw = media?.rawValue
+                chat.lastThumbnailURLString = thumbnail?.absoluteString
             }
             if incoming { chat.unreadCount += 1 }
             try modelContext.save()
@@ -670,13 +683,20 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
 
     static func domain(_ chat: SDChat) -> Chat {
         var last: ChatLastMessage?
-        if chat.lastOutgoing || chat.lastAuthorId != nil {
+        let media = chat.lastMediaRaw.flatMap(MessageMediaKind.init(rawValue:))
+        if chat.lastOutgoing || chat.lastAuthorId != nil || media != nil {
             var delivery = chat.lastOutgoing ? DeliveryState(rawValue: chat.lastDeliveryRaw ?? "") ?? .sent : nil
             // Собеседник прочитал всё до своей отметки: отправленное раньше неё прочитано.
             if delivery == .sent, chat.peerReadMark > 0, chat.peerReadMark >= chat.updatedAt.unixMillis {
                 delivery = .read
             }
-            last = ChatLastMessage(authorId: chat.lastAuthorId, isOutgoing: chat.lastOutgoing, delivery: delivery)
+            last = ChatLastMessage(
+                authorId: chat.lastAuthorId,
+                isOutgoing: chat.lastOutgoing,
+                delivery: delivery,
+                media: media,
+                thumbnailURL: chat.lastThumbnailURLString.flatMap(URL.init(string:))
+            )
         }
         let draft: ChatDraft? = chat.draftText.flatMap { text in
             text.isEmpty ? nil : ChatDraft(text: text, updatedAt: chat.draftAt ?? chat.updatedAt)
@@ -697,7 +717,8 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             isArchived: chat.isArchived,
             isBot: chat.isBot,
             isVerified: chat.isVerified,
-            draft: draft
+            draft: draft,
+            commentsEnabled: chat.commentsOption < 0 ? nil : chat.commentsOption == 1
         )
     }
 }

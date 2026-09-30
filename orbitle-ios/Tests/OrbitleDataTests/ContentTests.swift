@@ -230,6 +230,19 @@ struct MessageContentStoreTests {
         #expect(echoed.domain.content.reply?.messageId == "parent-1")
     }
 
+    @Test("Ответ уходит на сервер ссылкой на серверный id, цитата названа автором")
+    func replyGoesToServer() async throws {
+        let api = FakeMaxAPI()
+        await api.setSendResults([.success(SentMessage(serverId: "900", timestamp: Date(timeIntervalSince1970: 30)))])
+        let (repository, _) = try await makeMessageStack(api: api)
+        try await repository.upsert([row("500", text: "Вопрос", at: 10, authorName: "Анна")])
+        try await repository.send(text: "Ответ", chatId: "c1", replyTo: "500")
+        #expect(await eventually { await api.sentReplies == ["500"] })
+        let sent = try #require(try await repository.page(chatId: "c1", before: nil).first { $0.text == "Ответ" })
+        #expect(sent.domain.content.reply?.authorName == "Анна")
+        #expect(sent.domain.content.reply?.messageId == "500")
+    }
+
     @Test("Комментарий живёт в треде, лента и очередь его не видят")
     func commentsStayInThread() async throws {
         let api = FakeMaxAPI()

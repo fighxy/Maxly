@@ -61,6 +61,8 @@ public protocol MaxAPI: Sendable {
     func fetchMessages(chatId: String, before: Date?, limit: Int) async -> Result<[MessageRecord], MaxAPIError>
     /// `clientId` это локальный id. Ядро само ставит числовой `cid` в пакет, локальный id на сервер не уходит.
     func sendMessage(chatId: String, text: String, clientId: String) async -> Result<SentMessage, MaxAPIError>
+    /// Ответ на сообщение `replyTo` (серверный id). `nil` — обычное сообщение.
+    func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?) async -> Result<SentMessage, MaxAPIError>
     /// `messageId` nil значит, что локально нечего отмечать: сервер не вызывается.
     func markRead(chatId: String, messageId: String?) async -> Result<Void, MaxAPIError>
     /// Закреплённые чаты целиком, сверху вниз. Ответ — список, который подтвердил сервер.
@@ -75,6 +77,10 @@ public extension MaxAPI {
     func setPinnedChats(_ chatIds: [String]) async -> Result<[String], MaxAPIError> { .failure(.invalidResponse) }
     /// Источник без серверных папок.
     func folderUpdates() -> AsyncStream<[ChatFolder]> { AsyncStream { $0.yield([]); $0.finish() } }
+    /// Источник без ответов отправляет просто текст.
+    func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?) async -> Result<SentMessage, MaxAPIError> {
+        await sendMessage(chatId: chatId, text: text, clientId: clientId)
+    }
 }
 
 /// Клиент API Max поверх `MaxCore`. Типы Kotlin сюда не попадают.
@@ -105,9 +111,18 @@ public final class MaxAPIClient: MaxAPI, Sendable {
     }
 
     public func sendMessage(chatId: String, text: String, clientId: String) async -> Result<SentMessage, MaxAPIError> {
+        await sendMessage(chatId: chatId, text: text, clientId: clientId, replyTo: nil)
+    }
+
+    public func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?) async -> Result<SentMessage, MaxAPIError> {
         _ = clientId
         return await catching {
-            let sent = try await core.sendText(chatId: chatId, text: text)
+            let sent: CoreMessage
+            if let replyTo, !replyTo.isEmpty {
+                sent = try await core.sendText(chatId: chatId, text: text, replyTo: replyTo)
+            } else {
+                sent = try await core.sendText(chatId: chatId, text: text)
+            }
             return SentMessage(serverId: sent.id, timestamp: Date(unixMillis: sent.timeMs))
         }
     }

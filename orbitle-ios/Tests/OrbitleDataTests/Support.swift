@@ -65,6 +65,14 @@ actor FakeMaxAPI: MaxAPI {
 
     func setSendGate(_ gate: Gate?) { sendGate = gate }
 
+    /// `replyTo` каждой отправки по порядку.
+    private(set) var sentReplies: [String?] = []
+
+    func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?) async -> Result<SentMessage, MaxAPIError> {
+        sentReplies.append(replyTo)
+        return await sendMessage(chatId: chatId, text: text, clientId: clientId)
+    }
+
     func sendMessage(chatId: String, text: String, clientId: String) async -> Result<SentMessage, MaxAPIError> {
         if let sendGate { await sendGate.wait() }
         let index = min(sendCalls, sendResults.count - 1)

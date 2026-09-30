@@ -55,10 +55,16 @@ public struct CoreChat: Sendable, Equatable {
     public var avatarURL: String
     /// Автор последнего сообщения. Пусто, если неизвестен.
     public var lastAuthorId: String
+    /// Вид первого вложения последнего сообщения (`photo`, `voice`, …). Пусто — только текст.
+    public var lastMedia: String
+    /// Фото или обложка этого вложения. Пусто, если нет.
+    public var lastThumbURL: String
+    /// Комментарии канала: `1` включены, `0` выключены, `-1` неизвестно.
+    public var comments: Int
 
     public init(
         id: String, title: String, type: String, lastMessageId: String, lastText: String, updatedAtMs: Int64, unread: Int,
-        avatarURL: String = "", lastAuthorId: String = ""
+        avatarURL: String = "", lastAuthorId: String = "", lastMedia: String = "", lastThumbURL: String = "", comments: Int = -1
     ) {
         self.id = id
         self.title = title
@@ -69,6 +75,9 @@ public struct CoreChat: Sendable, Equatable {
         self.unread = unread
         self.avatarURL = avatarURL
         self.lastAuthorId = lastAuthorId
+        self.lastMedia = lastMedia
+        self.lastThumbURL = lastThumbURL
+        self.comments = comments
     }
 }
 
@@ -287,6 +296,11 @@ public protocol MaxCore: Sendable {
     func loadChat(id: String) async throws -> CoreChat
     func loadHistory(chatId: String, beforeMs: Int64, limit: Int) async throws -> [CoreMessage]
     func sendText(chatId: String, text: String) async throws -> CoreMessage
+    /// Ответ: `replyTo` — серверный id сообщения, на которое отвечают.
+    func sendText(chatId: String, text: String, replyTo: String) async throws -> CoreMessage
+    /// Комментарии поста канала старше `beforeMs` (самые новые при `0`), от старых к новым.
+    func loadComments(chatId: String, postId: String, beforeMs: Int64, limit: Int) async throws -> [CoreMessage]
+    func sendComment(chatId: String, postId: String, text: String) async throws -> CoreMessage
     func markRead(chatId: String, messageId: String) async throws
     func phases() -> AsyncStream<CorePhase>
     func events() -> AsyncStream<CoreEvent>
@@ -353,6 +367,14 @@ public extension MaxCore {
     }
     func mediaLink(chatId: String, messageId: String, kind: String, attachmentId: String) async throws -> String {
         throw CoreFailure(kind: "NOT_FOUND", key: nil)
+    }
+    /// Фейки без ответов отправляют просто текст.
+    func sendText(chatId: String, text: String, replyTo: String) async throws -> CoreMessage {
+        try await sendText(chatId: chatId, text: text)
+    }
+    func loadComments(chatId: String, postId: String, beforeMs: Int64, limit: Int) async throws -> [CoreMessage] { [] }
+    func sendComment(chatId: String, postId: String, text: String) async throws -> CoreMessage {
+        throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
     }
     func pinnedChats() -> AsyncStream<[String]> { AsyncStream { $0.finish() } }
 

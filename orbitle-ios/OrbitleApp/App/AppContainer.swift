@@ -28,6 +28,7 @@ final class AppContainer {
     @ObservationIgnored private var messages: MessageRepositoryImpl?
     @ObservationIgnored private var media: MediaRepositoryImpl?
     @ObservationIgnored private var mediaLinks: CoreMediaLinkResolver?
+    @ObservationIgnored private var commentsRepository: CoreCommentsRepository?
     @ObservationIgnored private let voicePlayer = SystemVoicePlayer()
     @ObservationIgnored private var sync: SyncEngine?
     private let recentSearches = RecentSearchesStore()
@@ -160,6 +161,7 @@ final class AppContainer {
             self.messages = messages
             self.media = media
             self.mediaLinks = CoreMediaLinkResolver(core: core)
+            self.commentsRepository = CoreCommentsRepository(core: core)
             self.sync = sync
             boot = .ready
             phaseTask = Task {
@@ -257,8 +259,9 @@ final class AppContainer {
         listModel?.chat(id: id)?.type ?? .private
     }
 
-    func allowsComments(id: String) -> Bool {
-        listModel?.chat(id: id)?.type == .channel
+    /// Комментарии канала по карточке с сервера. `nil`, если сервер не сказал.
+    func commentsEnabled(id: String) -> Bool? {
+        listModel?.chat(id: id)?.commentsEnabled
     }
 
     /// Заголовок экрана чата: из списка, а для нового диалога — имя контакта.
@@ -280,6 +283,7 @@ final class AppContainer {
             drafts: chats,
             media: media,
             links: mediaLinks,
+            comments: commentsRepository,
             voice: voicePlayer,
             isNewDialog: isNew
         )

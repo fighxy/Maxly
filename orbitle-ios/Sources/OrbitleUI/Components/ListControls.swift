@@ -199,3 +199,49 @@ public extension View {
         #endif
     }
 }
+
+/// Папки системным сегментированным переключателем (`Picker` в стиле `.segmented`).
+///
+/// Пока сегменты помещаются в ширину экрана, они растягиваются на всю строку; когда папок
+/// много, переключатель сохраняет свою ширину и листается по горизонтали. Непрочитанные
+/// видны числом в названии сегмента.
+public struct FolderSegments: View {
+    private let tabs: [ChatFolderTab]
+    private let selected: String
+    private let onSelect: (String) -> Void
+
+    public init(tabs: [ChatFolderTab], selected: String, onSelect: @escaping (String) -> Void) {
+        self.tabs = tabs
+        self.selected = selected
+        self.onSelect = onSelect
+    }
+
+    public var body: some View {
+        ViewThatFits(in: .horizontal) {
+            picker
+                .padding(.horizontal, OrbitleTheme.pad)
+            ScrollView(.horizontal, showsIndicators: false) {
+                picker
+                    .fixedSize()
+                    .padding(.horizontal, OrbitleTheme.pad)
+            }
+        }
+    }
+
+    private var picker: some View {
+        Picker("Папка", selection: Binding(get: { selected }, set: { onSelect($0) })) {
+            ForEach(tabs) { tab in
+                Text(Self.label(tab))
+                    .tag(tab.id)
+                    .accessibilityLabel(tab.badge.map { "\(tab.title), \($0) непрочитанных" } ?? tab.title)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+    }
+
+    static func label(_ tab: ChatFolderTab) -> String {
+        guard let badge = tab.badge else { return tab.title }
+        return "\(tab.title) \(badge)"
+    }
+}
