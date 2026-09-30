@@ -22,7 +22,7 @@ final class VideoNoteRecorder {
     private(set) var isRecording = false
     private(set) var elapsed: TimeInterval = 0
 
-    static let maximumDuration: TimeInterval = 60
+    nonisolated static let maximumDuration: TimeInterval = 60
     static let minimumDuration: TimeInterval = 1
 
     @ObservationIgnored let capture = CaptureController()
@@ -287,7 +287,7 @@ enum VideoNoteExporter {
 }
 
 /// Живая картинка камеры для кружка.
-struct CameraPreview: UIViewRepresentable {
+struct NoteCameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
 
     func makeUIView(context: Context) -> PreviewView {
