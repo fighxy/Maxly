@@ -35,6 +35,11 @@ public enum AvatarPalette {
         (Color(red: 1.00, green: 0.55, blue: 0.75), Color(red: 0.90, green: 0.35, blue: 0.58)), // розовый
     ]
 
+    /// Цвет имени автора в группе: тот же тон, что у его аватара без фото.
+    public static func nameColor(_ index: Int) -> Color {
+        gradients[((index % gradients.count) + gradients.count) % gradients.count].bottom
+    }
+
     public static func gradient(_ index: Int) -> LinearGradient {
         let pair = gradients[((index % gradients.count) + gradients.count) % gradients.count]
         return LinearGradient(colors: [pair.top, pair.bottom], startPoint: .top, endPoint: .bottom)

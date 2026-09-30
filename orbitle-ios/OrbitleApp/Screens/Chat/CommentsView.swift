@@ -38,7 +38,8 @@ struct CommentsView: View {
                                     outgoing: outgoing,
                                     authorId: message.authorId,
                                     nextAuthorId: next
-                                )
+                                ),
+                                reservesAvatar: !outgoing
                             )
                             .id(message.id)
                         }

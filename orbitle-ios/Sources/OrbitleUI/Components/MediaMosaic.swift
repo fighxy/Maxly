@@ -2,10 +2,17 @@ import SwiftUI
 import OrbitleDomain
 import OrbitlePresentation
 
+/// Фото и видео сообщения: одно во всю ширину или альбом рядами (`ChatContentFormat.album`).
+///
+/// Пока грузится картинка, видна размытая миниатюра из самого вложения. На видео — кнопка
+/// воспроизведения и длительность, на последней плитке сообщения без текста — время.
 struct MediaMosaic: View {
     let attachments: [ChatAttachment]
     let maxWidth: CGFloat
     let time: String?
+    var status: MessageStatus?
+    var cornerRadius: CGFloat = 12
+    var loadingId: String?
     let onOpen: (String) -> Void
 
     var body: some View {
@@ -15,7 +22,7 @@ struct MediaMosaic: View {
             Color.clear.frame(width: layout.width, height: layout.height)
             ForEach(Array(visuals.enumerated()), id: \.element.id) { index, item in
                 if let tile = layout.tiles.first(where: { $0.index == index }) {
-                    cell(item, tile: tile, clock: time)
+                    cell(item, tile: tile)
                 }
             }
         }
@@ -29,43 +36,36 @@ struct MediaMosaic: View {
         return Double(width) / Double(height)
     }
 
-    private func cell(_ item: ChatAttachment, tile: AlbumTile, clock: String?) -> some View {
+    private func cell(_ item: ChatAttachment, tile: AlbumTile) -> some View {
         let round = item.video?.isRound == true
         let width = CGFloat(tile.width)
         let height = CGFloat(tile.height)
         return Button {
             onOpen(item.id)
         } label: {
-            ZStack(alignment: .bottomTrailing) {
+            ZStack {
                 RemoteImage(url: still(item)) {
-                    Color.secondary.opacity(0.15)
+                    placeholder(item)
                 }
                 .frame(width: width, height: height)
                 .clipped()
                 if item.video != nil {
-                    Image(systemName: "play.fill")
-                        .font(.title3)
-                        .foregroundStyle(.white)
-                        .padding(10)
-                        .background(.black.opacity(0.35), in: Circle())
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    if let video = item.video, video.durationMs > 0 {
-                        Text(ChatContentFormat.clock(ms: video.durationMs))
-                            .font(.caption2.monospacedDigit())
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.black.opacity(0.45), in: Capsule())
-                            .foregroundStyle(.white)
-                            .padding(6)
-                    }
-                } else if tile.corners.bottomRight, let clock {
-                    Text(clock)
-                        .font(.caption2.monospacedDigit())
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.black.opacity(0.45), in: Capsule())
-                        .foregroundStyle(.white)
-                        .padding(6)
+                    videoBadge(loading: loadingId == item.id)
+                } else if loadingId == item.id {
+                    ProgressView()
+                        .tint(.white)
+                        .padding(12)
+                        .background(.black.opacity(0.4), in: Circle())
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                if let video = item.video, video.durationMs > 0 {
+                    overlayCapsule(ChatContentFormat.clock(ms: video.durationMs))
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if tile.corners.bottomRight, let time {
+                    timeCapsule(time)
                 }
             }
             .frame(width: width, height: height)
@@ -77,13 +77,79 @@ struct MediaMosaic: View {
         .accessibilityLabel(item.video == nil ? "Фото" : "Видео")
     }
 
+    @ViewBuilder
+    private func placeholder(_ item: ChatAttachment) -> some View {
+        if let data = item.photo?.preview ?? item.video?.preview, let image = PlatformImage(data: data) {
+            #if canImport(UIKit)
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .blur(radius: 8)
+            #else
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFill()
+                .blur(radius: 8)
+            #endif
+        } else {
+            Color.secondary.opacity(0.18)
+        }
+    }
+
+    private func videoBadge(loading: Bool) -> some View {
+        ZStack {
+            Circle().fill(.black.opacity(0.45))
+            if loading {
+                ProgressView().tint(.white)
+            } else {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .offset(x: 2)
+            }
+        }
+        .frame(width: 48, height: 48)
+    }
+
+    private func overlayCapsule(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2.monospacedDigit().weight(.medium))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(.black.opacity(0.45), in: Capsule())
+            .foregroundStyle(.white)
+            .padding(6)
+    }
+
+    private func timeCapsule(_ time: String) -> some View {
+        HStack(spacing: 3) {
+            Text(time)
+                .font(.caption2.monospacedDigit().weight(.medium))
+            switch status {
+            case .sending:
+                Image(systemName: "clock").font(.system(size: 9, weight: .semibold))
+            case .sent:
+                Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+            case .failed:
+                Image(systemName: "exclamationmark.circle.fill").font(.system(size: 10, weight: .semibold))
+            case nil:
+                EmptyView()
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(.black.opacity(0.45), in: Capsule())
+        .foregroundStyle(.white)
+        .padding(6)
+    }
+
     private func mask(round: Bool, corners: AlbumCorners) -> AnyShape {
         if round { return AnyShape(Circle()) }
         return AnyShape(UnevenRoundedRectangle(
-            topLeadingRadius: corners.topLeft ? 12 : 0,
-            bottomLeadingRadius: corners.bottomLeft ? 12 : 0,
-            bottomTrailingRadius: corners.bottomRight ? 12 : 0,
-            topTrailingRadius: corners.topRight ? 12 : 0,
+            topLeadingRadius: corners.topLeft ? cornerRadius : 2,
+            bottomLeadingRadius: corners.bottomLeft ? cornerRadius : 2,
+            bottomTrailingRadius: corners.bottomRight ? cornerRadius : 2,
+            topTrailingRadius: corners.topRight ? cornerRadius : 2,
             style: .continuous
         ))
     }

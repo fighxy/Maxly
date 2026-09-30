@@ -30,6 +30,8 @@ public final class ChatViewModel {
     public var viewer: MediaViewerRequest?
     /// Открытый файл.
     public var openedFile: OpenedFile?
+    /// Вложение, для которого сейчас запрашивается ссылка или качается файл: пузырь рисует на нём загрузку.
+    public private(set) var loadingMediaId: String?
     /// Диалог открыт из контактов, и на сервере его может ещё не быть: пустая история не
     /// ошибка, экран предлагает написать первое сообщение.
     public let isNewDialog: Bool
@@ -37,6 +39,10 @@ public final class ChatViewModel {
     @ObservationIgnored private let repository: any MessageRepository
     @ObservationIgnored private let drafts: (any ChatDraftStore)?
     @ObservationIgnored private let media: (any MediaRepository)?
+    @ObservationIgnored private let links: (any MediaLinkResolver)?
+    /// Прямые адреса видео, полученные у сервера за время жизни экрана.
+    @ObservationIgnored private var resolvedVideos: [String: URL] = [:]
+    @ObservationIgnored private var mediaTask: Task<Void, Never>?
     @ObservationIgnored private let voice: (any VoicePlaying)?
     @ObservationIgnored private let draftDelay: Duration
     @ObservationIgnored private var watch: Task<Void, Never>?
@@ -58,6 +64,7 @@ public final class ChatViewModel {
         drafts: (any ChatDraftStore)? = nil,
         draftDelay: Duration = .milliseconds(500),
         media: (any MediaRepository)? = nil,
+        links: (any MediaLinkResolver)? = nil,
         voice: (any VoicePlaying)? = nil,
         isNewDialog: Bool = false
     ) {
@@ -68,6 +75,7 @@ public final class ChatViewModel {
         self.drafts = drafts
         self.draftDelay = draftDelay
         self.media = media
+        self.links = links
         self.voice = voice
     }
 
@@ -115,6 +123,9 @@ public final class ChatViewModel {
         stopVoice()
         fileTask?.cancel()
         fileTask = nil
+        mediaTask?.cancel()
+        mediaTask = nil
+        loadingMediaId = nil
         openedFile = nil
         flushDraft()
     }
@@ -230,17 +241,52 @@ public final class ChatViewModel {
         return model
     }
 
+    /// Открывает просмотр фото и видео сообщения. У видео из Max нет адреса в самом вложении:
+    /// перед открытием экран спрашивает у сервера прямые ссылки на ролики этого сообщения.
     public func presentMedia(_ message: Message, startId: String) {
+        mediaTask?.cancel()
+        loadingMediaId = nil
+        let pending = message.content.visuals.compactMap(\.video)
+            .filter { $0.playbackURL == nil && resolvedVideos[$0.id] == nil }
+        guard let links, !pending.isEmpty else {
+            showViewer(message, startId: startId)
+            return
+        }
+        loadingMediaId = startId
+        mediaTask = Task {
+            for video in pending {
+                guard !Task.isCancelled else { return }
+                if let url = try? await links.link(
+                    chatId: message.chatId,
+                    messageId: message.serverId ?? message.id,
+                    kind: .video,
+                    attachmentId: video.id
+                ) {
+                    resolvedVideos[video.id] = url
+                }
+            }
+            guard !Task.isCancelled else { return }
+            loadingMediaId = nil
+            showViewer(message, startId: startId)
+        }
+    }
+
+    private func showViewer(_ message: Message, startId: String) {
         let slides = message.content.visuals.compactMap { attachment -> MediaSlide? in
             if let photo = attachment.photo {
                 guard photo.displayURL != nil else { return nil }
                 return MediaSlide(id: photo.id, stillURL: photo.displayURL, playURL: nil, isVideo: false)
             }
             if let video = attachment.video {
-                guard video.displayURL != nil || video.playbackURL != nil else { return nil }
-                return MediaSlide(id: video.id, stillURL: video.displayURL, playURL: video.playbackURL, isVideo: video.playbackURL != nil)
+                let play = video.playbackURL ?? resolvedVideos[video.id]
+                guard video.displayURL != nil || play != nil else { return nil }
+                return MediaSlide(id: video.id, stillURL: video.displayURL, playURL: play, isVideo: play != nil)
             }
             return nil
+        }
+        let tappedVideo = message.content.visuals.compactMap(\.video).first { $0.id == startId }
+        if let tappedVideo, tappedVideo.playbackURL == nil, resolvedVideos[tappedVideo.id] == nil {
+            show(.rejected("Видео не удалось загрузить"))
         }
         guard slides.contains(where: { $0.id == startId }) else { return }
         viewer = MediaViewerRequest(id: startId, slides: slides)
@@ -374,22 +420,60 @@ public final class ChatViewModel {
         guard let file = message.content.files.first(where: { $0.id == attachmentId }) else { return }
         if let local = file.fileURL {
             guard !Task.isCancelled else { return }
-            openedFile = OpenedFile(id: file.id, url: local, name: file.name)
+            openedFile = OpenedFile(id: file.id, url: Self.namedCopy(of: local, name: file.name, id: file.id), name: file.name)
             return
         }
-        guard let item = file.cacheItem(), let media else { return }
+        guard let media else { return }
+        loadingMediaId = file.id
+        defer { if loadingMediaId == file.id { loadingMediaId = nil } }
         do {
+            var item = file.cacheItem()
+            if item == nil, let links {
+                // У файла из Max в сообщении только id: адрес выдаёт сервер (`FILE_DOWNLOAD`).
+                let url = try await links.link(
+                    chatId: message.chatId,
+                    messageId: message.serverId ?? message.id,
+                    kind: .file,
+                    attachmentId: file.id
+                )
+                item = MediaItem(id: file.id, type: .file, url: url, size: file.size, localPath: nil)
+            }
+            guard let item else {
+                show(.rejected("Файл недоступен"))
+                return
+            }
             let saved = try await media.preview(for: item)
             guard !Task.isCancelled else { return }
             await repository.noteDownloaded(messageId: message.id, attachmentId: file.id, localPath: saved.path)
             guard !Task.isCancelled else { return }
-            openedFile = OpenedFile(id: file.id, url: saved, name: file.name)
+            openedFile = OpenedFile(id: file.id, url: Self.namedCopy(of: saved, name: file.name, id: file.id), name: file.name)
         } catch let failure as OrbitleError {
             guard !Task.isCancelled else { return }
             show(failure)
         } catch {
             guard !Task.isCancelled else { return }
             show(.storageError)
+        }
+    }
+
+    /// Предпросмотр узнаёт тип файла по расширению, а в кэше файл лежит под id. Отдаём копию
+    /// с настоящим именем во временной папке.
+    static func namedCopy(of url: URL, name: String, id: String) -> URL {
+        let safe = name.replacingOccurrences(of: "/", with: "_").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !safe.isEmpty, safe != url.lastPathComponent else { return url }
+        let folder = id.filter { $0.isLetter || $0.isNumber }
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "OrbitleFiles", directoryHint: .isDirectory)
+            .appending(path: folder.isEmpty ? "file" : folder, directoryHint: .isDirectory)
+        let target = directory.appending(path: safe)
+        let manager = FileManager.default
+        if manager.fileExists(atPath: target.path) { return target }
+        do {
+            try manager.createDirectory(at: directory, withIntermediateDirectories: true)
+            try manager.copyItem(at: url, to: target)
+            return target
+        } catch {
+            return url
         }
     }
 

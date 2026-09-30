@@ -195,6 +195,20 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func mediaLink(chatId: String, messageId: String, kind: String, attachmentId: String) async throws -> String {
+        try await call("mediaLink") { done in
+            self.client.mediaLink(chatId: chatId, messageId: messageId, kind: kind, attachmentId: attachmentId) { url, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else if let url, !url.isEmpty {
+                    done(.success(url))
+                } else {
+                    done(.failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)))
+                }
+            }
+        }
+    }
+
     func setPinnedChats(_ chatIds: [String]) async throws -> [String] {
         try await call("setPinnedChats") { done in
             self.client.setPinnedChats(chatIds: chatIds) { ids, kind, key in

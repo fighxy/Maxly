@@ -7,6 +7,8 @@ struct ChatView: View {
     @Bindable var viewModel: ChatViewModel
     var title: String
     var allowsComments = false
+    /// В группе у чужих сообщений видны имя и аватар автора, в личном чате и канале — нет.
+    var chatType: ChatType = .private
     /// Модель профиля чата для перехода по нажатию на заголовок.
     var makeProfile: (() -> ChatProfileViewModel?)?
     @Environment(\.scenePhase) private var scenePhase
@@ -16,7 +18,7 @@ struct ChatView: View {
         ScrollViewReader { proxy in
             GeometryReader { geo in
                 ScrollView {
-                    LazyVStack(spacing: 8) {
+                    LazyVStack(spacing: 2) {
                         if let hint = viewModel.emptyHint {
                             VStack(spacing: 12) {
                                 OrbitleMark(size: 56)
@@ -34,13 +36,18 @@ struct ChatView: View {
                                 .padding(.top, 8)
                         }
                         ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, message in
+                            if startsDay(at: index) {
+                                DaySeparator(ChatContentFormat.dayTitle(message.timestamp))
+                            }
                             TranscriptBubble(
                                 message: message,
                                 viewModel: viewModel,
                                 maxWidth: geo.size.width * OrbitleTheme.bubbleMax,
                                 allowsComments: allowsComments,
-                                showsAuthorName: authorName(at: index),
-                                showsAuthorAvatar: authorAvatar(at: index)
+                                showsAuthorName: showsAuthors && authorName(at: index),
+                                showsAuthorAvatar: showsAuthors && authorAvatar(at: index),
+                                reservesAvatar: showsAuthors,
+                                group: group(at: index)
                             )
                             .id(message.id)
                         }
@@ -143,6 +150,26 @@ struct ChatView: View {
         .padding(.bottom, 8)
     }
 
+    private var showsAuthors: Bool { chatType == .group }
+
+    private func startsDay(at index: Int) -> Bool {
+        let messages = viewModel.messages
+        return ChatContentFormat.startsDay(messages[index].timestamp, after: index > 0 ? messages[index - 1].timestamp : nil)
+    }
+
+    private func group(at index: Int) -> BubbleGroup {
+        let messages = viewModel.messages
+        let message = messages[index]
+        let previous = index > 0 ? messages[index - 1] : nil
+        let next = index + 1 < messages.count ? messages[index + 1] : nil
+        return ChatContentFormat.group(
+            authorId: message.authorId,
+            date: message.timestamp,
+            previous: previous.map { (authorId: $0.authorId, date: $0.timestamp) },
+            next: next.map { (authorId: $0.authorId, date: $0.timestamp) }
+        )
+    }
+
     private func authorName(at index: Int) -> Bool {
         let messages = viewModel.messages
         let message = messages[index]
@@ -204,6 +231,8 @@ private struct TranscriptBubble: View {
     let allowsComments: Bool
     let showsAuthorName: Bool
     let showsAuthorAvatar: Bool
+    let reservesAvatar: Bool
+    let group: BubbleGroup
 
     var body: some View {
         let voiceId = message.content.voices.first?.id
@@ -216,6 +245,9 @@ private struct TranscriptBubble: View {
             highlighted: viewModel.highlightedId == message.id,
             showsAuthorName: showsAuthorName,
             showsAuthorAvatar: showsAuthorAvatar,
+            reservesAvatar: reservesAvatar,
+            group: group,
+            loadingId: viewModel.loadingMediaId,
             onRetry: { Task { await viewModel.retry(id: message.id) } },
             onReply: { viewModel.beginReply(to: message) },
             onReact: { emoji in Task { await viewModel.toggleReaction(messageId: message.id, emoji: emoji) } },
