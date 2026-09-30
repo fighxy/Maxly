@@ -2,14 +2,16 @@ import SwiftUI
 import OrbitleDomain
 import OrbitlePresentation
 
-/// Плашки реакций под пузырём: эмодзи и число, своя — цветом акцента. Нажатие ставит
-/// реакцию или снимает свою. Плашки плоские: это содержимое ленты, а не плавающие кнопки.
+/// Плашки реакций: эмодзи и число, своя — цветом акцента. Нажатие ставит реакцию или
+/// снимает свою. Обычно они внутри пузыря, под текстом; у фото без подписи — под ним.
 struct ReactionChips: View {
     let reactions: [MessageReaction]
     /// Ряды прижаты к краю пузыря: у исходящих — к правому.
     var trailing = false
     /// `false`: только показать (сообщение ещё не на сервере или реакции недоступны).
     var interactive = true
+    /// Плашки лежат на своём (цветном) пузыре: светлые на цветном фоне.
+    var onOutgoing = false
     let onToggle: (String) -> Void
 
     @State private var taps = 0
@@ -42,8 +44,8 @@ struct ReactionChips: View {
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
             .frame(minHeight: 28)
-            .foregroundStyle(reaction.mine ? Color.white : Color.primary)
-            .background(reaction.mine ? Color.orbitleAccent : Color.secondary.opacity(0.15), in: Capsule())
+            .foregroundStyle(foreground(reaction))
+            .background(background(reaction), in: Capsule())
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -51,6 +53,18 @@ struct ReactionChips: View {
         .accessibilityLabel("\(reaction.emoji), \(reaction.count)")
         .accessibilityValue(reaction.mine ? "Ваша реакция" : "")
         .accessibilityHint(interactive ? (reaction.mine ? "Убрать реакцию" : "Поставить эту реакцию") : "")
+    }
+}
+
+extension ReactionChips {
+    fileprivate func foreground(_ reaction: MessageReaction) -> Color {
+        if onOutgoing { return reaction.mine ? Color.orbitleOutgoing : Color.white }
+        return reaction.mine ? Color.white : Color.primary
+    }
+
+    fileprivate func background(_ reaction: MessageReaction) -> Color {
+        if onOutgoing { return reaction.mine ? Color.white : Color.white.opacity(0.22) }
+        return reaction.mine ? Color.orbitleAccent : Color.secondary.opacity(0.15)
     }
 }
 

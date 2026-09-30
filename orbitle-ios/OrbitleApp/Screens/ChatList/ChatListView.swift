@@ -8,7 +8,6 @@ import OrbitleUI
 struct ChatListView: View {
     @Bindable var viewModel: ChatListViewModel
     @Binding var selection: String?
-    @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var composeShown = false
 
     var body: some View {
@@ -31,9 +30,7 @@ struct ChatListView: View {
         .navigationTitle(viewModel.navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
-        // Список остаётся корнем стека и перерисовывается при каждом обновлении: пока поверх
-        // открыт чат (узкий экран), он тоже должен прятать таб-бар, иначе панель выскакивает.
-        .toolbar(viewModel.isEditing || viewModel.isSearchActive || (sizeClass == .compact && selection != nil) ? .hidden : .automatic, for: .tabBar)
+        .toolbar(viewModel.isEditing || viewModel.isSearchActive ? .hidden : .automatic, for: .tabBar)
         .refreshable { await viewModel.refresh() }
         .task {
             viewModel.activate()

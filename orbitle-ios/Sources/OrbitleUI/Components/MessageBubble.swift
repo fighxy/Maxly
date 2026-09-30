@@ -138,12 +138,14 @@ public struct MessageBubble: View {
                         .font(.caption2)
                         .foregroundStyle(.red)
                 }
-                ReactionChips(
-                    reactions: message.content.reactions,
-                    trailing: isOutgoing,
-                    interactive: allowsReactions,
-                    onToggle: onReact
-                )
+                if !reactionsInside {
+                    ReactionChips(
+                        reactions: message.content.reactions,
+                        trailing: isOutgoing,
+                        interactive: allowsReactions,
+                        onToggle: onReact
+                    )
+                }
             }
             .frame(maxWidth: bubbleWidth, alignment: isOutgoing ? .trailing : .leading)
             if !isOutgoing { Spacer(minLength: 40) }
@@ -324,7 +326,7 @@ public struct MessageBubble: View {
     }
 
     private var bubble: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        BubbleColumn {
             header
             if !visuals.isEmpty {
                 media
@@ -352,7 +354,7 @@ public struct MessageBubble: View {
             }
             if hasText {
                 textBody
-            } else if visuals.isEmpty, message.content.voices.isEmpty {
+            } else if visuals.isEmpty, message.content.voices.isEmpty, !reactionsInside {
                 // Пустое сообщение, только файл или контакт: время отдельной строкой.
                 if message.content.files.isEmpty, message.content.contacts.isEmpty {
                     Text(message.text.isEmpty ? " " : message.text)
@@ -365,6 +367,9 @@ public struct MessageBubble: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.bottom, 6)
+            }
+            if reactionsInside {
+                reactionsRow
             }
             if showsComments {
                 commentsFooter
@@ -436,16 +441,52 @@ public struct MessageBubble: View {
                 text: message.displayText,
                 spans: message.content.formatting ?? [],
                 outgoing: isOutgoing,
-                trailingSpace: "\u{2007}\u{2007}" + metaPlaceholder
+                trailingSpace: timeInReactions ? "" : "\u{2007}\u{2007}" + metaPlaceholder
             )
             .textSelection(.enabled)
-            meta
+            if !timeInReactions {
+                meta
+            }
         }
         // Рядом с медиа, голосовым или файлом пузырь уже широкий: время уходит к его правому краю.
         .frame(maxWidth: stretchesText ? .infinity : nil, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.top, hasHeader || !visuals.isEmpty ? 5 : 7)
-        .padding(.bottom, 6)
+        .padding(.bottom, reactionsInside ? 4 : 6)
+    }
+
+    // MARK: Реакции в пузыре
+
+    /// Реакции лежат внутри пузыря, если у него есть подложка (фото без подписи — под ним).
+    private var reactionsInside: Bool {
+        hasFill && !message.content.reactions.isEmpty
+    }
+
+    /// Время переезжает из текста в ряд реакций, как в привычных мессенджерах. У голосового
+    /// оно остаётся у дорожки.
+    private var timeInReactions: Bool {
+        reactionsInside && message.content.voices.isEmpty
+    }
+
+    private var reactionsRow: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            ReactionChips(
+                reactions: message.content.reactions,
+                interactive: allowsReactions,
+                onOutgoing: isOutgoing,
+                onToggle: onReact
+            )
+            .layoutPriority(1)
+            if timeInReactions {
+                Spacer(minLength: 0)
+                meta
+                    .padding(.bottom, 2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.top, hasText ? 0 : 6)
+        .padding(.bottom, 8)
     }
 
     private var metaPlaceholder: String {

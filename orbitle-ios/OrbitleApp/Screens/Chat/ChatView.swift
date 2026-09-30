@@ -123,7 +123,9 @@ struct ChatView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { composer }
-        .toolbar(sizeClass == .compact ? .hidden : .automatic, for: .tabBar)
+        // Панель видна только на широком экране. Пока класс размера неизвестен (переходы),
+        // она тоже скрыта: иначе на миг выскакивает.
+        .toolbar(sizeClass == .regular ? .automatic : .hidden, for: .tabBar)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -214,9 +216,10 @@ struct ChatView: View {
         .onChange(of: viewModel.forwardCandidate?.id) { _, id in
             if id != nil { forwardList = forwardTargets() }
         }
-        .task(id: chatType == .channel ? viewModel.messages.count : -1) {
-            guard chatType == .channel, !viewModel.messages.isEmpty else { return }
-            // Реакции постов: история канала их не несёт. Пауза — лента догружается пачками.
+        .task(id: viewModel.messages.count) {
+            guard !viewModel.messages.isEmpty else { return }
+            // Реакции показанных сообщений: история канала их не несёт, а в пушах нет своей
+            // реакции, поставленной с другого устройства. Пауза — лента догружается пачками.
             try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled else { return }
             viewModel.requestReactions(for: viewModel.messages)
