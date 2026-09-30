@@ -9,6 +9,9 @@ struct ChatListView: View {
     @Bindable var viewModel: ChatListViewModel
     @Binding var selection: String?
     @State private var composeShown = false
+    /// Настройка приватного режима для плавающей кнопки. `nil` в превью без контейнера.
+    @Environment(PrivateModeSettings.self) private var privateModeSettings: PrivateModeSettings?
+    @Environment(\.privateMode) private var privateMode
 
     var body: some View {
         Group {
@@ -27,6 +30,7 @@ struct ChatListView: View {
             if viewModel.isEditing { editBar }
         }
         .overlay { placeholder }
+        .overlay(alignment: .bottomTrailing) { privateModeButton }
         .navigationTitle(viewModel.navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
@@ -371,6 +375,33 @@ struct ChatListView: View {
         }
     }
 
+    // MARK: Приватный режим
+
+    /// Плавающая стеклянная кнопка с глазом: включает и выключает приватный режим одним нажатием.
+    /// Прячется при правке и поиске, а в «Безопасности» её можно убрать совсем.
+    @ViewBuilder
+    private var privateModeButton: some View {
+        if let settings = privateModeSettings, settings.showsQuickToggle,
+           !viewModel.isEditing, !viewModel.isSearchActive {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { settings.toggle() }
+            } label: {
+                Image(systemName: settings.isEnabled ? "eye.slash.fill" : "eye")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(settings.isEnabled ? Color.orbitleAccent : Color.primary)
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 52, height: 52)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .orbitleGlassCircle(size: 52)
+            .padding(.trailing, OrbitleTheme.pad)
+            .padding(.bottom, 12)
+            .accessibilityLabel(settings.isEnabled ? "Выключить приватный режим" : "Включить приватный режим")
+            .transition(.scale.combined(with: .opacity))
+        }
+    }
+
     // MARK: Удаление
 
     private var deletionShown: Binding<Bool> {
@@ -382,20 +413,26 @@ struct ChatListView: View {
 
     private var deletionTitle: String {
         guard let item = viewModel.deletionCandidate else { return "" }
+        // Название чата не должно всплыть в диалоге, пока включён приватный режим.
+        if privateMode.isMasked { return "Удалить этот чат?" }
         return "Удалить чат «\(item.title)»?"
     }
 }
 
 /// Найденный на сервере чат, которого нет в списке.
+/// В приватном режиме вместо имени «Чат», подпись (ник, число участников) скрыта.
 private struct GlobalResultRow: View {
     let result: ChatSearchResult
+    @Environment(\.privateMode) private var privateMode
 
     var body: some View {
         HStack(spacing: 12) {
             AvatarView(title: result.title, id: result.id, url: result.avatarURL, size: OrbitleTheme.smallAvatar)
             VStack(alignment: .leading, spacing: 2) {
-                Text(result.title).font(.body.weight(.semibold)).lineLimit(1)
-                if let subtitle = result.subtitle {
+                PrivateText(result.title, placeholder: PrivateModeMask.searchResultTitle)
+                    .font(.body.weight(.semibold))
+                    .lineLimit(1)
+                if let subtitle = result.subtitle, !privateMode.isMasked {
                     Text(subtitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
                 }
             }

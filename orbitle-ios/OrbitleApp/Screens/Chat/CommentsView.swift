@@ -5,9 +5,13 @@ import OrbitleUI
 
 /// Комментарии поста канала в модальном окне: сверху пост, под ним обсуждение с авторами,
 /// внизу поле ввода. Кнопка «Закрыть» в навигационной панели.
+/// В приватном режиме пост и комментарии закрыты, как пузыри чата, и открываются касанием.
 struct CommentsView: View {
     @Bindable var model: CommentsViewModel
     let onClose: () -> Void
+    @State private var reveal = PrivateModeReveal()
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.privateMode) private var privateMode
 
     var body: some View {
         NavigationStack {
@@ -39,19 +43,55 @@ struct CommentsView: View {
                 }
             }
             .task { await model.load() }
+            .onDisappear { reveal.hideAll() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase != .active { reveal.hideAll() }
+            }
+            .onChange(of: privateMode) { _, _ in reveal.hideAll() }
         }
+    }
+
+    /// Пузырь за шторкой приватного режима: заглушка без имени, медиа и реакций.
+    private func gated<Real: View>(
+        _ message: Message,
+        outgoing: Bool,
+        width: CGFloat,
+        showsAuthorAvatar: Bool = false,
+        reservesAvatar: Bool = false,
+        group: BubbleGroup = .single,
+        @ViewBuilder real: () -> Real
+    ) -> some View {
+        PrivateBubbleGate(
+            isRevealed: reveal.isRevealed(message.id),
+            accessibilityText: PrivateModeMask.messageText(outgoing: outgoing),
+            onReveal: { withAnimation(.easeInOut(duration: 0.15)) { reveal.reveal(message.id) } },
+            real: real,
+            masked: {
+                MessageBubble(
+                    message: PrivateModeMask.message(message, outgoing: outgoing),
+                    isOutgoing: outgoing,
+                    maxWidth: width * OrbitleTheme.bubbleMax,
+                    showsAuthorAvatar: showsAuthorAvatar,
+                    reservesAvatar: reservesAvatar,
+                    group: group,
+                    allowsReactions: false
+                )
+            }
+        )
     }
 
     // MARK: Пост
 
     private func post(width: CGFloat) -> some View {
         VStack(spacing: 6) {
-            MessageBubble(
-                message: model.post,
-                isOutgoing: false,
-                maxWidth: width * OrbitleTheme.bubbleMax,
-                allowsReactions: false
-            )
+            gated(model.post, outgoing: false, width: width) {
+                MessageBubble(
+                    message: model.post,
+                    isOutgoing: false,
+                    maxWidth: width * OrbitleTheme.bubbleMax,
+                    allowsReactions: false
+                )
+            }
             DaySeparator("Начало обсуждения")
         }
         .padding(.bottom, 4)
@@ -111,19 +151,28 @@ struct CommentsView: View {
             previous: previous.map { (authorId: $0.authorId, date: $0.timestamp) },
             next: next.map { (authorId: $0.authorId, date: $0.timestamp) }
         )
-        return MessageBubble(
-            message: comment,
-            isOutgoing: outgoing,
-            maxWidth: width * OrbitleTheme.bubbleMax,
-            showsAuthorName: !outgoing && !group.joinsPrevious,
+        return gated(
+            comment,
+            outgoing: outgoing,
+            width: width,
             showsAuthorAvatar: !outgoing && !group.joinsNext,
             reservesAvatar: !outgoing,
-            group: group,
-            onRetry: { Task { await model.retry(comment.id) } },
-            onReact: { emoji in Task { await model.toggleReaction(commentId: comment.id, emoji: emoji) } },
-            allowsReactions: model.canReact(comment),
-            quickReactions: model.quickReactions(for: comment)
-        )
+            group: group
+        ) {
+            MessageBubble(
+                message: comment,
+                isOutgoing: outgoing,
+                maxWidth: width * OrbitleTheme.bubbleMax,
+                showsAuthorName: !outgoing && !group.joinsPrevious,
+                showsAuthorAvatar: !outgoing && !group.joinsNext,
+                reservesAvatar: !outgoing,
+                group: group,
+                onRetry: { Task { await model.retry(comment.id) } },
+                onReact: { emoji in Task { await model.toggleReaction(commentId: comment.id, emoji: emoji) } },
+                allowsReactions: model.canReact(comment),
+                quickReactions: model.quickReactions(for: comment)
+            )
+        }
     }
 
     // MARK: Ввод

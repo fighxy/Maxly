@@ -32,6 +32,10 @@ struct ChatView: View {
     @State private var unseen = 0
     private static let bottomId = "transcript-bottom"
     @Environment(\.horizontalSizeClass) private var sizeClass
+    /// Приватный режим: пузыри закрыты заглушкой или размытием, касание открывает на время.
+    @Environment(\.privateMode) private var privateMode
+    @Environment(PrivateModeSettings.self) private var privateModeSettings: PrivateModeSettings?
+    @State private var reveal = PrivateModeReveal()
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -68,7 +72,8 @@ struct ChatView: View {
                                 reservesAvatar: showsAuthors,
                                 group: group(at: index),
                                 canWrite: canWrite,
-                                showsReactionUsers: chatType == .group
+                                showsReactionUsers: chatType == .group,
+                                reveal: reveal
                             )
                             .id(message.id)
                         }
@@ -131,11 +136,16 @@ struct ChatView: View {
                 }
             }
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if privateMode.isMasked { privateModeBanner }
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) { composer }
         // Панель видна только на широком экране. Пока класс размера неизвестен (переходы),
         // она тоже скрыта: иначе на миг выскакивает.
         .toolbar(sizeClass == .regular ? .automatic : .hidden, for: .tabBar)
-        .navigationTitle(title)
+        // Системный заголовок (и подпись кнопки «назад» следующего экрана) размыть нельзя:
+        // в приватном режиме там всегда общее «Личный чат» / «Групповой чат».
+        .navigationTitle(shownTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let makeProfile {
@@ -143,12 +153,12 @@ struct ChatView: View {
                     NavigationLink {
                         ProfileDestination(make: makeProfile)
                     } label: {
-                        Text(title)
+                        PrivateText(title, placeholder: maskedTitle)
                             .font(.headline)
                             .lineLimit(1)
                             .foregroundStyle(.primary)
                     }
-                    .accessibilityLabel("\(title), открыть профиль")
+                    .accessibilityLabel("\(shownTitle), открыть профиль")
                 }
             }
         }
@@ -165,6 +175,7 @@ struct ChatView: View {
                 onPick: { emoji in Task { await viewModel.pickReaction(emoji) } },
                 onClose: { viewModel.reactionPickerTarget = nil }
             )
+            .environment(\.privateMode, .visible)
         }
         .sheet(isPresented: $attachmentsShown) {
             AttachmentSheet(
@@ -177,15 +188,21 @@ struct ChatView: View {
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+            // Лист вложений — своя галерея и контакты, выбор идёт осознанно.
+            .environment(\.privateMode, .visible)
         }
         .sheet(item: $viewModel.reactionUsers) { model in
+            // Открывается из открытого пузыря — значит, смотреть его хотят.
             ReactionUsersView(model: model) { viewModel.reactionUsers = nil }
+                .environment(\.privateMode, .visible)
         }
         .fullScreenCover(item: $viewModel.viewer) { request in
             MediaViewer(request: request, download: { await viewModel.downloadVideo($0) }) { viewModel.viewer = nil }
+                .environment(\.privateMode, .visible)
         }
         .fullScreenCover(item: $viewModel.openedFile) { file in
             FileQuickLook(url: file.url, title: file.name) { viewModel.openedFile = nil }
+                .environment(\.privateMode, .visible)
         }
         .overlay {
             if recording.isVideo {
@@ -204,7 +221,10 @@ struct ChatView: View {
         .onDisappear {
             recording.cancel()
             viewModel.deactivate()
+            reveal.hideAll()
         }
+        // Режим выключили или сменили вид — открытые пузыри снова закрыты при следующем включении.
+        .onChange(of: privateMode) { _, _ in reveal.hideAll() }
         .animation(.default, value: viewModel.notice)
         .confirmationDialog(
             "Удалить сообщение?",
@@ -258,10 +278,60 @@ struct ChatView: View {
             if id != nil { composerFocused = true }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { viewModel.flushDraft() }
+            if phase != .active {
+                viewModel.flushDraft()
+                // Свернули приложение — открытые сообщения снова закрыты.
+                reveal.hideAll()
+            }
             // Пуши реакций, пока приложение было в фоне, могли потеряться: сверить с сервером.
             if phase == .active { Task { await viewModel.refreshReactions() } }
         }
+    }
+
+    /// Заголовок для системы: в приватном режиме общий, иначе название чата.
+    private var shownTitle: String {
+        privateMode.isMasked ? maskedTitle : title
+    }
+
+    private var maskedTitle: String {
+        PrivateModeMask.chatTitle(type: chatType, isSavedMessages: viewModel.isSavedMessages)
+    }
+
+    /// Верх ленты в приватном режиме: стеклянная капсула «Отключить приватный режим»
+    /// и подсказка, что сообщение открывается касанием.
+    private var privateModeBanner: some View {
+        OrbitleGlassGroup(spacing: 6) {
+            VStack(spacing: 6) {
+                if let settings = privateModeSettings {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { settings.setEnabled(false) }
+                    } label: {
+                        Label("Отключить приватный режим", systemImage: "eye.slash")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .orbitleGlassCapsule()
+                }
+                if !viewModel.messages.isEmpty {
+                    Text(PrivateModeMask.revealHint)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .orbitleGlassRounded(radius: 14)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, OrbitleTheme.pad)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
 
     /// Плавающий пузырь ввода: капсула поля и кнопка отправки на стекле (iOS 26),
@@ -416,7 +486,7 @@ struct ChatView: View {
                 Text("Редактирование")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.orbitleAccent)
-                Text(message.text)
+                Text(privateMode.isMasked ? PrivateModeMask.messageText(outgoing: true) : message.text)
                     .font(.subheadline)
                     .lineLimit(1)
                     .foregroundStyle(.secondary)
@@ -574,11 +644,11 @@ struct ChatView: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Color.orbitleAccent)
             VStack(alignment: .leading, spacing: 1) {
-                Text(replyTitle(message))
+                Text(privateMode.isMasked ? "Ответ" : replyTitle(message))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.orbitleAccent)
                     .lineLimit(1)
-                Text(message.replySnippet)
+                Text(privateMode.isMasked ? PrivateModeMask.messageText(outgoing: viewModel.isOutgoing(message)) : message.replySnippet)
                     .font(.subheadline)
                     .lineLimit(1)
                     .foregroundStyle(.secondary)
@@ -621,13 +691,37 @@ private struct TranscriptBubble: View {
     let canWrite: Bool
     /// «Кто отреагировал» — в группах. В личном чате и так видно, в канале — только числа.
     let showsReactionUsers: Bool
+    /// Какие сообщения открыты касанием в приватном режиме.
+    let reveal: PrivateModeReveal
 
     var body: some View {
+        let outgoing = viewModel.isOutgoing(message)
+        PrivateBubbleGate(
+            isRevealed: reveal.isRevealed(message.id),
+            accessibilityText: PrivateModeMask.messageText(outgoing: outgoing),
+            onReveal: { withAnimation(.easeInOut(duration: 0.15)) { reveal.reveal(message.id) } }
+        ) {
+            bubble(outgoing: outgoing)
+        } masked: {
+            // Заглушка: «Вы получили сообщение», время и галочки; без имени, медиа и реакций.
+            MessageBubble(
+                message: PrivateModeMask.message(message, outgoing: outgoing),
+                isOutgoing: outgoing,
+                maxWidth: maxWidth,
+                highlighted: viewModel.highlightedId == message.id,
+                showsAuthorAvatar: showsAuthorAvatar,
+                reservesAvatar: reservesAvatar,
+                group: group
+            )
+        }
+    }
+
+    private func bubble(outgoing: Bool) -> some View {
         let reacts = viewModel.canReact(message)
         let voiceId = message.content.voices.first?.id
-        MessageBubble(
+        return MessageBubble(
             message: message,
-            isOutgoing: viewModel.isOutgoing(message),
+            isOutgoing: outgoing,
             maxWidth: maxWidth,
             phase: voiceId.map { viewModel.voicePhase(for: $0) } ?? .idle,
             allowsComments: allowsComments,

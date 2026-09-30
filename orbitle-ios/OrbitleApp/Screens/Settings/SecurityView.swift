@@ -5,9 +5,11 @@ import OrbitleUI
 
 /// «Безопасность»: пароль и почта, семейная защита, безопасный режим, конфиденциальность,
 /// чёрный список. Настройки конфига меняются сразу и откатываются при отказе сервера.
+/// Приватный режим — локальная настройка устройства, сервер о нём не знает.
 struct SecurityView: View {
     @Bindable var account: AccountSettingsModel
     @Bindable var model: SecuritySettingsModel
+    @Bindable var privateMode: PrivateModeSettings
     let makeEmailFlow: @MainActor () -> RecoveryEmailFlow
     @State private var emailFlow: RecoveryEmailFlow?
     @State private var confirmHideOnline = false
@@ -69,6 +71,8 @@ struct SecurityView: View {
             .pickerStyle(.menu)
             .disabled(!account.settings.isKnown)
 
+            privateModeSection
+
             Section {
                 NavigationLink {
                     BlockedUsersView(model: model)
@@ -102,6 +106,44 @@ struct SecurityView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(account.errorMessage ?? model.errorMessage ?? "")
+        }
+    }
+
+    /// Приватный режим: скрывает названия чатов, аватары и тексты на этом устройстве.
+    private var privateModeSection: some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { privateMode.isEnabled },
+                set: { privateMode.setEnabled($0) }
+            )) {
+                SettingsRowLabel("Приватный режим", systemImage: "eye.slash.fill", tint: .indigo)
+            }
+            if privateMode.isEnabled {
+                Picker("Вид", selection: Binding(
+                    get: { privateMode.style },
+                    set: { privateMode.setStyle($0) }
+                )) {
+                    ForEach(PrivateModeStyle.allCases, id: \.self) { style in
+                        Text(style.title).tag(style)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+            Toggle("Кнопка в списке чатов", isOn: Binding(
+                get: { privateMode.showsQuickToggle },
+                set: { privateMode.setShowsQuickToggle($0) }
+            ))
+        } footer: {
+            Text(privateModeFooter)
+        }
+    }
+
+    private var privateModeFooter: String {
+        let base = "Названия чатов, аватары и сообщения скрываются от чужих глаз. Нажмите на сообщение, чтобы посмотреть его на 15 секунд. Действует только на этом устройстве, уведомления не меняются."
+        guard privateMode.isEnabled else { return base }
+        switch privateMode.style {
+        case .placeholder: return base + " Заглушки заменяют текст на «Вы получили сообщение»."
+        case .blur: return base + " Размытие оставляет видимыми длину и форму текста."
         }
     }
 

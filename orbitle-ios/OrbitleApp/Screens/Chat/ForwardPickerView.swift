@@ -17,7 +17,7 @@ struct ForwardPickerView: View {
                 } label: {
                     HStack(spacing: 12) {
                         ChatAvatarView(avatar: item.avatar, size: 44)
-                        Text(item.title)
+                        PrivateText(item.title, placeholder: PrivateModeMask.chatTitle(for: item))
                             .font(.body)
                             .foregroundStyle(.primary)
                             .lineLimit(1)

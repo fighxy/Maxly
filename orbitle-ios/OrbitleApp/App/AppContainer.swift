@@ -59,6 +59,8 @@ final class AppContainer {
     let crashDumps: CrashDumpStore?
     /// Размер текста и тема: одни на устройство, выход из аккаунта их не трогает.
     let appearance: AppearanceSettings
+    /// Приватный режим: тоже настройка устройства, выход из аккаунта её не сбрасывает.
+    let privateMode: PrivateModeSettings
 
     static let loggingKey = "orbitle.debug.logging"
 
@@ -84,6 +86,7 @@ final class AppContainer {
         if let pending { dumps?.save(pending) }
         crashDumps = dumps
         appearance = AppearanceSettings(store: UserDefaultsAppearanceStore())
+        privateMode = PrivateModeSettings(store: UserDefaultsPrivateModeStore())
         UserDefaults.standard.removeObject(forKey: Self.retiredLocalFiltersKey)
         logs = directory.map { FileLogStore(directory: $0, enabled: enabled) }
         if let logs { Log.sink = logs.sink }

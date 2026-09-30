@@ -271,6 +271,8 @@ struct ProfileDestination: View {
                 ProgressView()
             }
         }
+        // Профиль открывают осознанно, и приватный режим его не прячет.
+        .environment(\.privateMode, .visible)
         .onAppear {
             if model == nil { model = make() }
         }
