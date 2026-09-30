@@ -20,7 +20,11 @@ public final class CommentsViewModel {
     /// Пост, под которым обсуждение. Рисуется над комментариями.
     public let post: Message
     public let currentUserId: String
-    public private(set) var comments: [Message] = []
+    public private(set) var comments: [Message] = [] {
+        didSet { commentsChange = CollectionChange.between(oldValue.map(\.id), comments.map(\.id)) }
+    }
+    /// Как обсуждение изменилось последним обновлением: подгрузка старых — без анимации.
+    public private(set) var commentsChange: CollectionChange = .none
     public private(set) var state: State = .loading
     public private(set) var hasMore = true
     public private(set) var isLoadingOlder = false
