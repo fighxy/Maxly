@@ -488,6 +488,7 @@ extension FakeMaxCore {
     func failSession() { loadError = CoreFailure(kind: "SESSION_EXPIRED", key: nil) }
     func failLoad(kind: String) { loadError = CoreFailure(kind: kind, key: nil) }
     func setUser(_ id: String) { userId = id }
+    func setHistory(_ messages: [CoreMessage]) { history = messages }
     func setStoredToken(_ value: Bool) { storedToken = value }
     func setStartPhase(_ phase: CorePhase) { startPhase = phase }
     func setStartError(_ error: CoreFailure?) { startError = error }
