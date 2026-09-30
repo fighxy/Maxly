@@ -127,6 +127,41 @@ actor FakeMaxAPI: MaxAPI {
         if let pinError { return .failure(pinError) }
         return .success(chatIds)
     }
+
+    // MARK: Реакции
+
+    struct ReactionCall: Equatable, Sendable {
+        var messageId: String
+        var postId: String
+        var emoji: String?
+    }
+
+    /// Ответы на реакции по порядку. Когда кончаются, повторяется последний.
+    var reactionResults: [Result<ReactionUpdate?, MaxAPIError>] = [.success(nil)]
+    private(set) var reactionCalls: [ReactionCall] = []
+    /// Если задан, ответ на реакцию ждёт, пока тест его не откроет.
+    var reactionGate: Gate?
+    var fetchedReactions: Result<[String: ReactionUpdate], MaxAPIError> = .success([:])
+    private(set) var reactionFetches: [[String]] = []
+
+    func setReactionResults(_ results: [Result<ReactionUpdate?, MaxAPIError>]) { reactionResults = results }
+    func setReactionGate(_ gate: Gate?) { reactionGate = gate }
+    func setFetchedReactions(_ result: Result<[String: ReactionUpdate], MaxAPIError>) { fetchedReactions = result }
+
+    func setReaction(chatId: String, messageId: String, postId: String, emoji: String?) async -> Result<ReactionUpdate?, MaxAPIError> {
+        let index = min(reactionCalls.count, reactionResults.count - 1)
+        reactionCalls.append(ReactionCall(messageId: messageId, postId: postId, emoji: emoji))
+        let result = reactionResults[index]
+        if let reactionGate { await reactionGate.wait() }
+        return result
+    }
+
+    func fetchReactions(chatId: String, messageIds: [String]) async -> Result<[String: ReactionUpdate], MaxAPIError> {
+        reactionFetches.append(messageIds)
+        return fetchedReactions
+    }
+
+    func reactionCatalog() async -> Result<[String], MaxAPIError> { .success(["👍", "👍", "", "🔥"]) }
 }
 
 /// Репозиторий сообщений на базе в памяти с подключённой очередью без реальных задержек.

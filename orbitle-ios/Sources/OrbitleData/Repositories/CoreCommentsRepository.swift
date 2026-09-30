@@ -42,6 +42,17 @@ public struct CoreCommentsRepository: CommentsRepository {
         }
     }
 
+    public func setReaction(chatId: String, postId: String, commentId: String, emoji: String?) async throws(OrbitleError) -> ReactionUpdate? {
+        guard Int64(commentId) != nil else { throw .rejected("Комментарий ещё не отправлен") }
+        do {
+            let json = try await core.setReaction(chatId: chatId, messageId: commentId, postId: postId, emoji: emoji ?? "")
+            return MessageContentCodec.reactionUpdate(json)
+        } catch {
+            Log.warning(.messages, "Реакция на комментарий \(commentId) не изменена: \(error)")
+            throw CoreMapping.apiError(error).orbitleError
+        }
+    }
+
     private static func comment(_ message: CoreMessage, postId: String) -> Message {
         var domain = CoreMapping.message(message).domain
         domain.content.threadOf = postId

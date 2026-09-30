@@ -435,7 +435,8 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             timeMs: message.timeMs,
             contentJSON: message.contentJson,
             authorName: message.authorName,
-            authorAvatarURL: message.authorAvatarUrl
+            authorAvatarURL: message.authorAvatarUrl,
+            reactionsJSON: message.reactionsJson
         )
     }
 
@@ -453,7 +454,8 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             unread: Int(event.unread),
             contentJSON: event.contentJson,
             authorName: event.authorName,
-            authorAvatarURL: event.authorAvatarUrl
+            authorAvatarURL: event.authorAvatarUrl,
+            reactionsJSON: event.reactionsJson
         )
     }
 }

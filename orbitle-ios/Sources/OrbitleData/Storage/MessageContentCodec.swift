@@ -164,6 +164,22 @@ enum MessageContentCodec {
         }
     }
 
+    /// `reactionsJSON` ядра: `{counters:[{reaction, count}], totalCount, yourReaction}`.
+    /// `nil` для пустой строки и мусора: такие реакции источник не прислал. Без ключа
+    /// `yourReaction` своя реакция неизвестна, `null` в нём — своей нет.
+    static func reactionUpdate(_ json: String) -> ReactionUpdate? {
+        let trimmed = json.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8),
+              let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        let counters = (info["counters"] as? [Any] ?? []).compactMap { item -> ReactionUpdate.Counter? in
+            guard let counter = item as? [String: Any], let emoji = counter["reaction"] as? String, !emoji.isEmpty else { return nil }
+            return ReactionUpdate.Counter(emoji: emoji, count: max(0, integer(counter["count"]) ?? 0))
+        }
+        let known = info.keys.contains("yourReaction")
+        let mine = (info["yourReaction"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        return ReactionUpdate(counters: counters, mine: mine, mineKnown: known)
+    }
+
     private static func reactions(_ value: Any?) -> [MessageReaction] {
         guard let info = value as? [String: Any] else { return [] }
         let yours = info["yourReaction"] as? String

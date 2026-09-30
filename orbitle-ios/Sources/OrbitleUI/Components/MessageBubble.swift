@@ -38,6 +38,14 @@ public struct MessageBubble: View {
     private let onEdit: (() -> Void)?
     /// «Ответить» и свайп ответа есть, только если в чат можно писать.
     private let allowsReply: Bool
+    /// Реакции можно ставить: сообщение принято сервером. Иначе плашки только видны.
+    private let allowsReactions: Bool
+    /// Быстрый ряд реакций в меню.
+    private let quickReactions: [String]
+    /// «Ещё реакции…»: полный выбор. `nil` — пункта нет.
+    private let onMoreReactions: (() -> Void)?
+    /// «Кто отреагировал». `nil` — пункта нет.
+    private let onReactionUsers: (() -> Void)?
 
     /// Сдвиг пузыря при свайпе «ответить».
     @State private var swipe: CGFloat = 0
@@ -73,7 +81,11 @@ public struct MessageBubble: View {
         onForward: (() -> Void)? = nil,
         onDelete: (() -> Void)? = nil,
         onEdit: (() -> Void)? = nil,
-        allowsReply: Bool = true
+        allowsReply: Bool = true,
+        allowsReactions: Bool = true,
+        quickReactions: [String] = ReactionPalette.fallback,
+        onMoreReactions: (() -> Void)? = nil,
+        onReactionUsers: (() -> Void)? = nil
     ) {
         self.message = message
         self.isOutgoing = isOutgoing
@@ -99,6 +111,10 @@ public struct MessageBubble: View {
         self.onDelete = onDelete
         self.onEdit = onEdit
         self.allowsReply = allowsReply
+        self.allowsReactions = allowsReactions
+        self.quickReactions = quickReactions
+        self.onMoreReactions = onMoreReactions
+        self.onReactionUsers = onReactionUsers
     }
 
     public var body: some View {
@@ -114,7 +130,12 @@ public struct MessageBubble: View {
                         .font(.caption2)
                         .foregroundStyle(.red)
                 }
-                ReactionChips(reactions: message.content.reactions, onToggle: onReact)
+                ReactionChips(
+                    reactions: message.content.reactions,
+                    trailing: isOutgoing,
+                    interactive: allowsReactions,
+                    onToggle: onReact
+                )
             }
             .frame(maxWidth: bubbleWidth, alignment: isOutgoing ? .trailing : .leading)
             if !isOutgoing { Spacer(minLength: 40) }
@@ -126,16 +147,14 @@ public struct MessageBubble: View {
         .background(highlighted ? Color.orbitleAccent.opacity(0.12) : Color.clear)
         .animation(.easeInOut(duration: 0.25), value: highlighted)
         .contextMenu {
+            if allowsReactions {
+                reactionMenu
+            }
             if allowsReply {
                 Button("Ответить", systemImage: "arrowshape.turn.up.left", action: onReply)
             }
             if hasText {
                 Button("Копировать", systemImage: "doc.on.doc") { copyText() }
-            }
-            Menu("Реакция") {
-                ForEach(ReactionPalette.quick, id: \.self) { emoji in
-                    Button(emoji) { onReact(emoji) }
-                }
             }
             if allowsComments {
                 Button("Комментарии", systemImage: "bubble.left.and.bubble.right", action: onComments)
@@ -151,6 +170,36 @@ public struct MessageBubble: View {
                 Button("Удалить", systemImage: "trash", role: .destructive, action: onDelete)
             }
         }
+    }
+
+    // MARK: Реакции
+
+    /// Верх меню сообщения: ряд быстрых реакций (своя отмечена), затем «Убрать»,
+    /// «Ещё реакции…» и «Кто отреагировал».
+    @ViewBuilder
+    private var reactionMenu: some View {
+        let mine = message.content.reactions.mine
+        Picker("Реакция", selection: Binding(
+            get: { mine ?? "" },
+            set: { emoji in if !emoji.isEmpty { onReact(emoji) } }
+        )) {
+            ForEach(quickReactions, id: \.self) { emoji in
+                Text(emoji)
+                    .tag(emoji)
+                    .accessibilityLabel(emoji == mine ? "\(emoji), ваша реакция" : emoji)
+            }
+        }
+        .pickerStyle(.palette)
+        if let mine {
+            Button("Убрать реакцию", systemImage: "heart.slash") { onReact(mine) }
+        }
+        if let onMoreReactions {
+            Button("Ещё реакции…", systemImage: "face.smiling", action: onMoreReactions)
+        }
+        if let onReactionUsers, !message.content.reactions.isEmpty {
+            Button("Кто отреагировал", systemImage: "person.2", action: onReactionUsers)
+        }
+        Divider()
     }
 
     // MARK: Ответ свайпом

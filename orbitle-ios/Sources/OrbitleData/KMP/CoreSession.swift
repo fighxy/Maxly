@@ -208,6 +208,9 @@ public struct CoreMessage: Sendable, Equatable {
     public var contentJSON: String
     public var authorName: String
     public var authorAvatarURL: String
+    /// Реакции сообщения (`{counters, totalCount, yourReaction}`, docs/reactions.md). Пустая
+    /// строка — источник мог их не прислать (ответ на правку), прежние остаются.
+    public var reactionsJSON: String
 
     public init(
         id: String,
@@ -217,7 +220,8 @@ public struct CoreMessage: Sendable, Equatable {
         timeMs: Int64,
         contentJSON: String = "",
         authorName: String = "",
-        authorAvatarURL: String = ""
+        authorAvatarURL: String = "",
+        reactionsJSON: String = ""
     ) {
         self.id = id
         self.chatId = chatId
@@ -227,6 +231,7 @@ public struct CoreMessage: Sendable, Equatable {
         self.contentJSON = contentJSON
         self.authorName = authorName
         self.authorAvatarURL = authorAvatarURL
+        self.reactionsJSON = reactionsJSON
     }
 }
 
@@ -239,6 +244,8 @@ public struct CoreEvent: Sendable, Equatable {
         case chat
         case typing
         case read
+        /// Изменились реакции сообщения `messageId`, сами они в `reactionsJSON`.
+        case reactions
     }
 
     public var kind: Kind
@@ -255,6 +262,9 @@ public struct CoreEvent: Sendable, Equatable {
     public var contentJSON: String
     public var authorName: String
     public var authorAvatarURL: String
+    /// Реакции: у `message` и `reactions`. У `reactions` без ключа `yourReaction`, если своя
+    /// реакция неизвестна. Пустая строка у `edited`: правка реакции не меняет.
+    public var reactionsJSON: String
 
     public init(
         kind: Kind,
@@ -268,7 +278,8 @@ public struct CoreEvent: Sendable, Equatable {
         unread: Int,
         contentJSON: String = "",
         authorName: String = "",
-        authorAvatarURL: String = ""
+        authorAvatarURL: String = "",
+        reactionsJSON: String = ""
     ) {
         self.kind = kind
         self.chatId = chatId
@@ -282,6 +293,7 @@ public struct CoreEvent: Sendable, Equatable {
         self.contentJSON = contentJSON
         self.authorName = authorName
         self.authorAvatarURL = authorAvatarURL
+        self.reactionsJSON = reactionsJSON
     }
 }
 
@@ -314,6 +326,15 @@ public protocol MaxCore: Sendable {
     /// Число комментариев под постами канала: id поста → число. Посты без ответа сервера пропущены.
     func loadCommentCounts(chatId: String, postIds: [String]) async throws -> [String: Int]
     func markRead(chatId: String, messageId: String) async throws
+    /// Поставить свою реакцию `emoji` или снять её (пустая строка). Непустой `postId` —
+    /// комментарий этого поста. Ответ — реакции сервера (`reactionsJSON`) или пустая строка.
+    func setReaction(chatId: String, messageId: String, postId: String, emoji: String) async throws -> String
+    /// Реакции сообщений: id → `reactionsJSON`. Сообщения, о которых сервер промолчал, пропущены.
+    func loadReactions(chatId: String, messageIds: [String]) async throws -> [String: String]
+    /// Эмодзи каталога реакций сервера, в его порядке.
+    func loadReactionCatalog() async throws -> [String]
+    /// Кто поставил реакции на сообщение.
+    func loadReactionUsers(chatId: String, messageId: String) async throws -> [ReactionUser]
     func phases() -> AsyncStream<CorePhase>
     func events() -> AsyncStream<CoreEvent>
     func loadContacts() async throws -> [CoreContact]
@@ -431,4 +452,10 @@ public extension MaxCore {
     func setFolderChats(_ folderId: String, chatIds: [String]) async throws { throw unsupported }
     func deleteFolder(_ folderId: String) async throws { throw unsupported }
     func reorderFolders(_ order: [String]) async throws { throw unsupported }
+
+    // Фейки без реакций.
+    func setReaction(chatId: String, messageId: String, postId: String, emoji: String) async throws -> String { throw unsupported }
+    func loadReactions(chatId: String, messageIds: [String]) async throws -> [String: String] { throw unsupported }
+    func loadReactionCatalog() async throws -> [String] { throw unsupported }
+    func loadReactionUsers(chatId: String, messageId: String) async throws -> [ReactionUser] { throw unsupported }
 }
