@@ -55,6 +55,9 @@ public final class ChatViewModel {
     /// Открытый список «Кто отреагировал».
     public var reactionUsers: ReactionUsersViewModel?
     @ObservationIgnored private var catalogRequested = false
+    /// Ход загрузки вложений своих сообщений: id сообщения → доля 0…1.
+    public private(set) var uploadProgress: [String: Double] = [:]
+    @ObservationIgnored private var progressWatch: Task<Void, Never>?
 
     @ObservationIgnored private let repository: any MessageRepository
     @ObservationIgnored private let drafts: (any ChatDraftStore)?
@@ -130,6 +133,13 @@ public final class ChatViewModel {
                 self.messages = page
             }
         }
+        let progress = repository.uploadProgress()
+        progressWatch = Task { [weak self] in
+            for await snapshot in progress {
+                guard let self else { return }
+                self.uploadProgress = snapshot
+            }
+        }
         if let drafts {
             let chatId = chatId
             Task { [weak self] in
@@ -146,6 +156,8 @@ public final class ChatViewModel {
     public func deactivate() {
         watch?.cancel()
         watch = nil
+        progressWatch?.cancel()
+        progressWatch = nil
         stopVoice()
         fileTask?.cancel()
         fileTask = nil
@@ -197,6 +209,38 @@ public final class ChatViewModel {
             if isNewDialog, messages.isEmpty, error != .networkUnavailable { return }
             show(error)
         }
+    }
+
+    /// Вложения из листа: делятся на сообщения (`AttachmentBatchPlanner`), цитата уходит
+    /// с первым. Каждое сообщение появляется сразу и грузится в фоне.
+    public func sendAttachments(_ drafts: [AttachmentDraft], caption: String) async {
+        let plan = AttachmentBatchPlanner.plan(drafts, caption: caption)
+        guard !plan.batches.isEmpty else { return }
+        var reply = replyTarget?.id
+        replyTarget = nil
+        stickToBottom = true
+        do {
+            for batch in plan.batches {
+                try await repository.sendAttachments(batch.drafts, caption: batch.caption, chatId: chatId, replyTo: reply)
+                reply = nil
+            }
+            if !plan.trailingText.isEmpty {
+                try await repository.send(text: plan.trailingText, chatId: chatId, replyTo: nil)
+            }
+            error = nil
+        } catch {
+            show(error)
+        }
+    }
+
+    /// Остановить загрузку своего сообщения и убрать его.
+    public func cancelUpload(_ message: Message) async {
+        await repository.cancelUpload(messageId: message.id)
+    }
+
+    /// Доля загрузки для кольца на пузыре; `nil`, если сообщение не грузится.
+    public func uploadFraction(of message: Message) -> Double? {
+        uploadProgress[message.id]
     }
 
     public func loadOlder() async {
