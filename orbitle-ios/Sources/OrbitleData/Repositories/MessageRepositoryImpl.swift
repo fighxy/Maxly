@@ -67,6 +67,9 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         case sent(MessageRecord)
         /// Отправка не удалась, сообщение ждёт повтора.
         case failed(MessageRecord)
+        /// Удалённые сообщения чата (свои или убранные сверкой с сервером; локальные и
+        /// серверные id): строке списка нужно новое последнее сообщение, если удалили его.
+        case deleted(chatId: String, ids: [String])
     }
 
     public init(modelContainer: ModelContainer, api: any MaxAPI) {
@@ -435,7 +438,8 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             guard started == generation else { return }
             do {
                 try upsert(records)
-                pruneMissing(chatId: chatId, page: records)
+                let gone = pruneMissing(chatId: chatId, page: records)
+                if !gone.isEmpty { await outgoingHandler?(.deleted(chatId: chatId, ids: gone)) }
                 covered = Set(records.map { $0.serverId ?? $0.id })
             } catch {
                 Log.info(.messages, "История для сверки реакций не записана: \(error)")
@@ -582,6 +586,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         }
         Log.info(.messages, "Удалено сообщений: \(localIds.count)\(forEveryone ? " у всех" : " у себя")")
         notify(chatId: chatId)
+        await outgoingHandler?(.deleted(chatId: chatId, ids: localIds + serverIds))
     }
 
     /// Правка текста: сначала сервер, затем база (текст, пометка «изменено», разметка сервера).
@@ -701,7 +706,8 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         case .success(let records):
             try ensureCurrent(started)
             try upsert(records)
-            pruneMissing(chatId: chatId, page: records)
+            let gone = pruneMissing(chatId: chatId, page: records)
+            if !gone.isEmpty { await outgoingHandler?(.deleted(chatId: chatId, ids: gone)) }
         case .failure(let error):
             throw error.orbitleError
         }
@@ -712,9 +718,11 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// в фоне, пуши теряются. Отправленные сообщения ленты в промежутке времени страницы,
     /// которых в ней нет, удаляются. Раньше самого старого сообщения страницы ничего не
     /// трогается; свои ещё не отправленные и комментарии — тоже.
-    func pruneMissing(chatId: String, page records: [MessageRecord]) {
+    /// Возвращает id убранных (локальные и серверные).
+    @discardableResult
+    func pruneMissing(chatId: String, page records: [MessageRecord]) -> [String] {
         guard let newest = records.map(\.timestamp).max(),
-              let oldest = records.map(\.timestamp).min() else { return }
+              let oldest = records.map(\.timestamp).min() else { return [] }
         let present = Set(records.flatMap { [$0.id, $0.serverId].compactMap { $0 } })
         let id = chatId
         let root = ""
@@ -723,21 +731,23 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             $0.chatId == id && $0.threadOf == root && $0.statusRaw == sent
                 && $0.timestamp >= oldest && $0.timestamp <= newest
         })
-        guard let rows = try? modelContext.fetch(descriptor) else { return }
+        guard let rows = try? modelContext.fetch(descriptor) else { return [] }
         let gone = rows.filter { row in
             let key = row.serverId ?? row.id
             return Int64(key) != nil && !present.contains(key) && !present.contains(row.id)
         }
-        guard !gone.isEmpty else { return }
+        guard !gone.isEmpty else { return [] }
+        let ids = gone.flatMap { [$0.id, $0.serverId].compactMap { $0 } }
         for row in gone { modelContext.delete(row) }
         do {
             try modelContext.save()
         } catch {
             Log.info(.messages, "Удалённые на сервере сообщения не убраны: \(error)")
-            return
+            return []
         }
         Log.info(.messages, "Убрано удалённых на сервере сообщений: \(gone.count)")
         notify(chatId: chatId)
+        return ids
     }
 
     /// Страница из кэша, без обращения к серверу.

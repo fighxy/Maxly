@@ -92,6 +92,25 @@ struct ChatListDataTests {
         await #expect(throws: OrbitleError.invalidRequest) { try await parts.chats.setPinned(true, chatId: "missing") }
     }
 
+    @Test("Удалили своё последнее фото: строка показывает предыдущее сообщение без миниатюры")
+    func deleteLastUpdatesRow() async throws {
+        let parts = try await makeParts()
+        try await parts.chats.upsert([ChatRecord(
+            id: "c1", title: "Избранное", type: .private, lastMessageId: "102",
+            updatedAt: Date(timeIntervalSince1970: 2), preview: "",
+            lastMedia: .photo, lastThumbnailURL: URL(string: "https://example.invalid/p.jpg")
+        )])
+        try await parts.messages.upsert([
+            MessageRecord(id: "101", chatId: "c1", authorId: "me", text: "Раньше", timestamp: Date(timeIntervalSince1970: 1), status: .sent),
+            MessageRecord(id: "102", chatId: "c1", authorId: "me", text: "", timestamp: Date(timeIntervalSince1970: 2), status: .sent),
+        ])
+        try await parts.messages.delete(messageIds: ["102"], chatId: "c1", forEveryone: true)
+        let row = try #require(await chatRow(parts.chats))
+        #expect(row.preview == "Раньше")
+        #expect(row.lastMessage?.media == nil)
+        #expect(row.lastMessage?.thumbnailURL == nil)
+    }
+
     @Test("Звук чата: запрос на сервер, база меняется после ответа, ошибка ничего не меняет")
     func mute() async throws {
         let parts = try await makeParts()
