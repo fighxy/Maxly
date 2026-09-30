@@ -7,6 +7,13 @@ enum MessageContentCodec {
         let trimmed = json.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8) else { return .empty }
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return .empty }
+        // Каноническая запись базы всегда несёт `attachments` и `reactions`, фрагмент сервера —
+        // никогда. Проверка первой: иначе ключ `edited` правленого сообщения уводил запись базы
+        // в разбор сервера, и вложения, цитата и реакции терялись.
+        if object["attachments"] != nil, object["reactions"] != nil,
+           let content = try? JSONDecoder().decode(MessageContent.self, from: data) {
+            return content
+        }
         if object["attaches"] != nil || object["reactionInfo"] != nil || object["link"] != nil
             || object["commentsCount"] != nil || object["commentsInfo"] != nil || object["elements"] != nil || object["edited"] != nil {
             return decodeServer(object)
