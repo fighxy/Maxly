@@ -269,6 +269,11 @@ final class AppContainer {
     }
 
     /// Чаты для выбора при пересылке.
+    /// Контакты для вкладки «Контакт» в листе вложений.
+    func attachmentContacts() -> AsyncStream<[Contact]> {
+        contacts.contacts()
+    }
+
     func forwardTargets(excluding chatId: String) -> [ChatListItem] {
         listModel?.forwardTargets(excluding: chatId) ?? []
     }
