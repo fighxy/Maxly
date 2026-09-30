@@ -227,7 +227,8 @@ struct MainTabView: View {
                 forwardTargets: { container.forwardTargets(excluding: id) },
                 canWrite: container.canWrite(id: id),
                 isMuted: container.isMuted(id: id),
-                onToggleMute: { Task { await container.toggleMute(id: id) } }
+                onToggleMute: { Task { await container.toggleMute(id: id) } },
+                contactList: { container.attachmentContacts() }
             ) {
                 container.profileViewModel(chatId: id)
             }

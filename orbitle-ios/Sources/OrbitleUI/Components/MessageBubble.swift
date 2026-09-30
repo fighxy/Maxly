@@ -46,6 +46,10 @@ public struct MessageBubble: View {
     private let onMoreReactions: (() -> Void)?
     /// «Кто отреагировал». `nil` — пункта нет.
     private let onReactionUsers: (() -> Void)?
+    /// Доля загрузки своих вложений; `nil` — не грузится.
+    private let uploadProgress: Double?
+    /// Крестик на кольце загрузки. `nil` — отменить нельзя.
+    private let onCancelUpload: (() -> Void)?
 
     /// Сдвиг пузыря при свайпе «ответить».
     @State private var swipe: CGFloat = 0
@@ -85,7 +89,9 @@ public struct MessageBubble: View {
         allowsReactions: Bool = true,
         quickReactions: [String] = ReactionPalette.fallback,
         onMoreReactions: (() -> Void)? = nil,
-        onReactionUsers: (() -> Void)? = nil
+        onReactionUsers: (() -> Void)? = nil,
+        uploadProgress: Double? = nil,
+        onCancelUpload: (() -> Void)? = nil
     ) {
         self.message = message
         self.isOutgoing = isOutgoing
@@ -115,6 +121,8 @@ public struct MessageBubble: View {
         self.quickReactions = quickReactions
         self.onMoreReactions = onMoreReactions
         self.onReactionUsers = onReactionUsers
+        self.uploadProgress = uploadProgress
+        self.onCancelUpload = onCancelUpload
     }
 
     public var body: some View {
@@ -342,11 +350,16 @@ public struct MessageBubble: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
             }
+            ForEach(message.content.contacts, id: \.id) { contact in
+                ContactCardRow(contact: contact, outgoing: isOutgoing)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+            }
             if hasText {
                 textBody
             } else if visuals.isEmpty, message.content.voices.isEmpty {
-                // Пустое сообщение или только файл: время отдельной строкой.
-                if message.content.files.isEmpty {
+                // Пустое сообщение, только файл или контакт: время отдельной строкой.
+                if message.content.files.isEmpty, message.content.contacts.isEmpty {
                     Text(message.text.isEmpty ? " " : message.text)
                         .padding(.horizontal, 12)
                         .padding(.top, 7)
@@ -365,6 +378,11 @@ public struct MessageBubble: View {
         .frame(minWidth: 64, alignment: .leading)
         .background(fill, in: shape)
         .clipShape(shape)
+        .overlay {
+            if let uploadProgress {
+                UploadRing(progress: uploadProgress, onCancel: onCancelUpload)
+            }
+        }
         .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -584,7 +602,8 @@ public struct MessageBubble: View {
     }
 
     private var stretchesText: Bool {
-        !visuals.isEmpty || !message.content.voices.isEmpty || !message.content.files.isEmpty || showsComments
+        !visuals.isEmpty || !message.content.voices.isEmpty || !message.content.files.isEmpty
+            || !message.content.contacts.isEmpty || showsComments
     }
 
     private var hasHeader: Bool {
@@ -597,7 +616,8 @@ public struct MessageBubble: View {
 
     /// Подложка есть у всего, кроме сообщения только из фото и видео.
     private var hasFill: Bool {
-        hasText || hasHeader || !message.content.voices.isEmpty || !message.content.files.isEmpty || visuals.isEmpty
+        hasText || hasHeader || !message.content.voices.isEmpty || !message.content.files.isEmpty
+            || !message.content.contacts.isEmpty || visuals.isEmpty
             || showsComments
     }
 
