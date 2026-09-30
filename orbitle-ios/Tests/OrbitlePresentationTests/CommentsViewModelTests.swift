@@ -15,7 +15,9 @@ private actor FakeComments: CommentsRepository {
 
     func comments(chatId: String, postId: String, before: Date?, limit: Int) async throws(OrbitleError) -> [Message] {
         requests.append(before)
-        let older = stored.filter { before.map { date in $0.timestamp < date } ?? true }.sorted { $0.timestamp < $1.timestamp }
+        let older = stored
+            .filter { message in before.map { message.timestamp < $0 } ?? true }
+            .sorted { $0.timestamp < $1.timestamp }
         return Array(older.suffix(limit))
     }
 

@@ -63,6 +63,10 @@ public protocol MaxAPI: Sendable {
     func sendMessage(chatId: String, text: String, clientId: String) async -> Result<SentMessage, MaxAPIError>
     /// Ответ на сообщение `replyTo` (серверный id). `nil` — обычное сообщение.
     func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?) async -> Result<SentMessage, MaxAPIError>
+    /// Удалить сообщения по серверным id: у себя или у всех.
+    func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async -> Result<Void, MaxAPIError>
+    /// Переслать сообщение. Ответ — новое сообщение в целевом чате.
+    func forwardMessage(toChatId: String, fromChatId: String, messageId: String) async -> Result<MessageRecord, MaxAPIError>
     /// `messageId` nil значит, что локально нечего отмечать: сервер не вызывается.
     func markRead(chatId: String, messageId: String?) async -> Result<Void, MaxAPIError>
     /// Закреплённые чаты целиком, сверху вниз. Ответ — список, который подтвердил сервер.
@@ -77,6 +81,12 @@ public extension MaxAPI {
     func setPinnedChats(_ chatIds: [String]) async -> Result<[String], MaxAPIError> { .failure(.invalidResponse) }
     /// Источник без серверных папок.
     func folderUpdates() -> AsyncStream<[ChatFolder]> { AsyncStream { $0.yield([]); $0.finish() } }
+    func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async -> Result<Void, MaxAPIError> {
+        .failure(.invalidResponse)
+    }
+    func forwardMessage(toChatId: String, fromChatId: String, messageId: String) async -> Result<MessageRecord, MaxAPIError> {
+        .failure(.invalidResponse)
+    }
     /// Источник без ответов отправляет просто текст.
     func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?) async -> Result<SentMessage, MaxAPIError> {
         await sendMessage(chatId: chatId, text: text, clientId: clientId)
@@ -124,6 +134,18 @@ public final class MaxAPIClient: MaxAPI, Sendable {
                 sent = try await core.sendText(chatId: chatId, text: text)
             }
             return SentMessage(serverId: sent.id, timestamp: Date(unixMillis: sent.timeMs))
+        }
+    }
+
+    public func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async -> Result<Void, MaxAPIError> {
+        await catching {
+            try await core.deleteMessages(chatId: chatId, messageIds: messageIds, forEveryone: forEveryone)
+        }
+    }
+
+    public func forwardMessage(toChatId: String, fromChatId: String, messageId: String) async -> Result<MessageRecord, MaxAPIError> {
+        await catching {
+            CoreMapping.message(try await core.forwardMessage(toChatId: toChatId, fromChatId: fromChatId, messageId: messageId))
         }
     }
 

@@ -278,6 +278,16 @@ public enum ChatContentFormat {
         }
     }
 
+    /// Один кадр во всю ширину пузыря (у фото с подписью): высота по пропорции в пределах
+    /// `minHeight…maxHeight`, лишнее обрезается, а не сужает кадр.
+    public static func fullWidthTile(aspect: Double, width: Double, minHeight: Double = 120, maxHeight: Double = 360) -> AlbumLayout {
+        let ratio = clampedAspect(aspect)
+        let w = max(1, width)
+        let h = min(max(w / ratio, minHeight), maxHeight)
+        let corners = AlbumCorners(topLeft: true, topRight: true, bottomLeft: true, bottomRight: true)
+        return AlbumLayout(width: w, height: h, gap: 0, tiles: [AlbumTile(index: 0, x: 0, y: 0, width: w, height: h, corners: corners)])
+    }
+
     /// Альбом: пропорции кадров собираются в ряды, внешние углы скругляются, внутренние остаются прямыми.
     public static func album(aspects: [Double], maxWidth: Double, maxHeight: Double = 360, gap: Double = 2) -> AlbumLayout {
         let width = max(1, maxWidth)

@@ -26,6 +26,14 @@ public final class ChatViewModel {
     public private(set) var highlightedId: String?
     /// Пост, чьи комментарии открыты в модальном окне.
     public var openedComments: Message?
+    /// Число комментариев под постами канала (id поста на сервере → число).
+    public private(set) var commentCounts: [String: Int] = [:]
+    /// Сообщение, для которого открыт выбор «удалить у себя / у всех».
+    public var deletionCandidate: Message?
+    /// Сообщение, для которого открыт выбор чата пересылки.
+    public var forwardCandidate: Message?
+    /// Короткое уведомление над полем ввода («Переслано»). Само пропадает.
+    public private(set) var notice: String?
     /// Просмотр фото и видео.
     public var viewer: MediaViewerRequest?
     /// Открытый файл.
@@ -41,6 +49,8 @@ public final class ChatViewModel {
     @ObservationIgnored private let media: (any MediaRepository)?
     @ObservationIgnored private let links: (any MediaLinkResolver)?
     @ObservationIgnored private let comments: (any CommentsRepository)?
+    /// Посты, чьи счётчики уже спрошены: один запрос на пост за время жизни экрана.
+    @ObservationIgnored private var askedCounts: Set<String> = []
     /// Прямые адреса видео, полученные у сервера за время жизни экрана.
     @ObservationIgnored private var resolvedVideos: [String: URL] = [:]
     @ObservationIgnored private var mediaTask: Task<Void, Never>?
@@ -248,8 +258,41 @@ public final class ChatViewModel {
     }
 
     public func closeComments() {
+        let post = openedComments ?? commentsModel?.post
         openedComments = nil
         commentsModel = nil
+        // После обсуждения счётчик мог измениться: спросить заново.
+        if let post {
+            let id = post.serverId ?? post.id
+            askedCounts.remove(id)
+            requestCommentCounts(for: [post])
+        }
+    }
+
+    /// Число комментариев поста: ответ сервера, иначе счётчик из самого сообщения.
+    public func commentCount(for message: Message) -> Int? {
+        commentCounts[message.serverId ?? message.id] ?? message.content.comments?.count
+    }
+
+    /// Спросить счётчики комментариев у постов, которых ещё не спрашивали (пачками по 50).
+    public func requestCommentCounts(for posts: [Message]) {
+        guard let comments else { return }
+        let ids = posts.compactMap { post -> String? in
+            let id = post.serverId ?? post.id
+            guard Int64(id) != nil, !askedCounts.contains(id) else { return nil }
+            return id
+        }
+        guard !ids.isEmpty else { return }
+        askedCounts.formUnion(ids)
+        let chatId = chatId
+        Task { [weak self] in
+            for start in stride(from: 0, to: ids.count, by: 50) {
+                let chunk = Array(ids[start..<min(start + 50, ids.count)])
+                guard let counts = try? await comments.counts(chatId: chatId, postIds: chunk) else { continue }
+                guard let self else { return }
+                self.commentCounts.merge(counts) { _, new in new }
+            }
+        }
     }
 
     /// Открывает просмотр фото и видео сообщения. У видео из Max нет адреса в самом вложении:
@@ -485,6 +528,54 @@ public final class ChatViewModel {
             return target
         } catch {
             return url
+        }
+    }
+
+    // MARK: Удаление и пересылка
+
+    public func requestDelete(_ message: Message) {
+        deletionCandidate = message
+    }
+
+    /// «Удалить у всех» — только для своих сообщений, уже принятых сервером.
+    public func canDeleteForEveryone(_ message: Message) -> Bool {
+        isOutgoing(message) && message.status == .sent && message.serverId != nil
+    }
+
+    public func confirmDelete(forEveryone: Bool) async {
+        guard let message = deletionCandidate else { return }
+        deletionCandidate = nil
+        if replyTarget?.id == message.id { replyTarget = nil }
+        do {
+            try await repository.delete(messageIds: [message.id], chatId: chatId, forEveryone: forEveryone)
+            error = nil
+        } catch {
+            show(error)
+        }
+    }
+
+    public func requestForward(_ message: Message) {
+        forwardCandidate = message
+    }
+
+    public func forward(to targetChatId: String) async {
+        guard let message = forwardCandidate else { return }
+        forwardCandidate = nil
+        do {
+            try await repository.forward(messageId: message.serverId ?? message.id, from: chatId, to: targetChatId)
+            error = nil
+            showNotice("Сообщение переслано")
+        } catch {
+            show(error)
+        }
+    }
+
+    private func showNotice(_ text: String) {
+        notice = text
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard let self, self.notice == text else { return }
+            self.notice = nil
         }
     }
 

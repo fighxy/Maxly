@@ -67,6 +67,23 @@ actor FakeMaxAPI: MaxAPI {
 
     /// `replyTo` каждой отправки по порядку.
     private(set) var sentReplies: [String?] = []
+    /// Удаления: серверные id и «у всех».
+    private(set) var deletions: [([String], Bool)] = []
+    var deleteResult: Result<Void, MaxAPIError> = .success(())
+    /// Ответ на пересылку.
+    var forwardResult: Result<MessageRecord, MaxAPIError> = .failure(.invalidResponse)
+
+    func setDeleteResult(_ result: Result<Void, MaxAPIError>) { deleteResult = result }
+    func setForwardResult(_ result: Result<MessageRecord, MaxAPIError>) { forwardResult = result }
+
+    func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async -> Result<Void, MaxAPIError> {
+        deletions.append((messageIds, forEveryone))
+        return deleteResult
+    }
+
+    func forwardMessage(toChatId: String, fromChatId: String, messageId: String) async -> Result<MessageRecord, MaxAPIError> {
+        forwardResult
+    }
 
     func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?) async -> Result<SentMessage, MaxAPIError> {
         sentReplies.append(replyTo)

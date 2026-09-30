@@ -13,11 +13,16 @@ struct MediaMosaic: View {
     var status: MessageStatus?
     var cornerRadius: CGFloat = 12
     var loadingId: String?
+    /// Одиночный кадр занимает всю ширину (пузырь с подписью не должен быть шире фото).
+    var fillsWidth = false
     let onOpen: (String) -> Void
 
     var body: some View {
         let visuals = attachments.filter(\.isVisual)
-        let layout = ChatContentFormat.album(aspects: visuals.map(aspect), maxWidth: Double(maxWidth))
+        let round = visuals.count == 1 && visuals[0].video?.isRound == true
+        let layout = fillsWidth && visuals.count == 1 && !round
+            ? ChatContentFormat.fullWidthTile(aspect: aspect(visuals[0]), width: Double(maxWidth))
+            : ChatContentFormat.album(aspects: visuals.map(aspect), maxWidth: Double(maxWidth))
         ZStack(alignment: .topLeading) {
             Color.clear.frame(width: layout.width, height: layout.height)
             ForEach(Array(visuals.enumerated()), id: \.element.id) { index, item in

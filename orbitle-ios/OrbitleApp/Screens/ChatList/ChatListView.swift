@@ -30,7 +30,7 @@ struct ChatListView: View {
         .navigationTitle(viewModel.navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
-        .toolbar(viewModel.isEditing || viewModel.isSearchActive ? .hidden : .visible, for: .tabBar)
+        .toolbar(viewModel.isEditing || viewModel.isSearchActive ? .hidden : .automatic, for: .tabBar)
         .refreshable { await viewModel.refresh() }
         .task {
             viewModel.activate()

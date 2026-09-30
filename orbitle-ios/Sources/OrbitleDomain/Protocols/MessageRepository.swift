@@ -22,6 +22,11 @@ public protocol MessageRepository: Sendable {
     func sendComment(text: String, chatId: String, postId: String) async throws(OrbitleError)
     /// Запомнить скачанный файл у вложения, не стирая остальной фрагмент.
     func noteDownloaded(messageId: String, attachmentId: String, localPath: String) async
+    /// Удалить сообщения: `forEveryone` — у всех участников, иначе только у себя.
+    /// Неотправленные (без серверного id) удаляются только на устройстве.
+    func delete(messageIds: [String], chatId: String, forEveryone: Bool) async throws(OrbitleError)
+    /// Переслать сообщение `messageId` из `chatId` в чат `targetChatId`.
+    func forward(messageId: String, from chatId: String, to targetChatId: String) async throws(OrbitleError)
 }
 
 extension MessageRepository {
@@ -39,4 +44,12 @@ extension MessageRepository {
     public func sendComment(text: String, chatId: String, postId: String) async throws(OrbitleError) {}
 
     public func noteDownloaded(messageId: String, attachmentId: String, localPath: String) async {}
+
+    public func delete(messageIds: [String], chatId: String, forEveryone: Bool) async throws(OrbitleError) {
+        throw .invalidRequest
+    }
+
+    public func forward(messageId: String, from chatId: String, to targetChatId: String) async throws(OrbitleError) {
+        throw .invalidRequest
+    }
 }

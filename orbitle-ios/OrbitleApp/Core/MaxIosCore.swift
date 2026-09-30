@@ -173,6 +173,40 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async throws {
+        try await call("deleteMessages") { done in
+            self.client.deleteMessages(chatId: chatId, messageIds: messageIds, forEveryone: forEveryone) { kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(()))
+                }
+            }
+        }
+    }
+
+    func forwardMessage(toChatId: String, fromChatId: String, messageId: String) async throws -> CoreMessage {
+        try await call("forwardMessage") { done in
+            self.client.forwardMessage(toChatId: toChatId, fromChatId: fromChatId, messageId: messageId) { message, kind, key in
+                done(Self.single(message, kind: kind, key: key))
+            }
+        }
+    }
+
+    func loadCommentCounts(chatId: String, postIds: [String]) async throws -> [String: Int] {
+        try await call("loadCommentCounts") { done in
+            self.client.loadCommentCounts(chatId: chatId, postIds: postIds) { list, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    var counts: [String: Int] = [:]
+                    for item in list { counts[item.postId] = Int(item.count) }
+                    done(.success(counts))
+                }
+            }
+        }
+    }
+
     private static func single(_ message: IosMessage?, kind: String?, key: String?) -> Result<CoreMessage, Error> {
         if let kind { return .failure(CoreFailure(kind: kind, key: key)) }
         guard let message else { return .failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)) }

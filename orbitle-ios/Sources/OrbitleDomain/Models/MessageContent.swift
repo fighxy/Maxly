@@ -10,6 +10,8 @@ public struct MessageContent: Hashable, Sendable, Codable {
     public var threadOf: String?
     /// Форматирование текста. Необязательное поле: старые записи в базе его не содержат.
     public var formatting: [TextSpan]?
+    /// Сообщение переслано: чьё и с каким текстом. Необязательное поле, как и `formatting`.
+    public var forward: MessageForward?
 
     public init(
         reply: MessageReply? = nil,
@@ -17,7 +19,8 @@ public struct MessageContent: Hashable, Sendable, Codable {
         reactions: [MessageReaction] = [],
         comments: CommentSummary? = nil,
         threadOf: String? = nil,
-        formatting: [TextSpan]? = nil
+        formatting: [TextSpan]? = nil,
+        forward: MessageForward? = nil
     ) {
         self.reply = reply
         self.attachments = attachments
@@ -25,13 +28,14 @@ public struct MessageContent: Hashable, Sendable, Codable {
         self.comments = comments
         self.threadOf = threadOf
         self.formatting = formatting?.isEmpty == true ? nil : formatting
+        self.forward = forward
     }
 
     public static let empty = MessageContent()
 
     public var isEmpty: Bool {
         reply == nil && attachments.isEmpty && reactions.isEmpty && comments == nil && (threadOf?.isEmpty != false)
-            && (formatting?.isEmpty != false)
+            && (formatting?.isEmpty != false) && forward == nil
     }
 
     public var visuals: [ChatAttachment] {
@@ -101,6 +105,17 @@ public struct TextSpan: Hashable, Sendable, Codable {
         self.length = length
         self.url = url
         self.userId = userId
+    }
+}
+
+/// Пересланное сообщение: автор оригинала и его текст (у пересылки свой текст пустой).
+public struct MessageForward: Hashable, Sendable, Codable {
+    public var authorName: String
+    public var text: String
+
+    public init(authorName: String, text: String) {
+        self.authorName = authorName
+        self.text = text
     }
 }
 
