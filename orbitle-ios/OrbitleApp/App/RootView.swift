@@ -188,7 +188,8 @@ struct MainTabView: View {
                 ChatView(
                     viewModel: model,
                     title: container.chatTitle(id: id),
-                    allowsComments: container.allowsComments(id: id)
+                    allowsComments: container.allowsComments(id: id),
+                    chatType: container.chatType(id: id)
                 ) {
                     container.profileViewModel(chatId: id)
                 }
