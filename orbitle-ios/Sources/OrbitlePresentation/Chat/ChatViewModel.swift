@@ -772,6 +772,9 @@ public final class ChatViewModel {
     /// Удаление из «Избранного»: собеседника нет, поэтому один вариант без выбора.
     public var deletesWithoutChoice: Bool { chatId == Chat.savedMessagesId }
 
+    /// Чат — «Избранное». Приватный режим оставляет ему настоящее название.
+    public var isSavedMessages: Bool { chatId == Chat.savedMessagesId }
+
     /// Удаление выбранного сообщения. Сообщение передаётся явно: диалог подтверждения
     /// сбрасывает `deletionCandidate` раньше, чем срабатывает его кнопка.
     public func confirmDelete(_ candidate: Message? = nil, forEveryone: Bool) async {
