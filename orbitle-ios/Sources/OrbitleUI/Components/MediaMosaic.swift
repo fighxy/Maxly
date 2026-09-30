@@ -22,7 +22,7 @@ struct MediaMosaic: View {
         let round = visuals.count == 1 && visuals[0].video?.isRound == true
         let layout = fillsWidth && visuals.count == 1 && !round
             ? ChatContentFormat.fullWidthTile(aspect: aspect(visuals[0]), width: Double(maxWidth))
-            : ChatContentFormat.album(aspects: visuals.map(aspect), maxWidth: Double(maxWidth))
+            : ChatContentFormat.album(aspects: visuals.map(aspect), maxWidth: Double(round ? min(maxWidth, Self.roundSide) : maxWidth))
         ZStack(alignment: .topLeading) {
             Color.clear.frame(width: layout.width, height: layout.height)
             ForEach(Array(visuals.enumerated()), id: \.element.id) { index, item in
@@ -160,6 +160,9 @@ struct MediaMosaic: View {
             style: .continuous
         ))
     }
+
+    /// Диаметр кружка в ленте, как в Telegram: не во всю ширину.
+    static let roundSide: CGFloat = 220
 
     /// Размер декодирования плитки: сторона в точках ×3, ступенями по 256, чтобы соседние
     /// размеры одного фото делили кэш.
