@@ -117,6 +117,14 @@ public final class ChatViewModel {
         return "Здесь пока нет сообщений. Напишите первое — диалог появится в списке чатов."
     }
 
+    /// Свежая история загружена хотя бы раз: пустая лента — действительно пустой чат.
+    public private(set) var latestLoaded = false
+
+    /// Пустое «Избранное»: вместо ленты плашка о том, что это за чат.
+    public var showsSavedPlaceholder: Bool {
+        chatId == Chat.savedMessagesId && latestLoaded && messages.isEmpty
+    }
+
     public var canSend: Bool {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -205,6 +213,7 @@ public final class ChatViewModel {
     public func loadLatest() async {
         do {
             try await repository.fetchLatest(chatId: chatId)
+            latestLoaded = true
             error = nil
         } catch {
             // Истории нового диалога на сервере может не быть: это не ошибка для экрана.
