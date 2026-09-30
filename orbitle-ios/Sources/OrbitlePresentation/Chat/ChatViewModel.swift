@@ -12,7 +12,8 @@ public final class ChatViewModel {
     /// Текст в поле ввода. Сохраняется черновиком с короткой задержкой и при уходе с экрана.
     public var draft = "" {
         didSet {
-            guard draft != oldValue, !isRestoringDraft else { return }
+            // Текст правки не черновик: его не сохраняем.
+            guard draft != oldValue, !isRestoringDraft, editTarget == nil else { return }
             scheduleDraftSave()
         }
     }
@@ -20,6 +21,10 @@ public final class ChatViewModel {
     public private(set) var stickToBottom = true
     /// Цитата над полем ввода.
     public private(set) var replyTarget: Message?
+    /// Сообщение, текст которого сейчас правится в поле ввода.
+    public private(set) var editTarget: Message?
+    /// Черновик, отложенный на время правки.
+    @ObservationIgnored private var draftBeforeEdit = ""
     public private(set) var voicePhases: [String: VoicePhase] = [:]
     public private(set) var scrollTarget: String?
     public private(set) var scrollToken = 0
@@ -199,6 +204,10 @@ public final class ChatViewModel {
     public func send() async {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        if let target = editTarget {
+            await saveEdit(target, text: text)
+            return
+        }
         let reply = replyTarget
         draft = ""
         replyTarget = nil
@@ -214,7 +223,56 @@ public final class ChatViewModel {
     }
 
     public func beginReply(to message: Message) {
+        if editTarget != nil { cancelEdit() }
         replyTarget = message
+    }
+
+    // MARK: Правка
+
+    /// Править можно свой отправленный текст (не пересланный).
+    public func canEdit(_ message: Message) -> Bool {
+        isOutgoing(message) && message.status == .sent && message.serverId != nil
+            && message.content.forward == nil
+            && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Текст сообщения переходит в поле ввода; прежний черновик откладывается.
+    public func beginEdit(_ message: Message) {
+        guard canEdit(message) else { return }
+        replyTarget = nil
+        if editTarget == nil { draftBeforeEdit = draft }
+        editTarget = message
+        draft = message.text
+    }
+
+    public func cancelEdit() {
+        guard editTarget != nil else { return }
+        editTarget = nil
+        draft = draftBeforeEdit
+        draftBeforeEdit = ""
+    }
+
+    private func saveEdit(_ target: Message, text: String) async {
+        if text == target.text.trimmingCharacters(in: .whitespacesAndNewlines) {
+            cancelEdit()
+            return
+        }
+        editTarget = nil
+        let restore = draftBeforeEdit
+        draftBeforeEdit = ""
+        isRestoringDraft = true
+        draft = restore
+        isRestoringDraft = false
+        do {
+            try await repository.edit(messageId: target.id, chatId: chatId, text: text)
+            error = nil
+        } catch {
+            // Правка не ушла: вернуть её в поле ввода.
+            draftBeforeEdit = draft
+            editTarget = target
+            draft = text
+            show(error)
+        }
     }
 
     public func cancelReply() {
@@ -344,6 +402,17 @@ public final class ChatViewModel {
         }
         guard slides.contains(where: { $0.id == startId }) else { return }
         viewer = MediaViewerRequest(id: startId, slides: slides)
+    }
+
+    /// Запасной путь видео: поток не открылся — ролик скачивается целиком и играет с диска.
+    public func downloadVideo(_ slide: MediaSlide) async -> URL? {
+        guard let url = slide.playURL, !url.isFileURL, let media else { return slide.playURL }
+        do {
+            return try await media.preview(for: MediaItem(id: "video-\(slide.id)", type: .video, url: url, size: 0))
+        } catch {
+            show(error)
+            return nil
+        }
     }
 
     public func openFile(_ message: Message, attachmentId: String) {

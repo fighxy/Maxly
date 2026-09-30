@@ -31,6 +31,8 @@ public struct ChatRecord: Sendable, Hashable {
     public var lastThumbnailURL: URL?
     /// Комментарии канала. `nil` — сервер не сказал.
     public var commentsEnabled: Bool?
+    /// Можно ли писать. `nil` — сервер не сказал.
+    public var canWrite: Bool?
 
     public init(
         id: String,
@@ -50,7 +52,8 @@ public struct ChatRecord: Sendable, Hashable {
         pinsKnown: Bool = false,
         lastMedia: MessageMediaKind? = nil,
         lastThumbnailURL: URL? = nil,
-        commentsEnabled: Bool? = nil
+        commentsEnabled: Bool? = nil,
+        canWrite: Bool? = nil
     ) {
         self.id = id
         self.title = title
@@ -70,6 +73,7 @@ public struct ChatRecord: Sendable, Hashable {
         self.lastMedia = lastMedia
         self.lastThumbnailURL = lastThumbnailURL
         self.commentsEnabled = commentsEnabled
+        self.canWrite = canWrite
     }
 
     public init(_ chat: Chat) {
@@ -89,7 +93,8 @@ public struct ChatRecord: Sendable, Hashable {
             isVerified: chat.isVerified,
             lastMedia: chat.lastMessage?.media,
             lastThumbnailURL: chat.lastMessage?.thumbnailURL,
-            commentsEnabled: chat.commentsEnabled
+            commentsEnabled: chat.commentsEnabled,
+            canWrite: chat.canWrite
         )
     }
 
@@ -111,7 +116,8 @@ public struct ChatRecord: Sendable, Hashable {
             isArchived: isArchived ?? false,
             isBot: isBot ?? false,
             isVerified: isVerified ?? false,
-            commentsEnabled: commentsEnabled
+            commentsEnabled: commentsEnabled,
+            canWrite: canWrite
         )
     }
 }

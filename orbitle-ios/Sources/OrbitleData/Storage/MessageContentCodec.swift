@@ -8,7 +8,7 @@ enum MessageContentCodec {
         guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8) else { return .empty }
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return .empty }
         if object["attaches"] != nil || object["reactionInfo"] != nil || object["link"] != nil
-            || object["commentsCount"] != nil || object["commentsInfo"] != nil || object["elements"] != nil {
+            || object["commentsCount"] != nil || object["commentsInfo"] != nil || object["elements"] != nil || object["edited"] != nil {
             return decodeServer(object)
         }
         return (try? JSONDecoder().decode(MessageContent.self, from: data)) ?? .empty
@@ -38,7 +38,8 @@ enum MessageContentCodec {
             comments: comments(object),
             threadOf: nil,
             formatting: elements,
-            forward: forwarded?.info
+            forward: forwarded?.info,
+            edited: (object["edited"] as? Bool) == true
         )
     }
 

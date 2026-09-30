@@ -173,6 +173,14 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func editMessage(chatId: String, messageId: String, text: String) async throws -> CoreMessage {
+        try await call("editMessage") { done in
+            self.client.editMessage(chatId: chatId, messageId: messageId, text: text) { message, kind, key in
+                done(Self.single(message, kind: kind, key: key))
+            }
+        }
+    }
+
     func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async throws {
         try await call("deleteMessages") { done in
             self.client.deleteMessages(chatId: chatId, messageIds: messageIds, forEveryone: forEveryone) { kind, key in
@@ -365,7 +373,8 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             lastAuthorId: chat.lastAuthorId,
             lastMedia: chat.lastMedia,
             lastThumbURL: chat.lastThumbUrl,
-            comments: Int(chat.comments)
+            comments: Int(chat.comments),
+            canWrite: Int(chat.canWrite)
         )
     }
 
