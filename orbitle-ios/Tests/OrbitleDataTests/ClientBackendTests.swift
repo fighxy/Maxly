@@ -195,6 +195,16 @@ actor FakeMaxCore: MaxCore {
         return sent
     }
 
+    private(set) var recordingCalls: [(path: String, kind: String, durationMs: Int64, wave: [Int], replyTo: String)] = []
+
+    func sendRecording(chatId: String, path: String, kind: String, durationMs: Int64, wave: [Int], replyTo: String,
+                       progress: @escaping @Sendable (Double) -> Void) async throws -> CoreMessage {
+        if let sendError { throw sendError }
+        recordingCalls.append((path, kind, durationMs, wave, replyTo))
+        progress(1)
+        return sent
+    }
+
     nonisolated func phases() -> AsyncStream<CorePhase> {
         AsyncStream { $0.finish() }
     }

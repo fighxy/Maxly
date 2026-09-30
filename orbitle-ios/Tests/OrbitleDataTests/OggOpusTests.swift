@@ -108,3 +108,41 @@ struct OggOpusTests {
         #expect(throws: OggOpus.Failure.notOpus) { try OggOpus.caf(fromOgg: page([Data("vorbis-head-xxxxxxxx".utf8)], granule: 0)) }
     }
 }
+
+@Suite("Запись Ogg Opus")
+struct OggOpusWriterTests {
+    /// Пакет Opus: TOC 20 мс SILK моно (config 1, один кадр) и данные.
+    private func packet(_ size: Int, fill: UInt8) -> Data {
+        Data([0x08] + [UInt8](repeating: fill, count: max(0, size - 1)))
+    }
+
+    @Test("Записанный файл читается обратно: заголовок, пакеты, длительность")
+    func roundTrip() throws {
+        var writer = OggOpusWriter(channels: 1, preSkip: 312, serial: 42)
+        let packets = (0..<120).map { packet(40 + $0 % 300, fill: UInt8($0 % 256)) }
+        for item in packets { writer.append(packet: item) }
+        let file = writer.finish()
+        #expect(OggOpus.isOgg(file))
+        let stream = try OggOpus.parse(file)
+        #expect(stream.channels == 1)
+        #expect(stream.preSkip == 312)
+        #expect(stream.packets == packets)
+        #expect(stream.frames.allSatisfy { $0 == 960 })
+        #expect(stream.finalGranule == Int64(120 * 960))
+        #expect(writer.frames == Int64(120 * 960))
+    }
+
+    @Test("Пакет ровно 255 байт и длиннее разбиваются сегментами без потерь")
+    func lacing() throws {
+        var writer = OggOpusWriter(serial: 1)
+        let packets = [packet(255, fill: 1), packet(510, fill: 2), packet(1, fill: 3)]
+        for item in packets { writer.append(packet: item) }
+        #expect(try OggOpus.parse(writer.finish()).packets == packets)
+    }
+
+    @Test("Контрольная сумма страницы Ogg по многочлену 0x04C11DB7")
+    func crc() {
+        #expect(OggOpusWriter.crc(Data()) == 0)
+        #expect(OggOpusWriter.crc(Data("123456789".utf8)) == 0x89A1_897F)
+    }
+}

@@ -23,6 +23,7 @@ struct ChatView: View {
     var makeProfile: (() -> ChatProfileViewModel?)?
     @State private var forwardList: [ChatListItem] = []
     @State private var attachmentsShown = false
+    @State private var recording = RecordingSession()
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var composerFocused: Bool
     /// Низ ленты виден. Пока он виден, новые сообщения прокручивают ленту сами.
@@ -186,11 +187,24 @@ struct ChatView: View {
         .fullScreenCover(item: $viewModel.openedFile) { file in
             FileQuickLook(url: file.url, title: file.name) { viewModel.openedFile = nil }
         }
+        .overlay {
+            if recording.isVideo {
+                VideoNoteOverlay(session: recording)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: recording.isVideo)
         .task {
             viewModel.activate()
+            recording.onStart = { [viewModel] in viewModel.stopVoice() }
+            recording.onRecorded = { [viewModel] draft in
+                Task { await viewModel.sendAttachments([draft], caption: "") }
+            }
             await viewModel.loadLatest()
         }
-        .onDisappear { viewModel.deactivate() }
+        .onDisappear {
+            recording.cancel()
+            viewModel.deactivate()
+        }
         .animation(.default, value: viewModel.notice)
         .confirmationDialog(
             "Удалить сообщение?",
@@ -262,6 +276,16 @@ struct ChatView: View {
                     .padding(.vertical, 4)
                     .orbitleGlassCapsule()
             }
+            if let hint = recording.hint {
+                Text(hint)
+                    .font(.footnote)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .orbitleGlassCapsule()
+                    .frame(maxWidth: .infinity)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
             if let notice = viewModel.notice {
                 Label(notice, systemImage: "checkmark.circle.fill")
                     .font(.footnote.weight(.medium))
@@ -287,6 +311,7 @@ struct ChatView: View {
         .padding(.bottom, 8)
         .animation(.default, value: viewModel.editTarget?.id)
         .animation(.default, value: viewModel.replyTarget?.id)
+        .animation(.default, value: recording.hint)
     }
 
     /// Поле ввода и кнопка отправки (при правке — галочка).
@@ -294,7 +319,11 @@ struct ChatView: View {
         VStack(spacing: 0) {
             OrbitleGlassGroup(spacing: 8) {
                 HStack(alignment: .bottom, spacing: 8) {
-                    if viewModel.editTarget == nil {
+                    if recording.isActive {
+                        RecordingBar(session: recording)
+                            .transition(.opacity)
+                    }
+                    if viewModel.editTarget == nil, !recording.isActive {
                         Button {
                             composerFocused = false
                             attachmentsShown = true
@@ -309,30 +338,49 @@ struct ChatView: View {
                         .orbitleGlassCircle(size: 44)
                         .accessibilityLabel("Прикрепить")
                     }
-                    TextField("Сообщение", text: $viewModel.draft, axis: .vertical)
-                        .focused($composerFocused)
-                        .lineLimit(1...5)
-                        .textFieldStyle(.plain)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 11)
-                        .frame(minHeight: 44)
-                        .orbitleGlassCapsule()
-                    Button {
-                        Task { await viewModel.send() }
-                    } label: {
-                        Image(systemName: viewModel.editTarget == nil ? "arrow.up" : "checkmark")
-                            .font(.system(size: 17, weight: .semibold))
-                            .frame(width: 30, height: 30)
-                            .contentTransition(.symbolEffect(.replace))
+                    if !recording.isActive {
+                        TextField("Сообщение", text: $viewModel.draft, axis: .vertical)
+                            .focused($composerFocused)
+                            .lineLimit(1...5)
+                            .textFieldStyle(.plain)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 11)
+                            .frame(minHeight: 44)
+                            .orbitleGlassCapsule()
                     }
-                    .orbitleProminentButtonStyle()
-                    .buttonBorderShape(.circle)
-                    .tint(Color.orbitleAccent)
-                    .disabled(!viewModel.canSend)
-                    .accessibilityLabel(viewModel.editTarget == nil ? "Отправить" : "Сохранить правку")
+                    if showsRecordButton {
+                        // Пустое поле: вместо отправки — запись голосового или кружка.
+                        RecordButton(session: recording)
+                    } else {
+                        sendButton
+                    }
                 }
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: recording.isActive)
+        .animation(.easeInOut(duration: 0.15), value: showsRecordButton)
+    }
+
+    /// Кнопка записи видна, пока поле пустое (и не идёт правка) или пока идёт запись.
+    private var showsRecordButton: Bool {
+        recording.phase != .idle
+            || (viewModel.editTarget == nil && viewModel.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
+    private var sendButton: some View {
+        Button {
+            Task { await viewModel.send() }
+        } label: {
+            Image(systemName: viewModel.editTarget == nil ? "arrow.up" : "checkmark")
+                .font(.system(size: 17, weight: .semibold))
+                .frame(width: 30, height: 30)
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .orbitleProminentButtonStyle()
+        .buttonBorderShape(.circle)
+        .tint(Color.orbitleAccent)
+        .disabled(!viewModel.canSend)
+        .accessibilityLabel(viewModel.editTarget == nil ? "Отправить" : "Сохранить правку")
     }
 
     /// Писать нельзя: в канале — кнопка уведомлений, в остальных — пояснение.

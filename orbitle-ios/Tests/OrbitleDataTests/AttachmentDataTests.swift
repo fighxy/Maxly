@@ -87,6 +87,37 @@ struct AttachmentClientTests {
         #expect(contacts.first?.replyTo == "7")
     }
 
+    @Test("Голосовое и кружок уходят своим запросом записи, с длительностью и дорожкой")
+    func recordings() async throws {
+        let core = FakeMaxCore()
+        let client = MaxAPIClient(core: core)
+        let voice = AttachmentDraft.voice(path: "/tmp/voice.ogg", durationMs: 4_200, waveform: [0, 60, 120])
+        _ = await client.sendAttachments(chatId: "c1", drafts: [voice], caption: "", replyTo: "9") { _ in }
+        let note = AttachmentDraft.videoNote(path: "/tmp/note.mp4", durationMs: 7_000, side: 480)
+        _ = await client.sendAttachments(chatId: "c1", drafts: [note], caption: "", replyTo: nil) { _ in }
+        let calls = await core.recordingCalls
+        #expect(calls.map(\.kind) == ["voice", "videoNote"])
+        #expect(calls.first?.durationMs == 4_200)
+        #expect(calls.first?.wave == [0, 60, 120])
+        #expect(calls.first?.replyTo == "9")
+        #expect(calls.last?.path == "/tmp/note.mp4")
+        #expect(await core.mediaCalls.isEmpty)
+
+        let mixed = await client.sendAttachments(chatId: "c1", drafts: [voice, photo], caption: "", replyTo: nil) { _ in }
+        #expect(throws: MaxAPIError.self) { try mixed.get() }
+    }
+
+    @Test("Черновик голосового виден в пузыре сразу: дорожка, длительность, локальный файл")
+    func recordingPreview() {
+        let voice = AttachmentDraft.voice(path: "/tmp/voice.ogg", durationMs: 4_200, waveform: [1, 2]).preview(index: 0)
+        #expect(voice.voice?.durationMs == 4_200)
+        #expect(voice.voice?.waveform == [1, 2])
+        #expect(voice.voice?.localPath == "/tmp/voice.ogg")
+        let note = AttachmentDraft.videoNote(path: "/tmp/note.mp4", durationMs: 7_000, side: 480).preview(index: 0)
+        #expect(note.video?.isRound == true)
+        #expect(note.video?.width == 480)
+    }
+
     @Test("Контакт вместе с файлами и файл без пути отклоняются без запроса")
     func invalid() async throws {
         let core = FakeMaxCore()
