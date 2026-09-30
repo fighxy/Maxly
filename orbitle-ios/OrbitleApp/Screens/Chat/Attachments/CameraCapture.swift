@@ -4,7 +4,7 @@ import UIKit
 import UniformTypeIdentifiers
 
 /// Снимок или видео с камеры системным контроллером.
-struct CameraPicker: UIViewControllerRepresentable {
+struct ChatCameraPicker: UIViewControllerRepresentable {
     enum Shot {
         case photo(UIImage)
         case video(URL)

@@ -103,14 +103,22 @@ enum MediaExporter {
             throw Failure.exportFailed(nil)
         }
         let target = try makeFolder().appendingPathComponent("video.mp4")
-        session.outputURL = target
-        session.outputFileType = .mp4
         session.shouldOptimizeForNetworkUse = true
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            session.exportAsynchronously { continuation.resume() }
-        }
-        guard session.status == .completed else {
-            throw Failure.exportFailed(session.error?.localizedDescription)
+        if #available(iOS 18.0, *) {
+            do {
+                try await session.export(to: target, as: .mp4)
+            } catch {
+                throw Failure.exportFailed(error.localizedDescription)
+            }
+        } else {
+            session.outputURL = target
+            session.outputFileType = .mp4
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                session.exportAsynchronously { continuation.resume() }
+            }
+            guard session.status == .completed else {
+                throw Failure.exportFailed(session.error?.localizedDescription)
+            }
         }
         let exported = AVURLAsset(url: target)
         let duration = (try? await exported.load(.duration)).map(CMTimeGetSeconds) ?? 0

@@ -1,5 +1,6 @@
 @preconcurrency import Photos
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 import OrbitleDomain
 import OrbitlePresentation
@@ -53,7 +54,7 @@ struct AttachmentSheet: View {
             importFiles(result)
         }
         .fullScreenCover(isPresented: $cameraShown) {
-            CameraPicker(
+            ChatCameraPicker(
                 onShot: { shot in
                     cameraShown = false
                     sendShot(shot)
@@ -184,7 +185,7 @@ struct AttachmentSheet: View {
                         UIApplication.shared.open(url)
                     }
                 }
-                if CameraPicker.isAvailable {
+                if ChatCameraPicker.isAvailable {
                     Button("Снять на камеру") { cameraShown = true }
                 }
             }
@@ -207,12 +208,12 @@ struct AttachmentSheet: View {
 
     private var cameraCell: some View {
         Button {
-            if CameraPicker.isAvailable { cameraShown = true }
+            if ChatCameraPicker.isAvailable { cameraShown = true }
         } label: {
             Color.black
                 .aspectRatio(1, contentMode: .fill)
                 .overlay {
-                    if CameraFeed.isAuthorized, CameraPicker.isAvailable {
+                    if CameraFeed.isAuthorized, ChatCameraPicker.isAvailable {
                         CameraPreview(feed: feed)
                             .onAppear { feed.start() }
                             .onDisappear { feed.stop() }
@@ -226,7 +227,7 @@ struct AttachmentSheet: View {
                 .clipped()
         }
         .buttonStyle(.plain)
-        .disabled(!CameraPicker.isAvailable)
+        .disabled(!ChatCameraPicker.isAvailable)
         .accessibilityLabel("Камера")
     }
 
@@ -399,7 +400,7 @@ struct AttachmentSheet: View {
         }
     }
 
-    private func sendShot(_ shot: CameraPicker.Shot) {
+    private func sendShot(_ shot: ChatCameraPicker.Shot) {
         preparing = true
         Task {
             defer { preparing = false }
