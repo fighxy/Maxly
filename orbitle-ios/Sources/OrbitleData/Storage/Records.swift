@@ -26,6 +26,11 @@ public struct ChatRecord: Sendable, Hashable {
     public var pinOrder: Int?
     /// Сервер прислал закреплённые: тогда `pinOrder == nil` значит «не закреплён».
     public var pinsKnown: Bool
+    /// Вид первого вложения последнего сообщения. `nil` — текст или неизвестно.
+    public var lastMedia: MessageMediaKind?
+    public var lastThumbnailURL: URL?
+    /// Комментарии канала. `nil` — сервер не сказал.
+    public var commentsEnabled: Bool?
 
     public init(
         id: String,
@@ -42,7 +47,10 @@ public struct ChatRecord: Sendable, Hashable {
         isBot: Bool? = nil,
         isVerified: Bool? = nil,
         pinOrder: Int? = nil,
-        pinsKnown: Bool = false
+        pinsKnown: Bool = false,
+        lastMedia: MessageMediaKind? = nil,
+        lastThumbnailURL: URL? = nil,
+        commentsEnabled: Bool? = nil
     ) {
         self.id = id
         self.title = title
@@ -59,6 +67,9 @@ public struct ChatRecord: Sendable, Hashable {
         self.isVerified = isVerified
         self.pinOrder = pinOrder
         self.pinsKnown = pinsKnown
+        self.lastMedia = lastMedia
+        self.lastThumbnailURL = lastThumbnailURL
+        self.commentsEnabled = commentsEnabled
     }
 
     public init(_ chat: Chat) {
@@ -75,7 +86,10 @@ public struct ChatRecord: Sendable, Hashable {
             isMuted: chat.isMuted,
             isArchived: chat.isArchived,
             isBot: chat.isBot,
-            isVerified: chat.isVerified
+            isVerified: chat.isVerified,
+            lastMedia: chat.lastMessage?.media,
+            lastThumbnailURL: chat.lastMessage?.thumbnailURL,
+            commentsEnabled: chat.commentsEnabled
         )
     }
 
@@ -88,13 +102,16 @@ public struct ChatRecord: Sendable, Hashable {
             unreadCount: unreadCount,
             updatedAt: updatedAt,
             preview: preview,
-            lastMessage: lastAuthorId.map { ChatLastMessage(authorId: $0) },
+            lastMessage: (lastAuthorId != nil || lastMedia != nil)
+                ? ChatLastMessage(authorId: lastAuthorId, media: lastMedia, thumbnailURL: lastThumbnailURL)
+                : nil,
             avatarURL: avatarURL,
             pinOrder: pinsKnown ? pinOrder : nil,
             isMuted: isMuted ?? false,
             isArchived: isArchived ?? false,
             isBot: isBot ?? false,
-            isVerified: isVerified ?? false
+            isVerified: isVerified ?? false,
+            commentsEnabled: commentsEnabled
         )
     }
 }

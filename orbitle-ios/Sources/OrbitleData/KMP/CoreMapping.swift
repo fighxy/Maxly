@@ -23,7 +23,10 @@ enum CoreMapping {
             updatedAt: Date(unixMillis: chat.updatedAtMs),
             preview: chat.lastText.isEmpty ? nil : chat.lastText,
             lastAuthorId: chat.lastAuthorId.isEmpty ? nil : chat.lastAuthorId,
-            avatarURL: chat.avatarURL.isEmpty ? nil : URL(string: chat.avatarURL)
+            avatarURL: chat.avatarURL.isEmpty ? nil : URL(string: chat.avatarURL),
+            lastMedia: MessageMediaKind(rawValue: chat.lastMedia),
+            lastThumbnailURL: chat.lastThumbURL.isEmpty ? nil : URL(string: chat.lastThumbURL),
+            commentsEnabled: chat.comments < 0 ? nil : chat.comments == 1
         )
     }
 

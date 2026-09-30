@@ -125,9 +125,10 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         var content = MessageContent.empty
         if let replyTo, let target = (try? message(id: replyTo)) ?? (try? message(serverId: replyTo)) {
             let quoted = Self.record(target).domain
+            let name = quoted.authorName.trimmingCharacters(in: .whitespacesAndNewlines)
             content.reply = MessageReply(
                 messageId: quoted.serverId ?? quoted.id,
-                authorName: "Сообщение",
+                authorName: quoted.authorId == currentUserId ? "Вы" : (name.isEmpty ? "Сообщение" : name),
                 preview: quoted.replySnippet,
                 kind: quoted.replyKind
             )

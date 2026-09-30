@@ -98,7 +98,11 @@ public actor OutboxQueue {
             var attempt = 0
             attempts: while true {
                 if Task.isCancelled { return }
-                let result = await api.sendMessage(chatId: record.chatId, text: record.text, clientId: record.id)
+                // Ответ уходит ссылкой на серверный id. Цитата своего ещё не отправленного
+                // сообщения (локальный id) остаётся только на устройстве.
+                let quoted = MessageContentCodec.decode(record.contentJSON).reply?.messageId
+                let replyTo = quoted.flatMap { Int64($0) == nil ? nil : $0 }
+                let result = await api.sendMessage(chatId: record.chatId, text: record.text, clientId: record.id, replyTo: replyTo)
                 switch result {
                 case .success(let sent):
                     await store.markSent(localId: localId, serverId: sent.serverId, timestamp: sent.timestamp)

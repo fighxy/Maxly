@@ -117,6 +117,8 @@ public struct Chat: Identifiable, Hashable, Sendable {
     /// Непрочитанные упоминания.
     public var unreadMentions: Int
     public var draft: ChatDraft?
+    /// Комментарии канала: `true` включены, `false` выключены, `nil` сервер не сказал.
+    public var commentsEnabled: Bool?
 
     public init(
         id: String,
@@ -136,7 +138,8 @@ public struct Chat: Identifiable, Hashable, Sendable {
         isVerified: Bool = false,
         isOnline: Bool = false,
         unreadMentions: Int = 0,
-        draft: ChatDraft? = nil
+        draft: ChatDraft? = nil,
+        commentsEnabled: Bool? = nil
     ) {
         self.id = id
         self.title = title
@@ -156,6 +159,7 @@ public struct Chat: Identifiable, Hashable, Sendable {
         self.isOnline = isOnline
         self.unreadMentions = unreadMentions
         self.draft = draft
+        self.commentsEnabled = commentsEnabled
     }
 
     public var isPinned: Bool { pinOrder != nil }

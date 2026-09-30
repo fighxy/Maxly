@@ -41,6 +41,26 @@ public struct MessageContent: Hashable, Sendable, Codable {
         attachments.compactMap(\.file)
     }
 
+    /// Вид первого вложения для строки списка чатов.
+    public var previewMedia: MessageMediaKind? {
+        switch attachments.first {
+        case .photo: .photo
+        case .video(let video): video.isRound ? .videoMessage : .video
+        case .voice: .voice
+        case .file: .file
+        case nil: nil
+        }
+    }
+
+    /// Картинка первого вложения для строки списка: фото или обложка видео.
+    public var previewThumbnail: URL? {
+        switch attachments.first {
+        case .photo(let photo): photo.url
+        case .video(let video): video.posterURL
+        default: nil
+        }
+    }
+
     public func settingLocalPath(_ path: String, attachmentId: String) -> MessageContent {
         var copy = self
         copy.attachments = attachments.map { $0.withLocalPath(path, id: attachmentId) }

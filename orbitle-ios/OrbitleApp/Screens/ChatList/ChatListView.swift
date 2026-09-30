@@ -23,15 +23,6 @@ struct ChatListView: View {
         // Новое сообщение поднимает строку наверх плавно, а не скачком.
         .animation(.default, value: viewModel.items.map(\.id))
         .animation(.default, value: viewModel.isSearchActive)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if viewModel.showsFolders, !viewModel.isSearchActive {
-                FolderStrip(tabs: viewModel.folders, selected: viewModel.selectedFolderId) { id in
-                    withAnimation { viewModel.selectFolder(id) }
-                }
-                .padding(.bottom, 4)
-                .background(.bar)
-            }
-        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if viewModel.isEditing { editBar }
         }
@@ -79,6 +70,15 @@ struct ChatListView: View {
         if viewModel.isSearchActive {
             searchResults
         } else {
+            if viewModel.showsFolders {
+                // Папки — между поиском и закреплёнными, системным переключателем.
+                FolderSegments(tabs: viewModel.folders, selected: viewModel.selectedFolderId) { id in
+                    withAnimation { viewModel.selectFolder(id) }
+                }
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 8, trailing: 0))
+                .listRowSeparator(.hidden)
+                .selectionDisabled()
+            }
             if let message = viewModel.inlineError {
                 Button {
                     viewModel.dismissError()
