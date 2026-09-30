@@ -24,6 +24,7 @@ public struct MessageBubble: View {
     private let reservesAvatar: Bool
     private let group: BubbleGroup
     private let loadingId: String?
+    private let commentCount: Int?
     private let onRetry: () -> Void
     private let onReply: () -> Void
     private let onReact: (String) -> Void
@@ -32,6 +33,8 @@ public struct MessageBubble: View {
     private let onVoice: () -> Void
     private let onFile: (String) -> Void
     private let onFocusReply: (String) -> Void
+    private let onForward: (() -> Void)?
+    private let onDelete: (() -> Void)?
 
     /// Сдвиг пузыря при свайпе «ответить».
     @State private var swipe: CGFloat = 0
@@ -55,6 +58,7 @@ public struct MessageBubble: View {
         reservesAvatar: Bool? = nil,
         group: BubbleGroup = .single,
         loadingId: String? = nil,
+        commentCount: Int? = nil,
         onRetry: @escaping () -> Void = {},
         onReply: @escaping () -> Void = {},
         onReact: @escaping (String) -> Void = { _ in },
@@ -62,7 +66,9 @@ public struct MessageBubble: View {
         onOpen: @escaping (String) -> Void = { _ in },
         onVoice: @escaping () -> Void = {},
         onFile: @escaping (String) -> Void = { _ in },
-        onFocusReply: @escaping (String) -> Void = { _ in }
+        onFocusReply: @escaping (String) -> Void = { _ in },
+        onForward: (() -> Void)? = nil,
+        onDelete: (() -> Void)? = nil
     ) {
         self.message = message
         self.isOutgoing = isOutgoing
@@ -75,6 +81,7 @@ public struct MessageBubble: View {
         self.reservesAvatar = reservesAvatar ?? showsAuthorAvatar
         self.group = group
         self.loadingId = loadingId
+        self.commentCount = commentCount
         self.onRetry = onRetry
         self.onReply = onReply
         self.onReact = onReact
@@ -83,6 +90,8 @@ public struct MessageBubble: View {
         self.onVoice = onVoice
         self.onFile = onFile
         self.onFocusReply = onFocusReply
+        self.onForward = onForward
+        self.onDelete = onDelete
     }
 
     public var body: some View {
@@ -99,9 +108,6 @@ public struct MessageBubble: View {
                         .foregroundStyle(.red)
                 }
                 ReactionChips(reactions: message.content.reactions, onToggle: onReact)
-                if showsComments {
-                    commentsButton
-                }
             }
             .frame(maxWidth: bubbleWidth, alignment: isOutgoing ? .trailing : .leading)
             if !isOutgoing { Spacer(minLength: 40) }
@@ -124,6 +130,13 @@ public struct MessageBubble: View {
             }
             if allowsComments {
                 Button("Комментарии", systemImage: "bubble.left.and.bubble.right", action: onComments)
+            }
+            if let onForward, message.status == .sent {
+                Button("Переслать", systemImage: "arrowshape.turn.up.right", action: onForward)
+            }
+            if let onDelete {
+                Divider()
+                Button("Удалить", systemImage: "trash", role: .destructive, action: onDelete)
             }
         }
     }
@@ -170,28 +183,34 @@ public struct MessageBubble: View {
 
     // MARK: Комментарии
 
-    /// Плашка под постом канала: число комментариев (или «Комментировать») и стрелка.
-    private var commentsButton: some View {
-        Button(action: onComments) {
-            HStack(spacing: 8) {
-                Image(systemName: "bubble.left.and.bubble.right.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                Text(ChatContentFormat.comments(message.content.comments?.count ?? 0))
-                    .font(.subheadline.weight(.medium))
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+    /// Нижняя строка пузыря поста канала: число комментариев (или «Комментировать») и стрелка.
+    private var commentsFooter: some View {
+        let count = commentCount ?? message.content.comments?.count ?? 0
+        return Button(action: onComments) {
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill((isOutgoing ? Color.white : Color.primary).opacity(0.12))
+                    .frame(height: 0.5)
+                HStack(spacing: 8) {
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text(ChatContentFormat.comments(count))
+                        .font(.subheadline.weight(.medium))
+                        .contentTransition(.numericText())
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .opacity(0.6)
+                }
+                .foregroundStyle(isOutgoing ? Color.white : Color.orbitleAccent)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
             }
-            .foregroundStyle(Color.orbitleAccent)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .frame(maxWidth: bubbleWidth)
-            .background(Color.orbitleIncoming, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Открыть комментарии")
+        .animation(.default, value: count)
+        .accessibilityLabel("\(ChatContentFormat.comments(count)), открыть")
     }
 
     // MARK: Каркас
@@ -278,6 +297,9 @@ public struct MessageBubble: View {
                 .padding(.horizontal, 10)
                 .padding(.bottom, 6)
             }
+            if showsComments {
+                commentsFooter
+            }
         }
         .frame(minWidth: 64, alignment: .leading)
         .background(fill, in: shape)
@@ -288,8 +310,11 @@ public struct MessageBubble: View {
     @ViewBuilder
     private var header: some View {
         let name = showsAuthorName && !authorTitle.isEmpty
-        if name || message.content.reply != nil {
+        if name || message.content.reply != nil || message.content.forward != nil {
             VStack(alignment: .leading, spacing: 4) {
+                if let forward = message.content.forward {
+                    forwardLabel(forward)
+                }
                 if name {
                     Text(authorTitle)
                         .font(.subheadline.weight(.semibold))
@@ -319,6 +344,7 @@ public struct MessageBubble: View {
             status: isOutgoing ? message.status : nil,
             cornerRadius: hasFill ? Self.radius - inset : Self.radius,
             loadingId: loadingId,
+            fillsWidth: hasFill,
             onOpen: onOpen
         )
         .padding(.horizontal, inset)
@@ -333,7 +359,7 @@ public struct MessageBubble: View {
     private var textBody: some View {
         ZStack(alignment: .bottomTrailing) {
             MessageTextView(
-                text: message.text,
+                text: message.displayText,
                 spans: message.content.formatting ?? [],
                 outgoing: isOutgoing,
                 trailingSpace: "\u{2007}\u{2007}" + metaPlaceholder
@@ -433,32 +459,51 @@ public struct MessageBubble: View {
         return ext.isEmpty || ext.count > 5 ? "FILE" : ext
     }
 
+    // MARK: Пересылка
+
+    /// «Переслано от Имя» над содержимым, как в привычных мессенджерах.
+    private func forwardLabel(_ forward: MessageForward) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Переслано от")
+                .font(.caption)
+                .foregroundStyle(isOutgoing ? Color.white.opacity(0.8) : Color.orbitleAccent.opacity(0.8))
+            Text(forward.authorName)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(isOutgoing ? Color.white : Color.orbitleAccent)
+                .lineLimit(1)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
     // MARK: Цитата
 
     private func quote(_ reply: MessageReply) -> some View {
         Button {
             onFocusReply(reply.messageId)
         } label: {
-            HStack(alignment: .top, spacing: 0) {
+            // Полоса — в overlay, чтобы её высота бралась из текста, а не растягивала цитату.
+            VStack(alignment: .leading, spacing: 1) {
+                Text(reply.authorName)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(isOutgoing ? Color.white : quoteTint)
+                    .lineLimit(1)
+                Text(reply.preview)
+                    .font(.subheadline)
+                    .lineLimit(1)
+                    .foregroundStyle(textColor.opacity(0.85))
+            }
+            .padding(.leading, 11)
+            .padding(.trailing, 8)
+            .padding(.vertical, 5)
+            .frame(minWidth: 120, alignment: .leading)
+            .overlay(alignment: .leading) {
                 Rectangle()
                     .fill(quoteTint)
                     .frame(width: 3)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(reply.authorName)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(isOutgoing ? Color.white : quoteTint)
-                        .lineLimit(1)
-                    Text(reply.preview)
-                        .font(.caption)
-                        .lineLimit(1)
-                        .foregroundStyle(textColor.opacity(0.9))
-                }
-                .padding(.horizontal, 7)
-                .padding(.vertical, 4)
-                Spacer(minLength: 0)
             }
-            .background(quoteTint.opacity(isOutgoing ? 0.25 : 0.12))
+            .background(quoteTint.opacity(isOutgoing ? 0.22 : 0.12))
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .fixedSize(horizontal: false, vertical: true)
         }
         .buttonStyle(.plain)
     }
@@ -466,15 +511,15 @@ public struct MessageBubble: View {
     // MARK: Цвета
 
     private var hasText: Bool {
-        !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !message.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var stretchesText: Bool {
-        !visuals.isEmpty || !message.content.voices.isEmpty || !message.content.files.isEmpty
+        !visuals.isEmpty || !message.content.voices.isEmpty || !message.content.files.isEmpty || showsComments
     }
 
     private var hasHeader: Bool {
-        (showsAuthorName && !authorTitle.isEmpty) || message.content.reply != nil
+        (showsAuthorName && !authorTitle.isEmpty) || message.content.reply != nil || message.content.forward != nil
     }
 
     private var authorTitle: String {
@@ -484,6 +529,7 @@ public struct MessageBubble: View {
     /// Подложка есть у всего, кроме сообщения только из фото и видео.
     private var hasFill: Bool {
         hasText || hasHeader || !message.content.voices.isEmpty || !message.content.files.isEmpty || visuals.isEmpty
+            || showsComments
     }
 
     private var fill: Color {
@@ -513,7 +559,7 @@ public struct MessageBubble: View {
 
     private func copyText() {
         #if canImport(UIKit)
-        UIPasteboard.general.string = message.text
+        UIPasteboard.general.string = message.displayText
         #endif
     }
 }

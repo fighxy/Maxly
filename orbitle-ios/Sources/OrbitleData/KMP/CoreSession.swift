@@ -301,6 +301,12 @@ public protocol MaxCore: Sendable {
     /// Комментарии поста канала старше `beforeMs` (самые новые при `0`), от старых к новым.
     func loadComments(chatId: String, postId: String, beforeMs: Int64, limit: Int) async throws -> [CoreMessage]
     func sendComment(chatId: String, postId: String, text: String) async throws -> CoreMessage
+    /// Удалить сообщения у себя (`forEveryone == false`) или у всех.
+    func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async throws
+    /// Переслать сообщение в другой чат. Возвращает новое сообщение в целевом чате.
+    func forwardMessage(toChatId: String, fromChatId: String, messageId: String) async throws -> CoreMessage
+    /// Число комментариев под постами канала: id поста → число. Посты без ответа сервера пропущены.
+    func loadCommentCounts(chatId: String, postIds: [String]) async throws -> [String: Int]
     func markRead(chatId: String, messageId: String) async throws
     func phases() -> AsyncStream<CorePhase>
     func events() -> AsyncStream<CoreEvent>
@@ -374,6 +380,13 @@ public extension MaxCore {
     }
     func loadComments(chatId: String, postId: String, beforeMs: Int64, limit: Int) async throws -> [CoreMessage] { [] }
     func sendComment(chatId: String, postId: String, text: String) async throws -> CoreMessage {
+        throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
+    }
+    func loadCommentCounts(chatId: String, postIds: [String]) async throws -> [String: Int] { [:] }
+    func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async throws {
+        throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
+    }
+    func forwardMessage(toChatId: String, fromChatId: String, messageId: String) async throws -> CoreMessage {
         throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
     }
     func pinnedChats() -> AsyncStream<[String]> { AsyncStream { $0.finish() } }

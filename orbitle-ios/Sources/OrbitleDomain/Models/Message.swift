@@ -49,9 +49,16 @@ public struct Message: Identifiable, Hashable, Sendable {
         self.content = content
     }
 
+    /// Текст пузыря: свой, а у пересланного без своего текста — текст оригинала.
+    public var displayText: String {
+        let own = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if own.isEmpty, let forwarded = content.forward?.text, !forwarded.isEmpty { return forwarded }
+        return text
+    }
+
     /// Короткая подпись для цитаты: текст, иначе вид вложения.
     public var replySnippet: String {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = displayText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { return trimmed }
         if !content.voices.isEmpty { return "Голосовое сообщение" }
         if content.attachments.contains(where: { $0.video != nil }) { return "Видео" }

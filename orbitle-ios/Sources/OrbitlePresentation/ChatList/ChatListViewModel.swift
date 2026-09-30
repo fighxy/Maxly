@@ -219,6 +219,14 @@ public final class ChatListViewModel {
         chats.first { $0.id == chatId }.map(formatter.title(for:)) ?? "Чат"
     }
 
+    /// Куда можно переслать сообщение: все чаты вне архива в порядке списка, кроме `excluding`.
+    public func forwardTargets(excluding chatId: String? = nil) -> [ChatListItem] {
+        let now = Date()
+        return chats
+            .filter { !$0.isArchived && $0.id != chatId }
+            .map { formatter.item(for: $0, now: now, showDraft: false) }
+    }
+
     public func chat(id: String) -> Chat? {
         chats.first { $0.id == id }
     }

@@ -223,7 +223,8 @@ struct MainTabView: View {
                 viewModel: model,
                 title: container.chatTitle(id: id),
                 commentsEnabled: container.commentsEnabled(id: id),
-                chatType: container.chatType(id: id)
+                chatType: container.chatType(id: id),
+                forwardTargets: { container.forwardTargets(excluding: id) }
             ) {
                 container.profileViewModel(chatId: id)
             }

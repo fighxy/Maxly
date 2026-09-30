@@ -259,6 +259,48 @@ struct MessageContentStoreTests {
         #expect(sent.domain.content.reply?.messageId == "500")
     }
 
+    @Test("Удаление: серверное сообщение через сервер, неотправленное только локально, отказ сервера оставляет")
+    func deleteMessages() async throws {
+        let api = FakeMaxAPI()
+        await api.setSendResults([.failure(.offline)])
+        let (repository, _) = try await makeMessageStack(api: api)
+        try await repository.upsert([row("500", text: "Серверное", at: 10), row("501", text: "Второе", at: 11)])
+        try await repository.send(text: "Не ушло", chatId: "c1")
+        let local = try #require(try await repository.page(chatId: "c1", before: nil).first { $0.text == "Не ушло" })
+
+        try await repository.delete(messageIds: ["500"], chatId: "c1", forEveryone: true)
+        try await repository.delete(messageIds: [local.id], chatId: "c1", forEveryone: false)
+        let deletions = await api.deletions
+        #expect(deletions.map(\.0) == [["500"]])
+        #expect(deletions.map(\.1) == [true])
+        #expect(try await repository.page(chatId: "c1", before: nil).map(\.text) == ["Второе"])
+
+        await api.setDeleteResult(.failure(.offline))
+        await #expect(throws: OrbitleError.self) {
+            try await repository.delete(messageIds: ["501"], chatId: "c1", forEveryone: false)
+        }
+        #expect(try await repository.page(chatId: "c1", before: nil).map(\.text) == ["Второе"])
+    }
+
+    @Test("Пересылка записывает новое сообщение в целевой чат; неотправленное не пересылается")
+    func forwardMessage() async throws {
+        let api = FakeMaxAPI()
+        let forwarded = MessageRecord(
+            id: "900", serverId: "900", chatId: "c2", authorId: "me", text: "", timestamp: Date(timeIntervalSince1970: 40),
+            status: .sent, contentJSON: #"{"link":{"type":"FORWARD","messageId":"500","message":{"text":"Оригинал","senderName":"Анна"}}}"#
+        )
+        await api.setForwardResult(.success(forwarded))
+        let (repository, _) = try await makeMessageStack(api: api)
+        try await repository.upsert([row("500", text: "Оригинал", at: 10)])
+        try await repository.forward(messageId: "500", from: "c1", to: "c2")
+        let copy = try #require(try await repository.page(chatId: "c2", before: nil).first)
+        #expect(copy.domain.content.forward == MessageForward(authorName: "Анна", text: "Оригинал"))
+        #expect(copy.domain.displayText == "Оригинал")
+        await #expect(throws: OrbitleError.self) {
+            try await repository.forward(messageId: "local-1", from: "c1", to: "c2")
+        }
+    }
+
     @Test("Комментарий живёт в треде, лента и очередь его не видят")
     func commentsStayInThread() async throws {
         let api = FakeMaxAPI()
