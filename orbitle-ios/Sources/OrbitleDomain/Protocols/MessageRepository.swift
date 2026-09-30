@@ -20,6 +20,8 @@ public protocol MessageRepository: Sendable {
     func toggleReaction(messageId: String, emoji: String) async throws(OrbitleError)
     /// Обновить с сервера реакции показанных сообщений чата.
     func refreshReactions(chatId: String) async
+    /// Реакции этих сообщений отдельным запросом. В истории канала их у постов нет.
+    func syncReactions(chatId: String, messageIds: [String]) async
     /// Кто поставил реакции на сообщение.
     func reactionUsers(messageId: String) async throws(OrbitleError) -> [ReactionUser]
     /// Эмодзи, которые сервер предлагает для реакций, в его порядке. Пусто, если каталог
@@ -59,6 +61,8 @@ extension MessageRepository {
     }
 
     public func refreshReactions(chatId: String) async {}
+
+    public func syncReactions(chatId: String, messageIds: [String]) async {}
 
     public func reactionUsers(messageId: String) async throws(OrbitleError) -> [ReactionUser] {
         throw .invalidRequest
