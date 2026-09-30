@@ -33,12 +33,14 @@ struct ChatView: View {
                                 .font(.footnote)
                                 .padding(.top, 8)
                         }
-                        ForEach(viewModel.messages) { message in
+                        ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, message in
                             TranscriptBubble(
                                 message: message,
                                 viewModel: viewModel,
                                 maxWidth: geo.size.width * OrbitleTheme.bubbleMax,
-                                allowsComments: allowsComments
+                                allowsComments: allowsComments,
+                                showsAuthorName: authorName(at: index),
+                                showsAuthorAvatar: authorAvatar(at: index)
                             )
                             .id(message.id)
                         }
@@ -83,6 +85,9 @@ struct ChatView: View {
         }
         .fullScreenCover(item: $viewModel.viewer) { request in
             MediaViewer(request: request) { viewModel.viewer = nil }
+        }
+        .fullScreenCover(item: $viewModel.openedFile) { file in
+            FileQuickLook(url: file.url, title: file.name) { viewModel.openedFile = nil }
         }
         .task {
             viewModel.activate()
@@ -138,6 +143,29 @@ struct ChatView: View {
         .padding(.bottom, 8)
     }
 
+    private func authorName(at index: Int) -> Bool {
+        let messages = viewModel.messages
+        let message = messages[index]
+        let previous = index > 0 ? messages[index - 1].authorId : nil
+        return ChatContentFormat.showsAuthorName(
+            outgoing: viewModel.isOutgoing(message),
+            authorName: message.authorName,
+            authorId: message.authorId,
+            previousAuthorId: previous
+        )
+    }
+
+    private func authorAvatar(at index: Int) -> Bool {
+        let messages = viewModel.messages
+        let message = messages[index]
+        let next = index + 1 < messages.count ? messages[index + 1].authorId : nil
+        return ChatContentFormat.showsAuthorAvatar(
+            outgoing: viewModel.isOutgoing(message),
+            authorId: message.authorId,
+            nextAuthorId: next
+        )
+    }
+
     private func replyBar(_ message: Message) -> some View {
         HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 2)
@@ -174,6 +202,8 @@ private struct TranscriptBubble: View {
     let viewModel: ChatViewModel
     let maxWidth: CGFloat
     let allowsComments: Bool
+    let showsAuthorName: Bool
+    let showsAuthorAvatar: Bool
 
     var body: some View {
         let voiceId = message.content.voices.first?.id
@@ -184,12 +214,15 @@ private struct TranscriptBubble: View {
             phase: voiceId.map { viewModel.voicePhase(for: $0) } ?? .idle,
             allowsComments: allowsComments,
             highlighted: viewModel.highlightedId == message.id,
+            showsAuthorName: showsAuthorName,
+            showsAuthorAvatar: showsAuthorAvatar,
             onRetry: { Task { await viewModel.retry(id: message.id) } },
             onReply: { viewModel.beginReply(to: message) },
             onReact: { emoji in Task { await viewModel.toggleReaction(messageId: message.id, emoji: emoji) } },
             onComments: { viewModel.openComments(message) },
             onOpen: { viewModel.presentMedia(message, startId: $0) },
             onVoice: { viewModel.toggleVoice(message) },
+            onFile: { viewModel.openFile(message, attachmentId: $0) },
             onFocusReply: { viewModel.focusReply($0) }
         )
     }

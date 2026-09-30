@@ -338,7 +338,10 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             chatId: message.chatId,
             authorId: message.authorId,
             text: message.text,
-            timeMs: message.timeMs
+            timeMs: message.timeMs,
+            contentJSON: message.contentJson,
+            authorName: message.authorName,
+            authorAvatarURL: message.authorAvatarUrl
         )
     }
 
@@ -353,7 +356,10 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             title: event.title,
             chatType: event.chatType,
             timeMs: event.timeMs,
-            unread: Int(event.unread)
+            unread: Int(event.unread),
+            contentJSON: event.contentJson,
+            authorName: event.authorName,
+            authorAvatarURL: event.authorAvatarUrl
         )
     }
 }

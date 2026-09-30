@@ -91,6 +91,15 @@ enum MessageContentCodec {
                 transcript: (map["transcription"] as? String) ?? (map["text"] as? String),
                 localPath: map["localPath"] as? String
             ))
+        case "FILE":
+            let name = (map["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return .file(FileContent(
+                id: stringId(map["fileId"]) ?? stringId(map["fileToken"]) ?? stringId(map["token"]) ?? stableId(map),
+                name: name.isEmpty ? "Файл" : name,
+                size: int64(map["size"]) ?? 0,
+                url: url(map["baseUrl"]) ?? url(map["url"]) ?? url(map["fileUrl"]),
+                localPath: map["localPath"] as? String
+            ))
         default:
             return nil
         }
@@ -122,6 +131,10 @@ enum MessageContentCodec {
         if attachments.contains(where: { $0.voice != nil }) { return "Голосовое сообщение" }
         if attachments.contains(where: { $0.video != nil }) { return "Видео" }
         if attachments.contains(where: { $0.photo != nil }) { return "Фото" }
+        if let file = attachments.compactMap(\.file).first {
+            let name = file.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return name.isEmpty ? "Файл" : name
+        }
         return ""
     }
 
@@ -130,6 +143,7 @@ enum MessageContentCodec {
         if attachments.contains(where: { $0.voice != nil }) { return .voice }
         if attachments.contains(where: { $0.video != nil }) { return .video }
         if attachments.contains(where: { $0.photo != nil }) { return .photo }
+        if attachments.contains(where: { $0.file != nil }) { return .file }
         return .text
     }
 
@@ -149,6 +163,12 @@ enum MessageContentCodec {
     private static func durationMs(_ value: Any?) -> Int64 {
         guard let number = integer(value) else { return 0 }
         return Int64(max(0, number))
+    }
+
+    private static func int64(_ value: Any?) -> Int64? {
+        if let number = value as? NSNumber { return number.int64Value }
+        if let text = value as? String { return Int64(text) }
+        return nil
     }
 
     private static func integer(_ value: Any?) -> Int? {

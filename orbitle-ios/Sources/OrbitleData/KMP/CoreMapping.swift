@@ -117,7 +117,9 @@ enum CoreMapping {
             timestamp: Date(unixMillis: message.timeMs),
             status: .sent,
             contentJSON: MessageContentCodec.encode(content),
-            threadOf: content.threadOf ?? ""
+            threadOf: content.threadOf ?? "",
+            authorName: message.authorName,
+            authorAvatarURL: message.authorAvatarURL
         )
     }
 
@@ -156,6 +158,7 @@ enum CoreMapping {
 extension MessageRecord {
     init?(_ event: CoreEvent) {
         guard event.kind == .message || event.kind == .edited, !event.messageId.isEmpty, !event.chatId.isEmpty else { return nil }
+        let content = MessageContentCodec.decode(event.contentJSON)
         self.init(
             id: event.messageId,
             serverId: event.messageId,
@@ -163,7 +166,11 @@ extension MessageRecord {
             authorId: event.authorId,
             text: event.text,
             timestamp: Date(unixMillis: event.timeMs),
-            status: .sent
+            status: .sent,
+            contentJSON: MessageContentCodec.encode(content),
+            threadOf: content.threadOf ?? "",
+            authorName: event.authorName,
+            authorAvatarURL: event.authorAvatarURL
         )
     }
 }

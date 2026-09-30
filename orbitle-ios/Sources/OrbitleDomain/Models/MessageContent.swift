@@ -37,6 +37,10 @@ public struct MessageContent: Hashable, Sendable, Codable {
         attachments.compactMap(\.voice)
     }
 
+    public var files: [FileContent] {
+        attachments.compactMap(\.file)
+    }
+
     public func settingLocalPath(_ path: String, attachmentId: String) -> MessageContent {
         var copy = self
         copy.attachments = attachments.map { $0.withLocalPath(path, id: attachmentId) }
@@ -51,6 +55,7 @@ public struct MessageReply: Hashable, Sendable, Codable {
         case voice
         case photo
         case video
+        case file
     }
 
     public var messageId: String
@@ -71,12 +76,14 @@ public enum ChatAttachment: Hashable, Sendable, Codable {
     case photo(PhotoContent)
     case video(VideoContent)
     case voice(VoiceContent)
+    case file(FileContent)
 
     public var id: String {
         switch self {
         case .photo(let item): item.id
         case .video(let item): item.id
         case .voice(let item): item.id
+        case .file(let item): item.id
         }
     }
 
@@ -99,6 +106,11 @@ public enum ChatAttachment: Hashable, Sendable, Codable {
         return nil
     }
 
+    public var file: FileContent? {
+        if case .file(let item) = self { return item }
+        return nil
+    }
+
     public func withLocalPath(_ path: String, id: String) -> ChatAttachment {
         switch self {
         case .photo(var item):
@@ -113,6 +125,10 @@ public enum ChatAttachment: Hashable, Sendable, Codable {
             guard item.id == id else { return self }
             item.localPath = path
             return .voice(item)
+        case .file(var item):
+            guard item.id == id else { return self }
+            item.localPath = path
+            return .file(item)
         }
     }
 }
@@ -234,6 +250,35 @@ public struct VoiceContent: Hashable, Sendable, Codable {
     public func cacheItem() -> MediaItem? {
         guard let url else { return nil }
         return MediaItem(id: id, type: .audio, url: url, size: 0, localPath: localPath)
+    }
+}
+
+/// Файл. Адрес только если сервер его прислал: токен сам по себе файлом не открывается.
+public struct FileContent: Hashable, Sendable, Codable {
+    public var id: String
+    public var name: String
+    public var size: Int64
+    public var url: URL?
+    public var localPath: String?
+
+    public init(id: String, name: String, size: Int64 = 0, url: URL? = nil, localPath: String? = nil) {
+        self.id = id
+        self.name = name
+        self.size = size
+        self.url = url
+        self.localPath = localPath
+    }
+
+    public var fileURL: URL? {
+        if let localPath, FileManager.default.fileExists(atPath: localPath) {
+            return URL(fileURLWithPath: localPath)
+        }
+        return nil
+    }
+
+    public func cacheItem() -> MediaItem? {
+        guard let url else { return nil }
+        return MediaItem(id: id, type: .file, url: url, size: size, localPath: localPath)
     }
 }
 

@@ -49,6 +49,37 @@ struct MessageContentCodecTests {
         #expect(!content.isEmpty)
     }
 
+    @Test("Фото, голос и файл читаются вместе, токен адресом не становится")
+    func photoVoiceAndFile() throws {
+        let content = MessageContentCodec.decode(#"""
+        {"attaches":[
+          {"_type":"PHOTO","photoId":15,"baseUrl":"https://cdn.example/p.jpg","width":800,"height":600},
+          {"_type":"AUDIO","audioId":3,"url":"https://cdn.example/a.ogg","duration":3200,"wave":[10,200]},
+          {"_type":"FILE","fileId":9,"name":"отчёт.pdf","size":2048,"baseUrl":"https://cdn.example/f.pdf"},
+          {"_type":"FILE","fileId":10,"name":"секрет.bin","size":4,"token":"ft"}
+        ]}
+        """#)
+        let photo = try #require(content.visuals.first?.photo)
+        #expect(photo.url == URL(string: "https://cdn.example/p.jpg"))
+        let voice = try #require(content.voices.first)
+        #expect(voice.url == URL(string: "https://cdn.example/a.ogg"))
+        #expect(voice.durationMs == 3200)
+        #expect(voice.waveform == [10, 200])
+        #expect(content.files.count == 2)
+        #expect(content.files[0].name == "отчёт.pdf")
+        #expect(content.files[0].size == 2048)
+        #expect(content.files[0].url == URL(string: "https://cdn.example/f.pdf"))
+        #expect(content.files[1].name == "секрет.bin")
+        #expect(content.files[1].url == nil)
+
+        let reply = MessageContentCodec.decode(#"""
+        {"link":{"message":{"id":"f","text":"","attaches":[{"_type":"FILE","fileId":1,"name":"отчёт.pdf"}]}}}
+        """#)
+        let quote = try #require(reply.reply)
+        #expect(quote.kind == .file)
+        #expect(quote.preview == "отчёт.pdf")
+    }
+
     @Test("Пересылка не становится цитатой, нулевой счётчик комментариев остаётся")
     func forwardAndZeroComments() {
         let forwarded = MessageContentCodec.decode(#"""
@@ -264,12 +295,60 @@ struct MessageContentStoreTests {
         #expect(clip.durationMs == 3200)
     }
 
+    @Test("Пустое имя не стирает уже известного автора")
+    func authorSurvivesEmptyEcho() async throws {
+        let (repository, _) = try await makeMessageStack(api: FakeMaxAPI())
+        try await repository.upsert([row(
+            "m1",
+            text: "раз",
+            authorName: "Анна",
+            authorAvatarURL: "https://cdn.example/a.jpg"
+        )])
+        try await repository.upsert([row("m1", text: "эхо")])
+        let kept = try #require(try await repository.page(chatId: "c1", before: nil).first)
+        #expect(kept.domain.authorName == "Анна")
+        #expect(kept.domain.authorAvatarURL == URL(string: "https://cdn.example/a.jpg"))
+
+        try await repository.upsert([row(
+            "m1",
+            text: "эхо",
+            authorName: "Борис",
+            authorAvatarURL: "https://cdn.example/b.jpg"
+        )])
+        let replaced = try #require(try await repository.page(chatId: "c1", before: nil).first)
+        #expect(replaced.domain.authorName == "Борис")
+        #expect(replaced.domain.authorAvatarURL == URL(string: "https://cdn.example/b.jpg"))
+    }
+
+    @Test("Правка без фрагмента оставляет вложения, правка с фрагментом их заменяет")
+    func editKeepsAttachmentsUntilAFragmentArrives() async throws {
+        let (repository, _) = try await makeMessageStack(api: FakeMaxAPI())
+        let photo = MessageContentCodec.encode(MessageContent(attachments: [
+            .photo(PhotoContent(id: "p", url: URL(string: "https://cdn.example/p.jpg"), width: 800, height: 600)),
+        ]))
+        try await repository.upsert([row("m1", text: "раз", contentJSON: photo)])
+        #expect(try await repository.applyEdit(row("m1", text: "новое")))
+        let kept = try #require(try await repository.page(chatId: "c1", before: nil).first)
+        #expect(kept.text == "новое")
+        #expect(kept.domain.content.visuals.first?.photo?.id == "p")
+
+        let file = MessageContentCodec.encode(MessageContent(attachments: [
+            .file(FileContent(id: "f", name: "отчёт.pdf", size: 2048, url: URL(string: "https://cdn.example/f.pdf"))),
+        ]))
+        #expect(try await repository.applyEdit(row("m1", text: "файл", contentJSON: file)))
+        let replaced = try #require(try await repository.page(chatId: "c1", before: nil).first)
+        #expect(replaced.domain.content.files.first?.name == "отчёт.pdf")
+        #expect(replaced.domain.content.visuals.isEmpty)
+    }
+
     private func row(
         _ id: String,
         text: String,
         at seconds: TimeInterval = 1,
         contentJSON: String = "",
-        threadOf: String = ""
+        threadOf: String = "",
+        authorName: String = "",
+        authorAvatarURL: String = ""
     ) -> MessageRecord {
         MessageRecord(
             id: id,
@@ -280,7 +359,9 @@ struct MessageContentStoreTests {
             timestamp: Date(timeIntervalSince1970: seconds),
             status: .sent,
             contentJSON: contentJSON,
-            threadOf: threadOf
+            threadOf: threadOf,
+            authorName: authorName,
+            authorAvatarURL: authorAvatarURL
         )
     }
 }

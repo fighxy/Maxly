@@ -28,6 +28,8 @@ public final class ChatViewModel {
     public var openedCommentId: String?
     /// Просмотр фото и видео.
     public var viewer: MediaViewerRequest?
+    /// Открытый файл.
+    public var openedFile: OpenedFile?
     /// Диалог открыт из контактов, и на сервере его может ещё не быть: пустая история не
     /// ошибка, экран предлагает написать первое сообщение.
     public let isNewDialog: Bool
@@ -46,6 +48,7 @@ public final class ChatViewModel {
     @ObservationIgnored private var activeVoiceId: String?
     @ObservationIgnored private var voiceTask: Task<Void, Never>?
     @ObservationIgnored private var voiceToggle: Task<Void, Never>?
+    @ObservationIgnored private var fileTask: Task<Void, Never>?
     @ObservationIgnored private var commentsModel: CommentsViewModel?
 
     public init(
@@ -110,6 +113,9 @@ public final class ChatViewModel {
         watch?.cancel()
         watch = nil
         stopVoice()
+        fileTask?.cancel()
+        fileTask = nil
+        openedFile = nil
         flushDraft()
     }
 
@@ -240,6 +246,11 @@ public final class ChatViewModel {
         viewer = MediaViewerRequest(id: startId, slides: slides)
     }
 
+    public func openFile(_ message: Message, attachmentId: String) {
+        fileTask?.cancel()
+        fileTask = Task { await self.loadFile(message, attachmentId: attachmentId) }
+    }
+
     public func voicePhase(for id: String) -> VoicePhase {
         voicePhases[id] ?? .idle
     }
@@ -325,6 +336,7 @@ public final class ChatViewModel {
         voiceTask?.cancel()
         voiceTask = Task { @MainActor [weak self] in
             var seenPlaying = false
+            var silentTicks = 0
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(100))
                 guard let self, self.activeVoiceId == id else { return }
@@ -335,16 +347,49 @@ public final class ChatViewModel {
                 }
                 let playing = self.voice?.isPlaying ?? false
                 let progress = self.voice?.progress ?? 0
-                if playing { seenPlaying = true }
                 if playing {
+                    seenPlaying = true
+                    silentTicks = 0
                     self.voicePhases[id] = .playing(progress)
                 } else if seenPlaying {
                     self.voicePhases[id] = .idle
                     self.activeVoiceId = nil
                     self.voice?.stop()
                     return
+                } else {
+                    silentTicks += 1
+                    // Плеер принял файл, но так и не начал. Иначе пузырь крутится бесконечно.
+                    if silentTicks >= 15 {
+                        self.voice?.stop()
+                        self.voicePhases[id] = .failed
+                        self.activeVoiceId = nil
+                        return
+                    }
                 }
             }
+        }
+    }
+
+    private func loadFile(_ message: Message, attachmentId: String) async {
+        guard let file = message.content.files.first(where: { $0.id == attachmentId }) else { return }
+        if let local = file.fileURL {
+            guard !Task.isCancelled else { return }
+            openedFile = OpenedFile(id: file.id, url: local, name: file.name)
+            return
+        }
+        guard let item = file.cacheItem(), let media else { return }
+        do {
+            let saved = try await media.preview(for: item)
+            guard !Task.isCancelled else { return }
+            await repository.noteDownloaded(messageId: message.id, attachmentId: file.id, localPath: saved.path)
+            guard !Task.isCancelled else { return }
+            openedFile = OpenedFile(id: file.id, url: saved, name: file.name)
+        } catch let failure as OrbitleError {
+            guard !Task.isCancelled else { return }
+            show(failure)
+        } catch {
+            guard !Task.isCancelled else { return }
+            show(.storageError)
         }
     }
 
