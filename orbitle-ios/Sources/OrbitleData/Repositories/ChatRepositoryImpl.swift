@@ -152,6 +152,21 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         if !record.title.isEmpty { chat.title = record.title }
         chat.type = record.type
         mergeFlags(record, into: chat)
+        // Сервер говорит, что сообщений нет (всё удалено): превью удалённого не остаётся.
+        // Своё сообщение, которое ещё отправляется, не трогается.
+        if record.lastKnown, record.lastMessageId == nil, chat.lastMessageId != nil || chat.preview != nil,
+           chat.lastLocalId == nil {
+            chat.lastMessageId = nil
+            chat.preview = nil
+            chat.lastAuthorId = nil
+            chat.lastAuthorName = nil
+            chat.lastOutgoing = false
+            chat.lastDeliveryRaw = nil
+            chat.lastForwarded = false
+            chat.lastMediaRaw = nil
+            chat.lastThumbnailURLString = nil
+            return
+        }
         guard record.updatedAt >= chat.updatedAt else { return }
         if let lastMessageId = record.lastMessageId {
             if lastMessageId != chat.lastMessageId {
