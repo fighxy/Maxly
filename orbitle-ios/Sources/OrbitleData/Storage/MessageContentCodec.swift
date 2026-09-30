@@ -8,7 +8,7 @@ enum MessageContentCodec {
         guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8) else { return .empty }
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return .empty }
         if object["attaches"] != nil || object["reactionInfo"] != nil || object["link"] != nil
-            || object["commentsCount"] != nil || object["commentsInfo"] != nil {
+            || object["commentsCount"] != nil || object["commentsInfo"] != nil || object["elements"] != nil {
             return decodeServer(object)
         }
         return (try? JSONDecoder().decode(MessageContent.self, from: data)) ?? .empty
@@ -28,8 +28,39 @@ enum MessageContentCodec {
             attachments: attachments(object["attaches"]),
             reactions: reactions(object["reactionInfo"]),
             comments: comments(object),
-            threadOf: nil
+            threadOf: nil,
+            formatting: spans(object["elements"])
         )
+    }
+
+    /// `elements` сервера: `{type, from, length, attributes?, entityId?}`. Незнакомые типы пропускаются.
+    static func spans(_ value: Any?) -> [TextSpan] {
+        guard let list = value as? [Any] else { return [] }
+        return list.compactMap { item in
+            guard let map = item as? [String: Any] else { return nil }
+            let kind: TextSpan.Kind
+            switch (map["type"] as? String)?.uppercased() {
+            case "STRONG": kind = .strong
+            case "EMPHASIZED": kind = .emphasized
+            case "UNDERLINE": kind = .underline
+            case "STRIKETHROUGH": kind = .strikethrough
+            case "MONOSPACED", "CODE": kind = .monospaced
+            case "HEADING": kind = .heading
+            case "QUOTE": kind = .quote
+            case "LINK": kind = .link
+            case "USER_MENTION": kind = .mention
+            default: return nil
+            }
+            guard let from = integer(map["from"]), let length = integer(map["length"]), from >= 0, length > 0 else { return nil }
+            let attributes = map["attributes"] as? [String: Any]
+            return TextSpan(
+                kind: kind,
+                from: from,
+                length: length,
+                url: attributes?["url"] as? String,
+                userId: stringId(map["entityId"]) ?? stringId(attributes?["userId"])
+            )
+        }
     }
 
     private static func reply(_ value: Any?) -> MessageReply? {

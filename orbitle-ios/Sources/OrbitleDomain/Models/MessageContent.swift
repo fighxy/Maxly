@@ -8,25 +8,30 @@ public struct MessageContent: Hashable, Sendable, Codable {
     public var comments: CommentSummary?
     /// Сообщение живёт в треде поста и не попадает в общую ленту.
     public var threadOf: String?
+    /// Форматирование текста. Необязательное поле: старые записи в базе его не содержат.
+    public var formatting: [TextSpan]?
 
     public init(
         reply: MessageReply? = nil,
         attachments: [ChatAttachment] = [],
         reactions: [MessageReaction] = [],
         comments: CommentSummary? = nil,
-        threadOf: String? = nil
+        threadOf: String? = nil,
+        formatting: [TextSpan]? = nil
     ) {
         self.reply = reply
         self.attachments = attachments
         self.reactions = reactions
         self.comments = comments
         self.threadOf = threadOf
+        self.formatting = formatting?.isEmpty == true ? nil : formatting
     }
 
     public static let empty = MessageContent()
 
     public var isEmpty: Bool {
         reply == nil && attachments.isEmpty && reactions.isEmpty && comments == nil && (threadOf?.isEmpty != false)
+            && (formatting?.isEmpty != false)
     }
 
     public var visuals: [ChatAttachment] {
@@ -65,6 +70,37 @@ public struct MessageContent: Hashable, Sendable, Codable {
         var copy = self
         copy.attachments = attachments.map { $0.withLocalPath(path, id: attachmentId) }
         return copy
+    }
+}
+
+/// Отрезок форматирования текста. `from` и `length` — в единицах UTF-16, как их шлёт сервер.
+public struct TextSpan: Hashable, Sendable, Codable {
+    public enum Kind: String, Hashable, Sendable, Codable {
+        case strong
+        case emphasized
+        case underline
+        case strikethrough
+        case monospaced
+        case heading
+        case quote
+        case link
+        case mention
+    }
+
+    public var kind: Kind
+    public var from: Int
+    public var length: Int
+    /// Адрес ссылки (`LINK`).
+    public var url: String?
+    /// Пользователь упоминания (`USER_MENTION`).
+    public var userId: String?
+
+    public init(kind: Kind, from: Int, length: Int, url: String? = nil, userId: String? = nil) {
+        self.kind = kind
+        self.from = from
+        self.length = length
+        self.url = url
+        self.userId = userId
     }
 }
 

@@ -332,9 +332,13 @@ public struct MessageBubble: View {
     /// чтобы короткая строка не переносила его на отдельную строку.
     private var textBody: some View {
         ZStack(alignment: .bottomTrailing) {
-            (Text(message.text) + Text(verbatim: "\u{2007}\u{2007}" + metaPlaceholder).font(.caption2).foregroundStyle(.clear))
-                .foregroundStyle(textColor)
-                .textSelection(.enabled)
+            MessageTextView(
+                text: message.text,
+                spans: message.content.formatting ?? [],
+                outgoing: isOutgoing,
+                trailingSpace: "\u{2007}\u{2007}" + metaPlaceholder
+            )
+            .textSelection(.enabled)
             meta
         }
         // Рядом с медиа, голосовым или файлом пузырь уже широкий: время уходит к его правому краю.

@@ -15,6 +15,11 @@ struct ChatView: View {
     var makeProfile: (() -> ChatProfileViewModel?)?
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var composerFocused: Bool
+    /// Низ ленты виден. Пока он виден, новые сообщения прокручивают ленту сами.
+    @State private var atBottom = true
+    /// Сообщения, пришедшие, пока лента прокручена вверх: число на кнопке «вниз».
+    @State private var unseen = 0
+    private static let bottomId = "transcript-bottom"
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
@@ -54,14 +59,46 @@ struct ChatView: View {
                             )
                             .id(message.id)
                         }
+                        // Метка низа ленты: видна — значит, пользователь внизу.
+                        Color.clear
+                            .frame(height: 1)
+                            .id(Self.bottomId)
+                            .onAppear {
+                                atBottom = true
+                                unseen = 0
+                            }
+                            .onDisappear { atBottom = false }
                     }
                     .padding(.horizontal, OrbitleTheme.pad)
                     .padding(.bottom, 8)
                 }
-                .onChange(of: viewModel.messages.last?.id) { _, id in
-                    guard viewModel.stickToBottom, let id else { return }
-                    proxy.scrollTo(id, anchor: .bottom)
+                // Чат открывается сразу внизу, а не сверху до загрузки истории.
+                .defaultScrollAnchor(.bottom)
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: viewModel.messages.last?.id) { old, id in
+                    guard let id else { return }
+                    let last = viewModel.messages.last
+                    if old == nil {
+                        // Первая загрузка: сразу к последнему, без анимации.
+                        proxy.scrollTo(Self.bottomId, anchor: .bottom)
+                    } else if atBottom || (last.map(viewModel.isOutgoing) ?? false) {
+                        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
+                    } else if id != old {
+                        unseen += 1
+                    }
                 }
+                .overlay(alignment: .bottomTrailing) {
+                    if !atBottom, !viewModel.messages.isEmpty {
+                        scrollDownButton {
+                            withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
+                            unseen = 0
+                        }
+                        .padding(.trailing, OrbitleTheme.pad)
+                        .padding(.bottom, 10)
+                        .transition(.scale(scale: 0.6).combined(with: .opacity))
+                    }
+                }
+                .animation(.spring(duration: 0.25), value: atBottom)
                 .onChange(of: viewModel.scrollToken) { _, _ in
                     guard let id = viewModel.scrollTarget else { return }
                     proxy.scrollTo(id, anchor: .center)
@@ -159,6 +196,29 @@ struct ChatView: View {
     }
 
     private var showsAuthors: Bool { chatType == .group }
+
+    /// Круглая кнопка «вниз» на стекле; число непрочитанных, пришедших сверху, — бейджем.
+    private func scrollDownButton(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.primary)
+                .orbitleGlassCircle(size: 42)
+                .overlay(alignment: .top) {
+                    if unseen > 0 {
+                        Text(unseen > 99 ? "99+" : "\(unseen)")
+                            .font(.caption2.weight(.bold).monospacedDigit())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .frame(minWidth: 20, minHeight: 20)
+                            .background(Color.orbitleAccent, in: Capsule())
+                            .offset(y: -10)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(unseen > 0 ? "Вниз, новых сообщений: \(unseen)" : "Вниз")
+    }
 
     /// Кнопка комментариев — только под постами канала с включёнными комментариями.
     private func allowsComments(_ message: Message) -> Bool {
