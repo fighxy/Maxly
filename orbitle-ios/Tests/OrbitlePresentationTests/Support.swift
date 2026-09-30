@@ -308,6 +308,41 @@ actor FakeMessageRepository: MessageRepository {
 
     func retry(messageId: String) async throws(OrbitleError) {}
     func set(sendError: OrbitleError?) { self.sendError = sendError }
+
+    struct AttachmentSend: Equatable {
+        var drafts: [AttachmentDraft]
+        var caption: String
+        var replyTo: String?
+    }
+
+    private(set) var attachmentSends: [AttachmentSend] = []
+    private(set) var cancelledUploads: [String] = []
+    var attachmentError: OrbitleError?
+    private var progressContinuations: [AsyncStream<[String: Double]>.Continuation] = []
+
+    func sendAttachments(_ drafts: [AttachmentDraft], caption: String, chatId: String, replyTo: String?) async throws(OrbitleError) {
+        if let attachmentError { throw attachmentError }
+        attachmentSends.append(AttachmentSend(drafts: drafts, caption: caption, replyTo: replyTo))
+    }
+
+    func cancelUpload(messageId: String) async { cancelledUploads.append(messageId) }
+    func set(attachmentError: OrbitleError?) { self.attachmentError = attachmentError }
+
+    nonisolated func uploadProgress() -> AsyncStream<[String: Double]> {
+        AsyncStream { continuation in
+            Task { await self.addProgress(continuation) }
+        }
+    }
+
+    private func addProgress(_ continuation: AsyncStream<[String: Double]>.Continuation) {
+        progressContinuations.append(continuation)
+    }
+
+    var progressSubscribers: Int { progressContinuations.count }
+
+    func publish(progress: [String: Double]) {
+        progressContinuations.forEach { $0.yield(progress) }
+    }
     func set(latestError: OrbitleError?) { self.latestError = latestError }
 }
 
