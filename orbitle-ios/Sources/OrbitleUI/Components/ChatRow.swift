@@ -116,6 +116,12 @@ public struct ChatRow: View {
 
     private func messageText(lines: Int) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
+            if item.isForwarded {
+                Image(systemName: "arrowshape.turn.up.right.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Переслано")
+            }
             if let url = item.thumbnailURL {
                 RemoteImage(url: url, maxPixel: 64) {
                     RoundedRectangle(cornerRadius: 3).fill(Color.orbitleField)

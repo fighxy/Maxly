@@ -33,6 +33,12 @@ public struct ChatRecord: Sendable, Hashable {
     public var commentsEnabled: Bool?
     /// Можно ли писать. `nil` — сервер не сказал.
     public var canWrite: Bool?
+    /// Имя автора последнего сообщения (для «Имя:» в группах). `nil` — неизвестно.
+    public var lastAuthorName: String?
+    /// Последнее сообщение своё. `nil` — неизвестно.
+    public var lastOutgoing: Bool?
+    /// Последнее сообщение — пересылка: превью и вложение взяты из пересланного.
+    public var lastForwarded: Bool
 
     public init(
         id: String,
@@ -53,7 +59,10 @@ public struct ChatRecord: Sendable, Hashable {
         lastMedia: MessageMediaKind? = nil,
         lastThumbnailURL: URL? = nil,
         commentsEnabled: Bool? = nil,
-        canWrite: Bool? = nil
+        canWrite: Bool? = nil,
+        lastAuthorName: String? = nil,
+        lastOutgoing: Bool? = nil,
+        lastForwarded: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -74,6 +83,9 @@ public struct ChatRecord: Sendable, Hashable {
         self.lastThumbnailURL = lastThumbnailURL
         self.commentsEnabled = commentsEnabled
         self.canWrite = canWrite
+        self.lastAuthorName = lastAuthorName
+        self.lastOutgoing = lastOutgoing
+        self.lastForwarded = lastForwarded
     }
 
     public init(_ chat: Chat) {

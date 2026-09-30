@@ -54,6 +54,8 @@ public struct ChatLastMessage: Hashable, Sendable {
     public var media: MessageMediaKind?
     /// Миниатюра вложения для строки (фото, видео).
     public var thumbnailURL: URL?
+    /// Пересланное сообщение: строка показывает стрелку перед текстом.
+    public var isForwarded: Bool
 
     public init(
         authorId: String? = nil,
@@ -61,7 +63,8 @@ public struct ChatLastMessage: Hashable, Sendable {
         isOutgoing: Bool = false,
         delivery: DeliveryState? = nil,
         media: MessageMediaKind? = nil,
-        thumbnailURL: URL? = nil
+        thumbnailURL: URL? = nil,
+        isForwarded: Bool = false
     ) {
         self.authorId = authorId
         self.authorName = authorName
@@ -69,6 +72,7 @@ public struct ChatLastMessage: Hashable, Sendable {
         self.delivery = delivery
         self.media = media
         self.thumbnailURL = thumbnailURL
+        self.isForwarded = isForwarded
     }
 }
 

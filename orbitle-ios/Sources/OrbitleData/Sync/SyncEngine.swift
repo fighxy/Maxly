@@ -152,17 +152,21 @@ public actor SyncEngine {
             // Пришло сообщение — автор больше не печатает.
             await chats.stopTyping(chatId: event.chatId, userId: event.authorId)
             let content = MessageContentCodec.decode(event.contentJSON)
+            // У пересланного свой текст пуст: в строке — текст пересланного и стрелка.
+            let preview = event.text.isEmpty ? (content.forward?.text ?? "") : event.text
             let known = (try? await chats.noteMessage(
                 chatId: event.chatId,
                 messageId: event.messageId,
-                preview: event.text,
+                preview: preview,
                 at: Date(unixMillis: event.timeMs),
                 incoming: fromOther && inserted.contains(record.id),
                 authorId: event.authorId.isEmpty ? nil : event.authorId,
                 outgoing: own,
                 delivery: own ? .sent : nil,
                 media: content.previewMedia,
-                thumbnail: content.previewThumbnail
+                thumbnail: content.previewThumbnail,
+                authorName: event.authorName.isEmpty ? nil : event.authorName,
+                forwarded: content.forward != nil
             )) ?? false
             if !known {
                 // Чата ещё нет в базе: подтянуть его строку, иначе сообщение не будет видно в списке.

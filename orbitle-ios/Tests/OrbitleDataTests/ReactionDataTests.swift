@@ -489,4 +489,24 @@ struct PruneMissingTests {
         let ids = try await repository.page(chatId: "c1", before: nil, limit: 50).map(\.id)
         #expect(Set(ids) == ["100", "101", "103", "local-1"])
     }
+
+    @Test("Удалили самое новое: оно новее всех оставшихся на сервере, но тоже убирается")
+    func prunesNewest() async throws {
+        let api = FakeMaxAPI()
+        let (repository, _) = try await makeMessageStack(api: api)
+        try await repository.upsert([record("101", at: 2), record("102", at: 3), record("103", at: 4)])
+        await api.setHistory([record("101", at: 2), record("102", at: 3)])
+        try await repository.fetchLatest(chatId: "c1")
+        let ids = try await repository.page(chatId: "c1", before: nil, limit: 50).map(\.id)
+        #expect(Set(ids) == ["101", "102"])
+    }
+
+    @Test("Пустая свежая история: в чате ничего нет")
+    func prunesEmptyChat() async throws {
+        let api = FakeMaxAPI()
+        let (repository, _) = try await makeMessageStack(api: api)
+        try await repository.upsert([record("101", at: 2)])
+        try await repository.fetchLatest(chatId: "c1")
+        #expect(try await repository.page(chatId: "c1", before: nil, limit: 50).isEmpty)
+    }
 }
