@@ -89,7 +89,9 @@ struct ChatView: View {
                 // Клавиатура уходит, когда ленту тянут вниз вслед за пальцем или просто касаются
                 // её: касание не мешает кнопкам пузырей, жест срабатывает вместе с ними.
                 .scrollDismissesKeyboard(.interactively)
-                .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
+                // Касание ленты прячет клавиатуру. Без клавиатуры жест выключен, чтобы лента
+                // не ждала его при каждом касании.
+                .simultaneousGesture(TapGesture().onEnded { composerFocused = false }, including: composerFocused ? .all : .subviews)
                 .onChange(of: viewModel.messages.last?.id) { old, id in
                     guard let id else { return }
                     let last = viewModel.messages.last
@@ -186,13 +188,19 @@ struct ChatView: View {
             titleVisibility: .visible,
             presenting: viewModel.deletionCandidate
         ) { message in
-            if viewModel.canDeleteForEveryone(message) {
-                Button(chatType == .private ? "Удалить у меня и у собеседника" : "Удалить у всех", role: .destructive) {
-                    Task { await viewModel.confirmDelete(forEveryone: true) }
+            if viewModel.deletesWithoutChoice {
+                Button("Удалить", role: .destructive) {
+                    Task { await viewModel.confirmDelete(message, forEveryone: viewModel.canDeleteForEveryone(message)) }
                 }
-            }
-            Button("Удалить у меня", role: .destructive) {
-                Task { await viewModel.confirmDelete(forEveryone: false) }
+            } else {
+                if viewModel.canDeleteForEveryone(message) {
+                    Button(chatType == .private ? "Удалить у меня и у собеседника" : "Удалить у всех", role: .destructive) {
+                        Task { await viewModel.confirmDelete(message, forEveryone: true) }
+                    }
+                }
+                Button("Удалить у меня", role: .destructive) {
+                    Task { await viewModel.confirmDelete(message, forEveryone: false) }
+                }
             }
             Button("Отмена", role: .cancel) { viewModel.deletionCandidate = nil }
         }

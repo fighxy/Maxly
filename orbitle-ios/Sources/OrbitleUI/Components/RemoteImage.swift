@@ -47,16 +47,23 @@ public final class DecodedImage: @unchecked Sendable {
 }
 
 /// `NSCache` потокобезопасен сам, обёртка только сообщает это компилятору.
+///
+/// Ключ — адрес и размер декодирования: миниатюра строки списка (десятки точек) и то же фото
+/// в пузыре хранятся отдельно, и крупные картинки не вытесняют мелкие.
 final class ImageMemoryCache: @unchecked Sendable {
-    private let cache = NSCache<NSURL, DecodedImage>()
+    private let cache = NSCache<NSString, DecodedImage>()
 
     init(limit: Int, bytes: Int = 160 * 1024 * 1024) {
         cache.countLimit = limit
         cache.totalCostLimit = bytes
     }
 
-    func object(for url: URL) -> DecodedImage? { cache.object(forKey: url as NSURL) }
-    func set(_ image: DecodedImage, for url: URL) { cache.setObject(image, forKey: url as NSURL, cost: image.cost) }
+    static func key(_ url: URL, _ maxPixel: Int) -> NSString { "\(maxPixel)|\(url.absoluteString)" as NSString }
+
+    func object(for url: URL, maxPixel: Int) -> DecodedImage? { cache.object(forKey: Self.key(url, maxPixel)) }
+    func set(_ image: DecodedImage, for url: URL, maxPixel: Int) {
+        cache.setObject(image, forKey: Self.key(url, maxPixel), cost: image.cost)
+    }
     func removeAll() { cache.removeAllObjects() }
 }
 
@@ -67,7 +74,9 @@ public actor ImagePipeline {
 
     private nonisolated let session: URLSession
     private nonisolated let memory: ImageMemoryCache
-    private var inFlight: [URL: Task<DecodedImage?, Never>] = [:]
+    private var inFlight: [NSString: Task<DecodedImage?, Never>] = [:]
+    /// Размер декодирования по умолчанию: фото на весь экран.
+    public static let fullSize = 1600
 
     public init(memoryLimit: Int = 300, diskCapacity: Int = 100 * 1024 * 1024) {
         let configuration = URLSessionConfiguration.default
@@ -78,42 +87,43 @@ public actor ImagePipeline {
     }
 
     /// Уже декодированная картинка, без сети. Нужна, чтобы строка не мигала буквами при прокрутке.
-    public nonisolated func cached(_ url: URL) -> DecodedImage? {
-        memory.object(for: url)
+    public nonisolated func cached(_ url: URL, maxPixel: Int = fullSize) -> DecodedImage? {
+        memory.object(for: url, maxPixel: maxPixel)
     }
 
     /// Картинка, которая уже лежит на диске: файл или ответ в `URLCache`. Читается сразу,
     /// без ожидания, чтобы при возврате на экран фото не мигали заглушкой. Сеть не трогает.
-    public nonisolated func cachedOnDisk(_ url: URL) -> DecodedImage? {
-        if let hit = memory.object(for: url) { return hit }
+    public nonisolated func cachedOnDisk(_ url: URL, maxPixel: Int = fullSize) -> DecodedImage? {
+        if let hit = memory.object(for: url, maxPixel: maxPixel) { return hit }
         let data: Data?
         if url.isFileURL {
             data = try? Data(contentsOf: url)
         } else {
             data = session.configuration.urlCache?.cachedResponse(for: URLRequest(url: url))?.data
         }
-        guard let data, let image = DecodedImage.decode(data) else { return nil }
-        memory.set(image, for: url)
+        guard let data, let image = DecodedImage.decode(data, maxPixel: maxPixel) else { return nil }
+        memory.set(image, for: url, maxPixel: maxPixel)
         return image
     }
 
-    public func store(_ image: DecodedImage, for url: URL) {
-        memory.set(image, for: url)
+    public func store(_ image: DecodedImage, for url: URL, maxPixel: Int = fullSize) {
+        memory.set(image, for: url, maxPixel: maxPixel)
     }
 
-    public func image(for url: URL) async -> DecodedImage? {
-        if let hit = cached(url) { return hit }
-        if let running = inFlight[url] { return await running.value }
+    public func image(for url: URL, maxPixel: Int = fullSize) async -> DecodedImage? {
+        if let hit = cached(url, maxPixel: maxPixel) { return hit }
+        let key = ImageMemoryCache.key(url, maxPixel)
+        if let running = inFlight[key] { return await running.value }
         let session = session
-        let task = Task<DecodedImage?, Never> {
+        let task = Task<DecodedImage?, Never>.detached(priority: .userInitiated) {
             guard let loaded = try? await session.data(from: url),
                   (loaded.1 as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true else { return nil }
-            return DecodedImage.decode(loaded.0)
+            return DecodedImage.decode(loaded.0, maxPixel: maxPixel)
         }
-        inFlight[url] = task
+        inFlight[key] = task
         let result = await task.value
-        inFlight[url] = nil
-        if let result { memory.set(result, for: url) }
+        inFlight[key] = nil
+        if let result { memory.set(result, for: url, maxPixel: maxPixel) }
         return result
     }
 
@@ -125,16 +135,22 @@ public actor ImagePipeline {
 }
 
 /// Картинка по адресу. Пока её нет или она не загрузилась, виден `placeholder`.
+///
+/// `maxPixel` — размер декодирования по большей стороне: миниатюре в строке списка хватает
+/// сотни точек. Если адрес сменился (сервер переподписал ссылку), прежняя картинка видна,
+/// пока не загрузится новая, — строка не мигает заглушкой.
 public struct RemoteImage<Placeholder: View>: View {
     private let url: URL?
     private let pipeline: ImagePipeline
+    private let maxPixel: Int
     private let placeholder: Placeholder
     @State private var loaded: DecodedImage?
     @State private var loadedURL: URL?
 
-    public init(url: URL?, pipeline: ImagePipeline = .shared, @ViewBuilder placeholder: () -> Placeholder) {
+    public init(url: URL?, maxPixel: Int = ImagePipeline.fullSize, pipeline: ImagePipeline = .shared, @ViewBuilder placeholder: () -> Placeholder) {
         self.url = url
         self.pipeline = pipeline
+        self.maxPixel = max(16, maxPixel)
         self.placeholder = placeholder()
     }
 
@@ -144,17 +160,25 @@ public struct RemoteImage<Placeholder: View>: View {
                 image
                     .resizable()
                     .scaledToFill()
-                    .transition(.opacity)
             } else {
                 placeholder
             }
         }
         .task(id: url) {
             guard let url else { return }
-            if pipeline.cached(url) != nil { return }
-            let image = await pipeline.image(for: url)
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.15)) {
+            if let hit = pipeline.cached(url, maxPixel: maxPixel) {
+                if loadedURL != url { loaded = hit; loadedURL = url }
+                return
+            }
+            let image = await pipeline.image(for: url, maxPixel: maxPixel)
+            guard !Task.isCancelled, let image else { return }
+            let first = loaded == nil
+            if first {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    loaded = image
+                    loadedURL = url
+                }
+            } else {
                 loaded = image
                 loadedURL = url
             }
@@ -163,7 +187,10 @@ public struct RemoteImage<Placeholder: View>: View {
 
     private var current: Image? {
         guard let url else { return nil }
-        let decoded = pipeline.cached(url) ?? (loadedURL == url ? loaded : nil) ?? pipeline.cachedOnDisk(url)
+        let decoded = pipeline.cached(url, maxPixel: maxPixel)
+            ?? (loadedURL == url ? loaded : nil)
+            ?? pipeline.cachedOnDisk(url, maxPixel: maxPixel)
+            ?? loaded
         guard let decoded else { return nil }
         #if canImport(UIKit)
         return Image(uiImage: decoded.image)

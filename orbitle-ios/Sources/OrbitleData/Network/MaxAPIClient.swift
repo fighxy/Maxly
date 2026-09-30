@@ -73,6 +73,8 @@ public protocol MaxAPI: Sendable {
     func markRead(chatId: String, messageId: String?) async -> Result<Void, MaxAPIError>
     /// Закреплённые чаты целиком, сверху вниз. Ответ — список, который подтвердил сервер.
     func setPinnedChats(_ chatIds: [String]) async -> Result<[String], MaxAPIError>
+    /// Выключить уведомления чата насовсем или включить обратно.
+    func setChatMuted(chatId: String, muted: Bool) async -> Result<Void, MaxAPIError>
     /// Серверные папки для полосы над списком, без «Все»: сразу, если известны, и после
     /// каждого изменения. Пустой массив — папок нет.
     func folderUpdates() -> AsyncStream<[ChatFolder]>
@@ -94,6 +96,7 @@ public protocol MaxAPI: Sendable {
 public extension MaxAPI {
     /// Источник без серверных закреплённых: запрос отклоняется.
     func setPinnedChats(_ chatIds: [String]) async -> Result<[String], MaxAPIError> { .failure(.invalidResponse) }
+    func setChatMuted(chatId: String, muted: Bool) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
     /// Источник без серверных папок.
     func folderUpdates() -> AsyncStream<[ChatFolder]> { AsyncStream { $0.yield([]); $0.finish() } }
     func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async -> Result<Void, MaxAPIError> {
@@ -186,6 +189,12 @@ public final class MaxAPIClient: MaxAPI, Sendable {
     public func forwardMessage(toChatId: String, fromChatId: String, messageId: String) async -> Result<MessageRecord, MaxAPIError> {
         await catching {
             CoreMapping.message(try await core.forwardMessage(toChatId: toChatId, fromChatId: fromChatId, messageId: messageId))
+        }
+    }
+
+    public func setChatMuted(chatId: String, muted: Bool) async -> Result<Void, MaxAPIError> {
+        await catching {
+            try await core.setChatMuted(chatId: chatId, muted: muted)
         }
     }
 

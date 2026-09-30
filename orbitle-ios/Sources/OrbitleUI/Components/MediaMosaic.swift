@@ -45,41 +45,43 @@ struct MediaMosaic: View {
         let round = item.video?.isRound == true
         let width = CGFloat(tile.width)
         let height = CGFloat(tile.height)
-        return Button {
-            onOpen(item.id)
-        } label: {
-            ZStack {
-                RemoteImage(url: still(item)) {
-                    placeholder(item)
-                }
-                .frame(width: width, height: height)
-                .clipped()
-                if item.video != nil {
-                    videoBadge(loading: loadingId == item.id)
-                } else if loadingId == item.id {
-                    ProgressView()
-                        .tint(.white)
-                        .padding(12)
-                        .background(.black.opacity(0.4), in: Circle())
-                }
-            }
-            .overlay(alignment: .topLeading) {
-                if let video = item.video, video.durationMs > 0 {
-                    overlayCapsule(ChatContentFormat.clock(ms: video.durationMs))
-                }
-            }
-            .overlay(alignment: .bottomTrailing) {
-                if tile.corners.bottomRight, let time {
-                    timeCapsule(time)
-                }
+        // Не `Button`: кнопка ловит касание в начале прокрутки и подсвечивается, а жест
+        // касания срабатывает только на короткое нажатие без движения.
+        return ZStack {
+            RemoteImage(url: still(item), maxPixel: Self.decodeSize(width: width, height: height)) {
+                placeholder(item)
             }
             .frame(width: width, height: height)
-            .clipShape(mask(round: round, corners: tile.corners))
+            .clipped()
+            if item.video != nil {
+                videoBadge(loading: loadingId == item.id)
+            } else if loadingId == item.id {
+                ProgressView()
+                    .tint(.white)
+                    .padding(12)
+                    .background(.black.opacity(0.4), in: Circle())
+            }
         }
-        .buttonStyle(.plain)
+        .overlay(alignment: .topLeading) {
+            if let video = item.video, video.durationMs > 0 {
+                overlayCapsule(ChatContentFormat.clock(ms: video.durationMs))
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if tile.corners.bottomRight, let time {
+                timeCapsule(time)
+            }
+        }
+        .frame(width: width, height: height)
+        .clipShape(mask(round: round, corners: tile.corners))
+        .contentShape(mask(round: round, corners: tile.corners))
+        .onTapGesture { onOpen(item.id) }
         .frame(width: width, height: height, alignment: .center)
         .offset(x: CGFloat(tile.x), y: CGFloat(tile.y))
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isButton)
         .accessibilityLabel(item.video == nil ? "Фото" : "Видео")
+        .accessibilityAction { onOpen(item.id) }
     }
 
     @ViewBuilder
@@ -157,6 +159,13 @@ struct MediaMosaic: View {
             topTrailingRadius: corners.topRight ? cornerRadius : 2,
             style: .continuous
         ))
+    }
+
+    /// Размер декодирования плитки: сторона в точках ×3, ступенями по 256, чтобы соседние
+    /// размеры одного фото делили кэш.
+    static func decodeSize(width: CGFloat, height: CGFloat) -> Int {
+        let pixels = Int((max(width, height) * 3).rounded(.up))
+        return min(ImagePipeline.fullSize, max(256, (pixels + 255) / 256 * 256))
     }
 
     private func still(_ item: ChatAttachment) -> URL? {

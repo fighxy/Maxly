@@ -52,7 +52,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         self.api = api
         self.typingTTL = typingTTL
         self.clock = clock
-        self.capabilities = [.pin, .reorderPins, .markUnread]
+        self.capabilities = [.pin, .reorderPins, .markUnread, .mute]
     }
 
     public static func make(stack: SwiftDataStack, api: any MaxAPI) -> ChatRepositoryImpl {
@@ -397,6 +397,29 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         do {
             guard let chat = try chat(id: chatId), chat.lastOutgoing, chat.lastLocalId == localId else { return }
             chat.lastDeliveryRaw = DeliveryState.failed.rawValue
+            try modelContext.save()
+        } catch {
+            throw .storageError
+        }
+        notify()
+    }
+
+    /// Звук чата: сначала сервер, затем база. При ошибке строка остаётся как была.
+    public func setMuted(_ muted: Bool, chatId: String) async throws(OrbitleError) {
+        do {
+            guard try chat(id: chatId) != nil else { throw OrbitleError.invalidRequest }
+        } catch let error as OrbitleError {
+            throw error
+        } catch {
+            throw .storageError
+        }
+        if case .failure(let error) = await api.setChatMuted(chatId: chatId, muted: muted) {
+            Log.warning(.chats, "Уведомления чата не изменены: \(error)")
+            throw error.orbitleError
+        }
+        do {
+            guard let chat = try chat(id: chatId) else { return }
+            chat.isMuted = muted
             try modelContext.save()
         } catch {
             throw .storageError
