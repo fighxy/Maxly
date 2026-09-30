@@ -15,6 +15,9 @@ struct MediaMosaic: View {
     var loadingId: String?
     /// Одиночный кадр занимает всю ширину (пузырь с подписью не должен быть шире фото).
     var fillsWidth = false
+    /// Играющий в ленте кружок (плеер от приложения): рисуется в круге поверх обложки,
+    /// а сам круг на время воспроизведения крупнее.
+    var roundPlayer: AnyView?
     let onOpen: (String) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -23,7 +26,7 @@ struct MediaMosaic: View {
         let round = visuals.count == 1 && visuals[0].video?.isRound == true
         let layout = fillsWidth && visuals.count == 1 && !round
             ? ChatContentFormat.fullWidthTile(aspect: aspect(visuals[0]), width: Double(maxWidth))
-            : ChatContentFormat.album(aspects: visuals.map(aspect), maxWidth: Double(round ? min(maxWidth, Self.roundSide) : maxWidth))
+            : ChatContentFormat.album(aspects: visuals.map(aspect), maxWidth: Double(round ? min(maxWidth, roundPlayer == nil ? Self.roundSide : Self.playingRoundSide) : maxWidth))
         ZStack(alignment: .topLeading) {
             Color.clear.frame(width: layout.width, height: layout.height)
             ForEach(Array(visuals.enumerated()), id: \.element.id) { index, item in
@@ -33,6 +36,7 @@ struct MediaMosaic: View {
             }
         }
         .frame(width: layout.width, height: layout.height, alignment: .topLeading)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: roundPlayer == nil)
     }
 
     private func aspect(_ item: ChatAttachment) -> Double {
@@ -54,7 +58,10 @@ struct MediaMosaic: View {
             }
             .frame(width: width, height: height)
             .clipped()
-            if item.video != nil {
+            if round, let roundPlayer {
+                roundPlayer
+                    .frame(width: width, height: height)
+            } else if item.video != nil {
                 videoBadge(loading: loadingId == item.id)
             } else if loadingId == item.id {
                 ProgressView()
@@ -63,8 +70,12 @@ struct MediaMosaic: View {
                     .background(.black.opacity(0.4), in: Circle())
             }
         }
-        .overlay(alignment: .topLeading) {
-            if let video = item.video, video.durationMs > 0 {
+        .frame(width: width, height: height)
+        .clipShape(mask(round: round, corners: tile.corners))
+        .contentShape(mask(round: round, corners: tile.corners))
+        // Подписи поверх маски: у кружка углы квадрата вне круга, и маска их срезала бы.
+        .overlay(alignment: round ? .bottomLeading : .topLeading) {
+            if let video = item.video, video.durationMs > 0, !(round && roundPlayer != nil) {
                 overlayCapsule(ChatContentFormat.clock(ms: video.durationMs))
             }
         }
@@ -73,9 +84,6 @@ struct MediaMosaic: View {
                 timeCapsule(time)
             }
         }
-        .frame(width: width, height: height)
-        .clipShape(mask(round: round, corners: tile.corners))
-        .contentShape(mask(round: round, corners: tile.corners))
         .onTapGesture { onOpen(item.id) }
         .frame(width: width, height: height, alignment: .center)
         .offset(x: CGFloat(tile.x), y: CGFloat(tile.y))
@@ -165,6 +173,8 @@ struct MediaMosaic: View {
 
     /// Диаметр кружка в ленте: не во всю ширину.
     static let roundSide: CGFloat = 220
+    /// Диаметр играющего кружка.
+    static let playingRoundSide: CGFloat = 300
 
     /// Размер декодирования плитки: сторона в точках ×3, ступенями по 256, чтобы соседние
     /// размеры одного фото делили кэш.

@@ -50,6 +50,8 @@ public struct MessageBubble: View {
     private let uploadProgress: Double?
     /// Крестик на кольце загрузки. `nil` — отменить нельзя.
     private let onCancelUpload: (() -> Void)?
+    /// Плеер кружка, играющего в ленте.
+    private let roundPlayer: AnyView?
 
     /// Сдвиг пузыря при свайпе «ответить».
     @State private var swipe: CGFloat = 0
@@ -92,7 +94,8 @@ public struct MessageBubble: View {
         onMoreReactions: (() -> Void)? = nil,
         onReactionUsers: (() -> Void)? = nil,
         uploadProgress: Double? = nil,
-        onCancelUpload: (() -> Void)? = nil
+        onCancelUpload: (() -> Void)? = nil,
+        roundPlayer: AnyView? = nil
     ) {
         self.message = message
         self.isOutgoing = isOutgoing
@@ -124,6 +127,7 @@ public struct MessageBubble: View {
         self.onReactionUsers = onReactionUsers
         self.uploadProgress = uploadProgress
         self.onCancelUpload = onCancelUpload
+        self.roundPlayer = roundPlayer
     }
 
     public var body: some View {
@@ -425,6 +429,7 @@ public struct MessageBubble: View {
             cornerRadius: hasFill ? Self.radius - inset : Self.radius,
             loadingId: loadingId,
             fillsWidth: hasFill,
+            roundPlayer: roundPlayer,
             onOpen: onOpen
         )
         .padding(.horizontal, inset)
