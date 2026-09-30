@@ -260,20 +260,71 @@ struct ReactionToggleTests {
 
 @Suite("Реакции: сверка и каталог")
 struct ReactionRefreshTests {
-    @Test("Сверка берёт отправленные сообщения окна; о ком сервер молчит — реакций нет")
+    @Test("Сверка 180 берёт отправленные сообщения окна вне истории; о ком сервер молчит — реакции остаются")
     func refresh() async throws {
         let api = FakeMaxAPI()
         await api.setFetchedReactions(.success(["102": counters([("🔥", 2)], mine: "🔥")]))
         let (repository, _) = try await makeMessageStack(api: api)
+        let heart = [MessageReaction(emoji: "❤️", count: 1, mine: false)]
         try await repository.upsert([
-            record("101", at: 1, reactions: [MessageReaction(emoji: "❤️", count: 1, mine: false)]),
+            record("101", at: 1, reactions: heart),
             record("102", at: 2),
             MessageRecord(id: "local-1", chatId: "c1", authorId: "me", text: "ждёт", timestamp: Date(timeIntervalSince1970: 3), status: .sending),
         ])
         await repository.refreshReactions(chatId: "c1")
         #expect(await api.reactionFetches == [["102", "101"]])
-        #expect(try await stored(repository, "101").isEmpty)
+        #expect(try await stored(repository, "101") == heart)
         #expect(try await stored(repository, "102") == [MessageReaction(emoji: "🔥", count: 2, mine: true)])
+    }
+
+    @Test("Пустой ответ 180 и пустые записи в нём реакции не стирают")
+    func refreshEmptyReply() async throws {
+        let api = FakeMaxAPI()
+        let (repository, _) = try await makeMessageStack(api: api)
+        let thumbs = [MessageReaction(emoji: "👍", count: 1, mine: false)]
+        try await repository.upsert([record("101", at: 1, reactions: thumbs), record("102", at: 2, reactions: thumbs)])
+
+        await api.setFetchedReactions(.success([:]))
+        await repository.refreshReactions(chatId: "c1")
+        #expect(try await stored(repository, "101") == thumbs)
+
+        await api.setFetchedReactions(.success(["101": .none, "102": counters([], mine: nil, known: false)]))
+        await repository.refreshReactions(chatId: "c1")
+        #expect(try await stored(repository, "101") == thumbs)
+        #expect(try await stored(repository, "102") == thumbs)
+    }
+
+    @Test("Сверка перечитывает последнюю страницу историей: её реакции — итог, 180 для неё не нужен")
+    func refreshReadsHistory() async throws {
+        let api = FakeMaxAPI()
+        let (repository, _) = try await makeMessageStack(api: api)
+        // В кэше реакции устарели: на 201 их не было, на 202 висит снятая.
+        try await repository.upsert([
+            record("201", at: 1),
+            record("202", at: 2, reactions: [MessageReaction(emoji: "😭", count: 3, mine: false)]),
+        ])
+        await api.setHistory([
+            record("201", at: 1, reactions: [MessageReaction(emoji: "👍", count: 1, mine: false)], reactionsKnown: true),
+            record("202", at: 2, reactionsKnown: true),
+        ])
+        await repository.refreshReactions(chatId: "c1")
+        #expect(try await stored(repository, "201") == [MessageReaction(emoji: "👍", count: 1, mine: false)])
+        #expect(try await stored(repository, "202").isEmpty)
+        #expect(await api.reactionFetches.isEmpty)
+    }
+
+    @Test("Ошибка истории при сверке: 180 сверяет всё окно, ничего не стирая")
+    func refreshHistoryFailure() async throws {
+        let api = FakeMaxAPI()
+        let (repository, _) = try await makeMessageStack(api: api)
+        let thumbs = [MessageReaction(emoji: "👍", count: 1, mine: false)]
+        try await repository.upsert([record("101", at: 1, reactions: thumbs), record("102", at: 2)])
+        await api.setHistoryError(.offline)
+        await api.setFetchedReactions(.success(["102": counters([("🔥", 1)], mine: nil)]))
+        await repository.refreshReactions(chatId: "c1")
+        #expect(await api.reactionFetches == [["102", "101"]])
+        #expect(try await stored(repository, "101") == thumbs)
+        #expect(try await stored(repository, "102") == [MessageReaction(emoji: "🔥", count: 1, mine: false)])
     }
 
     @Test("Ошибка сверки ничего не трогает")
@@ -333,5 +384,74 @@ struct ReactionClientTests {
         await #expect(throws: OrbitleError.rejected("Комментарий ещё не отправлен")) {
             _ = try await repository.setReaction(chatId: "c1", postId: "5", commentId: "local-1", emoji: "👍")
         }
+    }
+}
+
+/// Сообщения так, как их отдаёт мост ядра: `contentJSON` из `messageContentJson`
+/// (сырой `reactionInfo` сервера внутри) и `reactionsJSON` из `reactionsJson`.
+private enum DeviceHistory {
+    static let groupMessage = CoreMessage(
+        id: "116765779164748382", chatId: "-70001", authorId: "9000000000003", text: "Ок, завтра созвонимся",
+        timeMs: 1_781_704_393_993,
+        contentJSON: #"{"reactionInfo":{"counters":[{"count":1,"reaction":"👍"}],"totalCount":1}}"#,
+        authorName: "Мария", reactionsJSON: #"{"counters":[{"reaction":"👍","count":1}],"totalCount":1,"yourReaction":null}"#
+    )
+
+    static let channelCounters: [(String, Int)] = [("👍", 27), ("🤔", 18), ("💀", 5), ("😍", 5), ("🤡", 5), ("😭", 4), ("🤣", 4), ("👎", 1)]
+
+    static var channelPost: CoreMessage {
+        let counters = channelCounters.map { #"{"reaction":"\#($0.0)","count":\#($0.1)}"# }.joined(separator: ",")
+        return CoreMessage(
+            id: "116765257400649050", chatId: "-69110159553957", authorId: "", text: "Российскому ИИ-рынку не хватает 84 млрд руб.",
+            timeMs: 1_781_708_681_185,
+            contentJSON: #"{"elements":[{"type":"STRONG","from":0,"length":10}],"reactionInfo":{"counters":[\#(counters)],"totalCount":69}}"#,
+            reactionsJSON: #"{"counters":[\#(counters)],"totalCount":69,"yourReaction":null}"#
+        )
+    }
+}
+
+@Suite("Реакции: история как на устройстве")
+struct ReactionDeviceHistoryTests {
+    private func stack(core: FakeMaxCore) async throws -> MessageRepositoryImpl {
+        let stack = try SwiftDataStack(inMemory: true)
+        return MessageRepositoryImpl.make(stack: stack, api: MaxAPIClient(core: core))
+    }
+
+    private func reactions(_ repository: MessageRepositoryImpl, chatId: String, id: String) async throws -> [MessageReaction] {
+        let rows = try await repository.page(chatId: chatId, before: nil, limit: 200)
+        return try #require(rows.first { $0.id == id }).domain.content.reactions
+    }
+
+    @Test("Реакции чужих сообщений группы и поста канала доходят до ленты")
+    func historyShowsReactions() async throws {
+        let core = FakeMaxCore()
+        let repository = try await stack(core: core)
+
+        await core.setHistory([DeviceHistory.groupMessage])
+        try await repository.fetchLatest(chatId: "-70001")
+        #expect(try await reactions(repository, chatId: "-70001", id: "116765779164748382") == [MessageReaction(emoji: "👍", count: 1, mine: false)])
+
+        await core.setHistory([DeviceHistory.channelPost])
+        try await repository.fetchLatest(chatId: "-69110159553957")
+        let post = try await reactions(repository, chatId: "-69110159553957", id: "116765257400649050")
+        #expect(post.map(\.emoji) == DeviceHistory.channelCounters.map(\.0))
+        #expect(post.map(\.count) == DeviceHistory.channelCounters.map(\.1))
+        #expect(post.allSatisfy { !$0.mine })
+    }
+
+    @Test("Возврат из фона: пустой ответ 180 не стирает реакции истории")
+    func resumeKeepsReactions() async throws {
+        let core = FakeMaxCore()
+        let repository = try await stack(core: core)
+        await core.setHistory([DeviceHistory.channelPost])
+        try await repository.fetchLatest(chatId: "-69110159553957")
+
+        // История при возврате пришла пустой, по 180 сервер ничего не прислал.
+        await core.setReactions(byId: [:])
+        await core.setHistory([])
+        await repository.refreshReactions(chatId: "-69110159553957")
+        let post = try await reactions(repository, chatId: "-69110159553957", id: "116765257400649050")
+        #expect(post.count == DeviceHistory.channelCounters.count)
+        #expect(post.first == MessageReaction(emoji: "👍", count: 27, mine: false))
     }
 }
