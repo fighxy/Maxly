@@ -435,6 +435,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             guard started == generation else { return }
             do {
                 try upsert(records)
+                pruneMissing(chatId: chatId, page: records)
                 covered = Set(records.map { $0.serverId ?? $0.id })
             } catch {
                 Log.info(.messages, "История для сверки реакций не записана: \(error)")
@@ -700,9 +701,43 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         case .success(let records):
             try ensureCurrent(started)
             try upsert(records)
+            pruneMissing(chatId: chatId, page: records)
         case .failure(let error):
             throw error.orbitleError
         }
+    }
+
+    /// Сверка удалений по свежей странице сервера. Пуш удаления приходит не всегда: удаление
+    /// «у себя» с другого устройства сервер другим сессиям не рассылает, а пока приложение
+    /// в фоне, пуши теряются. Отправленные сообщения ленты в промежутке времени страницы,
+    /// которых в ней нет, удаляются. Раньше самого старого сообщения страницы ничего не
+    /// трогается; свои ещё не отправленные и комментарии — тоже.
+    func pruneMissing(chatId: String, page records: [MessageRecord]) {
+        guard let newest = records.map(\.timestamp).max(),
+              let oldest = records.map(\.timestamp).min() else { return }
+        let present = Set(records.flatMap { [$0.id, $0.serverId].compactMap { $0 } })
+        let id = chatId
+        let root = ""
+        let sent = MessageStatus.sent.rawValue
+        let descriptor = FetchDescriptor<SDMessage>(predicate: #Predicate {
+            $0.chatId == id && $0.threadOf == root && $0.statusRaw == sent
+                && $0.timestamp >= oldest && $0.timestamp <= newest
+        })
+        guard let rows = try? modelContext.fetch(descriptor) else { return }
+        let gone = rows.filter { row in
+            let key = row.serverId ?? row.id
+            return Int64(key) != nil && !present.contains(key) && !present.contains(row.id)
+        }
+        guard !gone.isEmpty else { return }
+        for row in gone { modelContext.delete(row) }
+        do {
+            try modelContext.save()
+        } catch {
+            Log.info(.messages, "Удалённые на сервере сообщения не убраны: \(error)")
+            return
+        }
+        Log.info(.messages, "Убрано удалённых на сервере сообщений: \(gone.count)")
+        notify(chatId: chatId)
     }
 
     /// Страница из кэша, без обращения к серверу.
