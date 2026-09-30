@@ -76,6 +76,15 @@ public protocol MaxAPI: Sendable {
     /// Серверные папки для полосы над списком, без «Все»: сразу, если известны, и после
     /// каждого изменения. Пустой массив — папок нет.
     func folderUpdates() -> AsyncStream<[ChatFolder]>
+    /// Поставить свою реакцию `emoji` на сообщение (серверный id) или снять её (`nil`).
+    /// Непустой `postId` — комментарий этого поста. Ответ — реакции, если сервер их прислал.
+    func setReaction(chatId: String, messageId: String, postId: String, emoji: String?) async -> Result<ReactionUpdate?, MaxAPIError>
+    /// Реакции сообщений по серверным id. Сообщения, о которых сервер промолчал, пропущены.
+    func fetchReactions(chatId: String, messageIds: [String]) async -> Result<[String: ReactionUpdate], MaxAPIError>
+    /// Кто поставил реакции на сообщение.
+    func reactionUsers(chatId: String, messageId: String) async -> Result<[ReactionUser], MaxAPIError>
+    /// Эмодзи каталога реакций сервера.
+    func reactionCatalog() async -> Result<[String], MaxAPIError>
 }
 
 public extension MaxAPI {
@@ -92,6 +101,17 @@ public extension MaxAPI {
     func forwardMessage(toChatId: String, fromChatId: String, messageId: String) async -> Result<MessageRecord, MaxAPIError> {
         .failure(.invalidResponse)
     }
+    /// Источник без реакций: изменения откатываются, каталог пуст.
+    func setReaction(chatId: String, messageId: String, postId: String, emoji: String?) async -> Result<ReactionUpdate?, MaxAPIError> {
+        .failure(.invalidResponse)
+    }
+    func fetchReactions(chatId: String, messageIds: [String]) async -> Result<[String: ReactionUpdate], MaxAPIError> {
+        .failure(.invalidResponse)
+    }
+    func reactionUsers(chatId: String, messageId: String) async -> Result<[ReactionUser], MaxAPIError> {
+        .failure(.invalidResponse)
+    }
+    func reactionCatalog() async -> Result<[String], MaxAPIError> { .failure(.invalidResponse) }
     /// Источник без ответов отправляет просто текст.
     func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?) async -> Result<SentMessage, MaxAPIError> {
         await sendMessage(chatId: chatId, text: text, clientId: clientId)
@@ -164,6 +184,32 @@ public final class MaxAPIClient: MaxAPI, Sendable {
         guard let messageId, !messageId.isEmpty else { return .success(()) }
         return await catching {
             try await core.markRead(chatId: chatId, messageId: messageId)
+        }
+    }
+
+    public func setReaction(chatId: String, messageId: String, postId: String, emoji: String?) async -> Result<ReactionUpdate?, MaxAPIError> {
+        await catching {
+            let json = try await core.setReaction(chatId: chatId, messageId: messageId, postId: postId, emoji: emoji ?? "")
+            return MessageContentCodec.reactionUpdate(json)
+        }
+    }
+
+    public func fetchReactions(chatId: String, messageIds: [String]) async -> Result<[String: ReactionUpdate], MaxAPIError> {
+        await catching {
+            try await core.loadReactions(chatId: chatId, messageIds: messageIds)
+                .compactMapValues(MessageContentCodec.reactionUpdate)
+        }
+    }
+
+    public func reactionUsers(chatId: String, messageId: String) async -> Result<[ReactionUser], MaxAPIError> {
+        await catching {
+            try await core.loadReactionUsers(chatId: chatId, messageId: messageId)
+        }
+    }
+
+    public func reactionCatalog() async -> Result<[String], MaxAPIError> {
+        await catching {
+            try await core.loadReactionCatalog()
         }
     }
 

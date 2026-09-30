@@ -217,12 +217,12 @@ struct MessageContentStoreTests {
     @Test("Своя реакция переключается и остаётся после текстового эха")
     func toggleReaction() async throws {
         let (repository, _) = try await makeMessageStack(api: FakeMaxAPI())
-        try await repository.upsert([row("m1", text: "раз", contentJSON: MessageContentCodec.encode(
+        try await repository.upsert([row("101", text: "раз", contentJSON: MessageContentCodec.encode(
             MessageContent(reactions: [MessageReaction(emoji: "❤️", count: 2, mine: false)])
         ))])
-        try await repository.setReaction(messageId: "m1", emoji: "❤️")
-        try await repository.setReaction(messageId: "m1", emoji: "👍")
-        try await repository.upsert([row("m1", text: "эхо")])
+        try await repository.toggleReaction(messageId: "101", emoji: "❤️")
+        try await repository.toggleReaction(messageId: "101", emoji: "👍")
+        try await repository.upsert([row("101", text: "эхо")])
 
         let stored = try #require(try await repository.page(chatId: "c1", before: nil).first)
         #expect(stored.domain.content.reactions == [
