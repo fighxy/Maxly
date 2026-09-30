@@ -182,7 +182,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     }
 
     func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async throws {
-        try await call("deleteMessages") { done in
+        let _: Void = try await call("deleteMessages") { done in
             self.client.deleteMessages(chatId: chatId, messageIds: messageIds, forEveryone: forEveryone) { kind, key in
                 if let kind {
                     done(.failure(CoreFailure(kind: kind, key: key)))
