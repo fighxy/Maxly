@@ -9,12 +9,15 @@ public struct MessageBubble: View {
     private let phase: VoicePhase
     private let allowsComments: Bool
     private let highlighted: Bool
+    private let showsAuthorName: Bool
+    private let showsAuthorAvatar: Bool
     private let onRetry: () -> Void
     private let onReply: () -> Void
     private let onReact: (String) -> Void
     private let onComments: () -> Void
     private let onOpen: (String) -> Void
     private let onVoice: () -> Void
+    private let onFile: (String) -> Void
     private let onFocusReply: (String) -> Void
 
     public init(
@@ -24,12 +27,15 @@ public struct MessageBubble: View {
         phase: VoicePhase = .idle,
         allowsComments: Bool = false,
         highlighted: Bool = false,
+        showsAuthorName: Bool = false,
+        showsAuthorAvatar: Bool = false,
         onRetry: @escaping () -> Void = {},
         onReply: @escaping () -> Void = {},
         onReact: @escaping (String) -> Void = { _ in },
         onComments: @escaping () -> Void = {},
         onOpen: @escaping (String) -> Void = { _ in },
         onVoice: @escaping () -> Void = {},
+        onFile: @escaping (String) -> Void = { _ in },
         onFocusReply: @escaping (String) -> Void = { _ in }
     ) {
         self.message = message
@@ -38,12 +44,15 @@ public struct MessageBubble: View {
         self.phase = phase
         self.allowsComments = allowsComments
         self.highlighted = highlighted
+        self.showsAuthorName = showsAuthorName
+        self.showsAuthorAvatar = showsAuthorAvatar
         self.onRetry = onRetry
         self.onReply = onReply
         self.onReact = onReact
         self.onComments = onComments
         self.onOpen = onOpen
         self.onVoice = onVoice
+        self.onFile = onFile
         self.onFocusReply = onFocusReply
     }
 
@@ -51,18 +60,26 @@ public struct MessageBubble: View {
         HStack {
             if isOutgoing { Spacer(minLength: 36) }
             VStack(alignment: isOutgoing ? .trailing : .leading, spacing: 4) {
-                bubble
-                status
-                ReactionChips(reactions: message.content.reactions, onToggle: onReact)
-                if showsComments {
-                    Button(ChatContentFormat.comments(message.content.comments?.count ?? 0), action: onComments)
-                        .font(.footnote)
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Color.orbitleAccent)
+                HStack(alignment: .bottom, spacing: 6) {
+                    if !isOutgoing {
+                        authorMark
+                    }
+                    VStack(alignment: isOutgoing ? .trailing : .leading, spacing: 4) {
+                        bubble
+                        status
+                        ReactionChips(reactions: message.content.reactions, onToggle: onReact)
+                        if showsComments {
+                            Button(ChatContentFormat.comments(message.content.comments?.count ?? 0), action: onComments)
+                                .font(.footnote)
+                                .buttonStyle(.plain)
+                                .foregroundStyle(Color.orbitleAccent)
+                        }
+                    }
+                    .frame(maxWidth: bubbleWidth, alignment: isOutgoing ? .trailing : .leading)
                 }
             }
             .frame(maxWidth: maxWidth, alignment: isOutgoing ? .trailing : .leading)
-            if !isOutgoing { Spacer(minLength: 36) }
+            if !isOutgoing { Spacer(minLength: 12) }
         }
         .padding(.vertical, highlighted ? 2 : 0)
         .background(highlighted ? Color.orbitleAccent.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
@@ -79,6 +96,24 @@ public struct MessageBubble: View {
         }
     }
 
+    private var bubbleWidth: CGFloat {
+        isOutgoing ? maxWidth : max(120, maxWidth - 40)
+    }
+
+    @ViewBuilder
+    private var authorMark: some View {
+        if showsAuthorAvatar {
+            AvatarView(
+                title: message.authorName.isEmpty ? message.authorId : message.authorName,
+                id: message.authorId,
+                url: message.authorAvatarURL,
+                size: 32
+            )
+        } else {
+            Color.clear.frame(width: 32, height: 32)
+        }
+    }
+
     private var showsComments: Bool {
         allowsComments || message.content.comments != nil
     }
@@ -87,15 +122,24 @@ public struct MessageBubble: View {
         !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var authorTitle: String {
+        message.authorName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private var bubble: some View {
         VStack(alignment: .leading, spacing: 6) {
+            if showsAuthorName, !authorTitle.isEmpty {
+                Text(authorTitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.orbitleAccent)
+            }
             if let reply = message.content.reply {
                 quote(reply)
             }
             if !message.content.visuals.isEmpty {
                 MediaMosaic(
                     attachments: message.content.visuals,
-                    maxWidth: maxWidth,
+                    maxWidth: max(72, bubbleWidth - (showsFill ? 24 : 0)),
                     time: hasText ? nil : ChatContentFormat.time(message.timestamp),
                     onOpen: onOpen
                 )
@@ -105,7 +149,12 @@ public struct MessageBubble: View {
                     VoiceMessageView(voice: voice, phase: phase, outgoing: isOutgoing, onToggle: onVoice)
                 }
             }
-            if hasText || message.content.voices.isEmpty && message.content.visuals.isEmpty {
+            if !message.content.files.isEmpty {
+                ForEach(message.content.files, id: \.id) { file in
+                    fileRow(file)
+                }
+            }
+            if hasText || !hasAttachment {
                 HStack(alignment: .bottom, spacing: 8) {
                     Text(message.text)
                         .foregroundStyle(isOutgoing ? Color.white : Color.primary)
@@ -115,7 +164,7 @@ public struct MessageBubble: View {
                             .foregroundStyle(isOutgoing ? Color.white.opacity(0.75) : Color.secondary)
                     }
                 }
-            } else if !message.content.voices.isEmpty {
+            } else if message.content.visuals.isEmpty {
                 Text(ChatContentFormat.time(message.timestamp))
                     .font(.caption2)
                     .foregroundStyle(isOutgoing ? Color.white.opacity(0.75) : Color.secondary)
@@ -127,13 +176,43 @@ public struct MessageBubble: View {
         .background(fill, in: RoundedRectangle(cornerRadius: OrbitleTheme.radius, style: .continuous))
     }
 
+    private var hasAttachment: Bool {
+        !message.content.voices.isEmpty || !message.content.visuals.isEmpty || !message.content.files.isEmpty
+    }
+
     private var showsFill: Bool {
-        hasText || message.content.reply != nil || !message.content.voices.isEmpty
+        hasText || message.content.reply != nil || !message.content.voices.isEmpty || !message.content.files.isEmpty
+            || (showsAuthorName && !authorTitle.isEmpty)
     }
 
     private var fill: Color {
         guard showsFill else { return .clear }
         return isOutgoing ? Color.orbitleOutgoing : Color.orbitleIncoming
+    }
+
+    private func fileRow(_ file: FileContent) -> some View {
+        let row = HStack(alignment: .center, spacing: 10) {
+            Image(systemName: "doc.fill")
+                .font(.title3)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(file.name)
+                    .font(.subheadline)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                Text(ChatContentFormat.fileSize(file.size))
+                    .font(.caption2)
+                    .foregroundStyle(isOutgoing ? Color.white.opacity(0.75) : Color.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(isOutgoing ? Color.white : Color.primary)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Файл \(file.name)")
+        if file.url != nil || file.fileURL != nil {
+            return AnyView(Button { onFile(file.id) } label: { row }.buttonStyle(.plain))
+        }
+        return AnyView(row)
     }
 
     private func quote(_ reply: MessageReply) -> some View {

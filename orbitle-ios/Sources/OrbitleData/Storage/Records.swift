@@ -110,6 +110,8 @@ public struct MessageRecord: Sendable, Hashable {
     public var mediaId: String?
     public var contentJSON: String
     public var threadOf: String
+    public var authorName: String
+    public var authorAvatarURL: String
 
     public init(
         id: String,
@@ -121,7 +123,9 @@ public struct MessageRecord: Sendable, Hashable {
         status: MessageStatus,
         mediaId: String? = nil,
         contentJSON: String = "",
-        threadOf: String = ""
+        threadOf: String = "",
+        authorName: String = "",
+        authorAvatarURL: String = ""
     ) {
         self.id = id
         self.serverId = serverId
@@ -133,6 +137,8 @@ public struct MessageRecord: Sendable, Hashable {
         self.mediaId = mediaId
         self.contentJSON = contentJSON
         self.threadOf = threadOf
+        self.authorName = authorName
+        self.authorAvatarURL = authorAvatarURL
     }
 
     public init(_ message: Message) {
@@ -146,7 +152,9 @@ public struct MessageRecord: Sendable, Hashable {
             status: message.status,
             mediaId: message.mediaId,
             contentJSON: MessageContentCodec.encode(message.content),
-            threadOf: message.content.threadOf ?? ""
+            threadOf: message.content.threadOf ?? "",
+            authorName: message.authorName,
+            authorAvatarURL: message.authorAvatarURL?.absoluteString ?? ""
         )
     }
 
@@ -162,7 +170,9 @@ public struct MessageRecord: Sendable, Hashable {
             timestamp: timestamp,
             status: status,
             mediaId: mediaId,
-            content: content
+            content: content,
+            authorName: authorName,
+            authorAvatarURL: authorAvatarURL.isEmpty ? nil : URL(string: authorAvatarURL)
         )
     }
 }

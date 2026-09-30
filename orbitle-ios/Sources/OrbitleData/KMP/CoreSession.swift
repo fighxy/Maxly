@@ -193,14 +193,27 @@ public struct CoreMessage: Sendable, Equatable {
     public var timeMs: Int64
     /// Фрагмент вложений и реакций. Пустая строка значит, что фасад его не прислал.
     public var contentJSON: String
+    public var authorName: String
+    public var authorAvatarURL: String
 
-    public init(id: String, chatId: String, authorId: String, text: String, timeMs: Int64, contentJSON: String = "") {
+    public init(
+        id: String,
+        chatId: String,
+        authorId: String,
+        text: String,
+        timeMs: Int64,
+        contentJSON: String = "",
+        authorName: String = "",
+        authorAvatarURL: String = ""
+    ) {
         self.id = id
         self.chatId = chatId
         self.authorId = authorId
         self.text = text
         self.timeMs = timeMs
         self.contentJSON = contentJSON
+        self.authorName = authorName
+        self.authorAvatarURL = authorAvatarURL
     }
 }
 
@@ -225,8 +238,25 @@ public struct CoreEvent: Sendable, Equatable {
     public var timeMs: Int64
     /// `-1`, если событие не меняет счётчик непрочитанных.
     public var unread: Int
+    /// Фрагмент вложений. Пустая строка — пуш его не принёс.
+    public var contentJSON: String
+    public var authorName: String
+    public var authorAvatarURL: String
 
-    public init(kind: Kind, chatId: String, messageId: String, authorId: String, text: String, title: String, chatType: String, timeMs: Int64, unread: Int) {
+    public init(
+        kind: Kind,
+        chatId: String,
+        messageId: String,
+        authorId: String,
+        text: String,
+        title: String,
+        chatType: String,
+        timeMs: Int64,
+        unread: Int,
+        contentJSON: String = "",
+        authorName: String = "",
+        authorAvatarURL: String = ""
+    ) {
         self.kind = kind
         self.chatId = chatId
         self.messageId = messageId
@@ -236,6 +266,9 @@ public struct CoreEvent: Sendable, Equatable {
         self.chatType = chatType
         self.timeMs = timeMs
         self.unread = unread
+        self.contentJSON = contentJSON
+        self.authorName = authorName
+        self.authorAvatarURL = authorAvatarURL
     }
 }
 
