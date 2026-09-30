@@ -63,7 +63,7 @@ struct ChatListDataTests {
         let parts = try await makeParts()
         try await parts.chats.upsert([makeChat(id: "a"), makeChat(id: "b"), makeChat(id: "c")])
         #expect(parts.chats.capabilities.contains(.pin))
-        #expect(!parts.chats.capabilities.contains(.mute))
+        #expect(parts.chats.capabilities.contains(.mute))
 
         try await parts.chats.setPinned(true, chatId: "b")
         try await parts.chats.setPinned(true, chatId: "c")
@@ -90,6 +90,21 @@ struct ChatListDataTests {
         #expect(await parts.api.pinCalls.count == 4)
         // Неизвестный чат закрепить нельзя.
         await #expect(throws: OrbitleError.invalidRequest) { try await parts.chats.setPinned(true, chatId: "missing") }
+    }
+
+    @Test("Звук чата: запрос на сервер, база меняется после ответа, ошибка ничего не меняет")
+    func mute() async throws {
+        let parts = try await makeParts()
+        try await parts.chats.upsert([makeChat(id: "a")])
+        try await parts.chats.setMuted(true, chatId: "a")
+        #expect(await parts.api.muteCalls.map { $0.0 } == ["a"])
+        #expect(await parts.api.muteCalls.map { $0.1 } == [true])
+        #expect(await chatRow(parts.chats, "a")?.isMuted == true)
+
+        await parts.api.setMuteError(.offline)
+        await #expect(throws: OrbitleError.self) { try await parts.chats.setMuted(false, chatId: "a") }
+        #expect(await chatRow(parts.chats, "a")?.isMuted == true)
+        await #expect(throws: OrbitleError.invalidRequest) { try await parts.chats.setMuted(true, chatId: "missing") }
     }
 
     @Test("Закреплённые с сервера: порядок сервера, остальные откреплены, догруженные чаты встают на место")

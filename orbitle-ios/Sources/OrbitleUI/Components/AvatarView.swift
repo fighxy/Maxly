@@ -37,7 +37,7 @@ public struct ChatAvatarView: View {
         case .initials(let text):
             initials(text)
         case .photo(let url, let text):
-            RemoteImage(url: url) { initials(text) }
+            RemoteImage(url: url, maxPixel: Int(size * 3)) { initials(text) }
         case .savedMessages:
             special("bookmark.fill")
         case .archive:

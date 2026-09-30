@@ -136,7 +136,12 @@ final class AppContainer {
             let messages = MessageRepositoryImpl.make(stack: stack, api: api)
             let outbox = OutboxQueue(api: api)
             await messages.attach(outbox: outbox)
-            let media = MediaRepositoryImpl(http: URLSessionClient(), directory: try MediaRepositoryImpl.defaultDirectory())
+            // Адреса CDN (видео, файлы) выданы под Android-клиента ядра: без его User-Agent
+            // сервер отвечает 400.
+            MediaHTTP.userAgent = core.mediaUserAgent()
+            let mediaSession = URLSessionConfiguration.default
+            if let agent = MediaHTTP.userAgent { mediaSession.httpAdditionalHeaders = ["User-Agent": agent] }
+            let media = MediaRepositoryImpl(http: URLSessionClient(configuration: mediaSession), directory: try MediaRepositoryImpl.defaultDirectory())
             let sync = SyncEngine(outbox: outbox, chats: chats, messages: messages)
             await sync.connectOutgoing()
             let session = SessionManager(

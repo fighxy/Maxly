@@ -734,8 +734,13 @@ public final class ChatViewModel {
         isOutgoing(message) && message.status == .sent && message.serverId != nil
     }
 
-    public func confirmDelete(forEveryone: Bool) async {
-        guard let message = deletionCandidate else { return }
+    /// Удаление из «Избранного»: собеседника нет, поэтому один вариант без выбора.
+    public var deletesWithoutChoice: Bool { chatId == Chat.savedMessagesId }
+
+    /// Удаление выбранного сообщения. Сообщение передаётся явно: диалог подтверждения
+    /// сбрасывает `deletionCandidate` раньше, чем срабатывает его кнопка.
+    public func confirmDelete(_ candidate: Message? = nil, forEveryone: Bool) async {
+        guard let message = candidate ?? deletionCandidate else { return }
         deletionCandidate = nil
         if replyTarget?.id == message.id { replyTarget = nil }
         do {

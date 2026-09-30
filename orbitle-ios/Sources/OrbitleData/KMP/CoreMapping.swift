@@ -24,6 +24,7 @@ enum CoreMapping {
             preview: chat.lastText.isEmpty ? nil : chat.lastText,
             lastAuthorId: chat.lastAuthorId.isEmpty ? nil : chat.lastAuthorId,
             avatarURL: chat.avatarURL.isEmpty ? nil : URL(string: chat.avatarURL),
+            isMuted: chat.muted < 0 ? nil : chat.muted == 1,
             lastMedia: MessageMediaKind(rawValue: chat.lastMedia),
             lastThumbnailURL: chat.lastThumbURL.isEmpty ? nil : URL(string: chat.lastThumbURL),
             commentsEnabled: chat.comments < 0 ? nil : chat.comments == 1,

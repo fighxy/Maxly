@@ -41,6 +41,11 @@ struct ChatRowPartsTests {
         await pipeline.store(image, for: url)
         #expect(pipeline.cached(url) === image)
         #expect(await pipeline.image(for: url) === image)
+        // Миниатюра того же адреса хранится отдельно и не подменяет крупную картинку.
+        let small = DecodedImage(PlatformImage())
+        await pipeline.store(small, for: url, maxPixel: 64)
+        #expect(pipeline.cached(url, maxPixel: 64) === small)
+        #expect(pipeline.cached(url) === image)
         await pipeline.removeAll()
         #expect(pipeline.cached(url) == nil)
     }
