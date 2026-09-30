@@ -12,6 +12,7 @@ struct ChatListView: View {
     /// Настройка приватного режима для плавающей кнопки. `nil` в превью без контейнера.
     @Environment(PrivateModeSettings.self) private var privateModeSettings: PrivateModeSettings?
     @Environment(\.privateMode) private var privateMode
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
@@ -23,13 +24,15 @@ struct ChatListView: View {
         }
         .listStyle(.plain)
         .environment(\.editMode, .constant(viewModel.isEditing ? .active : .inactive))
-        // Новое сообщение поднимает строку наверх плавно, а не скачком.
-        .animation(.default, value: viewModel.items.map(\.id))
-        .animation(.default, value: viewModel.isSearchActive)
+        // Новое сообщение поднимает строку наверх плавно, а не скачком. Первая загрузка,
+        // следующая страница и смена папки — сразу (`CollectionChange.animatesList`).
+        .animation(OrbitleMotion.list(viewModel.itemsChange, reduceMotion: reduceMotion), value: viewModel.items.map(\.id))
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.isSearchActive)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if viewModel.isEditing { editBar }
         }
-        .overlay { placeholder }
+        // Пусто, нет сети, ошибка — сменяют друг друга растворением.
+        .overlay { placeholder.animation(OrbitleMotion.fade, value: viewModel.content) }
         .overlay(alignment: .bottomTrailing) { privateModeButton }
         .navigationTitle(viewModel.navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
@@ -384,7 +387,7 @@ struct ChatListView: View {
         if let settings = privateModeSettings, settings.showsQuickToggle,
            !viewModel.isEditing, !viewModel.isSearchActive {
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) { settings.toggle() }
+                withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { settings.toggle() }
             } label: {
                 Image(systemName: settings.isEnabled ? "eye.slash.fill" : "eye")
                     .font(.system(size: 20, weight: .medium))
@@ -398,7 +401,7 @@ struct ChatListView: View {
             .padding(.trailing, OrbitleTheme.pad)
             .padding(.bottom, 12)
             .accessibilityLabel(settings.isEnabled ? "Выключить приватный режим" : "Включить приватный режим")
-            .transition(.scale.combined(with: .opacity))
+            .transition(.orbitlePop(reduceMotion: reduceMotion))
         }
     }
 

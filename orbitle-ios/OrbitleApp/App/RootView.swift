@@ -165,7 +165,8 @@ struct MainTabView: View {
                     account: container.accountSettingsModel(),
                     list: list,
                     onOpenChat: { id in router.openChat(id) },
-                    onOpenContacts: { router.tab = .contacts },
+                    // Выделение в панели вкладок переезжает плавно, как при нажатии.
+                    onOpenContacts: { withAnimation(OrbitleMotion.quick(reduceMotion: OrbitleMotion.systemReducesMotion)) { router.tab = .contacts } },
                     onLogout: {
                         // Открытый чат прежнего аккаунта не должен открыться после следующего входа.
                         router.chatId = nil

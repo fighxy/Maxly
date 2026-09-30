@@ -114,7 +114,8 @@ struct SecurityView: View {
         Section {
             Toggle(isOn: Binding(
                 get: { privateMode.isEnabled },
-                set: { privateMode.setEnabled($0) }
+                // Строка «Вид» появляется и уходит плавно.
+                set: { value in withAnimation(OrbitleMotion.quick(reduceMotion: OrbitleMotion.systemReducesMotion)) { privateMode.setEnabled(value) } }
             )) {
                 SettingsRowLabel("Приватный режим", systemImage: "eye.slash.fill", tint: .indigo)
             }

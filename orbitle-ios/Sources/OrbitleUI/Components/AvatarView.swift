@@ -7,6 +7,7 @@ public struct ChatAvatarView: View {
     private let size: CGFloat
     private let isOnline: Bool
     @Environment(\.privateMode) private var privateMode
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(avatar: ChatAvatar, size: CGFloat = OrbitleTheme.avatar, isOnline: Bool = false) {
         self.avatar = avatar
@@ -28,10 +29,10 @@ public struct ChatAvatarView: View {
                         .frame(width: size * 0.26, height: size * 0.26)
                         .overlay(Circle().stroke(Color.orbitleBackground, lineWidth: max(2, size * 0.045)))
                         .offset(x: -size * 0.02, y: -size * 0.02)
-                        .transition(.scale.combined(with: .opacity))
+                        .transition(.orbitlePop(reduceMotion: reduceMotion))
                 }
             }
-            .animation(.spring(duration: 0.25), value: isOnline)
+            .animation(OrbitleMotion.pop(reduceMotion: reduceMotion), value: isOnline)
             .accessibilityHidden(true)
     }
 

@@ -40,6 +40,9 @@ struct ChatView: View {
     @Environment(\.privateMode) private var privateMode
     @Environment(PrivateModeSettings.self) private var privateModeSettings: PrivateModeSettings?
     @State private var reveal = PrivateModeReveal()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Стекло поля ввода: скрепка перетекает в поле и обратно (iOS 26).
+    @Namespace private var composerGlass
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -65,6 +68,7 @@ struct ChatView: View {
                         ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, message in
                             if startsDay(at: index) {
                                 DaySeparator(ChatContentFormat.dayTitle(message.timestamp))
+                                    .transition(.opacity)
                             }
                             TranscriptBubble(
                                 message: message,
@@ -80,6 +84,7 @@ struct ChatView: View {
                                 reveal: reveal
                             )
                             .id(message.id)
+                            .transition(.orbitleBubble(outgoing: viewModel.isOutgoing(message), reduceMotion: reduceMotion))
                         }
                         // Метка низа ленты: видна — значит, пользователь внизу.
                         Color.clear
@@ -93,6 +98,11 @@ struct ChatView: View {
                     }
                     .padding(.horizontal, Self.feedInset)
                     .padding(.bottom, 8)
+                    // Новое снизу, удалённое, переставленное — плавно; первая страница и старая
+                    // история сверху — сразу, иначе лента дёргается. Правило в `CollectionChange`.
+                    .animation(OrbitleMotion.transcript(viewModel.messagesChange, reduceMotion: reduceMotion), value: viewModel.messages.map(\.id))
+                    // Реакция или правка меняет размер пузыря: соседи раздвигаются плавно.
+                    .animation(OrbitleMotion.pop(reduceMotion: reduceMotion), value: viewModel.contentVersion)
                 }
                 // Чат открывается сразу внизу, а не сверху до загрузки истории.
                 .defaultScrollAnchor(.bottom)
@@ -109,7 +119,8 @@ struct ChatView: View {
                         // Первая загрузка: сразу к последнему, без анимации.
                         proxy.scrollTo(Self.bottomId, anchor: .bottom)
                     } else if atBottom || (last.map(viewModel.isOutgoing) ?? false) {
-                        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
+                        // Та же кривая, что у появления пузыря: лента и пузырь едут вместе.
+                        withAnimation(OrbitleMotion.standard(reduceMotion: reduceMotion)) { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
                     } else if id != old {
                         unseen += 1
                     }
@@ -122,18 +133,19 @@ struct ChatView: View {
                             .transition(.opacity)
                     }
                 }
+                .animation(OrbitleMotion.fade, value: viewModel.showsSavedPlaceholder)
                 .overlay(alignment: .bottomTrailing) {
                     if !atBottom, !viewModel.messages.isEmpty {
                         scrollDownButton {
-                            withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
+                            withAnimation(OrbitleMotion.standard(reduceMotion: reduceMotion)) { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
                             unseen = 0
                         }
                         .padding(.trailing, OrbitleTheme.pad)
                         .padding(.bottom, 10)
-                        .transition(.scale(scale: 0.6).combined(with: .opacity))
+                        .transition(.orbitlePop(reduceMotion: reduceMotion))
                     }
                 }
-                .animation(.spring(duration: 0.25), value: atBottom)
+                .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: atBottom)
                 .onChange(of: viewModel.scrollToken) { _, _ in
                     guard let id = viewModel.scrollTarget else { return }
                     proxy.scrollTo(id, anchor: .center)
@@ -143,6 +155,8 @@ struct ChatView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             if privateMode.isMasked { privateModeBanner }
         }
+        // Режим включают и выключают и с другого экрана: капсула всё равно выезжает плавно.
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: privateMode)
         .safeAreaInset(edge: .bottom, spacing: 0) { composer }
         // Панель видна только на широком экране. Пока класс размера неизвестен (переходы),
         // она тоже скрыта: иначе на миг выскакивает.
@@ -213,7 +227,7 @@ struct ChatView: View {
                 VideoNoteOverlay(session: recording)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: recording.isVideo)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: recording.isVideo)
         .task {
             viewModel.activate()
             recording.onStart = { [viewModel] in viewModel.stopVoice() }
@@ -229,7 +243,7 @@ struct ChatView: View {
         }
         // Режим выключили или сменили вид — открытые пузыри снова закрыты при следующем включении.
         .onChange(of: privateMode) { _, _ in reveal.hideAll() }
-        .animation(.default, value: viewModel.notice)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.notice)
         .confirmationDialog(
             "Удалить сообщение?",
             isPresented: deletionShown,
@@ -308,7 +322,7 @@ struct ChatView: View {
             VStack(spacing: 6) {
                 if let settings = privateModeSettings {
                     Button {
-                        withAnimation(.easeInOut(duration: 0.2)) { settings.setEnabled(false) }
+                        withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { settings.setEnabled(false) }
                     } label: {
                         Label("Отключить приватный режим", systemImage: "eye.slash")
                             .font(.subheadline.weight(.semibold))
@@ -335,7 +349,7 @@ struct ChatView: View {
         .padding(.horizontal, OrbitleTheme.pad)
         .padding(.top, 6)
         .padding(.bottom, 4)
-        .transition(.move(edge: .top).combined(with: .opacity))
+        .transition(.orbitleBar(edge: .top, reduceMotion: reduceMotion))
     }
 
     /// Плавающий пузырь ввода: капсула поля и кнопка отправки на стекле (iOS 26),
@@ -349,6 +363,7 @@ struct ChatView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
                     .orbitleGlassCapsule()
+                    .transition(.orbitleBar(edge: .bottom, reduceMotion: reduceMotion))
             }
             if let hint = recording.hint {
                 Text(hint)
@@ -358,7 +373,7 @@ struct ChatView: View {
                     .padding(.vertical, 6)
                     .orbitleGlassCapsule()
                     .frame(maxWidth: .infinity)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    .transition(.orbitleBar(edge: .bottom, reduceMotion: reduceMotion))
             }
             if let notice = viewModel.notice {
                 Label(notice, systemImage: "checkmark.circle.fill")
@@ -367,7 +382,7 @@ struct ChatView: View {
                     .padding(.vertical, 6)
                     .orbitleGlassCapsule()
                     .frame(maxWidth: .infinity)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    .transition(.orbitleBar(edge: .bottom, reduceMotion: reduceMotion))
             }
             if let target = viewModel.editTarget {
                 editBar(target)
@@ -383,9 +398,10 @@ struct ChatView: View {
         .padding(.horizontal, Self.composerInset)
         .padding(.top, 6)
         .padding(.bottom, 8)
-        .animation(.default, value: viewModel.editTarget?.id)
-        .animation(.default, value: viewModel.replyTarget?.id)
-        .animation(.default, value: recording.hint)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.editTarget?.id)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.replyTarget?.id)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: recording.hint)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.errorMessage)
     }
 
     /// Поле ввода и кнопка отправки (при правке — галочка).
@@ -410,6 +426,8 @@ struct ChatView: View {
                         }
                         .buttonStyle(.plain)
                         .orbitleGlassCircle(size: 44)
+                        .orbitleGlassID("attach", in: composerGlass)
+                        .transition(.orbitlePop(reduceMotion: reduceMotion))
                         .accessibilityLabel("Прикрепить")
                     }
                     if !recording.isActive {
@@ -421,6 +439,7 @@ struct ChatView: View {
                             .padding(.vertical, 11)
                             .frame(minHeight: 44)
                             .orbitleGlassCapsule()
+                            .orbitleGlassID("field", in: composerGlass)
                     }
                     if showsRecordButton {
                         // Пустое поле: вместо отправки — запись голосового или кружка.
@@ -431,8 +450,10 @@ struct ChatView: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: recording.isActive)
-        .animation(.easeInOut(duration: 0.15), value: showsRecordButton)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: recording.isActive)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: showsRecordButton)
+        // Скрепка прячется при правке и возвращается после неё.
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.editTarget == nil)
     }
 
     /// Кнопка записи видна, пока поле пустое (и не идёт правка) или пока идёт запись.
@@ -516,7 +537,7 @@ struct ChatView: View {
         .padding(.vertical, 8)
         .fixedSize(horizontal: false, vertical: true)
         .orbitleGlassRounded(radius: 20)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .transition(.orbitleBar(edge: .bottom, reduceMotion: reduceMotion))
     }
 
     private var showsAuthors: Bool { chatType == .group }
@@ -678,7 +699,7 @@ struct ChatView: View {
         .padding(.vertical, 8)
         .fixedSize(horizontal: false, vertical: true)
         .orbitleGlassRounded(radius: 20)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .transition(.orbitleBar(edge: .bottom, reduceMotion: reduceMotion))
     }
 }
 
@@ -697,13 +718,14 @@ private struct TranscriptBubble: View {
     let showsReactionUsers: Bool
     /// Какие сообщения открыты касанием в приватном режиме.
     let reveal: PrivateModeReveal
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let outgoing = viewModel.isOutgoing(message)
         PrivateBubbleGate(
             isRevealed: reveal.isRevealed(message.id),
             accessibilityText: PrivateModeMask.messageText(outgoing: outgoing),
-            onReveal: { withAnimation(.easeInOut(duration: 0.15)) { reveal.reveal(message.id) } }
+            onReveal: { withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { reveal.reveal(message.id) } }
         ) {
             bubble(outgoing: outgoing)
         } masked: {
