@@ -15,6 +15,7 @@ public struct ChatRow: View {
     private let original: ChatListItem
     @ScaledMetric(relativeTo: .body) private var avatarSize = OrbitleTheme.avatar
     @Environment(\.privateMode) private var privateMode
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(item: ChatListItem) {
         self.original = item
@@ -88,6 +89,7 @@ public struct ChatRow: View {
             }
             Spacer(minLength: 6)
             DeliveryMark(state: item.delivery)
+                .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: item.delivery)
             Text(item.time)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -171,21 +173,30 @@ public struct ChatRow: View {
         HStack(spacing: 4) {
             if item.hasMention {
                 UnreadBadge(text: "@", muted: false)
+                    .transition(.orbitlePop(reduceMotion: reduceMotion))
             }
             if let badge = item.badge {
-                switch badge {
-                case .count(let text):
-                    UnreadBadge(text: text, muted: item.badgeMuted)
-                case .dot:
-                    UnreadBadge(text: nil, muted: item.badgeMuted)
+                Group {
+                    switch badge {
+                    case .count(let text):
+                        UnreadBadge(text: text, muted: item.badgeMuted)
+                    case .dot:
+                        UnreadBadge(text: nil, muted: item.badgeMuted)
+                    }
                 }
+                .transition(.orbitlePop(reduceMotion: reduceMotion))
             } else if item.showsPin {
                 Image(systemName: "pin.fill")
                     .font(.footnote)
                     .rotationEffect(.degrees(45))
                     .foregroundStyle(.tertiary)
+                    .transition(.orbitlePop(reduceMotion: reduceMotion))
             }
         }
+        // Бейдж появляется, растёт числом и гаснет плавно — и когда строка не двигается.
+        .animation(OrbitleMotion.pop(reduceMotion: reduceMotion), value: item.badge)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: item.hasMention)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: item.showsPin)
     }
 }
 

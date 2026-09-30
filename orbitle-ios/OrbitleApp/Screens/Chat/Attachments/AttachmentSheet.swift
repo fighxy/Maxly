@@ -21,6 +21,8 @@ struct AttachmentSheet: View {
     @State private var preparing = false
     @State private var failure: String?
     @FocusState private var captionFocused: Bool
+    @Namespace private var tabHighlight
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,8 +36,10 @@ struct AttachmentSheet: View {
                 ProgressView("Готовим…")
                     .padding(20)
                     .orbitleGlassRounded(radius: 18)
+                    .transition(.opacity)
             }
         }
+        .animation(OrbitleMotion.fade, value: preparing)
         .task { await library.prepare() }
         .task(id: contactList == nil) {
             guard let contactList else { return }
@@ -68,7 +72,9 @@ struct AttachmentSheet: View {
         } message: { text in
             Text(text)
         }
-        .animation(.default, value: model.hasSelection)
+        // Панель вкладок сменяется подписью с кнопкой «Отправить» и обратно — выездом снизу.
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: model.hasSelection)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: model.limitReached)
     }
 
     // MARK: Шапка
@@ -93,6 +99,7 @@ struct AttachmentSheet: View {
                 if model.hasSelection {
                     Button("Сбросить") { model.clearSelection() }
                         .font(.subheadline)
+                        .transition(.opacity)
                 }
             }
         }
@@ -310,8 +317,10 @@ struct AttachmentSheet: View {
         Group {
             if model.tab == .gallery, model.hasSelection {
                 sendBar
+                    .transition(.orbitleBar(edge: .bottom, reduceMotion: reduceMotion))
             } else {
                 tabBar
+                    .transition(.orbitleBar(edge: .bottom, reduceMotion: reduceMotion))
             }
         }
         .padding(.horizontal, 16)
@@ -322,7 +331,7 @@ struct AttachmentSheet: View {
         HStack(spacing: 0) {
             ForEach(AttachmentSheetModel.Tab.allCases) { tab in
                 Button {
-                    model.tab = tab
+                    withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { model.tab = tab }
                 } label: {
                     VStack(spacing: 3) {
                         Image(systemName: tab.systemImage)
@@ -334,6 +343,14 @@ struct AttachmentSheet: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 50)
                     .foregroundStyle(model.tab == tab ? Color.orbitleAccent : Color.primary)
+                    // Подложка выбранной вкладки переезжает к новой, а не появляется скачком.
+                    .background {
+                        if model.tab == tab {
+                            Capsule()
+                                .fill(Color.orbitleAccent.opacity(0.14))
+                                .matchedGeometryEffect(id: "tab", in: tabHighlight)
+                        }
+                    }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -442,6 +459,7 @@ private struct AssetCell: View {
 
     @State private var image: UIImage?
     @Environment(\.displayScale) private var scale
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: onTap) {
@@ -452,8 +470,11 @@ private struct AssetCell: View {
                         Image(uiImage: image)
                             .resizable()
                             .scaledToFill()
+                            .transition(.opacity)
                     }
                 }
+                // Миниатюра проявляется, а не выскакивает.
+                .animation(OrbitleMotion.fade, value: image != nil)
                 .clipped()
                 .overlay {
                     if number != nil {
@@ -461,6 +482,7 @@ private struct AssetCell: View {
                     }
                 }
                 .overlay(alignment: .topTrailing) { badge.padding(6) }
+                .animation(OrbitleMotion.pop(reduceMotion: reduceMotion), value: number)
                 .overlay(alignment: .bottomLeading) {
                     if asset.mediaType == .video {
                         Text(Self.duration(asset.duration))
@@ -484,9 +506,11 @@ private struct AssetCell: View {
         ZStack {
             if let number {
                 Circle().fill(Color.orbitleAccent)
+                    .transition(.orbitlePop(reduceMotion: reduceMotion))
                 Text("\(number)")
                     .font(.system(size: 13, weight: .bold).monospacedDigit())
                     .foregroundStyle(.white)
+                    .contentTransition(.numericText(value: Double(number)))
             } else {
                 Circle().fill(.black.opacity(0.15))
             }

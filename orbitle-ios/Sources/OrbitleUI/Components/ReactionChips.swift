@@ -15,16 +15,19 @@ struct ReactionChips: View {
     let onToggle: (String) -> Void
 
     @State private var taps = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         if !reactions.isEmpty {
             ReactionFlow(spacing: 6, trailing: trailing) {
                 ForEach(reactions, id: \.emoji) { reaction in
                     chip(reaction)
-                        .transition(.scale(scale: 0.6).combined(with: .opacity))
+                        .transition(.orbitlePop(reduceMotion: reduceMotion))
                 }
             }
-            .animation(.snappy(duration: 0.25), value: reactions)
+            // Первая реакция «выпрыгивает» вместе с рядом; лента раздвигается по `contentVersion`.
+            .transition(.orbitlePop(reduceMotion: reduceMotion))
+            .animation(OrbitleMotion.pop(reduceMotion: reduceMotion), value: reactions)
             .sensoryFeedback(.selection, trigger: taps)
         }
     }

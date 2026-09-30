@@ -173,8 +173,10 @@ public struct RemoteImage<Placeholder: View>: View {
             let image = await pipeline.image(for: url, maxPixel: maxPixel)
             guard !Task.isCancelled, let image else { return }
             let first = loaded == nil
+            // Скачанная картинка проявляется поверх заглушки. Из кэша — сразу, иначе при
+            // прокрутке всё мигало бы; смена адреса у уже показанной — тоже без анимации.
             if first {
-                withAnimation(.easeOut(duration: 0.15)) {
+                withAnimation(OrbitleMotion.fade) {
                     loaded = image
                     loadedURL = url
                 }
