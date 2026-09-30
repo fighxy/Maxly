@@ -292,8 +292,11 @@ actor FakeMessageRepository: MessageRepository {
     var latestError: OrbitleError?
     private(set) var sent: [String] = []
     private(set) var replyIds: [String?] = []
+    /// Лента для `messages(chatId:)`: тест кладёт в неё страницы через `emit`.
+    nonisolated let feed = AsyncStream<[Message]>.makeStream()
 
-    nonisolated func messages(chatId: String) -> AsyncStream<[Message]> { AsyncStream { _ in } }
+    nonisolated func messages(chatId: String) -> AsyncStream<[Message]> { feed.stream }
+    nonisolated func emit(_ messages: [Message]) { feed.continuation.yield(messages) }
     func loadOlder(chatId: String) async throws(OrbitleError) {}
     func loadMore(chatId: String, before: Date?) async throws(OrbitleError) -> [Message] { [] }
     func fetchLatest(chatId: String) async throws(OrbitleError) {

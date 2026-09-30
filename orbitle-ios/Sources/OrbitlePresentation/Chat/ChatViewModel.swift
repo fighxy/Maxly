@@ -8,7 +8,17 @@ import OrbitleDomain
 public final class ChatViewModel {
     public let chatId: String
     public let currentUserId: String
-    public private(set) var messages: [Message] = []
+    public private(set) var messages: [Message] = [] {
+        didSet {
+            messagesChange = CollectionChange.between(oldValue.map(\.id), messages.map(\.id))
+            if Self.contentChanged(from: oldValue, to: messages) { contentVersion &+= 1 }
+        }
+    }
+    /// Как лента изменилась последним обновлением: экран по нему решает, анимировать ли.
+    public private(set) var messagesChange: CollectionChange = .none
+    /// Растёт, когда у уже показанных сообщений поменялись реакции или текст: пузырь
+    /// меняет размер, и лента плавно раздвигается, а не прыгает.
+    public private(set) var contentVersion = 0
     /// Текст в поле ввода. Сохраняется черновиком с короткой задержкой и при уходе с экрана.
     public var draft = "" {
         didSet {
@@ -110,6 +120,16 @@ public final class ChatViewModel {
     }
 
     public var errorMessage: String? { error?.userMessage }
+
+    /// У сообщений, что были и остались, поменялись реакции или текст.
+    nonisolated static func contentChanged(from old: [Message], to new: [Message]) -> Bool {
+        guard !old.isEmpty, !new.isEmpty else { return false }
+        let before = Dictionary(old.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return new.contains { message in
+            guard let previous = before[message.id] else { return false }
+            return previous.content.reactions != message.content.reactions || previous.text != message.text
+        }
+    }
 
     /// Подсказка вместо пустой истории нового диалога.
     public var emptyHint: String? {
