@@ -111,6 +111,21 @@ struct ChatListDataTests {
         #expect(row.lastMessage?.thumbnailURL == nil)
     }
 
+    @Test("Сервер прислал строку без сообщений: превью удалённой фотографии пропадает")
+    func emptyChatClearsRow() async throws {
+        let parts = try await makeParts()
+        try await parts.chats.upsert([ChatRecord(
+            id: "0", title: "", type: .private, lastMessageId: "102",
+            updatedAt: Date(timeIntervalSince1970: 50), preview: "",
+            lastMedia: .photo, lastThumbnailURL: URL(string: "https://example.invalid/p.jpg")
+        )])
+        try await parts.chats.upsert([ChatRecord(id: "0", title: "", type: .private, updatedAt: Date(timeIntervalSince1970: 0), lastKnown: true)])
+        let row = try #require(await chatRow(parts.chats, "0"))
+        #expect(row.lastMessageId == nil)
+        #expect(row.lastMessage?.media == nil)
+        #expect(row.lastMessage?.thumbnailURL == nil)
+    }
+
     @Test("Звук чата: запрос на сервер, база меняется после ответа, ошибка ничего не меняет")
     func mute() async throws {
         let parts = try await makeParts()

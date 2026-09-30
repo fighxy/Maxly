@@ -39,6 +39,9 @@ public struct ChatRecord: Sendable, Hashable {
     public var lastOutgoing: Bool?
     /// Последнее сообщение — пересылка: превью и вложение взяты из пересланного.
     public var lastForwarded: Bool
+    /// Запись полная (строка списка сервера): пустой `lastMessageId` значит «сообщений
+    /// нет», а не «неизвестно», и прежнее превью очищается.
+    public var lastKnown: Bool
 
     public init(
         id: String,
@@ -62,7 +65,8 @@ public struct ChatRecord: Sendable, Hashable {
         canWrite: Bool? = nil,
         lastAuthorName: String? = nil,
         lastOutgoing: Bool? = nil,
-        lastForwarded: Bool = false
+        lastForwarded: Bool = false,
+        lastKnown: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -86,6 +90,7 @@ public struct ChatRecord: Sendable, Hashable {
         self.lastAuthorName = lastAuthorName
         self.lastOutgoing = lastOutgoing
         self.lastForwarded = lastForwarded
+        self.lastKnown = lastKnown
     }
 
     public init(_ chat: Chat) {
