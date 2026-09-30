@@ -178,6 +178,7 @@ final class CaptureController: NSObject, AVCaptureFileOutputRecordingDelegate, @
         let video = try AVCaptureDeviceInput(device: camera)
         guard session.canAddInput(video) else { throw Failure.noCamera }
         session.addInput(video)
+        preferSixtyFrames(camera)
         if let microphone = AVCaptureDevice.default(for: .audio),
            let audio = try? AVCaptureDeviceInput(device: microphone), session.canAddInput(audio) {
             session.addInput(audio)
@@ -194,6 +195,30 @@ final class CaptureController: NSObject, AVCaptureFileOutputRecordingDelegate, @
             }
         }
         configured = true
+    }
+
+    /// 60 кадров в секунду, если камера умеет: самый маленький формат не меньше 480 по короткой
+    /// стороне с 60 fps (сессия тогда переходит в `inputPriority`). Иначе остаётся пресет.
+    private func preferSixtyFrames(_ camera: AVCaptureDevice) {
+        func area(_ format: AVCaptureDevice.Format) -> Int32 {
+            let size = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+            return size.width * size.height
+        }
+        let candidates = camera.formats.filter { format in
+            let size = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+            return min(size.width, size.height) >= Int32(VideoNoteExporter.side)
+                && format.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= 60 }
+        }
+        guard let format = candidates.min(by: { area($0) < area($1) }) else { return }
+        do {
+            try camera.lockForConfiguration()
+            camera.activeFormat = format
+            camera.activeVideoMinFrameDuration = CMTime(value: 1, timescale: 60)
+            camera.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: 60)
+            camera.unlockForConfiguration()
+        } catch {
+            // Не вышло — пишем с частотой пресета.
+        }
     }
 
     func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo url: URL, from connections: [AVCaptureConnection], error: Error?) {
@@ -233,6 +258,7 @@ enum VideoNoteExporter {
         let duration = try await asset.load(.duration)
         let natural = try await track.load(.naturalSize)
         let transform = try await track.load(.preferredTransform)
+        let frameRate = (try? await track.load(.nominalFrameRate)) ?? 30
         let box = CGRect(origin: .zero, size: natural).applying(transform)
         let width = abs(box.width)
         let height = abs(box.height)
@@ -252,7 +278,8 @@ enum VideoNoteExporter {
         instruction.layerInstructions = [layer]
         let composition = AVMutableVideoComposition()
         composition.renderSize = CGSize(width: out, height: out)
-        composition.frameDuration = CMTime(value: 1, timescale: 30)
+        // Частота ролика с камеры (60, если она её дала), не больше 60.
+        composition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(min(60, max(24, frameRate.rounded()))))
         composition.instructions = [instruction]
 
         guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPreset960x540) else {
