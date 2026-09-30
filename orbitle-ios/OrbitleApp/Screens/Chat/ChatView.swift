@@ -13,6 +13,10 @@ struct ChatView: View {
     var chatType: ChatType = .private
     /// Чаты для пересылки (без текущего).
     var forwardTargets: () -> [ChatListItem] = { [] }
+    /// Можно ли писать. Нет — вместо поля ввода плашка (в канале — уведомления).
+    var canWrite = true
+    var isMuted = false
+    var onToggleMute: (() -> Void)?
     /// Модель профиля чата для перехода по нажатию на заголовок.
     var makeProfile: (() -> ChatProfileViewModel?)?
     @State private var forwardList: [ChatListItem] = []
@@ -58,7 +62,8 @@ struct ChatView: View {
                                 showsAuthorName: showsAuthors && authorName(at: index),
                                 showsAuthorAvatar: showsAuthors && authorAvatar(at: index),
                                 reservesAvatar: showsAuthors,
-                                group: group(at: index)
+                                group: group(at: index),
+                                canWrite: canWrite
                             )
                             .id(message.id)
                         }
@@ -137,7 +142,7 @@ struct ChatView: View {
             }
         }
         .fullScreenCover(item: $viewModel.viewer) { request in
-            MediaViewer(request: request) { viewModel.viewer = nil }
+            MediaViewer(request: request, download: { await viewModel.downloadVideo($0) }) { viewModel.viewer = nil }
         }
         .fullScreenCover(item: $viewModel.openedFile) { file in
             FileQuickLook(url: file.url, title: file.name) { viewModel.openedFile = nil }
@@ -211,9 +216,27 @@ struct ChatView: View {
                     .frame(maxWidth: .infinity)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
-            if let reply = viewModel.replyTarget {
+            if let target = viewModel.editTarget {
+                editBar(target)
+            } else if let reply = viewModel.replyTarget {
                 replyBar(reply)
             }
+            if canWrite {
+                input
+            } else {
+                readOnlyBar
+            }
+        }
+        .padding(.horizontal, OrbitleTheme.pad)
+        .padding(.top, 6)
+        .padding(.bottom, 8)
+        .animation(.default, value: viewModel.editTarget?.id)
+        .animation(.default, value: viewModel.replyTarget?.id)
+    }
+
+    /// Поле ввода и кнопка отправки (при правке — галочка).
+    private var input: some View {
+        VStack(spacing: 0) {
             OrbitleGlassGroup(spacing: 8) {
                 HStack(alignment: .bottom, spacing: 8) {
                     TextField("Сообщение", text: $viewModel.draft, axis: .vertical)
@@ -227,21 +250,81 @@ struct ChatView: View {
                     Button {
                         Task { await viewModel.send() }
                     } label: {
-                        Image(systemName: "arrow.up")
+                        Image(systemName: viewModel.editTarget == nil ? "arrow.up" : "checkmark")
                             .font(.system(size: 17, weight: .semibold))
                             .frame(width: 30, height: 30)
+                            .contentTransition(.symbolEffect(.replace))
                     }
                     .orbitleProminentButtonStyle()
                     .buttonBorderShape(.circle)
                     .tint(Color.orbitleAccent)
                     .disabled(!viewModel.canSend)
-                    .accessibilityLabel("Отправить")
+                    .accessibilityLabel(viewModel.editTarget == nil ? "Отправить" : "Сохранить правку")
                 }
             }
         }
-        .padding(.horizontal, OrbitleTheme.pad)
-        .padding(.top, 6)
-        .padding(.bottom, 8)
+    }
+
+    /// Писать нельзя: в канале — кнопка уведомлений, в остальных — пояснение.
+    @ViewBuilder
+    private var readOnlyBar: some View {
+        if chatType == .channel, let onToggleMute {
+            Button(action: onToggleMute) {
+                Text(isMuted ? "Включить уведомления" : "Выключить уведомления")
+                    .font(.body.weight(.medium))
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.orbitleAccent)
+            .orbitleGlassCapsule()
+        } else {
+            Text(chatType == .channel ? "Писать в канал могут только администраторы" : "В этот чат нельзя отправлять сообщения")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .padding(.horizontal, 12)
+                .orbitleGlassCapsule()
+        }
+    }
+
+    private func editBar(_ message: Message) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "pencil")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color.orbitleAccent)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Редактирование")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.orbitleAccent)
+                Text(message.text)
+                    .font(.subheadline)
+                    .lineLimit(1)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.leading, 9)
+            .overlay(alignment: .leading) {
+                Capsule()
+                    .fill(Color.orbitleAccent)
+                    .frame(width: 3)
+            }
+            Spacer(minLength: 8)
+            Button {
+                viewModel.cancelEdit()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.bold))
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Отменить правку")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .fixedSize(horizontal: false, vertical: true)
+        .orbitleGlassRounded(radius: 20)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     private var showsAuthors: Bool { chatType == .group }
@@ -395,6 +478,7 @@ private struct TranscriptBubble: View {
     let showsAuthorAvatar: Bool
     let reservesAvatar: Bool
     let group: BubbleGroup
+    let canWrite: Bool
 
     var body: some View {
         let voiceId = message.content.voices.first?.id
@@ -420,7 +504,9 @@ private struct TranscriptBubble: View {
             onFile: { viewModel.openFile(message, attachmentId: $0) },
             onFocusReply: { viewModel.focusReply($0) },
             onForward: { viewModel.requestForward(message) },
-            onDelete: { viewModel.requestDelete(message) }
+            onDelete: { viewModel.requestDelete(message) },
+            onEdit: viewModel.canEdit(message) ? { viewModel.beginEdit(message) } : nil,
+            allowsReply: canWrite
         )
     }
 }

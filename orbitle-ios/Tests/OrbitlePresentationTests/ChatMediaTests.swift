@@ -159,3 +159,26 @@ struct ChatTranscriptFormatTests {
         #expect(ChatContentFormat.voiceClock(durationMs: 60_000, phase: .paused(1.5)) == "1:00")
     }
 }
+
+@Suite("Экран чата: правка сообщения")
+@MainActor
+struct ChatEditTests {
+    private func own(_ text: String, status: MessageStatus = .sent, serverId: String? = "77") -> Message {
+        Message(id: "m1", serverId: serverId, chatId: "c", authorId: "me", text: text, timestamp: .now, status: status)
+    }
+
+    @Test("Править можно только свой отправленный текст; правка откладывает черновик и возвращает его")
+    func editMode() {
+        let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository())
+        #expect(model.canEdit(own("Привет")))
+        #expect(!model.canEdit(own("Привет", status: .sending, serverId: nil)))
+        #expect(!model.canEdit(Message(id: "x", chatId: "c", authorId: "bob", text: "чужое", timestamp: .now, status: .sent)))
+        model.draft = "черновик"
+        model.beginEdit(own("Привет"))
+        #expect(model.editTarget?.id == "m1")
+        #expect(model.draft == "Привет")
+        model.cancelEdit()
+        #expect(model.editTarget == nil)
+        #expect(model.draft == "черновик")
+    }
+}

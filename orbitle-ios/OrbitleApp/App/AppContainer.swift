@@ -254,6 +254,20 @@ final class AppContainer {
     }
 
     /// Комментарии есть у постов канала.
+    /// Можно ли писать в чат. Если сервер не сказал: в канал — нет, в остальные — да.
+    func canWrite(id: String) -> Bool {
+        guard let chat = listModel?.chat(id: id) else { return true }
+        return chat.canWrite ?? (chat.type != .channel)
+    }
+
+    func isMuted(id: String) -> Bool {
+        listModel?.chat(id: id)?.isMuted ?? false
+    }
+
+    func toggleMute(id: String) async {
+        await listModel?.toggleMute(chatId: id)
+    }
+
     /// Чаты для выбора при пересылке.
     func forwardTargets(excluding chatId: String) -> [ChatListItem] {
         listModel?.forwardTargets(excluding: chatId) ?? []

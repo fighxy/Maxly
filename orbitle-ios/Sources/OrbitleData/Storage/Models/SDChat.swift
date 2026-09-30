@@ -43,6 +43,8 @@ final class SDChat {
     var lastThumbnailURLString: String?
     /// Комментарии канала: `1` включены, `0` выключены, `-1` неизвестно.
     var commentsOption: Int = -1
+    /// Можно ли писать: `1` да, `0` нет, `-1` неизвестно.
+    var canWriteOption: Int = -1
 
     /// Сообщения чата. При удалении чата удаляются вместе с ним.
     @Relationship(deleteRule: .cascade, inverse: \SDMessage.chat)

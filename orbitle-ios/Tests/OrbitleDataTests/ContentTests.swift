@@ -282,6 +282,31 @@ struct MessageContentStoreTests {
         #expect(try await repository.page(chatId: "c1", before: nil).map(\.text) == ["Второе"])
     }
 
+    @Test("Правка: текст и пометка «изменено» после ответа сервера; отказ оставляет прежний текст")
+    func editMessage() async throws {
+        let api = FakeMaxAPI()
+        await api.setEditResult(.success(MessageRecord(
+            id: "500", serverId: "500", chatId: "c1", authorId: "bob", text: "Новый текст",
+            timestamp: Date(timeIntervalSince1970: 10), status: .sent, contentJSON: #"{"edited":true}"#
+        )))
+        let (repository, _) = try await makeMessageStack(api: api)
+        try await repository.upsert([row("500", text: "Старый", at: 10)])
+        try await repository.edit(messageId: "500", chatId: "c1", text: " Новый текст ")
+        let edited = try #require(try await repository.page(chatId: "c1", before: nil).first)
+        #expect(edited.text == "Новый текст")
+        #expect(edited.domain.content.edited == true)
+        #expect(await api.edits.map(\.1) == ["Новый текст"])
+
+        await api.setEditResult(.failure(.offline))
+        await #expect(throws: OrbitleError.self) {
+            try await repository.edit(messageId: "500", chatId: "c1", text: "Ещё раз")
+        }
+        #expect(try await repository.page(chatId: "c1", before: nil).first?.text == "Новый текст")
+        await #expect(throws: OrbitleError.self) {
+            try await repository.edit(messageId: "local-9", chatId: "c1", text: "x")
+        }
+    }
+
     @Test("Пересылка записывает новое сообщение в целевой чат; неотправленное не пересылается")
     func forwardMessage() async throws {
         let api = FakeMaxAPI()

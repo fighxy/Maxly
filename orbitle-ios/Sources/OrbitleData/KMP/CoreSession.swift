@@ -61,10 +61,13 @@ public struct CoreChat: Sendable, Equatable {
     public var lastThumbURL: String
     /// Комментарии канала: `1` включены, `0` выключены, `-1` неизвестно.
     public var comments: Int
+    /// Можно ли писать: `1` да, `0` нет, `-1` неизвестно.
+    public var canWrite: Int
 
     public init(
         id: String, title: String, type: String, lastMessageId: String, lastText: String, updatedAtMs: Int64, unread: Int,
-        avatarURL: String = "", lastAuthorId: String = "", lastMedia: String = "", lastThumbURL: String = "", comments: Int = -1
+        avatarURL: String = "", lastAuthorId: String = "", lastMedia: String = "", lastThumbURL: String = "", comments: Int = -1,
+        canWrite: Int = -1
     ) {
         self.id = id
         self.title = title
@@ -78,6 +81,7 @@ public struct CoreChat: Sendable, Equatable {
         self.lastMedia = lastMedia
         self.lastThumbURL = lastThumbURL
         self.comments = comments
+        self.canWrite = canWrite
     }
 }
 
@@ -301,6 +305,8 @@ public protocol MaxCore: Sendable {
     /// Комментарии поста канала старше `beforeMs` (самые новые при `0`), от старых к новым.
     func loadComments(chatId: String, postId: String, beforeMs: Int64, limit: Int) async throws -> [CoreMessage]
     func sendComment(chatId: String, postId: String, text: String) async throws -> CoreMessage
+    /// Заменить текст отправленного сообщения. Возвращает сообщение после правки.
+    func editMessage(chatId: String, messageId: String, text: String) async throws -> CoreMessage
     /// Удалить сообщения у себя (`forEveryone == false`) или у всех.
     func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async throws
     /// Переслать сообщение в другой чат. Возвращает новое сообщение в целевом чате.
@@ -384,6 +390,9 @@ public extension MaxCore {
     }
     func loadCommentCounts(chatId: String, postIds: [String]) async throws -> [String: Int] { [:] }
     func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async throws {
+        throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
+    }
+    func editMessage(chatId: String, messageId: String, text: String) async throws -> CoreMessage {
         throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
     }
     func forwardMessage(toChatId: String, fromChatId: String, messageId: String) async throws -> CoreMessage {

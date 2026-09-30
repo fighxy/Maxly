@@ -74,6 +74,15 @@ actor FakeMaxAPI: MaxAPI {
     var forwardResult: Result<MessageRecord, MaxAPIError> = .failure(.invalidResponse)
 
     func setDeleteResult(_ result: Result<Void, MaxAPIError>) { deleteResult = result }
+    /// Ответ на правку и сами правки (серверный id, текст).
+    var editResult: Result<MessageRecord, MaxAPIError> = .failure(.invalidResponse)
+    private(set) var edits: [(String, String)] = []
+    func setEditResult(_ result: Result<MessageRecord, MaxAPIError>) { editResult = result }
+
+    func editMessage(chatId: String, messageId: String, text: String) async -> Result<MessageRecord, MaxAPIError> {
+        edits.append((messageId, text))
+        return editResult
+    }
     func setForwardResult(_ result: Result<MessageRecord, MaxAPIError>) { forwardResult = result }
 
     func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async -> Result<Void, MaxAPIError> {
