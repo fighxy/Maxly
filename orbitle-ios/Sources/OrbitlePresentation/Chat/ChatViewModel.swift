@@ -66,6 +66,8 @@ public final class ChatViewModel {
     @ObservationIgnored private let comments: (any CommentsRepository)?
     /// Посты, чьи счётчики уже спрошены: один запрос на пост за время жизни экрана.
     @ObservationIgnored private var askedCounts: Set<String> = []
+    /// Посты, чьи реакции уже спрошены отдельным запросом.
+    @ObservationIgnored private var askedReactions: Set<String> = []
     /// Прямые адреса видео, полученные у сервера за время жизни экрана.
     @ObservationIgnored private var resolvedVideos: [String: URL] = [:]
     @ObservationIgnored private var mediaTask: Task<Void, Never>?
@@ -384,6 +386,22 @@ public final class ChatViewModel {
     /// за время в фоне могли потеряться.
     public func refreshReactions() async {
         await repository.refreshReactions(chatId: chatId)
+        // После фона реакции постов канала спрашиваются заново.
+        askedReactions.removeAll()
+    }
+
+    /// Реакции постов канала: в истории канала их нет, они спрашиваются для постов,
+    /// которых ещё не спрашивали. Своё переключение реакции не перезаписывается.
+    public func requestReactions(for posts: [Message]) {
+        let ids = posts.compactMap { post -> String? in
+            guard post.status == .sent, let id = post.serverId, Int64(id) != nil, !askedReactions.contains(id) else { return nil }
+            return id
+        }
+        guard !ids.isEmpty else { return }
+        askedReactions.formUnion(ids)
+        let chatId = chatId
+        let repository = repository
+        Task { await repository.syncReactions(chatId: chatId, messageIds: ids) }
     }
 
     private func loadReactionCatalog() {
