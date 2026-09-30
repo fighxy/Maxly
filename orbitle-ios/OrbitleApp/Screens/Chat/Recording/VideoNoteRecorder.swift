@@ -280,9 +280,22 @@ enum VideoNoteExporter {
                 throw Failure.exportFailed(session.error?.localizedDescription)
             }
         }
+        await writePoster(of: target, to: folder.appendingPathComponent("poster.jpg"))
         let seconds = CMTimeGetSeconds(duration)
         let durationMs = seconds.isFinite ? Int64((seconds * 1000).rounded()) : 0
         return VideoNoteRecording(url: target, durationMs: durationMs, side: Int(out))
+    }
+}
+
+extension VideoNoteExporter {
+    /// Первый кадр кружка в JPEG: пузырь показывает его, пока сервер не прислал свой.
+    static func writePoster(of video: URL, to target: URL) async {
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: video))
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: side, height: side)
+        guard let image = try? await generator.image(at: CMTime(value: 1, timescale: 10)).image else { return }
+        guard let data = UIImage(cgImage: image).jpegData(compressionQuality: 0.8) else { return }
+        try? data.write(to: target)
     }
 }
 
