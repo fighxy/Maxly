@@ -8,12 +8,26 @@ import OrbitlePresentation
 /// Первая строка: заголовок, значки типа, «без звука», галочки и время.
 /// Вторая и третья: в группах автор и текст, в остальных чатах текст в две строки.
 /// Справа внизу бейдж непрочитанных, упоминание или булавка закреплённого.
+///
+/// В приватном режиме строка с заглушками берётся из `PrivateModeMask.item`, с размытием —
+/// настоящая, но заголовок, автор, текст, миниатюра и аватар размыты.
 public struct ChatRow: View {
-    private let item: ChatListItem
+    private let original: ChatListItem
     @ScaledMetric(relativeTo: .body) private var avatarSize = OrbitleTheme.avatar
+    @Environment(\.privateMode) private var privateMode
 
     public init(item: ChatListItem) {
-        self.item = item
+        self.original = item
+    }
+
+    /// Что рисуется: при заглушках — строка без имён и текста.
+    private var item: ChatListItem {
+        privateMode == .placeholder ? PrivateModeMask.item(original) : original
+    }
+
+    /// VoiceOver при любом виде режима читает строку без имён и текста.
+    private var spokenLabel: String {
+        privateMode.isMasked ? PrivateModeMask.item(original).accessibilityLabel : original.accessibilityLabel
     }
 
     public var body: some View {
@@ -33,7 +47,7 @@ public struct ChatRow: View {
         .frame(minHeight: OrbitleTheme.row)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(item.accessibilityLabel)
+        .accessibilityLabel(spokenLabel)
         .accessibilityAddTraits(.isButton)
     }
 
@@ -53,6 +67,7 @@ public struct ChatRow: View {
             Text(item.title)
                 .font(.body.weight(.semibold))
                 .lineLimit(1)
+                .privateModeBlur(privateMode)
             if item.isVerified {
                 Image(systemName: "checkmark.seal.fill")
                     .font(.caption)
@@ -91,9 +106,18 @@ public struct ChatRow: View {
             TypingText(text: item.preview)
                 .lineLimit(2)
         case .draft:
-            (Text("Черновик: ").foregroundColor(.red) + Text(item.preview).foregroundColor(.secondary))
+            if privateMode == .blur {
+                HStack(spacing: 0) {
+                    Text("Черновик: ").foregroundStyle(.red)
+                    Text(item.preview).foregroundStyle(.secondary).privateModeBlur(privateMode)
+                }
                 .font(.subheadline)
-                .lineLimit(2)
+                .lineLimit(1)
+            } else {
+                (Text("Черновик: ").foregroundColor(.red) + Text(item.preview).foregroundColor(.secondary))
+                    .font(.subheadline)
+                    .lineLimit(2)
+            }
         case .empty:
             Text(item.preview)
                 .font(.subheadline)
@@ -106,6 +130,7 @@ public struct ChatRow: View {
                         .font(.subheadline)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
+                        .privateModeBlur(privateMode)
                     messageText(lines: 1)
                 } else {
                     messageText(lines: 2)
@@ -127,6 +152,7 @@ public struct ChatRow: View {
                     RoundedRectangle(cornerRadius: 3).fill(Color.orbitleField)
                 }
                 .frame(width: 18, height: 18)
+                .privateModeBlur(privateMode, radius: 4)
                 .clipShape(RoundedRectangle(cornerRadius: 3))
                 .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 3 }
             }
@@ -134,6 +160,7 @@ public struct ChatRow: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(lines)
+                .privateModeBlur(privateMode)
         }
     }
 
@@ -268,14 +295,20 @@ struct TypingText: View {
 
 /// Строка «Архив чатов»: иконка архива, свежий чат архива и его превью.
 public struct ArchiveRow: View {
-    private let summary: ChatArchiveSummary
+    private let original: ChatArchiveSummary
     @ScaledMetric(relativeTo: .body) private var avatarSize = OrbitleTheme.avatar
+    @Environment(\.privateMode) private var privateMode
 
     public init(summary: ChatArchiveSummary) {
-        self.summary = summary
+        self.original = summary
+    }
+
+    private var summary: ChatArchiveSummary {
+        privateMode == .placeholder ? PrivateModeMask.archive(original) : original
     }
 
     public var body: some View {
+        let summary = self.summary
         HStack(spacing: 12) {
             ChatAvatarView(avatar: ChatAvatar(kind: .archive, colorIndex: 0), size: min(avatarSize, 76))
             VStack(alignment: .leading, spacing: 2) {
@@ -287,10 +320,12 @@ public struct ArchiveRow: View {
                         Text(summary.title)
                             .font(.subheadline)
                             .lineLimit(1)
+                            .privateModeBlur(privateMode)
                         Text(summary.preview)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                            .privateModeBlur(privateMode)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     if summary.unreadCount > 0 {
@@ -303,8 +338,13 @@ public struct ArchiveRow: View {
         .frame(minHeight: OrbitleTheme.row)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Архив чатов, \(summary.count) \(summary.count == 1 ? "чат" : "чатов"), \(summary.title): \(summary.preview)")
+        .accessibilityLabel(archiveLabel)
         .accessibilityAddTraits(.isButton)
+    }
+
+    private var archiveLabel: String {
+        let shown = privateMode.isMasked ? PrivateModeMask.archive(original) : original
+        return "Архив чатов, \(shown.count) \(shown.count == 1 ? "чат" : "чатов"), \(shown.title): \(shown.preview)"
     }
 }
 

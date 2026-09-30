@@ -62,7 +62,12 @@ struct SettingsView: View {
                     SettingsRowLabel("Уведомления и звук", systemImage: "bell.badge.fill", tint: .red)
                 }
                 NavigationLink {
-                    SecurityView(account: account, model: container.securitySettingsModel(), makeEmailFlow: container.recoveryEmailFlow)
+                    SecurityView(
+                        account: account,
+                        model: container.securitySettingsModel(),
+                        privateMode: container.privateMode,
+                        makeEmailFlow: container.recoveryEmailFlow
+                    )
                 } label: {
                     SettingsRowLabel("Безопасность", systemImage: "lock.shield.fill", tint: .gray)
                 }

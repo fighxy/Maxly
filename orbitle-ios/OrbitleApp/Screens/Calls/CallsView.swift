@@ -13,6 +13,7 @@ struct CallsView: View {
     @State private var showsCallsUnavailable = false
     @State private var isJoining = false
     @State private var joinLink = ""
+    @Environment(\.privateMode) private var privateMode
 
     var body: some View {
         List {
@@ -104,7 +105,7 @@ struct CallsView: View {
                     } label: {
                         CallRowView(row: row)
                     }
-                    .accessibilityLabel(row.accessibilityLabel)
+                    .accessibilityLabel(privateMode.isMasked ? maskedLabel(row) : row.accessibilityLabel)
                     .swipeActions(edge: .trailing) {
                         Button(role: .destructive) {
                             Task { await viewModel.delete(row) }
@@ -118,6 +119,11 @@ struct CallsView: View {
     }
 
     /// Строка действия: значок в колонке аватаров, текст акцентным цветом.
+    /// Подпись VoiceOver без имени собеседника.
+    private func maskedLabel(_ row: CallRow) -> String {
+        [PrivateModeMask.callTitle(isGroup: row.isGroup), row.status, row.dateText].joined(separator: ", ")
+    }
+
     private func actionRow(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
@@ -202,6 +208,7 @@ struct CallLinkSheet: View {
 
 /// Строка истории: аватар или значок группового звонка, имя со счётчиком,
 /// направление и статус, дата справа. Пропущенные — красным.
+/// В приватном режиме вместо имени «Звонок» или «Групповой звонок».
 struct CallRowView: View {
     let row: CallRow
 
@@ -209,7 +216,7 @@ struct CallRowView: View {
         HStack(spacing: 12) {
             avatar
             VStack(alignment: .leading, spacing: 2) {
-                Text(row.title)
+                PrivateText(row.title, placeholder: PrivateModeMask.callTitle(isGroup: row.isGroup))
                     .font(.body)
                     .foregroundStyle(row.isMissed ? AnyShapeStyle(Color.red) : AnyShapeStyle(.primary))
                     .lineLimit(1)
