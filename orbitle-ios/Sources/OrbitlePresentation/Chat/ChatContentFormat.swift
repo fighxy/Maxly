@@ -137,6 +137,17 @@ public struct MediaSlide: Identifiable, Hashable, Sendable {
     }
 }
 
+/// Кружок, играющий в ленте: id вложения и адрес ролика (файл или поток).
+public struct RoundPlayback: Hashable, Sendable {
+    public var id: String
+    public var url: URL
+
+    public init(id: String, url: URL) {
+        self.id = id
+        self.url = url
+    }
+}
+
 /// Открытый просмотр вложений одного сообщения.
 public struct MediaViewerRequest: Identifiable, Hashable, Sendable {
     public var id: String

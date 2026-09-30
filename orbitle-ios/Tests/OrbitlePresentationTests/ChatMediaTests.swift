@@ -66,6 +66,24 @@ struct ChatMediaLinkTests {
         #expect(await links.requests == ["video:c:42:77"])
     }
 
+    @Test("Кружок играет в ленте, а не на весь экран; повторное касание его останавливает")
+    func roundPlaysInline() async throws {
+        let play = try #require(URL(string: "https://video.example/r.mp4"))
+        let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository(), links: FakeLinks(["88": play]))
+        let round = VideoContent(id: "88", url: nil, durationMs: 3000, isRound: true)
+        let note = message([.video(round)])
+        model.presentMedia(note, startId: "88")
+        #expect(await eventually { model.roundPlayback != nil })
+        #expect(model.roundPlayback == RoundPlayback(id: "88", url: play))
+        #expect(model.viewer == nil)
+        model.presentMedia(note, startId: "88")
+        #expect(model.roundPlayback == nil)
+        model.presentMedia(note, startId: "88")
+        #expect(model.roundPlayback?.id == "88")
+        model.stopRound(id: "88")
+        #expect(model.roundPlayback == nil)
+    }
+
     @Test("Ссылка не пришла: кадр открывается постером, экран говорит, что видео недоступно")
     func videoLinkFails() async throws {
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository(), links: FakeLinks([:]))
