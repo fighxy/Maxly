@@ -151,6 +151,22 @@ struct MessageContentCodecTests {
         """#
     }
 
+    @Test("Форматирование: известные типы, ссылка и упоминание; незнакомые и пустые пропускаются")
+    func formatting() {
+        let json = #"{"elements":[{"type":"STRONG","from":0,"length":4},{"type":"LINK","from":5,"length":4,"attributes":{"url":"https://max.ru"}},{"type":"USER_MENTION","from":10,"length":5,"entityId":77},{"type":"ANIMOJI","from":0,"length":1},{"type":"EMPHASIZED","from":1,"length":0}]}"#
+        let content = MessageContentCodec.decode(json)
+        #expect(content.formatting == [
+            TextSpan(kind: .strong, from: 0, length: 4),
+            TextSpan(kind: .link, from: 5, length: 4, url: "https://max.ru"),
+            TextSpan(kind: .mention, from: 10, length: 5, userId: "77"),
+        ])
+        #expect(MessageContentCodec.decode(MessageContentCodec.encode(content)) == content)
+        // Старая запись без поля formatting читается как раньше.
+        let old = MessageContentCodec.decode(#"{"attachments":[],"reactions":[{"emoji":"👍","count":1,"mine":true}]}"#)
+        #expect(old.reactions.count == 1)
+        #expect(old.formatting == nil)
+    }
+
     @Test("Миниатюра previewData: массив байтов и data-адрес base64")
     func previewData() throws {
         let json = #"{"attaches":[{"_type":"PHOTO","photoId":1,"baseUrl":"https://i.example/1","previewData":[82,73,70,70]},{"_type":"VIDEO","videoId":2,"previewData":"data:image/webp;base64,UklGRg=="}]}"#
