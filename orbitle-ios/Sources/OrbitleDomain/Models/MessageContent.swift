@@ -519,7 +519,13 @@ public struct AttachmentDraft: Hashable, Sendable, Codable {
         case .voice:
             return .voice(VoiceContent(id: id, url: nil, waveform: waveform, durationMs: durationMs, localPath: local))
         case .videoNote:
-            return .video(VideoContent(id: id, url: nil, width: width, height: height, durationMs: durationMs, isRound: true, localPath: local))
+            // Кадр для кружка до ответа сервера: `poster.jpg` рядом с роликом, если записан.
+            let poster = local.map { URL(fileURLWithPath: $0).deletingLastPathComponent().appendingPathComponent("poster.jpg") }
+                .flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+            return .video(VideoContent(
+                id: id, url: nil, posterURL: poster, width: width, height: height,
+                durationMs: durationMs, isRound: true, localPath: local
+            ))
         }
     }
 }
