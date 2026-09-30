@@ -63,7 +63,8 @@ struct ChatView: View {
                                 showsAuthorAvatar: showsAuthors && authorAvatar(at: index),
                                 reservesAvatar: showsAuthors,
                                 group: group(at: index),
-                                canWrite: canWrite
+                                canWrite: canWrite,
+                                showsReactionUsers: chatType == .group
                             )
                             .id(message.id)
                         }
@@ -141,6 +142,17 @@ struct ChatView: View {
                     .presentationDragIndicator(.visible)
             }
         }
+        .sheet(item: $viewModel.reactionPickerTarget) { message in
+            ReactionPicker(
+                catalog: viewModel.reactionCatalog,
+                mine: message.content.reactions.mine,
+                onPick: { emoji in Task { await viewModel.pickReaction(emoji) } },
+                onClose: { viewModel.reactionPickerTarget = nil }
+            )
+        }
+        .sheet(item: $viewModel.reactionUsers) { model in
+            ReactionUsersView(model: model) { viewModel.reactionUsers = nil }
+        }
         .fullScreenCover(item: $viewModel.viewer) { request in
             MediaViewer(request: request, download: { await viewModel.downloadVideo($0) }) { viewModel.viewer = nil }
         }
@@ -192,6 +204,8 @@ struct ChatView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { viewModel.flushDraft() }
+            // Пуши реакций, пока приложение было в фоне, могли потеряться: сверить с сервером.
+            if phase == .active { Task { await viewModel.refreshReactions() } }
         }
     }
 
@@ -479,8 +493,11 @@ private struct TranscriptBubble: View {
     let reservesAvatar: Bool
     let group: BubbleGroup
     let canWrite: Bool
+    /// «Кто отреагировал» — в группах. В личном чате и так видно, в канале — только числа.
+    let showsReactionUsers: Bool
 
     var body: some View {
+        let reacts = viewModel.canReact(message)
         let voiceId = message.content.voices.first?.id
         MessageBubble(
             message: message,
@@ -506,7 +523,11 @@ private struct TranscriptBubble: View {
             onForward: { viewModel.requestForward(message) },
             onDelete: { viewModel.requestDelete(message) },
             onEdit: viewModel.canEdit(message) ? { viewModel.beginEdit(message) } : nil,
-            allowsReply: canWrite
+            allowsReply: canWrite,
+            allowsReactions: reacts,
+            quickReactions: viewModel.quickReactions(for: message),
+            onMoreReactions: reacts ? { viewModel.showMoreReactions(message) } : nil,
+            onReactionUsers: reacts && showsReactionUsers ? { viewModel.showReactionUsers(message) } : nil
         )
     }
 }

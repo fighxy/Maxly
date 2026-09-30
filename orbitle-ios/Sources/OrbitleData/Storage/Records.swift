@@ -135,6 +135,9 @@ public struct MessageRecord: Sendable, Hashable {
     public var threadOf: String
     public var authorName: String
     public var authorAvatarURL: String
+    /// Реакции в `contentJSON` пришли от сервера и точны. Иначе при записи в базу остаются
+    /// прежние: ответ на правку и другие частичные записи реакций не несут. В базе не хранится.
+    public var reactionsKnown: Bool
 
     public init(
         id: String,
@@ -148,7 +151,8 @@ public struct MessageRecord: Sendable, Hashable {
         contentJSON: String = "",
         threadOf: String = "",
         authorName: String = "",
-        authorAvatarURL: String = ""
+        authorAvatarURL: String = "",
+        reactionsKnown: Bool = false
     ) {
         self.id = id
         self.serverId = serverId
@@ -162,6 +166,7 @@ public struct MessageRecord: Sendable, Hashable {
         self.threadOf = threadOf
         self.authorName = authorName
         self.authorAvatarURL = authorAvatarURL
+        self.reactionsKnown = reactionsKnown
     }
 
     public init(_ message: Message) {

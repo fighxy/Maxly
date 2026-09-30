@@ -14,8 +14,17 @@ public protocol MessageRepository: Sendable {
     func send(text: String, chatId: String, replyTo: String?) async throws(OrbitleError)
     /// Повторная отправка сообщения со статусом `failed`.
     func retry(messageId: String) async throws(OrbitleError)
-    /// Поставить или снять свою реакцию. На сервер уходит только когда фасад это умеет.
-    func setReaction(messageId: String, emoji: String) async throws(OrbitleError)
+    /// Поставить реакцию `emoji` или снять её, если она уже своя. Другая своя реакция
+    /// заменяется: у аккаунта одна реакция на сообщение. Изменение видно сразу, при ошибке
+    /// сервера оно откатывается и ошибка пробрасывается.
+    func toggleReaction(messageId: String, emoji: String) async throws(OrbitleError)
+    /// Обновить с сервера реакции показанных сообщений чата.
+    func refreshReactions(chatId: String) async
+    /// Кто поставил реакции на сообщение.
+    func reactionUsers(messageId: String) async throws(OrbitleError) -> [ReactionUser]
+    /// Эмодзи, которые сервер предлагает для реакций, в его порядке. Пусто, если каталог
+    /// не загрузился.
+    func reactionCatalog() async -> [String]
     /// Комментарии поста, от старых к новым. В общую ленту чата они не входят.
     func comments(chatId: String, postId: String) -> AsyncStream<[Message]>
     /// Комментарий остаётся на устройстве: у фасада нет отдельной отправки в тред.
@@ -37,7 +46,17 @@ extension MessageRepository {
         try await send(text: text, chatId: chatId, replyTo: nil)
     }
 
-    public func setReaction(messageId: String, emoji: String) async throws(OrbitleError) {}
+    public func toggleReaction(messageId: String, emoji: String) async throws(OrbitleError) {
+        throw .invalidRequest
+    }
+
+    public func refreshReactions(chatId: String) async {}
+
+    public func reactionUsers(messageId: String) async throws(OrbitleError) -> [ReactionUser] {
+        throw .invalidRequest
+    }
+
+    public func reactionCatalog() async -> [String] { [] }
 
     public func comments(chatId: String, postId: String) -> AsyncStream<[Message]> {
         AsyncStream { $0.finish() }

@@ -194,6 +194,11 @@ public actor SyncEngine {
                 return
             }
             try? await chats.applyOwnRead(chatId: event.chatId, mark: event.timeMs, setAsUnread: event.unread > 0)
+        case .reactions:
+            // Реакции без правки текста: пуш `NOTIF_MSG_REACTIONS_CHANGED`. В списке чатов их нет.
+            guard !event.chatId.isEmpty, !event.messageId.isEmpty,
+                  let update = MessageContentCodec.reactionUpdate(event.reactionsJSON) else { return }
+            try? await messages.applyReactions(chatId: event.chatId, messageId: event.messageId, update: update)
         case .typing:
             let mine = await messages.currentUser()
             guard !event.authorId.isEmpty, event.authorId != mine else { return }

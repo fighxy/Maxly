@@ -8,9 +8,16 @@ public protocol CommentsRepository: Sendable {
     func send(text: String, chatId: String, postId: String) async throws(OrbitleError) -> Message
     /// Число комментариев под постами: id поста → число.
     func counts(chatId: String, postIds: [String]) async throws(OrbitleError) -> [String: Int]
+    /// Поставить свою реакцию `emoji` на комментарий `commentId` или снять её (`nil`).
+    /// Ответ — реакции, которые вернул сервер, или `nil`, если он их не прислал.
+    func setReaction(chatId: String, postId: String, commentId: String, emoji: String?) async throws(OrbitleError) -> ReactionUpdate?
 }
 
 public extension CommentsRepository {
     /// Источник без счётчиков: плашка покажет «Комментировать».
     func counts(chatId: String, postIds: [String]) async throws(OrbitleError) -> [String: Int] { [:] }
+    /// Источник без реакций: изменение откатывается.
+    func setReaction(chatId: String, postId: String, commentId: String, emoji: String?) async throws(OrbitleError) -> ReactionUpdate? {
+        throw .invalidRequest
+    }
 }

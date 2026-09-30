@@ -22,9 +22,44 @@ public enum VoicePhase: Equatable, Sendable {
     }
 }
 
-/// Быстрые реакции в меню сообщения.
+/// Реакции в меню сообщения и на плашках.
 public enum ReactionPalette {
-    public static let quick = ["❤️", "👍", "👎", "🔥", "😂", "😮", "😢", "🎉"]
+    /// Быстрые реакции, пока каталог сервера не загрузился.
+    public static let fallback = ["👍", "❤️", "🔥", "🤣", "😭", "😍"]
+    /// Сколько реакций в быстром ряду меню.
+    public static let quickCount = 6
+
+    /// Быстрый ряд: начало каталога сервера (или запасной набор). Своя реакция, которой
+    /// нет в ряду, встаёт первой, чтобы её было видно и можно было снять.
+    public static func quick(catalog: [String], mine: String? = nil) -> [String] {
+        var row = Array((catalog.isEmpty ? fallback : catalog).prefix(quickCount))
+        if let mine, !mine.isEmpty, !row.contains(mine) {
+            row.insert(mine, at: 0)
+            if row.count > quickCount { row.removeLast() }
+        }
+        return row
+    }
+
+    /// Число на плашке: до тысячи как есть, дальше коротко («1,2K», «15K», «3,4M»).
+    public static func countText(_ count: Int) -> String {
+        let value = max(0, count)
+        switch value {
+        case ..<1000:
+            return "\(value)"
+        case ..<1_000_000:
+            return short(value, unit: 1000, suffix: "K")
+        default:
+            return short(value, unit: 1_000_000, suffix: "M")
+        }
+    }
+
+    private static func short(_ value: Int, unit: Int, suffix: String) -> String {
+        let whole = value / unit
+        // Десятая доля только у малых чисел и без округления вверх: 1999 — «1,9K».
+        let tenth = (value % unit) / (unit / 10)
+        if whole >= 10 || tenth == 0 { return "\(whole)\(suffix)" }
+        return "\(whole),\(tenth)\(suffix)"
+    }
 }
 
 /// Размер одного кадра в пузыре.

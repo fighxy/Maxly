@@ -111,7 +111,9 @@ enum CoreMapping {
     }
 
     static func message(_ message: CoreMessage) -> MessageRecord {
-        let content = MessageContentCodec.decode(message.contentJSON)
+        var content = MessageContentCodec.decode(message.contentJSON)
+        let reactions = MessageContentCodec.reactionUpdate(message.reactionsJSON)
+        if let reactions { content.reactions = reactions.applied(to: content.reactions) }
         return MessageRecord(
             id: message.id,
             serverId: message.id,
@@ -123,7 +125,8 @@ enum CoreMapping {
             contentJSON: MessageContentCodec.encode(content),
             threadOf: content.threadOf ?? "",
             authorName: message.authorName,
-            authorAvatarURL: message.authorAvatarURL
+            authorAvatarURL: message.authorAvatarURL,
+            reactionsKnown: reactions != nil
         )
     }
 
@@ -162,7 +165,9 @@ enum CoreMapping {
 extension MessageRecord {
     init?(_ event: CoreEvent) {
         guard event.kind == .message || event.kind == .edited, !event.messageId.isEmpty, !event.chatId.isEmpty else { return nil }
-        let content = MessageContentCodec.decode(event.contentJSON)
+        var content = MessageContentCodec.decode(event.contentJSON)
+        let reactions = MessageContentCodec.reactionUpdate(event.reactionsJSON)
+        if let reactions { content.reactions = reactions.applied(to: content.reactions) }
         self.init(
             id: event.messageId,
             serverId: event.messageId,
@@ -174,7 +179,8 @@ extension MessageRecord {
             contentJSON: MessageContentCodec.encode(content),
             threadOf: content.threadOf ?? "",
             authorName: event.authorName,
-            authorAvatarURL: event.authorAvatarURL
+            authorAvatarURL: event.authorAvatarURL,
+            reactionsKnown: reactions != nil
         )
     }
 }

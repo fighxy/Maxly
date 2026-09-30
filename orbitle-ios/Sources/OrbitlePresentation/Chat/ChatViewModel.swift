@@ -48,6 +48,13 @@ public final class ChatViewModel {
     /// Диалог открыт из контактов, и на сервере его может ещё не быть: пустая история не
     /// ошибка, экран предлагает написать первое сообщение.
     public let isNewDialog: Bool
+    /// Каталог реакций сервера. Пуст, пока не загрузился: меню берёт запасной набор.
+    public private(set) var reactionCatalog: [String] = []
+    /// Сообщение, для которого открыт полный выбор реакций.
+    public var reactionPickerTarget: Message?
+    /// Открытый список «Кто отреагировал».
+    public var reactionUsers: ReactionUsersViewModel?
+    @ObservationIgnored private var catalogRequested = false
 
     @ObservationIgnored private let repository: any MessageRepository
     @ObservationIgnored private let drafts: (any ChatDraftStore)?
@@ -115,6 +122,7 @@ public final class ChatViewModel {
 
     public func activate() {
         guard watch == nil else { return }
+        loadReactionCatalog()
         let stream = repository.messages(chatId: chatId)
         watch = Task { [weak self] in
             for await page in stream {
@@ -279,13 +287,78 @@ public final class ChatViewModel {
         replyTarget = nil
     }
 
+    // MARK: Реакции
+
+    /// Реакции ставятся на сообщения, уже принятые сервером.
+    public func canReact(_ message: Message) -> Bool {
+        message.status == .sent && message.serverId.flatMap { Int64($0) } != nil
+    }
+
+    /// Быстрый ряд меню сообщения: начало каталога, своя реакция всегда в нём.
+    public func quickReactions(for message: Message) -> [String] {
+        ReactionPalette.quick(catalog: reactionCatalog, mine: message.content.reactions.mine)
+    }
+
+    /// Поставить реакцию или снять свою. Лента меняется сразу, при отказе сервера
+    /// возвращается прежнее и показывается ошибка.
     public func toggleReaction(messageId: String, emoji: String) async {
         do {
-            try await repository.setReaction(messageId: messageId, emoji: emoji)
+            try await repository.toggleReaction(messageId: messageId, emoji: emoji)
+            if case .rejected(Self.reactionFailure)? = error { error = nil }
         } catch {
-            show(error)
+            switch error {
+            case .cancelled:
+                return
+            case .rejected:
+                show(error)
+            default:
+                show(.rejected(Self.reactionFailure))
+            }
         }
     }
+
+    /// Выбрана реакция в полном списке.
+    public func pickReaction(_ emoji: String) async {
+        guard let target = reactionPickerTarget else { return }
+        reactionPickerTarget = nil
+        await toggleReaction(messageId: target.id, emoji: emoji)
+    }
+
+    public func showMoreReactions(_ message: Message) {
+        guard canReact(message) else { return }
+        loadReactionCatalog()
+        reactionPickerTarget = message
+    }
+
+    /// «Кто отреагировал»: есть в группах, если под сообщением есть реакции.
+    public func showReactionUsers(_ message: Message) {
+        guard canReact(message), !message.content.reactions.isEmpty else { return }
+        reactionUsers = ReactionUsersViewModel(message: message, repository: repository)
+    }
+
+    /// Сверить реакции показанных сообщений с сервером: при возврате в приложение пуши
+    /// за время в фоне могли потеряться.
+    public func refreshReactions() async {
+        await repository.refreshReactions(chatId: chatId)
+    }
+
+    private func loadReactionCatalog() {
+        guard !catalogRequested else { return }
+        catalogRequested = true
+        let repository = repository
+        Task { [weak self] in
+            let catalog = await repository.reactionCatalog()
+            guard let self else { return }
+            if catalog.isEmpty {
+                // Попробовать ещё раз при следующем открытии полного списка.
+                self.catalogRequested = false
+            } else {
+                self.reactionCatalog = catalog
+            }
+        }
+    }
+
+    static let reactionFailure = "Не удалось обновить реакцию"
 
     /// Прокрутить к цитате, если она уже в загруженном окне.
     public func focusReply(_ messageId: String) {
@@ -310,7 +383,13 @@ public final class ChatViewModel {
     public func commentsModel(for post: Message) -> CommentsViewModel? {
         guard let comments else { return nil }
         if let commentsModel, commentsModel.post.id == post.id { return commentsModel }
-        let model = CommentsViewModel(chatId: chatId, post: post, currentUserId: currentUserId, comments: comments)
+        let model = CommentsViewModel(
+            chatId: chatId,
+            post: post,
+            currentUserId: currentUserId,
+            comments: comments,
+            reactionCatalog: reactionCatalog
+        )
         commentsModel = model
         return model
     }

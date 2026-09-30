@@ -42,6 +42,14 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// Своё сообщение поставлено в очередь или ушло на сервер. Через это строка чата
     /// в списке сдвигается сразу, не дожидаясь пуша. Подключает `SyncEngine`.
     private var outgoingHandler: (@Sendable (OutgoingChange) async -> Void)?
+    /// Последний запрос реакции по локальному id сообщения. Ответы на прежние запросы
+    /// игнорируются, пуши не перебивают ожидающее нажатие.
+    private var pendingReactions: [String: Int] = [:]
+    private var reactionRequest = 0
+    /// Каталог реакций сервера, после первой удачной загрузки.
+    private var catalog: [String]?
+    /// Сколько последних сообщений сверяет `refreshReactions`: столько принимает один запрос.
+    static let reactionsPage = 100
 
     /// Что случилось со своим сообщением.
     public enum OutgoingChange: Sendable, Equatable {
@@ -154,17 +162,120 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         await outbox?.enqueue(localId)
     }
 
-    public func setReaction(messageId: String, emoji: String) async throws(OrbitleError) {
-        do {
-            guard let message = try message(id: messageId) ?? message(serverId: messageId) else { return }
-            var content = Self.content(of: message)
-            content.reactions = content.reactions.toggled(emoji)
-            message.contentJSON = MessageContentCodec.encode(content)
-            try modelContext.save()
-            notify(chatId: message.chatId)
-        } catch {
-            throw .storageError
+    /// Своя реакция: сразу в базе, затем на сервере. Ответ сервера (если в нём есть реакции)
+    /// становится итогом, отказ возвращает прежние реакции. Для быстрых нажатий в базу
+    /// ложится итог только последнего запроса по сообщению.
+    public func toggleReaction(messageId: String, emoji: String) async throws(OrbitleError) {
+        guard !emoji.isEmpty else { throw .invalidRequest }
+        let stored = (try? message(id: messageId)) ?? (try? message(serverId: messageId))
+        guard let stored else { throw .invalidRequest }
+        guard let serverId = stored.serverId, Int64(serverId) != nil, stored.status == .sent else {
+            throw .rejected("Сообщение ещё не отправлено")
         }
+        let localId = stored.id
+        let chatId = stored.chatId
+        let postId = stored.threadOf
+        let before = Self.content(of: stored).reactions
+        let after = before.toggled(emoji)
+        let wanted = after.mine
+        try saveReactions(after, localId: localId)
+
+        reactionRequest += 1
+        let request = reactionRequest
+        pendingReactions[localId] = request
+        let result = await api.setReaction(chatId: chatId, messageId: serverId, postId: postId, emoji: wanted)
+        // Поздний ответ на обогнанное нажатие ничего не трогает: итог даст последнее.
+        guard pendingReactions[localId] == request else {
+            if case .failure(let error) = result { Log.info(.messages, "Реакция обогнана новой: \(error)") }
+            return
+        }
+        pendingReactions[localId] = nil
+        switch result {
+        case .success(let update):
+            if let update {
+                // Ответ на свою реакцию: своя известна, даже если сервер промолчал о ней.
+                var confirmed = update
+                if !confirmed.mineKnown {
+                    confirmed.mine = wanted
+                    confirmed.mineKnown = true
+                }
+                try applyReactions(localId: localId, update: confirmed)
+            }
+            Log.info(.messages, wanted == nil ? "Реакция снята с \(serverId)" : "Реакция на \(serverId) поставлена")
+        case .failure(let error):
+            Log.warning(.messages, "Реакция не изменена: \(error)")
+            try? saveReactions(before, localId: localId, onlyIf: after)
+            throw error.orbitleError
+        }
+    }
+
+    /// Точные реакции для последних показанных сообщений: после входа в чат и возврата
+    /// приложения пуши за время отсутствия могли потеряться.
+    public func refreshReactions(chatId: String) async {
+        let shown = min(windows[chatId] ?? Self.pageSize, Self.reactionsPage)
+        let rows = (try? fetchPage(chatId: chatId, before: nil, limit: shown)) ?? []
+        let serverIds = rows.compactMap { row -> String? in
+            guard let serverId = row.serverId, Int64(serverId) != nil, row.status == .sent else { return nil }
+            return serverId
+        }
+        guard !serverIds.isEmpty else { return }
+        let started = generation
+        switch await api.fetchReactions(chatId: chatId, messageIds: serverIds) {
+        case .success(let reactions):
+            guard started == generation else { return }
+            var changed = false
+            // Строки перечитываются одной выборкой: пока шёл запрос, база могла измениться.
+            let current = (try? messages(serverIds: serverIds)) ?? [:]
+            for serverId in serverIds {
+                guard let message = current[serverId], pendingReactions[message.id] == nil else { continue }
+                // О сообщении без реакций сервер молчит.
+                let update = reactions[serverId] ?? .none
+                var content = Self.content(of: message)
+                let fresh = update.applied(to: content.reactions)
+                guard fresh != content.reactions else { continue }
+                content.reactions = fresh
+                message.contentJSON = MessageContentCodec.encode(content)
+                changed = true
+            }
+            guard changed else { return }
+            try? modelContext.save()
+            notify(chatId: chatId)
+        case .failure(let error):
+            Log.info(.messages, "Реакции чата не обновлены: \(error)")
+        }
+    }
+
+    public func reactionUsers(messageId: String) async throws(OrbitleError) -> [ReactionUser] {
+        let stored = (try? message(id: messageId)) ?? (try? message(serverId: messageId))
+        guard let stored, let serverId = stored.serverId, Int64(serverId) != nil else { return [] }
+        switch await api.reactionUsers(chatId: stored.chatId, messageId: serverId) {
+        case .success(let users):
+            return users
+        case .failure(let error):
+            throw error.orbitleError
+        }
+    }
+
+    public func reactionCatalog() async -> [String] {
+        if let catalog { return catalog }
+        switch await api.reactionCatalog() {
+        case .success(let emoji):
+            var seen = Set<String>()
+            let unique = emoji.filter { !$0.isEmpty && seen.insert($0).inserted }
+            if !unique.isEmpty { catalog = unique }
+            return unique
+        case .failure(let error):
+            Log.info(.messages, "Каталог реакций не загружен: \(error)")
+            return []
+        }
+    }
+
+    /// Реакции из пуша (`SyncEngine`). Сообщения нет в кэше — пуш пропускается. Пока своё
+    /// нажатие ждёт сервера, счётчики пуша не перебивают его: итог даст ответ сервера.
+    public func applyReactions(chatId: String, messageId: String, update: ReactionUpdate) throws(OrbitleError) {
+        guard let message = (try? message(serverId: messageId)) ?? (try? message(id: messageId)),
+              message.chatId == chatId, pendingReactions[message.id] == nil else { return }
+        try applyReactions(localId: message.id, update: update)
     }
 
     public func sendComment(text: String, chatId: String, postId: String) async throws(OrbitleError) {
@@ -369,11 +480,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
                     message.text = record.text
                     message.status = record.status
                     message.mediaId = record.mediaId
-                    // Пустой фрагмент значит «фасад его не прислал», а не «вложений больше нет».
-                    if !record.contentJSON.isEmpty {
-                        message.contentJSON = record.contentJSON
-                        message.threadOf = record.threadOf
-                    }
+                    Self.merge(record, into: message, keepReactions: pendingReactions[message.id] != nil)
                     if !record.authorName.isEmpty { message.authorName = record.authorName }
                     if !record.authorAvatarURL.isEmpty { message.authorAvatarURL = record.authorAvatarURL }
                     if let serverId = record.serverId {
@@ -420,10 +527,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             guard let message = try message(id: record.id) ?? message(serverId: record.serverId ?? record.id) else { return false }
             message.text = record.text
             if let mediaId = record.mediaId { message.mediaId = mediaId }
-            if !record.contentJSON.isEmpty {
-                message.contentJSON = record.contentJSON
-                message.threadOf = record.threadOf
-            }
+            Self.merge(record, into: message, keepReactions: pendingReactions[message.id] != nil)
             if !record.authorName.isEmpty { message.authorName = record.authorName }
             if !record.authorAvatarURL.isEmpty { message.authorAvatarURL = record.authorAvatarURL }
             try modelContext.save()
@@ -634,6 +738,49 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         }
         let rows = (try? fetchThread(chatId: chatId, threadOf: threadOf, limit: 200)) ?? []
         return rows.map { Self.record($0).domain }
+    }
+
+    /// Фрагмент записи поверх сохранённого. Пустой фрагмент значит «фасад его не прислал»,
+    /// а не «вложений больше нет». Реакции записи заменяют прежние, если она их знает
+    /// (`reactionsKnown`) или несёт хоть одну. Пока своё нажатие ждёт сервера, остаются прежние.
+    private static func merge(_ record: MessageRecord, into message: SDMessage, keepReactions: Bool) {
+        let fresh = record.reactionsKnown && !keepReactions
+        if !record.contentJSON.isEmpty {
+            var content = MessageContentCodec.decode(record.contentJSON)
+            if keepReactions || (!record.reactionsKnown && content.reactions.isEmpty) {
+                content.reactions = Self.content(of: message).reactions
+            }
+            message.contentJSON = MessageContentCodec.encode(content)
+            message.threadOf = record.threadOf
+        } else if fresh {
+            // Фрагмент пуст, а реакции известны: значит, их нет.
+            var content = Self.content(of: message)
+            guard !content.reactions.isEmpty else { return }
+            content.reactions = []
+            message.contentJSON = MessageContentCodec.encode(content)
+        }
+    }
+
+    /// Записывает реакции сообщения и сообщает подписчикам.
+    private func saveReactions(_ reactions: [MessageReaction], localId: String, onlyIf expected: [MessageReaction]? = nil) throws(OrbitleError) {
+        do {
+            guard let message = try message(id: localId) else { return }
+            var content = Self.content(of: message)
+            // Откат не трогает то, что уже поменял кто-то другой.
+            if let expected, content.reactions != expected { return }
+            guard content.reactions != reactions else { return }
+            content.reactions = reactions
+            message.contentJSON = MessageContentCodec.encode(content)
+            try modelContext.save()
+            notify(chatId: message.chatId)
+        } catch {
+            throw .storageError
+        }
+    }
+
+    private func applyReactions(localId: String, update: ReactionUpdate) throws(OrbitleError) {
+        guard let message = try? message(id: localId) else { return }
+        try saveReactions(update.applied(to: Self.content(of: message).reactions), localId: localId)
     }
 
     private static func content(of message: SDMessage) -> MessageContent {

@@ -40,6 +40,38 @@ actor FakeMaxCore: MaxCore {
         return contactList
     }
 
+    // Реакции (docs/reactions.md).
+    var reactionReply = ""
+    var reactionError: CoreFailure?
+    private(set) var reactionCalls: [String] = []
+    var reactionsById: [String: String] = [:]
+    var reactionUserList: [ReactionUser] = []
+
+    func setReaction(chatId: String, messageId: String, postId: String, emoji: String) async throws -> String {
+        reactionCalls.append("\(chatId)/\(messageId)/\(postId)/\(emoji)")
+        if let reactionError { throw reactionError }
+        return reactionReply
+    }
+
+    func loadReactions(chatId: String, messageIds: [String]) async throws -> [String: String] {
+        if let reactionError { throw reactionError }
+        return reactionsById.filter { messageIds.contains($0.key) }
+    }
+
+    func loadReactionCatalog() async throws -> [String] { ["👍", "🔥"] }
+
+    func loadReactionUsers(chatId: String, messageId: String) async throws -> [ReactionUser] {
+        if let reactionError { throw reactionError }
+        return reactionUserList
+    }
+
+    func setReactions(reply: String = "", error: CoreFailure? = nil, byId: [String: String] = [:], users: [ReactionUser] = []) {
+        reactionReply = reply
+        reactionError = error
+        reactionsById = byId
+        reactionUserList = users
+    }
+
     func loadCallHistory() async throws -> [CoreCall] {
         if let directoryError { throw directoryError }
         return callLog

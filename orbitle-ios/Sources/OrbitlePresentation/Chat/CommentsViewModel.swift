@@ -27,16 +27,30 @@ public final class CommentsViewModel {
     public var draft = ""
     public private(set) var error: OrbitleError?
 
+    /// Каталог реакций сервера из экрана чата. Пуст — меню берёт запасной набор.
+    public let reactionCatalog: [String]
+
     @ObservationIgnored private let repository: any CommentsRepository
     @ObservationIgnored private let pageSize: Int
     @ObservationIgnored private var loaded = false
+    /// Последний запрос реакции по id комментария: поздние ответы на прежние не применяются.
+    @ObservationIgnored private var pendingReactions: [String: Int] = [:]
+    @ObservationIgnored private var reactionRequest = 0
 
-    public init(chatId: String, post: Message, currentUserId: String, comments: any CommentsRepository, pageSize: Int = 30) {
+    public init(
+        chatId: String,
+        post: Message,
+        currentUserId: String,
+        comments: any CommentsRepository,
+        pageSize: Int = 30,
+        reactionCatalog: [String] = []
+    ) {
         self.chatId = chatId
         self.post = post
         self.currentUserId = currentUserId
         self.repository = comments
         self.pageSize = max(1, pageSize)
+        self.reactionCatalog = reactionCatalog
     }
 
     /// Серверный id поста: комментарии привязаны к нему.
@@ -129,6 +143,59 @@ public final class CommentsViewModel {
             }
             if draft.isEmpty { draft = text }
             if error != .cancelled { self.error = error }
+        }
+    }
+
+    // MARK: Реакции
+
+    /// Реакции ставятся на комментарии, уже принятые сервером.
+    public func canReact(_ comment: Message) -> Bool {
+        comment.status == .sent && Int64(comment.serverId ?? comment.id) != nil
+    }
+
+    public func quickReactions(for comment: Message) -> [String] {
+        ReactionPalette.quick(catalog: reactionCatalog, mine: comment.content.reactions.mine)
+    }
+
+    /// Своя реакция на комментарий: сразу на экране, затем на сервере; отказ возвращает прежнее.
+    /// Пушей о реакциях комментариев клиент не получает: итог берётся из ответа сервера.
+    public func toggleReaction(commentId: String, emoji: String) async {
+        guard let index = comments.firstIndex(where: { $0.id == commentId }), canReact(comments[index]) else { return }
+        let before = comments[index].content.reactions
+        let after = before.toggled(emoji)
+        comments[index].content.reactions = after
+        reactionRequest += 1
+        let request = reactionRequest
+        pendingReactions[commentId] = request
+        do {
+            let update = try await repository.setReaction(
+                chatId: chatId,
+                postId: postId,
+                commentId: comments[index].serverId ?? commentId,
+                emoji: after.mine
+            )
+            guard pendingReactions[commentId] == request else { return }
+            pendingReactions[commentId] = nil
+            if var update, let current = comments.firstIndex(where: { $0.id == commentId }) {
+                if !update.mineKnown {
+                    update.mine = after.mine
+                    update.mineKnown = true
+                }
+                comments[current].content.reactions = update.applied(to: comments[current].content.reactions)
+            }
+            if case .rejected(ChatViewModel.reactionFailure)? = self.error { self.error = nil }
+        } catch {
+            guard pendingReactions[commentId] == request else { return }
+            pendingReactions[commentId] = nil
+            if let current = comments.firstIndex(where: { $0.id == commentId }), comments[current].content.reactions == after {
+                comments[current].content.reactions = before
+            }
+            guard error != .cancelled else { return }
+            if case .rejected = error {
+                self.error = error
+            } else {
+                self.error = .rejected(ChatViewModel.reactionFailure)
+            }
         }
     }
 

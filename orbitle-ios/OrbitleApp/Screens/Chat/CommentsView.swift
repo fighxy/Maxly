@@ -49,7 +49,8 @@ struct CommentsView: View {
             MessageBubble(
                 message: model.post,
                 isOutgoing: false,
-                maxWidth: width * OrbitleTheme.bubbleMax
+                maxWidth: width * OrbitleTheme.bubbleMax,
+                allowsReactions: false
             )
             DaySeparator("Начало обсуждения")
         }
@@ -118,7 +119,10 @@ struct CommentsView: View {
             showsAuthorAvatar: !outgoing && !group.joinsNext,
             reservesAvatar: !outgoing,
             group: group,
-            onRetry: { Task { await model.retry(comment.id) } }
+            onRetry: { Task { await model.retry(comment.id) } },
+            onReact: { emoji in Task { await model.toggleReaction(commentId: comment.id, emoji: emoji) } },
+            allowsReactions: model.canReact(comment),
+            quickReactions: model.quickReactions(for: comment)
         )
     }
 
