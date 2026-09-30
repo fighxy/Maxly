@@ -299,6 +299,8 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
                         message.contentJSON = record.contentJSON
                         message.threadOf = record.threadOf
                     }
+                    if !record.authorName.isEmpty { message.authorName = record.authorName }
+                    if !record.authorAvatarURL.isEmpty { message.authorAvatarURL = record.authorAvatarURL }
                     if let serverId = record.serverId {
                         message.serverId = serverId
                         byServerId[serverId] = message
@@ -316,6 +318,8 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
                     )
                     message.contentJSON = record.contentJSON
                     message.threadOf = record.threadOf
+                    message.authorName = record.authorName
+                    message.authorAvatarURL = record.authorAvatarURL
                     message.chat = chatRows[record.chatId]
                     modelContext.insert(message)
                     byId[record.id] = message
@@ -332,15 +336,21 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         return inserted
     }
 
-    /// Правка из пуша. Меняет только текст уже известного сообщения: правка того,
-    /// чего нет в кэше, не должна появляться в истории как новое сообщение.
-    /// `false`, если сообщения в кэше нет.
+    /// Правка из пуша. Текст меняется всегда. Пустой фрагмент и пустое имя не затирают
+    /// то, что уже лежит в базе: фасад мог прислать только новый текст.
+    /// `false`, если сообщения в кэше нет — правка не становится новым сообщением.
     @discardableResult
     public func applyEdit(_ record: MessageRecord) throws(OrbitleError) -> Bool {
         do {
             guard let message = try message(id: record.id) ?? message(serverId: record.serverId ?? record.id) else { return false }
             message.text = record.text
             if let mediaId = record.mediaId { message.mediaId = mediaId }
+            if !record.contentJSON.isEmpty {
+                message.contentJSON = record.contentJSON
+                message.threadOf = record.threadOf
+            }
+            if !record.authorName.isEmpty { message.authorName = record.authorName }
+            if !record.authorAvatarURL.isEmpty { message.authorAvatarURL = record.authorAvatarURL }
             try modelContext.save()
             notify(chatId: message.chatId)
             return true
@@ -569,7 +579,9 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             status: message.status,
             mediaId: message.mediaId,
             contentJSON: MessageContentCodec.encode(content),
-            threadOf: content.threadOf ?? ""
+            threadOf: content.threadOf ?? "",
+            authorName: message.authorName,
+            authorAvatarURL: message.authorAvatarURL
         )
     }
 }

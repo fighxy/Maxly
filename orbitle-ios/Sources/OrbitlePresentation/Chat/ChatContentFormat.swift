@@ -38,6 +38,55 @@ public struct ContentFrame: Equatable, Sendable {
     }
 }
 
+/// Скругления плитки альбома: внешний край пластины скруглён, стык внутри прямой.
+public struct AlbumCorners: Equatable, Sendable {
+    public var topLeft: Bool
+    public var topRight: Bool
+    public var bottomLeft: Bool
+    public var bottomRight: Bool
+
+    public init(topLeft: Bool, topRight: Bool, bottomLeft: Bool, bottomRight: Bool) {
+        self.topLeft = topLeft
+        self.topRight = topRight
+        self.bottomLeft = bottomLeft
+        self.bottomRight = bottomRight
+    }
+}
+
+/// Прямоугольник одного кадра внутри альбома. Координаты от левого верхнего угла пластины.
+public struct AlbumTile: Equatable, Sendable {
+    public var index: Int
+    public var x: Double
+    public var y: Double
+    public var width: Double
+    public var height: Double
+    public var corners: AlbumCorners
+
+    public init(index: Int, x: Double, y: Double, width: Double, height: Double, corners: AlbumCorners) {
+        self.index = index
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.corners = corners
+    }
+}
+
+/// Раскладка нескольких фото и видео одной пластиной.
+public struct AlbumLayout: Equatable, Sendable {
+    public var width: Double
+    public var height: Double
+    public var gap: Double
+    public var tiles: [AlbumTile]
+
+    public init(width: Double, height: Double, gap: Double, tiles: [AlbumTile]) {
+        self.width = width
+        self.height = height
+        self.gap = gap
+        self.tiles = tiles
+    }
+}
+
 /// Слайд просмотра фото или видео. Адреса уже выбраны: постер отдельно от файла ролика.
 public struct MediaSlide: Identifiable, Hashable, Sendable {
     public var id: String
@@ -61,6 +110,19 @@ public struct MediaViewerRequest: Identifiable, Hashable, Sendable {
     public init(id: String, slides: [MediaSlide]) {
         self.id = id
         self.slides = slides
+    }
+}
+
+/// Скачанный файл, который экран открывает предпросмотром.
+public struct OpenedFile: Identifiable, Hashable, Sendable {
+    public var id: String
+    public var url: URL
+    public var name: String
+
+    public init(id: String, url: URL, name: String) {
+        self.id = id
+        self.url = url
+        self.name = name
     }
 }
 
@@ -120,6 +182,192 @@ public enum ChatContentFormat {
             width = height * ratio
         }
         return ContentFrame(width: width, height: height)
+    }
+
+    /// Размер файла: байты, затем КБ, МБ и ГБ. Дробь одна и с запятой, чтобы подпись не зависела от локали.
+    public static func fileSize(_ bytes: Int64) -> String {
+        let value = max(0, bytes)
+        if value < 1024 { return "\(value) Б" }
+        let units = ["КБ", "МБ", "ГБ"]
+        var size = Double(value)
+        var unit = -1
+        while size >= 1024 && unit < units.count - 1 {
+            size /= 1024
+            unit += 1
+        }
+        let tenths = Int((size * 10).rounded())
+        let whole = tenths / 10
+        let fraction = tenths % 10
+        if fraction == 0 { return "\(whole) \(units[unit])" }
+        return "\(whole),\(fraction) \(units[unit])"
+    }
+
+    /// Имя видно у первого сообщения серии. Пустое имя и свои пузыри его не показывают.
+    public static func showsAuthorName(outgoing: Bool, authorName: String, authorId: String, previousAuthorId: String?) -> Bool {
+        guard !outgoing, !authorName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        guard let previousAuthorId else { return true }
+        return !sameAuthor(authorId, previousAuthorId)
+    }
+
+    /// Аватар стоит у последнего сообщения серии, чтобы колонка пузырей не прыгала.
+    public static func showsAuthorAvatar(outgoing: Bool, authorId: String, nextAuthorId: String?) -> Bool {
+        guard !outgoing else { return false }
+        guard let nextAuthorId else { return true }
+        return !sameAuthor(authorId, nextAuthorId)
+    }
+
+    /// Альбом: пропорции кадров собираются в ряды, внешние углы скругляются, внутренние остаются прямыми.
+    public static func album(aspects: [Double], maxWidth: Double, maxHeight: Double = 360, gap: Double = 2) -> AlbumLayout {
+        let width = max(1, maxWidth)
+        let space = max(0, gap)
+        let ratios = aspects.map(clampedAspect)
+        guard !ratios.isEmpty else { return AlbumLayout(width: 0, height: 0, gap: space, tiles: []) }
+        let placed: [Placed]
+        if ratios.count == 3, ratios[0] < 1.15 {
+            placed = portraitTrio(ratios, width: width, gap: space)
+        } else {
+            placed = pack(rowCounts(ratios), aspects: ratios, width: width, gap: space)
+        }
+        return finish(placed, width: width, maxHeight: max(1, maxHeight), gap: space)
+    }
+
+    private static func sameAuthor(_ lhs: String, _ rhs: String) -> Bool {
+        !lhs.isEmpty && lhs == rhs
+    }
+
+    private static func clampedAspect(_ value: Double) -> Double {
+        let ratio = value.isFinite && value > 0 ? value : 1
+        return min(max(ratio, 0.45), 2.2)
+    }
+
+    private static func rowCounts(_ aspects: [Double]) -> [Int] {
+        switch aspects.count {
+        case 1:
+            return [1]
+        case 2:
+            return aspects.allSatisfy({ $0 >= 1.15 }) ? [1, 1] : [2]
+        case 3:
+            return [1, 2]
+        case 4:
+            return [2, 2]
+        case 5:
+            return [2, 3]
+        case 6:
+            return [3, 3]
+        case 7:
+            return [2, 3, 2]
+        default:
+            var rows: [Int] = []
+            var left = aspects.count
+            while left > 0 {
+                if left == 4 {
+                    rows.append(contentsOf: [2, 2])
+                    break
+                }
+                let take = min(3, left)
+                rows.append(take)
+                left -= take
+            }
+            return rows
+        }
+    }
+
+    private static func pack(_ counts: [Int], aspects: [Double], width: Double, gap: Double) -> [Placed] {
+        var tiles: [Placed] = []
+        var cursor = 0
+        var y = 0.0
+        for count in counts {
+            let slice = Array(aspects[cursor..<(cursor + count)])
+            let measured = measure(slice, width: width, gap: gap)
+            var x = 0.0
+            for (offset, tileWidth) in measured.widths.enumerated() {
+                tiles.append(Placed(index: cursor + offset, x: x, y: y, width: tileWidth, height: measured.height))
+                x += tileWidth + gap
+            }
+            y += measured.height + (cursor + count < aspects.count ? gap : 0)
+            cursor += count
+        }
+        return tiles
+    }
+
+    private static func measure(_ aspects: [Double], width: Double, gap: Double) -> (height: Double, widths: [Double]) {
+        if aspects.count <= 1 {
+            let ratio = aspects.first ?? 1
+            return (width / ratio, [width])
+        }
+        let available = max(1, width - gap * Double(aspects.count - 1))
+        let height = available / aspects.reduce(0, +)
+        return (height, aspects.map { height * $0 })
+    }
+
+    /// Узкий первый кадр стоит слева, два остальных делят правую колонку.
+    private static func portraitTrio(_ aspects: [Double], width: Double, gap: Double) -> [Placed] {
+        let leftWidth = (width - gap) * 0.64
+        let rightWidth = width - gap - leftWidth
+        let top = rightWidth / aspects[1]
+        let bottom = rightWidth / aspects[2]
+        let height = top + gap + bottom
+        return [
+            Placed(index: 0, x: 0, y: 0, width: leftWidth, height: height),
+            Placed(index: 1, x: leftWidth + gap, y: 0, width: rightWidth, height: top),
+            Placed(index: 2, x: leftWidth + gap, y: top + gap, width: rightWidth, height: bottom),
+        ]
+    }
+
+    private static func finish(_ placed: [Placed], width: Double, maxHeight: Double, gap: Double) -> AlbumLayout {
+        var tiles = placed
+        var albumWidth = width
+        var albumHeight = tiles.map { $0.y + $0.height }.max() ?? 0
+        var albumGap = gap
+        tiles = snap(tiles, width: albumWidth, height: albumHeight)
+        if albumHeight > maxHeight, albumHeight > 0 {
+            let scale = maxHeight / albumHeight
+            tiles = tiles.map {
+                Placed(index: $0.index, x: $0.x * scale, y: $0.y * scale, width: $0.width * scale, height: $0.height * scale)
+            }
+            albumWidth *= scale
+            albumHeight = maxHeight
+            albumGap *= scale
+            tiles = snap(tiles, width: albumWidth, height: albumHeight)
+        }
+        let drawn = tiles.map { tile in
+            AlbumTile(
+                index: tile.index,
+                x: tile.x,
+                y: tile.y,
+                width: tile.width,
+                height: tile.height,
+                corners: corners(of: tile, width: albumWidth, height: albumHeight)
+            )
+        }
+        return AlbumLayout(width: albumWidth, height: albumHeight, gap: albumGap, tiles: drawn)
+    }
+
+    private static func snap(_ tiles: [Placed], width: Double, height: Double) -> [Placed] {
+        tiles.map { tile in
+            var copy = tile
+            if tile.x + tile.width >= width - 1 { copy.width = max(1, width - tile.x) }
+            if tile.y + tile.height >= height - 1 { copy.height = max(1, height - tile.y) }
+            return copy
+        }
+    }
+
+    private static func corners(of tile: Placed, width: Double, height: Double) -> AlbumCorners {
+        let eps = 0.5
+        return AlbumCorners(
+            topLeft: tile.x <= eps && tile.y <= eps,
+            topRight: tile.x + tile.width >= width - eps && tile.y <= eps,
+            bottomLeft: tile.x <= eps && tile.y + tile.height >= height - eps,
+            bottomRight: tile.x + tile.width >= width - eps && tile.y + tile.height >= height - eps
+        )
+    }
+
+    private struct Placed {
+        var index: Int
+        var x: Double
+        var y: Double
+        var width: Double
+        var height: Double
     }
 
     private static let calmWave = [40, 90, 140, 200, 120, 70, 160, 220, 100, 60, 180, 130, 50, 150, 210, 80]

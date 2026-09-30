@@ -20,11 +20,25 @@ struct CommentsView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.top, 48)
                         }
-                        ForEach(model.comments) { message in
+                        ForEach(Array(model.comments.enumerated()), id: \.element.id) { index, message in
+                            let outgoing = model.isOutgoing(message, currentUserId: currentUserId)
+                            let previous = index > 0 ? model.comments[index - 1].authorId : nil
+                            let next = index + 1 < model.comments.count ? model.comments[index + 1].authorId : nil
                             MessageBubble(
                                 message: message,
-                                isOutgoing: model.isOutgoing(message, currentUserId: currentUserId),
-                                maxWidth: geo.size.width * OrbitleTheme.bubbleMax
+                                isOutgoing: outgoing,
+                                maxWidth: geo.size.width * OrbitleTheme.bubbleMax,
+                                showsAuthorName: ChatContentFormat.showsAuthorName(
+                                    outgoing: outgoing,
+                                    authorName: message.authorName,
+                                    authorId: message.authorId,
+                                    previousAuthorId: previous
+                                ),
+                                showsAuthorAvatar: ChatContentFormat.showsAuthorAvatar(
+                                    outgoing: outgoing,
+                                    authorId: message.authorId,
+                                    nextAuthorId: next
+                                )
                             )
                             .id(message.id)
                         }

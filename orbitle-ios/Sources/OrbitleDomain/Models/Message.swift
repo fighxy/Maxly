@@ -15,6 +15,8 @@ public struct Message: Identifiable, Hashable, Sendable {
     public var serverId: String?
     public var chatId: String
     public var authorId: String
+    public var authorName: String
+    public var authorAvatarURL: URL?
     public var text: String
     public var timestamp: Date
     public var status: MessageStatus
@@ -30,12 +32,16 @@ public struct Message: Identifiable, Hashable, Sendable {
         timestamp: Date,
         status: MessageStatus,
         mediaId: String? = nil,
-        content: MessageContent = .empty
+        content: MessageContent = .empty,
+        authorName: String = "",
+        authorAvatarURL: URL? = nil
     ) {
         self.id = id
         self.serverId = serverId
         self.chatId = chatId
         self.authorId = authorId
+        self.authorName = authorName
+        self.authorAvatarURL = authorAvatarURL
         self.text = text
         self.timestamp = timestamp
         self.status = status
@@ -50,6 +56,10 @@ public struct Message: Identifiable, Hashable, Sendable {
         if !content.voices.isEmpty { return "Голосовое сообщение" }
         if content.attachments.contains(where: { $0.video != nil }) { return "Видео" }
         if content.attachments.contains(where: { $0.photo != nil }) { return "Фото" }
+        if let file = content.files.first {
+            let name = file.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return name.isEmpty ? "Файл" : name
+        }
         return "Сообщение"
     }
 
@@ -59,6 +69,7 @@ public struct Message: Identifiable, Hashable, Sendable {
         if !content.voices.isEmpty { return .voice }
         if content.attachments.contains(where: { $0.video != nil }) { return .video }
         if content.attachments.contains(where: { $0.photo != nil }) { return .photo }
+        if !content.files.isEmpty { return .file }
         return .text
     }
 }
