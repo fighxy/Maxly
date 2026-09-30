@@ -192,7 +192,7 @@ struct ChatView: View {
         ) { message in
             if viewModel.deletesWithoutChoice {
                 Button("Удалить", role: .destructive) {
-                    Task { await viewModel.confirmDelete(message, forEveryone: viewModel.canDeleteForEveryone(message)) }
+                    Task { await viewModel.confirmDelete(message, forEveryone: viewModel.deletesEverywhere(message)) }
                 }
             } else {
                 if viewModel.canDeleteForEveryone(message) {

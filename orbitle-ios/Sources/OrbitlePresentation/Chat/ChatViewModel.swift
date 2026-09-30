@@ -749,6 +749,13 @@ public final class ChatViewModel {
     }
 
     /// «Удалить у всех» — только для своих сообщений, уже принятых сервером.
+    /// «Избранное» принадлежит только аккаунту: сообщение удаляется на сервере целиком
+    /// (`forMe: false`), и пересланное, и отправленное с другого устройства. Удаление
+    /// «у себя» скрыло бы его лишь в этом клиенте.
+    public func deletesEverywhere(_ message: Message) -> Bool {
+        message.serverId.map { Int64($0) != nil } ?? false
+    }
+
     public func canDeleteForEveryone(_ message: Message) -> Bool {
         isOutgoing(message) && message.status == .sent && message.serverId != nil
     }
