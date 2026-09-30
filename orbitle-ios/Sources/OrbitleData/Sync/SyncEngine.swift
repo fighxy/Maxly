@@ -104,7 +104,7 @@ public actor SyncEngine {
     /// при сборке зависимостей.
     public func connectOutgoing() async {
         let chats = chats
-        await messages.setOutgoingHandler { change in
+        await messages.setOutgoingHandler { [weak messages] change in
             switch change {
             case .queued(let record):
                 _ = try? await chats.noteMessage(
@@ -118,6 +118,12 @@ public actor SyncEngine {
                 )
             case .failed(let record):
                 try? await chats.noteSendFailed(chatId: record.chatId, localId: record.id)
+            case .deleted(let chatId, let ids):
+                // Удалили последнее сообщение строки: превью — самое свежее из оставшихся.
+                guard let messages, let last = await chats.lastMessageId(chatId: chatId), ids.contains(last) else { return }
+                let latest = await messages.latest(chatId: chatId)
+                let mine = await messages.currentUser()
+                try? await chats.replaceLast(chatId: chatId, with: latest, currentUser: mine)
             }
         }
     }

@@ -325,6 +325,11 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             chat.lastOutgoing = author != nil && author == currentUser
             chat.lastDeliveryRaw = chat.lastOutgoing ? DeliveryState.sent.rawValue : nil
             chat.preview = message?.text
+            // Вид вложения и миниатюра — нового последнего сообщения, иначе строка
+            // продолжает показывать «Фотографию» удалённого.
+            let content = message.map { MessageContentCodec.decode($0.contentJSON) }
+            chat.lastMediaRaw = content?.previewMedia?.rawValue
+            chat.lastThumbnailURLString = content?.previewThumbnail?.absoluteString
             try modelContext.save()
         } catch {
             throw .storageError
