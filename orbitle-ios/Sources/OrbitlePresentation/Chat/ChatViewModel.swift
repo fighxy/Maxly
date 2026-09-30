@@ -51,6 +51,8 @@ public final class ChatViewModel {
     public private(set) var notice: String?
     /// Просмотр фото и видео.
     public var viewer: MediaViewerRequest?
+    /// Кружок, который играет прямо в ленте, как в Telegram (не на весь экран).
+    public private(set) var roundPlayback: RoundPlayback?
     /// Открытый файл.
     public var openedFile: OpenedFile?
     /// Вложение, для которого сейчас запрашивается ссылка или качается файл: пузырь рисует на нём загрузку.
@@ -529,6 +531,11 @@ public final class ChatViewModel {
     public func presentMedia(_ message: Message, startId: String) {
         mediaTask?.cancel()
         loadingMediaId = nil
+        // Повторное касание играющего кружка останавливает его.
+        if roundPlayback?.id == startId {
+            roundPlayback = nil
+            return
+        }
         let pending = message.content.visuals.compactMap(\.video)
             .filter { $0.playbackURL == nil && resolvedVideos[$0.id] == nil }
         guard let links, !pending.isEmpty else {
@@ -571,6 +578,11 @@ public final class ChatViewModel {
         if let tappedVideo, tappedVideo.playbackURL == nil, resolvedVideos[tappedVideo.id] == nil {
             show(.rejected("Видео не удалось загрузить"))
         }
+        if let tappedVideo, tappedVideo.isRound, let url = tappedVideo.playbackURL ?? resolvedVideos[tappedVideo.id] {
+            stopVoice()
+            roundPlayback = RoundPlayback(id: tappedVideo.id, url: url)
+            return
+        }
         guard slides.contains(where: { $0.id == startId }) else { return }
         viewer = MediaViewerRequest(id: startId, slides: slides)
     }
@@ -595,7 +607,13 @@ public final class ChatViewModel {
         voicePhases[id] ?? .idle
     }
 
+    /// Кружок доиграл или ушёл из ленты.
+    public func stopRound(id: String) {
+        if roundPlayback?.id == id { roundPlayback = nil }
+    }
+
     public func toggleVoice(_ message: Message) {
+        roundPlayback = nil
         voiceToggle?.cancel()
         voiceToggle = Task { await self.playVoice(message) }
     }

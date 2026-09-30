@@ -775,7 +775,19 @@ private struct TranscriptBubble: View {
             onMoreReactions: reacts ? { viewModel.showMoreReactions(message) } : nil,
             onReactionUsers: reacts && showsReactionUsers ? { viewModel.showReactionUsers(message) } : nil,
             uploadProgress: viewModel.uploadFraction(of: message),
-            onCancelUpload: { Task { await viewModel.cancelUpload(message) } }
+            onCancelUpload: { Task { await viewModel.cancelUpload(message) } },
+            roundPlayer: roundPlayer
+        )
+    }
+
+    /// Плеер, если в этом сообщении играет кружок.
+    private var roundPlayer: AnyView? {
+        guard let playback = viewModel.roundPlayback,
+              message.content.visuals.contains(where: { $0.id == playback.id }) else { return nil }
+        let id = playback.id
+        return AnyView(
+            RoundVideoPlayer(url: playback.url) { viewModel.stopRound(id: id) }
+                .id(playback)
         )
     }
 }
