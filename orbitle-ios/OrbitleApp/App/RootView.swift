@@ -174,36 +174,60 @@ struct MainTabView: View {
         }
     }
 
+    @ViewBuilder
     private var chats: some View {
-        NavigationSplitView {
-            ChatListView(viewModel: list, selection: $router.chatId)
-                // В свёрнутом NavigationSplitView (iPhone) скрытие панели вкладок из самого
-                // чата не срабатывает: панель скрывается из корня вкладки, пока открыт чат.
-                .toolbar(sizeClass == .compact && router.chatId != nil ? .hidden : .automatic, for: .tabBar)
-        } detail: {
-            if let id = router.chatId, let model = container.chatViewModel(id: id) {
-                // Свой экран на каждый чат: иначе при смене выбора SwiftUI переиспользует
-                // прежний ChatView, его `.task` не перезапускается, и модель нового чата
-                // так и не подписывается на сообщения.
-                ChatView(
-                    viewModel: model,
-                    title: container.chatTitle(id: id),
-                    commentsEnabled: container.commentsEnabled(id: id),
-                    chatType: container.chatType(id: id)
-                ) {
-                    container.profileViewModel(chatId: id)
-                }
-                    .id(id)
-            } else {
-                ContentUnavailableView {
-                    Label {
-                        Text("Выберите чат")
-                    } icon: {
-                        OrbitleMark(size: 72)
-                            .foregroundStyle(.tertiary)
+        if sizeClass == .compact {
+            // iPhone: обычный стек. Чат прячет панель вкладок сам, и система анимирует её
+            // вместе с переходом, в том числе при свайпе назад.
+            NavigationStack(path: chatPath) {
+                ChatListView(viewModel: list, selection: $router.chatId)
+                    .navigationDestination(for: String.self) { id in
+                        chatScreen(id)
+                    }
+            }
+        } else {
+            NavigationSplitView {
+                ChatListView(viewModel: list, selection: $router.chatId)
+            } detail: {
+                if let id = router.chatId {
+                    chatScreen(id)
+                } else {
+                    ContentUnavailableView {
+                        Label {
+                            Text("Выберите чат")
+                        } icon: {
+                            OrbitleMark(size: 72)
+                                .foregroundStyle(.tertiary)
+                        }
                     }
                 }
             }
+        }
+    }
+
+    /// Путь стека на iPhone: открытый чат — единственный экран поверх списка.
+    private var chatPath: Binding<[String]> {
+        Binding(
+            get: { router.chatId.map { [$0] } ?? [] },
+            set: { router.chatId = $0.last }
+        )
+    }
+
+    @ViewBuilder
+    private func chatScreen(_ id: String) -> some View {
+        if let model = container.chatViewModel(id: id) {
+            // Свой экран на каждый чат: иначе при смене выбора SwiftUI переиспользует
+            // прежний ChatView, его `.task` не перезапускается, и модель нового чата
+            // так и не подписывается на сообщения.
+            ChatView(
+                viewModel: model,
+                title: container.chatTitle(id: id),
+                commentsEnabled: container.commentsEnabled(id: id),
+                chatType: container.chatType(id: id)
+            ) {
+                container.profileViewModel(chatId: id)
+            }
+            .id(id)
         }
     }
 }
