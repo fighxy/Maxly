@@ -117,7 +117,7 @@ public struct ChatRow: View {
     private func messageText(lines: Int) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             if let url = item.thumbnailURL {
-                RemoteImage(url: url) {
+                RemoteImage(url: url, maxPixel: 64) {
                     RoundedRectangle(cornerRadius: 3).fill(Color.orbitleField)
                 }
                 .frame(width: 18, height: 18)

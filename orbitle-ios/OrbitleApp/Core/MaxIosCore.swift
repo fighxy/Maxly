@@ -221,6 +221,23 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         return .success(Self.message(message))
     }
 
+    func setChatMuted(chatId: String, muted: Bool) async throws {
+        let _: Void = try await call("setChatMuted") { done in
+            self.client.setChatMuted(chatId: chatId, muted: muted) { kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(()))
+                }
+            }
+        }
+    }
+
+    func mediaUserAgent() -> String? {
+        let agent = client.mediaUserAgent()
+        return agent.isEmpty ? nil : agent
+    }
+
     func markRead(chatId: String, messageId: String) async throws {
         let _: Void = try await call("markRead") { done in
             self.client.markRead(chatId: chatId, messageId: messageId) { kind, key in
@@ -374,7 +391,8 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             lastMedia: chat.lastMedia,
             lastThumbURL: chat.lastThumbUrl,
             comments: Int(chat.comments),
-            canWrite: Int(chat.canWrite)
+            canWrite: Int(chat.canWrite),
+            muted: Int(chat.muted)
         )
     }
 

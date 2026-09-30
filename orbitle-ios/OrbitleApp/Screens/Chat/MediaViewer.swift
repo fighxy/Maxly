@@ -150,7 +150,12 @@ private final class VideoPlayback {
     private func play(_ url: URL) {
         state = .loading
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
-        let item = AVPlayerItem(url: url)
+        let item: AVPlayerItem
+        if !url.isFileURL, let agent = MediaHTTP.userAgent {
+            item = AVPlayerItem(asset: AVURLAsset(url: url, options: [AVURLAssetHTTPUserAgentKey: agent]))
+        } else {
+            item = AVPlayerItem(url: url)
+        }
         observation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             let status = item.status
             let message = item.error.map { "\($0)" } ?? ""

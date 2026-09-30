@@ -63,11 +63,13 @@ public struct CoreChat: Sendable, Equatable {
     public var comments: Int
     /// Можно ли писать: `1` да, `0` нет, `-1` неизвестно.
     public var canWrite: Int
+    /// Уведомления выключены: `1` да, `0` нет, `-1` неизвестно.
+    public var muted: Int
 
     public init(
         id: String, title: String, type: String, lastMessageId: String, lastText: String, updatedAtMs: Int64, unread: Int,
         avatarURL: String = "", lastAuthorId: String = "", lastMedia: String = "", lastThumbURL: String = "", comments: Int = -1,
-        canWrite: Int = -1
+        canWrite: Int = -1, muted: Int = -1
     ) {
         self.id = id
         self.title = title
@@ -82,6 +84,7 @@ public struct CoreChat: Sendable, Equatable {
         self.lastThumbURL = lastThumbURL
         self.comments = comments
         self.canWrite = canWrite
+        self.muted = muted
     }
 }
 
@@ -349,6 +352,10 @@ public protocol MaxCore: Sendable {
     func loadReactionCatalog() async throws -> [String]
     /// Кто поставил реакции на сообщение.
     func loadReactionUsers(chatId: String, messageId: String) async throws -> [ReactionUser]
+    /// Выключить уведомления чата насовсем или включить обратно (`CONFIG`, `dontDisturbUntil`).
+    func setChatMuted(chatId: String, muted: Bool) async throws
+    /// User-Agent сессии для CDN: адреса видео и файлов выданы под Android-клиента.
+    func mediaUserAgent() -> String?
     func phases() -> AsyncStream<CorePhase>
     func events() -> AsyncStream<CoreEvent>
     func loadContacts() async throws -> [CoreContact]
@@ -434,6 +441,10 @@ public extension MaxCore {
     func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async throws {
         throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
     }
+    func setChatMuted(chatId: String, muted: Bool) async throws {
+        throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
+    }
+    func mediaUserAgent() -> String? { nil }
     func editMessage(chatId: String, messageId: String, text: String) async throws -> CoreMessage {
         throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
     }

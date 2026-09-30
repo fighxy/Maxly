@@ -199,6 +199,17 @@ actor FakeMaxAPI: MaxAPI {
         guard !attachmentResults.isEmpty else { return .failure(.invalidResponse) }
         return attachmentResults[min(attachmentCalls.count - 1, attachmentResults.count - 1)]
     }
+
+    /// Запросы звука чатов: id и «без звука».
+    private(set) var muteCalls: [(String, Bool)] = []
+    var muteError: MaxAPIError?
+    func setMuteError(_ error: MaxAPIError?) { muteError = error }
+
+    func setChatMuted(chatId: String, muted: Bool) async -> Result<Void, MaxAPIError> {
+        muteCalls.append((chatId, muted))
+        if let muteError { return .failure(muteError) }
+        return .success(())
+    }
 }
 
 /// Репозиторий сообщений на базе в памяти с подключённой очередью без реальных задержек.

@@ -150,7 +150,7 @@ public struct MessageBubble: View {
         }
         .offset(x: swipe)
         .background(alignment: .trailing) { replyHint }
-        .simultaneousGesture(replySwipe)
+        .replySwipe(enabled: allowsReply, onChange: swipeChanged, onEnd: swipeEnded)
         .padding(.top, group.joinsPrevious ? 0 : 4)
         .background(highlighted ? Color.orbitleAccent.opacity(0.12) : Color.clear)
         .animation(.easeInOut(duration: 0.25), value: highlighted)
@@ -212,26 +212,21 @@ public struct MessageBubble: View {
 
     // MARK: Ответ свайпом
 
-    /// Свайп влево по пузырю — ответить. Вертикальная прокрутка ленты не мешает: жест
-    /// срабатывает, только когда палец идёт в основном по горизонтали.
-    private var replySwipe: some Gesture {
-        DragGesture(minimumDistance: 18, coordinateSpace: .local)
-            .onChanged { value in
-                let dx = value.translation.width
-                guard allowsReply, dx < 0, abs(dx) > abs(value.translation.height) * 1.5 else { return }
-                let pulled = min(-dx, Self.replyThreshold * 1.4)
-                if swipe > -Self.replyThreshold, pulled >= Self.replyThreshold {
-                    #if canImport(UIKit)
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    #endif
-                }
-                swipe = -pulled
-            }
-            .onEnded { _ in
-                let reply = swipe <= -Self.replyThreshold
-                withAnimation(.spring(duration: 0.3)) { swipe = 0 }
-                if reply { onReply() }
-            }
+    /// Свайп влево по пузырю — ответить (`ReplySwipe`: вертикальную прокрутку не трогает).
+    private func swipeChanged(_ dx: CGFloat) {
+        let pulled = min(max(-dx, 0), Self.replyThreshold * 1.4)
+        if swipe > -Self.replyThreshold, pulled >= Self.replyThreshold {
+            #if canImport(UIKit)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            #endif
+        }
+        swipe = -pulled
+    }
+
+    private func swipeEnded() {
+        let reply = swipe <= -Self.replyThreshold
+        withAnimation(.spring(duration: 0.3)) { swipe = 0 }
+        if reply { onReply() }
     }
 
     @ViewBuilder
