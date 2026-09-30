@@ -163,7 +163,7 @@ struct VideoNoteOverlay: View {
                 .ignoresSafeArea()
             VStack(spacing: 16) {
                 ZStack {
-                    CameraPreview(session: session.video.session)
+                    NoteCameraPreview(session: session.video.session)
                         .frame(width: diameter, height: diameter)
                         .clipShape(Circle())
                     Circle()
