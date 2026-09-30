@@ -126,6 +126,9 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
                         preview: record.preview
                     )
                     chat.lastAuthorId = record.lastAuthorId
+                    chat.lastAuthorName = record.lastAuthorName
+                    chat.lastOutgoing = record.lastOutgoing ?? false
+                    chat.lastForwarded = record.lastForwarded
                     chat.lastMediaRaw = record.lastMedia?.rawValue
                     chat.lastThumbnailURLString = record.lastThumbnailURL?.absoluteString
                     Self.mergeFlags(record, into: chat)
@@ -154,13 +157,18 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             if lastMessageId != chat.lastMessageId {
                 // Сменилось последнее сообщение: прежние автор и галочки к нему не относятся.
                 chat.lastAuthorId = record.lastAuthorId
-                chat.lastOutgoing = false
+                chat.lastAuthorName = record.lastAuthorName
+                chat.lastOutgoing = record.lastOutgoing ?? false
+                chat.lastForwarded = record.lastForwarded
                 chat.lastDeliveryRaw = nil
                 chat.lastLocalId = nil
                 chat.lastMediaRaw = record.lastMedia?.rawValue
                 chat.lastThumbnailURLString = record.lastThumbnailURL?.absoluteString
             } else {
                 if let author = record.lastAuthorId { chat.lastAuthorId = author }
+                if let name = record.lastAuthorName { chat.lastAuthorName = name }
+                if let outgoing = record.lastOutgoing { chat.lastOutgoing = outgoing }
+                chat.lastForwarded = record.lastForwarded
                 if let media = record.lastMedia {
                     chat.lastMediaRaw = media.rawValue
                     chat.lastThumbnailURLString = record.lastThumbnailURL?.absoluteString
@@ -247,7 +255,9 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         delivery: DeliveryState? = nil,
         localId: String? = nil,
         media: MessageMediaKind? = nil,
-        thumbnail: URL? = nil
+        thumbnail: URL? = nil,
+        authorName: String? = nil,
+        forwarded: Bool = false
     ) throws(OrbitleError) -> Bool {
         do {
             guard let chat = try chat(id: chatId) ?? insertPendingDialog(chatId: chatId, at: at) else { return false }
@@ -261,6 +271,8 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
                 chat.lastLocalId = localId
                 chat.lastMediaRaw = media?.rawValue
                 chat.lastThumbnailURLString = thumbnail?.absoluteString
+                chat.lastAuthorName = authorName
+                chat.lastForwarded = forwarded
             }
             if incoming { chat.unreadCount += 1 }
             try modelContext.save()
@@ -314,8 +326,9 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         (try? chat(id: chatId))?.lastMessageId
     }
 
-    /// Строка после удаления последнего сообщения, когда сервер недоступен:
-    /// превью берётся из самого свежего сообщения в кэше, время строки не меняется.
+    /// Строка после удаления последнего сообщения: превью, автор, вложение и время — самого
+    /// свежего сообщения в кэше. Без сообщений время строки не меняется. Время откатывается
+    /// назад, иначе следующий ответ списка (он старше) не смог бы обновить строку.
     public func replaceLast(chatId: String, with message: MessageRecord?, currentUser: String = "") throws(OrbitleError) {
         do {
             guard let chat = try chat(id: chatId) else { return }
@@ -330,6 +343,10 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             let content = message.map { MessageContentCodec.decode($0.contentJSON) }
             chat.lastMediaRaw = content?.previewMedia?.rawValue
             chat.lastThumbnailURLString = content?.previewThumbnail?.absoluteString
+            chat.lastForwarded = content?.forward != nil
+            chat.lastAuthorName = message.flatMap { $0.authorName.isEmpty ? nil : $0.authorName }
+            if let forwarded = content?.forward?.text, message?.text.isEmpty == true { chat.preview = forwarded }
+            if let message { chat.updatedAt = message.timestamp }
             try modelContext.save()
         } catch {
             throw .storageError
@@ -721,10 +738,12 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             }
             last = ChatLastMessage(
                 authorId: chat.lastAuthorId,
+                authorName: chat.lastAuthorName,
                 isOutgoing: chat.lastOutgoing,
                 delivery: delivery,
                 media: media,
-                thumbnailURL: chat.lastThumbnailURLString.flatMap(URL.init(string:))
+                thumbnailURL: chat.lastThumbnailURLString.flatMap(URL.init(string:)),
+                isForwarded: chat.lastForwarded
             )
         }
         let draft: ChatDraft? = chat.draftText.flatMap { text in
