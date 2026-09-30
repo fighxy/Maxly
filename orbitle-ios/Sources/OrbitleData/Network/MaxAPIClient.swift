@@ -140,7 +140,12 @@ public final class MaxAPIClient: MaxAPI, Sendable {
 
     public func fetchChats() async -> Result<[ChatRecord], MaxAPIError> {
         await catching {
-            try await core.loadChats().map(CoreMapping.chat)
+            // Строки списка полные: пустое последнее сообщение значит «сообщений нет».
+            try await core.loadChats().map { chat in
+                var record = CoreMapping.chat(chat)
+                record.lastKnown = true
+                return record
+            }
         }
     }
 
