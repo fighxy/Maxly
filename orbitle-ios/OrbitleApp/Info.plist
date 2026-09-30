@@ -32,9 +32,9 @@
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Камера нужна, чтобы снять фото или видео для чата, сделать фото профиля и отсканировать QR-код входа на другом устройстве.</string>
+	<string>Камера нужна, чтобы снять фото, видео или видеосообщение для чата, сделать фото профиля и отсканировать QR-код входа на другом устройстве.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Микрофон нужен, чтобы записать звук, когда вы снимаете видео для чата.</string>
+	<string>Микрофон нужен, чтобы записывать голосовые и видеосообщения и звук, когда вы снимаете видео для чата.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Orbitle показывает ваши фото и видео, чтобы вы могли отправить их в чат. Можно дать доступ только к выбранным.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

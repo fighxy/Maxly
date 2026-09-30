@@ -39,6 +39,37 @@ extension MaxIosCore {
         }
     }
 
+    func sendRecording(chatId: String, path: String, kind: String, durationMs: Int64, wave: [Int], replyTo: String,
+                       progress: @escaping @Sendable (Double) -> Void) async throws -> CoreMessage {
+        let running = RunningTask()
+        let waveHex = wave.map { String(format: "%02x", min(255, max(0, $0))) }.joined()
+        return try await withTaskCancellationHandler {
+            try await call("sendRecording") { done in
+                let onProgress: (IosUploadProgress) -> Void = { step in
+                    guard step.total > 0 else { return }
+                    progress(min(1, max(0, Double(step.sent) / Double(step.total))))
+                }
+                let onResult: (IosMessage?, String?, String?) -> Void = { message, kind, key in
+                    if let kind {
+                        done(.failure(CoreFailure(kind: kind, key: key)))
+                    } else if let message {
+                        done(.success(Self.message(message)))
+                    } else {
+                        done(.failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)))
+                    }
+                }
+                let task = kind == "voice"
+                    ? self.client.sendVoice(chatId: chatId, path: path, durationMs: durationMs, waveHex: waveHex,
+                                            replyTo: replyTo, onProgress: onProgress, onResult: onResult)
+                    : self.client.sendVideoNote(chatId: chatId, path: path, durationMs: durationMs,
+                                                replyTo: replyTo, onProgress: onProgress, onResult: onResult)
+                running.set(task)
+            }
+        } onCancel: {
+            running.cancel()
+        }
+    }
+
     func sendContact(chatId: String, contactId: String, replyTo: String) async throws -> CoreMessage {
         try await call("sendContact") { done in
             self.client.sendContact(chatId: chatId, contactId: contactId, replyTo: replyTo) { message, kind, key in

@@ -246,6 +246,16 @@ public final class MaxAPIClient: MaxAPI, Sendable {
                 CoreMapping.message(try await core.sendContact(chatId: chatId, contactId: contact.contactId, replyTo: reply))
             }
         }
+        if let recording = drafts.first(where: \.isRecording) {
+            // Голосовое и кружок — отдельное сообщение со своим слотом загрузки.
+            guard drafts.count == 1, !recording.path.isEmpty else { return .failure(.invalidResponse) }
+            return await catching {
+                CoreMapping.message(try await core.sendRecording(
+                    chatId: chatId, path: recording.path, kind: recording.kind.rawValue,
+                    durationMs: recording.durationMs, wave: recording.waveform, replyTo: reply, progress: progress
+                ))
+            }
+        }
         let items = drafts.map { draft in
             CoreOutgoingMedia(path: draft.path, kind: draft.kind.rawValue, fileName: draft.fileName)
         }
