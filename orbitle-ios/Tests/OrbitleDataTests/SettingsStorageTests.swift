@@ -34,6 +34,36 @@ struct AppearanceStoreTests {
     }
 }
 
+@Suite("Приватный режим на устройстве")
+struct PrivateModeStoreTests {
+    @Test("Без записи — выключен, заглушки, кнопка видна; запись читается новым хранилищем")
+    @MainActor
+    func roundTrip() throws {
+        let suite = "orbitle.tests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = UserDefaultsPrivateModeStore(defaults: defaults)
+        #expect(store.load() == .standard)
+        #expect(store.load().showsQuickToggle)
+        store.save(PrivateModePreferences(isEnabled: true, style: .blur, showsQuickToggle: false))
+        #expect(defaults.bool(forKey: UserDefaultsPrivateModeStore.enabledKey))
+        #expect(defaults.string(forKey: UserDefaultsPrivateModeStore.styleKey) == "blur")
+        let again = UserDefaultsPrivateModeStore(defaults: defaults)
+        #expect(again.load() == PrivateModePreferences(isEnabled: true, style: .blur, showsQuickToggle: false))
+    }
+
+    @Test("Незнакомый вид читается как заглушки")
+    @MainActor
+    func unknownStyle() throws {
+        let suite = "orbitle.tests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: UserDefaultsPrivateModeStore.enabledKey)
+        defaults.set("pixelate", forKey: UserDefaultsPrivateModeStore.styleKey)
+        #expect(UserDefaultsPrivateModeStore(defaults: defaults).load() == PrivateModePreferences(isEnabled: true))
+    }
+}
+
 @Suite("Архив отчётов о сбоях")
 struct CrashDumpStoreTests {
     private func makeStore(limit: Int = 20) -> CrashDumpStore {
