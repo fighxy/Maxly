@@ -195,6 +195,49 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         notify(chatId: chatId)
     }
 
+    /// Удаление: сначала сервер (для сообщений с серверным id), потом база. Если сервер
+    /// отказал, сообщения остаются на месте и ошибка уходит на экран.
+    public func delete(messageIds: [String], chatId: String, forEveryone: Bool) async throws(OrbitleError) {
+        let found = messageIds.compactMap { id in (try? message(id: id)) ?? (try? message(serverId: id)) }
+        let localIds = found.map(\.id)
+        let serverIds = found.compactMap { message -> String? in
+            guard let serverId = message.serverId, Int64(serverId) != nil else { return nil }
+            return serverId
+        }
+        if !serverIds.isEmpty {
+            if case .failure(let error) = await api.deleteMessages(chatId: chatId, messageIds: serverIds, forEveryone: forEveryone) {
+                Log.warning(.messages, "Сообщения не удалены: \(error)")
+                throw error.orbitleError
+            }
+        }
+        do {
+            // После ожидания сервера строки перечитываются: база могла измениться.
+            for id in localIds {
+                if let message = try message(id: id) { modelContext.delete(message) }
+            }
+            try modelContext.save()
+        } catch {
+            throw .storageError
+        }
+        Log.info(.messages, "Удалено сообщений: \(localIds.count)\(forEveryone ? " у всех" : " у себя")")
+        notify(chatId: chatId)
+    }
+
+    /// Пересылка по серверному id. Новое сообщение сразу записывается в целевой чат.
+    public func forward(messageId: String, from chatId: String, to targetChatId: String) async throws(OrbitleError) {
+        let stored = (try? message(id: messageId)) ?? (try? message(serverId: messageId))
+        let serverId = stored?.serverId ?? messageId
+        guard Int64(serverId) != nil else { throw .rejected("Сообщение ещё не отправлено") }
+        switch await api.forwardMessage(toChatId: targetChatId, fromChatId: chatId, messageId: serverId) {
+        case .success(let record):
+            _ = try upsert([record])
+            Log.info(.messages, "Сообщение переслано в чат \(targetChatId)")
+        case .failure(let error):
+            Log.warning(.messages, "Сообщение не переслано: \(error)")
+            throw error.orbitleError
+        }
+    }
+
     public func noteDownloaded(messageId: String, attachmentId: String, localPath: String) async {
         guard let message = try? message(id: messageId) ?? message(serverId: messageId) else { return }
         var content = Self.content(of: message)

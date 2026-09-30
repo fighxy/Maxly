@@ -254,6 +254,11 @@ final class AppContainer {
     }
 
     /// Комментарии есть у постов канала.
+    /// Чаты для выбора при пересылке.
+    func forwardTargets(excluding chatId: String) -> [ChatListItem] {
+        listModel?.forwardTargets(excluding: chatId) ?? []
+    }
+
     /// Тип открытого чата. Новый диалог из контактов — личный.
     func chatType(id: String) -> ChatType {
         listModel?.chat(id: id)?.type ?? .private

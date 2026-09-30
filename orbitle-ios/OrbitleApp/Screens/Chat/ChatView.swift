@@ -11,8 +11,11 @@ struct ChatView: View {
     var commentsEnabled: Bool?
     /// В группе у чужих сообщений видны имя и аватар автора, в личном чате и канале — нет.
     var chatType: ChatType = .private
+    /// Чаты для пересылки (без текущего).
+    var forwardTargets: () -> [ChatListItem] = { [] }
     /// Модель профиля чата для перехода по нажатию на заголовок.
     var makeProfile: (() -> ChatProfileViewModel?)?
+    @State private var forwardList: [ChatListItem] = []
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var composerFocused: Bool
     /// Низ ленты виден. Пока он виден, новые сообщения прокручивают ленту сами.
@@ -74,7 +77,10 @@ struct ChatView: View {
                 }
                 // Чат открывается сразу внизу, а не сверху до загрузки истории.
                 .defaultScrollAnchor(.bottom)
+                // Клавиатура уходит, когда ленту тянут вниз вслед за пальцем или просто касаются
+                // её: касание не мешает кнопкам пузырей, жест срабатывает вместе с ними.
                 .scrollDismissesKeyboard(.interactively)
+                .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
                 .onChange(of: viewModel.messages.last?.id) { old, id in
                     guard let id else { return }
                     let last = viewModel.messages.last
@@ -141,6 +147,40 @@ struct ChatView: View {
             await viewModel.loadLatest()
         }
         .onDisappear { viewModel.deactivate() }
+        .animation(.default, value: viewModel.notice)
+        .confirmationDialog(
+            "Удалить сообщение?",
+            isPresented: deletionShown,
+            titleVisibility: .visible,
+            presenting: viewModel.deletionCandidate
+        ) { message in
+            if viewModel.canDeleteForEveryone(message) {
+                Button(chatType == .private ? "Удалить у меня и у собеседника" : "Удалить у всех", role: .destructive) {
+                    Task { await viewModel.confirmDelete(forEveryone: true) }
+                }
+            }
+            Button("Удалить у меня", role: .destructive) {
+                Task { await viewModel.confirmDelete(forEveryone: false) }
+            }
+            Button("Отмена", role: .cancel) { viewModel.deletionCandidate = nil }
+        }
+        .sheet(isPresented: forwardShown) {
+            ForwardPickerView(
+                targets: forwardList,
+                onPick: { id in Task { await viewModel.forward(to: id) } },
+                onCancel: { viewModel.forwardCandidate = nil }
+            )
+        }
+        .onChange(of: viewModel.forwardCandidate?.id) { _, id in
+            if id != nil { forwardList = forwardTargets() }
+        }
+        .task(id: wantsCommentCounts ? viewModel.messages.count : -1) {
+            guard wantsCommentCounts, !viewModel.messages.isEmpty else { return }
+            // Пауза: лента догружается пачками, счётчики уходят одним запросом.
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            viewModel.requestCommentCounts(for: viewModel.messages)
+        }
         // Выбрали сообщение для ответа — клавиатура сразу открывается.
         .onChange(of: viewModel.replyTarget?.id) { _, id in
             if id != nil { composerFocused = true }
@@ -161,6 +201,15 @@ struct ChatView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
                     .orbitleGlassCapsule()
+            }
+            if let notice = viewModel.notice {
+                Label(notice, systemImage: "checkmark.circle.fill")
+                    .font(.footnote.weight(.medium))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .orbitleGlassCapsule()
+                    .frame(maxWidth: .infinity)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
             if let reply = viewModel.replyTarget {
                 replyBar(reply)
@@ -197,6 +246,20 @@ struct ChatView: View {
 
     private var showsAuthors: Bool { chatType == .group }
 
+    private var deletionShown: Binding<Bool> {
+        Binding(
+            get: { viewModel.deletionCandidate != nil },
+            set: { if !$0 { viewModel.deletionCandidate = nil } }
+        )
+    }
+
+    private var forwardShown: Binding<Bool> {
+        Binding(
+            get: { viewModel.forwardCandidate != nil },
+            set: { if !$0 { viewModel.forwardCandidate = nil } }
+        )
+    }
+
     /// Круглая кнопка «вниз» на стекле; число непрочитанных, пришедших сверху, — бейджем.
     private func scrollDownButton(action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -226,8 +289,13 @@ struct ChatView: View {
         switch commentsEnabled {
         case true?: return true
         case false?: return false
-        case nil: return message.content.comments != nil
+        case nil: return message.content.comments != nil || viewModel.commentCounts[message.serverId ?? message.id] != nil
         }
+    }
+
+    /// В канале с комментариями счётчики постов спрашиваются у сервера, когда лента меняется.
+    private var wantsCommentCounts: Bool {
+        chatType == .channel && commentsEnabled != false
     }
 
     private func startsDay(at index: Int) -> Bool {
@@ -278,19 +346,25 @@ struct ChatView: View {
     }
 
     private func replyBar(_ message: Message) -> some View {
-        HStack(spacing: 8) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(Color.orbitleAccent)
-                .frame(width: 3)
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 10) {
+            Image(systemName: "arrowshape.turn.up.left.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color.orbitleAccent)
+            VStack(alignment: .leading, spacing: 1) {
                 Text(replyTitle(message))
-                    .font(.caption.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.orbitleAccent)
                     .lineLimit(1)
                 Text(message.replySnippet)
-                    .font(.caption)
+                    .font(.subheadline)
                     .lineLimit(1)
                     .foregroundStyle(.secondary)
+            }
+            .padding(.leading, 9)
+            .overlay(alignment: .leading) {
+                Capsule()
+                    .fill(Color.orbitleAccent)
+                    .frame(width: 3)
             }
             Spacer(minLength: 8)
             Button {
@@ -303,9 +377,11 @@ struct ChatView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Отменить ответ")
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .orbitleGlassCapsule()
+        .fixedSize(horizontal: false, vertical: true)
+        .orbitleGlassRounded(radius: 20)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 }
 
@@ -334,6 +410,7 @@ private struct TranscriptBubble: View {
             reservesAvatar: reservesAvatar,
             group: group,
             loadingId: viewModel.loadingMediaId,
+            commentCount: viewModel.commentCount(for: message),
             onRetry: { Task { await viewModel.retry(id: message.id) } },
             onReply: { viewModel.beginReply(to: message) },
             onReact: { emoji in Task { await viewModel.toggleReaction(messageId: message.id, emoji: emoji) } },
@@ -341,7 +418,9 @@ private struct TranscriptBubble: View {
             onOpen: { viewModel.presentMedia(message, startId: $0) },
             onVoice: { viewModel.toggleVoice(message) },
             onFile: { viewModel.openFile(message, attachmentId: $0) },
-            onFocusReply: { viewModel.focusReply($0) }
+            onFocusReply: { viewModel.focusReply($0) },
+            onForward: { viewModel.requestForward(message) },
+            onDelete: { viewModel.requestDelete(message) }
         )
     }
 }

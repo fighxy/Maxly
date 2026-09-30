@@ -141,6 +141,23 @@ public extension View {
         #endif
     }
 
+    /// Стеклянная скруглённая плашка (панель ответа над полем ввода).
+    @ViewBuilder
+    func orbitleGlassRounded(radius: CGFloat) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            glassEffect(.regular, in: shape)
+        } else {
+            background(.ultraThinMaterial, in: shape)
+                .overlay(shape.stroke(Color.primary.opacity(0.08)))
+        }
+        #else
+        background(.ultraThinMaterial, in: shape)
+            .overlay(shape.stroke(Color.primary.opacity(0.08)))
+        #endif
+    }
+
     /// Стеклянная капсула для группы кнопок (например, «поиск + добавить»).
     @ViewBuilder
     func orbitleGlassCapsule() -> some View {

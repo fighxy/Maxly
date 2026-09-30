@@ -23,14 +23,32 @@ enum MessageContentCodec {
     }
 
     private static func decodeServer(_ object: [String: Any]) -> MessageContent {
-        MessageContent(
+        let forwarded = forward(object["link"])
+        var attaches = attachments(object["attaches"])
+        var elements = spans(object["elements"])
+        // У пересылки свои вложения и разметка пустые: берутся из оригинала.
+        if let original = forwarded?.message {
+            if attaches.isEmpty { attaches = attachments(original["attaches"]) }
+            if elements.isEmpty { elements = spans(original["elements"]) }
+        }
+        return MessageContent(
             reply: reply(object["link"]),
-            attachments: attachments(object["attaches"]),
+            attachments: attaches,
             reactions: reactions(object["reactionInfo"]),
             comments: comments(object),
             threadOf: nil,
-            formatting: spans(object["elements"])
+            formatting: elements,
+            forward: forwarded?.info
         )
+    }
+
+    /// Ссылка `FORWARD`: автор (имя подставляет ядро) и текст оригинала.
+    private static func forward(_ value: Any?) -> (info: MessageForward, message: [String: Any])? {
+        guard let link = value as? [String: Any], (link["type"] as? String)?.uppercased() == "FORWARD" else { return nil }
+        let message = link["message"] as? [String: Any] ?? [:]
+        let name = (message["senderName"] as? String) ?? (link["chatName"] as? String) ?? (link["senderName"] as? String) ?? ""
+        let text = message["text"] as? String ?? ""
+        return (MessageForward(authorName: name.isEmpty ? "Неизвестно" : name, text: text), message)
     }
 
     /// `elements` сервера: `{type, from, length, attributes?, entityId?}`. Незнакомые типы пропускаются.

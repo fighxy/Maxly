@@ -1,4 +1,5 @@
 import SwiftUI
+import ImageIO
 
 #if canImport(UIKit)
 import UIKit
@@ -11,17 +12,51 @@ public typealias PlatformImage = NSImage
 /// Картинка, которую можно передать между потоками. Сама картинка после декодирования не меняется.
 public final class DecodedImage: @unchecked Sendable {
     public let image: PlatformImage
-    public init(_ image: PlatformImage) { self.image = image }
+    /// Примерный вес в памяти (байты пикселей) для лимита кэша.
+    let cost: Int
+    public init(_ image: PlatformImage) {
+        self.image = image
+        #if canImport(UIKit)
+        let pixels = image.size.width * image.scale * image.size.height * image.scale
+        #else
+        let pixels = image.size.width * image.size.height
+        #endif
+        self.cost = Int(max(pixels, 1) * 4)
+    }
+
+    /// Декодирование с уменьшением до `maxPixel` по большей стороне: фото с сервера бывают
+    /// в несколько тысяч точек, а в пузыре нужно меньше. Меньше картинка — дольше живёт в кэше.
+    static func decode(_ data: Data, maxPixel: Int = 1600) -> DecodedImage? {
+        let options = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(data as CFData, options) else { return nil }
+        let thumbnail = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixel,
+        ] as CFDictionary
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnail) else {
+            return PlatformImage(data: data).map(DecodedImage.init)
+        }
+        #if canImport(UIKit)
+        return DecodedImage(UIImage(cgImage: cgImage))
+        #else
+        return DecodedImage(NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height)))
+        #endif
+    }
 }
 
 /// `NSCache` потокобезопасен сам, обёртка только сообщает это компилятору.
 final class ImageMemoryCache: @unchecked Sendable {
     private let cache = NSCache<NSURL, DecodedImage>()
 
-    init(limit: Int) { cache.countLimit = limit }
+    init(limit: Int, bytes: Int = 160 * 1024 * 1024) {
+        cache.countLimit = limit
+        cache.totalCostLimit = bytes
+    }
 
     func object(for url: URL) -> DecodedImage? { cache.object(forKey: url as NSURL) }
-    func set(_ image: DecodedImage, for url: URL) { cache.setObject(image, forKey: url as NSURL) }
+    func set(_ image: DecodedImage, for url: URL) { cache.setObject(image, forKey: url as NSURL, cost: image.cost) }
     func removeAll() { cache.removeAllObjects() }
 }
 
@@ -30,7 +65,7 @@ final class ImageMemoryCache: @unchecked Sendable {
 public actor ImagePipeline {
     public static let shared = ImagePipeline()
 
-    private let session: URLSession
+    private nonisolated let session: URLSession
     private nonisolated let memory: ImageMemoryCache
     private var inFlight: [URL: Task<DecodedImage?, Never>] = [:]
 
@@ -47,6 +82,21 @@ public actor ImagePipeline {
         memory.object(for: url)
     }
 
+    /// Картинка, которая уже лежит на диске: файл или ответ в `URLCache`. Читается сразу,
+    /// без ожидания, чтобы при возврате на экран фото не мигали заглушкой. Сеть не трогает.
+    public nonisolated func cachedOnDisk(_ url: URL) -> DecodedImage? {
+        if let hit = memory.object(for: url) { return hit }
+        let data: Data?
+        if url.isFileURL {
+            data = try? Data(contentsOf: url)
+        } else {
+            data = session.configuration.urlCache?.cachedResponse(for: URLRequest(url: url))?.data
+        }
+        guard let data, let image = DecodedImage.decode(data) else { return nil }
+        memory.set(image, for: url)
+        return image
+    }
+
     public func store(_ image: DecodedImage, for url: URL) {
         memory.set(image, for: url)
     }
@@ -57,9 +107,8 @@ public actor ImagePipeline {
         let session = session
         let task = Task<DecodedImage?, Never> {
             guard let loaded = try? await session.data(from: url),
-                  (loaded.1 as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
-                  let image = PlatformImage(data: loaded.0) else { return nil }
-            return DecodedImage(image)
+                  (loaded.1 as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true else { return nil }
+            return DecodedImage.decode(loaded.0)
         }
         inFlight[url] = task
         let result = await task.value
@@ -114,7 +163,7 @@ public struct RemoteImage<Placeholder: View>: View {
 
     private var current: Image? {
         guard let url else { return nil }
-        let decoded = pipeline.cached(url) ?? (loadedURL == url ? loaded : nil)
+        let decoded = pipeline.cached(url) ?? (loadedURL == url ? loaded : nil) ?? pipeline.cachedOnDisk(url)
         guard let decoded else { return nil }
         #if canImport(UIKit)
         return Image(uiImage: decoded.image)

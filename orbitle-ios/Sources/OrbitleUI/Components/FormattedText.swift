@@ -102,18 +102,22 @@ struct MessageTextView: View {
     }
 
     private func quote(_ block: TextBlock, last: Bool) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            RoundedRectangle(cornerRadius: 1.5)
-                .fill(outgoing ? Color.white : Color.orbitleAccent)
-                .frame(width: 3)
-            content(block, last: last)
-                .font(.callout)
-                .foregroundStyle(outgoing ? Color.white.opacity(0.92) : Color.primary.opacity(0.9))
-        }
-        .padding(.vertical, 5)
-        .padding(.horizontal, 8)
-        .background((outgoing ? Color.white : Color.orbitleAccent).opacity(outgoing ? 0.18 : 0.1),
-                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        // Полоса — в overlay: её высота равна высоте текста цитаты, а не всей доступной.
+        content(block, last: last)
+            .font(.callout)
+            .foregroundStyle(outgoing ? Color.white.opacity(0.92) : Color.primary.opacity(0.9))
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 5)
+            .padding(.leading, 13)
+            .padding(.trailing, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(outgoing ? Color.white : Color.orbitleAccent)
+                    .frame(width: 3)
+            }
+            .background((outgoing ? Color.white : Color.orbitleAccent).opacity(outgoing ? 0.18 : 0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private func content(_ block: TextBlock, last: Bool) -> Text {

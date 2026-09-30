@@ -32,6 +32,16 @@ public struct CoreCommentsRepository: CommentsRepository {
         }
     }
 
+    public func counts(chatId: String, postIds: [String]) async throws(OrbitleError) -> [String: Int] {
+        guard !postIds.isEmpty else { return [:] }
+        do {
+            return try await core.loadCommentCounts(chatId: chatId, postIds: postIds)
+        } catch {
+            Log.warning(.messages, "Счётчики комментариев не загрузились: \(error)")
+            throw CoreMapping.apiError(error).orbitleError
+        }
+    }
+
     private static func comment(_ message: CoreMessage, postId: String) -> Message {
         var domain = CoreMapping.message(message).domain
         domain.content.threadOf = postId
