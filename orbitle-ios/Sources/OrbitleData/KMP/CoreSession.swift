@@ -383,6 +383,10 @@ public protocol MaxCore: Sendable {
                    progress: @escaping @Sendable (Double) -> Void) async throws -> CoreMessage
     /// Карточка пользователя MAX `contactId` (`{_type: CONTACT, contactId}`).
     func sendContact(chatId: String, contactId: String, replyTo: String) async throws -> CoreMessage
+    /// Записанное голосовое (`kind` = `voice`, Ogg/Opus, `wave` — уровни 0…255) или кружок
+    /// (`videoNote`, квадратный MP4): загрузка и одно сообщение. Отмена — как у `sendMedia`.
+    func sendRecording(chatId: String, path: String, kind: String, durationMs: Int64, wave: [Int], replyTo: String,
+                       progress: @escaping @Sendable (Double) -> Void) async throws -> CoreMessage
     func setPinnedChats(_ chatIds: [String]) async throws -> [String]
     /// Закреплённые чаты сервера сверху вниз: сразу при подписке, если уже известны, и после
     /// каждого изменения (вход, свой вызов, пуш с другого устройства). Пока список неизвестен,
@@ -466,6 +470,10 @@ public extension MaxCore {
         throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
     }
     func sendContact(chatId: String, contactId: String, replyTo: String) async throws -> CoreMessage {
+        throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
+    }
+    func sendRecording(chatId: String, path: String, kind: String, durationMs: Int64, wave: [Int], replyTo: String,
+                       progress: @escaping @Sendable (Double) -> Void) async throws -> CoreMessage {
         throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
     }
 

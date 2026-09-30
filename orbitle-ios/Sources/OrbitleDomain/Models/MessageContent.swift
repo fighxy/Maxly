@@ -419,6 +419,10 @@ public struct AttachmentDraft: Hashable, Sendable, Codable {
         case file
         /// Карточка пользователя MAX, файла нет.
         case contact
+        /// Записанное голосовое: Ogg/Opus, длительность и дорожка громкости.
+        case voice
+        /// Записанное круглое видеосообщение: квадратный MP4.
+        case videoNote
     }
 
     public var kind: Kind
@@ -434,6 +438,8 @@ public struct AttachmentDraft: Hashable, Sendable, Codable {
     public var contactId: String
     public var contactName: String
     public var contactPhone: String
+    /// Голосовое: уровни громкости 0…255 для дорожки (80 столбиков).
+    public var waveform: [Int]
 
     public init(
         kind: Kind,
@@ -445,7 +451,8 @@ public struct AttachmentDraft: Hashable, Sendable, Codable {
         durationMs: Int64 = 0,
         contactId: String = "",
         contactName: String = "",
-        contactPhone: String = ""
+        contactPhone: String = "",
+        waveform: [Int] = []
     ) {
         self.kind = kind
         self.path = path
@@ -457,7 +464,39 @@ public struct AttachmentDraft: Hashable, Sendable, Codable {
         self.contactId = contactId
         self.contactName = contactName
         self.contactPhone = contactPhone
+        self.waveform = waveform
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, path, fileName, size, width, height, durationMs, contactId, contactName, contactPhone, waveform
+    }
+
+    /// Черновики лежат в базе: старые записи без `waveform` читаются с пустой дорожкой.
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decode(Kind.self, forKey: .kind)
+        path = try c.decodeIfPresent(String.self, forKey: .path) ?? ""
+        fileName = try c.decodeIfPresent(String.self, forKey: .fileName) ?? ""
+        size = try c.decodeIfPresent(Int64.self, forKey: .size) ?? 0
+        width = try c.decodeIfPresent(Int.self, forKey: .width)
+        height = try c.decodeIfPresent(Int.self, forKey: .height)
+        durationMs = try c.decodeIfPresent(Int64.self, forKey: .durationMs) ?? 0
+        contactId = try c.decodeIfPresent(String.self, forKey: .contactId) ?? ""
+        contactName = try c.decodeIfPresent(String.self, forKey: .contactName) ?? ""
+        contactPhone = try c.decodeIfPresent(String.self, forKey: .contactPhone) ?? ""
+        waveform = try c.decodeIfPresent([Int].self, forKey: .waveform) ?? []
+    }
+
+    public static func voice(path: String, durationMs: Int64, waveform: [Int]) -> AttachmentDraft {
+        AttachmentDraft(kind: .voice, path: path, fileName: "voice.ogg", durationMs: durationMs, waveform: waveform)
+    }
+
+    public static func videoNote(path: String, durationMs: Int64, side: Int) -> AttachmentDraft {
+        AttachmentDraft(kind: .videoNote, path: path, fileName: "note.mp4", width: side, height: side, durationMs: durationMs)
+    }
+
+    /// Записи голосом и кружком уходят одни, без подписи.
+    public var isRecording: Bool { kind == .voice || kind == .videoNote }
 
     public static func contact(id: String, name: String, phone: String = "") -> AttachmentDraft {
         AttachmentDraft(kind: .contact, contactId: id, contactName: name, contactPhone: phone)
@@ -477,6 +516,10 @@ public struct AttachmentDraft: Hashable, Sendable, Codable {
             return .file(FileContent(id: id, name: name.isEmpty ? "Файл" : name, size: size, localPath: local))
         case .contact:
             return .contact(ContactContent(id: id, userId: contactId, name: contactName, phone: contactPhone))
+        case .voice:
+            return .voice(VoiceContent(id: id, url: nil, waveform: waveform, durationMs: durationMs, localPath: local))
+        case .videoNote:
+            return .video(VideoContent(id: id, url: nil, width: width, height: height, durationMs: durationMs, isRound: true, localPath: local))
         }
     }
 }

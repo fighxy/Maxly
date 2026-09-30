@@ -177,7 +177,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         content.reply = replyQuote(replyTo)
         content.attachments = drafts.enumerated().map { $0.element.preview(index: $0.offset) }
         content.drafts = drafts
-        let text = drafts.contains { $0.kind == .contact } ? "" : caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = drafts.contains { $0.kind == .contact || $0.isRecording } ? "" : caption.trimmingCharacters(in: .whitespacesAndNewlines)
         let message = SDMessage(
             id: localId,
             chatId: chatId,
@@ -308,6 +308,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         var photos = local.compactMap(\.photo).compactMap(\.localPath)[...]
         var videos = local.compactMap(\.video).compactMap(\.localPath)[...]
         var files = local.compactMap(\.file).compactMap(\.localPath)[...]
+        var voices = local.compactMap(\.voice).compactMap(\.localPath)[...]
         return server.map { attachment in
             switch attachment {
             case .photo(var item):
@@ -319,6 +320,10 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             case .file(var item):
                 if item.localPath == nil, let path = files.popFirst() { item.localPath = path }
                 return .file(item)
+            case .voice(var item):
+                // Своё голосовое играет с записанного файла, без скачивания.
+                if item.localPath == nil, let path = voices.popFirst() { item.localPath = path }
+                return .voice(item)
             default:
                 return attachment
             }

@@ -41,7 +41,7 @@ public enum AttachmentBatchPlanner {
             case .photo:
                 photos.append(draft)
                 if photos.count == photosPerMessage { flushPhotos() }
-            case .video, .file, .contact:
+            case .video, .file, .contact, .voice, .videoNote:
                 flushPhotos()
                 batches.append(AttachmentBatch(drafts: [draft]))
             }
@@ -50,7 +50,7 @@ public enum AttachmentBatchPlanner {
 
         let text = caption.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return Plan(batches: batches, trailingText: "") }
-        if let index = batches.firstIndex(where: { !$0.drafts.contains { $0.kind == .contact } }) {
+        if let index = batches.firstIndex(where: { !$0.drafts.contains { $0.kind == .contact || $0.isRecording } }) {
             batches[index].caption = text
             return Plan(batches: batches, trailingText: "")
         }
