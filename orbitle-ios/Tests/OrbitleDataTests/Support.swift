@@ -50,8 +50,14 @@ actor FakeMaxAPI: MaxAPI {
         return .failure(.invalidResponse)
     }
 
+    /// Ошибка загрузки истории, например нет сети.
+    var historyError: MaxAPIError?
+
+    func setHistoryError(_ error: MaxAPIError?) { historyError = error }
+
     func fetchMessages(chatId: String, before: Date?, limit: Int) async -> Result<[MessageRecord], MaxAPIError> {
         if let fetchGate { await fetchGate.wait() }
+        if let historyError { return .failure(historyError) }
         let older = history
             .filter { message in
                 message.chatId == chatId && (before.map { message.timestamp < $0 } ?? true)

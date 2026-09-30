@@ -209,27 +209,47 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         }
     }
 
-    /// Точные реакции для последних показанных сообщений: после входа в чат и возврата
-    /// приложения пуши за время отсутствия могли потеряться.
+    /// Сверка реакций после возврата в приложение: пуши за время в фоне могли потеряться.
+    ///
+    /// Последняя страница перечитывается историей, как при входе в чат: там реакции есть у
+    /// каждого сообщения, и это итог сервера (в том числе «реакций нет»). Более старые
+    /// сообщения окна сверяются одним `MSG_GET_REACTIONS`. Из его ответа берутся только
+    /// сообщения с реакциями: пропуск или пустая запись не значат «реакций нет» (сервер мог
+    /// не узнать id), а стирать чужие реакции по такому ответу нельзя.
     public func refreshReactions(chatId: String) async {
+        let started = generation
+        var covered = Set<String>()
+        switch await api.fetchMessages(chatId: chatId, before: nil, limit: Self.pageSize) {
+        case .success(let records):
+            guard started == generation else { return }
+            do {
+                try upsert(records)
+                covered = Set(records.map { $0.serverId ?? $0.id })
+            } catch {
+                Log.info(.messages, "История для сверки реакций не записана: \(error)")
+            }
+        case .failure(let error):
+            Log.info(.messages, "История для сверки реакций не загружена: \(error)")
+        }
+
         let shown = min(windows[chatId] ?? Self.pageSize, Self.reactionsPage)
         let rows = (try? fetchPage(chatId: chatId, before: nil, limit: shown)) ?? []
         let serverIds = rows.compactMap { row -> String? in
-            guard let serverId = row.serverId, Int64(serverId) != nil, row.status == .sent else { return nil }
+            guard let serverId = row.serverId, Int64(serverId) != nil, row.status == .sent,
+                  !covered.contains(serverId) else { return nil }
             return serverId
         }
-        guard !serverIds.isEmpty else { return }
-        let started = generation
+        guard !serverIds.isEmpty, started == generation else { return }
         switch await api.fetchReactions(chatId: chatId, messageIds: serverIds) {
         case .success(let reactions):
             guard started == generation else { return }
+            Log.info(.messages, "Сверка реакций: запрошено \(serverIds.count), в ответе \(reactions.count)")
             var changed = false
             // Строки перечитываются одной выборкой: пока шёл запрос, база могла измениться.
             let current = (try? messages(serverIds: serverIds)) ?? [:]
             for serverId in serverIds {
-                guard let message = current[serverId], pendingReactions[message.id] == nil else { continue }
-                // О сообщении без реакций сервер молчит.
-                let update = reactions[serverId] ?? .none
+                guard let update = reactions[serverId], update.counters.contains(where: { $0.count > 0 }),
+                      let message = current[serverId], pendingReactions[message.id] == nil else { continue }
                 var content = Self.content(of: message)
                 let fresh = update.applied(to: content.reactions)
                 guard fresh != content.reactions else { continue }
