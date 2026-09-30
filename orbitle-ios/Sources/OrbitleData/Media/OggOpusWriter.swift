@@ -47,7 +47,7 @@ public struct OggOpusWriter: Sendable {
         guard !finished else { return output }
         if pending.isEmpty {
             // Флаг конца нужен на странице: пустая страница с ним допустима.
-            writePage([], granule: granule, flags: 0x04)
+            writePage([], granule: granule + Int64(preSkip), flags: 0x04)
         } else {
             flush(flags: 0x04)
         }
@@ -57,7 +57,8 @@ public struct OggOpusWriter: Sendable {
 
     private mutating func flush(flags: UInt8) {
         guard !pending.isEmpty else { return }
-        writePage(pending, granule: granule, flags: flags)
+        // Позиция страницы с учётом `preSkip`, как пишет Komet (и оригинальный клиент).
+        writePage(pending, granule: granule + Int64(preSkip), flags: flags)
         pending = []
         pendingSegments = 0
         pageStart = granule
@@ -105,7 +106,8 @@ public struct OggOpusWriter: Sendable {
     }
 
     static func tags() -> Data {
-        let vendor = Array("Orbitle".utf8)
+        // Как у оригинального клиента Max и Komet.
+        let vendor = Array("libopus unknown".utf8)
         var data = Data(Array("OpusTags".utf8))
         data.appendLittle(UInt32(vendor.count))
         data.append(contentsOf: vendor)

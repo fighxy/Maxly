@@ -128,7 +128,7 @@ struct OggOpusWriterTests {
         #expect(stream.preSkip == 312)
         #expect(stream.packets == packets)
         #expect(stream.frames.allSatisfy { $0 == 960 })
-        #expect(stream.finalGranule == Int64(120 * 960))
+        #expect(stream.finalGranule == Int64(120 * 960 + 312))
         #expect(writer.frames == Int64(120 * 960))
     }
 
