@@ -476,10 +476,12 @@ public struct MessageBubble: View {
                 onOutgoing: isOutgoing,
                 onToggle: onReact
             )
-            .layoutPriority(1)
             if timeInReactions {
                 Spacer(minLength: 0)
+                // Время не сжимается и не переносится: плашки переносятся в оставшейся ширине.
                 meta
+                    .fixedSize()
+                    .layoutPriority(1)
                     .padding(.bottom, 2)
             }
         }
@@ -499,9 +501,11 @@ public struct MessageBubble: View {
             if isEdited {
                 Text("изм.")
                     .font(.caption2)
+                    .lineLimit(1)
             }
             Text(ChatContentFormat.time(message.timestamp))
                 .font(.caption2.monospacedDigit())
+                .lineLimit(1)
             if isOutgoing {
                 statusIcon
             }
