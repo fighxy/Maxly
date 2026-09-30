@@ -390,8 +390,9 @@ public final class ChatViewModel {
         askedReactions.removeAll()
     }
 
-    /// Реакции постов канала: в истории канала их нет, они спрашиваются для постов,
-    /// которых ещё не спрашивали. Своё переключение реакции не перезаписывается.
+    /// Реакции показанных сообщений отдельным запросом (`MSG_GET_REACTIONS`): в истории канала
+    /// их нет, а своя реакция с другого устройства видна только в нём. Каждое сообщение
+    /// спрашивается один раз за открытие; своё переключение реакции не перезаписывается.
     public func requestReactions(for posts: [Message]) {
         let ids = posts.compactMap { post -> String? in
             guard post.status == .sent, let id = post.serverId, Int64(id) != nil, !askedReactions.contains(id) else { return nil }

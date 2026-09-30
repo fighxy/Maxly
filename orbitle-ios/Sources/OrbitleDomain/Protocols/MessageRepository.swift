@@ -20,7 +20,8 @@ public protocol MessageRepository: Sendable {
     func toggleReaction(messageId: String, emoji: String) async throws(OrbitleError)
     /// Обновить с сервера реакции показанных сообщений чата.
     func refreshReactions(chatId: String) async
-    /// Реакции этих сообщений отдельным запросом. В истории канала их у постов нет.
+    /// Реакции этих сообщений отдельным запросом: в истории канала их нет, своя реакция
+    /// с другого устройства в пушах не видна.
     func syncReactions(chatId: String, messageIds: [String]) async
     /// Кто поставил реакции на сообщение.
     func reactionUsers(messageId: String) async throws(OrbitleError) -> [ReactionUser]
