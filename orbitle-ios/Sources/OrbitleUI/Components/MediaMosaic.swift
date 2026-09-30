@@ -16,6 +16,7 @@ struct MediaMosaic: View {
     /// Одиночный кадр занимает всю ширину (пузырь с подписью не должен быть шире фото).
     var fillsWidth = false
     let onOpen: (String) -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let visuals = attachments.filter(\.isVisual)
@@ -143,6 +144,7 @@ struct MediaMosaic: View {
                 EmptyView()
             }
         }
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: status)
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
         .background(.black.opacity(0.45), in: Capsule())

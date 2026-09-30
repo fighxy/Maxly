@@ -12,6 +12,7 @@ struct CommentsView: View {
     @State private var reveal = PrivateModeReveal()
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.privateMode) private var privateMode
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         NavigationStack {
@@ -24,13 +25,22 @@ struct CommentsView: View {
                         }
                         .padding(.horizontal, OrbitleTheme.pad)
                         .padding(.vertical, 8)
+                        // Как в ленте чата: новые и удалённые — плавно, первая страница и
+                        // подгрузка старых сверху — сразу.
+                        .animation(OrbitleMotion.transcript(model.commentsChange, reduceMotion: reduceMotion), value: model.comments.map(\.id))
+                        .animation(OrbitleMotion.fade, value: model.state)
                     }
                     .defaultScrollAnchor(.bottom)
                     .scrollDismissesKeyboard(.interactively)
                     .refreshable { await model.reload() }
-                    .onChange(of: model.comments.last?.id) { _, id in
+                    .onChange(of: model.comments.last?.id) { old, id in
                         guard let id else { return }
-                        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .bottom) }
+                        // Первая загрузка — сразу вниз, без прокрутки на глазах.
+                        guard old != nil else {
+                            proxy.scrollTo(id, anchor: .bottom)
+                            return
+                        }
+                        withAnimation(OrbitleMotion.standard(reduceMotion: reduceMotion)) { proxy.scrollTo(id, anchor: .bottom) }
                     }
                 }
             }
@@ -64,7 +74,7 @@ struct CommentsView: View {
         PrivateBubbleGate(
             isRevealed: reveal.isRevealed(message.id),
             accessibilityText: PrivateModeMask.messageText(outgoing: outgoing),
-            onReveal: { withAnimation(.easeInOut(duration: 0.15)) { reveal.reveal(message.id) } },
+            onReveal: { withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { reveal.reveal(message.id) } },
             real: real,
             masked: {
                 MessageBubble(
@@ -136,6 +146,7 @@ struct CommentsView: View {
             ForEach(Array(model.comments.enumerated()), id: \.element.id) { index, comment in
                 bubble(comment, index: index, width: width)
                     .id(comment.id)
+                    .transition(.orbitleBubble(outgoing: model.isOutgoing(comment), reduceMotion: reduceMotion))
             }
         }
     }

@@ -53,6 +53,7 @@ public struct MessageBubble: View {
 
     /// Сдвиг пузыря при свайпе «ответить».
     @State private var swipe: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private static let replyThreshold: CGFloat = 56
 
     private static let radius: CGFloat = 18
@@ -155,7 +156,7 @@ public struct MessageBubble: View {
         .replySwipe(enabled: allowsReply, onChange: swipeChanged, onEnd: swipeEnded)
         .padding(.top, group.joinsPrevious ? 0 : 4)
         .background(highlighted ? Color.orbitleAccent.opacity(0.12) : Color.clear)
-        .animation(.easeInOut(duration: 0.25), value: highlighted)
+        .animation(OrbitleMotion.fade, value: highlighted)
         .contextMenu {
             if allowsReactions {
                 reactionMenu
@@ -275,7 +276,7 @@ public struct MessageBubble: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .animation(.default, value: count)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: count)
         .accessibilityLabel("\(ChatContentFormat.comments(count)), открыть")
     }
 
@@ -511,6 +512,8 @@ public struct MessageBubble: View {
             }
         }
         .foregroundStyle(metaColor)
+        // Часы сменяются галочкой растворением, а не скачком.
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: message.status)
         .accessibilityElement(children: .combine)
     }
 

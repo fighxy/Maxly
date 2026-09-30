@@ -7,6 +7,7 @@ public struct FlatSearchField: View {
     @Binding private var isActive: Bool
     private let placeholder: String
     @FocusState private var focused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(text: Binding<String>, isActive: Binding<Bool>, placeholder: String = "Поиск") {
         _text = text
@@ -45,16 +46,20 @@ public struct FlatSearchField: View {
                 Button("Отмена") {
                     text = ""
                     focused = false
-                    isActive = false
+                    // В той же анимации возвращается панель вкладок и список чатов.
+                    withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { isActive = false }
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.orbitleAccent)
-                .transition(.move(edge: .trailing).combined(with: .opacity))
+                .transition(.orbitleBar(edge: .trailing, reduceMotion: reduceMotion))
             }
         }
-        .animation(.easeOut(duration: 0.2), value: isActive)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: isActive)
         .onChange(of: focused) { _, value in
-            if value { isActive = true }
+            // Панель вкладок прячется той же анимацией, что и кнопка «Отмена», а не скачком.
+            if value, !isActive {
+                withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { isActive = true }
+            }
         }
         .onChange(of: isActive) { _, value in
             // Поиск можно включить снаружи (кнопкой с лупой): тогда поле получает фокус.
@@ -195,6 +200,24 @@ public struct OrbitleGlassGroup<Content: View>: View {
         }
         #else
         content
+        #endif
+    }
+}
+
+public extension View {
+    /// Имя стекла внутри `OrbitleGlassGroup`: на iOS 26 появляющийся и исчезающий элемент
+    /// перетекает из соседнего стекла и обратно, а не возникает отдельной каплей.
+    /// Ставится после `orbitleGlassCircle` / `orbitleGlassCapsule`. Раньше iOS 26 ничего не делает.
+    @ViewBuilder
+    func orbitleGlassID(_ id: String, in namespace: Namespace.ID) -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            glassEffectID(id, in: namespace)
+        } else {
+            self
+        }
+        #else
+        self
         #endif
     }
 }
