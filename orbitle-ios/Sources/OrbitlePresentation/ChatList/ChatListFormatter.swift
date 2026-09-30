@@ -95,6 +95,8 @@ public struct ChatListItem: Identifiable, Hashable, Sendable {
     public let accessibilityLabel: String
     /// Последнее сообщение — пересылка: перед текстом стрелка.
     public var isForwarded = false
+    /// Последнее сообщение своё. По нему приватный режим пишет «Вы отправили сообщение».
+    public var lastIsOutgoing = false
 
     /// Булавка видна у закреплённых, пока нет бейджа.
     public var showsPin: Bool { isPinned && badge == nil && !hasMention }
@@ -186,7 +188,8 @@ public struct ChatListFormatter: Sendable {
             badgeMuted: chat.isMuted,
             hasMention: chat.unreadMentions > 0,
             accessibilityLabel: "",
-            isForwarded: style == .message && chat.lastMessage?.isForwarded == true
+            isForwarded: style == .message && chat.lastMessage?.isForwarded == true,
+            lastIsOutgoing: chat.lastMessage?.isOutgoing == true
         )
         return item.withAccessibility(spoken(item, chat: chat))
     }
@@ -387,7 +390,7 @@ extension ChatListItem {
             previewStyle: previewStyle, media: media, thumbnailURL: thumbnailURL, delivery: delivery,
             time: time, unreadCount: unreadCount, unreadBadge: unreadBadge, badge: badge,
             badgeMuted: badgeMuted, hasMention: hasMention, accessibilityLabel: label,
-            isForwarded: isForwarded
+            isForwarded: isForwarded, lastIsOutgoing: lastIsOutgoing
         )
     }
 }
