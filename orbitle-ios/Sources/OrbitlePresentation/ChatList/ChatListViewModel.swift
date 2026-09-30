@@ -43,7 +43,11 @@ public final class ChatListViewModel {
     /// Все чаты в порядке списка: закреплённые, затем по свежести.
     public private(set) var chats: [Chat] = []
     /// Строки выбранной папки без архива, в пределах показанных страниц.
-    public private(set) var items: [ChatListItem] = []
+    public private(set) var items: [ChatListItem] = [] {
+        didSet { itemsChange = CollectionChange.between(oldValue.map(\.id), items.map(\.id)) }
+    }
+    /// Как список изменился последним обновлением: смена папки и новая страница — без анимации.
+    public private(set) var itemsChange: CollectionChange = .none
     public private(set) var archive: ChatArchiveSummary?
     public private(set) var folders: [ChatFolderTab] = []
     public private(set) var selectedFolderId = ChatFolder.allId
