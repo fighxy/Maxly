@@ -100,6 +100,9 @@ jobs:
       # закрылось, шаг печатает отчёт о сбое (стек) и журнал приложения.
       - name: Launch in Simulator
         if: steps.token.outputs.present == 'true'
+        # Обычно шаг идёт 3 минуты. Если симулятор завис при загрузке, шаг падает по
+        # таймауту, а сборка и публикация .ipa ниже всё равно выполняются.
+        timeout-minutes: 10
         env:
           ORBITLE_SIM_RUNTIME: "26.2"
         run: bash scripts/smoke-launch.sh build/sim/Build/Products/Debug-iphonesimulator/Orbitle.app
