@@ -451,10 +451,28 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             return serverId
         }
         guard !serverIds.isEmpty, started == generation else { return }
+        await applyFetchedReactions(chatId: chatId, serverIds: serverIds, started: started)
+    }
+
+    /// Реакции постов канала: история канала отдаёт посты без `reactionInfo`, поэтому они
+    /// спрашиваются `MSG_GET_REACTIONS` для показанных сообщений.
+    public func syncReactions(chatId: String, messageIds: [String]) async {
+        let started = generation
+        let rows = (try? messages(serverIds: messageIds)) ?? [:]
+        let serverIds = messageIds.filter { id in
+            Int64(id) != nil && rows[id]?.status == .sent
+        }
+        guard !serverIds.isEmpty else { return }
+        await applyFetchedReactions(chatId: chatId, serverIds: serverIds, started: started)
+    }
+
+    /// Один `MSG_GET_REACTIONS` и запись ответа. Берутся только сообщения с реакциями:
+    /// пропуск или пустая запись не значат «реакций нет».
+    private func applyFetchedReactions(chatId: String, serverIds: [String], started: Int) async {
         switch await api.fetchReactions(chatId: chatId, messageIds: serverIds) {
         case .success(let reactions):
             guard started == generation else { return }
-            Log.info(.messages, "Сверка реакций: запрошено \(serverIds.count), в ответе \(reactions.count)")
+            Log.info(.messages, "Реакции: запрошено \(serverIds.count), в ответе \(reactions.count)")
             var changed = false
             // Строки перечитываются одной выборкой: пока шёл запрос, база могла измениться.
             let current = (try? messages(serverIds: serverIds)) ?? [:]

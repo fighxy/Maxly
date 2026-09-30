@@ -277,6 +277,20 @@ struct ReactionRefreshTests {
         #expect(try await stored(repository, "102") == [MessageReaction(emoji: "🔥", count: 2, mine: true)])
     }
 
+    @Test("Реакции постов канала: 180 по списку id, неотправленные и чужие id не уходят")
+    func syncPosts() async throws {
+        let api = FakeMaxAPI()
+        await api.setFetchedReactions(.success(["101": counters([("👍", 5)], mine: nil)]))
+        let (repository, _) = try await makeMessageStack(api: api)
+        try await repository.upsert([
+            record("101", at: 1),
+            MessageRecord(id: "local-1", chatId: "c1", authorId: "me", text: "ждёт", timestamp: Date(timeIntervalSince1970: 3), status: .sending),
+        ])
+        await repository.syncReactions(chatId: "c1", messageIds: ["101", "local-1", "999"])
+        #expect(await api.reactionFetches == [["101"]])
+        #expect(try await stored(repository, "101") == [MessageReaction(emoji: "👍", count: 5, mine: false)])
+    }
+
     @Test("Пустой ответ 180 и пустые записи в нём реакции не стирают")
     func refreshEmptyReply() async throws {
         let api = FakeMaxAPI()

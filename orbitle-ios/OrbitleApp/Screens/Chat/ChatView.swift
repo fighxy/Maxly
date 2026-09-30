@@ -214,6 +214,13 @@ struct ChatView: View {
         .onChange(of: viewModel.forwardCandidate?.id) { _, id in
             if id != nil { forwardList = forwardTargets() }
         }
+        .task(id: chatType == .channel ? viewModel.messages.count : -1) {
+            guard chatType == .channel, !viewModel.messages.isEmpty else { return }
+            // Реакции постов: история канала их не несёт. Пауза — лента догружается пачками.
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            viewModel.requestReactions(for: viewModel.messages)
+        }
         .task(id: wantsCommentCounts ? viewModel.messages.count : -1) {
             guard wantsCommentCounts, !viewModel.messages.isEmpty else { return }
             // Пауза: лента догружается пачками, счётчики уходят одним запросом.
