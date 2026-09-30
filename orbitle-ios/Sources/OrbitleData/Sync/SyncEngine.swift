@@ -199,10 +199,38 @@ public actor SyncEngine {
             guard !event.chatId.isEmpty, !event.messageId.isEmpty,
                   let update = MessageContentCodec.reactionUpdate(event.reactionsJSON) else { return }
             try? await messages.applyReactions(chatId: event.chatId, messageId: event.messageId, update: update)
+            // Пуш несёт только счётчики: своя реакция, поставленная с другого устройства, в нём
+            // не видна. В открытом чате реакции сообщения дозапрашиваются (`MSG_GET_REACTIONS`).
+            if !update.mineKnown, event.chatId == focused {
+                scheduleOwnReactionCheck(chatId: event.chatId, messageId: event.messageId)
+            }
         case .typing:
             let mine = await messages.currentUser()
             guard !event.authorId.isEmpty, event.authorId != mine else { return }
             await chats.noteTyping(chatId: event.chatId, userId: event.authorId)
+        }
+    }
+
+    /// Сообщения открытого чата, чьи реакции надо дозапросить. Пуши идут пачками, поэтому
+    /// запрос уходит один после короткой паузы.
+    private var ownReactionChecks: [String: Set<String>] = [:]
+    private var ownReactionTask: Task<Void, Never>?
+
+    private func scheduleOwnReactionCheck(chatId: String, messageId: String) {
+        ownReactionChecks[chatId, default: []].insert(messageId)
+        guard ownReactionTask == nil else { return }
+        ownReactionTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(600))
+            await self?.runOwnReactionChecks()
+        }
+    }
+
+    private func runOwnReactionChecks() async {
+        let batch = ownReactionChecks
+        ownReactionChecks = [:]
+        ownReactionTask = nil
+        for (chatId, ids) in batch {
+            await messages.syncReactions(chatId: chatId, messageIds: Array(ids))
         }
     }
 
