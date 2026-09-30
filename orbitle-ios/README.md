@@ -1,6 +1,6 @@
 # orbitle-ios
 
-iOS-клиент Orbitle на SwiftUI. Слои описаны в [`docs/architecture.md`](../docs/architecture.md). Komet — карта функций клиента Max ([`docs/komet-reference.md`](../docs/komet-reference.md)), не образец структуры. Вкладка «Настройки» описана в [`docs/settings.md`](docs/settings.md). Реакции на сообщения — в [`docs/reactions.md`](docs/reactions.md). Вложения (фото, видео, файлы, контакты) — в [`docs/attachments.md`](docs/attachments.md).
+iOS-клиент Orbitle на SwiftUI. Слои описаны в [`docs/architecture.md`](../docs/architecture.md). Komet — карта функций клиента Max ([`docs/komet-reference.md`](../docs/komet-reference.md)), не образец структуры. Вкладка «Настройки» описана в [`docs/settings.md`](docs/settings.md). Реакции на сообщения — в [`docs/reactions.md`](docs/reactions.md). Вложения (фото, видео, файлы, контакты) — в [`docs/attachments.md`](docs/attachments.md). Приватный режим — в [`docs/privacy-mode.md`](docs/privacy-mode.md).
 
 ## Слои
 
