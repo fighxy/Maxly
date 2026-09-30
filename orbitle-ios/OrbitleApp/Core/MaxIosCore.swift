@@ -426,7 +426,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         )
     }
 
-    private static func message(_ message: IosMessage) -> CoreMessage {
+    static func message(_ message: IosMessage) -> CoreMessage {
         CoreMessage(
             id: message.id,
             chatId: message.chatId,

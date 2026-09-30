@@ -25,6 +25,8 @@ actor FakeMaxCore: MaxCore {
     var callLog: [CoreCall] = []
     var directoryError: CoreFailure?
     private(set) var marked: [String] = []
+    private(set) var mediaCalls: [(items: [CoreOutgoingMedia], caption: String, replyTo: String)] = []
+    private(set) var contactCalls: [(contactId: String, replyTo: String)] = []
     private(set) var didLogout = false
     private(set) var lastText = ""
     private(set) var requestedPhones: [String] = []
@@ -177,6 +179,20 @@ actor FakeMaxCore: MaxCore {
 
     func markRead(chatId: String, messageId: String) async throws {
         marked.append(messageId)
+    }
+
+    func sendMedia(chatId: String, items: [CoreOutgoingMedia], caption: String, replyTo: String,
+                   progress: @escaping @Sendable (Double) -> Void) async throws -> CoreMessage {
+        if let sendError { throw sendError }
+        mediaCalls.append((items, caption, replyTo))
+        progress(1)
+        return sent
+    }
+
+    func sendContact(chatId: String, contactId: String, replyTo: String) async throws -> CoreMessage {
+        if let sendError { throw sendError }
+        contactCalls.append((contactId, replyTo))
+        return sent
     }
 
     nonisolated func phases() -> AsyncStream<CorePhase> {
@@ -488,6 +504,7 @@ extension FakeMaxCore {
     func failSession() { loadError = CoreFailure(kind: "SESSION_EXPIRED", key: nil) }
     func failLoad(kind: String) { loadError = CoreFailure(kind: kind, key: nil) }
     func setUser(_ id: String) { userId = id }
+    func setSent(_ message: CoreMessage) { sent = message }
     func setHistory(_ messages: [CoreMessage]) { history = messages }
     func setStoredToken(_ value: Bool) { storedToken = value }
     func setStartPhase(_ phase: CorePhase) { startPhase = phase }

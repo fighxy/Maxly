@@ -67,6 +67,9 @@ public struct Message: Identifiable, Hashable, Sendable {
             let name = file.name.trimmingCharacters(in: .whitespacesAndNewlines)
             return name.isEmpty ? "Файл" : name
         }
+        if let contact = content.attachments.compactMap(\.contact).first {
+            return contact.name.isEmpty ? "Контакт" : "Контакт: \(contact.name)"
+        }
         return "Сообщение"
     }
 

@@ -48,6 +48,14 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     private var reactionRequest = 0
     /// Каталог реакций сервера, после первой удачной загрузки.
     private var catalog: [String]?
+    /// Идущие загрузки вложений по локальному id сообщения.
+    private var uploads: [String: Task<Void, Never>] = [:]
+    /// Доля загрузки 0…1 по локальному id. Только в памяти: после перезапуска загрузка не
+    /// продолжается, сообщение становится `failed` и ждёт повтора.
+    private var progress: [String: Double] = [:]
+    /// Загрузки, которые отменил пользователь: их сообщения удаляются, а не падают в `failed`.
+    private var cancelledUploads: Set<String> = []
+    private var progressObservers: [UUID: AsyncStream<[String: Double]>.Continuation] = [:]
     /// Сколько последних сообщений сверяет `refreshReactions`: столько принимает один запрос.
     static let reactionsPage = 100
 
@@ -75,6 +83,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// Подключает очередь исходящих. Очередь держит репозиторий слабой ссылкой.
     public func attach(outbox: OutboxQueue) async {
         self.outbox = outbox
+        failStaleUploads()
         await outbox.attach(store: self)
     }
 
@@ -131,16 +140,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     public func send(text: String, chatId: String, replyTo: String?) async throws(OrbitleError) {
         let localId = "local-\(UUID().uuidString)"
         var content = MessageContent.empty
-        if let replyTo, let target = (try? message(id: replyTo)) ?? (try? message(serverId: replyTo)) {
-            let quoted = Self.record(target).domain
-            let name = quoted.authorName.trimmingCharacters(in: .whitespacesAndNewlines)
-            content.reply = MessageReply(
-                messageId: quoted.serverId ?? quoted.id,
-                authorName: quoted.authorId == currentUserId ? "Вы" : (name.isEmpty ? "Сообщение" : name),
-                preview: quoted.replySnippet,
-                kind: quoted.replyKind
-            )
-        }
+        content.reply = replyQuote(replyTo)
         let message = SDMessage(
             id: localId,
             chatId: chatId,
@@ -160,6 +160,217 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         notify(chatId: chatId)
         await outgoingHandler?(.queued(Self.record(message)))
         await outbox?.enqueue(localId)
+    }
+
+    // MARK: Вложения
+
+    /// Пузырь с локальными копиями появляется сразу (`sending`), затем в фоне идут загрузка
+    /// и `MSG_SEND`. Очередь текстов (`OutboxQueue`) эти сообщения не трогает: у них свой
+    /// путь с ходом загрузки и отменой.
+    public func sendAttachments(_ drafts: [AttachmentDraft], caption: String, chatId: String, replyTo: String?) async throws(OrbitleError) {
+        guard !drafts.isEmpty else { throw .invalidRequest }
+        let localId = "local-\(UUID().uuidString)"
+        var content = MessageContent.empty
+        content.reply = replyQuote(replyTo)
+        content.attachments = drafts.enumerated().map { $0.element.preview(index: $0.offset) }
+        content.drafts = drafts
+        let text = drafts.contains { $0.kind == .contact } ? "" : caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        let message = SDMessage(
+            id: localId,
+            chatId: chatId,
+            authorId: currentUserId,
+            text: text,
+            timestamp: .now,
+            status: .sending
+        )
+        message.contentJSON = MessageContentCodec.encode(content)
+        do {
+            message.chat = try chat(id: chatId)
+            modelContext.insert(message)
+            try modelContext.save()
+        } catch {
+            throw .storageError
+        }
+        notify(chatId: chatId)
+        await outgoingHandler?(.queued(Self.record(message)))
+        startUpload(localId: localId)
+    }
+
+    /// Идущая загрузка отменяется, и сообщение исчезает. Неотправленное сообщение с
+    /// вложениями без загрузки (упавшее) просто удаляется.
+    public func cancelUpload(messageId: String) async {
+        if let task = uploads[messageId] {
+            cancelledUploads.insert(messageId)
+            task.cancel()
+            return
+        }
+        guard let message = try? message(id: messageId), message.status != .sent,
+              Self.content(of: message).hasPendingUploads else { return }
+        removeUnsent(localId: messageId)
+    }
+
+    public nonisolated func uploadProgress() -> AsyncStream<[String: Double]> {
+        AsyncStream { continuation in
+            let id = UUID()
+            Task { await self.addProgressObserver(id, continuation) }
+            continuation.onTermination = { _ in
+                Task { await self.removeProgressObserver(id) }
+            }
+        }
+    }
+
+    /// Загрузка ещё идёт (для тестов и повтора).
+    public func isUploading(localId: String) -> Bool {
+        uploads[localId] != nil
+    }
+
+    /// Дождаться конца загрузки сообщения, если она идёт.
+    public func waitForUpload(localId: String) async {
+        await uploads[localId]?.value
+    }
+
+    private func startUpload(localId: String) {
+        guard uploads[localId] == nil, let stored = try? message(id: localId) else { return }
+        let content = Self.content(of: stored)
+        guard let drafts = content.drafts, !drafts.isEmpty else { return }
+        let chatId = stored.chatId
+        let caption = stored.text
+        let quoted = content.reply?.messageId
+        let replyTo = quoted.flatMap { Int64($0) == nil ? nil : $0 }
+        let api = api
+        progress[localId] = 0
+        publishProgress()
+        // Репозиторий живёт всё время работы приложения: сильная ссылка на время загрузки безопасна.
+        uploads[localId] = Task {
+            let result = await api.sendAttachments(chatId: chatId, drafts: drafts, caption: caption, replyTo: replyTo) { fraction in
+                Task { await self.noteProgress(localId: localId, fraction: fraction) }
+            }
+            await self.finishUpload(localId: localId, result: result)
+        }
+    }
+
+    private func noteProgress(localId: String, fraction: Double) {
+        guard uploads[localId] != nil else { return }
+        let value = min(max(fraction, 0), 1)
+        // Колбэки идут отдельными задачами и могут прийти не по порядку.
+        guard value > (progress[localId] ?? 0) else { return }
+        progress[localId] = value
+        publishProgress()
+    }
+
+    private func finishUpload(localId: String, result: Result<MessageRecord, MaxAPIError>) async {
+        uploads[localId] = nil
+        progress[localId] = nil
+        publishProgress()
+        let cancelled = cancelledUploads.remove(localId) != nil
+        guard let message = try? message(id: localId) else { return }
+        if cancelled {
+            Log.info(.messages, "Загрузка вложений отменена")
+            removeUnsent(localId: localId)
+            return
+        }
+        switch result {
+        case .success(let record):
+            let serverId = record.serverId ?? record.id
+            for echo in (try? echoes(of: serverId, except: localId)) ?? [] {
+                modelContext.delete(echo)
+            }
+            var content = Self.content(of: message)
+            let fresh = MessageContentCodec.decode(record.contentJSON)
+            content.attachments = Self.keepingLocalCopies(fresh.attachments, local: content.attachments)
+            content.formatting = fresh.formatting
+            content.drafts = nil
+            message.contentJSON = MessageContentCodec.encode(content)
+            if !record.text.isEmpty { message.text = record.text }
+            message.status = .sent
+            message.serverId = serverId
+            message.timestamp = record.timestamp
+            try? modelContext.save()
+            notify(chatId: message.chatId)
+            Log.info(.messages, "Вложения отправлены: \(serverId)")
+            await outgoingHandler?(.sent(Self.record(message)))
+        case .failure(let error):
+            Log.warning(.messages, "Вложения не отправлены: \(error)")
+            message.status = .failed
+            try? modelContext.save()
+            notify(chatId: message.chatId)
+            await outgoingHandler?(.failed(Self.record(message)))
+        }
+    }
+
+    /// Вложения сервера с путями к своим копиям: фото и видео видны сразу, без скачивания.
+    /// Пары ищутся по порядку внутри вида: сервер держит порядок `attaches`.
+    static func keepingLocalCopies(_ server: [ChatAttachment], local: [ChatAttachment]) -> [ChatAttachment] {
+        guard !server.isEmpty else { return local }
+        var photos = local.compactMap(\.photo).compactMap(\.localPath)[...]
+        var videos = local.compactMap(\.video).compactMap(\.localPath)[...]
+        var files = local.compactMap(\.file).compactMap(\.localPath)[...]
+        return server.map { attachment in
+            switch attachment {
+            case .photo(var item):
+                if item.localPath == nil, let path = photos.popFirst() { item.localPath = path }
+                return .photo(item)
+            case .video(var item):
+                if item.localPath == nil, let path = videos.popFirst() { item.localPath = path }
+                return .video(item)
+            case .file(var item):
+                if item.localPath == nil, let path = files.popFirst() { item.localPath = path }
+                return .file(item)
+            default:
+                return attachment
+            }
+        }
+    }
+
+    private func removeUnsent(localId: String) {
+        guard let message = try? message(id: localId) else { return }
+        let chatId = message.chatId
+        modelContext.delete(message)
+        try? modelContext.save()
+        notify(chatId: chatId)
+    }
+
+    /// После перезапуска загрузок нет: зависшие в `sending` сообщения с вложениями падают в
+    /// `failed`, их можно повторить.
+    private func failStaleUploads() {
+        let sending = MessageStatus.sending.rawValue
+        let descriptor = FetchDescriptor<SDMessage>(predicate: #Predicate { $0.statusRaw == sending })
+        var changed = Set<String>()
+        for message in (try? modelContext.fetch(descriptor)) ?? [] where uploads[message.id] == nil {
+            guard Self.content(of: message).hasPendingUploads else { continue }
+            message.status = .failed
+            changed.insert(message.chatId)
+        }
+        guard !changed.isEmpty else { return }
+        try? modelContext.save()
+        changed.forEach(notify(chatId:))
+    }
+
+    private func replyQuote(_ replyTo: String?) -> MessageReply? {
+        guard let replyTo, let target = (try? message(id: replyTo)) ?? (try? message(serverId: replyTo)) else { return nil }
+        let quoted = Self.record(target).domain
+        let name = quoted.authorName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return MessageReply(
+            messageId: quoted.serverId ?? quoted.id,
+            authorName: quoted.authorId == currentUserId ? "Вы" : (name.isEmpty ? "Сообщение" : name),
+            preview: quoted.replySnippet,
+            kind: quoted.replyKind
+        )
+    }
+
+    private func addProgressObserver(_ id: UUID, _ continuation: AsyncStream<[String: Double]>.Continuation) {
+        if case .terminated = continuation.yield(progress) { return }
+        progressObservers[id] = continuation
+    }
+
+    private func removeProgressObserver(_ id: UUID) {
+        progressObservers[id] = nil
+    }
+
+    private func publishProgress() {
+        for continuation in progressObservers.values {
+            continuation.yield(progress)
+        }
     }
 
     /// Своя реакция: сразу в базе, затем на сервере. Ответ сервера (если в нём есть реакции)
@@ -421,6 +632,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// Повторная отправка сообщения со статусом `failed`.
     public func retry(messageId: String) async throws(OrbitleError) {
         guard let message = try? message(id: messageId), message.status == .failed else { return }
+        let withAttachments = Self.content(of: message).hasPendingUploads
         do {
             message.status = .sending
             try modelContext.save()
@@ -429,7 +641,11 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         }
         notify(chatId: message.chatId)
         await outgoingHandler?(.queued(Self.record(message)))
-        await outbox?.enqueue(messageId)
+        if withAttachments {
+            startUpload(localId: messageId)
+        } else {
+            await outbox?.enqueue(messageId)
+        }
     }
 
     // MARK: Страницы (курсор по timestamp)
@@ -566,6 +782,10 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// Стирает сообщения в контексте этого актора. Выход зовёт это до удаления чатов.
     public func removeAll() throws(OrbitleError) {
         generation += 1
+        for (id, task) in uploads {
+            cancelledUploads.insert(id)
+            task.cancel()
+        }
         do {
             try modelContext.delete(model: SDMessage.self)
             try modelContext.save()
@@ -599,11 +819,15 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             predicate: #Predicate { $0.statusRaw == sending },
             sortBy: [SortDescriptor(\.timestamp, order: .forward)]
         )
-        return ((try? modelContext.fetch(descriptor)) ?? []).map(Self.record)
+        // Сообщения с вложениями отправляет своя загрузка, не очередь текстов.
+        return ((try? modelContext.fetch(descriptor)) ?? [])
+            .filter { !Self.content(of: $0).hasPendingUploads }
+            .map(Self.record)
     }
 
     public func outgoing(localId: String) -> MessageRecord? {
-        guard let message = try? message(id: localId), message.status == .sending else { return nil }
+        guard let message = try? message(id: localId), message.status == .sending,
+              !Self.content(of: message).hasPendingUploads else { return nil }
         return Self.record(message)
     }
 
