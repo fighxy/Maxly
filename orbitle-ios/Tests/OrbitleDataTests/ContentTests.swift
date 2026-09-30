@@ -181,6 +181,16 @@ struct MessageContentCodecTests {
 
 @Suite("Контент в базе")
 struct MessageContentStoreTests {
+    @Test("Запись базы правленого сообщения читается целиком, а не как фрагмент сервера")
+    func editedRoundTrip() {
+        let content = MessageContent(
+            reply: MessageReply(messageId: "5", authorName: "Анна", preview: "Привет", kind: .text),
+            reactions: [MessageReaction(emoji: "❤️", count: 2, mine: true)],
+            edited: true
+        )
+        #expect(MessageContentCodec.decode(MessageContentCodec.encode(content)) == content)
+    }
+
     @Test("Пустое эхо не стирает реакцию, непустой фрагмент заменяет её")
     func reactionSurvivesEmptyEcho() async throws {
         let api = FakeMaxAPI()
