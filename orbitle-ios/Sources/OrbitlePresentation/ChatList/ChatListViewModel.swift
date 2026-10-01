@@ -351,6 +351,7 @@ public final class ChatListViewModel {
         visibleLimit = Self.pageSize
         isEditing = false
         rebuildItems()
+        itemsChange = .reload
     }
 
     // MARK: Открытие и прочтение

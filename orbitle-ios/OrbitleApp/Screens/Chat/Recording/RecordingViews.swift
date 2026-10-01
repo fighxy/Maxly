@@ -8,6 +8,7 @@ import OrbitleUI
 /// с пульсом громкости, над ним — подсказка «вверх — закрепить».
 struct RecordButton: View {
     let session: RecordingSession
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -48,8 +49,8 @@ struct RecordButton: View {
                 .onChanged { session.pressChanged($0.translation) }
                 .onEnded { _ in session.pressEnded() }
         )
-        .animation(.spring(duration: 0.25), value: session.phase)
-        .animation(.spring(duration: 0.3), value: session.mode)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: session.phase)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: session.mode)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(session.phase == .idle ? "Удерживайте для записи, нажмите для смены режима" : "")
     }
@@ -60,7 +61,7 @@ struct RecordButton: View {
             Circle()
                 .fill(Color.orbitleAccent.opacity(0.25))
                 .frame(width: 84, height: 84)
-                .scaleEffect(1 + session.level * 0.6)
+                .scaleEffect(reduceMotion ? 1 : 1 + session.level * 0.6)
                 .animation(.easeOut(duration: 0.12), value: session.level)
             Circle()
                 .fill(Color.orbitleAccent)
@@ -97,6 +98,7 @@ struct RecordButton: View {
 struct RecordingBar: View {
     let session: RecordingSession
     @State private var blink = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 10) {
@@ -116,8 +118,8 @@ struct RecordingBar: View {
             Circle()
                 .fill(Color.red)
                 .frame(width: 10, height: 10)
-                .opacity(blink ? 0.25 : 1)
-                .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: blink)
+                .opacity(!reduceMotion && blink ? 0.25 : 1)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: blink)
                 .onAppear { blink = true }
             Text(Self.clock(session.elapsed))
                 .font(.body.monospacedDigit())

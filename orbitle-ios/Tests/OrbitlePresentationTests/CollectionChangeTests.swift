@@ -25,6 +25,13 @@ struct CollectionChangeTests {
         #expect(change.animatesTranscript)
     }
 
+    @Test("Крупный сдвиг окна не маскируется одной новой вставкой")
+    func largeWindowShift() {
+        let change = CollectionChange.between(ids(1...100), ids(95...101))
+        #expect(change == .reload)
+        #expect(!change.animatesTranscript)
+    }
+
     @Test("Старая страница сверху не анимируется в ленте")
     func prependedHistory() {
         let change = CollectionChange.between(ids(51...100), ids(1...100))
@@ -98,6 +105,21 @@ struct CollectionChangeTests {
 @Suite("Список чатов: что анимируется")
 @MainActor
 struct ChatListMotionTests {
+    @Test("Маленькая пересекающаяся папка всё равно является reload")
+    func folderSwitch() async {
+        let (model, repository) = makeList()
+        model.usesLocalFilters = true
+        let group = chat("g", at: 100, type: .group)
+        repository.emit([chat("a", at: 300, type: .private), chat("b", at: 200, type: .private), group])
+        #expect(await eventually { model.items.count == 3 })
+        model.selectFolder("local.private")
+        #expect(model.items.count == 2)
+        #expect(model.itemsChange == .reload)
+        model.selectFolder(ChatFolder.allId)
+        #expect(model.items.count == 3)
+        #expect(!model.itemsChange.animatesList)
+    }
+
     @Test("Первый снимок без анимации, подъём чата с новым сообщением — с анимацией")
     func listChanges() async {
         let (model, repository) = makeList()

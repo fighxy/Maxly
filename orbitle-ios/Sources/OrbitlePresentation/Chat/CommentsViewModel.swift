@@ -94,6 +94,7 @@ public final class CommentsViewModel {
             let page = try await repository.comments(chatId: chatId, postId: postId, before: nil, limit: pageSize)
             let pending = comments.filter { $0.status != .sent }
             comments = Self.merged(page, pending)
+            commentsChange = .reload
             hasMore = page.count >= pageSize
             loaded = true
             state = .loaded
