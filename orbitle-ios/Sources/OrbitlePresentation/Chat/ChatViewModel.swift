@@ -555,6 +555,7 @@ public final class ChatViewModel {
                 guard let counts = try? await comments.counts(chatId: chatId, postIds: chunk) else { continue }
                 guard let self else { return }
                 self.commentCounts.merge(counts) { _, new in new }
+                await self.repository.noteCommentCounts(chatId: chatId, counts: counts)
             }
         }
     }

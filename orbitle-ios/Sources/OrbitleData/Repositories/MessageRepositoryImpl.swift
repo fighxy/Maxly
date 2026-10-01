@@ -447,7 +447,8 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         var covered = Set<String>()
         let requestedAt = Date.now
         switch await api.fetchMessages(chatId: chatId, before: nil, limit: Self.pageSize) {
-        case .success(let records):
+        case .success(let fetched):
+            let records = await withReactions(fetched, chatId: chatId)
             guard started == generation else { return }
             do {
                 try upsert(records)
@@ -471,6 +472,47 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         }
         guard !serverIds.isEmpty, started == generation else { return }
         await applyFetchedReactions(chatId: chatId, serverIds: serverIds, started: started)
+    }
+
+    /// История канала приходит без реакций (`reactionsKnown == false`): они дозапрашиваются
+    /// (`MSG_GET_REACTIONS`) до записи, и пузырь сразу ложится с реакциями —
+    /// а не вырастает через мгновение после показа. Не ответил сервер — записи как были:
+    /// реакции догонит `syncReactions`.
+    func withReactions(_ records: [MessageRecord], chatId: String) async -> [MessageRecord] {
+        let missing = records.compactMap { record -> String? in
+            let id = record.serverId ?? record.id
+            guard !record.reactionsKnown, Int64(id) != nil else { return nil }
+            return id
+        }
+        guard !missing.isEmpty, case .success(let reactions) = await api.fetchReactions(chatId: chatId, messageIds: missing) else {
+            return records
+        }
+        return records.map { record in
+            guard !record.reactionsKnown,
+                  let update = reactions[record.serverId ?? record.id],
+                  update.counters.contains(where: { $0.count > 0 }) else { return record }
+            var content = MessageContentCodec.decode(record.contentJSON)
+            content.reactions = update.applied(to: content.reactions)
+            var copy = record
+            copy.contentJSON = MessageContentCodec.encode(content)
+            return copy
+        }
+    }
+
+    public func noteCommentCounts(chatId: String, counts: [String: Int]) async {
+        guard !counts.isEmpty, let rows = try? messages(serverIds: Array(counts.keys)) else { return }
+        var changed = false
+        for (serverId, count) in counts {
+            guard let message = rows[serverId], message.chatId == chatId else { continue }
+            var content = Self.content(of: message)
+            guard content.comments?.count != count else { continue }
+            content.comments = CommentSummary(count: count)
+            message.contentJSON = MessageContentCodec.encode(content)
+            changed = true
+        }
+        guard changed else { return }
+        try? modelContext.save()
+        notify(chatId: chatId)
     }
 
     /// Реакции постов канала: история канала отдаёт посты без `reactionInfo`, поэтому они
@@ -701,8 +743,10 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         let response = await api.fetchMessages(chatId: chatId, before: cursor, limit: Self.pageSize - local.count)
         try ensureCurrent(started)
         switch response {
-        case .success(let records):
-            guard !records.isEmpty else { return local.map(\.domain) }
+        case .success(let fetched):
+            guard !fetched.isEmpty else { return local.map(\.domain) }
+            let records = await withReactions(fetched, chatId: chatId)
+            try ensureCurrent(started)
             try upsert(records)
             return try page(chatId: chatId, before: before).map(\.domain)
         case .failure(.offline), .failure(.cancelled):
@@ -718,7 +762,8 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         let started = generation
         let requestedAt = Date.now
         switch await api.fetchMessages(chatId: chatId, before: nil, limit: Self.pageSize) {
-        case .success(let records):
+        case .success(let fetched):
+            let records = await withReactions(fetched, chatId: chatId)
             try ensureCurrent(started)
             try upsert(records)
             let gone = pruneMissing(chatId: chatId, page: records, requestedAt: requestedAt)
@@ -1099,9 +1144,13 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         let fresh = record.reactionsKnown && !keepReactions
         if !record.contentJSON.isEmpty {
             var content = MessageContentCodec.decode(record.contentJSON)
+            let stored = Self.content(of: message)
             if keepReactions || (!record.reactionsKnown && content.reactions.isEmpty) {
-                content.reactions = Self.content(of: message).reactions
+                content.reactions = stored.reactions
             }
+            // Счётчик комментариев приходит отдельным запросом: история его не несёт, и без
+            // этого полоса комментариев пропадала бы до следующего запроса — пузырь прыгал.
+            if content.comments == nil { content.comments = stored.comments }
             message.contentJSON = MessageContentCodec.encode(content)
             message.threadOf = record.threadOf
         } else if fresh {
