@@ -56,6 +56,12 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// Загрузки, которые отменил пользователь: их сообщения удаляются, а не падают в `failed`.
     private var cancelledUploads: Set<String> = []
     private var progressObservers: [UUID: AsyncStream<[String: Double]>.Continuation] = [:]
+    /// Эхо своих сообщений, пришедшее раньше ответа на отправку, по серверному id. Сервер шлёт
+    /// пуш о своём сообщении до того, как ответит на запрос отправки: раньше оно ложилось
+    /// второй строкой и пропадало, когда приходил ответ, — лента прыгала. Теперь эхо ждёт
+    /// ответа (`echoHold`); пришёл — эхо не нужно, нет — ложится в базу как есть.
+    private var heldEchoes: [String: MessageRecord] = [:]
+    static let echoHold: Duration = .seconds(8)
     /// Сколько последних сообщений сверяет `refreshReactions`: столько принимает один запрос.
     static let reactionsPage = 100
 
@@ -275,6 +281,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         switch result {
         case .success(let record):
             let serverId = record.serverId ?? record.id
+            heldEchoes[serverId] = nil
             for echo in (try? echoes(of: serverId, except: localId)) ?? [] {
                 modelContext.delete(echo)
             }
@@ -785,6 +792,15 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             var byServerId = try messages(serverIds: records.map { $0.serverId ?? $0.id })
             let chatRows = try chats(ids: records.map(\.chatId))
             for record in records {
+                let key = record.serverId ?? record.id
+                if byId[record.id] == nil, byServerId[key] == nil, try holdsEcho(record) {
+                    heldEchoes[key] = record
+                    Task { [weak self] in
+                        try? await Task.sleep(for: Self.echoHold)
+                        await self?.releaseEcho(key)
+                    }
+                    continue
+                }
                 if let message = byId[record.id] ?? byServerId[record.serverId ?? record.id] {
                     message.text = record.text
                     message.status = record.status
@@ -825,6 +841,24 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         }
         touched.forEach(notify(chatId:))
         return inserted
+    }
+
+    /// Своё сообщение с сервера, а в этом чате ещё отправляется своё: скорее всего, это эхо
+    /// отправляемого. Сообщения с другого своего устройства (отправки здесь нет) не ждут.
+    private func holdsEcho(_ record: MessageRecord) throws -> Bool {
+        guard !currentUserId.isEmpty, record.authorId == currentUserId, record.threadOf.isEmpty else { return false }
+        let chatId = record.chatId
+        let sending = MessageStatus.sending.rawValue
+        var descriptor = FetchDescriptor<SDMessage>(predicate: #Predicate { $0.chatId == chatId && $0.statusRaw == sending })
+        descriptor.fetchLimit = 1
+        return try !modelContext.fetch(descriptor).isEmpty
+    }
+
+    /// Ответ на отправку так и не пришёл: эхо ложится в базу обычной записью.
+    private func releaseEcho(_ key: String) {
+        guard let record = heldEchoes.removeValue(forKey: key) else { return }
+        if (try? message(serverId: key)) != nil { return }
+        _ = try? upsert([record])
     }
 
     /// Правка из пуша. Текст меняется всегда. Пустой фрагмент и пустое имя не затирают
@@ -905,6 +939,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     }
 
     public func markSent(localId: String, serverId: String, timestamp: Date) async {
+        heldEchoes[serverId] = nil
         guard let message = try? message(id: localId) else { return }
         // Эхо своего сообщения (пуш или опрос истории) могло прийти раньше ответа на отправку
         // и лечь отдельной строкой с серверным id. Остаётся локальная строка: экран уже
