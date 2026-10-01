@@ -329,6 +329,7 @@ final class AppContainer {
             links: mediaLinks,
             comments: commentsRepository,
             voice: voicePlayer,
+            gallery: PhotoLibrarySaver(),
             isNewDialog: isNew
         )
         chatModels[id] = model

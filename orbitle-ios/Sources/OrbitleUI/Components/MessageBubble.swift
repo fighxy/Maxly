@@ -36,6 +36,9 @@ public struct MessageBubble: View {
     private let onForward: (() -> Void)?
     private let onDelete: (() -> Void)?
     private let onEdit: (() -> Void)?
+    /// «Сохранить в Фото» (фото и видео) и «Сохранить в Файлы» (любые вложения).
+    private let onSaveToPhotos: (() -> Void)?
+    private let onSaveToFiles: (() -> Void)?
     /// «Ответить» и свайп ответа есть, только если в чат можно писать.
     private let allowsReply: Bool
     /// Реакции можно ставить: сообщение принято сервером. Иначе плашки только видны.
@@ -95,7 +98,9 @@ public struct MessageBubble: View {
         onReactionUsers: (() -> Void)? = nil,
         uploadProgress: Double? = nil,
         onCancelUpload: (() -> Void)? = nil,
-        roundPlayer: AnyView? = nil
+        roundPlayer: AnyView? = nil,
+        onSaveToPhotos: (() -> Void)? = nil,
+        onSaveToFiles: (() -> Void)? = nil
     ) {
         self.message = message
         self.isOutgoing = isOutgoing
@@ -120,6 +125,8 @@ public struct MessageBubble: View {
         self.onForward = onForward
         self.onDelete = onDelete
         self.onEdit = onEdit
+        self.onSaveToPhotos = onSaveToPhotos
+        self.onSaveToFiles = onSaveToFiles
         self.allowsReply = allowsReply
         self.allowsReactions = allowsReactions
         self.quickReactions = quickReactions
@@ -173,6 +180,12 @@ public struct MessageBubble: View {
             }
             if allowsComments {
                 Button("Комментарии", systemImage: "bubble.left.and.bubble.right", action: onComments)
+            }
+            if let onSaveToPhotos {
+                Button("Сохранить в Фото", systemImage: "square.and.arrow.down", action: onSaveToPhotos)
+            }
+            if let onSaveToFiles {
+                Button("Сохранить в Файлы", systemImage: "folder", action: onSaveToFiles)
             }
             if let onEdit {
                 Button("Изменить", systemImage: "pencil", action: onEdit)
