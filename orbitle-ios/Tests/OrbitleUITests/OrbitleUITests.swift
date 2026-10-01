@@ -34,7 +34,7 @@ struct ChatRowPartsTests {
 
     @Test("Кэш картинок отдаёт сохранённое без сети и чистится")
     func imageCache() async throws {
-        let pipeline = ImagePipeline(memoryLimit: 4, diskCapacity: 0)
+        let pipeline = ImagePipeline(memoryLimit: 4, directory: nil)
         let url = try #require(URL(string: "https://example.invalid/a.png"))
         #expect(pipeline.cached(url) == nil)
         let image = DecodedImage(PlatformImage())
@@ -48,6 +48,24 @@ struct ChatRowPartsTests {
         #expect(pipeline.cached(url) === image)
         await pipeline.removeAll()
         #expect(pipeline.cached(url) == nil)
+    }
+
+    @Test("Картинка на диске переживает перезапуск и стирается вместе с кэшем")
+    func diskCache() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "orbitle-images-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = try #require(URL(string: "https://example.invalid/p.jpg?r=abc"))
+        let other = try #require(URL(string: "https://example.invalid/p.jpg?r=abd"))
+        #expect(ImageDiskCache.name(for: url) == ImageDiskCache.name(for: url))
+        #expect(ImageDiskCache.name(for: url) != ImageDiskCache.name(for: other))
+
+        // Папки ещё нет: запись создаёт её сама.
+        ImageDiskCache(directory: directory).store(Data("jpeg".utf8), for: url)
+        let reopened = ImageDiskCache(directory: directory)
+        #expect(reopened.data(for: url) == Data("jpeg".utf8))
+        #expect(reopened.data(for: other) == nil)
+        reopened.removeAll()
+        #expect(reopened.data(for: url) == nil)
     }
 }
 
