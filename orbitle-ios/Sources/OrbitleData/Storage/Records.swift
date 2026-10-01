@@ -42,6 +42,8 @@ public struct ChatRecord: Sendable, Hashable {
     /// Запись полная (строка списка сервера): пустой `lastMessageId` значит «сообщений
     /// нет», а не «неизвестно», и прежнее превью очищается.
     public var lastKnown: Bool
+    /// Отметка прочтения других участников, мс (`participants` карточки чата). `0` — не сказано.
+    public var peerReadMark: Int64
 
     public init(
         id: String,
@@ -66,7 +68,8 @@ public struct ChatRecord: Sendable, Hashable {
         lastAuthorName: String? = nil,
         lastOutgoing: Bool? = nil,
         lastForwarded: Bool = false,
-        lastKnown: Bool = false
+        lastKnown: Bool = false,
+        peerReadMark: Int64 = 0
     ) {
         self.id = id
         self.title = title
@@ -91,6 +94,7 @@ public struct ChatRecord: Sendable, Hashable {
         self.lastOutgoing = lastOutgoing
         self.lastForwarded = lastForwarded
         self.lastKnown = lastKnown
+        self.peerReadMark = peerReadMark
     }
 
     public init(_ chat: Chat) {

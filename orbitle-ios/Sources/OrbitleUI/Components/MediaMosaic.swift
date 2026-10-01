@@ -11,6 +11,8 @@ struct MediaMosaic: View {
     let maxWidth: CGFloat
     let time: String?
     var status: MessageStatus?
+    /// Своё прочитано: две галочки.
+    var isRead = false
     var cornerRadius: CGFloat = 12
     var loadingId: String?
     /// Одиночный кадр занимает всю ширину (пузырь с подписью не должен быть шире фото).
@@ -135,7 +137,8 @@ struct MediaMosaic: View {
             case .sending:
                 Image(systemName: "clock").font(.system(size: 9, weight: .semibold))
             case .sent:
-                Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+                DeliveryChecks(read: isRead, lineWidth: 1.3)
+                    .scaleEffect(0.85)
             case .failed:
                 Image(systemName: "exclamationmark.circle.fill").font(.system(size: 10, weight: .semibold))
             case nil:

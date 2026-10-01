@@ -104,6 +104,10 @@ public actor SyncEngine {
     /// при сборке зависимостей.
     public func connectOutgoing() async {
         let chats = chats
+        let readers = messages
+        await chats.setPeerReadHandler { chatId, mark in
+            await readers.notePeerRead(chatId: chatId, mark: mark)
+        }
         await messages.setOutgoingHandler { [weak messages] change in
             switch change {
             case .queued(let record):

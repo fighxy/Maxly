@@ -439,6 +439,7 @@ public struct MessageBubble: View {
             maxWidth: bubbleWidth - inset * 2,
             time: hasText ? nil : ChatContentFormat.time(message.timestamp),
             status: isOutgoing ? message.status : nil,
+            isRead: message.isRead,
             cornerRadius: hasFill ? Self.radius - inset : Self.radius,
             loadingId: loadingId,
             fillsWidth: hasFill,
@@ -460,7 +461,7 @@ public struct MessageBubble: View {
                 text: message.displayText,
                 spans: message.content.formatting ?? [],
                 outgoing: isOutgoing,
-                trailingSpace: timeInReactions ? "" : "\u{2007}\u{2007}" + metaPlaceholder
+                trailingSpace: timeInReactions ? nil : metaReserve
             )
             .textSelection(.enabled)
             if !timeInReactions {
@@ -510,9 +511,15 @@ public struct MessageBubble: View {
         .padding(.bottom, 8)
     }
 
-    private var metaPlaceholder: String {
-        let time = (isEdited ? "изм. " : "") + ChatContentFormat.time(message.timestamp)
-        return isOutgoing ? time + "\u{2007}\u{2007}\u{2007}" : time
+    /// Невидимое место под время в конце текста. Те же шрифт и цифры, что у `meta`, и
+    /// место под галочки шире их самих: строка не заходит под время. Раньше место считалось
+    /// пробелами без моноширинных цифр и было уже галочек — конец строки наезжал на время.
+    private var metaReserve: Text {
+        var reserve = Text(verbatim: "\u{2007}\u{2007}")
+        if isEdited { reserve = reserve + Text(verbatim: "изм.\u{2007}") }
+        reserve = reserve + Text(verbatim: ChatContentFormat.time(message.timestamp)).monospacedDigit()
+        if isOutgoing { reserve = reserve + Text(verbatim: "\u{2007}\u{2007}\u{2007}\u{2007}") }
+        return reserve.font(.caption2)
     }
 
     private var meta: some View {
@@ -541,15 +548,16 @@ public struct MessageBubble: View {
         case .sending:
             Image(systemName: "clock")
                 .font(.system(size: 10, weight: .semibold))
+                .frame(width: DeliveryChecks.size.width)
                 .accessibilityLabel("Отправляется")
         case .sent:
-            Image(systemName: "checkmark")
-                .font(.system(size: 10, weight: .bold))
-                .accessibilityLabel("Отправлено")
+            DeliveryChecks(read: message.isRead)
+                .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: message.isRead)
         case .failed:
             Image(systemName: "exclamationmark.circle.fill")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.red)
+                .frame(width: DeliveryChecks.size.width)
                 .accessibilityLabel("Не отправлено")
         }
     }

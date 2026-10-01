@@ -247,18 +247,9 @@ public struct DeliveryMark: View {
             Image(systemName: "clock")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-        case .sent:
-            Image(systemName: "checkmark")
-                .font(.caption.weight(.semibold))
+        case .sent, .read:
+            DeliveryChecks(read: state == .read, lineWidth: 1.6)
                 .foregroundStyle(Color.orbitleAccent)
-        case .read:
-            ZStack(alignment: .leading) {
-                Image(systemName: "checkmark")
-                Image(systemName: "checkmark").offset(x: 5)
-            }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(Color.orbitleAccent)
-            .padding(.trailing, 5)
         case .failed:
             Image(systemName: "exclamationmark.circle.fill")
                 .font(.caption)

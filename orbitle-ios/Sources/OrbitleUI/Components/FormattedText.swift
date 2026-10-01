@@ -80,7 +80,7 @@ struct MessageTextView: View {
     let text: String
     let spans: [TextSpan]
     let outgoing: Bool
-    let trailingSpace: String
+    let trailingSpace: Text?
 
     var body: some View {
         let blocks = ChatTextFormat.blocks(text: text, spans: spans)
@@ -123,6 +123,7 @@ struct MessageTextView: View {
     private func content(_ block: TextBlock, last: Bool) -> Text {
         let body = Text(FormattedText.attributed(block, outgoing: outgoing))
         guard last else { return body }
-        return body + Text(verbatim: trailingSpace).font(.caption2).foregroundStyle(.clear)
+        guard let trailingSpace else { return body }
+        return body + trailingSpace.foregroundStyle(.clear)
     }
 }
