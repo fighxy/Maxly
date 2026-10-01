@@ -15,6 +15,8 @@ struct CallsView: View {
     @State private var joinLink = ""
     @Environment(\.privateMode) private var privateMode
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         List {
             Section {
@@ -50,7 +52,7 @@ struct CallsView: View {
                 .frame(width: 260)
             }
         }
-        .animation(.default, value: viewModel.filter)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.filter)
         .task { viewModel.activate() }
         .alert("Звонки пока недоступны", isPresented: $showsCallsUnavailable) {
             Button("Понятно", role: .cancel) {}

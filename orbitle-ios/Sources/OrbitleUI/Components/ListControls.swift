@@ -74,6 +74,7 @@ public struct FolderStrip: View {
     private let selected: String
     private let onSelect: (String) -> Void
     @Namespace private var underline
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(tabs: [ChatFolderTab], selected: String, onSelect: @escaping (String) -> Void) {
         self.tabs = tabs
@@ -120,9 +121,9 @@ public struct FolderStrip: View {
                 .padding(.horizontal, OrbitleTheme.pad)
                 .padding(.top, 4)
             }
-            .animation(.spring(duration: 0.3), value: selected)
+            .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: selected)
             .onChange(of: selected) { _, id in
-                withAnimation { proxy.scrollTo(id, anchor: .center) }
+                withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { proxy.scrollTo(id, anchor: .center) }
             }
         }
     }

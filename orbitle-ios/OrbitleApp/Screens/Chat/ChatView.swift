@@ -30,6 +30,8 @@ struct ChatView: View {
     @State private var atBottom = true
     /// Сообщения, пришедшие, пока лента прокручена вверх: число на кнопке «вниз».
     @State private var unseen = 0
+    @State private var visibleMessageId: String?
+    @State private var isOpening = true
     private static let bottomId = "transcript-bottom"
     /// Отступ ленты от краёв: пузыри ближе к краю экрана, как в Telegram.
     private static let feedInset: CGFloat = 8
@@ -66,23 +68,25 @@ struct ChatView: View {
                                 .padding(.top, 8)
                         }
                         ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, message in
-                            if startsDay(at: index) {
-                                DaySeparator(ChatContentFormat.dayTitle(message.timestamp))
-                                    .transition(.opacity)
+                            VStack(spacing: 2) {
+                                if startsDay(at: index) {
+                                    DaySeparator(ChatContentFormat.dayTitle(message.timestamp))
+                                        .transition(.opacity)
+                                }
+                                TranscriptBubble(
+                                    message: message,
+                                    viewModel: viewModel,
+                                    maxWidth: geo.size.width * OrbitleTheme.bubbleMax,
+                                    allowsComments: allowsComments(message),
+                                    showsAuthorName: showsAuthors && authorName(at: index),
+                                    showsAuthorAvatar: showsAuthors && authorAvatar(at: index),
+                                    reservesAvatar: showsAuthors,
+                                    group: group(at: index),
+                                    canWrite: canWrite,
+                                    showsReactionUsers: chatType == .group,
+                                    reveal: reveal
+                                )
                             }
-                            TranscriptBubble(
-                                message: message,
-                                viewModel: viewModel,
-                                maxWidth: geo.size.width * OrbitleTheme.bubbleMax,
-                                allowsComments: allowsComments(message),
-                                showsAuthorName: showsAuthors && authorName(at: index),
-                                showsAuthorAvatar: showsAuthors && authorAvatar(at: index),
-                                reservesAvatar: showsAuthors,
-                                group: group(at: index),
-                                canWrite: canWrite,
-                                showsReactionUsers: chatType == .group,
-                                reveal: reveal
-                            )
                             .id(message.id)
                             .transition(.orbitleBubble(outgoing: viewModel.isOutgoing(message), reduceMotion: reduceMotion))
                         }
@@ -90,40 +94,76 @@ struct ChatView: View {
                         Color.clear
                             .frame(height: 1)
                             .id(Self.bottomId)
-                            .onAppear {
-                                atBottom = true
-                                unseen = 0
+                            .background {
+                                GeometryReader { marker in
+                                    Color.clear.preference(key: TranscriptBottomPreference.self,
+                                        value: marker.frame(in: .named("transcript-viewport")).maxY)
+                                }
                             }
-                            .onDisappear { atBottom = false }
+
                     }
+                    .transaction { transaction in
+                        if isOpening || viewModel.isRestoringHistory {
+                            transaction.animation = nil
+                            transaction.disablesAnimations = true
+                        }
+                    }
+                    .scrollTargetLayout()
                     .padding(.horizontal, Self.feedInset)
                     .padding(.bottom, 8)
                     // Новое снизу, удалённое, переставленное — плавно; первая страница и старая
                     // история сверху — сразу, иначе лента дёргается. Правило в `CollectionChange`.
-                    .animation(OrbitleMotion.transcript(viewModel.messagesChange, reduceMotion: reduceMotion), value: viewModel.messages.map(\.id))
+                    .animation(atBottom && !viewModel.isRestoringHistory ? OrbitleMotion.transcript(viewModel.messagesChange, reduceMotion: reduceMotion) : nil, value: viewModel.messages.map(\.id))
                     // Реакция или правка меняет размер пузыря: соседи раздвигаются плавно.
-                    .animation(OrbitleMotion.pop(reduceMotion: reduceMotion), value: viewModel.contentVersion)
+                    .animation(viewModel.messagesChange == .none && !viewModel.isRestoringHistory && atBottom ? OrbitleMotion.quick(reduceMotion: reduceMotion) : nil, value: viewModel.contentVersion)
                 }
                 // Чат открывается сразу внизу, а не сверху до загрузки истории.
                 .defaultScrollAnchor(.bottom)
+                .scrollPosition(id: $visibleMessageId, anchor: .top)
+                .coordinateSpace(name: "transcript-viewport")
+                .onPreferenceChange(TranscriptBottomPreference.self) { bottomY in
+                    let nearBottom = bottomY.isFinite && bottomY >= 0 && bottomY <= geo.size.height + (atBottom ? 64 : 24)
+                    atBottom = nearBottom
+                    if nearBottom { unseen = 0 }
+                }
                 // Клавиатура уходит, когда ленту тянут вниз вслед за пальцем или просто касаются
                 // её: касание не мешает кнопкам пузырей, жест срабатывает вместе с ними.
                 .scrollDismissesKeyboard(.interactively)
                 // Касание ленты прячет клавиатуру. Без клавиатуры жест выключен, чтобы лента
                 // не ждала его при каждом касании.
                 .simultaneousGesture(TapGesture().onEnded { composerFocused = false }, including: composerFocused ? .all : .subviews)
-                .onChange(of: viewModel.messages.last?.id) { old, id in
-                    guard let id else { return }
-                    let last = viewModel.messages.last
-                    if old == nil {
-                        // Первая загрузка: сразу к последнему, без анимации.
-                        proxy.scrollTo(Self.bottomId, anchor: .bottom)
-                    } else if atBottom || (last.map(viewModel.isOutgoing) ?? false) {
-                        // Та же кривая, что у появления пузыря: лента и пузырь едут вместе.
-                        withAnimation(OrbitleMotion.standard(reduceMotion: reduceMotion)) { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
-                    } else if id != old {
-                        unseen += 1
+                .onChange(of: viewModel.messages.map(\.id)) { old, ids in
+                    guard !ids.isEmpty else { return }
+                    if viewModel.isRestoringHistory || viewModel.messagesChange == .reload || old.isEmpty {
+                        // Первое открытие — сразу к последнему. Вернулись в чат (из профиля
+                        // собеседника), читая историю, — место в ленте не теряется.
+                        if old.isEmpty || (viewModel.isRestoringHistory && (isOpening || atBottom)) {
+                            var transaction = Transaction()
+                            transaction.disablesAnimations = true
+                            withTransaction(transaction) { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
+                        }
+                        return
                     }
+                    let previous = Set(old)
+                    let added = viewModel.messages.filter { !previous.contains($0.id) }
+                    // История сверху, удаление и перестановка не являются новыми сообщениями.
+                    guard case .appended = viewModel.messagesChange, !added.isEmpty else { return }
+                    if atBottom || added.contains(where: viewModel.isOutgoing) {
+                        withAnimation(OrbitleMotion.standard(reduceMotion: reduceMotion)) {
+                            proxy.scrollTo(Self.bottomId, anchor: .bottom)
+                        }
+                    } else {
+                        unseen += added.filter { !viewModel.isOutgoing($0) }.count
+                    }
+                }
+                .onChange(of: viewModel.isRestoringHistory) { _, restoring in
+                    guard !restoring else { return }
+                    let opening = isOpening
+                    isOpening = false
+                    guard opening || atBottom else { return }
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
                 }
                 .overlay(alignment: .bottom) {
                     if viewModel.showsSavedPlaceholder {
@@ -135,17 +175,19 @@ struct ChatView: View {
                 }
                 .animation(OrbitleMotion.fade, value: viewModel.showsSavedPlaceholder)
                 .overlay(alignment: .bottomTrailing) {
-                    if !atBottom, !viewModel.messages.isEmpty {
-                        scrollDownButton {
-                            withAnimation(OrbitleMotion.standard(reduceMotion: reduceMotion)) { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
-                            unseen = 0
+                    Group {
+                        if !atBottom, !viewModel.messages.isEmpty {
+                            scrollDownButton {
+                                withAnimation(OrbitleMotion.standard(reduceMotion: reduceMotion)) { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
+                                unseen = 0
+                            }
+                            .padding(.trailing, OrbitleTheme.pad)
+                            .padding(.bottom, 10)
+                            .transition(.orbitlePop(reduceMotion: reduceMotion))
                         }
-                        .padding(.trailing, OrbitleTheme.pad)
-                        .padding(.bottom, 10)
-                        .transition(.orbitlePop(reduceMotion: reduceMotion))
                     }
+                    .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: atBottom)
                 }
-                .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: atBottom)
                 .onChange(of: viewModel.scrollToken) { _, _ in
                     guard let id = viewModel.scrollTarget else { return }
                     proxy.scrollTo(id, anchor: .center)
@@ -158,9 +200,7 @@ struct ChatView: View {
         // Режим включают и выключают и с другого экрана: капсула всё равно выезжает плавно.
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: privateMode)
         .safeAreaInset(edge: .bottom, spacing: 0) { composer }
-        // Панель видна только на широком экране. Пока класс размера неизвестен (переходы),
-        // она тоже скрыта: иначе на миг выскакивает.
-        .toolbar(sizeClass == .regular ? .automatic : .hidden, for: .tabBar)
+        // Видимость tab bar управляется стабильным MainTabView.
         // Системный заголовок (и подпись кнопки «назад» следующего экрана) размыть нельзя:
         // в приватном режиме там всегда общее «Личный чат» / «Групповой чат».
         .navigationTitle(shownTitle)
@@ -413,7 +453,7 @@ struct ChatView: View {
                         RecordingBar(session: recording)
                             .transition(.opacity)
                     }
-                    if viewModel.editTarget == nil, !recording.isActive {
+                    if !recording.isActive {
                         Button {
                             composerFocused = false
                             attachmentsShown = true
@@ -427,6 +467,11 @@ struct ChatView: View {
                         .buttonStyle(.plain)
                         .orbitleGlassCircle(size: 44)
                         .orbitleGlassID("attach", in: composerGlass)
+                        // При правке слот сохраняется: длинный текст не получает
+                        // дополнительный перенос из-за смены ширины на 52 pt.
+                        .opacity(viewModel.editTarget == nil ? 1 : 0)
+                        .disabled(viewModel.editTarget != nil)
+                        .accessibilityHidden(viewModel.editTarget != nil)
                         .transition(.orbitlePop(reduceMotion: reduceMotion))
                         .accessibilityLabel("Прикрепить")
                     }
@@ -438,20 +483,23 @@ struct ChatView: View {
                             .padding(.horizontal, 16)
                             .padding(.vertical, 11)
                             .frame(minHeight: 44)
-                            .orbitleGlassCapsule()
+                            .orbitleGlassRounded(radius: 22)
                             .orbitleGlassID("field", in: composerGlass)
                     }
-                    if showsRecordButton {
-                        // Пустое поле: вместо отправки — запись голосового или кружка.
-                        RecordButton(session: recording)
-                    } else {
-                        sendButton
+                    ZStack {
+                        if showsRecordButton {
+                            RecordButton(session: recording)
+                                .transition(.opacity)
+                        } else {
+                            sendButton.transition(.opacity)
+                        }
                     }
+                    .frame(width: 44, height: 44)
+                    .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: showsRecordButton)
                 }
             }
         }
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: recording.isActive)
-        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: showsRecordButton)
         // Скрепка прячется при правке и возвращается после неё.
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.editTarget == nil)
     }
@@ -790,4 +838,9 @@ private struct TranscriptBubble: View {
                 .id(playback)
         )
     }
+}
+
+private struct TranscriptBottomPreference: PreferenceKey {
+    static let defaultValue: CGFloat = .infinity
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }

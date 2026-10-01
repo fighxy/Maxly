@@ -31,7 +31,7 @@ let package = Package(
         .testTarget(name: "OrbitleDomainTests", dependencies: ["OrbitleDomain"]),
         .testTarget(
             name: "OrbitleDataTests",
-            dependencies: ["OrbitleData"],
+            dependencies: ["OrbitleData", "OrbitlePresentation"],
             exclude: ["Info.plist"]
         ),
         .testTarget(name: "OrbitleUITests", dependencies: ["OrbitleUI"]),

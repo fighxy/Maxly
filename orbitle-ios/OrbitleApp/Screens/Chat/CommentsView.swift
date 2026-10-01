@@ -10,6 +10,8 @@ struct CommentsView: View {
     @Bindable var model: CommentsViewModel
     let onClose: () -> Void
     @State private var reveal = PrivateModeReveal()
+    @State private var atBottom = true
+    @State private var visibleCommentId: String?
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.privateMode) private var privateMode
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -22,15 +24,27 @@ struct CommentsView: View {
                         LazyVStack(spacing: 2) {
                             post(width: geo.size.width)
                             content(width: geo.size.width)
+                            Color.clear.frame(height: 1).background {
+                                GeometryReader { marker in
+                                    Color.clear.preference(key: CommentsBottomPreference.self,
+                                        value: marker.frame(in: .named("comments-viewport")).maxY)
+                                }
+                            }
                         }
+                        .scrollTargetLayout()
                         .padding(.horizontal, OrbitleTheme.pad)
                         .padding(.vertical, 8)
                         // Как в ленте чата: новые и удалённые — плавно, первая страница и
                         // подгрузка старых сверху — сразу.
-                        .animation(OrbitleMotion.transcript(model.commentsChange, reduceMotion: reduceMotion), value: model.comments.map(\.id))
+                        .animation(atBottom ? OrbitleMotion.transcript(model.commentsChange, reduceMotion: reduceMotion) : nil, value: model.comments.map(\.id))
                         .animation(OrbitleMotion.fade, value: model.state)
                     }
                     .defaultScrollAnchor(.bottom)
+                    .scrollPosition(id: $visibleCommentId, anchor: .top)
+                    .coordinateSpace(name: "comments-viewport")
+                    .onPreferenceChange(CommentsBottomPreference.self) { y in
+                        atBottom = y.isFinite && y >= 0 && y <= geo.size.height + (atBottom ? 64 : 24)
+                    }
                     .scrollDismissesKeyboard(.interactively)
                     .refreshable { await model.reload() }
                     .onChange(of: model.comments.last?.id) { old, id in
@@ -40,6 +54,9 @@ struct CommentsView: View {
                             proxy.scrollTo(id, anchor: .bottom)
                             return
                         }
+                        // Чужое новое и удаление последнего не уводят читателя из истории.
+                        guard case .appended = model.commentsChange,
+                              let last = model.comments.last, atBottom || model.isOutgoing(last) else { return }
                         withAnimation(OrbitleMotion.standard(reduceMotion: reduceMotion)) { proxy.scrollTo(id, anchor: .bottom) }
                     }
                 }
@@ -206,7 +223,7 @@ struct CommentsView: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 11)
                         .frame(minHeight: 44)
-                        .orbitleGlassCapsule()
+                        .orbitleGlassRounded(radius: 22)
                     Button {
                         Task { await model.send() }
                     } label: {
@@ -226,4 +243,9 @@ struct CommentsView: View {
         .padding(.top, 6)
         .padding(.bottom, 8)
     }
+}
+
+private struct CommentsBottomPreference: PreferenceKey {
+    static let defaultValue: CGFloat = .infinity
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
