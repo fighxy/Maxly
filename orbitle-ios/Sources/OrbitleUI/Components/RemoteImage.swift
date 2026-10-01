@@ -1,5 +1,7 @@
 import SwiftUI
 import ImageIO
+import CryptoKit
+import OrbitleDomain
 
 #if canImport(UIKit)
 import UIKit
@@ -67,23 +69,102 @@ final class ImageMemoryCache: @unchecked Sendable {
     func removeAll() { cache.removeAllObjects() }
 }
 
-/// Загрузка аватаров и миниатюр: память (`NSCache`), затем дисковый `URLCache`, затем сеть.
+/// Скачанные картинки на диске: файл на адрес, имя — SHA-256 адреса.
+///
+/// Лежат в папке «Фото» кэша (`StorageLayout`), там их считает и чистит экран «Данные и
+/// память». Дата изменения файла — время последнего показа: по ней кэш удаляет давно не
+/// открытое. Обновляется один раз за запуск, чтобы прокрутка не писала на диск.
+final class ImageDiskCache: @unchecked Sendable {
+    let directory: URL
+    private let lock = NSLock()
+    private var touched: Set<String> = []
+    private let queue = DispatchQueue(label: "orbitle.images.disk", qos: .utility)
+
+    init(directory: URL) {
+        self.directory = directory
+    }
+
+    static func name(for url: URL) -> String {
+        SHA256.hash(data: Data(url.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    func file(for url: URL) -> URL {
+        directory.appending(path: Self.name(for: url))
+    }
+
+    func data(for url: URL) -> Data? {
+        let file = file(for: url)
+        guard let data = try? Data(contentsOf: file) else { return nil }
+        touch(file)
+        return data
+    }
+
+    func store(_ data: Data, for url: URL) {
+        let file = file(for: url)
+        do {
+            try data.write(to: file, options: .atomic)
+        } catch {
+            // Папку могли стереть вместе с кэшем: создать и записать ещё раз.
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try? data.write(to: file, options: .atomic)
+        }
+        markTouched(file.lastPathComponent)
+    }
+
+    func removeAll() {
+        lock.lock()
+        touched.removeAll()
+        lock.unlock()
+        guard let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return }
+        for file in files {
+            try? FileManager.default.removeItem(at: file)
+        }
+    }
+
+    @discardableResult
+    private func markTouched(_ name: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return touched.insert(name).inserted
+    }
+
+    private func touch(_ file: URL) {
+        guard markTouched(file.lastPathComponent) else { return }
+        queue.async {
+            try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path)
+        }
+    }
+}
+
+/// Загрузка аватаров и фото: память (`NSCache`), затем свой дисковый кэш, затем сеть.
 /// Одновременные запросы одного адреса сливаются в один.
+///
+/// На диск ложатся только ответы, которые декодировались в картинку: страница ошибки CDN
+/// не попадёт в кэш. `URLCache` не используется: он не хранит крупные ответы, слушается
+/// заголовков сервера и не даёт посчитать и почистить фото отдельно от остального.
 public actor ImagePipeline {
-    public static let shared = ImagePipeline()
+    public static let shared = ImagePipeline(directory: defaultDirectory)
+
+    /// Папка «Фото» стандартной раскладки кэша.
+    public static var defaultDirectory: URL? {
+        (try? StorageLayout.standard())?.directory(.photos)
+    }
 
     private nonisolated let session: URLSession
     private nonisolated let memory: ImageMemoryCache
+    private nonisolated let disk: ImageDiskCache?
     private var inFlight: [NSString: Task<DecodedImage?, Never>] = [:]
     /// Размер декодирования по умолчанию: фото на весь экран.
     public static let fullSize = 1600
 
-    public init(memoryLimit: Int = 300, diskCapacity: Int = 100 * 1024 * 1024) {
+    /// `directory: nil` — только память (тесты, превью).
+    public init(memoryLimit: Int = 300, directory: URL?) {
         let configuration = URLSessionConfiguration.default
-        configuration.urlCache = URLCache(memoryCapacity: 8 * 1024 * 1024, diskCapacity: diskCapacity)
-        configuration.requestCachePolicy = .returnCacheDataElseLoad
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         session = URLSession(configuration: configuration)
         memory = ImageMemoryCache(limit: memoryLimit)
+        disk = directory.map(ImageDiskCache.init)
     }
 
     /// Уже декодированная картинка, без сети. Нужна, чтобы строка не мигала буквами при прокрутке.
@@ -91,7 +172,7 @@ public actor ImagePipeline {
         memory.object(for: url, maxPixel: maxPixel)
     }
 
-    /// Картинка, которая уже лежит на диске: файл или ответ в `URLCache`. Читается сразу,
+    /// Картинка, которая уже лежит на диске: файл или своя копия в кэше. Читается сразу,
     /// без ожидания, чтобы при возврате на экран фото не мигали заглушкой. Сеть не трогает.
     public nonisolated func cachedOnDisk(_ url: URL, maxPixel: Int = fullSize) -> DecodedImage? {
         if let hit = memory.object(for: url, maxPixel: maxPixel) { return hit }
@@ -99,7 +180,7 @@ public actor ImagePipeline {
         if url.isFileURL {
             data = try? Data(contentsOf: url)
         } else {
-            data = session.configuration.urlCache?.cachedResponse(for: URLRequest(url: url))?.data
+            data = disk?.data(for: url)
         }
         guard let data, let image = DecodedImage.decode(data, maxPixel: maxPixel) else { return nil }
         memory.set(image, for: url, maxPixel: maxPixel)
@@ -115,10 +196,16 @@ public actor ImagePipeline {
         let key = ImageMemoryCache.key(url, maxPixel)
         if let running = inFlight[key] { return await running.value }
         let session = session
+        let disk = url.isFileURL ? nil : disk
         let task = Task<DecodedImage?, Never>.detached(priority: .userInitiated) {
+            if let data = disk?.data(for: url), let image = DecodedImage.decode(data, maxPixel: maxPixel) {
+                return image
+            }
             guard let loaded = try? await session.data(from: url),
-                  (loaded.1 as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true else { return nil }
-            return DecodedImage.decode(loaded.0, maxPixel: maxPixel)
+                  (loaded.1 as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
+                  let image = DecodedImage.decode(loaded.0, maxPixel: maxPixel) else { return nil }
+            disk?.store(loaded.0, for: url)
+            return image
         }
         inFlight[key] = task
         let result = await task.value
@@ -127,10 +214,15 @@ public actor ImagePipeline {
         return result
     }
 
-    /// Выход из аккаунта: чужие аватары не должны остаться в памяти.
+    /// Фото стёрты с диска (экран «Данные и память»): забыть и декодированные копии.
+    public nonisolated func removeMemory() {
+        memory.removeAll()
+    }
+
+    /// Выход из аккаунта: чужие аватары и фото не должны остаться ни в памяти, ни на диске.
     public func removeAll() {
         memory.removeAll()
-        session.configuration.urlCache?.removeAllCachedResponses()
+        disk?.removeAll()
     }
 }
 

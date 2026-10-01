@@ -27,6 +27,9 @@ final class AppContainer {
     @ObservationIgnored private var chats: ChatRepositoryImpl?
     @ObservationIgnored private var messages: MessageRepositoryImpl?
     @ObservationIgnored private var media: MediaRepositoryImpl?
+    /// Кэш медиа на устройстве: размеры, очистка и правила для «Данных и памяти».
+    @ObservationIgnored private var storage: DeviceStorage?
+    @ObservationIgnored private var storageScreenModel: StorageSettingsModel?
     @ObservationIgnored private var mediaLinks: CoreMediaLinkResolver?
     @ObservationIgnored private var commentsRepository: CoreCommentsRepository?
     @ObservationIgnored private let voicePlayer = SystemVoicePlayer()
@@ -144,7 +147,16 @@ final class AppContainer {
             MediaHTTP.userAgent = core.mediaUserAgent()
             let mediaSession = URLSessionConfiguration.default
             if let agent = MediaHTTP.userAgent { mediaSession.httpAdditionalHeaders = ["User-Agent": agent] }
-            let media = MediaRepositoryImpl(http: URLSessionClient(configuration: mediaSession), directory: try MediaRepositoryImpl.defaultDirectory())
+            let layout = try StorageLayout.standard()
+            let storage = Self.makeStorage(layout: layout)
+            let media = MediaRepositoryImpl(
+                http: URLSessionClient(configuration: mediaSession),
+                layout: layout,
+                onStored: { await storage.trimIfNeeded() }
+            )
+            self.storage = storage
+            // Правила кэша (срок и предел) — при каждом запуске, в фоне.
+            Task.detached(priority: .utility) { await storage.trim() }
             let sync = SyncEngine(outbox: outbox, chats: chats, messages: messages)
             await sync.connectOutgoing()
             let session = SessionManager(
@@ -393,6 +405,37 @@ final class AppContainer {
         let model = DevicesModel(repository: accounts)
         devicesScreenModel = model
         return model
+    }
+
+    /// Кэш: своя раскладка медиа, база сообщений отдельно, «Прочее» — подготовленные к
+    /// отправке файлы (сутки после записи ещё нужны) и временные файлы старше часа.
+    private static func makeStorage(layout: StorageLayout) -> DeviceStorage {
+        let manager = FileManager.default
+        var extras: [DeviceStorage.Extra] = []
+        if let caches = manager.urls(for: .cachesDirectory, in: .userDomainMask).first {
+            extras.append(.init(url: caches.appending(path: "Outgoing", directoryHint: .isDirectory), minimumAge: 86_400))
+        }
+        extras.append(.init(url: manager.temporaryDirectory, minimumAge: 3_600))
+        let database = manager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appending(path: "Orbitle", directoryHint: .isDirectory)
+        return DeviceStorage(layout: layout, database: database, extras: extras, includesSystemCache: true)
+    }
+
+    func storageModel() -> StorageSettingsModel? {
+        guard let storage else { return nil }
+        if let storageScreenModel { return storageScreenModel }
+        let model = StorageSettingsModel(storage: storage) { categories in
+            // Файлы фото стёрты: забыть и декодированные копии, иначе экран покажет старое.
+            if categories.contains(.photos) { ImagePipeline.shared.removeMemory() }
+        }
+        storageScreenModel = model
+        return model
+    }
+
+    /// Приложение ушло в фон: применить правила кэша.
+    func trimStorage() {
+        guard let storage else { return }
+        Task.detached(priority: .utility) { await storage.trim() }
     }
 
     func foldersModel() -> FoldersModel {
