@@ -4,6 +4,8 @@ import Foundation
 public enum MediaType: String, Codable, Hashable, Sendable {
     case image
     case video
+    /// Кружок: круглое видеосообщение.
+    case videoNote
     case audio
     case file
 }
