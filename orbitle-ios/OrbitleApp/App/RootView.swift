@@ -123,6 +123,7 @@ struct MainTabView: View {
                 }
             case .background:
                 calls.disappeared()
+                container.trimStorage()
             default:
                 break
             }

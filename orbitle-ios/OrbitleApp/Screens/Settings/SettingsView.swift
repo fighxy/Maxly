@@ -76,6 +76,15 @@ struct SettingsView: View {
                 } label: {
                     SettingsRowLabel("Устройства", systemImage: "laptopcomputer.and.iphone", tint: .teal)
                 }
+                NavigationLink {
+                    if let model = container.storageModel() {
+                        DataStorageView(model: model)
+                    } else {
+                        PlaceholderSettingsView(title: "Данные и память", systemImage: "internaldrive")
+                    }
+                } label: {
+                    SettingsRowLabel("Данные и память", systemImage: "internaldrive.fill", tint: .green)
+                }
             }
 
             Section {

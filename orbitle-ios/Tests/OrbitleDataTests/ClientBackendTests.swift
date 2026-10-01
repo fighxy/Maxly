@@ -717,22 +717,3 @@ struct SyncEventTests {
         #expect(left.contains(where: { $0.text == "своё" }))
     }
 }
-
-@Suite("Медиакэш")
-struct MediaCacheTests {
-    @Test("Вытесняет самый давно использованный файл")
-    func evictsOldest() throws {
-        let directory = FileManager.default.temporaryDirectory.appending(path: "orbitle-cache-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let older = directory.appending(path: "older")
-        let newer = directory.appending(path: "newer")
-        try Data(count: 100).write(to: older)
-        try Data(count: 100).write(to: newer)
-        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 10)], ofItemAtPath: older.path)
-        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 20)], ofItemAtPath: newer.path)
-        try MediaCache.evict(directory: directory, limit: 150)
-        #expect(!FileManager.default.fileExists(atPath: older.path))
-        #expect(FileManager.default.fileExists(atPath: newer.path))
-    }
-}

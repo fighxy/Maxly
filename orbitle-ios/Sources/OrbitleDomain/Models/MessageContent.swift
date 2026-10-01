@@ -316,7 +316,7 @@ public struct VideoContent: Hashable, Sendable, Codable {
 
     public func cacheItem() -> MediaItem? {
         guard let url else { return nil }
-        return MediaItem(id: id, type: .video, url: url, size: 0, localPath: localPath)
+        return MediaItem(id: id, type: isRound ? .videoNote : .video, url: url, size: 0, localPath: localPath)
     }
 }
 

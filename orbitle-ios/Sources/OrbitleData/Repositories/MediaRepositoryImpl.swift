@@ -1,30 +1,21 @@
 import Foundation
 import OrbitleDomain
 
-/// Дисковый кэш медиа. Старые файлы вытесняются по дате использования.
+/// Дисковый кэш медиа: файлы лежат по папкам категорий (`StorageLayout`). Сроки хранения
+/// и предел размера применяет `DeviceStorage`: репозиторий зовёт `onStored` после загрузки.
 public actor MediaRepositoryImpl: MediaRepository {
-    public static let defaultByteLimit: Int64 = 200 * 1024 * 1024
-
     private let http: URLSessionClient
-    private let directory: URL
-    private let byteLimit: Int64
+    private let layout: StorageLayout
+    private let onStored: @Sendable () async -> Void
 
-    public init(http: URLSessionClient, directory: URL, byteLimit: Int64 = defaultByteLimit) {
+    public init(http: URLSessionClient, layout: StorageLayout, onStored: @escaping @Sendable () async -> Void = {}) {
         self.http = http
-        self.directory = directory
-        self.byteLimit = byteLimit
+        self.layout = layout
+        self.onStored = onStored
     }
 
-    public static func defaultDirectory() throws -> URL {
-        let support = try FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        let directory = support.appending(path: "OrbitleMedia", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
+    public init(http: URLSessionClient, directory: URL) {
+        self.init(http: http, layout: StorageLayout(root: directory))
     }
 
     public func preview(for item: MediaItem) async throws(OrbitleError) -> URL {
@@ -64,7 +55,7 @@ public actor MediaRepositoryImpl: MediaRepository {
     }
 
     public func clearCache() async {
-        guard let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return }
+        guard let files = try? FileManager.default.contentsOfDirectory(at: layout.root, includingPropertiesForKeys: nil) else { return }
         for file in files {
             try? FileManager.default.removeItem(at: file)
         }
@@ -72,19 +63,26 @@ public actor MediaRepositoryImpl: MediaRepository {
 
     private func cached(_ item: MediaItem) -> URL? {
         let url = destination(for: item)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        if FileManager.default.fileExists(atPath: url.path) { return url }
+        // Прежняя раскладка: все файлы прямо в корне. Найденный файл переезжает в свою папку.
+        let legacy = layout.root.appending(path: url.lastPathComponent)
+        guard FileManager.default.fileExists(atPath: legacy.path),
+              (try? layout.prepared(item.type.storageCategory)) != nil,
+              (try? FileManager.default.moveItem(at: legacy, to: url)) != nil else { return nil }
+        return url
     }
 
     private func fetch(_ item: MediaItem, progress: @escaping @Sendable (Double) -> Void) async throws -> URL {
+        _ = try layout.prepared(item.type.storageCategory)
         let dest = destination(for: item)
         try await http.download(from: item.url, to: dest, onProgress: progress)
-        try MediaCache.evict(directory: directory, limit: byteLimit)
+        await onStored()
         return dest
     }
 
     private func destination(for item: MediaItem) -> URL {
         let name = item.id.filter { $0.isLetter || $0.isNumber }
-        var url = directory.appending(path: name.isEmpty ? "file" : name)
+        var url = layout.directory(item.type.storageCategory).appending(path: name.isEmpty ? "file" : name)
         let ext = item.url.pathExtension
         if !ext.isEmpty, ext.allSatisfy({ $0.isLetter || $0.isNumber }) {
             url.appendPathExtension(ext)
@@ -94,25 +92,5 @@ public actor MediaRepositoryImpl: MediaRepository {
 
     private func touch(_ url: URL) {
         try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
-    }
-}
-
-enum MediaCache {
-    /// Удаляет самые давно использованные файлы, пока каталог не влезет в `limit`.
-    static func evict(directory: URL, limit: Int64) throws {
-        let files = try FileManager.default.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey]
-        )
-        var sized = try files.map { url -> (URL, Int64, Date) in
-            let values = try url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
-            return (url, Int64(values.fileSize ?? 0), values.contentModificationDate ?? .distantPast)
-        }.sorted { $0.2 < $1.2 }
-        var total = sized.reduce(Int64(0)) { $0 + $1.1 }
-        while total > limit, let oldest = sized.first {
-            try FileManager.default.removeItem(at: oldest.0)
-            total -= oldest.1
-            sized.removeFirst()
-        }
     }
 }
