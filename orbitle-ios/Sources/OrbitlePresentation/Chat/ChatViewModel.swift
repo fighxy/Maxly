@@ -605,7 +605,7 @@ public final class ChatViewModel {
         }
         if let tappedVideo, tappedVideo.isRound, let url = tappedVideo.playbackURL ?? resolvedVideos[tappedVideo.id] {
             stopVoice()
-            roundPlayback = RoundPlayback(id: tappedVideo.id, url: url)
+            playRound(tappedVideo.id, url: url)
             return
         }
         guard slides.contains(where: { $0.id == startId }) else { return }
@@ -630,6 +630,22 @@ public final class ChatViewModel {
 
     public func voicePhase(for id: String) -> VoicePhase {
         voicePhases[id] ?? .idle
+    }
+
+    /// Кружок играет из кэша («Видеосообщения» в «Данных и памяти»): ролик в полмегабайта
+    /// качается целиком, а повторный просмотр не тянет его из сети. Не скачался — играет поток.
+    private func playRound(_ id: String, url: URL) {
+        guard !url.isFileURL, let media else {
+            roundPlayback = RoundPlayback(id: id, url: url)
+            return
+        }
+        loadingMediaId = id
+        mediaTask = Task {
+            let file = try? await media.preview(for: MediaItem(id: "note-\(id)", type: .videoNote, url: url, size: 0))
+            guard !Task.isCancelled else { return }
+            loadingMediaId = nil
+            roundPlayback = RoundPlayback(id: id, url: file ?? url)
+        }
     }
 
     /// Кружок доиграл или ушёл из ленты.

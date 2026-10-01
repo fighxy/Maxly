@@ -4,7 +4,7 @@ The review covered main at `5de1fb2333b278225e734a5a902aad1c662dd248` after repo
 
 ## Changes
 
-- Image bodies read decoded memory only. File/URLCache reads and image decoding run in background tasks. Concurrent sizes share source bytes, decoded entries remain keyed by URL and pixel size, and view task identity includes both. Cache clearing cancels old work and prevents it from repopulating memory. Local recording previews keep working through the asynchronous file path. Attachment previews also decode outside body.
+- Image bodies read decoded memory only. File and disk-cache reads (`ImageDiskCache`, docs/storage.md) and image decoding run in background tasks. Concurrent sizes share source bytes, decoded entries remain keyed by URL and pixel size, and view task identity includes both. Cache clearing cancels old work and prevents it from repopulating memory. Local recording previews keep working through the asynchronous file path. Attachment previews also decode outside body.
 - Every chat opening explicitly restores history. Cache and server catch-up use reload semantics; the stream is restarted with an authoritative baseline after synchronization. Late snapshots from the old subscription cannot override the new generation. Live insertion animations resume afterward.
 - The transcript tracks a scroll target and bottom-marker geometry with hysteresis. Deletions/reorders/history no longer masquerade as new messages. The unseen count includes all newly appended incoming messages. Comments also avoid pulling a reader out of history on new incoming messages.
 - Reaction geometry uses the quick curve near the bottom, instead of bouncing the whole transcript. History readers receive no transcript insertion animation.

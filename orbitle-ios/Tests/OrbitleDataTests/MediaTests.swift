@@ -48,6 +48,9 @@ struct MediaCancellationTests {
         preview.cancel()
 
         #expect(await preview.value == .cancelled)
-        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+        let left = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.isRegularFileKey])?
+            .compactMap { $0 as? URL }
+            .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true } ?? []
+        #expect(left.isEmpty)
     }
 }
