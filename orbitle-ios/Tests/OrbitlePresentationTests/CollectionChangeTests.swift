@@ -109,9 +109,8 @@ struct ChatListMotionTests {
     func folderSwitch() async {
         let (model, repository) = makeList()
         model.usesLocalFilters = true
-        var group = chat("g", at: 100)
-        group.type = .group
-        repository.emit([chat("a", at: 300), chat("b", at: 200), group])
+        let group = chat("g", at: 100, type: .group)
+        repository.emit([chat("a", at: 300, type: .private), chat("b", at: 200, type: .private), group])
         #expect(await eventually { model.items.count == 3 })
         model.selectFolder("local.private")
         #expect(model.items.count == 2)
