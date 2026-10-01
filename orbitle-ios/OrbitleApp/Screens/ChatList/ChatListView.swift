@@ -65,7 +65,9 @@ struct ChatListView: View {
             get: { viewModel.isEditing ? viewModel.editSelection : Set(selection.map { [$0] } ?? []) },
             set: { ids in
                 if viewModel.isEditing { viewModel.editSelection = ids }
-                else { selection = ids.first }
+                // Касание может добавить строку к уже выбранной (открытый чат на iPad):
+                // открыть новую, а не случайную из набора.
+                else { selection = ids.first { $0 != selection } ?? ids.first }
             }
         )
     }

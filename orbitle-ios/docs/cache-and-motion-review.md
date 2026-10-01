@@ -12,6 +12,12 @@ The review covered main at `5de1fb2333b278225e734a5a902aad1c662dd248` after repo
 - The root tab container owns tab-bar visibility. Chat and list no longer independently switch its toolbar preference.
 - The composer and comments use fixed-radius rounded glass for multiple lines. Record/send controls occupy the same 44 pt slot. Recording and remaining list/filter curves honor Reduce Motion.
 
+## Follow-up after review
+
+- Restoration scrolls to the bottom only on the first opening or when the reader is already at the bottom. Returning to a chat from a pushed screen (the peer's profile) while reading history keeps the position; before, the end of restoration always jumped to the last message.
+- The chat list's single selection binding opens the row that was just added to the set, not an arbitrary member: on iPad a tap can add a row to the open chat's selection.
+- Device check: tapping a chat row opens it with the set-based selection outside edit mode (iPhone and iPad).
+
 ## Validation
 
 Regression tests cover concurrent image sizes, cache clearing during an in-flight request, async local-file decoding, cache/server restoration on repeated opening, live insertion afterward, small overlapping folders, and large window shifts.
