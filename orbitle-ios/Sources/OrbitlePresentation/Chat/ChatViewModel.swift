@@ -912,9 +912,10 @@ public final class ChatViewModel {
                 existing: photo.localPath,
                 item: photo.url.map { MediaItem(id: photo.id, type: .image, url: $0, size: 0) }
             )
-            let ext = SaveNaming.imageExtension(of: local)
-            let name = SaveNaming.name(for: message.timestamp, index: index, ext: ext)
-            return SavedFile(url: Self.namedCopy(of: local, name: name, id: photo.id), name: name, kind: .image)
+            // Только JPG или PNG: WebP, HEIC и прочее с CDN перекодируются.
+            let base = SaveNaming.name(for: message.timestamp, index: index, ext: "")
+            let saved = try await SaveFormat.image(at: local, in: SaveFormat.folder(for: photo.id), baseName: base)
+            return SavedFile(url: saved, name: saved.lastPathComponent, kind: .image)
         case .video(let video):
             var remote = video.url ?? resolvedVideos[video.id]
             if remote == nil, let links {
@@ -925,9 +926,11 @@ public final class ChatViewModel {
                 MediaItem(id: video.isRound ? "note-\(video.id)" : "video-\(video.id)", type: video.isRound ? .videoNote : .video, url: $0, size: 0)
             }
             let local = try await localFile(existing: video.localPath, item: item)
-            let ext = local.pathExtension.isEmpty ? "mp4" : local.pathExtension
-            let name = SaveNaming.name(for: message.timestamp, index: index, ext: ext)
-            return SavedFile(url: Self.namedCopy(of: local, name: name, id: video.id), name: name, kind: .video)
+            // Всегда MP4: QuickTime (.mov) перекладывается в MP4 без перекодирования.
+            let name = SaveNaming.name(for: message.timestamp, index: index, ext: "mp4")
+            let saved = SaveFormat.folder(for: video.id).appending(path: name)
+            try await SaveFormat.video(at: local, to: saved)
+            return SavedFile(url: saved, name: name, kind: .video)
         case .voice(let clip):
             let local = try await localFile(existing: clip.localPath, item: clip.cacheItem())
             let name = SaveNaming.name(for: message.timestamp, index: index, ext: local.pathExtension.isEmpty ? "ogg" : local.pathExtension)
