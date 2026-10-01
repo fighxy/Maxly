@@ -355,3 +355,28 @@ struct SubscriptionTests {
         #expect(await eventually { await chats.observerCount == 0 })
     }
 }
+
+@Suite("Прочитано собеседником")
+struct PeerReadTests {
+    @Test("Свои отправленные до отметки прочтения — две галочки, позже — одна")
+    func peerReadMark() async throws {
+        let (repository, _) = try await makeMessageStack(api: FakeMaxAPI())
+        try await repository.upsert([
+            MessageRecord(id: "1", serverId: "1", chatId: "c1", authorId: "me", text: "раньше", timestamp: Date(timeIntervalSince1970: 10), status: .sent),
+            MessageRecord(id: "2", serverId: "2", chatId: "c1", authorId: "me", text: "позже", timestamp: Date(timeIntervalSince1970: 20), status: .sent),
+        ])
+        var iterator = repository.messages(chatId: "c1").makeAsyncIterator()
+        let before = try #require(await iterator.next())
+        #expect(before.allSatisfy { !$0.isRead })
+
+        await repository.notePeerRead(chatId: "c1", mark: 15_000)
+        let after = try #require(await iterator.next())
+        #expect(after.first { $0.id == "1" }?.isRead == true)
+        #expect(after.first { $0.id == "2" }?.isRead == false)
+
+        // Отметка не уменьшается.
+        await repository.notePeerRead(chatId: "c1", mark: 5_000)
+        let rows = try await repository.loadMore(chatId: "c1", before: nil)
+        #expect(rows.count == 2)
+    }
+}

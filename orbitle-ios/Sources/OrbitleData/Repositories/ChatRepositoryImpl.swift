@@ -13,6 +13,8 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     public nonisolated let modelExecutor: any ModelExecutor
 
     private var observers: [UUID: AsyncStream<[Chat]>.Continuation] = [:]
+    /// Отметка прочтения собеседника выросла: сообщения чата перерисовывают галочки.
+    private var peerReadHandler: (@Sendable (String, Int64) async -> Void)?
     private var typingObservers: [UUID: AsyncStream<[String: [String]]>.Continuation] = [:]
     /// Кто печатает: id чата → id пользователя → когда это перестанет быть правдой.
     private var typingUntil: [String: [String: Date]] = [:]
@@ -108,11 +110,21 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     ///   время и счётчик, чтобы список не откатывался назад;
     /// - пустые `lastMessageId` и `preview` оставляют прежние значения;
     /// - отрицательный счётчик считается нулём.
+    public func setPeerReadHandler(_ handler: (@Sendable (String, Int64) async -> Void)?) {
+        peerReadHandler = handler
+    }
+
     public func upsert(_ records: [ChatRecord]) throws(OrbitleError) {
+        var raised: [(String, Int64)] = []
         do {
             // Одна выборка на весь пакет, а не по запросу на каждую запись.
             var existing = try chats(ids: records.map(\.id))
+            defer { reportPeerRead(raised) }
             for record in records {
+                if record.peerReadMark > 0, let chat = existing[record.id], record.peerReadMark > chat.peerReadMark {
+                    chat.peerReadMark = record.peerReadMark
+                    raised.append((record.id, record.peerReadMark))
+                }
                 if let chat = existing[record.id] {
                     Self.merge(record, into: chat)
                 } else {
@@ -132,6 +144,8 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
                     chat.lastMediaRaw = record.lastMedia?.rawValue
                     chat.lastThumbnailURLString = record.lastThumbnailURL?.absoluteString
                     Self.mergeFlags(record, into: chat)
+                    chat.peerReadMark = record.peerReadMark
+                    if record.peerReadMark > 0 { raised.append((record.id, record.peerReadMark)) }
                     modelContext.insert(chat)
                     existing[record.id] = chat
                 }
@@ -391,12 +405,20 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         notify()
     }
 
+    private func reportPeerRead(_ marks: [(String, Int64)]) {
+        guard let peerReadHandler, !marks.isEmpty else { return }
+        Task {
+            for (chatId, mark) in marks { await peerReadHandler(chatId, mark) }
+        }
+    }
+
     /// Собеседник прочитал сообщения до `mark` (мс): свои сообщения до этого времени прочитаны.
     public func applyPeerRead(chatId: String, mark: Int64) throws(OrbitleError) {
         do {
             guard mark > 0, let chat = try chat(id: chatId), mark > chat.peerReadMark else { return }
             chat.peerReadMark = mark
             try modelContext.save()
+            reportPeerRead([(chatId, mark)])
         } catch {
             throw .storageError
         }

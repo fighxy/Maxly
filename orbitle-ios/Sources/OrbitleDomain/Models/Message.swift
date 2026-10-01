@@ -22,6 +22,9 @@ public struct Message: Identifiable, Hashable, Sendable {
     public var status: MessageStatus
     public var mediaId: String?
     public var content: MessageContent
+    /// Своё отправленное прочитано собеседником (отметка прочтения чата не раньше его времени):
+    /// в пузыре две галочки.
+    public var isRead: Bool
 
     public init(
         id: String,
@@ -34,7 +37,8 @@ public struct Message: Identifiable, Hashable, Sendable {
         mediaId: String? = nil,
         content: MessageContent = .empty,
         authorName: String = "",
-        authorAvatarURL: URL? = nil
+        authorAvatarURL: URL? = nil,
+        isRead: Bool = false
     ) {
         self.id = id
         self.serverId = serverId
@@ -47,6 +51,7 @@ public struct Message: Identifiable, Hashable, Sendable {
         self.status = status
         self.mediaId = mediaId
         self.content = content
+        self.isRead = isRead
     }
 
     /// Текст пузыря: свой, а у пересланного без своего текста — текст оригинала.

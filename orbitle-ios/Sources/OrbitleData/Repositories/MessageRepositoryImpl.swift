@@ -61,6 +61,9 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// второй строкой и пропадало, когда приходил ответ, — лента прыгала. Теперь эхо ждёт
     /// ответа (`echoHold`); пришёл — эхо не нужно, нет — ложится в базу как есть.
     private var heldEchoes: [String: MessageRecord] = [:]
+    /// Отметка прочтения собеседника по чату, мс: свои отправленные до неё — две галочки.
+    /// Берётся из строки чата при первом показе, дальше растёт по `notePeerRead`.
+    private var peerReadMarks: [String: Int64] = [:]
     static let echoHold: Duration = .seconds(8)
     /// Сколько последних сообщений сверяет `refreshReactions`: столько принимает один запрос.
     static let reactionsPage = 100
@@ -899,6 +902,20 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         return try !modelContext.fetch(descriptor).isEmpty
     }
 
+    /// Собеседник прочитал чат до `mark` (мс): галочки своих сообщений перерисовываются.
+    public func notePeerRead(chatId: String, mark: Int64) {
+        guard mark > peerReadMark(chatId) else { return }
+        peerReadMarks[chatId] = mark
+        notify(chatId: chatId)
+    }
+
+    private func peerReadMark(_ chatId: String) -> Int64 {
+        if let known = peerReadMarks[chatId] { return known }
+        let stored = (try? chats(ids: [chatId]))?[chatId]?.peerReadMark ?? 0
+        peerReadMarks[chatId] = stored
+        return stored
+    }
+
     /// Ответ на отправку так и не пришёл: эхо ложится в базу обычной записью.
     private func releaseEcho(_ key: String) {
         guard let record = heldEchoes.removeValue(forKey: key) else { return }
@@ -1131,7 +1148,12 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         if threadOf.isEmpty {
             let limit = windows[chatId] ?? Self.pageSize
             let newestFirst = (try? fetchPage(chatId: chatId, before: nil, limit: limit)) ?? []
-            return newestFirst.reversed().map { Self.record($0).domain }
+            let mark = peerReadMark(chatId)
+            return newestFirst.reversed().map { row in
+                var message = Self.record(row).domain
+                message.isRead = mark > 0 && message.status == .sent && message.timestamp.unixMillis <= mark
+                return message
+            }
         }
         let rows = (try? fetchThread(chatId: chatId, threadOf: threadOf, limit: 200)) ?? []
         return rows.map { Self.record($0).domain }

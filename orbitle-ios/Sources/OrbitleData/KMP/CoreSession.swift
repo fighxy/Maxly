@@ -71,11 +71,14 @@ public struct CoreChat: Sendable, Equatable {
     public var lastFromMe: Int
     /// Последнее сообщение — пересылка (текст и вложение — пересланного).
     public var lastForwarded: Bool
+    /// Отметка прочтения других участников, мс: свои сообщения до неё прочитаны. `0` — неизвестно.
+    public var peerReadMs: Int64
 
     public init(
         id: String, title: String, type: String, lastMessageId: String, lastText: String, updatedAtMs: Int64, unread: Int,
         avatarURL: String = "", lastAuthorId: String = "", lastMedia: String = "", lastThumbURL: String = "", comments: Int = -1,
-        canWrite: Int = -1, muted: Int = -1, lastAuthorName: String = "", lastFromMe: Int = -1, lastForwarded: Bool = false
+        canWrite: Int = -1, muted: Int = -1, lastAuthorName: String = "", lastFromMe: Int = -1, lastForwarded: Bool = false,
+        peerReadMs: Int64 = 0
     ) {
         self.id = id
         self.title = title
@@ -94,6 +97,7 @@ public struct CoreChat: Sendable, Equatable {
         self.lastAuthorName = lastAuthorName
         self.lastFromMe = lastFromMe
         self.lastForwarded = lastForwarded
+        self.peerReadMs = peerReadMs
     }
 }
 

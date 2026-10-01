@@ -31,7 +31,8 @@ enum CoreMapping {
             canWrite: chat.canWrite < 0 ? nil : chat.canWrite == 1,
             lastAuthorName: chat.lastAuthorName.isEmpty ? nil : chat.lastAuthorName,
             lastOutgoing: chat.lastFromMe < 0 ? nil : chat.lastFromMe == 1,
-            lastForwarded: chat.lastForwarded
+            lastForwarded: chat.lastForwarded,
+            peerReadMark: chat.peerReadMs
         )
     }
 

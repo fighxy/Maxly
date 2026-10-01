@@ -395,7 +395,8 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             muted: Int(chat.muted),
             lastAuthorName: chat.lastAuthorName,
             lastFromMe: Int(chat.lastFromMe),
-            lastForwarded: chat.lastForwarded == 1
+            lastForwarded: chat.lastForwarded == 1,
+            peerReadMs: chat.peerReadMs
         )
     }
 
