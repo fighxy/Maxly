@@ -32,6 +32,12 @@ struct ChatView: View {
     @State private var unseen = 0
     @State private var isOpening = true
     private static let bottomId = "transcript-bottom"
+    /// На iOS 18 открытие и сверку держит низом сама прокрутка (`defaultScrollAnchor` для
+    /// `.sizeChanges`). Ручной `scrollTo` к низу ленивой ленты до того, как строки измерены,
+    /// иногда оставлял пустой экран, пока ленту не тронешь. На iOS 17 — как раньше.
+    private static var scrollsToBottomByHand: Bool {
+        if #available(iOS 18.0, *) { false } else { true }
+    }
     /// Отступ ленты от краёв: пузыри ближе к краю экрана.
     private static let feedInset: CGFloat = 8
     /// Отступ поля ввода от краёв.
@@ -141,7 +147,7 @@ struct ChatView: View {
                     if viewModel.isRestoringHistory || viewModel.messagesChange == .reload || old.isEmpty {
                         // Первое открытие — сразу к последнему. Вернулись в чат (из профиля
                         // собеседника), читая историю, — место в ленте не теряется.
-                        if old.isEmpty || (viewModel.isRestoringHistory && (isOpening || atBottom)) {
+                        if Self.scrollsToBottomByHand, old.isEmpty || (viewModel.isRestoringHistory && (isOpening || atBottom)) {
                             var transaction = Transaction()
                             transaction.disablesAnimations = true
                             withTransaction(transaction) { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
@@ -164,7 +170,7 @@ struct ChatView: View {
                     guard !restoring else { return }
                     let opening = isOpening
                     isOpening = false
-                    guard opening || atBottom else { return }
+                    guard Self.scrollsToBottomByHand, opening || atBottom else { return }
                     var transaction = Transaction()
                     transaction.disablesAnimations = true
                     withTransaction(transaction) { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
