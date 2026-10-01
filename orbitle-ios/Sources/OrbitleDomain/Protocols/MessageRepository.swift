@@ -34,6 +34,9 @@ public protocol MessageRepository: Sendable {
     func sendComment(text: String, chatId: String, postId: String) async throws(OrbitleError)
     /// Запомнить скачанный файл у вложения, не стирая остальной фрагмент.
     func noteDownloaded(messageId: String, attachmentId: String, localPath: String) async
+    /// Запомнить счётчики комментариев постов (серверный id → число): при следующем открытии
+    /// пузырь сразу ляжет с полосой комментариев, а не вырастет после запроса.
+    func noteCommentCounts(chatId: String, counts: [String: Int]) async
     /// Удалить сообщения: `forEveryone` — у всех участников, иначе только у себя.
     /// Неотправленные (без серверного id) удаляются только на устройстве.
     func delete(messageIds: [String], chatId: String, forEveryone: Bool) async throws(OrbitleError)
@@ -78,6 +81,8 @@ extension MessageRepository {
     public func sendComment(text: String, chatId: String, postId: String) async throws(OrbitleError) {}
 
     public func noteDownloaded(messageId: String, attachmentId: String, localPath: String) async {}
+
+    public func noteCommentCounts(chatId: String, counts: [String: Int]) async {}
 
     public func delete(messageIds: [String], chatId: String, forEveryone: Bool) async throws(OrbitleError) {
         throw .invalidRequest

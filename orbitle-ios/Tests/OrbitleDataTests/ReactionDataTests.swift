@@ -510,3 +510,36 @@ struct PruneMissingTests {
         #expect(try await repository.page(chatId: "c1", before: nil, limit: 50).isEmpty)
     }
 }
+
+@Suite("Пузырь сразу со всем содержимым")
+struct BubbleContentUpfrontTests {
+    @Test("История канала без реакций: реакции дозапрашиваются до записи, пузырь ложится с ними")
+    func historyWithReactions() async throws {
+        let api = FakeMaxAPI()
+        await api.setHistory([record("301", at: 1), record("302", at: 2)])
+        await api.setFetchedReactions(.success(["302": counters([("👍", 4)], mine: nil)]))
+        let (repository, _) = try await makeMessageStack(api: api)
+
+        try await repository.fetchLatest(chatId: "c1")
+        #expect(await api.reactionFetches.first.map(Set.init) == ["301", "302"])
+        #expect(try await stored(repository, "302") == [MessageReaction(emoji: "👍", count: 4, mine: false)])
+        #expect(try await stored(repository, "301").isEmpty)
+    }
+
+    @Test("Счётчик комментариев запоминается и переживает сверку историей")
+    func commentCountsPersist() async throws {
+        let api = FakeMaxAPI()
+        let (repository, _) = try await makeMessageStack(api: api)
+        try await repository.upsert([record("401", at: 1)])
+
+        await repository.noteCommentCounts(chatId: "c1", counts: ["401": 7])
+        func comments() async throws -> Int? {
+            let rows = try await repository.page(chatId: "c1", before: nil, limit: 10)
+            return try #require(rows.first { $0.id == "401" }).domain.content.comments?.count
+        }
+        #expect(try await comments() == 7)
+        // История приходит без счётчика: полоса комментариев не пропадает.
+        try await repository.upsert([record("401", text: "правка", at: 1)])
+        #expect(try await comments() == 7)
+    }
+}
