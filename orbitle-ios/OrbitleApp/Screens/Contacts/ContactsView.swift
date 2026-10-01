@@ -23,6 +23,8 @@ struct ContactsView: View {
 
     private static let searchRowId = "search"
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         ScrollViewReader { proxy in
             List {
@@ -49,13 +51,13 @@ struct ContactsView: View {
                     .padding(.trailing, 2)
                 }
             }
-            .animation(.default, value: viewModel.isFiltering)
+            .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.isFiltering)
             .navigationTitle("Контакты")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
-                        withAnimation { proxy.scrollTo(Self.searchRowId, anchor: .top) }
+                        withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { proxy.scrollTo(Self.searchRowId, anchor: .top) }
                         viewModel.isSearching = true
                     } label: {
                         Image(systemName: "magnifyingglass")

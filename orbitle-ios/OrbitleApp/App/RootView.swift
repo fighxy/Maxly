@@ -95,6 +95,9 @@ struct MainTabView: View {
                     .badge(badge(for: tab))
             }
         }
+        // Единственный владелец видимости панели: дочерние страницы не спорят
+        // о safe area в момент push/pop и интерактивного возврата.
+        .toolbar(sizeClass != .regular && (router.tab == .chats && (router.chatId != nil || list.isEditing || list.isSearchActive)) ? .hidden : .visible, for: .tabBar)
         // Приватный режим: вид для строк и пузырей, а сама настройка — для кнопок-переключателей.
         .environment(\.privateMode, container.privateMode.display)
         .environment(container.privateMode)
