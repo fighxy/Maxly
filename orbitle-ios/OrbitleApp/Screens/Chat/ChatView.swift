@@ -449,7 +449,7 @@ struct ChatView: View {
                         RecordingBar(session: recording)
                             .transition(.opacity)
                     }
-                    if viewModel.editTarget == nil, !recording.isActive {
+                    if !recording.isActive {
                         Button {
                             composerFocused = false
                             attachmentsShown = true
@@ -463,6 +463,11 @@ struct ChatView: View {
                         .buttonStyle(.plain)
                         .orbitleGlassCircle(size: 44)
                         .orbitleGlassID("attach", in: composerGlass)
+                        // При правке слот сохраняется: длинный текст не получает
+                        // дополнительный перенос из-за смены ширины на 52 pt.
+                        .opacity(viewModel.editTarget == nil ? 1 : 0)
+                        .disabled(viewModel.editTarget != nil)
+                        .accessibilityHidden(viewModel.editTarget != nil)
                         .transition(.orbitlePop(reduceMotion: reduceMotion))
                         .accessibilityLabel("Прикрепить")
                     }

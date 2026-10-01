@@ -108,6 +108,7 @@ struct ChatListMotionTests {
     @Test("Маленькая пересекающаяся папка всё равно является reload")
     func folderSwitch() async {
         let (model, repository) = makeList()
+        model.usesLocalFilters = true
         var group = chat("g", at: 100)
         group.type = .group
         repository.emit([chat("a", at: 300), chat("b", at: 200), group])
