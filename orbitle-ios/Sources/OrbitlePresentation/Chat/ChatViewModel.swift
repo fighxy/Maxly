@@ -10,8 +10,8 @@ public final class ChatViewModel {
     public let currentUserId: String
     public private(set) var messages: [Message] = [] {
         didSet {
-            messagesChange = CollectionChange.between(oldValue.map(\.id), messages.map(\.id))
-            if Self.contentChanged(from: oldValue, to: messages) { contentVersion &+= 1 }
+            messagesChange = isRestoringHistory ? .reload : CollectionChange.between(oldValue.map(\.id), messages.map(\.id))
+            if !isRestoringHistory, Self.contentChanged(from: oldValue, to: messages) { contentVersion &+= 1 }
         }
     }
     /// Как лента изменилась последним обновлением: экран по нему решает, анимировать ли.
@@ -141,6 +141,9 @@ public final class ChatViewModel {
 
     /// Свежая история загружена хотя бы раз: пустая лента — действительно пустой чат.
     public private(set) var latestLoaded = false
+    /// Кэш и серверная сверка при каждом открытии не являются live-вставками.
+    public private(set) var isRestoringHistory = false
+    @ObservationIgnored private var watchGeneration = 0
 
     /// Пустое «Избранное»: вместо ленты плашка о том, что это за чат.
     public var showsSavedPlaceholder: Bool {
@@ -158,13 +161,7 @@ public final class ChatViewModel {
     public func activate() {
         guard watch == nil else { return }
         loadReactionCatalog()
-        let stream = repository.messages(chatId: chatId)
-        watch = Task { [weak self] in
-            for await page in stream {
-                guard let self else { return }
-                self.messages = page
-            }
-        }
+        startMessagesWatch()
         let progress = repository.uploadProgress()
         progressWatch = Task { [weak self] in
             for await snapshot in progress {
@@ -185,7 +182,28 @@ public final class ChatViewModel {
         }
     }
 
+    private func startMessagesWatch(finishesRestoration: Bool = false) {
+        watch?.cancel()
+        watchGeneration &+= 1
+        let generation = watchGeneration
+        let stream = repository.messages(chatId: chatId)
+        watch = Task { [weak self] in
+            var first = true
+            for await page in stream {
+                guard let self, !Task.isCancelled, self.watchGeneration == generation else { return }
+                self.messages = page
+                if first, finishesRestoration {
+                    self.messagesChange = .reload
+                    self.isRestoringHistory = false
+                }
+                first = false
+            }
+        }
+    }
+
     public func deactivate() {
+        watchGeneration &+= 1
+        isRestoringHistory = false
         watch?.cancel()
         watch = nil
         progressWatch?.cancel()
@@ -233,6 +251,13 @@ public final class ChatViewModel {
     }
 
     public func loadLatest() async {
+        isRestoringHistory = true
+        defer {
+            // Новый stream даёт авторитетный снимок после сверки, без гонки с очередью
+            // старого подписчика. Первый снимок завершает восстановление без анимаций.
+            if watch != nil { startMessagesWatch(finishesRestoration: true) }
+            else { isRestoringHistory = false }
+        }
         do {
             try await repository.fetchLatest(chatId: chatId)
             latestLoaded = true

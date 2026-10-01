@@ -52,7 +52,7 @@ public enum CollectionChange: Equatable, Sendable {
             return .prepended(added)
         }
         if removedIsHead, Array(new.prefix(keptNew.count)) == keptNew {
-            return .appended(added)
+            return removedCount > 0 && removedCount + added > animationLimit ? .reload : .appended(added)
         }
         return .updated(added + removedCount)
     }
