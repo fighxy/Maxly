@@ -30,7 +30,6 @@ struct ChatView: View {
     @State private var atBottom = true
     /// Сообщения, пришедшие, пока лента прокручена вверх: число на кнопке «вниз».
     @State private var unseen = 0
-    @State private var visibleMessageId: String?
     @State private var isOpening = true
     private static let bottomId = "transcript-bottom"
     /// Отступ ленты от краёв: пузыри ближе к краю экрана, как в Telegram.
@@ -63,7 +62,17 @@ struct ChatView: View {
                             .padding(.horizontal, 24)
                             .padding(.top, 80)
                         } else if !viewModel.showsSavedPlaceholder {
-                            Button("Раньше") { Task { await viewModel.loadOlder() } }
+                            Button("Раньше") {
+                                // Старое ложится сверху: верхнее сообщение остаётся на месте.
+                                let first = viewModel.messages.first?.id
+                                Task {
+                                    await viewModel.loadOlder()
+                                    guard let first else { return }
+                                    var transaction = Transaction()
+                                    transaction.disablesAnimations = true
+                                    withTransaction(transaction) { proxy.scrollTo(first, anchor: .top) }
+                                }
+                            }
                                 .font(.footnote)
                                 .padding(.top, 8)
                         }
@@ -119,13 +128,8 @@ struct ChatView: View {
                 }
                 // Чат открывается сразу внизу, а не сверху до загрузки истории.
                 .defaultScrollAnchor(.bottom)
-                .scrollPosition(id: $visibleMessageId, anchor: .top)
                 .coordinateSpace(name: "transcript-viewport")
-                .onPreferenceChange(TranscriptBottomPreference.self) { bottomY in
-                    let nearBottom = bottomY.isFinite && bottomY >= 0 && bottomY <= geo.size.height + (atBottom ? 64 : 24)
-                    atBottom = nearBottom
-                    if nearBottom { unseen = 0 }
-                }
+                .modifier(TranscriptBottomTracking(atBottom: $atBottom, unseen: $unseen, viewportHeight: geo.size.height))
                 // Клавиатура уходит, когда ленту тянут вниз вслед за пальцем или просто касаются
                 // её: касание не мешает кнопкам пузырей, жест срабатывает вместе с ними.
                 .scrollDismissesKeyboard(.interactively)
@@ -847,6 +851,51 @@ private struct TranscriptBubble: View {
             RoundVideoPlayer(url: playback.url) { viewModel.stopRound(id: id) }
                 .id(playback)
         )
+    }
+}
+
+/// «Лента внизу», как в Telegram: новые сообщения прокручивают её, кнопка «вниз» спрятана.
+///
+/// На iOS 18 признак меняет только прокрутка пальцем (и доезд до низа): новое сообщение,
+/// подгруженная картинка или реакция удлиняют ленту, и раньше метка низа уезжала за экран —
+/// признак сбрасывался, кнопка «вниз» мигала, а следующее сообщение уже не прокручивало
+/// ленту. Пока лента внизу, при росте содержимого она держится низом
+/// (`defaultScrollAnchor(.bottom, for: .sizeChanges)`): прежние пузыри уезжают вверх в том
+/// же кадре, без второго рывка. На iOS 17 — метка низа, как раньше.
+private struct TranscriptBottomTracking: ViewModifier {
+    @Binding var atBottom: Bool
+    @Binding var unseen: Int
+    let viewportHeight: CGFloat
+    @State private var dragging = false
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content
+                .defaultScrollAnchor(atBottom ? .bottom : .top, for: .sizeChanges)
+                .onScrollPhaseChange { _, phase in
+                    dragging = phase == .tracking || phase == .interacting || phase == .decelerating
+                }
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentSize.height + geometry.contentInsets.bottom
+                        - geometry.contentOffset.y - geometry.containerSize.height
+                } action: { _, distance in
+                    if distance <= 24 {
+                        set(true)
+                    } else if dragging, distance > 64 {
+                        set(false)
+                    }
+                }
+        } else {
+            content
+                .onPreferenceChange(TranscriptBottomPreference.self) { bottomY in
+                    set(bottomY.isFinite && bottomY >= 0 && bottomY <= viewportHeight + (atBottom ? 64 : 24))
+                }
+        }
+    }
+
+    private func set(_ value: Bool) {
+        if atBottom != value { atBottom = value }
+        if value, unseen != 0 { unseen = 0 }
     }
 }
 
