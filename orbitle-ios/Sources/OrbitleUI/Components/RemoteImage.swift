@@ -67,71 +67,121 @@ final class ImageMemoryCache: @unchecked Sendable {
     func removeAll() { cache.removeAllObjects() }
 }
 
-/// Загрузка аватаров и миниатюр: память (`NSCache`), затем дисковый `URLCache`, затем сеть.
-/// Одновременные запросы одного адреса сливаются в один.
+/// Загрузка изображений: готовые пиксели в памяти, затем диск, затем сеть.
+/// Данные одного URL загружаются один раз даже для разных размеров декодирования.
 public actor ImagePipeline {
     public static let shared = ImagePipeline()
-
-    private nonisolated let session: URLSession
-    private nonisolated let memory: ImageMemoryCache
-    private var inFlight: [NSString: Task<DecodedImage?, Never>] = [:]
-    /// Размер декодирования по умолчанию: фото на весь экран.
     public static let fullSize = 1600
 
+    private var session: URLSession
+    private let diskCapacity: Int
+    private nonisolated let memory: ImageMemoryCache
+    private var inFlight: [ImageRequest: Task<DecodedImage?, Never>] = [:]
+    private var dataInFlight: [URL: Task<Data?, Never>] = [:]
+    private var generation = 0
+    var pendingImageCount: Int { inFlight.count }
+    private let dataLoader: (@Sendable (URL) async -> Data?)?
+
     public init(memoryLimit: Int = 300, diskCapacity: Int = 100 * 1024 * 1024) {
+        self.diskCapacity = diskCapacity
+        session = Self.makeSession(diskCapacity: diskCapacity)
+        memory = ImageMemoryCache(limit: memoryLimit)
+        dataLoader = nil
+    }
+
+    /// Управляемый источник данных для тестов объединения запросов и очистки кэша.
+    init(dataLoader: @escaping @Sendable (URL) async -> Data?) {
+        diskCapacity = 0
+        session = Self.makeSession(diskCapacity: 0)
+        memory = ImageMemoryCache(limit: 300)
+        self.dataLoader = dataLoader
+    }
+
+    private static func makeSession(diskCapacity: Int) -> URLSession {
         let configuration = URLSessionConfiguration.default
         configuration.urlCache = URLCache(memoryCapacity: 8 * 1024 * 1024, diskCapacity: diskCapacity)
         configuration.requestCachePolicy = .returnCacheDataElseLoad
-        session = URLSession(configuration: configuration)
-        memory = ImageMemoryCache(limit: memoryLimit)
+        return URLSession(configuration: configuration)
     }
 
-    /// Уже декодированная картинка, без сети. Нужна, чтобы строка не мигала буквами при прокрутке.
+    /// Только готовые пиксели: безопасно вызывать из body, без чтения диска и decode.
     public nonisolated func cached(_ url: URL, maxPixel: Int = fullSize) -> DecodedImage? {
-        memory.object(for: url, maxPixel: maxPixel)
-    }
-
-    /// Картинка, которая уже лежит на диске: файл или ответ в `URLCache`. Читается сразу,
-    /// без ожидания, чтобы при возврате на экран фото не мигали заглушкой. Сеть не трогает.
-    public nonisolated func cachedOnDisk(_ url: URL, maxPixel: Int = fullSize) -> DecodedImage? {
-        if let hit = memory.object(for: url, maxPixel: maxPixel) { return hit }
-        let data: Data?
-        if url.isFileURL {
-            data = try? Data(contentsOf: url)
-        } else {
-            data = session.configuration.urlCache?.cachedResponse(for: URLRequest(url: url))?.data
-        }
-        guard let data, let image = DecodedImage.decode(data, maxPixel: maxPixel) else { return nil }
-        memory.set(image, for: url, maxPixel: maxPixel)
-        return image
+        memory.object(for: url, maxPixel: max(16, maxPixel))
     }
 
     public func store(_ image: DecodedImage, for url: URL, maxPixel: Int = fullSize) {
-        memory.set(image, for: url, maxPixel: maxPixel)
+        memory.set(image, for: url, maxPixel: max(16, maxPixel))
     }
 
     public func image(for url: URL, maxPixel: Int = fullSize) async -> DecodedImage? {
-        if let hit = cached(url, maxPixel: maxPixel) { return hit }
-        let key = ImageMemoryCache.key(url, maxPixel)
-        if let running = inFlight[key] { return await running.value }
-        let session = session
-        let task = Task<DecodedImage?, Never>.detached(priority: .userInitiated) {
-            guard let loaded = try? await session.data(from: url),
-                  (loaded.1 as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true else { return nil }
-            return DecodedImage.decode(loaded.0, maxPixel: maxPixel)
+        let request = ImageRequest(url: url, maxPixel: max(16, maxPixel))
+        if let hit = cached(url, maxPixel: request.maxPixel) { return hit }
+        let started = generation
+        let task: Task<DecodedImage?, Never>
+        if let running = inFlight[request] {
+            task = running
+        } else {
+            task = Task.detached(priority: .userInitiated) { [self] in
+                guard let data = await data(for: url, generation: started), !Task.isCancelled else { return nil }
+                let decoded = DecodedImage.decode(data, maxPixel: request.maxPixel)
+                return Task.isCancelled ? nil : decoded
+            }
+            inFlight[request] = task
         }
-        inFlight[key] = task
         let result = await task.value
-        inFlight[key] = nil
-        if let result { memory.set(result, for: url, maxPixel: maxPixel) }
+        // Очистка могла запустить новый запрос с тем же ключом: старый его не трогает.
+        guard generation == started, !task.isCancelled else { return nil }
+        inFlight[request] = nil
+        if !inFlight.keys.contains(where: { $0.url == url }) { dataInFlight[url] = nil }
+        if let result { memory.set(result, for: url, maxPixel: request.maxPixel) }
         return result
     }
 
-    /// Выход из аккаунта: чужие аватары не должны остаться в памяти.
-    public func removeAll() {
-        memory.removeAll()
-        session.configuration.urlCache?.removeAllCachedResponses()
+    private func data(for url: URL, generation started: Int) async -> Data? {
+        guard generation == started else { return nil }
+        let task: Task<Data?, Never>
+        if let running = dataInFlight[url] {
+            task = running
+        } else {
+            let session = session
+            let loader = dataLoader
+            task = Task.detached(priority: .userInitiated) {
+                if let loader { return await loader(url) }
+                // Файлы записанных фото/кружков URLSession не обязан загружать как HTTP.
+                if url.isFileURL { return try? Data(contentsOf: url) }
+                if let cached = session.configuration.urlCache?.cachedResponse(for: URLRequest(url: url)) {
+                    return cached.data
+                }
+                guard let loaded = try? await session.data(from: url),
+                      (loaded.1 as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true else { return nil }
+                return loaded.0
+            }
+            dataInFlight[url] = task
+        }
+        let result = await task.value
+        guard generation == started, !task.isCancelled else { return nil }
+        // Держим готовые байты до завершения всех декодирований этого URL.
+        return result
     }
+
+    /// Выход: старые загрузки не должны заново наполнить кэш другого аккаунта.
+    public func removeAll() {
+        generation &+= 1
+        inFlight.values.forEach { $0.cancel() }
+        dataInFlight.values.forEach { $0.cancel() }
+        inFlight.removeAll()
+        dataInFlight.removeAll()
+        session.invalidateAndCancel()
+        session.configuration.urlCache?.removeAllCachedResponses()
+        session = Self.makeSession(diskCapacity: diskCapacity)
+        memory.removeAll()
+    }
+}
+
+/// Identity включает размер: смена размера плитки должна запросить новые пиксели.
+struct ImageRequest: Hashable, Sendable {
+    let url: URL
+    let maxPixel: Int
 }
 
 /// Картинка по адресу. Пока её нет или она не загрузилась, виден `placeholder`.
@@ -145,7 +195,7 @@ public struct RemoteImage<Placeholder: View>: View {
     private let maxPixel: Int
     private let placeholder: Placeholder
     @State private var loaded: DecodedImage?
-    @State private var loadedURL: URL?
+    @State private var loadedRequest: ImageRequest?
 
     public init(url: URL?, maxPixel: Int = ImagePipeline.fullSize, pipeline: ImagePipeline = .shared, @ViewBuilder placeholder: () -> Placeholder) {
         self.url = url
@@ -164,34 +214,29 @@ public struct RemoteImage<Placeholder: View>: View {
                 placeholder
             }
         }
-        .task(id: url) {
-            guard let url else { return }
-            if let hit = pipeline.cached(url, maxPixel: maxPixel) {
-                if loadedURL != url { loaded = hit; loadedURL = url }
-                return
-            }
-            let image = await pipeline.image(for: url, maxPixel: maxPixel)
-            guard !Task.isCancelled, let image else { return }
-            let first = loaded == nil
-            // Скачанная картинка проявляется поверх заглушки. Из кэша — сразу, иначе при
-            // прокрутке всё мигало бы; смена адреса у уже показанной — тоже без анимации.
-            if first {
-                withAnimation(OrbitleMotion.fade) {
-                    loaded = image
-                    loadedURL = url
-                }
+        .task(id: request) {
+            guard let request else { loaded = nil; loadedRequest = nil; return }
+            let image: DecodedImage?
+            if let hit = pipeline.cached(request.url, maxPixel: request.maxPixel) {
+                image = hit
             } else {
-                loaded = image
-                loadedURL = url
+                image = await pipeline.image(for: request.url, maxPixel: request.maxPixel)
             }
+            guard !Task.isCancelled, let image else { return }
+            // Смена готовых пикселей не анимирует размер всей строки/ленты.
+            loaded = image
+            loadedRequest = request
         }
+    }
+
+    private var request: ImageRequest? {
+        url.map { ImageRequest(url: $0, maxPixel: maxPixel) }
     }
 
     private var current: Image? {
         guard let url else { return nil }
         let decoded = pipeline.cached(url, maxPixel: maxPixel)
-            ?? (loadedURL == url ? loaded : nil)
-            ?? pipeline.cachedOnDisk(url, maxPixel: maxPixel)
+            ?? (loadedRequest?.url == url ? loaded : nil)
             ?? loaded
         guard let decoded else { return nil }
         #if canImport(UIKit)

@@ -95,18 +95,8 @@ struct MediaMosaic: View {
 
     @ViewBuilder
     private func placeholder(_ item: ChatAttachment) -> some View {
-        if let data = item.photo?.preview ?? item.video?.preview, let image = PlatformImage(data: data) {
-            #if canImport(UIKit)
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFill()
-                .blur(radius: 8)
-            #else
-            Image(nsImage: image)
-                .resizable()
-                .scaledToFill()
-                .blur(radius: 8)
-            #endif
+        if let data = item.photo?.preview ?? item.video?.preview {
+            AttachmentPreview(data: data)
         } else {
             Color.secondary.opacity(0.18)
         }
@@ -185,5 +175,32 @@ struct MediaMosaic: View {
 
     private func still(_ item: ChatAttachment) -> URL? {
         item.photo?.displayURL ?? item.video?.displayURL
+    }
+}
+
+/// Даже маленькое preview декодируется вне body, один раз на значение Data.
+private struct AttachmentPreview: View {
+    let data: Data
+    @State private var decoded: DecodedImage?
+
+    var body: some View {
+        Group {
+            if let decoded {
+                #if canImport(UIKit)
+                Image(uiImage: decoded.image).resizable().scaledToFill().blur(radius: 8)
+                #else
+                Image(nsImage: decoded.image).resizable().scaledToFill().blur(radius: 8)
+                #endif
+            } else {
+                Color.secondary.opacity(0.18)
+            }
+        }
+        .task(id: data) {
+            let bytes = data
+            let task = Task.detached(priority: .userInitiated) { DecodedImage.decode(bytes, maxPixel: 256) }
+            let image = await task.value
+            guard !Task.isCancelled else { return }
+            decoded = image
+        }
     }
 }

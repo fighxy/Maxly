@@ -15,13 +15,7 @@ struct ChatListView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Group {
-            if viewModel.isEditing {
-                List(selection: $viewModel.editSelection) { content }
-            } else {
-                List(selection: $selection) { content }
-            }
-        }
+        List(selection: listSelection) { content }
         .listStyle(.plain)
         .environment(\.editMode, .constant(viewModel.isEditing ? .active : .inactive))
         // Новое сообщение поднимает строку наверх плавно, а не скачком. Первая загрузка,
@@ -37,7 +31,6 @@ struct ChatListView: View {
         .navigationTitle(viewModel.navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
-        .toolbar(viewModel.isEditing || viewModel.isSearchActive ? .hidden : .automatic, for: .tabBar)
         .refreshable { await viewModel.refresh() }
         .task {
             viewModel.activate()
@@ -66,6 +59,17 @@ struct ChatListView: View {
         }
     }
 
+    /// Один List сохраняет состояние прокрутки при переключении edit mode.
+    private var listSelection: Binding<Set<String>> {
+        Binding(
+            get: { viewModel.isEditing ? viewModel.editSelection : Set(selection.map { [$0] } ?? []) },
+            set: { ids in
+                if viewModel.isEditing { viewModel.editSelection = ids }
+                else { selection = ids.first }
+            }
+        )
+    }
+
     // MARK: Содержимое
 
     @ViewBuilder
@@ -80,7 +84,7 @@ struct ChatListView: View {
             if viewModel.showsFolders {
                 // Папки — между поиском и закреплёнными, системным переключателем.
                 FolderSegments(tabs: viewModel.folders, selected: viewModel.selectedFolderId) { id in
-                    withAnimation { viewModel.selectFolder(id) }
+                    viewModel.selectFolder(id)
                 }
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 8, trailing: 0))
                 .listRowSeparator(.hidden)
