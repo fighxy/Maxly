@@ -152,10 +152,13 @@ public struct RoundPlayback: Hashable, Sendable {
 public struct MediaViewerRequest: Identifiable, Hashable, Sendable {
     public var id: String
     public var slides: [MediaSlide]
+    /// Сообщение, из которого открыт просмотр: по нему сохраняется текущий кадр.
+    public var messageId: String?
 
-    public init(id: String, slides: [MediaSlide]) {
+    public init(id: String, slides: [MediaSlide], messageId: String? = nil) {
         self.id = id
         self.slides = slides
+        self.messageId = messageId
     }
 }
 

@@ -55,6 +55,10 @@ public final class ChatViewModel {
     public private(set) var roundPlayback: RoundPlayback?
     /// Открытый файл.
     public var openedFile: OpenedFile?
+    /// Открытое окно «Сохранить в Файлы».
+    public var fileExport: FileExport?
+    /// Идёт сохранение (скачивание перед ним): повторное нажатие ждёт.
+    public private(set) var isSaving = false
     /// Вложение, для которого сейчас запрашивается ссылка или качается файл: пузырь рисует на нём загрузку.
     public private(set) var loadingMediaId: String?
     /// Диалог открыт из контактов, и на сервере его может ещё не быть: пустая история не
@@ -95,6 +99,8 @@ public final class ChatViewModel {
     @ObservationIgnored private var voiceTask: Task<Void, Never>?
     @ObservationIgnored private var voiceToggle: Task<Void, Never>?
     @ObservationIgnored private var fileTask: Task<Void, Never>?
+    @ObservationIgnored private var saveTask: Task<Void, Never>?
+    @ObservationIgnored private let gallery: (any GallerySaving)?
     @ObservationIgnored private var commentsModel: CommentsViewModel?
 
     public init(
@@ -107,6 +113,7 @@ public final class ChatViewModel {
         links: (any MediaLinkResolver)? = nil,
         comments: (any CommentsRepository)? = nil,
         voice: (any VoicePlaying)? = nil,
+        gallery: (any GallerySaving)? = nil,
         isNewDialog: Bool = false
     ) {
         self.isNewDialog = isNewDialog
@@ -119,6 +126,7 @@ public final class ChatViewModel {
         self.links = links
         self.comments = comments
         self.voice = voice
+        self.gallery = gallery
     }
 
     public var errorMessage: String? { error?.userMessage }
@@ -609,7 +617,7 @@ public final class ChatViewModel {
             return
         }
         guard slides.contains(where: { $0.id == startId }) else { return }
-        viewer = MediaViewerRequest(id: startId, slides: slides)
+        viewer = MediaViewerRequest(id: startId, slides: slides, messageId: message.id)
     }
 
     /// Запасной путь видео: поток не открылся — ролик скачивается целиком и играет с диска.
@@ -807,6 +815,143 @@ public final class ChatViewModel {
             guard !Task.isCancelled else { return }
             show(.storageError)
         }
+    }
+
+    // MARK: Сохранение на телефон
+
+    /// Есть что сохранить: в «Фото» — фото, видео и кружки, в «Файлы» — любые вложения.
+    public func canSave(_ message: Message, to target: SaveTarget) -> Bool {
+        switch target {
+        case .photos: gallery != nil && !message.content.visuals.isEmpty
+        case .files: !Self.saveable(message, to: .files).isEmpty
+        }
+    }
+
+    /// Сохранить вложения сообщения (или одно, `attachmentId`) в «Фото» или в «Файлы».
+    /// Нескачанное сначала качается в кэш. `fromViewer` — нажато в просмотре фото.
+    public func save(_ message: Message, to target: SaveTarget, attachmentId: String? = nil, fromViewer: Bool = false) {
+        guard !isSaving else { return }
+        var chosen = Self.saveable(message, to: target)
+        if let attachmentId { chosen = chosen.filter { $0.id == attachmentId } }
+        guard !chosen.isEmpty else { return }
+        isSaving = true
+        saveTask = Task {
+            await self.performSave(chosen, of: message, to: target, fromViewer: fromViewer)
+            self.isSaving = false
+        }
+    }
+
+    /// Сохранить кадр, открытый в просмотре.
+    public func saveViewerSlide(_ slideId: String, to target: SaveTarget) {
+        guard let messageId = viewer?.messageId,
+              let message = messages.first(where: { $0.id == messageId }) else { return }
+        save(message, to: target, attachmentId: slideId, fromViewer: true)
+    }
+
+    /// Окно «Сохранить в Файлы» закрыто: `saved` — файлы записаны в выбранную папку.
+    public func finishFileExport(saved: Bool) {
+        let count = fileExport?.files.count ?? 0
+        fileExport = nil
+        if saved { showNotice(count > 1 ? "Сохранено в «Файлы»: \(count)" : "Сохранено в «Файлы»") }
+    }
+
+    static func saveable(_ message: Message, to target: SaveTarget) -> [ChatAttachment] {
+        message.content.attachments.filter { attachment in
+            switch attachment {
+            case .photo, .video: true
+            case .voice, .file: target == .files
+            case .contact: false
+            }
+        }
+    }
+
+    private func performSave(_ attachments: [ChatAttachment], of message: Message, to target: SaveTarget, fromViewer: Bool) async {
+        if attachments.count == 1 { loadingMediaId = attachments[0].id }
+        defer { if attachments.count == 1, loadingMediaId == attachments[0].id { loadingMediaId = nil } }
+        var files: [SavedFile] = []
+        do {
+            for (index, attachment) in attachments.enumerated() {
+                files.append(try await savedFile(attachment, of: message, index: index))
+            }
+        } catch let failure as OrbitleError {
+            guard !Task.isCancelled else { return }
+            showNotice(failure.userMessage ?? "Не удалось сохранить")
+            return
+        } catch {
+            showNotice("Не удалось сохранить")
+            return
+        }
+        guard !Task.isCancelled else { return }
+        switch target {
+        case .photos:
+            guard let gallery else { return }
+            do {
+                try await gallery.save(files)
+                showNotice(Self.photosNotice(files))
+            } catch let failure as OrbitleError {
+                showNotice(failure.userMessage ?? "Не удалось сохранить в «Фото»")
+            } catch {
+                showNotice("Не удалось сохранить в «Фото»")
+            }
+        case .files:
+            fileExport = FileExport(files: files, fromViewer: fromViewer)
+        }
+    }
+
+    static func photosNotice(_ files: [SavedFile]) -> String {
+        if files.count > 1 { return "Сохранено в «Фото»: \(files.count)" }
+        return files.first?.kind == .video ? "Видео сохранено в «Фото»" : "Фото сохранено в «Фото»"
+    }
+
+    /// Файл вложения на устройстве с именем для сохранения. Фото и видео берутся из кэша
+    /// под теми же id, что и при просмотре: уже открытое не качается заново.
+    private func savedFile(_ attachment: ChatAttachment, of message: Message, index: Int) async throws(OrbitleError) -> SavedFile {
+        switch attachment {
+        case .photo(let photo):
+            let local = try await localFile(
+                existing: photo.localPath,
+                item: photo.url.map { MediaItem(id: photo.id, type: .image, url: $0, size: 0) }
+            )
+            let ext = SaveNaming.imageExtension(of: local)
+            let name = SaveNaming.name(for: message.timestamp, index: index, ext: ext)
+            return SavedFile(url: Self.namedCopy(of: local, name: name, id: photo.id), name: name, kind: .image)
+        case .video(let video):
+            var remote = video.url ?? resolvedVideos[video.id]
+            if remote == nil, let links {
+                remote = try await links.link(chatId: message.chatId, messageId: message.serverId ?? message.id, kind: .video, attachmentId: video.id)
+                resolvedVideos[video.id] = remote
+            }
+            let item = remote.map {
+                MediaItem(id: video.isRound ? "note-\(video.id)" : "video-\(video.id)", type: video.isRound ? .videoNote : .video, url: $0, size: 0)
+            }
+            let local = try await localFile(existing: video.localPath, item: item)
+            let ext = local.pathExtension.isEmpty ? "mp4" : local.pathExtension
+            let name = SaveNaming.name(for: message.timestamp, index: index, ext: ext)
+            return SavedFile(url: Self.namedCopy(of: local, name: name, id: video.id), name: name, kind: .video)
+        case .voice(let clip):
+            let local = try await localFile(existing: clip.localPath, item: clip.cacheItem())
+            let name = SaveNaming.name(for: message.timestamp, index: index, ext: local.pathExtension.isEmpty ? "ogg" : local.pathExtension)
+            return SavedFile(url: Self.namedCopy(of: local, name: name, id: clip.id), name: name, kind: .other)
+        case .file(let file):
+            var item = file.cacheItem()
+            if item == nil, file.fileURL == nil, let links {
+                let url = try await links.link(chatId: message.chatId, messageId: message.serverId ?? message.id, kind: .file, attachmentId: file.id)
+                item = MediaItem(id: file.id, type: .file, url: url, size: file.size)
+            }
+            let local = try await localFile(existing: file.localPath, item: item)
+            await repository.noteDownloaded(messageId: message.id, attachmentId: file.id, localPath: local.path)
+            return SavedFile(url: Self.namedCopy(of: local, name: file.name, id: file.id), name: file.name, kind: .other)
+        case .contact:
+            throw .rejected("Контакт нельзя сохранить файлом")
+        }
+    }
+
+    /// Свой файл, если он ещё на диске, иначе копия из кэша медиа (скачивается при нужде).
+    private func localFile(existing path: String?, item: MediaItem?) async throws(OrbitleError) -> URL {
+        if let path, FileManager.default.fileExists(atPath: path) { return URL(fileURLWithPath: path) }
+        guard let item, let media else { throw .rejected("Файл недоступен") }
+        if item.url.isFileURL, FileManager.default.fileExists(atPath: item.url.path) { return item.url }
+        return try await media.preview(for: item)
     }
 
     /// Предпросмотр узнаёт тип файла по расширению, а в кэше файл лежит под id. Отдаём копию

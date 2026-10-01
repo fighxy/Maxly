@@ -6,22 +6,48 @@ struct FileQuickLook: View {
     let url: URL
     let title: String
     let onClose: () -> Void
+    @State private var exporting = false
+    @State private var saved = false
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Preview(url: url, title: title)
                 .ignoresSafeArea()
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(.black.opacity(0.45), in: Circle())
+            HStack(spacing: 12) {
+                // Документ — в «Файлы» (любая папка, iCloud Drive) или в другое приложение.
+                ShareLink(item: url) {
+                    circle("square.and.arrow.up")
+                }
+                .accessibilityLabel("Поделиться")
+                Button {
+                    exporting = true
+                } label: {
+                    circle(saved ? "checkmark" : "folder")
+                }
+                .accessibilityLabel("Сохранить в Файлы")
+                Button(action: onClose) {
+                    circle("xmark")
+                }
+                .accessibilityLabel("Закрыть")
             }
             .padding(16)
-            .accessibilityLabel("Закрыть")
         }
         .background(Color.black)
+        .sheet(isPresented: $exporting) {
+            FileExportPicker(urls: [url]) { done in
+                exporting = false
+                if done { saved = true }
+            }
+            .ignoresSafeArea()
+        }
+    }
+
+    private func circle(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(.body.weight(.semibold))
+            .foregroundStyle(.white)
+            .frame(width: 36, height: 36)
+            .background(.black.opacity(0.45), in: Circle())
     }
 }
 

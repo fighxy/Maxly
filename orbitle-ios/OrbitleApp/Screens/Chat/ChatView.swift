@@ -255,9 +255,17 @@ struct ChatView: View {
                 .environment(\.privateMode, .visible)
         }
         .fullScreenCover(item: $viewModel.viewer) { request in
-            MediaViewer(request: request, download: { await viewModel.downloadVideo($0) }) { viewModel.viewer = nil }
+            MediaViewer(
+                request: request,
+                download: { await viewModel.downloadVideo($0) },
+                notice: viewModel.notice,
+                isSaving: viewModel.isSaving,
+                onSave: { viewModel.saveViewerSlide($0, to: $1) }
+            ) { viewModel.viewer = nil }
+                .fileExportSheet(viewModel, fromViewer: true)
                 .environment(\.privateMode, .visible)
         }
+        .fileExportSheet(viewModel, fromViewer: false)
         .fullScreenCover(item: $viewModel.openedFile) { file in
             FileQuickLook(url: file.url, title: file.name) { viewModel.openedFile = nil }
                 .environment(\.privateMode, .visible)
@@ -824,7 +832,9 @@ private struct TranscriptBubble: View {
             onReactionUsers: reacts && showsReactionUsers ? { viewModel.showReactionUsers(message) } : nil,
             uploadProgress: viewModel.uploadFraction(of: message),
             onCancelUpload: { Task { await viewModel.cancelUpload(message) } },
-            roundPlayer: roundPlayer
+            roundPlayer: roundPlayer,
+            onSaveToPhotos: viewModel.canSave(message, to: .photos) ? { viewModel.save(message, to: .photos) } : nil,
+            onSaveToFiles: viewModel.canSave(message, to: .files) ? { viewModel.save(message, to: .files) } : nil
         )
     }
 

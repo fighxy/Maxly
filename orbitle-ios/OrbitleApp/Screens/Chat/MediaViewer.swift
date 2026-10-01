@@ -8,13 +8,28 @@ struct MediaViewer: View {
     let request: MediaViewerRequest
     /// Скачать ролик целиком, если поток не открылся.
     var download: (MediaSlide) async -> URL? = { $0.playURL }
+    /// Итог сохранения («Фото сохранено в «Фото»») — капсула внизу.
+    var notice: String?
+    var isSaving = false
+    /// Сохранить открытый кадр: id слайда и куда.
+    var onSave: ((String, SaveTarget) -> Void)?
     let onClose: () -> Void
     @State private var selection: String
     @State private var zoomed = false
 
-    init(request: MediaViewerRequest, download: @escaping (MediaSlide) async -> URL? = { $0.playURL }, onClose: @escaping () -> Void) {
+    init(
+        request: MediaViewerRequest,
+        download: @escaping (MediaSlide) async -> URL? = { $0.playURL },
+        notice: String? = nil,
+        isSaving: Bool = false,
+        onSave: ((String, SaveTarget) -> Void)? = nil,
+        onClose: @escaping () -> Void
+    ) {
         self.request = request
         self.download = download
+        self.notice = notice
+        self.isSaving = isSaving
+        self.onSave = onSave
         self.onClose = onClose
         _selection = State(initialValue: request.id)
     }
@@ -41,16 +56,35 @@ struct MediaViewer: View {
                     .padding(.top, 18)
                     .allowsHitTesting(false)
             }
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(.black.opacity(0.45), in: Circle())
+            HStack(spacing: 12) {
+                if let onSave {
+                    saveMenu(onSave)
+                }
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 36, height: 36)
+                        .background(.black.opacity(0.45), in: Circle())
+                }
+                .accessibilityLabel("Закрыть")
             }
             .padding(16)
-            .accessibilityLabel("Закрыть")
         }
+        .overlay(alignment: .bottom) {
+            if let notice {
+                Text(notice)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.black.opacity(0.6), in: Capsule())
+                    .padding(.bottom, 40)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    .allowsHitTesting(false)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: notice)
         .simultaneousGesture(
             DragGesture(minimumDistance: 24).onEnded { value in
                 let down = value.translation.height
@@ -59,6 +93,28 @@ struct MediaViewer: View {
             }
         )
         .onChange(of: selection) { _, _ in zoomed = false }
+    }
+
+    /// «Сохранить в Фото» и «Сохранить в Файлы» для открытого кадра.
+    private func saveMenu(_ onSave: @escaping (String, SaveTarget) -> Void) -> some View {
+        Menu {
+            Button("Сохранить в Фото", systemImage: "square.and.arrow.down") { onSave(selection, .photos) }
+            Button("Сохранить в Файлы", systemImage: "folder") { onSave(selection, .files) }
+        } label: {
+            ZStack {
+                if isSaving {
+                    ProgressView().tint(.white)
+                } else {
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.white)
+                }
+            }
+            .frame(width: 36, height: 36)
+            .background(.black.opacity(0.45), in: Circle())
+        }
+        .disabled(isSaving)
+        .accessibilityLabel("Сохранить")
     }
 
     private var pageLabel: String? {
