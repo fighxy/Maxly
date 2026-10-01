@@ -76,7 +76,7 @@ struct ImagePipelineTests {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".png")
         try png.write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
-        let pipeline = ImagePipeline(memoryLimit: 4, diskCapacity: 0)
+        let pipeline = ImagePipeline(memoryLimit: 4, directory: nil)
         let image = try #require(await pipeline.image(for: url, maxPixel: 32))
         try FileManager.default.removeItem(at: url)
         #expect(await pipeline.image(for: url, maxPixel: 32) === image)
