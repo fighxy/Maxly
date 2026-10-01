@@ -90,14 +90,12 @@ struct MainTabView: View {
         TabView(selection: $router.tab) {
             ForEach(AppTab.order, id: \.self) { tab in
                 content(for: tab)
+                    .toolbar(tabBarVisibility(for: tab), for: .tabBar)
                     .tabItem { Label(tab.title, systemImage: tab.systemImage) }
                     .tag(tab)
                     .badge(badge(for: tab))
             }
         }
-        // Единственный владелец видимости панели: дочерние страницы не спорят
-        // о safe area в момент push/pop и интерактивного возврата.
-        .toolbar(sizeClass != .regular && (router.tab == .chats && (router.chatId != nil || list.isEditing || list.isSearchActive)) ? .hidden : .visible, for: .tabBar)
         // Приватный режим: вид для строк и пузырей, а сама настройка — для кнопок-переключателей.
         .environment(\.privateMode, container.privateMode.display)
         .environment(container.privateMode)
@@ -130,6 +128,13 @@ struct MainTabView: View {
                 break
             }
         }
+    }
+
+    /// Один владелец preference на стабильных корнях вкладок, без конкурирующих
+    /// требований от списка и destination во время интерактивного push/pop.
+    private func tabBarVisibility(for tab: AppTab) -> Visibility {
+        guard sizeClass != .regular, tab == .chats else { return .visible }
+        return router.chatId != nil || list.isEditing || list.isSearchActive ? .hidden : .visible
     }
 
     private func badge(for tab: AppTab) -> Int {
