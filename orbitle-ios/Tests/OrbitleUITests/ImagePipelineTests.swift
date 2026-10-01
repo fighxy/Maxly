@@ -21,7 +21,8 @@ private actor ImageLoadGate {
     }
 }
 
-private func cacheEventually(_ condition: () async -> Bool) async -> Bool {
+@MainActor
+private func cacheEventually(_ condition: @MainActor () async -> Bool) async -> Bool {
     let clock = ContinuousClock()
     let deadline = clock.now + .seconds(3)
     while clock.now < deadline {
