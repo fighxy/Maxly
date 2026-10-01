@@ -1,16 +1,13 @@
-import ImageIO
 import Photos
 import SwiftUI
 import UIKit
-import UniformTypeIdentifiers
 import OrbitleDomain
 import OrbitlePresentation
 
 /// Сохранение в «Фото» через PhotoKit.
 ///
 /// Нужен только доступ «добавлять» (`NSPhotoLibraryAddUsageDescription`): медиатеку
-/// Orbitle при этом не читает. Картинки в форматах, которые «Фото» не принимает (WebP с CDN
-/// Max), перекладываются в JPEG; видео сохраняется как есть.
+/// Orbitle при этом не читает. Файлы уже в JPG или PNG и MP4 (`SaveFormat`).
 struct PhotoLibrarySaver: GallerySaving {
     func save(_ files: [SavedFile]) async throws(OrbitleError) {
         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
@@ -18,10 +15,9 @@ struct PhotoLibrarySaver: GallerySaving {
             Log.warning(.media, "Нет доступа к «Фото» для сохранения: \(status.rawValue)")
             throw .rejected("Нет доступа к «Фото». Разрешите в Настройках → Orbitle → Фото")
         }
-        let prepared = files.map(Self.prepared)
         do {
             try await PHPhotoLibrary.shared().performChanges {
-                for file in prepared {
+                for file in files {
                     let request = PHAssetCreationRequest.forAsset()
                     let options = PHAssetResourceCreationOptions()
                     options.originalFilename = file.name
@@ -32,24 +28,6 @@ struct PhotoLibrarySaver: GallerySaving {
         } catch {
             Log.warning(.media, "Не сохранилось в «Фото»: \(error)")
             throw .rejected("Не удалось сохранить в «Фото»")
-        }
-    }
-
-    /// «Фото» принимает JPEG, HEIC, PNG и GIF; остальное (WebP, AVIF) — копия в JPEG.
-    private static func prepared(_ file: SavedFile) -> SavedFile {
-        guard file.kind == .image,
-              let source = CGImageSourceCreateWithURL(file.url as CFURL, nil),
-              let type = CGImageSourceGetType(source) as String? else { return file }
-        let accepted: [UTType] = [.jpeg, .heic, .heif, .png, .gif]
-        if let utType = UTType(type), accepted.contains(where: { utType.conforms(to: $0) }) { return file }
-        guard let image = UIImage(contentsOfFile: file.url.path), let data = image.jpegData(compressionQuality: 0.95) else { return file }
-        let name = (file.name as NSString).deletingPathExtension + ".jpg"
-        let target = file.url.deletingLastPathComponent().appending(path: name)
-        do {
-            try data.write(to: target, options: .atomic)
-            return SavedFile(url: target, name: name, kind: .image)
-        } catch {
-            return file
         }
     }
 }
