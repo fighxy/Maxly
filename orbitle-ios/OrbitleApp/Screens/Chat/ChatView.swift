@@ -135,7 +135,9 @@ struct ChatView: View {
                 .onChange(of: viewModel.messages.map(\.id)) { old, ids in
                     guard !ids.isEmpty else { return }
                     if viewModel.isRestoringHistory || viewModel.messagesChange == .reload || old.isEmpty {
-                        if viewModel.isRestoringHistory || old.isEmpty {
+                        // Первое открытие — сразу к последнему. Вернулись в чат (из профиля
+                        // собеседника), читая историю, — место в ленте не теряется.
+                        if old.isEmpty || (viewModel.isRestoringHistory && (isOpening || atBottom)) {
                             var transaction = Transaction()
                             transaction.disablesAnimations = true
                             withTransaction(transaction) { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
@@ -156,7 +158,9 @@ struct ChatView: View {
                 }
                 .onChange(of: viewModel.isRestoringHistory) { _, restoring in
                     guard !restoring else { return }
+                    let opening = isOpening
                     isOpening = false
+                    guard opening || atBottom else { return }
                     var transaction = Transaction()
                     transaction.disablesAnimations = true
                     withTransaction(transaction) { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
