@@ -189,7 +189,7 @@ final class CaptureController: NSObject, AVCaptureFileOutputRecordingDelegate, @
         if let connection = output.connection(with: .video) {
             if connection.isVideoRotationAngleSupported(90) { connection.videoRotationAngle = 90 }
             if connection.isVideoMirroringSupported {
-                // Как в зеркале: так видит себя пишущий и так кружок выглядит у собеседника.
+                // Как в зеркале: так видит себя пишущий и так кружок привычно выглядит в мессенджерах.
                 connection.automaticallyAdjustsVideoMirroring = false
                 connection.isVideoMirrored = true
             }

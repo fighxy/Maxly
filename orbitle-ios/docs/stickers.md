@@ -1,6 +1,6 @@
 # Эмодзи и стикеры
 
-Схема запросов взята из KometTeam/Komet (`StickersModule`, `AnimojiModule`, `EmojiPanel`, `StickerPanel`).
+Схема запросов взята из KometTeam/Komet (`StickersModule`, `AnimojiModule`, `EmojiPanel`, `StickerPanel`). Поведение панели — по образцу популярных мессенджеров для iOS.
 
 ## Панель
 

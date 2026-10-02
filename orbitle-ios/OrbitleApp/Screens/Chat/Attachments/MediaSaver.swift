@@ -4,7 +4,7 @@ import UIKit
 import OrbitleDomain
 import OrbitlePresentation
 
-/// Сохранение в «Фото» через PhotoKit.
+/// Сохранение в «Фото» через PhotoKit (пункт «Сохранить в Фото»).
 ///
 /// Нужен только доступ «добавлять» (`NSPhotoLibraryAddUsageDescription`): медиатеку
 /// Orbitle при этом не читает. Файлы уже в JPG или PNG и MP4 (`SaveFormat`).

@@ -26,7 +26,7 @@ final class VoiceRecorder {
     /// Текущая громкость 0…1 для пульсации кнопки.
     private(set) var level: Double = 0
 
-    /// Короче этого голосовое не отправляется (случайное касание).
+    /// Короче этого голосовое не отправляется: это случайное касание.
     static let minimumDuration: TimeInterval = 0.6
     /// Длиннее запись останавливается сама.
     static let maximumDuration: TimeInterval = 15 * 60
