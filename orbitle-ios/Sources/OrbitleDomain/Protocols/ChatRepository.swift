@@ -42,6 +42,24 @@ public struct ChatSearchResult: Identifiable, Hashable, Sendable {
     }
 }
 
+/// Сообщение, найденное поиском на сервере по всем чатам.
+public struct FoundMessage: Hashable, Sendable {
+    public var chatId: String
+    public var messageId: String
+    public var senderId: String
+    public var text: String
+    /// `nil` — сервер не прислал время.
+    public var date: Date?
+
+    public init(chatId: String, messageId: String, senderId: String = "", text: String, date: Date? = nil) {
+        self.chatId = chatId
+        self.messageId = messageId
+        self.senderId = senderId
+        self.text = text
+        self.date = date
+    }
+}
+
 /// Список чатов. Сначала отдаёт кэш, потом обновляет его с сервера.
 public protocol ChatRepository: Sendable {
     /// Чаты по убыванию `updatedAt`. Первое значение сразу из кэша.
@@ -68,6 +86,8 @@ public protocol ChatRepository: Sendable {
     /// Следующая страница списка. `false`, если страниц больше нет.
     func loadMoreChats() async throws(OrbitleError) -> Bool
     func search(query: String) async throws(OrbitleError) -> [ChatSearchResult]
+    /// Сообщения во всех чатах по тексту.
+    func searchMessages(query: String) async throws(OrbitleError) -> [FoundMessage]
     /// Серверные папки. Пустой массив — папок нет.
     func folders() -> AsyncStream<[ChatFolder]>
     /// Кто сейчас печатает: id чата → id пользователей.
@@ -89,6 +109,7 @@ public extension ChatRepository {
     func delete(chatId: String, forEveryone: Bool) async throws(OrbitleError) { throw .invalidRequest }
     func loadMoreChats() async throws(OrbitleError) -> Bool { false }
     func search(query: String) async throws(OrbitleError) -> [ChatSearchResult] { [] }
+    func searchMessages(query: String) async throws(OrbitleError) -> [FoundMessage] { [] }
     func folders() -> AsyncStream<[ChatFolder]> { AsyncStream { $0.yield([]); $0.finish() } }
     func typing() -> AsyncStream<[String: [String]]> { AsyncStream { $0.yield([:]); $0.finish() } }
     func prepareDialog(_ draft: DialogDraft) async {}

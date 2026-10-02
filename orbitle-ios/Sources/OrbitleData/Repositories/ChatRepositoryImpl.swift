@@ -480,6 +480,20 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         }
     }
 
+    public nonisolated func searchMessages(query: String) async throws(OrbitleError) -> [FoundMessage] {
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty else { return [] }
+        switch await api.searchMessages(query: term) {
+        case .success(let found):
+            // Одно сообщение — одна строка, даже если сервер повторил его.
+            var seen = Set<String>()
+            return found.filter { seen.insert("\($0.chatId)/\($0.messageId)").inserted }
+        case .failure(let error):
+            Log.warning(.chats, "Поиск сообщений не удался: \(error)")
+            throw error.orbitleError
+        }
+    }
+
     /// Звук чата: сначала сервер, затем база. При ошибке строка остаётся как была.
     public func setMuted(_ muted: Bool, chatId: String) async throws(OrbitleError) {
         do {

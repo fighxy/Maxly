@@ -235,6 +235,18 @@ actor FakeMaxAPI: MaxAPI {
     func setSearchResult(_ result: Result<[ChatSearchResult], MaxAPIError>) {
         searchResult = result
     }
+
+    private(set) var messageSearchCalls: [String] = []
+    var messageSearchResult: Result<[FoundMessage], MaxAPIError> = .success([])
+
+    func searchMessages(query: String) async -> Result<[FoundMessage], MaxAPIError> {
+        messageSearchCalls.append(query)
+        return messageSearchResult
+    }
+
+    func setMessageSearchResult(_ result: Result<[FoundMessage], MaxAPIError>) {
+        messageSearchResult = result
+    }
     var muteError: MaxAPIError?
     func setMuteError(_ error: MaxAPIError?) { muteError = error }
 

@@ -99,6 +99,8 @@ public protocol MaxAPI: Sendable {
                          progress: @escaping @Sendable (Double) -> Void) async -> Result<MessageRecord, MaxAPIError>
     /// Публичные чаты и каналы на сервере по названию или ссылке.
     func searchPublic(query: String) async -> Result<[ChatSearchResult], MaxAPIError>
+    /// Сообщения во всех чатах по тексту.
+    func searchMessages(query: String) async -> Result<[FoundMessage], MaxAPIError>
 }
 
 public extension MaxAPI {
@@ -136,6 +138,7 @@ public extension MaxAPI {
     func reactionCatalog() async -> Result<[String], MaxAPIError> { .failure(.invalidResponse) }
     /// Источник без поиска на сервере.
     func searchPublic(query: String) async -> Result<[ChatSearchResult], MaxAPIError> { .failure(.invalidResponse) }
+    func searchMessages(query: String) async -> Result<[FoundMessage], MaxAPIError> { .failure(.invalidResponse) }
     /// Источник без загрузок.
     func sendAttachments(chatId: String, drafts: [AttachmentDraft], caption: String, replyTo: String?,
                          progress: @escaping @Sendable (Double) -> Void) async -> Result<MessageRecord, MaxAPIError> {
@@ -250,6 +253,15 @@ public final class MaxAPIClient: MaxAPI, Sendable {
 
     /// Сколько публичных чатов просить за раз.
     static let searchPageSize = 20
+
+    public func searchMessages(query: String) async -> Result<[FoundMessage], MaxAPIError> {
+        await catching {
+            try await core.searchMessages(query: query, count: Self.messageSearchCount).compactMap(CoreMapping.foundMessage)
+        }
+    }
+
+    /// Сколько найденных сообщений просить у сервера.
+    static let messageSearchCount = 50
 
     public func markRead(chatId: String, messageId: String?) async -> Result<Void, MaxAPIError> {
         guard let messageId, !messageId.isEmpty else { return .success(()) }

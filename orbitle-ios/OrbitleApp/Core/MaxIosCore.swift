@@ -148,6 +148,23 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func searchMessages(query: String, count: Int) async throws -> [CoreFoundMessage] {
+        try await call("searchMessages") { done in
+            self.client.searchMessages(query: query, count: Int32(count)) { messages, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(messages.map { message in
+                        CoreFoundMessage(
+                            chatId: message.chatId, messageId: message.messageId, senderId: message.senderId,
+                            text: message.text, timeMs: message.timeMs
+                        )
+                    }))
+                }
+            }
+        }
+    }
+
     func loadSharedMedia(chatId: String, anchorId: String, attachTypes: [String], forward: Int, backward: Int) async throws -> [CoreMessage] {
         try await call("loadSharedMedia") { done in
             self.client.loadSharedMedia(
