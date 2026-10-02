@@ -37,7 +37,7 @@ struct ChatHeaderTitle: View {
         }
         .frame(maxWidth: 230)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: status)
-        // Капсула на стекле, как в Telegram iOS: той же высоты, что круглые «назад» и аватар.
+        // Капсула на стекле той же высоты, что круглые «назад» и аватар.
         .padding(.horizontal, 18)
         .frame(minHeight: 44)
         .orbitleGlassCapsule()

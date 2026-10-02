@@ -174,7 +174,7 @@ struct VoiceMessageView: View {
     }
 
     /// Дорожка во всю отведённую ширину: число полосок по ширине, сама ширина — от длины
-    /// записи (короткое голосовое — короткий пузырь, как в Telegram).
+    /// записи (короткое голосовое — короткий пузырь).
     private var bars: some View {
         let wave = voice.waveform
         let played = (phase.isPlaying || isPaused) ? phase.progress : 0

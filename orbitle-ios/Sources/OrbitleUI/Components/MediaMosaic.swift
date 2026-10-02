@@ -31,7 +31,7 @@ struct MediaMosaic: View {
             : ChatContentFormat.album(
                 aspects: visuals.map(aspect),
                 maxWidth: Double(round ? min(maxWidth, roundPlayer == nil ? Self.roundSide : Self.playingRoundSide) : maxWidth),
-                // Альбом над подписью во всю ширину пузыря, как в Telegram: ограничение высоты
+                // Альбом над подписью во всю ширину пузыря: ограничение высоты
                 // мягче, иначе две горизонтальные фотографии сужались и пузырь торчал справа.
                 maxHeight: fillsWidth && !round ? 620 : 360
             )

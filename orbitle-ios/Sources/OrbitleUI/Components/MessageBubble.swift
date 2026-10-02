@@ -510,7 +510,7 @@ public struct MessageBubble: View {
         let name = showsAuthorName && !authorTitle.isEmpty
         if name || message.content.reply != nil || message.content.forward != nil {
             VStack(alignment: .leading, spacing: 4) {
-                // Как в Telegram: сначала кто прислал в группу, под ним — от кого переслано.
+                // Сначала кто прислал в группу, под ним — от кого переслано.
                 if name {
                     Text(authorTitle)
                         .font(.subheadline.weight(.semibold))
