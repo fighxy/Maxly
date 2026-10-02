@@ -138,6 +138,7 @@ fun MainScreen(
                 ChatListScreen(
                     chatList,
                     onOpenChat = { openChat(it.id) },
+                    onOpenFound = { openChat(it.id, it.title) },
                     privateMode = privatePrefs,
                     onTogglePrivateMode = container.privateMode::toggle,
                 )

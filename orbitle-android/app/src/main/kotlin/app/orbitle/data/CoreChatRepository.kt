@@ -1,6 +1,9 @@
 package app.orbitle.data
 
 import app.orbitle.domain.Chat
+import app.orbitle.domain.ChatSearchResult
+import app.orbitle.domain.ChatType
+import com.max.core.api.PublicSearchHit
 import app.orbitle.domain.ServerFolder
 import com.max.shared.MaxClient
 import kotlinx.coroutines.delay
@@ -88,6 +91,13 @@ class CoreChatRepository(
         MaxCoreGateway.call { client.setChatMuted(id, muted) }
     }
 
+    override suspend fun searchPublic(query: String): List<ChatSearchResult> {
+        val term = query.trim()
+        if (term.isEmpty()) return emptyList()
+        val hits = MaxCoreGateway.call { client.api.search.searchPublic(term, 0, SEARCH_PAGE_SIZE) }
+        return hits.mapNotNull(::searchResultOf)
+    }
+
     override suspend fun markAsRead(chatId: String) {
         val id = chatId.toLongOrNull() ?: return
         val state = client.store.state.value
@@ -102,7 +112,28 @@ class CoreChatRepository(
         usersRequested = mutableSetOf()
     }
 
-    private companion object {
-        const val TYPING_TICK_MS = 1_000L
+    companion object {
+        private const val TYPING_TICK_MS = 1_000L
+
+        /** Сколько публичных чатов просить за раз. */
+        const val SEARCH_PAGE_SIZE = 20
+
+        /**
+         * Найденный чат или канал. Люди пропускаются: у найденного человека ещё нет чата,
+         * который можно открыть. Без названия — по типу: «Канал», «Группа» или «Чат».
+         */
+        fun searchResultOf(hit: PublicSearchHit): ChatSearchResult? {
+            val chat = hit.chat ?: return null
+            val type = ChatType.fromCore(chat.type)
+            val title = chat.title?.trim().orEmpty().ifEmpty {
+                when (type) {
+                    ChatType.CHANNEL -> "Канал"
+                    ChatType.GROUP -> "Группа"
+                    else -> "Чат"
+                }
+            }
+            val subtitle = hit.link?.let { "@$it" } ?: chat.lastMessage?.text?.trim()?.takeIf { it.isNotEmpty() }
+            return ChatSearchResult(chat.id.toString(), title, subtitle, type, hit.iconUrl)
+        }
     }
 }
