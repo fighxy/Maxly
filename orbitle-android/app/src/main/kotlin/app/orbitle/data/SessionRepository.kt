@@ -17,6 +17,8 @@ data class DeviceSession(
 interface SessionRepository {
     suspend fun sessions(): List<DeviceSession>
     suspend fun closeOthers()
+    /** Подтвердить вход на другом устройстве по ссылке из его QR-кода. */
+    suspend fun approveQrLogin(link: String): Unit = throw app.orbitle.domain.OrbitleError.Rejected("Вход по QR-коду недоступен")
 }
 
 class CoreSessionRepository(private val client: MaxClient) : SessionRepository {
@@ -26,6 +28,10 @@ class CoreSessionRepository(private val client: MaxClient) : SessionRepository {
 
     override suspend fun closeOthers() {
         MaxCoreGateway.call { client.closeOtherSessions() }
+    }
+
+    override suspend fun approveQrLogin(link: String) {
+        MaxCoreGateway.call { client.approveQrLogin(link) }
     }
 
     companion object {

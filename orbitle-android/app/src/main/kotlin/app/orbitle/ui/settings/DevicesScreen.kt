@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.PhoneAndroid
@@ -46,6 +48,10 @@ fun DevicesScreen(repository: SessionRepository, onBack: () -> Unit) {
     var sessions by remember { mutableStateOf<List<DeviceSession>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var confirm by remember { mutableStateOf(false) }
+    var scanning by remember { mutableStateOf(false) }
+    var scanned by remember { mutableStateOf<String?>(null) }
+    var approving by remember { mutableStateOf(false) }
+    var notice by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val presence = remember { PresenceText() }
     suspend fun load() {
@@ -101,7 +107,65 @@ fun DevicesScreen(repository: SessionRepository, onBack: () -> Unit) {
                     )
                 }
             }
+            item {
+                androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                ListItem(
+                    leadingContent = { Icon(Icons.Outlined.QrCodeScanner, null) },
+                    headlineContent = { Text("Войти по QR-коду") },
+                    supportingContent = { Text(app.orbitle.presentation.settings.QrLogin.FOOTER) },
+                    trailingContent = if (approving) ({ CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) }) else null,
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+                    modifier = Modifier.clickable(enabled = !approving) { scanning = true },
+                )
+            }
         }
+    }
+    if (scanning) {
+        QrScannerDialog(
+            onResult = {
+                scanning = false
+                val link = app.orbitle.presentation.settings.QrLogin.loginLink(it)
+                if (link == null) notice = app.orbitle.presentation.settings.QrLogin.NOT_LOGIN else scanned = link
+            },
+            onDenied = {
+                scanning = false
+                notice = "Нет доступа к камере. Разрешите его в настройках телефона."
+            },
+            onDismiss = { scanning = false },
+        )
+    }
+    scanned?.let { link ->
+        AlertDialog(
+            onDismissRequest = { scanned = null },
+            title = { Text("Войти на другом устройстве?") },
+            text = { Text("Подтверждайте вход, только если QR-код показан на вашем устройстве.\n$link") },
+            confirmButton = {
+                TextButton(onClick = {
+                    scanned = null
+                    approving = true
+                    scope.launch {
+                        notice = try {
+                            repository.approveQrLogin(link)
+                            "Вход подтверждён"
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            "Не удалось подтвердить вход. " + ((e as? OrbitleError)?.userMessage ?: OrbitleError.Unknown.userMessage)
+                        }
+                        approving = false
+                        load()
+                    }
+                }) { Text("Войти") }
+            },
+            dismissButton = { TextButton(onClick = { scanned = null }) { Text("Отмена") } },
+        )
+    }
+    notice?.let {
+        AlertDialog(
+            onDismissRequest = { notice = null },
+            text = { Text(it) },
+            confirmButton = { TextButton(onClick = { notice = null }) { Text("OK") } },
+        )
     }
     if (confirm) {
         AlertDialog(
