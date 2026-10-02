@@ -6,6 +6,8 @@ import app.orbitle.data.CoreFailure
 import app.orbitle.domain.Chat
 import app.orbitle.domain.ChatDraft
 import app.orbitle.domain.ChatSearchResult
+import app.orbitle.domain.FoundMessage
+import app.orbitle.presentation.chatlist.FoundMessageItem
 import app.orbitle.domain.ChatType
 import app.orbitle.domain.ConnectionState
 import app.orbitle.domain.ServerFolder
@@ -17,6 +19,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -61,6 +64,16 @@ class FakeChats : ChatRepository {
         searches += query
         searchFailure?.let { throw it }
         return searchResult
+    }
+
+    val messageSearches = mutableListOf<String>()
+    var messageResult: List<FoundMessage> = emptyList()
+    var messageFailure: Throwable? = null
+
+    override suspend fun searchMessages(query: String): List<FoundMessage> {
+        messageSearches += query
+        messageFailure?.let { throw it }
+        return messageResult
     }
 
     override fun clear() = Unit
@@ -262,6 +275,71 @@ class ChatListViewModelTest {
         assertEquals(listOf("канал"), repo.searches)
         assertTrue(vm.state.value.global.isEmpty())
         assertFalse(vm.state.value.isSearchingServer)
+    }
+
+    private fun foundMessage(chat: String, id: String, text: String = "привет", outgoing: Boolean = false, at: Long = now) =
+        FoundMessage(chat, id, senderName = "Анна", isOutgoing = outgoing, text = text, timeMs = at)
+
+    @Test
+    fun foundMessagesTakeChatTitleAuthorAndTime() {
+        repo.chats.value = listOf(chat("1"), chat("2", ChatType.GROUP), chat("3", ChatType.GROUP))
+        repo.messageResult = listOf(
+            foundMessage("1", "10", text = "привет\n  как дела"),
+            foundMessage("2", "11"),
+            foundMessage("3", "12", outgoing = true, at = 0),
+            foundMessage("99", "13"),
+        )
+        vm.setSearchActive(true)
+        vm.setSearchQuery("привет")
+        advance(ChatListViewModel.SEARCH_DELAY_MS)
+        assertEquals(listOf("привет"), repo.messageSearches)
+        val rows = vm.state.value.messages
+        assertEquals(listOf("10", "11", "12", "13"), rows.map { it.messageId })
+        assertEquals("Чат 1", rows[0].chatTitle)
+        // В личном чате автор не нужен, в группе — имя, свои — «Вы».
+        assertNull(rows[0].author)
+        assertEquals("привет как дела", rows[0].snippet)
+        assertEquals("Анна", rows[1].author)
+        assertEquals(FoundMessageItem.OUTGOING_AUTHOR, rows[2].author)
+        assertEquals("", rows[2].time)
+        assertTrue(rows[1].time.isNotEmpty())
+        assertEquals(FoundMessageItem.UNKNOWN_CHAT_TITLE, rows[3].chatTitle)
+    }
+
+    @Test
+    fun messageSearchFailureKeepsFoundChats() {
+        repo.chats.value = listOf(chat("1"))
+        repo.searchResult = listOf(found("50"))
+        repo.messageFailure = CoreFailure("NETWORK", null)
+        vm.setSearchActive(true)
+        vm.setSearchQuery("канал")
+        advance(ChatListViewModel.SEARCH_DELAY_MS)
+        assertEquals(listOf("50"), vm.state.value.global.map { it.id })
+        assertTrue(vm.state.value.messages.isEmpty())
+        assertFalse(vm.state.value.isSearchingServer)
+    }
+
+    @Test
+    fun closingSearchDropsFoundMessages() {
+        repo.chats.value = listOf(chat("1"))
+        repo.messageResult = listOf(foundMessage("1", "10"))
+        vm.setSearchActive(true)
+        vm.setSearchQuery("привет")
+        advance(ChatListViewModel.SEARCH_DELAY_MS)
+        assertEquals(1, vm.state.value.messages.size)
+        vm.setSearchActive(false)
+        assertTrue(vm.state.value.messages.isEmpty())
+        vm.setSearchActive(true)
+        vm.setSearchQuery("п")
+        assertTrue(vm.state.value.messages.isEmpty())
+    }
+
+    @Test
+    fun snippetIsOneShortLine() {
+        assertEquals("а б", FoundMessageItem.snippet("  а\n\tб "))
+        val long = FoundMessageItem.snippet("слово ".repeat(100))
+        assertTrue(long.endsWith("…"))
+        assertTrue(long.length <= 161)
     }
 
     @Test

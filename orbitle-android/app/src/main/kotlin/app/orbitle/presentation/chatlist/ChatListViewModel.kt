@@ -11,7 +11,11 @@ import app.orbitle.domain.ConnectionState
 import app.orbitle.domain.OrbitleError
 import app.orbitle.domain.ChatSearchResult
 import kotlinx.coroutines.CancellationException
+import app.orbitle.domain.ChatType
+import app.orbitle.domain.FoundMessage
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,6 +67,8 @@ data class ChatListUiState(
     val pages: List<ChatFolderPage> = emptyList(),
     /** Найдено на сервере при поиске, без чатов, которые уже есть в списке. */
     val global: List<ChatSearchResult> = emptyList(),
+    /** Сообщения по запросу: с сервера и загруженные, новые сверху. */
+    val messages: List<FoundMessageItem> = emptyList(),
     /** Запрос к серверу ещё идёт. */
     val isSearchingServer: Boolean = false,
 ) {
@@ -84,6 +90,7 @@ class ChatListViewModel(
 ) : ViewModel() {
 
     private var serverSearch: Job? = null
+    private var foundMessages: List<FoundMessage> = emptyList()
 
     private var chats: List<Chat> = emptyList()
     private var hasSnapshot = false
@@ -184,31 +191,72 @@ class ChatListViewModel(
      * Поиск на сервере, как в приложении для iOS: после паузы в наборе, от двух букв.
      * Прежний запрос отменяется; ответ на устаревший запрос не показывается, ошибка — просто пусто.
      */
+    private suspend fun <T> orEmpty(load: suspend () -> List<T>): List<T> = try {
+        load()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        emptyList()
+    }
+
+    /** Строки найденных сообщений с названием чата из списка. */
+    private fun messageItems(): List<FoundMessageItem> {
+        if (foundMessages.isEmpty()) return emptyList()
+        val byId = chats.associateBy { it.id }
+        val nowMs = now()
+        return foundMessages.map { found ->
+            val chat = byId[found.chatId]
+            val type = chat?.type ?: ChatType.PRIVATE
+            val title = when {
+                chat == null -> FoundMessageItem.UNKNOWN_CHAT_TITLE
+                chat.isSavedMessages -> ChatListFormatter.SAVED_MESSAGES_TITLE
+                else -> chat.title
+            }
+            // Автор — в группах и каналах; в личном чате видно и так, свои — «Вы».
+            val author = when {
+                found.isOutgoing -> FoundMessageItem.OUTGOING_AUTHOR
+                type == ChatType.PRIVATE -> null
+                else -> found.senderName
+            }
+            FoundMessageItem(
+                chatId = found.chatId,
+                messageId = found.messageId,
+                chatTitle = title,
+                chatType = type,
+                isSavedMessages = chat?.isSavedMessages == true,
+                author = author,
+                snippet = FoundMessageItem.snippet(found.text),
+                time = if (found.timeMs > 0) formatter.timeLabel(found.timeMs, nowMs) else "",
+            )
+        }
+    }
+
     private fun scheduleServerSearch() {
         serverSearch?.cancel()
         serverSearch = null
         val current = _state.value
         val query = current.searchQuery.trim()
         if (!current.isSearchActive || query.length < SERVER_SEARCH_MIN_LENGTH) {
-            if (current.isSearchingServer || current.global.isNotEmpty()) {
-                _state.value = current.copy(global = emptyList(), isSearchingServer = false)
+            foundMessages = emptyList()
+            if (current.isSearchingServer || current.global.isNotEmpty() || current.messages.isNotEmpty()) {
+                _state.value = current.copy(global = emptyList(), messages = emptyList(), isSearchingServer = false)
             }
             return
         }
         _state.value = current.copy(isSearchingServer = true)
         serverSearch = viewModelScope.launch {
             delay(searchDelayMs)
-            val found = try {
-                repository.searchPublic(query)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                emptyList()
+            val (found, messages) = coroutineScope {
+                val publicChats = async { orEmpty { repository.searchPublic(query) } }
+                val foundMessages = async { orEmpty { repository.searchMessages(query) } }
+                publicChats.await() to foundMessages.await()
             }
             if (_state.value.searchQuery.trim() != query || !_state.value.isSearchActive) return@launch
             val known = chats.mapTo(HashSet()) { it.id }
+            foundMessages = messages
             _state.value = _state.value.copy(
                 global = found.distinctBy { it.id }.filterNot { it.id in known },
+                messages = messageItems(),
                 isSearchingServer = false,
             )
         }
@@ -362,6 +410,7 @@ class ChatListViewModel(
             pages = pages,
             // Чат мог появиться в списке, пока шёл поиск: тогда он среди своих, а не найденных.
             global = if (current.global.isEmpty()) current.global else current.global.filterNot { g -> chats.any { it.id == g.id } },
+            messages = if (current.messages.isEmpty()) current.messages else messageItems(),
         )
     }
 
@@ -380,5 +429,30 @@ class ChatListViewModel(
         const val SEARCH_DELAY_MS = 300L
         /** Короче запрос сервер не ищет. */
         const val SERVER_SEARCH_MIN_LENGTH = 2
+    }
+}
+
+/** Строка найденного сообщения: чат, автор, кусок текста и время. */
+data class FoundMessageItem(
+    val chatId: String,
+    val messageId: String,
+    val chatTitle: String,
+    val chatType: ChatType,
+    val isSavedMessages: Boolean,
+    /** «Вы», имя автора в группе или `null`. */
+    val author: String?,
+    val snippet: String,
+    val time: String,
+) {
+    companion object {
+        const val OUTGOING_AUTHOR = "Вы"
+        const val UNKNOWN_CHAT_TITLE = "Чат"
+        private const val SNIPPET_LENGTH = 160
+
+        /** Текст одной строкой и не длиннее строки списка. */
+        fun snippet(text: String): String {
+            val line = text.trim().replace(Regex("\\s+"), " ")
+            return if (line.length > SNIPPET_LENGTH) line.take(SNIPPET_LENGTH).trimEnd() + "…" else line
+        }
     }
 }

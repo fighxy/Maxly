@@ -139,6 +139,8 @@ fun MainScreen(
                     chatList,
                     onOpenChat = { openChat(it.id) },
                     onOpenFound = { openChat(it.id, it.title) },
+                    // Переход к самому сообщению экран чата пока не умеет: открывается чат.
+                    onOpenMessage = { openChat(it.chatId) },
                     privateMode = privatePrefs,
                     onTogglePrivateMode = container.privateMode::toggle,
                 )
