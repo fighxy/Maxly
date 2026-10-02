@@ -193,6 +193,7 @@ fun MainScreen(
                     onOpenProfile = { nav.navigate("profile/$chatId?fromChat=true") },
                     mediaUserAgent = container.videoSourceUserAgent(),
                     forwardTargets = { chatList.forwardTargets(excluding = chatId) },
+                    onDisablePrivateMode = { container.privateMode.setEnabled(false) },
                 )
             }
             composable(

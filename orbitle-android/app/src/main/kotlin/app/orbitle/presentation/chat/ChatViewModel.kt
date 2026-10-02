@@ -59,6 +59,9 @@ data class ChatHeaderUi(
     val subtitleAccent: Boolean,
     val avatar: ChatAvatar,
     val isVerified: Boolean = false,
+    /** Для общего заголовка приватного режима. */
+    val type: app.orbitle.domain.ChatType = app.orbitle.domain.ChatType.PRIVATE,
+    val isSavedMessages: Boolean = false,
 )
 
 data class ChatUiState(
@@ -464,7 +467,7 @@ class ChatViewModel(
         val (subtitle, accent) = formatter.subtitle(info, now())
         _state.update {
             it.copy(
-                header = ChatHeaderUi(title, subtitle, accent, ChatListFormatter().avatar(chat, title), chat.isVerified),
+                header = ChatHeaderUi(title, subtitle, accent, ChatListFormatter().avatar(chat, title), chat.isVerified, chat.type, chat.isSavedMessages),
                 canWrite = chat.canWrite != false,
             )
         }

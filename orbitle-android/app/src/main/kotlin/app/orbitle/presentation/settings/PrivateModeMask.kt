@@ -16,6 +16,7 @@ object PrivateModeMask {
     /** Текст черновика в строке чата: «Черновик: скрыт». */
     const val DRAFT_TEXT = "скрыт"
     const val CONTACT_TITLE = "Контакт"
+    const val HIDDEN_TEXT = "Сообщение скрыто"
     const val REVEAL_HINT = "Нажмите на сообщение, чтобы просмотреть исходное содержимое"
     /** Сколько открытое касанием сообщение остаётся видимым. */
     const val REVEAL_MILLIS = 15_000L
@@ -66,6 +67,41 @@ object PrivateModeMask {
             isForwarded = false,
         )
         return masked.copy(accessibilityLabel = spoken(masked))
+    }
+
+    /** Заголовок чата: общее название по типу и круг без букв; подпись («в сети») остаётся. */
+    fun header(header: app.orbitle.presentation.chat.ChatHeaderUi): app.orbitle.presentation.chat.ChatHeaderUi =
+        header.copy(title = chatTitle(header.type, header.isSavedMessages), avatar = avatar(header.avatar), isVerified = false)
+
+    /** Подпись-заглушка сообщения. Звонок остаётся звонком, но без исхода и длительности. */
+    fun messageText(message: app.orbitle.domain.Message, outgoing: Boolean): String =
+        message.content.call?.let { callTitle(it.isGroup) } ?: messageText(outgoing)
+
+    /** Текст панели ответа и правки над полем ввода: правится всегда своё, ответ — скрыт. */
+    fun panelText(message: app.orbitle.domain.Message, editing: Boolean): String =
+        message.content.call?.let { callTitle(it.isGroup) } ?: if (editing) SENT_TEXT else HIDDEN_TEXT
+
+    /**
+     * Пузырь ленты: только общая подпись, время и статус. Автор остаётся id, по нему склеиваются
+     * пузыри подряд, но имени и фото нет: аватар — однотонный круг.
+     */
+    fun bubble(item: app.orbitle.presentation.chat.ChatItem.Bubble): app.orbitle.presentation.chat.ChatItem.Bubble {
+        val message = item.message
+        return item.copy(
+            message = app.orbitle.domain.Message(
+                id = message.id,
+                chatId = message.chatId,
+                authorId = message.authorId,
+                text = messageText(message, item.outgoing),
+                timeMs = message.timeMs,
+                status = message.status,
+                isRead = message.isRead,
+                isService = message.isService,
+            ),
+            authorName = null,
+            avatar = item.avatar?.let(::avatar),
+            comments = null,
+        )
     }
 
     private fun spoken(item: ChatListItem): String {

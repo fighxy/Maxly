@@ -58,6 +58,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import app.orbitle.ui.components.privateBlur
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Forward
 import androidx.compose.material.icons.automirrored.filled.Reply
@@ -143,8 +147,31 @@ fun ChatScreen(
     mediaUserAgent: String = "",
     /** Куда можно переслать сообщение. */
     forwardTargets: () -> List<ChatListItem> = { emptyList() },
+    /** Капсула «Отключить приватный режим» над лентой. */
+    onDisablePrivateMode: () -> Unit = {},
 ) {
     val state by model.state.collectAsStateWithLifecycle()
+    val privacy = app.orbitle.ui.components.LocalPrivateMode.current
+    // Открытые касанием пузыри приватного режима: закрываются через 15 секунд,
+    // при уходе из чата, сворачивании и смене вида.
+    val revealed = remember { androidx.compose.runtime.mutableStateListOf<String>() }
+    val revealScope = rememberCoroutineScope()
+    val revealJobs = remember { mutableMapOf<String, kotlinx.coroutines.Job>() }
+    val hideAll = {
+        revealJobs.values.forEach { it.cancel() }
+        revealJobs.clear()
+        revealed.clear()
+    }
+    val reveal: (String) -> Unit = { id ->
+        revealJobs.remove(id)?.cancel()
+        if (id !in revealed) revealed.add(id)
+        revealJobs[id] = revealScope.launch {
+            delay(app.orbitle.presentation.settings.PrivateModeMask.REVEAL_MILLIS)
+            revealed.remove(id)
+            revealJobs.remove(id)
+        }
+    }
+    LaunchedEffect(privacy) { hideAll() }
     val mediaState = model.media.state.collectAsStateWithLifecycle()
     val playback = model.media.playback.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -215,6 +242,7 @@ fun ChatScreen(
                 kotlinx.coroutines.awaitCancellation()
             } finally {
                 model.setActive(false)
+                hideAll()
             }
         }
     }
@@ -240,7 +268,7 @@ fun ChatScreen(
 
     CompositionLocalProvider(LocalBubbleMedia provides bubbleMedia) { Box(Modifier.fillMaxSize()) {
     Scaffold(
-        topBar = { ChatTopBar(state, onBack, onOpenProfile) },
+        topBar = { ChatTopBar(state, onBack, onOpenProfile, privacy) },
         snackbarHost = { SnackbarHost(snackbar) },
         contentWindowInsets = WindowInsets(0),
         containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
@@ -256,13 +284,15 @@ fun ChatScreen(
                     state = listState,
                     reverseLayout = true,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(vertical = 8.dp),
+                    contentPadding = PaddingValues(top = if (privacy != app.orbitle.domain.PrivateModeDisplay.VISIBLE) 88.dp else 8.dp, bottom = 8.dp),
                 ) {
                     items(state.items, key = { it.key }, contentType = { it::class }) { item ->
                         when (item) {
                             is ChatItem.Day -> DayChip(item.label)
                             is ChatItem.Service -> ServiceChip(item.text)
-                            is ChatItem.Bubble -> BubbleRow(
+                            is ChatItem.Bubble -> if (privacy != app.orbitle.domain.PrivateModeDisplay.VISIBLE && item.key !in revealed) {
+                                PrivateBubble(item, privacy) { reveal(item.key) }
+                            } else BubbleRow(
                                 item = item,
                                 onLongPress = { actionsFor = it },
                                 onReaction = { message, emoji -> model.toggleReaction(message, emoji) },
@@ -289,6 +319,14 @@ fun ChatScreen(
                             }
                         }
                     }
+                }
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = privacy != app.orbitle.domain.PrivateModeDisplay.VISIBLE,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+                ) {
+                    PrivateModeCapsule(showsHint = state.items.any { it is ChatItem.Bubble }, onDisable = onDisablePrivateMode)
                 }
                 androidx.compose.animation.AnimatedVisibility(
                     visible = awayFromBottom,
@@ -399,17 +437,23 @@ fun ChatScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChatTopBar(state: ChatUiState, onBack: () -> Unit, onOpenProfile: () -> Unit) {
+private fun ChatTopBar(
+    state: ChatUiState,
+    onBack: () -> Unit,
+    onOpenProfile: () -> Unit,
+    privacy: app.orbitle.domain.PrivateModeDisplay = app.orbitle.domain.PrivateModeDisplay.VISIBLE,
+) {
     TopAppBar(
         navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад") } },
         title = {
-            val header = state.header ?: return@TopAppBar
+            val real = state.header ?: return@TopAppBar
+            val header = if (privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER) app.orbitle.presentation.settings.PrivateModeMask.header(real) else real
             Row(Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onOpenProfile), verticalAlignment = Alignment.CenterVertically) {
-                Avatar(header.avatar, 40.dp)
+                Avatar(header.avatar, 40.dp, modifier = Modifier.privateBlur(privacy, 6.dp))
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(header.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        Text(header.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false).privateBlur(privacy, 7.dp))
                         if (header.isVerified) {
                             Spacer(Modifier.width(4.dp))
                             Icon(Icons.Filled.Verified, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
@@ -426,6 +470,65 @@ private fun ChatTopBar(state: ChatUiState, onBack: () -> Unit, onOpenProfile: ()
             }
         },
     )
+}
+
+/** Закрытый пузырь приватного режима: заглушка или размытый пузырь, касание открывает его. */
+@Composable
+private fun PrivateBubble(item: ChatItem.Bubble, privacy: app.orbitle.domain.PrivateModeDisplay, onReveal: () -> Unit) {
+    val shown = remember(item, privacy) {
+        if (privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER) app.orbitle.presentation.settings.PrivateModeMask.bubble(item) else item
+    }
+    Box(Modifier.fillMaxWidth()) {
+        Box(Modifier.privateBlur(privacy, 12.dp)) {
+            BubbleRow(item = shown, onLongPress = {}, onReaction = { _, _ -> }, onReplyClick = {}, onRetry = {})
+        }
+        // Поверх пузыря: меню, реакции и смахивание закрытого пузыря недоступны.
+        Box(
+            Modifier
+                .matchParentSize()
+                .clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null,
+                    onClickLabel = "Покажет сообщение на 15 секунд",
+                    onClick = onReveal,
+                )
+                .semantics { contentDescription = app.orbitle.presentation.settings.PrivateModeMask.messageText(item.message, item.outgoing) },
+        )
+    }
+}
+
+/** Капсула «Отключить приватный режим» и подсказка под ней. */
+@Composable
+private fun PrivateModeCapsule(showsHint: Boolean, onDisable: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Surface(
+            onClick = onDisable,
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
+            shadowElevation = 2.dp,
+        ) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.VisibilityOff, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Text("Отключить приватный режим", style = MaterialTheme.typography.labelLarge)
+            }
+        }
+        if (showsHint) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.85f),
+                modifier = Modifier.padding(top = 6.dp, start = 32.dp, end = 32.dp),
+            ) {
+                Text(
+                    app.orbitle.presentation.settings.PrivateModeMask.REVEAL_HINT,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -481,6 +584,8 @@ private fun Composer(
         Column(if (showPanel) Modifier else Modifier.navigationBarsPadding()) {
             val editing = state.editing
             val reply = state.replyTo
+            // Приватный режим: панель над полем ввода без автора и текста.
+            val masked = app.orbitle.ui.components.LocalPrivateMode.current != app.orbitle.domain.PrivateModeDisplay.VISIBLE
             state.uploadProgress?.let { progress ->
                 Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -500,12 +605,13 @@ private fun Composer(
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            if (editing != null) "Редактирование" else reply!!.authorName.ifEmpty { "Ответ" },
+                            if (editing != null) "Редактирование" else if (masked) "Ответ" else reply!!.authorName.ifEmpty { "Ответ" },
                             color = MaterialTheme.colorScheme.primary,
                             style = MaterialTheme.typography.labelLarge,
                             maxLines = 1,
                         )
-                        Text((editing ?: reply)!!.replySnippet, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        val target = (editing ?: reply)!!
+                        Text(if (masked) app.orbitle.presentation.settings.PrivateModeMask.panelText(target, editing = editing != null) else target.replySnippet, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     IconButton(onClick = if (editing != null) onCancelEdit else onCancelReply) { Icon(Icons.Filled.Close, "Отменить") }
                 }
