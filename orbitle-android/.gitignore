@@ -1,0 +1,9 @@
+.gradle/
+.kotlin/
+build/
+.build/
+local.properties
+# AAR ядра собирает scripts/fetch-core.sh по core.lock.
+vendor/
+*.iml
+.idea/

@@ -1,0 +1,83 @@
+# Orbitle для Android
+
+Нативный Android-клиент Orbitle: Kotlin, Jetpack Compose и Material 3. Экраны и поведение
+повторяют iOS-клиент ([orbitle-ios](../orbitle-ios/README.md)), внешний вид — родной для
+Android. Сеть, протокол, вход и хранение сессии — в общем ядре
+[max-kmp-core](https://github.com/fighxy/max-kmp-core) (Android-цель), клиент представляется
+сервису Android-устройством (`DeviceProfile.android` ядра).
+
+## Скачать
+
+Каждый зелёный прогон workflow «Android» публикует пререлиз `android-<sha7>` с файлом
+`Orbitle-<sha7>.apk` ([Releases](https://github.com/fighxy/Orbitle/releases)). Ссылку можно
+открыть прямо на телефоне: браузер скачает `.apk`, остаётся разрешить установку из этого
+источника. Хранятся последние 5 сборок.
+
+Сборки подписаны одним ключом, поэтому новая версия ставится поверх старой без потери входа.
+Если в репозитории есть секрет `ORBITLE_KEYSTORE_BASE64` (с `ORBITLE_KEYSTORE_PASSWORD`,
+`ORBITLE_KEY_ALIAS`, `ORBITLE_KEY_PASSWORD`), CI подписывает им; иначе — ключом разработки
+`signing/orbitle-dev.keystore` (пароли `android`). Ключ разработки лежит в открытом
+репозитории, поэтому для раздачи пользователям нужен свой ключ в секретах. Сменить ключ
+можно только с переустановкой приложения.
+
+## Что готово
+
+- **Вход:** номер с маской и выбором страны (поиск по названию и коду), SMS-код с
+  автоотправкой полного кода и повтором через 30 секунд, устаревший код заменяется новым,
+  облачный пароль с подсказкой, регистрация нового аккаунта, восстановление сессии при
+  запуске, «Сессия истекла» при отклонённом токене.
+- **Список чатов:** живой стор ядра, закреплённые сверху (закрепить и открепить долгим
+  нажатием), папки сервера с бейджами непрочитанных, превью как в iOS («Фотография»,
+  «Голосовое сообщение», «Вы:» и имя автора в группах, пересланные, черновики, «печатает…»),
+  галочки доставки и прочтения, «без звука», подтверждённые аккаунты, «в сети», поиск по
+  загруженным чатам, плашка «Подключение…», потянуть вниз — обновить.
+- **Вкладки:** «Чаты», «Звонки», «Контакты», «Настройки» (профиль, «О приложении», выход).
+
+## Устройство
+
+Один модуль `app`, одна активность, Navigation Compose, ViewModel + StateFlow.
+
+| Пакет | Что внутри |
+|---|---|
+| `domain` | модели UI (`Chat`, `ChatFolder`, `AuthPhase`, `OrbitleError`) — как `OrbitleDomain` в iOS |
+| `data` | мост к ядру: `MaxCoreGateway` (вызовы `MaxClient`, ошибки ядра → `CoreFailure`), `SessionManager` (шаги входа, попытки, выход), `ChatMapping` (чаты стора → модели), репозитории над `MaxClient.store` |
+| `presentation` | логика экранов без Android UI: `AuthViewModel`, `PhoneNumber`, `PhoneCountry`, `ChatListFormatter`, `ChatListViewModel` — перенесены из `OrbitlePresentation` iOS-клиента вместе с тестами |
+| `ui` | Compose-экраны и тема Material 3 (акцент `#5C6BF5`, тёмный фон `#0C0E14`, палитра аватаров как в iOS) |
+
+Логика `presentation` и `data` проверяется JVM-тестами (`app/src/test`), без эмулятора.
+
+## Ядро
+
+Ревизия ядра закреплена в `core.lock` (та же схема, что `orbitle-ios/core.lock`).
+`scripts/fetch-core.sh` клонирует эту ревизию в `.build/max-kmp-core`, собирает Android-AAR
+модулей `core` и `shared` и кладёт их в `vendor/` (в git не попадает). Приложение
+подключает их файлами, поэтому версии Gradle, AGP и Kotlin у приложения и ядра независимы.
+Транзитивные зависимости ядра (корутины, kotlinx-serialization, OkHttp) объявлены в
+`app/build.gradle.kts`.
+
+Обновить ядро: поменять `revision=` в `core.lock` и снова запустить скрипт. Для работы с
+локальной копией: `MAX_KMP_CORE_DIR=~/src/max-kmp-core bash scripts/fetch-core.sh`.
+
+## Сборка
+
+Нужны JDK 17 и Android SDK (платформы 37 и 35, build-tools 37).
+
+```bash
+cd orbitle-android
+export ANDROID_HOME=~/android-sdk
+bash scripts/fetch-core.sh
+./gradlew testDebugUnitTest      # JVM-тесты
+./gradlew assembleRelease        # app/build/outputs/apk/release/app-release.apk
+./gradlew installDebug           # отладочная сборка на подключённый телефон (app.orbitle.android.debug)
+```
+
+Инструменты: Gradle 9.6, AGP 9.4 (встроенный Kotlin), Kotlin 2.4.20, Compose BOM 2026.09,
+Material 3, Coil 3, minSdk 26, targetSdk 37. Релизная сборка ужимается R8; классы ядра
+(`com.max.**`) не трогаются.
+
+## CI
+
+Workflow «Android» (`.github/workflows/android.yml`) запускается на изменения в
+`orbitle-android/**` и в самом workflow: собирает ядро по `core.lock` (с кэшем), гоняет
+JVM-тесты, собирает подписанный release-APK, проверяет подпись и публикует пререлиз
+`android-<sha7>`. Код версии — номер прогона, поэтому каждая сборка новее предыдущей.
