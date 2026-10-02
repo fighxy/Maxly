@@ -116,6 +116,9 @@ public final class ChatViewModel {
     @ObservationIgnored private var activeVoiceId: String?
     @ObservationIgnored private var voiceTask: Task<Void, Never>?
     @ObservationIgnored private var voiceToggle: Task<Void, Never>?
+    /// Куда перейти, когда голосовое начнёт играть: перемотка по дорожке до того, как файл
+    /// скачался или плеер открылся.
+    @ObservationIgnored private var pendingSeek: (id: String, fraction: Double)?
     @ObservationIgnored private var fileTask: Task<Void, Never>?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private let gallery: (any GallerySaving)?
@@ -786,6 +789,40 @@ public final class ChatViewModel {
         voiceToggle = Task { await self.playVoice(message) }
     }
 
+    /// Перемотка голосового касанием или протяжкой по дорожке, как у популярных мессенджеров:
+    /// играющее продолжает с нового места, на паузе и не начатое — начинает играть с него.
+    /// Пока файл качается, место запоминается и применяется, когда плеер откроется.
+    public func seekVoice(_ message: Message, to fraction: Double) {
+        guard let clip = message.content.voices.first else { return }
+        let target = fraction.isFinite ? min(max(fraction, 0), 1) : 0
+        if activeVoiceId == clip.id {
+            switch voicePhase(for: clip.id) {
+            case .playing:
+                voice?.seek(to: target)
+                voicePhases[clip.id] = .playing(target)
+                return
+            case .paused:
+                voiceToggle?.cancel()
+                voice?.seek(to: target)
+                if voice?.resume() == true {
+                    voicePhases[clip.id] = .playing(target)
+                    trackVoice(clip.id)
+                } else {
+                    voicePhases[clip.id] = .failed
+                    activeVoiceId = nil
+                }
+                return
+            case .downloading:
+                pendingSeek = (clip.id, target)
+                return
+            case .idle, .failed:
+                break
+            }
+        }
+        pendingSeek = (clip.id, target)
+        toggleVoice(message)
+    }
+
     public func stopVoice() {
         voiceToggle?.cancel()
         voiceToggle = nil
@@ -849,12 +886,19 @@ public final class ChatViewModel {
     }
 
     private func startPlayback(_ id: String, url: URL) {
+        let seek = pendingSeek
+        pendingSeek = nil
         guard let voice, voice.play(url: url) else {
             voicePhases[id] = .failed
             activeVoiceId = nil
             return
         }
-        voicePhases[id] = .playing(0)
+        if let seek, seek.id == id {
+            voice.seek(to: seek.fraction)
+            voicePhases[id] = .playing(seek.fraction)
+        } else {
+            voicePhases[id] = .playing(0)
+        }
         trackVoice(id)
     }
 

@@ -551,7 +551,14 @@ public protocol VoicePlaying: AnyObject {
     func pause()
     func resume() -> Bool
     func stop()
+    /// Перейти к доле `fraction` (0…1) открытого файла, не меняя, играет он или нет.
+    func seek(to fraction: Double)
     var progress: Double { get }
     var isPlaying: Bool { get }
     var failed: Bool { get }
+}
+
+extension VoicePlaying {
+    /// Плеер без перемотки: голосовое играет с того места, где было.
+    public func seek(to fraction: Double) {}
 }

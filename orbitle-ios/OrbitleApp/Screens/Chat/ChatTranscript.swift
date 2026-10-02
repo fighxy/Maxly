@@ -409,7 +409,8 @@ struct TranscriptBubble: View, Equatable {
             // сдвигаются плавно, а не скачком после него.
             onTranscribe: state.canTranscribe ? {
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { viewModel.toggleTranscript(message) }
-            } : nil
+            } : nil,
+            onSeekVoice: { viewModel.seekVoice(message, to: $0) }
         )
     }
 

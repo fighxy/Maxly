@@ -41,6 +41,8 @@ public struct MessageBubble: View {
     /// Расшифровка голосового: состояние кнопки «→T» и действие (`nil` — кнопки нет).
     private let transcript: TranscriptPhase
     private let onTranscribe: (() -> Void)?
+    /// Перемотка голосового по дорожке (доля 0…1).
+    private let onSeekVoice: ((Double) -> Void)?
     private let onSaveToFiles: (() -> Void)?
     /// «Ответить» и свайп ответа есть, только если в чат можно писать.
     private let allowsReply: Bool
@@ -61,6 +63,8 @@ public struct MessageBubble: View {
 
     /// Сдвиг пузыря при свайпе «ответить».
     @State private var swipe: CGFloat = 0
+    /// Палец ведёт по дорожке голосового: горизонтальный жест — перемотка, не ответ.
+    @State private var scrubbing = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private static let replyThreshold: CGFloat = 56
 
@@ -105,7 +109,8 @@ public struct MessageBubble: View {
         onSaveToPhotos: (() -> Void)? = nil,
         onSaveToFiles: (() -> Void)? = nil,
         transcript: TranscriptPhase = .collapsed,
-        onTranscribe: (() -> Void)? = nil
+        onTranscribe: (() -> Void)? = nil,
+        onSeekVoice: ((Double) -> Void)? = nil
     ) {
         self.message = message
         self.isOutgoing = isOutgoing
@@ -133,6 +138,7 @@ public struct MessageBubble: View {
         self.onSaveToPhotos = onSaveToPhotos
         self.transcript = transcript
         self.onTranscribe = onTranscribe
+        self.onSeekVoice = onSeekVoice
         self.onSaveToFiles = onSaveToFiles
         self.allowsReply = allowsReply
         self.allowsReactions = allowsReactions
@@ -245,6 +251,7 @@ public struct MessageBubble: View {
 
     /// Свайп влево по пузырю — ответить (`ReplySwipe`: вертикальную прокрутку не трогает).
     private func swipeChanged(_ dx: CGFloat) {
+        guard !scrubbing else { return }
         let pulled = min(max(-dx, 0), Self.replyThreshold * 1.4)
         if swipe > -Self.replyThreshold, pulled >= Self.replyThreshold {
             #if canImport(UIKit)
@@ -255,7 +262,7 @@ public struct MessageBubble: View {
     }
 
     private func swipeEnded() {
-        let reply = swipe <= -Self.replyThreshold
+        let reply = !scrubbing && swipe <= -Self.replyThreshold
         withAnimation(.spring(duration: 0.3)) { swipe = 0 }
         if reply { onReply() }
     }
@@ -456,7 +463,13 @@ public struct MessageBubble: View {
                     time: hasText || timeInReactions ? nil : AnyView(meta),
                     transcript: transcript,
                     onTranscribe: onTranscribe,
-                    onToggle: onVoice
+                    onToggle: onVoice,
+                    onSeek: onSeekVoice,
+                    onScrubbing: { active in
+                        scrubbing = active
+                        // Свайп ответа мог начаться в том же касании: пузырь возвращается на место.
+                        if active, swipe != 0 { withAnimation(.spring(duration: 0.3)) { swipe = 0 } }
+                    }
                 )
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)

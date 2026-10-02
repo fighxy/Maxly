@@ -39,6 +39,14 @@ public struct WaveformLayout: Equatable, Sendable {
         return middle <= progress * width
     }
 
+    /// Доля дорожки под пальцем: `x` — расстояние от левого края дорожки. Левее начала — 0,
+    /// правее конца — 1, так что протяжка за край не теряет перемотку. Граница закраски
+    /// (`isPlayed`) при этой доле проходит прямо под пальцем.
+    public func progress(atX x: Double) -> Double {
+        guard width > 0, x.isFinite else { return 0 }
+        return min(max(x / width, 0), 1)
+    }
+
     /// Высоты 0.12…1 для каждого столбика: дорожка сервера, сжатая или растянутая под `count`.
     public func heights(samples: [Int]) -> [Double] {
         ChatContentFormat.waveBars(samples: samples, count: count)
