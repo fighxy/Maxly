@@ -28,7 +28,13 @@ struct MediaMosaic: View {
         let round = visuals.count == 1 && visuals[0].video?.isRound == true
         let layout = fillsWidth && visuals.count == 1 && !round
             ? ChatContentFormat.fullWidthTile(aspect: aspect(visuals[0]), width: Double(maxWidth))
-            : ChatContentFormat.album(aspects: visuals.map(aspect), maxWidth: Double(round ? min(maxWidth, roundPlayer == nil ? Self.roundSide : Self.playingRoundSide) : maxWidth))
+            : ChatContentFormat.album(
+                aspects: visuals.map(aspect),
+                maxWidth: Double(round ? min(maxWidth, roundPlayer == nil ? Self.roundSide : Self.playingRoundSide) : maxWidth),
+                // Альбом над подписью во всю ширину пузыря: ограничение высоты
+                // мягче, иначе две горизонтальные фотографии сужались и пузырь торчал справа.
+                maxHeight: fillsWidth && !round ? 620 : 360
+            )
         ZStack(alignment: .topLeading) {
             Color.clear.frame(width: layout.width, height: layout.height)
             ForEach(Array(visuals.enumerated()), id: \.element.id) { index, item in

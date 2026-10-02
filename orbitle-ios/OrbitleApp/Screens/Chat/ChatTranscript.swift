@@ -383,7 +383,11 @@ struct TranscriptBubble: View, Equatable {
             onSaveToPhotos: state.savesToPhotos ? { viewModel.save(message, to: .photos) } : nil,
             onSaveToFiles: state.savesToFiles ? { viewModel.save(message, to: .files) } : nil,
             transcript: state.transcript,
-            onTranscribe: state.canTranscribe ? { viewModel.toggleTranscript(message) } : nil
+            // В одной анимации с лентой: пузырь растёт и сжимается, а соседние строки
+            // сдвигаются плавно, а не скачком после него.
+            onTranscribe: state.canTranscribe ? {
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { viewModel.toggleTranscript(message) }
+            } : nil
         )
     }
 

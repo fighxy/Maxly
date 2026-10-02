@@ -27,6 +27,8 @@ public struct SharedMedia: Equatable, Sendable {
         public let preview: Data?
         /// `0:42` у видео, `nil` у фото.
         public let duration: String?
+        /// Свой ролик на устройстве без обложки: кадр для сетки берётся из него.
+        public var videoFile: URL? = nil
     }
 
     public struct File: Identifiable, Hashable, Sendable {
@@ -99,10 +101,13 @@ public struct SharedMedia: Equatable, Sendable {
                         thumbnailURL: photo.displayURL, preview: photo.preview, duration: nil
                     ))
                 } else if let video = attachment.video, !video.isRound {
+                    // Только обложка: адрес самого ролика картинкой не декодируется.
+                    let local = video.localPath.map(URL.init(fileURLWithPath:))
                     shared.media.append(Visual(
                         message: message, attachmentId: video.id,
-                        thumbnailURL: video.displayURL, preview: video.preview,
-                        duration: ChatContentFormat.clock(ms: video.durationMs)
+                        thumbnailURL: video.posterURL, preview: video.preview,
+                        duration: ChatContentFormat.clock(ms: video.durationMs),
+                        videoFile: video.posterURL == nil ? local : nil
                     ))
                 }
             }
