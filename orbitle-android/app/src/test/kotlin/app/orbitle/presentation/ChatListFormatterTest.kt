@@ -36,6 +36,27 @@ class ChatListFormatterTest {
     ) = Chat(id = id, title = "Анна Петрова", type = type, lastMessageId = lastId, unreadCount = unread, updatedAtMs = now - 60_000, preview = preview, lastMessage = last)
 
     @Test
+    fun savedMessagesWelcomeKeyLooksEmpty() {
+        val welcome = chat(
+            id = Chat.SAVED_MESSAGES_ID,
+            preview = "  ${app.orbitle.domain.SavedMessagesWelcome.KEY} ",
+            last = ChatLastMessage(authorId = "1", authorName = "Я", isOutgoing = true),
+        )
+        val item = formatter.item(welcome, now)
+        assertEquals(ChatListFormatter.SAVED_MESSAGES_EMPTY, item.preview)
+        assertEquals(ChatListItem.PreviewStyle.EMPTY, item.previewStyle)
+        assertNull(item.sender)
+        assertNull(item.delivery)
+        // В другом чате такой текст — обычное сообщение.
+        val other = formatter.item(chat(preview = app.orbitle.domain.SavedMessagesWelcome.KEY), now)
+        assertEquals(app.orbitle.domain.SavedMessagesWelcome.KEY, other.preview)
+        assertEquals(ChatListItem.PreviewStyle.MESSAGE, other.previewStyle)
+        // Черновик в «Избранном» важнее приветствия.
+        val drafted = formatter.item(welcome.copy(draft = ChatDraft("заметка", now)), now)
+        assertEquals(ChatListItem.PreviewStyle.DRAFT, drafted.previewStyle)
+    }
+
+    @Test
     fun timeLabels() {
         assertEquals("09:05", formatter.timeLabel(ms("2026-09-29T09:05:00Z"), now))
         assertEquals("00:00", formatter.timeLabel(ms("2026-09-29T00:00:00Z"), now))

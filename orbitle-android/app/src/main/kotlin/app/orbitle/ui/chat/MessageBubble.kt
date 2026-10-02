@@ -4,7 +4,18 @@ import app.orbitle.presentation.chat.commentsLabel
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.Comment
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.ui.semantics.Role
+import app.orbitle.presentation.chat.TranscriptToggle
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.graphicsLayer
@@ -40,7 +51,6 @@ import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.CallReceived
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Done
@@ -588,20 +598,7 @@ fun VoiceRow(
             )
             if (onTranscript != null) {
                 Spacer(Modifier.width(8.dp))
-                Box(
-                    Modifier.size(30.dp).clip(RoundedCornerShape(8.dp))
-                        .background(colors.accent.copy(alpha = if (transcriptOpen) 0.3f else 0.14f))
-                        .clickable(onClick = onTranscript),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("А", color = colors.accent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    Icon(
-                        if (transcriptOpen) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                        "Расшифровка",
-                        tint = colors.accent,
-                        modifier = Modifier.size(12.dp).align(Alignment.BottomEnd),
-                    )
-                }
+                TranscriptButton(transcriptOpen, colors.accent, onTranscript)
             }
         }
         Row(Modifier.fillMaxWidth().padding(start = 52.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -616,6 +613,48 @@ fun VoiceRow(
         }
     }
 }
+
+/**
+ * Капсула расшифровки голосового: «→Т», пока текст скрыт, и стрелка вверх, когда он открыт
+ * или загружается. Смена содержимого — короткое растворение с лёгким масштабом.
+ */
+@Composable
+private fun TranscriptButton(open: Boolean, accent: Color, onClick: () -> Unit) {
+    val background by animateColorAsState(
+        accent.copy(alpha = TranscriptToggle.backgroundAlpha(open)),
+        animationSpec = tween(TRANSCRIPT_ANIMATION_MS),
+        label = "transcriptBackground",
+    )
+    val description = TranscriptToggle.description(open)
+    Box(
+        Modifier.size(width = 34.dp, height = 26.dp).clip(RoundedCornerShape(percent = 50))
+            .background(background)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        AnimatedContent(
+            targetState = open,
+            transitionSpec = {
+                (fadeIn(tween(TRANSCRIPT_ANIMATION_MS)) + scaleIn(tween(TRANSCRIPT_ANIMATION_MS), initialScale = 0.85f)) togetherWith
+                    (fadeOut(tween(TRANSCRIPT_ANIMATION_MS)) + scaleOut(tween(TRANSCRIPT_ANIMATION_MS), targetScale = 0.85f))
+            },
+            contentAlignment = Alignment.Center,
+            label = "transcriptContent",
+        ) { expanded ->
+            if (expanded) {
+                Icon(Icons.Filled.KeyboardArrowUp, null, tint = accent, modifier = Modifier.size(18.dp))
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = accent, modifier = Modifier.size(12.dp))
+                    Text(TranscriptToggle.LETTER, color = accent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+private const val TRANSCRIPT_ANIMATION_MS = 200
 
 /** Файл: нажатие скачивает и открывает, во время загрузки — кольцо прогресса. */
 @Composable

@@ -4,6 +4,7 @@ import app.orbitle.domain.Chat
 import app.orbitle.domain.ChatType
 import app.orbitle.domain.DeliveryState
 import app.orbitle.domain.MessageMediaKind
+import app.orbitle.domain.SavedMessagesWelcome
 import java.time.Instant
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
@@ -101,6 +102,10 @@ class ChatListFormatter(private val zone: ZoneId = ZoneId.systemDefault()) {
         } else if (draftText.isNotEmpty()) {
             style = ChatListItem.PreviewStyle.DRAFT
             text = draftText
+        } else if (SavedMessagesWelcome.matches(chat.id, chat.preview)) {
+            // Единственное сообщение «Избранного» — служебное приветствие: как в пустом чате.
+            style = ChatListItem.PreviewStyle.EMPTY
+            text = SAVED_MESSAGES_EMPTY
         } else {
             var body = singleLine(chat.preview.orEmpty())
             media = chat.lastMessage?.media

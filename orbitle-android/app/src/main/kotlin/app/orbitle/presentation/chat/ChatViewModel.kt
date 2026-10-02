@@ -11,6 +11,7 @@ import app.orbitle.domain.Message
 import app.orbitle.domain.MessageStatus
 import app.orbitle.domain.OrbitleError
 import app.orbitle.domain.OutgoingFile
+import app.orbitle.domain.SavedMessagesWelcome
 import app.orbitle.domain.Sticker
 import app.orbitle.data.RecentStickerStore
 import app.orbitle.data.StickerRepository
@@ -499,8 +500,9 @@ class ChatViewModel(
         builtComments = header?.chat?.commentsEnabled
         val isGroup = builtFor == ChatType.GROUP
         requestCommentCounts()
-        val result = feedItems(history, formatter, nowMs, isGroup, ::isOutgoing, ::commentsFooter)
-        val empty = latestLoaded && history.isEmpty()
+        val result = feedItems(history, formatter, nowMs, isGroup, ::isOutgoing, ::commentsFooter, savedMessages = chatId == Chat.SAVED_MESSAGES_ID)
+        // Скрытое приветствие «Избранного» не считается: без других сообщений видна подсказка.
+        val empty = latestLoaded && result.isEmpty()
         val hint = when {
             !empty -> null
             chatId == Chat.SAVED_MESSAGES_ID -> "Пересылайте сюда сообщения, сохраняйте заметки и файлы — их видите только вы."
@@ -583,6 +585,7 @@ class ChatViewModel(
 /**
  * Строки ленты от новых к старым: дни, служебные строки и пузыри. Общая для чата и комментариев.
  * [comments] — плашка комментариев под постом (`null` — без неё).
+ * В «Избранном» ([savedMessages]) служебное приветствие-ключ сервера не показывается.
  */
 internal fun feedItems(
     history: List<Message>,
@@ -591,12 +594,13 @@ internal fun feedItems(
     isGroup: Boolean,
     isOutgoing: (Message) -> Boolean,
     comments: (Message) -> Int? = { null },
+    savedMessages: Boolean = false,
 ): List<ChatItem> {
     val result = ArrayList<ChatItem>(history.size + 8)
     // Строится от старых к новым, потом разворачивается.
     var previous: Message? = null
     var previousDay: String? = null
-    val ordered = history
+    val ordered = if (savedMessages) history.filterNot { SavedMessagesWelcome.isKey(it.text) } else history
     for ((index, message) in ordered.withIndex()) {
         val day = formatter.dayKey(message.timeMs)
         if (day != previousDay) {
