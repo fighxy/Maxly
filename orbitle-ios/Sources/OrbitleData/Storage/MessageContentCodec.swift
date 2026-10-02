@@ -82,6 +82,8 @@ enum MessageContentCodec {
             let attributes = map["attributes"] as? [String: Any]
             if kind == .animoji {
                 // Анимодзи поверх эмодзи текста: id и его Lottie (KometTeam/Komet `RichMessageController`).
+                // Без id отметка ничего не даёт и пропускается.
+                guard stringId(map["entityId"]) != nil else { return nil }
                 return TextSpan(
                     kind: .animoji, from: from, length: length,
                     url: (attributes?["animojiLottieUrl"] as? String) ?? (attributes?["lottieUrl"] as? String),
