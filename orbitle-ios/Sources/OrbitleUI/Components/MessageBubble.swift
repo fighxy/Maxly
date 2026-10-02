@@ -453,7 +453,7 @@ public struct MessageBubble: View {
                     voice: voice,
                     phase: phase,
                     outgoing: isOutgoing,
-                    time: hasText ? nil : AnyView(meta),
+                    time: hasText || timeInReactions ? nil : AnyView(meta),
                     transcript: transcript,
                     onTranscribe: onTranscribe,
                     onToggle: onVoice
@@ -596,10 +596,10 @@ public struct MessageBubble: View {
         standalone == nil && hasFill && !message.content.reactions.isEmpty
     }
 
-    /// Время переезжает из текста в ряд реакций, как в привычных мессенджерах. У голосового
-    /// оно остаётся у дорожки.
+    /// Время переезжает из текста в ряд реакций, как в привычных мессенджерах, — и у
+    /// голосового тоже: правый нижний угол пузыря один для всех сообщений.
     private var timeInReactions: Bool {
-        reactionsInside && message.content.voices.isEmpty
+        reactionsInside
     }
 
     private var reactionsRow: some View {
