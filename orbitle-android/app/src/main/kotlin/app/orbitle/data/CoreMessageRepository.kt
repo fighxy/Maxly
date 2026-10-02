@@ -1,10 +1,14 @@
 package app.orbitle.data
 
+import app.orbitle.domain.ChatAttachment
 import app.orbitle.domain.Message
+import app.orbitle.domain.OrbitleError
 import app.orbitle.domain.MessageContent
 import app.orbitle.domain.MessageReply
 import app.orbitle.domain.MessageStatus
+import com.max.core.api.Transcription
 import com.max.core.events.MaxEvent
+import com.max.core.protocol.Opcode
 import com.max.shared.MaxClient
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
@@ -14,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.update
 import java.util.concurrent.atomic.AtomicLong
 
@@ -173,6 +178,37 @@ class CoreMessageRepository(
 
     override suspend fun reactionCatalog(): List<String> =
         runCatching { MaxCoreGateway.call { client.reactionCatalog() } }.getOrDefault(emptyList()).map { it.emoji }.filter { it.isNotEmpty() }
+
+    override suspend fun transcribe(chatId: String, messageId: String, voiceId: String): String? {
+        val result = MaxCoreGateway.call { client.transcribe(chatId.toLong(), messageId.toLong(), voiceId.toLong()) }
+        return when (result.status) {
+            1 -> result.text.orEmpty()
+            0 -> null
+            else -> throw OrbitleError.Rejected("Не удалось расшифровать голосовое")
+        }
+    }
+
+    override fun transcriptions(): Flow<Pair<String, String>> = client.events.all.mapNotNull { event ->
+        if (event !is MaxEvent.Unknown || event.opcode != Opcode.TRANSCRIPTION_RESULT.value) return@mapNotNull null
+        val result = Transcription.from(event.raw) ?: return@mapNotNull null
+        val messageId = result.messageId ?: return@mapNotNull null
+        if (result.status != 1) return@mapNotNull null
+        messageId.toString() to result.text.orEmpty()
+    }
+
+    override suspend fun mediaLink(chatId: String, messageId: String, attachment: ChatAttachment): String {
+        val chat = chatId.toLong()
+        val message = messageId.toLong()
+        return when (attachment) {
+            is ChatAttachment.Video -> MaxCoreGateway.call { client.media.getVideoLink(chat, message, attachment.video.id.toLong()) }.url
+                ?: throw OrbitleError.Rejected("Видео недоступно")
+            is ChatAttachment.File -> MaxCoreGateway.call { client.media.getFileLink(chat, message, attachment.file.id.toLong()) }.url
+            else -> throw OrbitleError.Rejected("Вложение недоступно")
+        }
+    }
+
+    /** User-Agent сессии: адреса видео и файлов CDN выдаёт под Android-клиента. */
+    val mediaUserAgent: String get() = client.config.userAgent.httpUserAgent
 
     private companion object {
         const val PAGE = 40

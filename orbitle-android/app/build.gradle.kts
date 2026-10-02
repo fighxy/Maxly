@@ -106,6 +106,8 @@ dependencies {
     implementation(libs.compose.material.icons)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.junit)

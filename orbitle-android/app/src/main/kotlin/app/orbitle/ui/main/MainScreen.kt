@@ -143,8 +143,8 @@ fun MainScreen(
             ) { entry ->
                 val chatId = entry.arguments?.getString("chatId").orEmpty()
                 val title = entry.arguments?.getString("title")
-                val model = viewModel(key = "chat-$chatId") { ChatViewModel(chatId, container.messages, fallbackTitle = title) }
-                ChatScreen(model, onBack = { nav.popBackStack() })
+                val model = viewModel(key = "chat-$chatId") { ChatViewModel(chatId, container.messages, fallbackTitle = title, voicePlayer = container.voicePlayer, files = container.files) }
+                ChatScreen(model, onBack = { nav.popBackStack() }, mediaUserAgent = container.videoSourceUserAgent())
             }
         }
     }

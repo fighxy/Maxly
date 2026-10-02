@@ -11,6 +11,10 @@ import app.orbitle.data.CoreSessionRepository
 import app.orbitle.data.PreferenceStore
 import app.orbitle.data.SessionRepository
 import app.orbitle.presentation.calls.CallMarks
+import app.orbitle.presentation.chat.MessageFiles
+import app.orbitle.presentation.chat.VoicePlayer
+import app.orbitle.media.ExoVoicePlayer
+import app.orbitle.media.FileDownloader
 import app.orbitle.data.ChatRepository
 import app.orbitle.data.CoreAccountRepository
 import app.orbitle.data.CoreChatRepository
@@ -42,6 +46,22 @@ class AppContainer(context: Context) {
     val contacts: ContactRepository = CoreContactRepository(client)
 
     val sessions: SessionRepository = CoreSessionRepository(client)
+
+    /** User-Agent сессии для CDN: адреса медиа выданы под Android-клиента. */
+    private val mediaUserAgent: () -> String = { client.config.userAgent.httpUserAgent }
+
+    val voicePlayer: VoicePlayer = ExoVoicePlayer(context.applicationContext, scope, mediaUserAgent)
+
+    private val downloader = FileDownloader(context.applicationContext, mediaUserAgent)
+
+    val files: MessageFiles = object : MessageFiles {
+        override fun cached(fileId: String, name: String): String? = downloader.cached(fileId, name)?.absolutePath
+        override suspend fun download(url: String, fileId: String, name: String, progress: (Float) -> Unit): String =
+            downloader.download(url, fileId, name, progress).absolutePath
+    }
+
+    /** Источник Media3 для видео с тем же User-Agent. */
+    fun videoSourceUserAgent(): String = mediaUserAgent()
 
     private val prefs = context.getSharedPreferences("orbitle", Context.MODE_PRIVATE)
 

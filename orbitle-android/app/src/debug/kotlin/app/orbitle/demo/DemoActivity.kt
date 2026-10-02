@@ -12,6 +12,10 @@ import app.orbitle.domain.Chat
 import app.orbitle.domain.ChatAttachment
 import app.orbitle.domain.ChatType
 import app.orbitle.domain.FileContent
+import app.orbitle.domain.PhotoContent
+import app.orbitle.media.ExoVoicePlayer
+import app.orbitle.presentation.chat.MessageFiles
+import androidx.lifecycle.lifecycleScope
 import app.orbitle.domain.Message
 import app.orbitle.domain.MessageContent
 import app.orbitle.domain.MessageForward
@@ -63,6 +67,7 @@ class DemoActivity : ComponentActivity() {
             override fun put(key: String, value: String) { map[key] = value }
         })
         intent.getStringExtra("wallpaper")?.let { appearance.setWallpaper(ChatWallpaper.valueOf(it)) }
+        val player = ExoVoicePlayer(applicationContext, lifecycleScope, { "Orbitle demo" })
         setContent {
             val prefs by appearance.state.collectAsState()
             val dark = isSystemInDarkTheme()
@@ -74,7 +79,7 @@ class DemoActivity : ComponentActivity() {
                         "appearance" -> AppearanceScreen(appearance, onBack = { finish() })
                         "settings" -> SettingsScreen(Account("1", "Иван", "Петров", "+79001234567", null), onAbout = {}, onLogout = {})
                         else -> {
-                            val model = viewModel { ChatViewModel("10", DemoMessages(group)) }
+                            val model = viewModel { ChatViewModel("10", DemoMessages(group), voicePlayer = player, files = DemoFiles(applicationContext)) }
                             ChatScreen(model, onBack = { finish() })
                         }
                     }
@@ -94,9 +99,13 @@ private class DemoMessages(group: Boolean) : MessageRepository {
         listOf(
             msg("1", "2", now - 26 * 60 * minute, "Привет! Как дела? Посмотри https://max.ru", name = "Анна"),
             msg("2", "1", now - 25 * 60 * minute, "Привет, всё отлично 🙂", read = true),
-            msg("3", "3", now - 50 * minute, "", name = "Борис", content = MessageContent(attachments = listOf(ChatAttachment.Voice(VoiceContent("v", null, listOf(10, 40, 90, 160, 220, 120, 60, 30, 80, 200, 150, 70), 14_000))))),
+            msg("3", "3", now - 50 * minute, "", name = "Борис", content = MessageContent(attachments = listOf(ChatAttachment.Voice(VoiceContent("301", "asset:///demo-voice.wav", listOf(10, 40, 90, 160, 220, 120, 60, 30, 80, 200, 150, 70), 6_000))))),
             msg("4", "3", now - 49 * minute, "Это голосовое про выходные. А вот отчёт:", name = "Борис"),
-            msg("5", "3", now - 48 * minute, "", name = "Борис", content = MessageContent(attachments = listOf(ChatAttachment.File(FileContent("f", "Отчёт за сентябрь.pdf", 1_536_000))))),
+            msg("5", "3", now - 48 * minute, "", name = "Борис", content = MessageContent(attachments = listOf(ChatAttachment.File(FileContent("401", "Отчёт за сентябрь.txt", 1_536_000))))),
+            msg("51", "2", now - 40 * minute, "Фото с дачи", name = "Анна", content = MessageContent(attachments = listOf(
+                ChatAttachment.Photo(PhotoContent("p1", "android.resource://app.orbitle.android.debug/${app.orbitle.R.drawable.wallpaper_autumn}", 1080, 1920)),
+                ChatAttachment.Photo(PhotoContent("p2", "android.resource://app.orbitle.android.debug/${app.orbitle.R.drawable.wallpaper_autumn_dark}", 1080, 1920)),
+            ))),
             msg("6", "1", now - 30 * minute, "Отлично, спасибо! Посмотрю вечером и отпишусь", content = MessageContent(reply = MessageReply("4", "Борис", "Это голосовое про выходные. А вот отчёт:", MessageReply.Kind.TEXT), reactions = listOf(MessageReaction("👍", 2, true), MessageReaction("🔥", 1, false))), read = true),
             msg("7", "2", now - 20 * minute, "", name = "Анна", content = MessageContent(attachments = listOf(ChatAttachment.Call(CallContent("c", 0, false, "MISSED"))))),
             msg("8", "2", now - 10 * minute, "Пересылаю важное", name = "Анна", content = MessageContent(forward = MessageForward("Канал новостей", "Пересылаю важное"), edited = true)),
@@ -134,6 +143,27 @@ private class DemoMessages(group: Boolean) : MessageRepository {
         }
     }
     override suspend fun reactionCatalog() = listOf("👍", "❤️", "🔥", "🤣", "😭", "😍", "👏")
+    override suspend fun mediaLink(chatId: String, messageId: String, attachment: ChatAttachment) = "demo://${attachment.id}"
+    override suspend fun transcribe(chatId: String, messageId: String, voiceId: String): String? {
+        kotlinx.coroutines.delay(800)
+        return "Привет! Давайте в субботу поедем на дачу, я возьму мангал."
+    }
+}
+
+/** Файлы демо: «скачивание» пишет текст в кэш. */
+private class DemoFiles(private val context: android.content.Context) : MessageFiles {
+    private fun file(fileId: String, name: String) = java.io.File(java.io.File(context.cacheDir, "files/$fileId"), name)
+    override fun cached(fileId: String, name: String) = file(fileId, name).takeIf { it.exists() }?.absolutePath
+    override suspend fun download(url: String, fileId: String, name: String, progress: (Float) -> Unit): String {
+        for (step in 1..10) {
+            kotlinx.coroutines.delay(150)
+            progress(step / 10f)
+        }
+        val target = file(fileId, name)
+        target.parentFile?.mkdirs()
+        target.writeText("Демо-отчёт Orbitle")
+        return target.absolutePath
+    }
 }
 
 private class DemoCalls : CallRepository {
