@@ -684,6 +684,14 @@ public final class ChatViewModel {
         await repository.sharedHistory(chatId: chatId, limit: 3000)
     }
 
+    /// Страница общих медиа с сервера для профиля, независимо от загруженной истории.
+    public func sharedMedia(_ request: SharedMediaRequest) async -> [Message]? {
+        await repository.sharedMedia(
+            chatId: chatId, types: request.types, anchorId: request.anchorId,
+            forward: request.forward, backward: request.backward
+        )
+    }
+
     public func voicePhase(for id: String) -> VoicePhase {
         voicePhases[id] ?? .idle
     }

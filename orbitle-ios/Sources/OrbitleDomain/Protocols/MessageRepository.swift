@@ -7,6 +7,10 @@ public protocol MessageRepository: Sendable {
     /// Сохранённая история чата с вложениями и ссылками, от старых к новым, — для общих медиа
     /// профиля. Только кэш устройства, без сети.
     func sharedHistory(chatId: String, limit: Int) async -> [Message]
+    /// Сообщения чата с вложениями `types` прямо с сервера, вокруг сообщения `anchorId`
+    /// (серверный id): до `forward` новее и до `backward` старше. В кэш не пишутся — это не
+    /// сплошная история. `nil` — сервер не ответил.
+    func sharedMedia(chatId: String, types: [SharedAttachType], anchorId: String, forward: Int, backward: Int) async -> [Message]?
     /// Расширить окно на страницу, при необходимости догрузив историю с сервера.
     func loadOlder(chatId: String) async throws(OrbitleError)
     /// Страница строго старше `before` (самые новые, если `nil`), от новых к старым.
@@ -79,6 +83,10 @@ extension MessageRepository {
     }
 
     public func sharedHistory(chatId: String, limit: Int) async -> [Message] { [] }
+
+    public func sharedMedia(chatId: String, types: [SharedAttachType], anchorId: String, forward: Int, backward: Int) async -> [Message]? {
+        nil
+    }
 
     public func syncReactions(chatId: String, messageIds: [String]) async {}
 

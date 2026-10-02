@@ -131,6 +131,21 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func loadSharedMedia(chatId: String, anchorId: String, attachTypes: [String], forward: Int, backward: Int) async throws -> [CoreMessage] {
+        try await call("loadSharedMedia") { done in
+            self.client.loadSharedMedia(
+                chatId: chatId, anchorId: anchorId, attachTypes: attachTypes,
+                forward: Int32(forward), backward: Int32(backward)
+            ) { messages, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(messages.map(Self.message)))
+                }
+            }
+        }
+    }
+
     func sendText(chatId: String, text: String) async throws -> CoreMessage {
         try await call("sendText") { done in
             self.client.sendText(chatId: chatId, text: text) { message, kind, key in
