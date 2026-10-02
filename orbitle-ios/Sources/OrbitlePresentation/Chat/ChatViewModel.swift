@@ -23,6 +23,8 @@ public final class ChatViewModel {
     public private(set) var transcribing: Set<String> = []
     /// Голосовые, у которых расшифровка раскрыта.
     public private(set) var openTranscripts: Set<String> = []
+    /// Голосовые, чья расшифровка не удалась: ошибка раскрыта в пузыре до нажатия «^».
+    public private(set) var failedTranscripts: Set<String> = []
     /// Столько ждём пуша с текстом, если сервер ответил «ещё расшифровываю».
     static let transcriptWait: Duration = .seconds(60)
     /// Строки ленты с разделителями дней, склейкой и подписями автора (`TranscriptLayout`).
@@ -689,6 +691,7 @@ public final class ChatViewModel {
 
     public func transcriptPhase(for voice: VoiceContent) -> TranscriptPhase {
         if transcribing.contains(voice.id) { return .loading }
+        if failedTranscripts.contains(voice.id) { return .failed }
         if openTranscripts.contains(voice.id), voice.transcript != nil { return .expanded }
         return .collapsed
     }
@@ -696,6 +699,8 @@ public final class ChatViewModel {
     /// «→T»: раскрыть расшифровку (запросив её у сервера, если её ещё нет) или свернуть.
     public func toggleTranscript(_ message: Message) {
         guard let voice = message.content.voices.first, !transcribing.contains(voice.id) else { return }
+        // «^» у ошибки сворачивает её; следующее «→Т» спросит сервер заново.
+        if failedTranscripts.remove(voice.id) != nil { return }
         if openTranscripts.contains(voice.id) {
             openTranscripts.remove(voice.id)
             return
@@ -718,10 +723,11 @@ public final class ChatViewModel {
                 }
                 // Сервер ещё работает: текст придёт пушем (`settleTranscripts`).
                 try? await Task.sleep(for: Self.transcriptWait)
-                if self.transcribing.remove(id) != nil { self.showNotice("Расшифровка ещё не готова, попробуйте позже") }
+                if self.transcribing.remove(id) != nil { self.failedTranscripts.insert(id) }
             } catch {
+                // Ошибка — в самом пузыре, как в Komet, а не над полем ввода.
                 self.transcribing.remove(id)
-                self.show(error)
+                if error != .cancelled { self.failedTranscripts.insert(id) }
             }
         }
     }
