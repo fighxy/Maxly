@@ -353,6 +353,54 @@ struct ChatListSearchTests {
         #expect(await repository.searches == ["ан"])
     }
 
+    @Test("Найденные сообщения: название чата из списка, кусок текста и время")
+    func messageSearch() async {
+        let (model, repository) = makeFeatureList(capabilities: [.serverSearch])
+        repository.emit([chat("a", at: 1, title: "Аня")])
+        #expect(await eventually { model.items.count == 1 })
+        await repository.set(foundMessages: [
+            FoundMessage(chatId: "a", messageId: "1", text: "привет\n  как дела", date: Date(timeIntervalSince1970: 1_790_679_600)),
+            FoundMessage(chatId: "z", messageId: "2", text: "привет из другого чата"),
+        ])
+        model.isSearchActive = true
+        model.searchQuery = "привет"
+        #expect(await eventually { !model.search.isSearchingServer && model.search.messages.count == 2 })
+        #expect(await repository.messageSearches == ["привет"])
+        let rows = model.search.messages
+        #expect(rows.map(\.id) == ["a/1", "z/2"])
+        #expect(rows[0].chatTitle == "Аня")
+        #expect(rows[0].snippet == "привет как дела")
+        #expect(!rows[0].time.isEmpty)
+        #expect(rows[1].chatTitle == ChatSearchMessage.unknownChatTitle)
+        #expect(rows[1].time.isEmpty)
+        #expect(!model.search.isEmpty)
+        model.searchQuery = "п"
+        #expect(model.search.messages.isEmpty)
+        model.isSearchActive = false
+        #expect(model.search.messages.isEmpty)
+    }
+
+    @Test("Ошибка поиска сообщений не прячет найденные чаты")
+    func messageSearchFailure() async {
+        let (model, repository) = makeFeatureList(capabilities: [.serverSearch])
+        repository.emit([chat("a", at: 1, title: "Аня")])
+        #expect(await eventually { model.items.count == 1 })
+        await repository.set(searchResults: [ChatSearchResult(id: "z", title: "Анна Z", type: .private)])
+        await repository.set(messageSearchError: .networkUnavailable)
+        model.isSearchActive = true
+        model.searchQuery = "ан"
+        #expect(await eventually { !model.search.isSearchingServer && model.search.global.count == 1 })
+        #expect(model.search.messages.isEmpty)
+    }
+
+    @Test("Кусок найденного сообщения — одна короткая строка")
+    func messageSnippet() {
+        #expect(ChatSearchMessage.snippet("  а\n\tб ") == "а б")
+        let long = ChatSearchMessage.snippet(String(repeating: "слово ", count: 100))
+        #expect(long.hasSuffix("…"))
+        #expect(long.count <= 161)
+    }
+
     @Test("Без поддержки сервер не спрашивается")
     func noServerSearch() async {
         let (model, repository) = makeFeatureList(capabilities: [])

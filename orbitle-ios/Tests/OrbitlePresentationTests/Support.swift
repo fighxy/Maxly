@@ -226,6 +226,19 @@ actor FakeChatRepository: ChatRepository {
         return searchResults
     }
 
+    var foundMessages: [FoundMessage] = []
+    var messageSearchError: OrbitleError?
+    private(set) var messageSearches: [String] = []
+
+    func searchMessages(query: String) async throws(OrbitleError) -> [FoundMessage] {
+        messageSearches.append(query)
+        if let messageSearchError { throw messageSearchError }
+        return foundMessages
+    }
+
+    func set(foundMessages: [FoundMessage]) { self.foundMessages = foundMessages }
+    func set(messageSearchError: OrbitleError?) { self.messageSearchError = messageSearchError }
+
     private func record(_ action: String) async throws(OrbitleError) {
         actions.append(action)
         if let actionGate { await actionGate.wait() }

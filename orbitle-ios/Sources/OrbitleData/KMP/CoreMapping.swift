@@ -33,6 +33,19 @@ enum CoreMapping {
         )
     }
 
+    /// Найденное сообщение; без чата (id 0) и без текста — `nil`.
+    static func foundMessage(_ found: CoreFoundMessage) -> FoundMessage? {
+        let text = found.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !found.chatId.isEmpty, found.chatId != "0", !text.isEmpty else { return nil }
+        return FoundMessage(
+            chatId: found.chatId,
+            messageId: found.messageId,
+            senderId: found.senderId,
+            text: text,
+            date: found.timeMs > 0 ? Date(timeIntervalSince1970: TimeInterval(found.timeMs) / 1000) : nil
+        )
+    }
+
     static func chat(_ chat: CoreChat) -> ChatRecord {
         ChatRecord(
             id: chat.id,

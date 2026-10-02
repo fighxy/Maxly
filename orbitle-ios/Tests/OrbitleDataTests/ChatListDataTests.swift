@@ -435,6 +435,28 @@ struct ChatListDataTests {
         await #expect(throws: OrbitleError.self) { try await parts.chats.search(query: "x") }
     }
 
+    @Test("Поиск сообщений: запрос без пробелов, без повторов, ошибка доходит")
+    func messageSearch() async throws {
+        let parts = try await makeParts()
+        let first = FoundMessage(chatId: "10", messageId: "1", senderId: "2", text: "привет")
+        let other = FoundMessage(chatId: "11", messageId: "1", senderId: "2", text: "привет ещё")
+        await parts.api.setMessageSearchResult(.success([first, other, first]))
+        #expect(try await parts.chats.searchMessages(query: " привет ") == [first, other])
+        #expect(try await parts.chats.searchMessages(query: "  ") == [])
+        #expect(await parts.api.messageSearchCalls == ["привет"])
+        await parts.api.setMessageSearchResult(.failure(.offline))
+        await #expect(throws: OrbitleError.self) { try await parts.chats.searchMessages(query: "x") }
+    }
+
+    @Test("Найденное сообщение из ядра: время, без чата 0 и без пустого текста")
+    func foundMessageMapping() {
+        let found = CoreMapping.foundMessage(CoreFoundMessage(chatId: "10", messageId: "5", senderId: "2", text: " привет ", timeMs: 1_700_000_000_000))
+        #expect(found == FoundMessage(chatId: "10", messageId: "5", senderId: "2", text: "привет", date: Date(timeIntervalSince1970: 1_700_000_000)))
+        #expect(CoreMapping.foundMessage(CoreFoundMessage(chatId: "11", messageId: "6", text: "без времени"))?.date == nil)
+        #expect(CoreMapping.foundMessage(CoreFoundMessage(chatId: "0", messageId: "7", text: "без чата")) == nil)
+        #expect(CoreMapping.foundMessage(CoreFoundMessage(chatId: "12", messageId: "8", text: "  ")) == nil)
+    }
+
     @Test("Найденный чат из ядра: тип, подпись, картинка и название по умолчанию")
     func searchMapping() {
         let channel = CoreMapping.searchResult(CoreSearchChat(id: "5", type: "CHANNEL", title: " Новости ", subtitle: "@news", avatarURL: "https://i/5"))

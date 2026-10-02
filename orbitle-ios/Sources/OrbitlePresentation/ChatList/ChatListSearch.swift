@@ -39,9 +39,41 @@ public struct ChatSearchState: Equatable, Sendable {
     public var chats: [ChatListItem] = []
     /// Найдено на сервере, в списке этих чатов нет.
     public var global: [ChatSearchResult] = []
+    /// Сообщения, найденные на сервере, в порядке ответа.
+    public var messages: [ChatSearchMessage] = []
     public var isSearchingServer = false
 
     public init() {}
 
-    public var isEmpty: Bool { chats.isEmpty && global.isEmpty }
+    public var isEmpty: Bool { chats.isEmpty && global.isEmpty && messages.isEmpty }
+}
+
+/// Строка найденного сообщения: чат, кусок текста одной строкой и время.
+public struct ChatSearchMessage: Identifiable, Equatable, Sendable {
+    public var id: String { "\(chatId)/\(messageId)" }
+    public var chatId: String
+    public var messageId: String
+    public var chatTitle: String
+    public var snippet: String
+    /// Пусто, если время неизвестно.
+    public var time: String
+
+    public init(chatId: String, messageId: String, chatTitle: String, snippet: String, time: String) {
+        self.chatId = chatId
+        self.messageId = messageId
+        self.chatTitle = chatTitle
+        self.snippet = snippet
+        self.time = time
+    }
+
+    /// Название чата, которого нет в списке.
+    public static let unknownChatTitle = "Чат"
+    static let snippetLength = 160
+
+    /// Текст одной строкой и не длиннее строки списка.
+    public static func snippet(_ text: String) -> String {
+        let line = text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        guard line.count > snippetLength else { return line }
+        return String(line.prefix(snippetLength)).trimmingCharacters(in: .whitespaces) + "…"
+    }
 }

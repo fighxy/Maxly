@@ -146,6 +146,7 @@ public final class ChatListViewModel {
     @ObservationIgnored private var marking: Set<String> = []
     @ObservationIgnored private var catchUpTask: Task<Void, Never>?
     @ObservationIgnored private var serverSearchTask: Task<Void, Never>?
+    @ObservationIgnored private var foundMessages: [FoundMessage] = []
 
     public init(
         chats: any ChatRepository,
@@ -628,6 +629,7 @@ public final class ChatListViewModel {
         if query.isEmpty {
             next.global = []
             next.isSearchingServer = false
+            foundMessages = []
             if isSearchActive {
                 next.recent = recentIds.compactMap { id in chats.first { $0.id == id } }.map { item($0, at: date) }
             }
@@ -636,17 +638,35 @@ public final class ChatListViewModel {
             next.chats = found.map { item($0, at: date) }
             let known = Set(chats.map(\.id))
             next.global = next.global.filter { !known.contains($0.id) }
+            next.messages = messageRows(at: date)
         }
         if next != search { search = next }
+    }
+
+    /// Строки найденных сообщений с названием чата из списка.
+    private func messageRows(at date: Date) -> [ChatSearchMessage] {
+        guard !foundMessages.isEmpty else { return [] }
+        let byId = Dictionary(chats.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return foundMessages.map { found in
+            ChatSearchMessage(
+                chatId: found.chatId,
+                messageId: found.messageId,
+                chatTitle: byId[found.chatId].map(formatter.title(for:)) ?? ChatSearchMessage.unknownChatTitle,
+                snippet: ChatSearchMessage.snippet(found.text),
+                time: found.date.map { formatter.timeLabel(for: $0, now: date) } ?? ""
+            )
+        }
     }
 
     private func scheduleServerSearch() {
         serverSearchTask?.cancel()
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard capabilities.contains(.serverSearch), query.count >= 2 else {
-            if search.isSearchingServer || !search.global.isEmpty {
+            foundMessages = []
+            if search.isSearchingServer || !search.global.isEmpty || !search.messages.isEmpty {
                 search.isSearchingServer = false
                 search.global = []
+                search.messages = []
             }
             return
         }
@@ -655,15 +675,15 @@ public final class ChatListViewModel {
         serverSearchTask = Task { [weak self, repository] in
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
-            let results: [ChatSearchResult]
-            do {
-                results = try await repository.search(query: query)
-            } catch {
-                results = []
-            }
+            // Чаты и сообщения ищутся вместе; ошибка одного не прячет другое.
+            async let publicChats: [ChatSearchResult] = (try? await repository.search(query: query)) ?? []
+            async let messages: [FoundMessage] = (try? await repository.searchMessages(query: query)) ?? []
+            let (results, found) = await (publicChats, messages)
             guard !Task.isCancelled, let self, self.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines) == query else { return }
             let known = Set(self.chats.map(\.id))
+            self.foundMessages = found
             self.search.global = results.filter { !known.contains($0.id) }
+            self.search.messages = self.messageRows(at: self.now())
             self.search.isSearchingServer = false
         }
     }

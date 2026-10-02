@@ -64,6 +64,24 @@ public struct CoreSearchChat: Sendable, Equatable {
     }
 }
 
+/// Сообщение из поиска на сервере по всем чатам (`CHAT_SEARCH`).
+public struct CoreFoundMessage: Sendable, Equatable {
+    public var chatId: String
+    public var messageId: String
+    public var senderId: String
+    public var text: String
+    /// Мс Unix; 0 — сервер не прислал время.
+    public var timeMs: Int64
+
+    public init(chatId: String, messageId: String, senderId: String = "", text: String, timeMs: Int64 = 0) {
+        self.chatId = chatId
+        self.messageId = messageId
+        self.senderId = senderId
+        self.text = text
+        self.timeMs = timeMs
+    }
+}
+
 public struct CoreChat: Sendable, Equatable {
     public var id: String
     public var title: String
@@ -435,6 +453,8 @@ public protocol MaxCore: Sendable {
     func deleteAccount() async throws -> Int64
     /// Публичные чаты и каналы по запросу, страница `from`..`from + count`.
     func searchPublic(query: String, from: Int, count: Int) async throws -> [CoreSearchChat]
+    /// Сообщения во всех чатах по тексту, не больше `count`.
+    func searchMessages(query: String, count: Int) async throws -> [CoreFoundMessage]
     /// Настройки сейчас и после каждого изменения.
     func accountSettings() -> AsyncStream<AccountSettings>
     func setPhonePrivacy(_ access: PrivacyAccess) async throws -> AccountSettings
@@ -541,6 +561,7 @@ public extension MaxCore {
     func removeAvatar() async throws -> MyProfile { throw unsupported }
     func deleteAccount() async throws -> Int64 { throw unsupported }
     func searchPublic(query: String, from: Int, count: Int) async throws -> [CoreSearchChat] { throw unsupported }
+    func searchMessages(query: String, count: Int) async throws -> [CoreFoundMessage] { throw unsupported }
     func accountSettings() -> AsyncStream<AccountSettings> { AsyncStream { $0.finish() } }
     func setPhonePrivacy(_ access: PrivacyAccess) async throws -> AccountSettings { throw unsupported }
     func setOnlineHidden(_ hidden: Bool) async throws -> AccountSettings { throw unsupported }

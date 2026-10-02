@@ -294,6 +294,15 @@ struct ChatListView: View {
                     }
                 }
             }
+            if !search.messages.isEmpty {
+                Section("Сообщения") {
+                    // Переход к самому сообщению экран чата пока не умеет: открывается чат.
+                    ForEach(search.messages) { message in
+                        FoundMessageRow(message: message)
+                            .tag(message.chatId)
+                    }
+                }
+            }
             if search.isEmpty, !search.isSearchingServer {
                 ContentUnavailableView.search(text: viewModel.searchQuery)
                     .listRowSeparator(.hidden)
@@ -451,6 +460,32 @@ private struct GlobalResultRow: View {
                     Text(subtitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Найденное на сервере сообщение. В приватном режиме вместо названия «Чат», текст скрыт.
+private struct FoundMessageRow: View {
+    let message: ChatSearchMessage
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                PrivateText(message.chatTitle, placeholder: PrivateModeMask.searchResultTitle)
+                    .font(.body.weight(.semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if !message.time.isEmpty {
+                    Text(message.time)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            PrivateText(message.snippet, placeholder: PrivateModeMask.archivePreview)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
         }
         .accessibilityElement(children: .combine)
     }
