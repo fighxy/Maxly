@@ -279,6 +279,13 @@ class ChatViewModel(
         }
     }
 
+    /** «Кто отреагировал» — в группах, у сообщений с реакциями. */
+    fun canShowReactionUsers(message: Message): Boolean =
+        builtFor == ChatType.GROUP && isServer(message) && message.content.reactions.isNotEmpty()
+
+    fun reactionUsers(message: Message): ReactionUsersModel =
+        ReactionUsersModel(chatId, message, repository, viewModelScope).also { it.load() }
+
     /** Пересылать можно только сообщения, уже лежащие на сервере. */
     fun canForward(message: Message): Boolean =
         isServer(message) && message.status == MessageStatus.SENT && !message.isService

@@ -1,5 +1,7 @@
 package app.orbitle.ui.chat
 
+import app.orbitle.presentation.chat.ReactionPalette
+import androidx.compose.material.icons.outlined.Group
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.isImeVisible
@@ -176,6 +178,7 @@ fun ChatScreen(
     var actionsFor by remember { mutableStateOf<Message?>(null) }
     var deleting by remember { mutableStateOf<Message?>(null) }
     var forwarding by remember { mutableStateOf<Message?>(null) }
+    var reactionUsers by remember { mutableStateOf<app.orbitle.presentation.chat.ReactionUsersModel?>(null) }
     var highlighted by remember { mutableStateOf<String?>(null) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
 
@@ -338,7 +341,11 @@ fun ChatScreen(
             onDismiss = { actionsFor = null },
             onDelete = { deleting = message },
             onForward = { forwarding = message },
+            onReactionUsers = { reactionUsers = model.reactionUsers(message) },
         )
+    }
+    reactionUsers?.let { users ->
+        ReactionUsersSheet(users, onDismiss = { reactionUsers = null })
     }
     forwarding?.let { message ->
         val targets = remember(message) { forwardTargets() }
@@ -611,12 +618,29 @@ private fun AttachSheet(onDismiss: () -> Unit, onMedia: () -> Unit, onFile: () -
 /** Меню сообщения: быстрые реакции и действия. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MessageActions(model: ChatViewModel, message: Message, onDismiss: () -> Unit, onDelete: () -> Unit, onForward: () -> Unit) {
+private fun MessageActions(
+    model: ChatViewModel,
+    message: Message,
+    onDismiss: () -> Unit,
+    onDelete: () -> Unit,
+    onForward: () -> Unit,
+    onReactionUsers: () -> Unit,
+) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val clipboard = LocalClipboardManager.current
+    val catalog = model.state.collectAsStateWithLifecycle().value.reactionCatalog
+    var allReactions by remember { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
+        if (model.canReact(message) && allReactions) {
+            ReactionGrid(catalog, message.content.reactions.firstOrNull { it.mine }?.emoji) { emoji ->
+                model.toggleReaction(message, emoji)
+                onDismiss()
+            }
+            Spacer(Modifier.size(16.dp))
+            return@ModalBottomSheet
+        }
         if (model.canReact(message)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 val mine = message.content.reactions.firstOrNull { it.mine }?.emoji
                 model.quickReactions(message).forEach { emoji ->
                     Box(
@@ -631,9 +655,22 @@ private fun MessageActions(model: ChatViewModel, message: Message, onDismiss: ()
                         contentAlignment = Alignment.Center,
                     ) { Text(emoji, fontSize = 26.sp) }
                 }
+                if (catalog.size > ReactionPalette.QUICK_COUNT) {
+                    IconButton(onClick = { allReactions = true }, modifier = Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
+                        Icon(Icons.Filled.KeyboardArrowDown, "Все реакции")
+                    }
+                }
             }
         }
         val colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+        if (model.canShowReactionUsers(message)) {
+            ListItem(
+                headlineContent = { Text("Кто отреагировал") },
+                leadingContent = { Icon(Icons.Outlined.Group, null) },
+                colors = colors,
+                modifier = Modifier.clickable { onDismiss(); onReactionUsers() },
+            )
+        }
         if (message.status == MessageStatus.FAILED) {
             ListItem(
                 headlineContent = { Text("Отправить ещё раз") },

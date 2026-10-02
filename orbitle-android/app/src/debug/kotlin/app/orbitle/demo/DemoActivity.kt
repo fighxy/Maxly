@@ -219,7 +219,12 @@ private class DemoMessages(group: Boolean, channel: Boolean = false) : MessageRe
             }
         }
     }
-    override suspend fun reactionCatalog() = listOf("👍", "❤️", "🔥", "🤣", "😭", "😍", "👏")
+    override suspend fun reactionCatalog() = listOf("👍", "❤️", "🔥", "🤣", "😭", "😍", "👏", "😮", "🎉", "🙏", "💯", "😢", "🤔", "😎", "🥰", "👎", "😡", "🤯", "🥳", "💔", "🤝")
+    override suspend fun reactionUsers(chatId: String, messageId: String) = listOf(
+        app.orbitle.domain.ReactionUser("2", "Анна", null, "👍"),
+        app.orbitle.domain.ReactionUser("3", "Борис", null, "👍"),
+        app.orbitle.domain.ReactionUser("4", "", null, "🔥"),
+    )
     override suspend fun sendMedia(chatId: String, items: List<app.orbitle.domain.OutgoingFile>, caption: String, replyTo: String?, progress: (Float) -> Unit) {
         for (step in 1..10) {
             kotlinx.coroutines.delay(200)
