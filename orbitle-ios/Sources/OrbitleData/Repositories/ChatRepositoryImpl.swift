@@ -193,6 +193,10 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
                 chat.lastLocalId = nil
                 chat.lastMediaRaw = record.lastMedia?.rawValue
                 chat.lastThumbnailURLString = record.lastThumbnailURL?.absoluteString
+                // И текст — тоже нового сообщения. У фото без подписи или голосового текста
+                // нет (`nil`), и раньше в строке оставался текст прежнего сообщения вместо
+                // «Фотографии»: превью переписывалось только непустым.
+                chat.preview = record.preview
             } else {
                 if let author = record.lastAuthorId { chat.lastAuthorId = author }
                 if let name = record.lastAuthorName { chat.lastAuthorName = name }
