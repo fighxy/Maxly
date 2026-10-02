@@ -47,13 +47,20 @@ public struct TranscriptBottomState: Equatable, Sendable {
         }
     }
 
-    /// iOS 17: где метка низа. `bottomY` — её низ в координатах экрана ленты.
-    public mutating func markerMoved(bottomY: Double, viewportHeight: Double) {
+    /// Где метка низа ленты. `bottomY` — её низ в координатах экрана ленты (`.infinity`,
+    /// если метка не создана: ленивая лента далеко вверху).
+    ///
+    /// Метка не зависит от того, как прокрутка считает отступы под поле ввода и
+    /// клавиатуру: на iOS 18 расстояние до низа из `onScrollGeometryChange` у самого низа
+    /// могло не опускаться до порога, и кнопка «вниз» оставалась над последним пузырём.
+    /// `dragging` — двигает ли ленту палец: на iOS 18 уходит от низа только он (`nil` —
+    /// как на iOS 17, любое движение метки).
+    public mutating func markerMoved(bottomY: Double, viewportHeight: Double, dragging: Bool? = nil) {
         let slack = atBottom ? Self.leaveDistance : Self.reachDistance
         let visible = bottomY.isFinite && bottomY >= 0 && bottomY <= viewportHeight + slack
         if visible {
             reachBottom()
-        } else if jump == nil {
+        } else if jump == nil, dragging ?? true {
             atBottom = false
         }
     }
