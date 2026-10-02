@@ -46,3 +46,31 @@ struct TextSizeStepTests {
         #expect(ThemeMode.allCases.map(\.rawValue) == ["system", "light", "dark"])
     }
 }
+
+@Suite("Обои чата")
+struct ChatWallpaperTests {
+    @Test("По умолчанию без обоев, порядок и подписи для выбора")
+    func catalog() {
+        #expect(ChatWallpaper.standard == .plain)
+        #expect(AppearancePreferences.standard.wallpaper == .plain)
+        #expect(!ChatWallpaper.plain.hasImage)
+        #expect(ChatWallpaper.allCases.map(\.title) == ["Без обоев", "Осень (авто)", "Осень", "Осень тёмная", "Осень ночь"])
+        #expect(ChatWallpaper.allCases.map(\.rawValue) == ["plain", "autumnAuto", "autumn", "autumnDark", "autumnNight"])
+    }
+
+    @Test("Картинка: «авто» следует теме, остальные одинаковы в любой теме")
+    func images() {
+        #expect(ChatWallpaper.plain.imageName(dark: false) == nil)
+        #expect(ChatWallpaper.plain.imageName(dark: true) == nil)
+        #expect(ChatWallpaper.autumnAuto.imageName(dark: false) == "WallpaperAutumn")
+        #expect(ChatWallpaper.autumnAuto.imageName(dark: true) == "WallpaperAutumnDark")
+        for wallpaper in [ChatWallpaper.autumn, .autumnDark, .autumnNight] {
+            #expect(wallpaper.hasImage)
+            #expect(wallpaper.imageName(dark: false) == wallpaper.imageName(dark: true))
+        }
+        #expect(ChatWallpaper.autumnNight.imageName(dark: false) == "WallpaperAutumnNight")
+        #expect(ChatWallpaper.autumnDark.thumbnailName(dark: false) == "WallpaperAutumnDarkThumb")
+        #expect(ChatWallpaper.autumnAuto.thumbnailName(dark: true) == "WallpaperAutumnDarkThumb")
+        #expect(ChatWallpaper.plain.thumbnailName(dark: false) == nil)
+    }
+}

@@ -10,6 +10,13 @@ public extension Color {
     static let orbitleMutedBadge = Color.gray.opacity(0.55)
     #if os(iOS)
     static let orbitleIncoming = Color(uiColor: .secondarySystemBackground)
+    /// Входящий пузырь поверх обоев: в светлой теме белый — серый сливается со светлыми
+    /// обоями, — в тёмной обычный.
+    static let orbitleIncomingOnWallpaper = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor.secondarySystemBackground.resolvedColor(with: traits)
+            : UIColor.systemBackground.resolvedColor(with: traits)
+    })
     /// Подложка плоского поля поиска.
     static let orbitleField = Color(uiColor: .tertiarySystemFill)
     /// Чуть серый фон закреплённых строк.
@@ -17,6 +24,7 @@ public extension Color {
     static let orbitleBackground = Color(uiColor: .systemBackground)
     #else
     static let orbitleIncoming = Color(red: 0.93, green: 0.93, blue: 0.95)
+    static let orbitleIncomingOnWallpaper = Color.white
     static let orbitleField = Color.gray.opacity(0.12)
     static let orbitlePinnedBackground = Color.gray.opacity(0.08)
     static let orbitleBackground = Color.white

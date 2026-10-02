@@ -20,6 +20,24 @@ struct AppearanceStoreTests {
         #expect(again.load() == AppearancePreferences(textSize: .xxLarge, theme: .dark))
     }
 
+    @Test("Обои сохраняются именем; старая запись без обоев и незнакомое имя — без обоев")
+    @MainActor
+    func wallpaper() throws {
+        let suite = "orbitle.tests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        // Запись до обоев: только размер и тема.
+        defaults.set("small", forKey: UserDefaultsAppearanceStore.textSizeKey)
+        defaults.set("dark", forKey: UserDefaultsAppearanceStore.themeKey)
+        let store = UserDefaultsAppearanceStore(defaults: defaults)
+        #expect(store.load() == AppearancePreferences(textSize: .small, theme: .dark, wallpaper: .plain))
+        store.save(AppearancePreferences(textSize: .small, theme: .dark, wallpaper: .autumnAuto))
+        #expect(defaults.string(forKey: UserDefaultsAppearanceStore.wallpaperKey) == "autumnAuto")
+        #expect(UserDefaultsAppearanceStore(defaults: defaults).load().wallpaper == .autumnAuto)
+        defaults.set("winter", forKey: UserDefaultsAppearanceStore.wallpaperKey)
+        #expect(UserDefaultsAppearanceStore(defaults: defaults).load() == AppearancePreferences(textSize: .small, theme: .dark))
+    }
+
     @Test("Незнакомые значения читаются как значения по умолчанию")
     @MainActor
     func unknownValues() throws {

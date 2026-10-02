@@ -35,6 +35,9 @@ struct ChatView: View {
     @State private var keyboardHeight: CGFloat = 300
     /// Верх нижних кнопок на экране, для мягкого размытия низа ленты.
     @State private var bottomControlsTop: CGFloat = 0
+    /// Обои из «Оформления» и где они лежат на экране (для перехода в них у низа ленты).
+    @Environment(\.chatWallpaper) private var wallpaper
+    @State private var wallpaperFrame: CGRect = .zero
     @State private var recording = RecordingSession()
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var composerFocused: Bool
@@ -53,8 +56,16 @@ struct ChatView: View {
             canWrite: canWrite,
             reveal: reveal,
             focus: $composerFocused,
-            bottomControlsTop: bottomControlsTop
+            bottomControlsTop: bottomControlsTop,
+            wallpaperFrame: wallpaperFrame
         )
+        // Обои за лентой: на весь экран, под шапкой, полем ввода и клавиатурой, не
+        // прокручиваются с сообщениями.
+        .background {
+            ChatWallpaperBackground(wallpaper: wallpaper)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { wallpaperFrame = $0 }
+                .ignoresSafeArea()
+        }
         .safeAreaInset(edge: .top, spacing: 0) {
             if privateMode.isMasked { privateModeBanner }
         }
@@ -162,6 +173,8 @@ struct ChatView: View {
             if let model = viewModel.commentsModel(for: post) {
                 CommentsView(model: model) { viewModel.closeComments() }
                     .presentationDragIndicator(.visible)
+                    // В листе комментариев обоев нет: пузыри обычные.
+                    .environment(\.chatWallpaper, .plain)
             }
         }
         .sheet(item: $viewModel.reactionPickerTarget) { message in

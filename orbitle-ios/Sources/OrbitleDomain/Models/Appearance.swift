@@ -69,14 +69,58 @@ public enum ThemeMode: String, CaseIterable, Sendable {
     }
 }
 
+/// Обои за лентой чата. Картинки лежат в приложении (`OrbitleApp/Wallpapers`).
+///
+/// «Осень (авто)» следует теме, как у популярных мессенджеров: в светлой — светлые обои,
+/// в тёмной — тёмные. Остальные показываются как есть в любой теме.
+public enum ChatWallpaper: String, CaseIterable, Sendable {
+    case plain
+    case autumnAuto
+    case autumn
+    case autumnDark
+    case autumnNight
+
+    public static let standard: ChatWallpaper = .plain
+
+    public var title: String {
+        switch self {
+        case .plain: "Без обоев"
+        case .autumnAuto: "Осень (авто)"
+        case .autumn: "Осень"
+        case .autumnDark: "Осень тёмная"
+        case .autumnNight: "Осень ночь"
+        }
+    }
+
+    /// Имя картинки (без `.jpg`) для темы; `nil` — без обоев, фон экрана.
+    public func imageName(dark: Bool) -> String? {
+        switch self {
+        case .plain: nil
+        case .autumnAuto: dark ? Self.autumnDark.imageName(dark: dark) : Self.autumn.imageName(dark: dark)
+        case .autumn: "WallpaperAutumn"
+        case .autumnDark: "WallpaperAutumnDark"
+        case .autumnNight: "WallpaperAutumnNight"
+        }
+    }
+
+    /// Уменьшенная картинка для выбора в «Оформлении».
+    public func thumbnailName(dark: Bool) -> String? {
+        imageName(dark: dark).map { $0 + "Thumb" }
+    }
+
+    public var hasImage: Bool { self != .plain }
+}
+
 /// Настройки оформления на устройстве, общие для всех аккаунтов.
 public struct AppearancePreferences: Equatable, Sendable {
     public var textSize: TextSizeStep
     public var theme: ThemeMode
+    public var wallpaper: ChatWallpaper
 
-    public init(textSize: TextSizeStep = .standard, theme: ThemeMode = .system) {
+    public init(textSize: TextSizeStep = .standard, theme: ThemeMode = .system, wallpaper: ChatWallpaper = .standard) {
         self.textSize = textSize
         self.theme = theme
+        self.wallpaper = wallpaper
     }
 
     public static let standard = AppearancePreferences()

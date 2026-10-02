@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import OrbitleDomain
 
 /// Мягкое размытие у края ленты, как у популярных мессенджеров: материал проявляется по
 /// плавной маске, без полосы с резкой границей. Пузыри, уезжая под край, мягко гаснут.
@@ -71,6 +72,9 @@ struct ChatHeaderBlur: View {
 ///
 /// Материал (как в f78668c) размазывал цвет пузыря над полем ввода в цветную дымку и брал
 /// слишком много высоты. Цвет фона пузырь не окрашивает: он просто тает к низу.
+/// С обоями лента тает не в ровный цвет, а в сами обои: здесь рисуется та же картинка ровно
+/// на месте фона (`wallpaperFrame`, глобальные координаты, её меряет `ChatView`), поэтому
+/// полосы на границе нет — пузыри просто уходят под обои.
 /// Кладётся поверх ленты, но под кнопкой «вниз» и полем ввода; отступы ленты не меняет,
 /// поэтому кнопка «вниз» не налезает на пузыри. Касаний не ловит.
 struct ChatBottomBlur: View {
@@ -82,6 +86,9 @@ struct ChatBottomBlur: View {
     static let maxOpacity: Double = 0.7
 
     let controlsTop: CGFloat
+    var wallpaper: ChatWallpaper = .plain
+    /// Где на экране лежит фон с обоями. Пусто — ещё не измерен.
+    var wallpaperFrame: CGRect = .zero
 
     var body: some View {
         GeometryReader { geo in
@@ -89,23 +96,37 @@ struct ChatBottomBlur: View {
             let top = controlsTop - Self.rise - frame.minY
             let total = frame.height - top
             if controlsTop > 0, total > 1 {
-                Rectangle()
-                    .fill(Color(uiColor: .systemBackground))
-                    .mask {
+                fill(in: frame)
+                    .mask(alignment: .topLeading) {
                         LinearGradient(
                             stops: Self.stops(fade: min(Self.height, total) / total),
                             startPoint: .top,
                             endPoint: .bottom
                         )
+                        .frame(width: geo.size.width, height: total)
+                        .offset(y: top)
                     }
-                    .frame(width: geo.size.width, height: total)
-                    .offset(y: top)
             }
         }
         // До низа экрана под полем ввода и полосой «домой»; клавиатуру не перекрывает.
         .ignoresSafeArea(.container, edges: .bottom)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    /// Во что тает лента: обои на их же месте или ровный фон экрана.
+    @ViewBuilder
+    private func fill(in frame: CGRect) -> some View {
+        if wallpaper.hasImage, wallpaperFrame.width > 0, wallpaperFrame.height > 0 {
+            ChatWallpaperBackground(wallpaper: wallpaper)
+                .frame(width: wallpaperFrame.width, height: wallpaperFrame.height)
+                .offset(x: wallpaperFrame.minX - frame.minX, y: wallpaperFrame.minY - frame.minY)
+                .frame(width: frame.width, height: frame.height, alignment: .topLeading)
+        } else {
+            Rectangle()
+                .fill(Color(uiColor: .systemBackground))
+                .frame(width: frame.width, height: frame.height)
+        }
     }
 
     /// Сверху вниз: полностью прозрачно у верха, плавный (ease-in-out) рост на доле `fade`
