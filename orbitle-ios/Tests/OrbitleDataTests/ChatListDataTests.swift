@@ -111,6 +111,36 @@ struct ChatListDataTests {
         #expect(row.lastMessage?.thumbnailURL == nil)
     }
 
+    @Test("Новое последнее сообщение — фото без подписи: текст прежнего не остаётся, строка пишет вид вложения")
+    func newPhotoReplacesOldText() async throws {
+        let parts = try await makeParts()
+        try await parts.chats.upsert([ChatRecord(
+            id: "c1", title: "Ленина 33", type: .group, lastMessageId: "201",
+            updatedAt: Date(timeIntervalSince1970: 10), preview: "Встречаемся в семь", lastAuthorId: "u1"
+        )])
+        // Так строку присылает ядро: у фото текста нет, вид вложения — `photo`.
+        try await parts.chats.upsert([ChatRecord(
+            id: "c1", title: "Ленина 33", type: .group, lastMessageId: "202",
+            updatedAt: Date(timeIntervalSince1970: 20), preview: nil, lastAuthorId: "u2",
+            lastMedia: .photo, lastThumbnailURL: URL(string: "https://example.invalid/p.jpg"),
+            lastAuthorName: "Ольга"
+        )])
+        let row = try #require(await chatRow(parts.chats))
+        #expect(row.preview == nil)
+        #expect(row.lastMessage?.media == .photo)
+        #expect(row.lastMessage?.authorName == "Ольга")
+        // То же сообщение ещё раз без текста (повтор списка) уже ничего не стирает.
+        try await parts.chats.upsert([ChatRecord(
+            id: "c1", title: "Ленина 33", type: .group, lastMessageId: "202",
+            updatedAt: Date(timeIntervalSince1970: 20), preview: "подпись"
+        )])
+        try await parts.chats.upsert([ChatRecord(
+            id: "c1", title: "Ленина 33", type: .group, lastMessageId: "202",
+            updatedAt: Date(timeIntervalSince1970: 20), preview: nil
+        )])
+        #expect(await chatRow(parts.chats)?.preview == "подпись")
+    }
+
     @Test("Сервер прислал строку без сообщений: превью удалённой фотографии пропадает")
     func emptyChatClearsRow() async throws {
         let parts = try await makeParts()
