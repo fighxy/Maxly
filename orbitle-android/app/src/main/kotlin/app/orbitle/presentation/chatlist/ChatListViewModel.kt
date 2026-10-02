@@ -9,6 +9,9 @@ import app.orbitle.domain.ChatDraft
 import app.orbitle.domain.ChatFolder
 import app.orbitle.domain.ConnectionState
 import app.orbitle.domain.OrbitleError
+import app.orbitle.domain.ChatSearchResult
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -58,6 +61,10 @@ data class ChatListUiState(
      * иначе пусто и экран показывает один список [items].
      */
     val pages: List<ChatFolderPage> = emptyList(),
+    /** Найдено на сервере при поиске, без чатов, которые уже есть в списке. */
+    val global: List<ChatSearchResult> = emptyList(),
+    /** Запрос к серверу ещё идёт. */
+    val isSearchingServer: Boolean = false,
 ) {
     /** Полоса папок видна, только если у пользователя есть папки кроме «Все». */
     val showsFolders: Boolean get() = folders.size > 1
@@ -72,7 +79,11 @@ class ChatListViewModel(
     private val pinLimit: Int = DEFAULT_PIN_LIMIT,
     /** Пометки и черновики на устройстве. */
     private val local: ChatLocalMarks? = null,
+    /** Пауза после последней буквы перед запросом к серверу. */
+    private val searchDelayMs: Long = SEARCH_DELAY_MS,
 ) : ViewModel() {
+
+    private var serverSearch: Job? = null
 
     private var chats: List<Chat> = emptyList()
     private var hasSnapshot = false
@@ -159,11 +170,48 @@ class ChatListViewModel(
     fun setSearchActive(active: Boolean) {
         _state.value = _state.value.copy(isSearchActive = active, searchQuery = if (active) _state.value.searchQuery else "")
         rebuild()
+        scheduleServerSearch()
     }
 
     fun setSearchQuery(query: String) {
+        val changed = query.trim() != _state.value.searchQuery.trim()
         _state.value = _state.value.copy(searchQuery = query)
         rebuild()
+        if (changed) scheduleServerSearch()
+    }
+
+    /**
+     * Поиск на сервере, как в приложении для iOS: после паузы в наборе, от двух букв.
+     * Прежний запрос отменяется; ответ на устаревший запрос не показывается, ошибка — просто пусто.
+     */
+    private fun scheduleServerSearch() {
+        serverSearch?.cancel()
+        serverSearch = null
+        val current = _state.value
+        val query = current.searchQuery.trim()
+        if (!current.isSearchActive || query.length < SERVER_SEARCH_MIN_LENGTH) {
+            if (current.isSearchingServer || current.global.isNotEmpty()) {
+                _state.value = current.copy(global = emptyList(), isSearchingServer = false)
+            }
+            return
+        }
+        _state.value = current.copy(isSearchingServer = true)
+        serverSearch = viewModelScope.launch {
+            delay(searchDelayMs)
+            val found = try {
+                repository.searchPublic(query)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                emptyList()
+            }
+            if (_state.value.searchQuery.trim() != query || !_state.value.isSearchActive) return@launch
+            val known = chats.mapTo(HashSet()) { it.id }
+            _state.value = _state.value.copy(
+                global = found.distinctBy { it.id }.filterNot { it.id in known },
+                isSearchingServer = false,
+            )
+        }
     }
 
     fun togglePin(chatId: String) {
@@ -312,6 +360,8 @@ class ChatListViewModel(
             tabBadge = sorted.count { it.isUnread && !it.isMuted && !it.isArchived },
             error = refreshError?.userMessage?.takeIf { hasSnapshot },
             pages = pages,
+            // Чат мог появиться в списке, пока шёл поиск: тогда он среди своих, а не найденных.
+            global = if (current.global.isEmpty()) current.global else current.global.filterNot { g -> chats.any { it.id == g.id } },
         )
     }
 
@@ -327,5 +377,8 @@ class ChatListViewModel(
     companion object {
         /** Сколько чатов можно закрепить. Сервер может отказать и раньше. */
         const val DEFAULT_PIN_LIMIT = 10
+        const val SEARCH_DELAY_MS = 300L
+        /** Короче запрос сервер не ищет. */
+        const val SERVER_SEARCH_MIN_LENGTH = 2
     }
 }

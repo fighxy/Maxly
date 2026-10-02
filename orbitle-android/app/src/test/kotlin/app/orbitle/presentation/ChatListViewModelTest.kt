@@ -5,6 +5,7 @@ import app.orbitle.data.ChatRepository
 import app.orbitle.data.CoreFailure
 import app.orbitle.domain.Chat
 import app.orbitle.domain.ChatDraft
+import app.orbitle.domain.ChatSearchResult
 import app.orbitle.domain.ChatType
 import app.orbitle.domain.ConnectionState
 import app.orbitle.domain.ServerFolder
@@ -12,6 +13,7 @@ import app.orbitle.presentation.chatlist.ChatListContent
 import app.orbitle.presentation.chatlist.ChatListFormatter
 import app.orbitle.presentation.chatlist.ChatListViewModel
 import app.orbitle.presentation.chatlist.ChatLocalMarks
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -49,6 +51,16 @@ class FakeChats : ChatRepository {
 
     override suspend fun markAsRead(chatId: String) {
         reads += chatId
+    }
+
+    val searches = mutableListOf<String>()
+    var searchResult: List<ChatSearchResult> = emptyList()
+    var searchFailure: Throwable? = null
+
+    override suspend fun searchPublic(query: String): List<ChatSearchResult> {
+        searches += query
+        searchFailure?.let { throw it }
+        return searchResult
     }
 
     override fun clear() = Unit
@@ -173,6 +185,83 @@ class ChatListViewModelTest {
         assertEquals(ChatListContent.Empty, vm.state.value.content)
         vm.setSearchActive(false)
         assertEquals(2, vm.state.value.items.size)
+    }
+
+    private fun found(id: String) = ChatSearchResult(id, "Канал $id", "@c$id", ChatType.CHANNEL, null)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun advance(ms: Long) {
+        main.dispatcher.scheduler.advanceTimeBy(ms)
+        main.dispatcher.scheduler.runCurrent()
+    }
+
+    @Test
+    fun serverSearchWaitsForPauseAndSendsLastQuery() {
+        repo.chats.value = listOf(chat("1"))
+        repo.searchResult = listOf(found("50"))
+        vm.setSearchActive(true)
+        vm.setSearchQuery("но")
+        advance(100)
+        vm.setSearchQuery("нов")
+        assertTrue(vm.state.value.isSearchingServer)
+        advance(ChatListViewModel.SEARCH_DELAY_MS - 1)
+        assertTrue(repo.searches.isEmpty())
+        advance(1)
+        assertEquals(listOf("нов"), repo.searches)
+        assertEquals(listOf("50"), vm.state.value.global.map { it.id })
+        assertFalse(vm.state.value.isSearchingServer)
+    }
+
+    @Test
+    fun shortQueryDoesNotGoToServer() {
+        repo.chats.value = listOf(chat("1"))
+        vm.setSearchActive(true)
+        vm.setSearchQuery(" н ")
+        advance(ChatListViewModel.SEARCH_DELAY_MS * 2)
+        assertTrue(repo.searches.isEmpty())
+        assertFalse(vm.state.value.isSearchingServer)
+    }
+
+    @Test
+    fun ownChatsAreNotRepeatedAmongFound() {
+        repo.chats.value = listOf(chat("1"), chat("50"))
+        repo.searchResult = listOf(found("50"), found("51"), found("51"))
+        vm.setSearchActive(true)
+        vm.setSearchQuery("канал")
+        advance(ChatListViewModel.SEARCH_DELAY_MS)
+        assertEquals(listOf("51"), vm.state.value.global.map { it.id })
+        // Чат появился в списке после ответа сервера.
+        repo.chats.value = listOf(chat("1"), chat("50"), chat("51"))
+        assertTrue(vm.state.value.global.isEmpty())
+    }
+
+    @Test
+    fun serverErrorLeavesOnlyLocalResults() {
+        repo.chats.value = listOf(chat("1"))
+        repo.searchFailure = CoreFailure("NETWORK", null)
+        vm.setSearchActive(true)
+        vm.setSearchQuery("чат")
+        advance(ChatListViewModel.SEARCH_DELAY_MS)
+        assertEquals(listOf("чат"), repo.searches)
+        assertTrue(vm.state.value.global.isEmpty())
+        assertFalse(vm.state.value.isSearchingServer)
+        assertEquals(listOf("1"), vm.state.value.items.map { it.id })
+    }
+
+    @Test
+    fun closingSearchDropsFoundAndPendingRequest() {
+        repo.chats.value = listOf(chat("1"))
+        repo.searchResult = listOf(found("50"))
+        vm.setSearchActive(true)
+        vm.setSearchQuery("канал")
+        advance(ChatListViewModel.SEARCH_DELAY_MS)
+        assertEquals(1, vm.state.value.global.size)
+        vm.setSearchQuery("канал 2")
+        vm.setSearchActive(false)
+        advance(ChatListViewModel.SEARCH_DELAY_MS)
+        assertEquals(listOf("канал"), repo.searches)
+        assertTrue(vm.state.value.global.isEmpty())
+        assertFalse(vm.state.value.isSearchingServer)
     }
 
     @Test

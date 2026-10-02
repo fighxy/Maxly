@@ -7,6 +7,7 @@ import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -96,7 +97,9 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.orbitle.R
+import app.orbitle.domain.ChatSearchResult
 import app.orbitle.domain.DeliveryState
+import app.orbitle.presentation.chatlist.ChatAvatar
 import app.orbitle.presentation.chatlist.ChatBadge
 import app.orbitle.presentation.chatlist.ChatListContent
 import app.orbitle.presentation.chatlist.ChatListItem
@@ -112,6 +115,7 @@ import coil3.compose.AsyncImage
 fun ChatListScreen(
     viewModel: ChatListViewModel,
     onOpenChat: (ChatListItem) -> Unit,
+    onOpenFound: (ChatSearchResult) -> Unit = {},
     privateMode: app.orbitle.domain.PrivateModePreferences = app.orbitle.domain.PrivateModePreferences(),
     onTogglePrivateMode: () -> Unit = {},
 ) {
@@ -216,10 +220,16 @@ fun ChatListScreen(
             } else {
                 val listState = rememberLazyListState()
                 LaunchedEffect(state.selectedFolderId) { listState.scrollToItem(0) }
-                ChatListBody(
-                    state.content, state.items, searching = state.searchQuery.isNotBlank(), listState = listState,
-                    onOpenChat = open, actions = actions, onRetry = viewModel::refresh,
-                )
+                val searching = state.isSearchActive && state.searchQuery.isNotBlank()
+                val showsResults = state.content == ChatListContent.List || state.content == ChatListContent.Empty
+                if (searching && showsResults && (state.global.isNotEmpty() || state.isSearchingServer)) {
+                    SearchResults(state, listState, open, onOpenFound, actions)
+                } else {
+                    ChatListBody(
+                        state.content, state.items, searching = searching, listState = listState,
+                        onOpenChat = open, actions = actions, onRetry = viewModel::refresh,
+                    )
+                }
             }
         }
     }
@@ -342,6 +352,90 @@ private fun ChatList(items: List<ChatListItem>, listState: LazyListState, onOpen
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         items(items, key = { it.id }) { item ->
             ChatRow(item, onClick = { onOpenChat(item) }, actions = actions, modifier = Modifier.animateItem())
+        }
+    }
+}
+
+/** Результаты поиска: свои чаты, затем найденное на сервере. */
+@Composable
+private fun SearchResults(
+    state: ChatListUiState,
+    listState: LazyListState,
+    onOpenChat: (ChatListItem) -> Unit,
+    onOpenFound: (ChatSearchResult) -> Unit,
+    actions: ChatRowActions,
+) {
+    LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+        items(state.items, key = { it.id }) { item ->
+            ChatRow(item, onClick = { onOpenChat(item) }, actions = actions, modifier = Modifier.animateItem())
+        }
+        item(key = "global-header") {
+            Text(
+                stringResource(R.string.chats_search_global),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
+            )
+        }
+        items(state.global, key = { "global-${it.id}" }) { found ->
+            FoundChatRow(found, onClick = { onOpenFound(found) })
+        }
+        if (state.isSearchingServer) {
+            item(key = "global-progress") {
+                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                }
+            }
+        }
+    }
+}
+
+/** Публичный чат или канал с сервера; в приватном режиме — без имени и фото, как строка чата. */
+@Composable
+private fun FoundChatRow(found: ChatSearchResult, onClick: () -> Unit) {
+    val privacy = app.orbitle.ui.components.LocalPrivateMode.current
+    val masked = privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER
+    val title = if (masked) app.orbitle.presentation.settings.PrivateModeMask.chatTitle(found.type) else found.title
+    val subtitle = if (masked) null else found.subtitle
+    val avatar = remember(found, masked) {
+        val color = ChatAvatar.colorIndex(found.id)
+        val initials = ChatAvatar.initials(found.title)
+        val url = found.avatarUrl
+        when {
+            masked -> ChatAvatar(ChatAvatar.Kind.Initials(""), color)
+            url != null -> ChatAvatar(ChatAvatar.Kind.Photo(url, initials), color)
+            else -> ChatAvatar(ChatAvatar.Kind.Initials(initials), color)
+        }
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Avatar(avatar, 48.dp, modifier = Modifier.privateBlur(privacy, 8.dp))
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.privateBlur(privacy, 7.dp),
+            )
+            subtitle?.let {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.privateBlur(privacy, 7.dp),
+                )
+            }
         }
     }
 }

@@ -1,6 +1,7 @@
 package app.orbitle.data
 
 import app.orbitle.domain.Chat
+import app.orbitle.domain.ChatSearchResult
 import app.orbitle.domain.ServerFolder
 import kotlinx.coroutines.flow.Flow
 
@@ -21,6 +22,9 @@ interface ChatRepository {
 
     /** Прочитать всё в чате: отметка до последнего сообщения. */
     suspend fun markAsRead(chatId: String) {}
+
+    /** Публичные чаты и каналы на сервере по названию или ссылке. Без поиска на сервере — пусто. */
+    suspend fun searchPublic(query: String): List<ChatSearchResult> = emptyList()
     /** Забыть всё про аккаунт (выход). */
     fun clear()
 }
