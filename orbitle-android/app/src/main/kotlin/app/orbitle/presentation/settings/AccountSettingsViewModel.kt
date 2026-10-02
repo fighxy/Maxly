@@ -16,6 +16,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * Свой профиль и приватность: правка имени и «О себе», фото, настройки конфига
@@ -31,9 +35,19 @@ class AccountSettingsViewModel(private val repository: AccountRepository) : View
         /** `null`, пока список не загружен. */
         val blocked: List<BlockedUser>? = null,
         val error: String? = null,
+        /** Идёт запрос на удаление профиля. */
+        val deleting: Boolean = false,
+        /** Отказ сервера в удалении: показывается в окне подтверждения, выхода не будет. */
+        val deletionError: String? = null,
+        /** Сервер принял удаление; экран сообщает об этом и выходит из аккаунта. */
+        val deleted: Deletion? = null,
     )
 
+    /** Принятое удаление: [at] — когда профиль удалится (мс), `null`, если сервер не назвал. */
+    data class Deletion(val at: Long?)
+
     private val _state = MutableStateFlow(State())
+
     val state: StateFlow<State> = _state.asStateFlow()
 
     init {
@@ -92,6 +106,39 @@ class AccountSettingsViewModel(private val repository: AccountRepository) : View
                 _state.update { it.copy(updatingPhoto = false, error = "$failure. ${message(e)}") }
             }
         }
+    }
+
+    /**
+     * Удаляет профиль, как в приложении для iOS: только если введено слово [DELETE_KEYWORD].
+     * Принятый запрос попадает в [State.deleted] с моментом удаления, после чего экран выходит
+     * из аккаунта; при ошибке остаётся [State.deletionError], а выхода нет.
+     */
+    fun deleteAccount(word: String) {
+        val now = _state.value
+        if (!isDeleteKeyword(word) || now.deleting || now.deleted != null) return
+        _state.update { it.copy(deleting = true, deletionError = null) }
+        viewModelScope.launch {
+            try {
+                val at = repository.requestDeletion()
+                _state.update { it.copy(deleting = false, deleted = Deletion(at)) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(deleting = false, deletionError = "Не удалось удалить профиль. ${message(e)}") }
+            }
+        }
+    }
+
+    fun dismissDeletionError() = _state.update { it.copy(deletionError = null) }
+
+    /**
+     * Сообщение об удалении закрыто: модель живёт дольше сеанса, поэтому после следующего
+     * входа окно не должно появиться снова. Затем [logout] завершает сеанс.
+     */
+    fun finishDeletion(logout: () -> Unit) {
+        if (_state.value.deleted == null) return
+        _state.update { it.copy(deleted = null) }
+        logout()
     }
 
     fun setPhonePrivacy(access: PrivacyAccess) = change(PrivacyChange.PhonePrivacy(access))
@@ -155,5 +202,18 @@ class AccountSettingsViewModel(private val repository: AccountRepository) : View
     companion object {
         const val NAME_LIMIT = 59
         const val ABOUT_LIMIT = 400
+        const val DELETE_KEYWORD = "УДАЛИТЬ"
+
+        private val deletionDate = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.forLanguageTag("ru"))
+
+        /** Введённое слово подтверждает удаление: без учёта регистра и пробелов по краям. */
+        fun isDeleteKeyword(word: String): Boolean = word.trim().uppercase() == DELETE_KEYWORD
+
+        /** Текст после принятого удаления: с датой, если сервер её назвал. */
+        fun deletionMessage(at: Long?, zone: ZoneId = ZoneId.systemDefault()): String {
+            val head = at?.let { "Профиль и переписка удалятся ${deletionDate.format(Instant.ofEpochMilli(it).atZone(zone))}." }
+                ?: "Через 30 дней профиль и переписка удалятся навсегда."
+            return "$head Если войти раньше, удаление отменится. Сейчас вы выйдете из аккаунта."
+        }
     }
 }

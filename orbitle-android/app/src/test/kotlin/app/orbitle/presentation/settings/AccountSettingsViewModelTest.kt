@@ -46,6 +46,16 @@ private class FakeAccount : AccountRepository {
     override suspend fun removeAvatar() {
         failure?.let { throw it }
     }
+    var deletionGate: CompletableDeferred<Unit>? = null
+    var deletionFailure: Exception? = null
+    var deletionAt: Long? = 1_790_000_000_000L
+    var deletionCalls = 0
+    override suspend fun requestDeletion(): Long? {
+        deletionCalls++
+        deletionGate?.await()
+        deletionFailure?.let { throw it }
+        return deletionAt
+    }
     override suspend fun change(change: PrivacyChange): AccountSettings {
         gate?.await()
         failure?.let { throw it }
@@ -177,5 +187,109 @@ class AccountSettingsViewModelTest {
         assertEquals("CONTACTS", on["INCOMING_CALL"])
         assertEquals(mapOf("SAFE_MODE_NO_PIN" to false, "SAFE_MODE" to false), CoreAccountRepository.valuesOf(PrivacyChange.SafeMode(false)))
         assertEquals(mapOf("INACTIVE_TTL" to "1M"), CoreAccountRepository.valuesOf(PrivacyChange.Inactive(InactiveTtl.ONE_MONTH)))
+    }
+
+    @Test
+    fun `delete keyword ignores case and surrounding spaces`() {
+        assertTrue(AccountSettingsViewModel.isDeleteKeyword("УДАЛИТЬ"))
+        assertTrue(AccountSettingsViewModel.isDeleteKeyword("  удалить "))
+        assertTrue(AccountSettingsViewModel.isDeleteKeyword("Удалить"))
+        assertFalse(AccountSettingsViewModel.isDeleteKeyword(""))
+        assertFalse(AccountSettingsViewModel.isDeleteKeyword("удали"))
+        assertFalse(AccountSettingsViewModel.isDeleteKeyword("уд алить"))
+        assertFalse(AccountSettingsViewModel.isDeleteKeyword("DELETE"))
+    }
+
+    @Test
+    fun `wrong word sends nothing`() {
+        val repo = FakeAccount()
+        val model = AccountSettingsViewModel(repo)
+        model.deleteAccount("удалит")
+        assertEquals(0, repo.deletionCalls)
+        assertNull(model.state.value.deleted)
+        assertFalse(model.state.value.deleting)
+    }
+
+    @Test
+    fun `accepted deletion keeps the date and logs out once`() {
+        val repo = FakeAccount().apply { deletionGate = CompletableDeferred() }
+        val model = AccountSettingsViewModel(repo)
+        model.deleteAccount(" удалить ")
+        assertTrue(model.state.value.deleting)
+        assertNull(model.state.value.deleted)
+        repo.deletionGate!!.complete(Unit)
+        val s = model.state.value
+        assertFalse(s.deleting)
+        assertNull(s.deletionError)
+        assertEquals(AccountSettingsViewModel.Deletion(1_790_000_000_000L), s.deleted)
+        var logouts = 0
+        model.finishDeletion { logouts++ }
+        model.finishDeletion { logouts++ }
+        assertEquals(1, logouts)
+        // Модель переживает сеанс: после нового входа окна об удалении нет.
+        assertNull(model.state.value.deleted)
+    }
+
+    @Test
+    fun `deletion without a date is still accepted`() {
+        val repo = FakeAccount().apply { deletionAt = null }
+        val model = AccountSettingsViewModel(repo)
+        model.deleteAccount("УДАЛИТЬ")
+        assertEquals(AccountSettingsViewModel.Deletion(null), model.state.value.deleted)
+    }
+
+    @Test
+    fun `failed deletion shows the error and does not log out`() {
+        val repo = FakeAccount().apply { deletionFailure = OrbitleError.NetworkUnavailable }
+        val model = AccountSettingsViewModel(repo)
+        model.deleteAccount("УДАЛИТЬ")
+        val s = model.state.value
+        assertFalse(s.deleting)
+        assertNull(s.deleted)
+        assertTrue(s.deletionError!!.startsWith("Не удалось удалить профиль"))
+        assertNull(s.error)
+        var logouts = 0
+        model.finishDeletion { logouts++ }
+        assertEquals(0, logouts)
+        // Повтор после ошибки снова отправляет запрос.
+        model.dismissDeletionError()
+        repo.deletionFailure = null
+        model.deleteAccount("УДАЛИТЬ")
+        assertEquals(2, repo.deletionCalls)
+        assertNotNull(model.state.value.deleted)
+    }
+
+    @Test
+    fun `double tap sends one deletion request`() {
+        val repo = FakeAccount().apply { deletionGate = CompletableDeferred() }
+        val model = AccountSettingsViewModel(repo)
+        model.deleteAccount("УДАЛИТЬ")
+        model.deleteAccount("УДАЛИТЬ")
+        assertEquals(1, repo.deletionCalls)
+        repo.deletionGate!!.complete(Unit)
+        // И после принятого удаления повтор ничего не шлёт.
+        model.deleteAccount("УДАЛИТЬ")
+        assertEquals(1, repo.deletionCalls)
+    }
+
+    @Test
+    fun `deletion timestamp is normalized to milliseconds`() {
+        assertNull(CoreAccountRepository.deletionMillis(null))
+        assertNull(CoreAccountRepository.deletionMillis(0L))
+        assertNull(CoreAccountRepository.deletionMillis(-5L))
+        assertEquals(1_790_000_000_000L, CoreAccountRepository.deletionMillis(1_790_000_000L))
+        assertEquals(1_790_000_000_123L, CoreAccountRepository.deletionMillis(1_790_000_000_123L))
+    }
+
+    @Test
+    fun `deletion message names the date when known`() {
+        val utc = java.time.ZoneOffset.UTC
+        // 1 ноября 2026, 12:00 UTC.
+        val at = java.time.LocalDateTime.of(2026, 11, 1, 12, 0).toInstant(utc).toEpochMilli()
+        assertEquals(
+            "Профиль и переписка удалятся 1 ноября 2026. Если войти раньше, удаление отменится. Сейчас вы выйдете из аккаунта.",
+            AccountSettingsViewModel.deletionMessage(at, utc),
+        )
+        assertTrue(AccountSettingsViewModel.deletionMessage(null, utc).startsWith("Через 30 дней профиль и переписка удалятся навсегда."))
     }
 }

@@ -23,6 +23,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BlurOn
@@ -67,6 +69,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -105,7 +109,7 @@ private fun ErrorDialog(model: AccountSettingsViewModel) {
 /** «Изменить профиль»: фото, имя, фамилия, «О себе». */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfileEditScreen(model: AccountSettingsViewModel, onBack: () -> Unit) {
+fun ProfileEditScreen(model: AccountSettingsViewModel, onBack: () -> Unit, onLogout: () -> Unit) {
     val state by model.state.collectAsStateWithLifecycle()
     val account = state.account
     val context = LocalContext.current
@@ -128,6 +132,7 @@ fun ProfileEditScreen(model: AccountSettingsViewModel, onBack: () -> Unit) {
         }
     }
     var menu by remember { mutableStateOf(false) }
+    var deletion by rememberSaveable { mutableStateOf(DeletionStep.NONE) }
     val changed = account != null && first != null &&
         (first!!.trim() != account.firstName || last.trim() != account.lastName || about.trim() != account.description.orEmpty())
     Scaffold(
@@ -142,6 +147,9 @@ fun ProfileEditScreen(model: AccountSettingsViewModel, onBack: () -> Unit) {
                         IconButton(onClick = { model.saveProfile(first.orEmpty(), last, about, onSaved = onBack) }, enabled = changed) {
                             Icon(Icons.Filled.Check, "Сохранить")
                         }
+                    }
+                    IconButton(onClick = { deletion = DeletionStep.WARNING }, enabled = !state.deleting) {
+                        Icon(Icons.Outlined.Delete, "Удалить профиль", tint = MaterialTheme.colorScheme.error)
                     }
                 },
             )
@@ -227,6 +235,96 @@ fun ProfileEditScreen(model: AccountSettingsViewModel, onBack: () -> Unit) {
         }
     }
     ErrorDialog(model)
+    DeleteProfileDialogs(model, deletion, onStep = { deletion = it }, onLogout = onLogout)
+}
+
+private enum class DeletionStep { NONE, WARNING, TYPING }
+
+/**
+ * Удаление профиля, как в приложении для iOS: предупреждение, затем слово «УДАЛИТЬ»
+ * и только после ответа сервера — сообщение о дате и выход из аккаунта.
+ */
+@Composable
+private fun DeleteProfileDialogs(
+    model: AccountSettingsViewModel,
+    step: DeletionStep,
+    onStep: (DeletionStep) -> Unit,
+    onLogout: () -> Unit,
+) {
+    val state by model.state.collectAsStateWithLifecycle()
+    state.deleted?.let { deleted ->
+        val leave = { model.finishDeletion(onLogout) }
+        AlertDialog(
+            onDismissRequest = leave,
+            title = { Text("Профиль будет удалён") },
+            text = { Text(AccountSettingsViewModel.deletionMessage(deleted.at)) },
+            confirmButton = { TextButton(onClick = leave) { Text("OK") } },
+        )
+        return
+    }
+    when (step) {
+        DeletionStep.NONE -> Unit
+        DeletionStep.WARNING -> AlertDialog(
+            onDismissRequest = { onStep(DeletionStep.NONE) },
+            title = { Text("Удалить профиль?") },
+            text = { Text("Профиль будет удалён безвозвратно через 30 дней. Если за это время войти снова, удаление отменится.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    model.dismissDeletionError()
+                    onStep(DeletionStep.TYPING)
+                }) { Text("Продолжить", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { onStep(DeletionStep.NONE) }) { Text("Отмена") } },
+        )
+        DeletionStep.TYPING -> {
+            var word by rememberSaveable { mutableStateOf("") }
+            val close = {
+                if (!state.deleting) {
+                    model.dismissDeletionError()
+                    onStep(DeletionStep.NONE)
+                }
+            }
+            val confirmed = AccountSettingsViewModel.isDeleteKeyword(word)
+            AlertDialog(
+                onDismissRequest = close,
+                title = { Text("Подтвердите удаление") },
+                text = {
+                    Column {
+                        Text("Введите слово «${AccountSettingsViewModel.DELETE_KEYWORD}», чтобы удалить профиль.")
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = word,
+                            onValueChange = {
+                                word = it
+                                model.dismissDeletionError()
+                            },
+                            placeholder = { Text(AccountSettingsViewModel.DELETE_KEYWORD) },
+                            singleLine = true,
+                            enabled = !state.deleting,
+                            isError = state.deletionError != null,
+                            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { if (confirmed) model.deleteAccount(word) }),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        state.deletionError?.let {
+                            Spacer(Modifier.height(8.dp))
+                            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                },
+                confirmButton = {
+                    if (state.deleting) {
+                        CircularProgressIndicator(Modifier.padding(12.dp).size(24.dp), strokeWidth = 2.dp)
+                    } else {
+                        TextButton(onClick = { model.deleteAccount(word) }, enabled = confirmed) {
+                            Text("Удалить профиль", color = if (confirmed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
+                        }
+                    }
+                },
+                dismissButton = { TextButton(onClick = close, enabled = !state.deleting) { Text("Отмена") } },
+            )
+        }
+    }
 }
 
 /** «Конфиденциальность»: номер, статус «в сети», безопасный режим, срок неактивности, чёрный список. */

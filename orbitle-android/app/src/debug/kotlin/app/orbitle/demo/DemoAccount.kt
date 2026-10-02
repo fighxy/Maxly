@@ -40,6 +40,11 @@ class DemoAccount : AccountRepository {
         me.value = me.value?.copy(avatarUrl = null, hasPhoto = false)
     }
 
+    override suspend fun requestDeletion(): Long? {
+        delay(900)
+        return System.currentTimeMillis() + 30L * 24 * 60 * 60 * 1000
+    }
+
     override suspend fun change(change: PrivacyChange): AccountSettings {
         delay(700)
         if (change is PrivacyChange.SafeMode) throw OrbitleError.NetworkUnavailable

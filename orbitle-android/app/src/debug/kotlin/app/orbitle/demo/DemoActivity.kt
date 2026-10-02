@@ -100,7 +100,7 @@ class DemoActivity : ComponentActivity() {
                             SettingsScreen(state.account, onAbout = {}, onLogout = {})
                         }
                         "profile-edit" -> app.orbitle.ui.settings.ProfileEditScreen(
-                            viewModel { app.orbitle.presentation.settings.AccountSettingsViewModel(DemoAccount()) }, onBack = { finish() },
+                            viewModel { app.orbitle.presentation.settings.AccountSettingsViewModel(DemoAccount()) }, onBack = { finish() }, onLogout = { finish() },
                         )
                         "privacy" -> app.orbitle.ui.settings.PrivacyScreen(
                             viewModel { app.orbitle.presentation.settings.AccountSettingsViewModel(DemoAccount()) }, onBack = { finish() }, onBlocked = {},

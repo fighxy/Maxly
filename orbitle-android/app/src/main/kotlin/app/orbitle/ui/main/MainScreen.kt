@@ -162,7 +162,7 @@ fun MainScreen(
                     profileLink = app.orbitle.presentation.settings.ProfileLink.link(accountState.settings.inviteLink, account?.link),
                 )
             }
-            composable("profile-edit") { ProfileEditScreen(accountModel, onBack = { nav.popBackStack() }) }
+            composable("profile-edit") { ProfileEditScreen(accountModel, onBack = { nav.popBackStack() }, onLogout = onLogout) }
             composable("privacy") { PrivacyScreen(accountModel, onBack = { nav.popBackStack() }, onBlocked = { nav.navigate("blocked") }, privateMode = container.privateMode) }
             composable("storage") { StorageScreen(viewModel { StorageViewModel(container.storage) }, onBack = { nav.popBackStack() }) }
             composable("folders") {
