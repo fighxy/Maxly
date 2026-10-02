@@ -48,6 +48,8 @@ import app.orbitle.ui.contacts.ContactsScreen
 import app.orbitle.ui.settings.AppearanceScreen
 import app.orbitle.ui.settings.DevicesScreen
 import app.orbitle.presentation.chat.ChatViewModel
+import app.orbitle.presentation.profile.ProfileViewModel
+import app.orbitle.ui.profile.ProfileScreen
 import app.orbitle.ui.chat.ChatScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.orbitle.presentation.chatlist.ChatListFormatter
@@ -144,7 +146,33 @@ fun MainScreen(
                 val chatId = entry.arguments?.getString("chatId").orEmpty()
                 val title = entry.arguments?.getString("title")
                 val model = viewModel(key = "chat-$chatId") { ChatViewModel(chatId, container.messages, fallbackTitle = title, voicePlayer = container.voicePlayer, files = container.files) }
-                ChatScreen(model, onBack = { nav.popBackStack() }, mediaUserAgent = container.videoSourceUserAgent())
+                ChatScreen(
+                    model,
+                    onBack = { nav.popBackStack() },
+                    onOpenProfile = { nav.navigate("profile/$chatId?fromChat=true") },
+                    mediaUserAgent = container.videoSourceUserAgent(),
+                )
+            }
+            composable(
+                "profile/{chatId}?fromChat={fromChat}&title={title}",
+                arguments = listOf(
+                    navArgument("fromChat") { type = NavType.BoolType; defaultValue = false },
+                    navArgument("title") { type = NavType.StringType; nullable = true; defaultValue = null },
+                ),
+            ) { entry ->
+                val chatId = entry.arguments?.getString("chatId").orEmpty()
+                val fromChat = entry.arguments?.getBoolean("fromChat") == true
+                val title = entry.arguments?.getString("title")
+                val model = viewModel(key = "profile-$chatId") {
+                    ProfileViewModel(chatId, title, container.profiles, container.messages, container.voicePlayer, container.files)
+                }
+                ProfileScreen(
+                    model,
+                    onBack = { nav.popBackStack() },
+                    // Из чата профиль закрывается назад, «Написать» нужна только снаружи.
+                    onWrite = if (fromChat) null else ({ openChat(chatId, title) }),
+                    mediaUserAgent = container.videoSourceUserAgent(),
+                )
             }
         }
     }

@@ -8,6 +8,8 @@ import app.orbitle.data.ContactRepository
 import app.orbitle.data.CoreCallRepository
 import app.orbitle.data.CoreContactRepository
 import app.orbitle.data.CoreSessionRepository
+import app.orbitle.data.CoreProfileRepository
+import app.orbitle.data.ProfileRepository
 import app.orbitle.data.PreferenceStore
 import app.orbitle.data.SessionRepository
 import app.orbitle.presentation.calls.CallMarks
@@ -46,6 +48,8 @@ class AppContainer(context: Context) {
     val contacts: ContactRepository = CoreContactRepository(client)
 
     val sessions: SessionRepository = CoreSessionRepository(client)
+
+    val profiles: ProfileRepository = CoreProfileRepository(client)
 
     /** User-Agent сессии для CDN: адреса медиа выданы под Android-клиента. */
     private val mediaUserAgent: () -> String = { client.config.userAgent.httpUserAgent }

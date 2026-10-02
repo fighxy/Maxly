@@ -14,6 +14,9 @@ import app.orbitle.domain.ChatType
 import app.orbitle.domain.FileContent
 import app.orbitle.domain.PhotoContent
 import app.orbitle.media.ExoVoicePlayer
+import app.orbitle.presentation.profile.ProfileViewModel
+import app.orbitle.ui.profile.ProfileScreen
+import androidx.compose.runtime.remember
 import app.orbitle.presentation.chat.MessageFiles
 import androidx.lifecycle.lifecycleScope
 import app.orbitle.domain.Message
@@ -77,6 +80,11 @@ class DemoActivity : ComponentActivity() {
                         "calls" -> CallsScreen(viewModel { CallsViewModel(DemoCalls()) }, onOpenChat = {})
                         "contacts" -> ContactsScreen(viewModel { ContactsViewModel(DemoContacts(), { "1" }) }, onOpen = {})
                         "appearance" -> AppearanceScreen(appearance, onBack = { finish() })
+                        "profile" -> {
+                            val messages = remember { DemoMessages(group) }
+                            val model = viewModel { ProfileViewModel("10", "Анна Смирнова", DemoProfiles(group), messages, player, DemoFiles(applicationContext)) }
+                            ProfileScreen(model, onBack = { finish() }, onWrite = {})
+                        }
                         "settings" -> SettingsScreen(Account("1", "Иван", "Петров", "+79001234567", null), onAbout = {}, onLogout = {})
                         else -> {
                             val model = viewModel { ChatViewModel("10", DemoMessages(group), voicePlayer = player, files = DemoFiles(applicationContext)) }
@@ -161,6 +169,17 @@ private class DemoMessages(group: Boolean) : MessageRepository {
         kotlinx.coroutines.delay(800)
         return "Привет! Давайте в субботу поедем на дачу, я возьму мангал."
     }
+}
+
+private class DemoProfiles(private val group: Boolean) : app.orbitle.data.ProfileRepository {
+    private val card = if (group) {
+        app.orbitle.domain.ChatProfile(app.orbitle.domain.ChatProfile.Kind.GROUP, "10", "Дача 🌲", description = "Планы на выходные и фото с участка", link = "https://max.ru/join/dacha", participants = 12)
+    } else {
+        app.orbitle.domain.ChatProfile(app.orbitle.domain.ChatProfile.Kind.USER, "10", "Анна Смирнова", phone = "79001234567", isOnline = true, description = "Дизайнер, люблю осень", link = "https://max.ru/anna")
+    }
+    override fun cached(chatId: String) = card
+    override suspend fun profile(chatId: String) = card
+    override suspend fun sharedPage(chatId: String, tab: app.orbitle.domain.SharedMediaTab, beforeMessageId: String) = emptyList<Message>()
 }
 
 /** Файлы демо: «скачивание» пишет текст в кэш. */
