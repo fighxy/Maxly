@@ -24,6 +24,14 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshotFlow
+import app.orbitle.presentation.chatlist.FolderPages
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -115,6 +123,27 @@ fun ChatListScreen(
     val message by viewModel.messages.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val scroll = TopAppBarDefaults.pinnedScrollBehavior()
+    // Папки листаются вбок, только когда полоса видна и поиск закрыт.
+    val paged = state.pages.isNotEmpty()
+    val folderIds = remember(state.folders) { state.folders.map { it.id } }
+    val selectedPage = FolderPages.pageOf(folderIds, state.selectedFolderId)
+    // Набор папок поменялся — пейджер заново встаёт на выбранную папку, номера не съезжают.
+    val pagerState = remember(folderIds) { PagerState(currentPage = selectedPage) { folderIds.size } }
+    val listStates = rememberSaveable(saver = FolderListStates.Saver) { FolderListStates() }
+    LaunchedEffect(folderIds) { listStates.retain(folderIds) }
+    if (paged) {
+        // Вкладка выбрана нажатием — страница доезжает до неё.
+        LaunchedEffect(pagerState, selectedPage) {
+            if (pagerState.targetPage != selectedPage) pagerState.animateScrollToPage(selectedPage)
+        }
+        // Листание остановилось — выбирается папка этой страницы.
+        val selectedId by rememberUpdatedState(state.selectedFolderId)
+        LaunchedEffect(pagerState) {
+            snapshotFlow { pagerState.settledPage }.collect { page ->
+                FolderPages.selectionAfterSettle(folderIds, page, selectedId)?.let(viewModel::selectFolder)
+            }
+        }
+    }
     LaunchedEffect(message) {
         message?.let {
             snackbar.showSnackbar(it)
@@ -138,7 +167,9 @@ fun ChatListScreen(
                         scrollBehavior = scroll,
                     )
                 }
-                if (state.showsFolders && !state.isSearchActive) FolderTabs(state, viewModel::selectFolder)
+                if (state.showsFolders && !state.isSearchActive) {
+                    FolderTabs(state, selected = if (paged) pagerState.targetPage else selectedPage, onSelect = viewModel::selectFolder)
+                }
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -164,33 +195,94 @@ fun ChatListScreen(
             onRefresh = viewModel::refresh,
             modifier = Modifier.padding(padding).fillMaxSize(),
         ) {
-            when (val content = state.content) {
-                ChatListContent.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                ChatListContent.List -> ChatList(
-                    state,
-                    onOpenChat = {
-                        viewModel.opened(it.id)
-                        onOpenChat(it)
-                    },
-                    actions = ChatRowActions(viewModel::togglePin, viewModel::toggleRead, viewModel::toggleMute),
-                )
-                ChatListContent.Empty -> Placeholder(
-                    icon = { Icon(Icons.Outlined.ChatBubbleOutline, null, Modifier.size(56.dp)) },
-                    title = stringResource(if (state.searchQuery.isNotBlank()) R.string.chats_search_empty else R.string.chats_empty),
-                    text = if (state.searchQuery.isNotBlank()) null else stringResource(R.string.chats_empty_hint),
-                )
-                ChatListContent.Offline -> Placeholder(
-                    icon = { Icon(Icons.Outlined.CloudOff, null, Modifier.size(56.dp)) },
-                    title = stringResource(R.string.chats_offline),
-                    action = stringResource(R.string.chats_retry) to viewModel::refresh,
-                )
-                is ChatListContent.Failed -> Placeholder(
-                    icon = { Icon(Icons.Filled.ErrorOutline, null, Modifier.size(56.dp)) },
-                    title = content.message,
-                    action = stringResource(R.string.chats_retry) to viewModel::refresh,
+            val open: (ChatListItem) -> Unit = {
+                viewModel.opened(it.id)
+                onOpenChat(it)
+            }
+            val actions = remember(viewModel) { ChatRowActions(viewModel::togglePin, viewModel::toggleRead, viewModel::toggleMute) }
+            if (paged) {
+                HorizontalPager(
+                    state = pagerState,
+                    beyondViewportPageCount = 1,
+                    key = { folderIds.getOrElse(it) { it.toString() } },
+                    modifier = Modifier.fillMaxSize(),
+                ) { page ->
+                    val folderPage = state.pages.getOrNull(page) ?: return@HorizontalPager
+                    ChatListBody(
+                        folderPage.content, folderPage.items, searching = false, listState = listStates.of(folderPage.id),
+                        onOpenChat = open, actions = actions, onRetry = viewModel::refresh,
+                    )
+                }
+            } else {
+                val listState = rememberLazyListState()
+                LaunchedEffect(state.selectedFolderId) { listState.scrollToItem(0) }
+                ChatListBody(
+                    state.content, state.items, searching = state.searchQuery.isNotBlank(), listState = listState,
+                    onOpenChat = open, actions = actions, onRetry = viewModel::refresh,
                 )
             }
         }
+    }
+}
+
+/** Строки или пустое состояние одной папки (или результатов поиска). */
+@Composable
+private fun ChatListBody(
+    content: ChatListContent,
+    items: List<ChatListItem>,
+    searching: Boolean,
+    listState: LazyListState,
+    onOpenChat: (ChatListItem) -> Unit,
+    actions: ChatRowActions,
+    onRetry: () -> Unit,
+) {
+    when (content) {
+        ChatListContent.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        ChatListContent.List -> ChatList(items, listState, onOpenChat, actions)
+        ChatListContent.Empty -> Placeholder(
+            icon = { Icon(Icons.Outlined.ChatBubbleOutline, null, Modifier.size(56.dp)) },
+            title = stringResource(if (searching) R.string.chats_search_empty else R.string.chats_empty),
+            text = if (searching) null else stringResource(R.string.chats_empty_hint),
+        )
+        ChatListContent.Offline -> Placeholder(
+            icon = { Icon(Icons.Outlined.CloudOff, null, Modifier.size(56.dp)) },
+            title = stringResource(R.string.chats_offline),
+            action = stringResource(R.string.chats_retry) to onRetry,
+        )
+        is ChatListContent.Failed -> Placeholder(
+            icon = { Icon(Icons.Filled.ErrorOutline, null, Modifier.size(56.dp)) },
+            title = content.message,
+            action = stringResource(R.string.chats_retry) to onRetry,
+        )
+    }
+}
+
+/**
+ * Позиции прокрутки по папкам: у каждой страницы свой [LazyListState], который переживает
+ * листание, смену набора папок и поворот экрана.
+ */
+private class FolderListStates(private val restored: Map<String, Pair<Int, Int>> = emptyMap()) {
+    private val states = HashMap<String, LazyListState>()
+
+    fun of(folderId: String): LazyListState = states.getOrPut(folderId) {
+        restored[folderId]?.let { (index, offset) -> LazyListState(index, offset) } ?: LazyListState()
+    }
+
+    /** Забывает удалённые папки. */
+    fun retain(folderIds: List<String>) {
+        val keep = FolderPages.retain(states, folderIds)
+        states.keys.retainAll(keep.keys)
+    }
+
+    companion object {
+        val Saver = listSaver<FolderListStates, Any>(
+            save = { holder ->
+                holder.states.flatMap { (id, s) -> listOf(id, s.firstVisibleItemIndex, s.firstVisibleItemScrollOffset) }
+            },
+            restore = { flat ->
+                FolderListStates(flat.chunked(3).associate { (id, index, offset) -> id as String to ((index as Int) to (offset as Int)) })
+            },
+        )
     }
 }
 
@@ -225,8 +317,7 @@ private fun SearchBarRow(query: String, onQuery: (String) -> Unit, onClose: () -
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FolderTabs(state: ChatListUiState, onSelect: (String) -> Unit) {
-    val selected = state.folders.indexOfFirst { it.id == state.selectedFolderId }.coerceAtLeast(0)
+private fun FolderTabs(state: ChatListUiState, selected: Int, onSelect: (String) -> Unit) {
     PrimaryScrollableTabRow(selectedTabIndex = selected, edgePadding = 12.dp, divider = { HorizontalDivider() }) {
         state.folders.forEachIndexed { index, folder ->
             Tab(
@@ -247,11 +338,9 @@ private fun FolderTabs(state: ChatListUiState, onSelect: (String) -> Unit) {
 }
 
 @Composable
-private fun ChatList(state: ChatListUiState, onOpenChat: (ChatListItem) -> Unit, actions: ChatRowActions) {
-    val listState = rememberLazyListState()
-    LaunchedEffect(state.selectedFolderId) { listState.scrollToItem(0) }
+private fun ChatList(items: List<ChatListItem>, listState: LazyListState, onOpenChat: (ChatListItem) -> Unit, actions: ChatRowActions) {
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-        items(state.items, key = { it.id }) { item ->
+        items(items, key = { it.id }) { item ->
             ChatRow(item, onClick = { onOpenChat(item) }, actions = actions, modifier = Modifier.animateItem())
         }
     }

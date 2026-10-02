@@ -117,6 +117,53 @@ class ChatListViewModelTest {
     }
 
     @Test
+    fun pagesHoldEveryFolder() {
+        repo.chats.value = listOf(chat("1"), chat("2", ChatType.CHANNEL, unread = 1), chat("3", ChatType.CHANNEL, at = now - 5))
+        assertTrue(vm.state.value.pages.isEmpty())
+        repo.folders.value = listOf(
+            ServerFolder("f", "Каналы", filters = listOf("CHANNEL")),
+            ServerFolder("e", "Пусто", chatIds = listOf("nope")),
+        )
+        val pages = vm.state.value.pages
+        assertEquals(listOf("all", "f", "e"), pages.map { it.id })
+        assertEquals(listOf("1", "2", "3"), pages[0].items.map { it.id })
+        assertEquals(listOf("2", "3"), pages[1].items.map { it.id })
+        assertEquals(ChatListContent.List, pages[1].content)
+        assertTrue(pages[2].items.isEmpty())
+        assertEquals(ChatListContent.Empty, pages[2].content)
+        // Строка выбранной папки — та же, что и на её странице.
+        vm.selectFolder("f")
+        assertEquals(vm.state.value.pages[1].items, vm.state.value.items)
+    }
+
+    @Test
+    fun selectedFolderSurvivesReorderAndFallsBackWhenRemoved() {
+        repo.chats.value = listOf(chat("1"), chat("2", ChatType.CHANNEL))
+        val channels = ServerFolder("f", "Каналы", filters = listOf("CHANNEL"))
+        val other = ServerFolder("g", "Личные", filters = listOf("DIALOG"))
+        repo.folders.value = listOf(channels, other)
+        vm.selectFolder("f")
+        repo.folders.value = listOf(other, channels)
+        assertEquals("f", vm.state.value.selectedFolderId)
+        assertEquals(listOf("all", "g", "f"), vm.state.value.pages.map { it.id })
+        repo.folders.value = listOf(other)
+        assertEquals("all", vm.state.value.selectedFolderId)
+        assertEquals(listOf("all", "g"), vm.state.value.pages.map { it.id })
+    }
+
+    @Test
+    fun noPagesWhileSearching() {
+        repo.chats.value = listOf(chat("1"), chat("2", ChatType.CHANNEL))
+        repo.folders.value = listOf(ServerFolder("f", "Каналы", filters = listOf("CHANNEL")))
+        vm.setSearchActive(true)
+        assertTrue(vm.state.value.pages.isEmpty())
+        vm.setSearchQuery("2")
+        assertEquals(listOf("2"), vm.state.value.items.map { it.id })
+        vm.setSearchActive(false)
+        assertEquals(2, vm.state.value.pages.size)
+    }
+
+    @Test
     fun searchFiltersByTitle() {
         repo.chats.value = listOf(chat("1"), chat("22"))
         vm.setSearchActive(true)

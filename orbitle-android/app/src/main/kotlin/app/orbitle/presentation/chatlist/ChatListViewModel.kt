@@ -37,6 +37,9 @@ sealed interface ChatListContent {
     data class Failed(val message: String) : ChatListContent
 }
 
+/** Страница папки для листания: свои строки и своё пустое состояние. */
+data class ChatFolderPage(val id: String, val items: List<ChatListItem>, val content: ChatListContent)
+
 data class ChatListUiState(
     val items: List<ChatListItem> = emptyList(),
     val folders: List<ChatFolderTab> = emptyList(),
@@ -50,6 +53,11 @@ data class ChatListUiState(
     /** Бейдж вкладки «Чаты»: число непрочитанных чатов со звуком. */
     val tabBadge: Int = 0,
     val error: String? = null,
+    /**
+     * Страницы папок в порядке [folders], когда полоса папок видна и поиск закрыт;
+     * иначе пусто и экран показывает один список [items].
+     */
+    val pages: List<ChatFolderPage> = emptyList(),
 ) {
     /** Полоса папок видна, только если у пользователя есть папки кроме «Все». */
     val showsFolders: Boolean get() = folders.size > 1
@@ -276,17 +284,20 @@ class ChatListViewModel(
         val folder = definitions.firstOrNull { it.id == selected } ?: ChatFolder.all
         val query = current.searchQuery.trim().lowercase()
         val nowMs = now()
-        val visible = sorted.filter { folder.contains(it) }
-        val items = visible.map { formatter.item(it, nowMs, typing[it.id].orEmpty()) }
-            .filter { query.isEmpty() || it.title.lowercase().contains(query) }
-        val content = when {
-            items.isNotEmpty() -> ChatListContent.List
-            query.isNotEmpty() && hasSnapshot -> ChatListContent.Empty
-            !hasSnapshot && refreshError == null && connection != ConnectionState.OFFLINE -> ChatListContent.Loading
-            !hasSnapshot && connection == ConnectionState.OFFLINE -> ChatListContent.Offline
-            !hasSnapshot && refreshError != null -> ChatListContent.Failed(refreshError?.userMessage ?: "Не удалось загрузить чаты")
-            else -> ChatListContent.Empty
+        // Строка чата форматируется один раз, даже если чат входит в несколько папок.
+        val formatted = HashMap<String, ChatListItem>()
+        fun itemOf(chat: Chat) = formatted.getOrPut(chat.id) { formatter.item(chat, nowMs, typing[chat.id].orEmpty()) }
+        val pages = if (tabs.size > 1 && !current.isSearchActive) {
+            definitions.map { f ->
+                val rows = sorted.filter { f.contains(it) }.map(::itemOf)
+                ChatFolderPage(f.id, rows, contentFor(rows, query = ""))
+            }
+        } else {
+            emptyList()
         }
+        val items = (pages.firstOrNull { it.id == selected }?.items ?: sorted.filter { folder.contains(it) }.map(::itemOf))
+            .filter { query.isEmpty() || it.title.lowercase().contains(query) }
+        val content = contentFor(items, query)
         val banner = when (connection) {
             ConnectionState.ONLINE -> null
             ConnectionState.CONNECTING -> "Подключение…"
@@ -300,7 +311,17 @@ class ChatListViewModel(
             banner = banner,
             tabBadge = sorted.count { it.isUnread && !it.isMuted && !it.isArchived },
             error = refreshError?.userMessage?.takeIf { hasSnapshot },
+            pages = pages,
         )
+    }
+
+    private fun contentFor(items: List<ChatListItem>, query: String): ChatListContent = when {
+        items.isNotEmpty() -> ChatListContent.List
+        query.isNotEmpty() && hasSnapshot -> ChatListContent.Empty
+        !hasSnapshot && refreshError == null && connection != ConnectionState.OFFLINE -> ChatListContent.Loading
+        !hasSnapshot && connection == ConnectionState.OFFLINE -> ChatListContent.Offline
+        !hasSnapshot && refreshError != null -> ChatListContent.Failed(refreshError?.userMessage ?: "Не удалось загрузить чаты")
+        else -> ChatListContent.Empty
     }
 
     companion object {
