@@ -51,6 +51,9 @@ interface MessageRepository {
         throw OrbitleError.Rejected("Стикеры недоступны")
 
     /** Повторить не ушедшее сообщение. */
+    /** Остановить загрузку вложений своего сообщения [localId]: оно убирается, ничего не уходит. */
+    fun cancelUpload(chatId: String, localId: String) = discard(chatId, localId)
+
     suspend fun retry(chatId: String, localId: String)
 
     /** Убрать не ушедшее сообщение из ленты. */

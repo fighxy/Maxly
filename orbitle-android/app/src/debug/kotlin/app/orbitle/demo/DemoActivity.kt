@@ -26,6 +26,7 @@ import app.orbitle.domain.MessageReaction
 import app.orbitle.domain.MessageReply
 import app.orbitle.domain.MessageStatus
 import app.orbitle.domain.VoiceContent
+import app.orbitle.domain.VideoContent
 import app.orbitle.presentation.chat.ChatViewModel
 import app.orbitle.ui.chat.ChatScreen
 import app.orbitle.ui.chatlist.ChatListScreen
@@ -187,6 +188,9 @@ private class DemoMessages(group: Boolean, channel: Boolean = false) : MessageRe
             msg("7", "2", now - 20 * minute, "", name = "Анна", content = MessageContent(attachments = listOf(ChatAttachment.Call(CallContent("c", 0, false, "MISSED"))))),
             msg("8", "2", now - 10 * minute, "Пересылаю важное", name = "Анна", content = MessageContent(forward = MessageForward("Канал новостей", "Пересылаю важное"), edited = true)),
             msg("9", "1", now - 2 * minute, "Уже в пути, буду через 10 минут"),
+            msg("95", "2", now - minute, "", name = "Анна", content = MessageContent(attachments = listOf(ChatAttachment.Video(VideoContent(
+                "r1", null, "android.resource://app.orbitle.android.debug/${app.orbitle.R.drawable.demo_round_poster}", 320, 320, 4_000, isRound = true,
+            ))))),
         ),
     )
 
@@ -238,7 +242,8 @@ private class DemoMessages(group: Boolean, channel: Boolean = false) : MessageRe
         }
         list.update { it + msg("${it.size + 100}", "1", System.currentTimeMillis(), caption, content = MessageContent(attachments = attachments)) }
     }
-    override suspend fun mediaLink(chatId: String, messageId: String, attachment: ChatAttachment) = "demo://${attachment.id}"
+    override suspend fun mediaLink(chatId: String, messageId: String, attachment: ChatAttachment) =
+        if (attachment is ChatAttachment.Video) "asset:///demo-round.mp4" else "demo://${attachment.id}"
     override suspend fun sendSticker(chatId: String, sticker: app.orbitle.domain.Sticker, replyTo: String?) {
         val content = MessageContent(attachments = listOf(ChatAttachment.Sticker(app.orbitle.domain.StickerContent(sticker.id, sticker.id, sticker.url))))
         list.update { it + msg("${it.size + 100}", "1", System.currentTimeMillis(), "", content = content) }

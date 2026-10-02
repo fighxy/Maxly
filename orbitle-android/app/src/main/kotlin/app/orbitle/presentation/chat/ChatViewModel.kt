@@ -268,6 +268,17 @@ class ChatViewModel(
         }
     }
 
+    /** Своё сообщение с вложениями, которое ещё грузится: загрузку можно отменить. */
+    fun canCancelUpload(message: Message): Boolean =
+        message.status == MessageStatus.SENDING && message.id.toLongOrNull() == null && message.content.attachments.isNotEmpty()
+
+    /** Отменить загрузку [message] или, без него, все идущие загрузки чата. */
+    fun cancelUpload(message: Message? = null) {
+        val targets = message?.let { listOf(it) } ?: history.filter(::canCancelUpload)
+        targets.filter(::canCancelUpload).forEach { repository.cancelUpload(chatId, it.id) }
+        if (targets.isNotEmpty()) _state.update { it.copy(uploadProgress = null) }
+    }
+
     fun retry(message: Message) {
         viewModelScope.launch {
             try {

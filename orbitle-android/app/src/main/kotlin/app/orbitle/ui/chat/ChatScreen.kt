@@ -159,6 +159,8 @@ fun ChatScreen(
             onTranscript = model.media::toggleTranscript,
             onVisual = model.media::openVisual,
             onFile = model.media::openFile,
+            onRoundEnded = model.media::stopRound,
+            userAgent = mediaUserAgent,
         )
     }
     var attaching by remember { mutableStateOf(false) }
@@ -311,6 +313,7 @@ fun ChatScreen(
                     onRemoveAttachment = model::removeAttachment,
                     panel = model.stickers,
                     onSticker = model::sendSticker,
+                    onCancelUpload = { model.cancelUpload() },
                 )
             } else {
                 Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
@@ -463,6 +466,7 @@ private fun Composer(
     onRemoveAttachment: (OutgoingFile) -> Unit,
     panel: StickerPanel? = null,
     onSticker: (Sticker) -> Unit = {},
+    onCancelUpload: () -> Unit = {},
 ) {
     var showPanel by rememberSaveable { mutableStateOf(false) }
     val hasPanel = panel != null
@@ -478,10 +482,13 @@ private fun Composer(
             val editing = state.editing
             val reply = state.replyTo
             state.uploadProgress?.let { progress ->
-                Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp)) {
-                    Text("Отправка вложений… ${(progress * 100).toInt()}%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.size(4.dp))
-                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Отправка вложений… ${(progress * 100).toInt()}%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.size(4.dp))
+                        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                    }
+                    IconButton(onClick = onCancelUpload) { Icon(Icons.Filled.Close, "Отменить отправку") }
                 }
             }
             if (state.attachments.isNotEmpty()) {
@@ -701,6 +708,14 @@ private fun MessageActions(
                 leadingContent = { Icon(Icons.Outlined.Group, null) },
                 colors = colors,
                 modifier = Modifier.clickable { onDismiss(); onReactionUsers() },
+            )
+        }
+        if (model.canCancelUpload(message)) {
+            ListItem(
+                headlineContent = { Text("Отменить отправку") },
+                leadingContent = { Icon(Icons.Filled.Close, null) },
+                colors = colors,
+                modifier = Modifier.clickable { model.cancelUpload(message); onDismiss() },
             )
         }
         if (message.status == MessageStatus.FAILED) {
