@@ -12,6 +12,7 @@ import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Contacts
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.foundation.layout.Box
@@ -79,6 +80,7 @@ fun SettingsScreen(
     onEditProfile: () -> Unit = {},
     onPrivacy: () -> Unit = {},
     onStorage: () -> Unit = {},
+    onFolders: () -> Unit = {},
 ) {
     var confirm by rememberSaveable { mutableStateOf(false) }
     Scaffold(
@@ -96,6 +98,7 @@ fun SettingsScreen(
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
             SettingsItem(Icons.Outlined.BookmarkBorder, "Избранное", onClick = onSaved)
             SettingsItem(Icons.Outlined.Contacts, "Контакты", onClick = onContacts)
+            SettingsItem(Icons.Outlined.Folder, "Папки", onClick = onFolders)
             SettingsItem(Icons.Outlined.Palette, "Оформление", onClick = onAppearance)
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
             SettingsItem(

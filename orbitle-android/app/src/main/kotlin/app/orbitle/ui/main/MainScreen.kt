@@ -57,6 +57,8 @@ import app.orbitle.presentation.settings.AccountSettingsViewModel
 import app.orbitle.ui.settings.BlockedUsersScreen
 import app.orbitle.ui.settings.PrivacyScreen
 import app.orbitle.ui.settings.StorageScreen
+import app.orbitle.ui.settings.FoldersScreen
+import app.orbitle.presentation.settings.FoldersViewModel
 import app.orbitle.presentation.settings.StorageViewModel
 import app.orbitle.ui.settings.ProfileEditScreen
 import app.orbitle.presentation.chatlist.ChatListFormatter
@@ -145,11 +147,20 @@ fun MainScreen(
                     onEditProfile = { nav.navigate("profile-edit") },
                     onPrivacy = { nav.navigate("privacy") },
                     onStorage = { nav.navigate("storage") },
+                    onFolders = { nav.navigate("folders") },
                 )
             }
             composable("profile-edit") { ProfileEditScreen(accountModel, onBack = { nav.popBackStack() }) }
             composable("privacy") { PrivacyScreen(accountModel, onBack = { nav.popBackStack() }, onBlocked = { nav.navigate("blocked") }) }
             composable("storage") { StorageScreen(viewModel { StorageViewModel(container.storage) }, onBack = { nav.popBackStack() }) }
+            composable("folders") {
+                FoldersScreen(
+                    viewModel { FoldersViewModel(container.folders) },
+                    count = chatList::folderCount,
+                    candidates = chatList::folderCandidates,
+                    onBack = { nav.popBackStack() },
+                )
+            }
             composable("blocked") { BlockedUsersScreen(accountModel, onBack = { nav.popBackStack() }) }
             composable("about") { AboutScreen(onBack = { nav.popBackStack() }) }
             composable("devices") { DevicesScreen(container.sessions, onBack = { nav.popBackStack() }) }
