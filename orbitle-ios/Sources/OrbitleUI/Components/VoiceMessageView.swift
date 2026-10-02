@@ -44,7 +44,9 @@ struct VoiceMessageView: View {
                     }
                 }
                 .padding(.top, 2)
-                Spacer(minLength: 8)
+                // Дорожка занимает всё место между кнопкой и правой колонкой: пустого
+                // промежутка перед кнопкой расшифровки нет, в широком пузыре она тянется.
+                .frame(maxWidth: .infinity, alignment: .leading)
                 trailingColumn
             }
             if isOpen {
@@ -53,7 +55,9 @@ struct VoiceMessageView: View {
                     .transition(.opacity)
             }
         }
-        .frame(minWidth: 180, maxWidth: 300, alignment: .leading)
+        // Без верхнего предела: пузырь шире (реакции, подпись, пост канала) — ряд тянется
+        // на всю его ширину, кнопка расшифровки у правого края.
+        .frame(minWidth: 180, maxWidth: .infinity, alignment: .leading)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: transcript)
     }
 
@@ -196,22 +200,25 @@ struct VoiceMessageView: View {
         let active = outgoing ? Color.white : Color.orbitleAccent
         let rest = outgoing ? Color.white.opacity(0.45) : Color.orbitleAccent.opacity(0.35)
         return Canvas { context, size in
-            let step: CGFloat = 4.5
-            let bar: CGFloat = 2.5
-            let count = max(8, Int((size.width + step - bar) / step))
-            let heights = ChatContentFormat.waveBars(samples: wave, count: count)
-            for (index, height) in heights.enumerated() {
+            // Столбики на всю данную ширину: число — сколько влезает, остаток — в зазоры.
+            let layout = WaveformLayout(width: Double(size.width), barWidth: Self.barWidth, spacing: Self.barSpacing)
+            for (index, height) in layout.heights(samples: wave).enumerated() {
                 let h = max(3, size.height * height)
-                let rect = CGRect(x: CGFloat(index) * step, y: (size.height - h) / 2, width: bar, height: h)
-                let color = Double(index) < played * Double(count) ? active : rest
+                let bar = CGFloat(layout.barWidth)
+                let rect = CGRect(x: CGFloat(layout.x(of: index)), y: (size.height - h) / 2, width: bar, height: h)
+                let color = layout.isPlayed(index, progress: played) ? active : rest
                 context.fill(Path(roundedRect: rect, cornerRadius: bar / 2), with: .color(color))
             }
         }
         .frame(height: 22)
-        .frame(minWidth: 72, idealWidth: waveWidth, maxWidth: waveWidth)
+        // Идеальная ширина от длительности задаёт ширину пузыря; данная — заполняется целиком.
+        .frame(minWidth: 72, idealWidth: waveWidth, maxWidth: .infinity)
         .animation(.linear(duration: 0.1), value: phase.progress)
         .accessibilityHidden(true)
     }
+
+    private static let barWidth: Double = 3
+    private static let barSpacing: Double = 2
 
     private var waveWidth: CGFloat {
         let seconds = CGFloat(max(voice.durationMs, 0)) / 1000

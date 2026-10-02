@@ -247,20 +247,33 @@ public enum ChatContentFormat {
     }
 
     /// Высоты столбиков 0.12…1. Пик дорожки становится единицей, чтобы тихий голос тоже читался.
+    ///
+    /// Столбиков меньше, чем точек, — каждый берёт громкий пик своего отрезка. Больше (дорожка
+    /// растянута на широкий пузырь) — точки плавно интерполируются, а не повторяются
+    /// ступеньками.
     public static func waveBars(samples: [Int], count: Int = 28) -> [Double] {
         let source = samples.isEmpty ? calmWave : samples
         let buckets = max(count, 1)
-        let peak = max(source.max() ?? 1, 1)
-        var bars: [Double] = []
-        bars.reserveCapacity(buckets)
-        for index in 0..<buckets {
-            let start = index * source.count / buckets
-            let end = min(source.count, max(start + 1, (index + 1) * source.count / buckets))
-            let slice = source[start..<end]
-            let height = Double(slice.max() ?? 0) / Double(peak)
-            bars.append(min(max(height, 0.12), 1))
+        var raw: [Double] = []
+        raw.reserveCapacity(buckets)
+        if buckets <= source.count {
+            for index in 0..<buckets {
+                let start = index * source.count / buckets
+                let end = min(source.count, max(start + 1, (index + 1) * source.count / buckets))
+                raw.append(Double(source[start..<end].max() ?? 0))
+            }
+        } else {
+            let last = source.count - 1
+            for index in 0..<buckets {
+                let position = Double(index) * Double(last) / Double(buckets - 1)
+                let low = Int(position.rounded(.down))
+                let high = min(low + 1, last)
+                let t = position - Double(low)
+                raw.append(Double(source[low]) * (1 - t) + Double(source[high]) * t)
+            }
         }
-        return bars
+        let peak = max(raw.max() ?? 0, 1)
+        return raw.map { min(max($0 / peak, 0.12), 1) }
     }
 
     /// Рамка одного кадра: широкие не становятся лентой, высокие не уезжают за экран.
