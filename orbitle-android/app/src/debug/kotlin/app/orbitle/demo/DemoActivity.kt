@@ -22,6 +22,27 @@ import app.orbitle.domain.VoiceContent
 import app.orbitle.presentation.chat.ChatViewModel
 import app.orbitle.ui.chat.ChatScreen
 import app.orbitle.ui.theme.OrbitleTheme
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import app.orbitle.data.AppearanceSettings
+import app.orbitle.data.CallRepository
+import app.orbitle.data.ContactRepository
+import app.orbitle.data.PreferenceStore
+import app.orbitle.domain.Account
+import app.orbitle.domain.CallOutcome
+import app.orbitle.domain.CallRecord
+import app.orbitle.domain.ChatWallpaper
+import app.orbitle.domain.Contact
+import app.orbitle.presentation.calls.CallsViewModel
+import app.orbitle.presentation.contacts.ContactsViewModel
+import app.orbitle.ui.calls.CallsScreen
+import app.orbitle.ui.components.ChatBackdrop
+import app.orbitle.ui.components.LocalChatBackdrop
+import app.orbitle.ui.contacts.ContactsScreen
+import app.orbitle.ui.settings.AppearanceScreen
+import app.orbitle.ui.settings.SettingsScreen
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -35,10 +56,29 @@ class DemoActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val group = intent.getStringExtra("type") == "group"
+        val screen = intent.getStringExtra("screen") ?: "chat"
+        val appearance = AppearanceSettings(object : PreferenceStore {
+            private val map = mutableMapOf<String, String>()
+            override fun get(key: String) = map[key]
+            override fun put(key: String, value: String) { map[key] = value }
+        })
+        intent.getStringExtra("wallpaper")?.let { appearance.setWallpaper(ChatWallpaper.valueOf(it)) }
         setContent {
+            val prefs by appearance.state.collectAsState()
+            val dark = isSystemInDarkTheme()
             OrbitleTheme {
-                val model = viewModel { ChatViewModel("10", DemoMessages(group)) }
-                ChatScreen(model, onBack = { finish() })
+                CompositionLocalProvider(LocalChatBackdrop provides ChatBackdrop(prefs.wallpaper, dark)) {
+                    when (screen) {
+                        "calls" -> CallsScreen(viewModel { CallsViewModel(DemoCalls()) }, onOpenChat = {})
+                        "contacts" -> ContactsScreen(viewModel { ContactsViewModel(DemoContacts(), { "1" }) }, onOpen = {})
+                        "appearance" -> AppearanceScreen(appearance, onBack = { finish() })
+                        "settings" -> SettingsScreen(Account("1", "Иван", "Петров", "+79001234567", null), onAbout = {}, onLogout = {})
+                        else -> {
+                            val model = viewModel { ChatViewModel("10", DemoMessages(group)) }
+                            ChatScreen(model, onBack = { finish() })
+                        }
+                    }
+                }
             }
         }
     }
@@ -94,4 +134,35 @@ private class DemoMessages(group: Boolean) : MessageRepository {
         }
     }
     override suspend fun reactionCatalog() = listOf("👍", "❤️", "🔥", "🤣", "😭", "😍", "👏")
+}
+
+private class DemoCalls : CallRepository {
+    private val now = System.currentTimeMillis()
+    private val hour = 3_600_000L
+    override val calls = MutableStateFlow<List<CallRecord>?>(
+        listOf(
+            CallRecord("1", "2", "Анна Смирнова", outgoing = false, outcome = CallOutcome.MISSED, timeMs = now - hour),
+            CallRecord("2", "2", "Анна Смирнова", outgoing = false, outcome = CallOutcome.MISSED, timeMs = now - 2 * hour),
+            CallRecord("3", "3", "Борис", outgoing = true, outcome = CallOutcome.ANSWERED, timeMs = now - 5 * hour, durationMs = 42_000),
+            CallRecord("4", "4", "Мама", outgoing = false, outcome = CallOutcome.ANSWERED, isVideo = true, timeMs = now - 30 * hour),
+            CallRecord("5", "5", "Групповой звонок", isGroup = true, outgoing = true, outcome = CallOutcome.CANCELLED, timeMs = now - 80 * hour),
+        ),
+    )
+    override suspend fun refresh() = Unit
+    override fun clear() = Unit
+}
+
+private class DemoContacts : ContactRepository {
+    private val now = System.currentTimeMillis()
+    override val contacts = MutableStateFlow(
+        listOf(
+            Contact("2", "Анна", "Смирнова", "79001112233", isOnline = true),
+            Contact("3", "Борис", "Иванов", "79002223344", lastSeenMs = now - 5 * 60_000),
+            Contact("4", "Вера", lastSeenMs = now - 26 * 3_600_000),
+            Contact("5", "Alex", "Brown"),
+            Contact("6", "Ёлка", "Новогодняя"),
+            Contact("7", "Мама", isOnline = true),
+        ),
+    )
+    override suspend fun sync() = Unit
 }

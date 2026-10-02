@@ -3,7 +3,17 @@ package app.orbitle
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
+import android.graphics.Color as AndroidColor
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import app.orbitle.domain.ThemeMode
+import app.orbitle.ui.components.ChatBackdrop
+import app.orbitle.ui.components.LocalChatBackdrop
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -33,8 +43,26 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val container = (application as OrbitleApp).container
         setContent {
-            OrbitleTheme {
-                Root(container)
+            val prefs by container.appearance.state.collectAsStateWithLifecycle()
+            val dark = when (prefs.theme) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+            // Значки строки состояния под выбранную тему, а не под системную.
+            DisposableEffect(dark) {
+                val style = if (dark) SystemBarStyle.dark(AndroidColor.TRANSPARENT) else SystemBarStyle.light(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT)
+                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+                onDispose {}
+            }
+            OrbitleTheme(darkTheme = dark) {
+                val density = LocalDensity.current
+                CompositionLocalProvider(
+                    LocalDensity provides Density(density.density, density.fontScale * prefs.textSize.scale),
+                    LocalChatBackdrop provides ChatBackdrop(prefs.wallpaper, dark),
+                ) {
+                    Root(container)
+                }
             }
         }
     }
@@ -49,7 +77,7 @@ private fun Root(container: AppContainer) {
         is AuthPhase.SignedIn -> {
             val chats = viewModel { ChatListViewModel(container.chats, container.session.connection) }
             val account by container.account.account.collectAsStateWithLifecycle(initialValue = null)
-            MainScreen(chats, container.messages, account, onLogout = { scope.launch { container.session.logout() } })
+            MainScreen(container, chats, account, onLogout = { scope.launch { container.session.logout() } })
         }
         else -> {
             val auth = viewModel { AuthViewModel(container.session) }

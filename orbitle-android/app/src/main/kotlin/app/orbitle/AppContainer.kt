@@ -2,6 +2,15 @@ package app.orbitle
 
 import android.content.Context
 import app.orbitle.data.AccountRepository
+import app.orbitle.data.AppearanceSettings
+import app.orbitle.data.CallRepository
+import app.orbitle.data.ContactRepository
+import app.orbitle.data.CoreCallRepository
+import app.orbitle.data.CoreContactRepository
+import app.orbitle.data.CoreSessionRepository
+import app.orbitle.data.PreferenceStore
+import app.orbitle.data.SessionRepository
+import app.orbitle.presentation.calls.CallMarks
 import app.orbitle.data.ChatRepository
 import app.orbitle.data.CoreAccountRepository
 import app.orbitle.data.CoreChatRepository
@@ -28,7 +37,31 @@ class AppContainer(context: Context) {
 
     val messages: MessageRepository = CoreMessageRepository(client)
 
+    val calls: CallRepository = CoreCallRepository(client)
+
+    val contacts: ContactRepository = CoreContactRepository(client)
+
+    val sessions: SessionRepository = CoreSessionRepository(client)
+
     private val prefs = context.getSharedPreferences("orbitle", Context.MODE_PRIVATE)
+
+    val appearance = AppearanceSettings(object : PreferenceStore {
+        override fun get(key: String): String? = prefs.getString(key, null)
+        override fun put(key: String, value: String) = prefs.edit().putString(key, value).apply()
+    })
+
+    /** Просмотренные и скрытые звонки: свои у каждого аккаунта. */
+    val callMarks = object : CallMarks {
+        private fun key(name: String) = "calls.${client.store.state.value.me ?: 0}.$name"
+        override var lastSeenMs: Long?
+            get() = prefs.getLong(key("lastSeen"), -1).takeIf { it >= 0 }
+            set(value) {
+                prefs.edit().apply { if (value == null) remove(key("lastSeen")) else putLong(key("lastSeen"), value) }.apply()
+            }
+        override var hiddenIds: Set<String>
+            get() = prefs.getStringSet(key("hidden"), emptySet()).orEmpty().toSet()
+            set(value) = prefs.edit().putStringSet(key("hidden"), value).apply()
+    }
 
     private val userIds = object : UserIdStore {
         override var lastUserId: String?
@@ -46,7 +79,10 @@ class AppContainer(context: Context) {
             runCatching { chats.refresh() }
             runCatching { account.reload() }
         },
-        onSignedOut = { chats.clear() },
+        onSignedOut = {
+            chats.clear()
+            calls.clear()
+        },
     )
 
     private companion object {
