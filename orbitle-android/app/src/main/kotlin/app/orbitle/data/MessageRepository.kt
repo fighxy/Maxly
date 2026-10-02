@@ -3,6 +3,7 @@ package app.orbitle.data
 import app.orbitle.domain.Chat
 import app.orbitle.domain.ChatAttachment
 import app.orbitle.domain.OrbitleError
+import app.orbitle.domain.OutgoingFile
 import app.orbitle.domain.Message
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -37,6 +38,13 @@ interface MessageRepository {
 
     /** Отправка текста. Сообщение сразу встаёт в ленту, при ошибке остаётся с пометкой. */
     suspend fun send(chatId: String, text: String, replyTo: String?)
+
+    /**
+     * Отправка вложений одним сообщением с подписью. Сообщение сразу встаёт в ленту;
+     * [progress] получает долю загрузки 0…1.
+     */
+    suspend fun sendMedia(chatId: String, items: List<OutgoingFile>, caption: String, replyTo: String?, progress: (Float) -> Unit = {}): Unit =
+        throw OrbitleError.Rejected("Отправка вложений недоступна")
 
     /** Повторить не ушедшее сообщение. */
     suspend fun retry(chatId: String, localId: String)

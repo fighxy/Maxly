@@ -65,6 +65,14 @@ class FakeMessages : MessageRepository {
     }
     override suspend fun reactionCatalog() = catalog
 
+    val media = mutableListOf<Triple<List<app.orbitle.domain.OutgoingFile>, String, String?>>()
+    var mediaGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+    override suspend fun sendMedia(chatId: String, items: List<app.orbitle.domain.OutgoingFile>, caption: String, replyTo: String?, progress: (Float) -> Unit) {
+        media += Triple(items, caption, replyTo)
+        progress(0.4f)
+        mediaGate?.await()
+    }
+
     var transcript: String? = "Привет"
     var transcribeFailure: Exception? = null
     val transcribeCalls = mutableListOf<Pair<String, String>>()

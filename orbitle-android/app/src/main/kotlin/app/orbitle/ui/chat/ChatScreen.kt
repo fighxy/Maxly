@@ -1,5 +1,19 @@
 package app.orbitle.ui.chat
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.InsertDriveFile
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.layout.ContentScale
+import app.orbitle.domain.OutgoingFile
+import coil3.compose.AsyncImage
+import java.io.File
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -123,6 +137,13 @@ fun ChatScreen(model: ChatViewModel, onBack: () -> Unit, onOpenProfile: () -> Un
             onFile = model.media::openFile,
         )
     }
+    var attaching by remember { mutableStateOf(false) }
+    val importScope = rememberCoroutineScope()
+    val importUris: (List<Uri>) -> Unit = { uris ->
+        if (uris.isNotEmpty()) importScope.launch { model.addAttachments(AttachmentImporter.import(context, uris.take(OutgoingFile.LIMIT))) }
+    }
+    val pickVisual = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(OutgoingFile.LIMIT), importUris)
+    val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments(), importUris)
     val openFile = mediaState.value.openFile
     LaunchedEffect(openFile) {
         val file = openFile ?: return@LaunchedEffect
@@ -237,6 +258,8 @@ fun ChatScreen(model: ChatViewModel, onBack: () -> Unit, onOpenProfile: () -> Un
                     onSend = model::send,
                     onCancelReply = model::cancelReply,
                     onCancelEdit = model::cancelEdit,
+                    onAttach = { attaching = true },
+                    onRemoveAttachment = model::removeAttachment,
                 )
             } else {
                 Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
@@ -253,6 +276,19 @@ fun ChatScreen(model: ChatViewModel, onBack: () -> Unit, onOpenProfile: () -> Un
 
     }
 
+    if (attaching) {
+        AttachSheet(
+            onDismiss = { attaching = false },
+            onMedia = {
+                attaching = false
+                pickVisual.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+            },
+            onFile = {
+                attaching = false
+                pickFiles.launch(arrayOf("*/*"))
+            },
+        )
+    }
     mediaState.value.viewer?.let { viewer ->
         MediaViewer(viewer, mediaUserAgent, onPage = model.media::showPage, onClose = model.media::closeViewer)
     }
@@ -333,11 +369,23 @@ private fun Composer(
     onSend: () -> Unit,
     onCancelReply: () -> Unit,
     onCancelEdit: () -> Unit,
+    onAttach: () -> Unit,
+    onRemoveAttachment: (OutgoingFile) -> Unit,
 ) {
     Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
         Column(Modifier.navigationBarsPadding()) {
             val editing = state.editing
             val reply = state.replyTo
+            state.uploadProgress?.let { progress ->
+                Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp)) {
+                    Text("Отправка вложений… ${(progress * 100).toInt()}%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.size(4.dp))
+                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                }
+            }
+            if (state.attachments.isNotEmpty()) {
+                AttachmentStrip(state.attachments, onRemoveAttachment)
+            }
             if (editing != null || reply != null) {
                 Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(if (editing != null) Icons.Filled.Edit else Icons.AutoMirrored.Filled.Reply, null, tint = MaterialTheme.colorScheme.primary)
@@ -355,6 +403,12 @@ private fun Composer(
                 }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.Bottom) {
+                if (editing == null) {
+                    IconButton(onClick = onAttach, modifier = Modifier.size(44.dp)) {
+                        Icon(Icons.Filled.AttachFile, "Прикрепить", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Spacer(Modifier.width(2.dp))
+                }
                 Box(
                     Modifier
                         .weight(1f)
@@ -401,6 +455,57 @@ private fun Composer(
                 }
             }
         }
+    }
+}
+
+/** Выбранные вложения над полем ввода, у каждого — крестик. */
+@Composable
+private fun AttachmentStrip(items: List<OutgoingFile>, onRemove: (OutgoingFile) -> Unit) {
+    LazyRow(
+        Modifier.fillMaxWidth().padding(top = 8.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(items, key = { it.path }) { item ->
+            Box(Modifier.size(72.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
+                when (item.kind) {
+                    OutgoingFile.Kind.PHOTO -> AsyncImage(File(item.path), item.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    OutgoingFile.Kind.VIDEO -> Icon(Icons.Filled.Videocam, item.name, Modifier.align(Alignment.Center), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutgoingFile.Kind.FILE -> Column(Modifier.align(Alignment.Center).padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Outlined.InsertDriveFile, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(item.name, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                    }
+                }
+                Box(
+                    Modifier.align(Alignment.TopEnd).padding(3.dp).size(22.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)).clickable { onRemove(item) },
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Filled.Close, "Убрать", tint = Color.White, modifier = Modifier.size(14.dp)) }
+            }
+        }
+    }
+}
+
+/** Что прикрепить: фото и видео из галереи или любой файл. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AttachSheet(onDismiss: () -> Unit, onMedia: () -> Unit, onFile: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        val colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+        ListItem(
+            headlineContent = { Text("Фото или видео") },
+            supportingContent = { Text("Из галереи, до ${OutgoingFile.LIMIT} за раз") },
+            leadingContent = { Icon(Icons.Outlined.Image, null, tint = MaterialTheme.colorScheme.primary) },
+            colors = colors,
+            modifier = Modifier.clickable(onClick = onMedia),
+        )
+        ListItem(
+            headlineContent = { Text("Файл") },
+            supportingContent = { Text("Документ любого типа") },
+            leadingContent = { Icon(Icons.Outlined.InsertDriveFile, null, tint = MaterialTheme.colorScheme.primary) },
+            colors = colors,
+            modifier = Modifier.clickable(onClick = onFile),
+        )
+        Spacer(Modifier.size(24.dp))
     }
 }
 
