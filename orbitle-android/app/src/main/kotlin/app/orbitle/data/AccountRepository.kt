@@ -25,6 +25,12 @@ interface AccountRepository {
     suspend fun uploadAvatar(jpeg: ByteArray)
     suspend fun removeAvatar()
 
+    /**
+     * Просит сервер удалить профиль. Сервер удаляет его через 30 дней, а вход в этот срок
+     * отменяет удаление. Возвращает момент удаления в миллисекундах или `null`, если сервер его не назвал.
+     */
+    suspend fun requestDeletion(): Long?
+
     /** Отправляет изменение и возвращает настройки из ответа сервера. */
     suspend fun change(change: PrivacyChange): AccountSettings
 
@@ -67,6 +73,9 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
         MaxCoreGateway.call { client.removeAvatar() }
     }
 
+    override suspend fun requestDeletion(): Long? =
+        deletionMillis(MaxCoreGateway.call { client.api.account.requestProfileDeletion(true) })
+
     override suspend fun change(change: PrivacyChange): AccountSettings =
         settingsOf(MaxCoreGateway.call { client.updateUserSettings(valuesOf(change)) })
 
@@ -91,6 +100,14 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
     companion object {
         private const val BLOCKED_PAGES = 10
         private const val BLOCKED_PAGE_SIZE = 100
+        private const val SECONDS_BOUND = 100_000_000_000L
+
+        /** Момент из ответа `PROFILE_DELETE` в миллисекундах: секунды переводятся, ноль и пусто — `null`. */
+        fun deletionMillis(timestamp: Long?): Long? = when {
+            timestamp == null || timestamp <= 0L -> null
+            timestamp < SECONDS_BOUND -> timestamp * 1000
+            else -> timestamp
+        }
 
         fun settingsOf(config: AccountConfig?): AccountSettings {
             val c = config ?: return AccountSettings()
