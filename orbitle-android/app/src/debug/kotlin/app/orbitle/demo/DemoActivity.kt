@@ -65,6 +65,7 @@ class DemoActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val group = intent.getStringExtra("type") == "group"
+        val channel = intent.getStringExtra("type") == "channel"
         val screen = intent.getStringExtra("screen") ?: "chat"
         val appearance = AppearanceSettings(object : PreferenceStore {
             private val map = mutableMapOf<String, String>()
@@ -95,8 +96,9 @@ class DemoActivity : ComponentActivity() {
                         "settings" -> SettingsScreen(Account("1", "Иван", "Петров", "+79001234567", null), onAbout = {}, onLogout = {})
                         else -> {
                             val model = viewModel { ChatViewModel(
-                                "10", DemoMessages(group), voicePlayer = player, files = DemoFiles(applicationContext),
+                                "10", DemoMessages(group, channel), voicePlayer = player, files = DemoFiles(applicationContext),
                                 stickerRepository = DemoStickers(), stickerRecents = demoRecents, emojiSupported = app.orbitle.ui.chat.EmojiSupport::canDraw,
+                                comments = DemoComments(),
                             ) }
                             ChatScreen(model, onBack = { finish() }, forwardTargets = {
                                 val formatter = app.orbitle.presentation.chatlist.ChatListFormatter()
@@ -108,6 +110,27 @@ class DemoActivity : ComponentActivity() {
             }
         }
     }
+}
+
+private class DemoComments : app.orbitle.data.CommentsRepository {
+    private val now = System.currentTimeMillis()
+    private var next = 900
+    private val names = listOf("Мария", "Олег", "Светлана", "Дмитрий")
+    private val all = (1..40).map { i ->
+        val author = (i % 4) + 2
+        Message("c$i".let { (800 + i).toString() }, "10", author.toString(), if (i == 40) "Отличная новость, ждём!" else "Комментарий номер $i", now - (41 - i) * 90_000L,
+            MessageStatus.SENT, if (i == 39) MessageContent(reactions = listOf(MessageReaction("👍", 3, false))) else MessageContent.empty, names[i % 4])
+    }
+    override suspend fun comments(chatId: String, postId: String, beforeMs: Long?, limit: Int): List<Message> {
+        kotlinx.coroutines.delay(400)
+        return all.filter { beforeMs == null || it.timeMs < beforeMs }.takeLast(limit)
+    }
+    override suspend fun send(text: String, chatId: String, postId: String): Message {
+        kotlinx.coroutines.delay(500)
+        return Message((next++).toString(), chatId, "1", text, System.currentTimeMillis())
+    }
+    override suspend fun counts(chatId: String, postIds: List<String>) = postIds.associateWith { if (it == "9") 40 else (it.toIntOrNull() ?: 0) % 3 }
+    override suspend fun setReaction(chatId: String, postId: String, commentId: String, emoji: String?) = null
 }
 
 private class DemoMarks : app.orbitle.presentation.chatlist.ChatLocalMarks {
@@ -139,12 +162,15 @@ private class DemoChats : app.orbitle.data.ChatRepository {
     override fun clear() = Unit
 }
 
-private class DemoMessages(group: Boolean) : MessageRepository {
+private class DemoMessages(group: Boolean, channel: Boolean = false) : MessageRepository {
     private val now = System.currentTimeMillis()
     override suspend fun forward(chatId: String, messageId: String, targetChatId: String) = Unit
     private val minute = 60_000L
     override val currentUserId = "1"
-    private val chat = Chat(id = "10", title = if (group) "Дача 🌲" else "Анна Смирнова", type = if (group) ChatType.GROUP else ChatType.PRIVATE, updatedAtMs = now, isOnline = true)
+    private val chat = when {
+        channel -> Chat(id = "10", title = "Новости Max", type = ChatType.CHANNEL, updatedAtMs = now, isVerified = true, commentsEnabled = true)
+        else -> Chat(id = "10", title = if (group) "Дача 🌲" else "Анна Смирнова", type = if (group) ChatType.GROUP else ChatType.PRIVATE, updatedAtMs = now, isOnline = true)
+    }
     private val header = MutableStateFlow<ChatHeaderInfo?>(ChatHeaderInfo(chat, participants = 12))
     private val list = MutableStateFlow(
         listOf(

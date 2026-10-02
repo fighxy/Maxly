@@ -149,7 +149,7 @@ fun MainScreen(
                 val model = viewModel(key = "chat-$chatId") { ChatViewModel(
                         chatId, container.messages, fallbackTitle = title, voicePlayer = container.voicePlayer, files = container.files,
                         stickerRepository = container.stickers, stickerRecents = container.stickerRecents, drafts = container.drafts,
-                        emojiSupported = EmojiSupport::canDraw,
+                        emojiSupported = EmojiSupport::canDraw, comments = container.comments,
                     ) }
                 ChatScreen(
                     model,

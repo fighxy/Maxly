@@ -1,5 +1,6 @@
 package app.orbitle.presentation.chat
 
+import app.orbitle.data.CommentsRepository
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.orbitle.data.ChatHeaderInfo
@@ -45,6 +46,8 @@ sealed interface ChatItem {
         /** Следующее сообщение того же автора: хвост пузыря не рисуется. */
         val continues: Boolean,
         val isGroupChat: Boolean,
+        /** Плашка комментариев под постом канала: число, `null` — плашки нет. */
+        val comments: Int? = null,
     ) : ChatItem {
         override val key: String get() = message.id
     }
@@ -96,6 +99,8 @@ class ChatViewModel(
     /** Черновики полей ввода по чатам: переживают выход из чата и перезапуск. */
     private val drafts: DraftStore? = null,
     emojiSupported: (String) -> Boolean = { true },
+    /** Комментарии постов канала; `null` — без них. */
+    private val comments: CommentsRepository? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatUiState())
@@ -118,6 +123,14 @@ class ChatViewModel(
     private var active = true
     private var draftBeforeEdit = ""
     private var builtFor: ChatType? = null
+    private var builtComments: Boolean? = null
+    /** Счётчики комментариев от сервера: id поста → число. */
+    private val commentCounts = HashMap<String, Int>()
+    private val askedCounts = HashSet<String>()
+
+    private val _comments = MutableStateFlow<CommentsModel?>(null)
+    /** Открытое обсуждение поста. */
+    val commentsModel: StateFlow<CommentsModel?> = _comments.asStateFlow()
 
     init {
         drafts?.get(chatId)?.takeIf { it.isNotEmpty() }?.let { saved -> _state.update { it.copy(draft = saved) } }
@@ -440,57 +453,16 @@ class ChatViewModel(
             markedReadId = null
             markRead()
         }
-        if (chat.type != builtFor) rebuild()
+        if (chat.type != builtFor || chat.commentsEnabled != builtComments) rebuild()
     }
 
     private fun rebuild() {
         val nowMs = now()
         builtFor = header?.chat?.type
+        builtComments = header?.chat?.commentsEnabled
         val isGroup = builtFor == ChatType.GROUP
-        val result = ArrayList<ChatItem>(history.size + 8)
-        // Строится от старых к новым, потом разворачивается.
-        var previous: Message? = null
-        var previousDay: String? = null
-        val ordered = history
-        for ((index, message) in ordered.withIndex()) {
-            val day = formatter.dayKey(message.timeMs)
-            if (day != previousDay) {
-                result += ChatItem.Day("day-$day", formatter.dayLabel(message.timeMs, nowMs))
-                previousDay = day
-                previous = null
-            }
-            if (message.isService) {
-                result += ChatItem.Service(message.id, message.text)
-                previous = null
-                continue
-            }
-            val next = ordered.getOrNull(index + 1)
-            val sameAsPrevious = previous != null && previous.authorId == message.authorId
-            val sameAsNext = next != null && !next.isService && next.authorId == message.authorId &&
-                formatter.dayKey(next.timeMs) == day
-            val outgoing = isOutgoing(message)
-            val author = if (isGroup && !outgoing && !sameAsPrevious) message.authorName.ifEmpty { null } else null
-            val avatar = if (isGroup && !outgoing && !sameAsNext) {
-                val name = message.authorName.ifEmpty { "?" }
-                ChatAvatar(
-                    message.authorAvatarUrl?.let { ChatAvatar.Kind.Photo(it, ChatAvatar.initials(name)) } ?: ChatAvatar.Kind.Initials(ChatAvatar.initials(name)),
-                    ChatAvatar.colorIndex(message.authorId),
-                )
-            } else null
-            result += ChatItem.Bubble(
-                message = message,
-                outgoing = outgoing,
-                time = formatter.time(message.timeMs),
-                authorName = author,
-                authorColor = ChatAvatar.colorIndex(message.authorId),
-                showsAvatar = avatar != null,
-                avatar = avatar,
-                continues = sameAsNext,
-                isGroupChat = isGroup && !outgoing,
-            )
-            previous = message
-        }
-        result.reverse()
+        requestCommentCounts()
+        val result = feedItems(history, formatter, nowMs, isGroup, ::isOutgoing, ::commentsFooter)
         val empty = latestLoaded && history.isEmpty()
         val hint = when {
             !empty -> null
@@ -500,6 +472,61 @@ class ChatViewModel(
         _state.update { it.copy(items = result, emptyHint = hint, isLoading = !latestLoaded && history.isEmpty()) }
     }
 
+    // Комментарии
+
+    /** Плашка под постом канала: только при включённых комментариях (или если сервер прислал счётчик). */
+    private fun commentsFooter(message: Message): Int? {
+        if (comments == null || builtFor != ChatType.CHANNEL || !isServer(message) || message.isService) return null
+        val known = commentCounts[message.id]
+        return when (builtComments) {
+            false -> null
+            true -> known ?: message.content.comments ?: 0
+            null -> known ?: message.content.comments
+        }
+    }
+
+    /** Спросить счётчики у постов, которых ещё не спрашивали (пачками по 50). */
+    private fun requestCommentCounts() {
+        val source = comments ?: return
+        if (builtFor != ChatType.CHANNEL || builtComments == false) return
+        val ids = history.filter { isServer(it) && !it.isService && it.id !in askedCounts }.map { it.id }
+        if (ids.isEmpty()) return
+        askedCounts += ids
+        viewModelScope.launch {
+            for (chunk in ids.chunked(50)) {
+                val counts = try {
+                    source.counts(chatId, chunk)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    continue
+                }
+                if (counts.isEmpty()) continue
+                commentCounts.putAll(counts)
+                rebuild()
+            }
+        }
+    }
+
+    fun openComments(post: Message) {
+        val source = comments ?: return
+        if (_comments.value?.post?.id == post.id) return
+        val model = CommentsModel(chatId, post, repository.currentUserId.orEmpty(), source, viewModelScope, formatter, now)
+        _comments.value = model
+        model.load()
+    }
+
+    /** Окно закрыто: счётчик поста мог измениться, спросить заново. */
+    fun closeComments() {
+        val post = _comments.value?.post ?: return
+        _comments.value = null
+        askedCounts -= post.id
+        requestCommentCounts()
+    }
+
+    /** Число комментариев поста: ответ сервера, иначе счётчик из самого сообщения. */
+    fun commentCount(post: Message): Int? = commentCounts[post.id] ?: post.content.comments
+
     override fun onCleared() {
         // Ушли из чата: его голосовое больше не играет.
         val playing = media.playback.value
@@ -507,13 +534,73 @@ class ChatViewModel(
     }
 
     private fun show(error: Exception) {
-        val text = (error as? OrbitleError)?.userMessage ?: OrbitleError.Unknown.userMessage
+        val text = app.orbitle.data.CoreErrors.map(error).userMessage
         if (text != null) _messages.value = text
     }
 
     companion object {
         const val REACTION_FAILURE = "Не удалось поставить реакцию"
     }
+}
+
+/**
+ * Строки ленты от новых к старым: дни, служебные строки и пузыри. Общая для чата и комментариев.
+ * [comments] — плашка комментариев под постом (`null` — без неё).
+ */
+internal fun feedItems(
+    history: List<Message>,
+    formatter: ChatFormatter,
+    nowMs: Long,
+    isGroup: Boolean,
+    isOutgoing: (Message) -> Boolean,
+    comments: (Message) -> Int? = { null },
+): List<ChatItem> {
+    val result = ArrayList<ChatItem>(history.size + 8)
+    // Строится от старых к новым, потом разворачивается.
+    var previous: Message? = null
+    var previousDay: String? = null
+    val ordered = history
+    for ((index, message) in ordered.withIndex()) {
+        val day = formatter.dayKey(message.timeMs)
+        if (day != previousDay) {
+            result += ChatItem.Day("day-$day", formatter.dayLabel(message.timeMs, nowMs))
+            previousDay = day
+            previous = null
+        }
+        if (message.isService) {
+            result += ChatItem.Service(message.id, message.text)
+            previous = null
+            continue
+        }
+        val next = ordered.getOrNull(index + 1)
+        val sameAsPrevious = previous != null && previous.authorId == message.authorId
+        val sameAsNext = next != null && !next.isService && next.authorId == message.authorId &&
+            formatter.dayKey(next.timeMs) == day
+        val outgoing = isOutgoing(message)
+        val author = if (isGroup && !outgoing && !sameAsPrevious) message.authorName.ifEmpty { null } else null
+        val avatar = if (isGroup && !outgoing && !sameAsNext) {
+            val name = message.authorName.ifEmpty { "?" }
+            ChatAvatar(
+                message.authorAvatarUrl?.let { ChatAvatar.Kind.Photo(it, ChatAvatar.initials(name)) } ?: ChatAvatar.Kind.Initials(ChatAvatar.initials(name)),
+                ChatAvatar.colorIndex(message.authorId),
+            )
+        } else null
+        result += ChatItem.Bubble(
+            message = message,
+            outgoing = outgoing,
+            time = formatter.time(message.timeMs),
+            authorName = author,
+            authorColor = ChatAvatar.colorIndex(message.authorId),
+            showsAvatar = avatar != null,
+            avatar = avatar,
+            continues = sameAsNext,
+            isGroupChat = isGroup && !outgoing,
+            comments = comments(message),
+        )
+        previous = message
+    }
+    result.reverse()
+    return result
 }
 
 /** Черновики полей ввода: id чата → текст. */

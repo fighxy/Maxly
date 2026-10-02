@@ -83,6 +83,8 @@ class AppContainer(context: Context) {
 
     val stickers: StickerRepository = CoreStickerRepository(client)
 
+    val comments: app.orbitle.data.CommentsRepository = app.orbitle.data.CoreCommentsRepository(client)
+
     /** Черновики чатов и ручные пометки «непрочитано»: свои у каждого аккаунта. */
     private val localMarks = object : DraftStore, ChatLocalMarks {
         private fun account() = client.store.state.value.me ?: 0

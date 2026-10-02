@@ -1,5 +1,9 @@
 package app.orbitle.ui.chat
 
+import app.orbitle.presentation.chat.commentsLabel
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.Comment
 import androidx.compose.animation.core.Animatable
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.runtime.rememberCoroutineScope
@@ -124,6 +128,7 @@ fun BubbleRow(
     onRetry: (Message) -> Unit,
     highlighted: Boolean = false,
     onSwipeReply: ((Message) -> Unit)? = null,
+    onComments: ((Message) -> Unit)? = null,
 ) {
     val message = item.message
     val maxWidth = (LocalConfiguration.current.screenWidthDp * 0.8f).dp
@@ -210,7 +215,7 @@ fun BubbleRow(
             contentColor = colors.content,
             modifier = Modifier.widthIn(max = maxWidth).clip(shape).then(press),
         ) {
-            BubbleContent(item, colors, maxWidth, onReaction, onReplyClick)
+            BubbleContent(item, colors, maxWidth, onReaction, onReplyClick, onComments)
         }
     }
     }
@@ -223,6 +228,7 @@ private fun BubbleContent(
     maxWidth: Dp,
     onReaction: (Message, String) -> Unit,
     onReplyClick: (String) -> Unit,
+    onComments: ((Message) -> Unit)? = null,
 ) {
     val message = item.message
     val content = message.content
@@ -305,6 +311,23 @@ private fun BubbleContent(
             TimeRow(item, colors.secondary, Modifier.align(Alignment.End).padding(start = 12.dp, end = 10.dp, bottom = 6.dp, top = 2.dp))
         }
         Reactions(content.reactions, colors, item.outgoing, Modifier.padding(start = 8.dp, end = 8.dp, bottom = 6.dp)) { onReaction(message, it) }
+        val count = item.comments
+        if (count != null && onComments != null) CommentsFooter(count, colors) { onComments(message) }
+    }
+}
+
+/** Нижняя строка поста канала: число комментариев (или «Комментировать») и стрелка. */
+@Composable
+private fun CommentsFooter(count: Int, colors: BubbleColors, onClick: () -> Unit) {
+    val label = commentsLabel(count)
+    Column(Modifier.fillMaxWidth().clickable(onClickLabel = "Открыть комментарии", onClick = onClick)) {
+        HorizontalDivider(thickness = 0.5.dp, color = colors.content.copy(alpha = 0.12f))
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.AutoMirrored.Outlined.Comment, null, tint = colors.accent, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(label, color = colors.accent, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = colors.accent.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
+        }
     }
 }
 
