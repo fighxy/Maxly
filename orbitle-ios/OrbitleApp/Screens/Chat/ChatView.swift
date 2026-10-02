@@ -84,7 +84,7 @@ struct ChatView: View {
                     .transition(.move(edge: .bottom))
                 }
             }
-            // Верх поля ввода — от него лента размывается к низу экрана (`ChatBottomBlur`).
+            // Верх поля ввода — от него лента тает в фон к низу экрана (`ChatBottomBlur`).
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { bottomControlsTop = $0 }
         }
         .onChange(of: composerFocused) { _, focused in

@@ -96,7 +96,7 @@ struct ChatTranscript: View {
                     jumpToBottom(proxy)
                 }
                 .chatSystemEdgeEffectHidden()
-                // Мягкое размытие под нижними кнопками. Раньше кнопки «вниз»: она рисуется поверх.
+                // Лёгкий переход в фон под нижними кнопками. Раньше кнопки «вниз»: она рисуется поверх.
                 .overlay { ChatBottomBlur(controlsTop: bottomControlsTop) }
                 .overlay(alignment: .bottom) {
                     if viewModel.showsSavedPlaceholder {
