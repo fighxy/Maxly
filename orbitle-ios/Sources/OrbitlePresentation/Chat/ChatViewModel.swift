@@ -655,6 +655,11 @@ public final class ChatViewModel {
         fileTask = Task { await self.loadFile(message, attachmentId: attachmentId) }
     }
 
+    /// Сохранённая история чата с вложениями и ссылками — для общих медиа профиля.
+    public func sharedHistory() async -> [Message] {
+        await repository.sharedHistory(chatId: chatId, limit: 3000)
+    }
+
     public func voicePhase(for id: String) -> VoicePhase {
         voicePhases[id] ?? .idle
     }

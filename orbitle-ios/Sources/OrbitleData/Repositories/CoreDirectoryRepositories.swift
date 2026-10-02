@@ -155,19 +155,26 @@ public actor CoreCallHistoryRepository: CallHistoryRepository {
 /// Карточки чатов из ядра: собеседник, бот, группа или канал.
 public struct CoreChatProfileRepository: ChatProfileRepository {
     private let core: any MaxCore
+    private let cache: ChatProfileCache?
 
-    public init(core: any MaxCore) {
+    public init(core: any MaxCore, cache: ChatProfileCache? = nil) {
         self.core = core
+        self.cache = cache
     }
 
     public func profile(chatId: String) async throws(OrbitleError) -> ChatProfile {
         do {
             let profile = CoreMapping.profile(try await core.loadProfile(chatId: chatId))
             Log.info(.chats, "Карточка чата \(chatId): \(profile.kind.rawValue)")
+            await cache?.save(profile)
             return profile
         } catch {
             Log.warning(.chats, "Карточка чата \(chatId) не загрузилась: \(error)")
             throw CoreMapping.apiError(error).orbitleError
         }
+    }
+
+    public func cachedProfile(chatId: String) async -> ChatProfile? {
+        await cache?.profile(chatId: chatId)
     }
 }

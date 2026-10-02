@@ -1193,6 +1193,22 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         }
     }
 
+    public func sharedHistory(chatId: String, limit: Int) async -> [Message] {
+        let id = chatId
+        let root = ""
+        let empty = ""
+        let link = "http"
+        var descriptor = FetchDescriptor<SDMessage>(
+            predicate: #Predicate {
+                $0.chatId == id && $0.threadOf == root && ($0.contentJSON != empty || $0.text.contains(link))
+            },
+            sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+        )
+        descriptor.fetchLimit = max(1, limit)
+        let rows = (try? modelContext.fetch(descriptor)) ?? []
+        return rows.reversed().map { Self.record($0).domain }
+    }
+
     /// Основная лента — последние сообщения окна от старых к новым. Тред — хронологически.
     private func snapshot(chatId: String, threadOf: String) -> [Message] {
         if threadOf.isEmpty {

@@ -112,6 +112,12 @@ struct ChatView: View {
             // Шапка: статус и аватар из карточки чата, она же открывается профилем.
             if profile == nil { profile = makeProfile?() }
             await profile?.load()
+            // Общие медиа из кэша — заранее, чтобы профиль открылся с ними. Пауза: сначала лента.
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled, let card = profile else { return }
+            await card.updateShared(viewModel.messages, currentUserId: viewModel.currentUserId) {
+                await viewModel.sharedHistory()
+            }
         }
         .sheet(item: $viewModel.openedComments, onDismiss: { viewModel.closeComments() }) { post in
             if let model = viewModel.commentsModel(for: post) {

@@ -1,15 +1,15 @@
 import Foundation
 
 /// Карточка чата для экрана профиля: собеседник, бот, группа или канал.
-public struct ChatProfile: Hashable, Sendable {
-    public enum Kind: String, Hashable, Sendable {
+public struct ChatProfile: Hashable, Sendable, Codable {
+    public enum Kind: String, Hashable, Sendable, Codable {
         case user, bot, group, channel
         /// Диалог с самим собой.
         case saved
     }
 
     /// Команда меню бота, без косой черты.
-    public struct BotCommand: Hashable, Sendable {
+    public struct BotCommand: Hashable, Sendable, Codable {
         public let name: String
         public let description: String?
 
@@ -79,4 +79,10 @@ public struct ChatProfile: Hashable, Sendable {
 /// Источник карточек чатов.
 public protocol ChatProfileRepository: Sendable {
     func profile(chatId: String) async throws(OrbitleError) -> ChatProfile
+    /// Карточка из кэша устройства: профиль виден сразу, даже без сети.
+    func cachedProfile(chatId: String) async -> ChatProfile?
+}
+
+public extension ChatProfileRepository {
+    func cachedProfile(chatId: String) async -> ChatProfile? { nil }
 }

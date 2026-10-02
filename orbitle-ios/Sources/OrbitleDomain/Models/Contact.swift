@@ -4,7 +4,7 @@ import Foundation
 public struct Contact: Identifiable, Hashable, Sendable {
     /// Когда человек был в сети. Сервер может скрыть точное время и прислать только
     /// примерный срок, как и принято в мессенджерах.
-    public enum Presence: Hashable, Sendable {
+    public enum Presence: Hashable, Sendable, Codable {
         case online
         case lastSeen(Date)
         case recently

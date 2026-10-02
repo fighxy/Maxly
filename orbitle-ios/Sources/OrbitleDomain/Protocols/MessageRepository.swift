@@ -4,6 +4,9 @@ import Foundation
 public protocol MessageRepository: Sendable {
     /// Сообщения чата от старых к новым в пределах показанного окна.
     func messages(chatId: String) -> AsyncStream<[Message]>
+    /// Сохранённая история чата с вложениями и ссылками, от старых к новым, — для общих медиа
+    /// профиля. Только кэш устройства, без сети.
+    func sharedHistory(chatId: String, limit: Int) async -> [Message]
     /// Расширить окно на страницу, при необходимости догрузив историю с сервера.
     func loadOlder(chatId: String) async throws(OrbitleError)
     /// Страница строго старше `before` (самые новые, если `nil`), от новых к старым.
@@ -68,6 +71,8 @@ extension MessageRepository {
     }
 
     public func refreshReactions(chatId: String) async {}
+
+    public func sharedHistory(chatId: String, limit: Int) async -> [Message] { [] }
 
     public func syncReactions(chatId: String, messageIds: [String]) async {}
 
