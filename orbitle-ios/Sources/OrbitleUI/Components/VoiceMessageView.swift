@@ -5,11 +5,15 @@ import OrbitlePresentation
 /// Голосовое: круглая кнопка, дорожка громкости, время и кнопка расшифровки «→T».
 ///
 /// Во время воспроизведения прослушанная часть дорожки закрашивается, а время показывает,
-/// сколько уже прозвучало. Время отправки и галочки стоят слева от кнопки расшифровки,
-/// на одной линии с ней. Длительность остаётся под началом дорожки.
+/// сколько уже прозвучало.
+///
+/// Раскладка как у привычных мессенджеров. Сверху кнопка, дорожка и длительность под
+/// ней; кнопка расшифровки — в правом верхнем углу пузыря. Время отправки и галочки — в
+/// правом нижнем углу, как у любого сообщения: под кнопкой расшифровки, а при раскрытом
+/// тексте — в конце его последней строки. Если у пузыря есть реакции, время уходит в их
+/// ряд (это решает `MessageBubble` и тогда не передаёт `time`).
 /// Расшифровка: капсула 40×28 с бледной заливкой цвета акцента; «→Т» свёрнуто,
-/// круг — идёт расшифровка, «^» — текст раскрыт. Раскрытый текст — во всю ширину пузыря,
-/// время переезжает в конец его последней строки.
+/// круг — идёт расшифровка, «^» — текст раскрыт. Раскрытый текст — во всю ширину пузыря.
 struct VoiceMessageView: View {
     let voice: VoiceContent
     let phase: VoicePhase
@@ -23,9 +27,9 @@ struct VoiceMessageView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .center, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
                 button
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 3) {
                     bars
                     HStack(spacing: 6) {
                         Text(ChatContentFormat.voiceClock(durationMs: voice.durationMs, phase: phase))
@@ -39,11 +43,9 @@ struct VoiceMessageView: View {
                         }
                     }
                 }
-                Spacer(minLength: 4)
-                if let time, !isOpen { time }
-                if let onTranscribe {
-                    transcribeButton(onTranscribe)
-                }
+                .padding(.top, 2)
+                Spacer(minLength: 8)
+                trailingColumn
             }
             if isOpen {
                 transcriptBody
@@ -54,6 +56,30 @@ struct VoiceMessageView: View {
         .frame(minWidth: 180, maxWidth: 300, alignment: .leading)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: transcript)
     }
+
+    /// Правый край верхнего ряда: кнопка расшифровки наверху, время с галочками внизу,
+    /// на уровне низа круглой кнопки. При раскрытом тексте время уходит под текст.
+    @ViewBuilder
+    private var trailingColumn: some View {
+        let showsTime = time != nil && !isOpen
+        if onTranscribe != nil || showsTime {
+            VStack(alignment: .trailing, spacing: 0) {
+                if let onTranscribe {
+                    transcribeButton(onTranscribe)
+                }
+                Spacer(minLength: 2)
+                if showsTime, let time { time }
+            }
+            // Высота задана явно: пузырь меряет себя по идеальной высоте, и распорка без
+            // заданной высоты сжималась бы в ноль. С крупным шрифтом строка времени растёт.
+            .frame(height: max(Self.playSize, (onTranscribe != nil ? 30 : 0) + (showsTime ? timeLine : 0)))
+        }
+    }
+
+    /// Высота строки времени с галочками при текущем размере шрифта.
+    @ScaledMetric(relativeTo: .caption2) var timeLine: CGFloat = 14
+
+    private static let playSize: CGFloat = 44
 
     private var isOpen: Bool {
         transcript == .failed || (transcript == .expanded && voice.transcript != nil)
@@ -144,7 +170,7 @@ struct VoiceMessageView: View {
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(outgoing ? Color.orbitleOutgoing : Color.white)
             }
-            .frame(width: 44, height: 44)
+            .frame(width: Self.playSize, height: Self.playSize)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(phase.isPlaying ? "Пауза" : "Воспроизвести голосовое, \(ChatContentFormat.clock(ms: voice.durationMs))")
