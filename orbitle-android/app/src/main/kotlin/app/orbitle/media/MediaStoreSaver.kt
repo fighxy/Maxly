@@ -33,6 +33,7 @@ class MediaStoreSaver(context: Context) : MediaSaver {
         }
     }
 
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
     private fun insert(source: File, name: String, mime: String, kind: SavedKind) {
         val (collection, folder) = when (kind) {
             SavedKind.IMAGE -> MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) to Environment.DIRECTORY_PICTURES

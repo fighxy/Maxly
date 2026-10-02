@@ -58,6 +58,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import app.orbitle.ui.components.privateBlur
@@ -191,6 +199,8 @@ fun ChatScreen(
         )
     }
     var attaching by remember { mutableStateOf(false) }
+    val recorderScope = rememberCoroutineScope()
+    val voiceRecorder = remember { app.orbitle.media.AndroidVoiceRecorder(context.applicationContext, recorderScope) }
     val importScope = rememberCoroutineScope()
     val importUris: (List<Uri>) -> Unit = { uris ->
         if (uris.isNotEmpty()) importScope.launch { model.addAttachments(AttachmentImporter.import(context, uris.take(OutgoingFile.LIMIT))) }
@@ -352,6 +362,9 @@ fun ChatScreen(
                     panel = model.stickers,
                     onSticker = model::sendSticker,
                     onCancelUpload = { model.cancelUpload() },
+                    recorder = voiceRecorder,
+                    onVoice = model::sendVoice,
+                    onRecordingStart = model.media::stopVoice,
                 )
             } else {
                 Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
@@ -570,8 +583,12 @@ private fun Composer(
     panel: StickerPanel? = null,
     onSticker: (Sticker) -> Unit = {},
     onCancelUpload: () -> Unit = {},
+    recorder: app.orbitle.media.AndroidVoiceRecorder? = null,
+    onVoice: (app.orbitle.domain.VoiceRecording) -> Unit = {},
+    onRecordingStart: () -> Unit = {},
 ) {
     var showPanel by rememberSaveable { mutableStateOf(false) }
+    val voice = rememberVoiceRecording(recorder, onVoice, onRecordingStart)
     val hasPanel = panel != null
     val onPanel: (Boolean) -> Unit = { showPanel = it }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -616,6 +633,15 @@ private fun Composer(
                     IconButton(onClick = if (editing != null) onCancelEdit else onCancelReply) { Icon(Icons.Filled.Close, "Отменить") }
                 }
             }
+            voice.hint?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                )
+            }
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.Bottom) {
                 if (editing == null) {
                     IconButton(onClick = onAttach, modifier = Modifier.size(44.dp)) {
@@ -635,7 +661,9 @@ private fun Composer(
                     onDraft(text)
                 }
                 LaunchedEffect(editing?.id, reply?.id) { if ((editing != null || reply != null) && !showPanel) runCatching { focus.requestFocus() } }
-                Row(
+                if (voice.live != null) {
+                    RecordingBar(voice, Modifier.weight(1f))
+                } else Row(
                     Modifier
                         .weight(1f)
                         .heightIn(min = 44.dp)
@@ -682,7 +710,10 @@ private fun Composer(
                 }
                 Spacer(Modifier.width(6.dp))
                 val enabled = state.canSend
-                Box(
+                // Пустое поле — микрофон: удержание пишет голосовое, как в Max.
+                if (recorder != null && !enabled && state.editing == null && state.uploadProgress == null) {
+                    MicButton(voice)
+                } else Box(
                     Modifier
                         .size(44.dp)
                         .clip(CircleShape)
@@ -924,4 +955,194 @@ private fun DeleteDialog(model: ChatViewModel, message: Message, onDismiss: () -
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
     )
+}
+
+/** Состояние записи голосового в поле ввода. */
+private class VoiceRecordingUi(
+    val live: app.orbitle.media.AndroidVoiceRecorder.Live?,
+    val locked: Boolean,
+    val dragX: Float,
+    val hint: String?,
+    val gesture: Modifier,
+    val onCancel: () -> Unit,
+)
+
+@Composable
+private fun rememberVoiceRecording(
+    recorder: app.orbitle.media.AndroidVoiceRecorder?,
+    onVoice: (app.orbitle.domain.VoiceRecording) -> Unit,
+    onStart: () -> Unit,
+): VoiceRecordingUi {
+    val context = LocalContext.current
+    val density = androidx.compose.ui.platform.LocalDensity.current.density
+    val flow = remember(recorder) { recorder?.live ?: kotlinx.coroutines.flow.MutableStateFlow(null) }
+    val live by flow.collectAsStateWithLifecycle()
+    var locked by remember { mutableStateOf(false) }
+    var dragX by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    var hint by remember { mutableStateOf<String?>(null) }
+    val send by androidx.compose.runtime.rememberUpdatedState(onVoice)
+    val start by androidx.compose.runtime.rememberUpdatedState(onStart)
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        hint = if (granted) app.orbitle.presentation.chat.RecordingGesture.HOLD_HINT else "Нет доступа к микрофону"
+    }
+    LaunchedEffect(hint) {
+        if (hint != null) {
+            delay(2_500)
+            hint = null
+        }
+    }
+    // Уход из чата обрывает запись: ничего не уходит.
+    androidx.compose.runtime.DisposableEffect(recorder) { onDispose { recorder?.cancel() } }
+    val finish = {
+        locked = false
+        dragX = 0f
+        val result = recorder?.finish(app.orbitle.presentation.chat.RecordingGesture.MINIMUM_DURATION_MS)
+        if (result != null) send(result) else hint = app.orbitle.presentation.chat.RecordingGesture.HOLD_HINT
+    }
+    val cancel = {
+        locked = false
+        dragX = 0f
+        recorder?.cancel()
+        Unit
+    }
+    val gesture = Modifier.pointerInput(recorder) {
+        val rec = recorder ?: return@pointerInput
+        awaitEachGesture {
+            val down = awaitFirstDown()
+            if (locked) {
+                // Закреплённая запись: кнопка отправляет.
+                if (waitForUpOrCancellation() != null) finish()
+                return@awaitEachGesture
+            }
+            val granted = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                waitForUpOrCancellation()
+                permission.launch(android.Manifest.permission.RECORD_AUDIO)
+                return@awaitEachGesture
+            }
+            start()
+            if (!rec.start()) {
+                hint = "Не удалось включить микрофон"
+                return@awaitEachGesture
+            }
+            val origin = down.position
+            while (true) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull { it.id == down.id } ?: run {
+                    cancel()
+                    break
+                }
+                val dx = (change.position.x - origin.x) / density
+                val dy = (change.position.y - origin.y) / density
+                if (!change.pressed) {
+                    val elapsed = rec.live.value?.elapsedMs ?: 0L
+                    when (app.orbitle.presentation.chat.RecordingGesture.released(dx, dy, elapsed)) {
+                        app.orbitle.presentation.chat.RecordingGesture.Outcome.SEND -> finish()
+                        else -> {
+                            cancel()
+                            if (elapsed < app.orbitle.presentation.chat.RecordingGesture.MINIMUM_DURATION_MS) {
+                                hint = app.orbitle.presentation.chat.RecordingGesture.HOLD_HINT
+                            }
+                        }
+                    }
+                    break
+                }
+                change.consume()
+                when (app.orbitle.presentation.chat.RecordingGesture.during(dx, dy)) {
+                    app.orbitle.presentation.chat.RecordingGesture.Outcome.CANCEL -> {
+                        cancel()
+                        waitForUpOrCancellation()
+                        break
+                    }
+                    app.orbitle.presentation.chat.RecordingGesture.Outcome.LOCK -> {
+                        locked = true
+                        dragX = 0f
+                        waitForUpOrCancellation()
+                        break
+                    }
+                    else -> dragX = minOf(0f, dx)
+                }
+            }
+        }
+    }
+    return VoiceRecordingUi(live, locked, dragX, hint, gesture, cancel)
+}
+
+@Composable
+private fun MicButton(voice: VoiceRecordingUi) {
+    val recording = voice.live != null
+    Box(contentAlignment = Alignment.Center) {
+        if (recording && !voice.locked) {
+            // Подсказка закрепления над кнопкой.
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.offset(y = (-64).dp).size(width = 32.dp, height = 48.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Outlined.Lock, "Вверх — закрепить", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        Box(
+            Modifier
+                .size(if (recording && !voice.locked) 52.dp else 44.dp)
+                .clip(CircleShape)
+                .background(if (recording) OrbitleAccent else MaterialTheme.colorScheme.surfaceContainerHighest)
+                .then(voice.gesture)
+                .semantics { contentDescription = if (voice.locked) "Отправить голосовое" else "Голосовое: удерживайте, чтобы записать" },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (voice.locked) Icons.AutoMirrored.Filled.Send else Icons.Filled.Mic,
+                null,
+                tint = if (recording) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RecordingBar(voice: VoiceRecordingUi, modifier: Modifier) {
+    val live = voice.live ?: return
+    val level by androidx.compose.animation.core.animateFloatAsState(live.level, label = "level")
+    Row(
+        modifier
+            .heightIn(min = 44.dp)
+            .clip(RoundedCornerShape(22.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(10.dp)
+                .graphicsLayer { scaleX = 1f + level * 0.6f; scaleY = scaleX }
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.error),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            app.orbitle.presentation.chat.CallBubbleText.clock(live.elapsedMs),
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.semantics { contentDescription = "Идёт запись" },
+        )
+        Spacer(Modifier.weight(1f))
+        if (voice.locked) {
+            TextButton(onClick = voice.onCancel) {
+                Icon(Icons.Outlined.Delete, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.width(4.dp))
+                Text("Отмена", color = MaterialTheme.colorScheme.error)
+            }
+        } else {
+            val progress = app.orbitle.presentation.chat.RecordingGesture.cancelProgress(voice.dragX)
+            Text(
+                "‹ Влево — отмена",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.graphicsLayer { translationX = voice.dragX * density; alpha = 1f - progress * 0.8f },
+            )
+        }
+    }
 }
