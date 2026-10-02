@@ -6,8 +6,10 @@ import OrbitlePresentation
 ///
 /// Во время воспроизведения прослушанная часть дорожки закрашивается, а время показывает,
 /// сколько уже прозвучало. Без текста в сообщении справа снизу стоит время отправки.
-/// «→T»: пока сервер расшифровывает — круг загрузки, раскрытый текст —
-/// кнопка «^» подсвечена, текст под дорожкой.
+/// Расшифровка, как в Komet (KometTeam/Komet#147): капсула 40×28 с бледной заливкой цвета
+/// акцента; «→Т» свёрнуто, круг — идёт расшифровка, «^» — текст раскрыт. Значок сменяется
+/// растворением с масштабом. Раскрытый текст — во всю ширину пузыря, время переезжает в
+/// конец его последней строки.
 struct VoiceMessageView: View {
     let voice: VoiceContent
     let phase: VoicePhase
@@ -36,83 +38,105 @@ struct VoiceMessageView: View {
                                 .lineLimit(1)
                         }
                         Spacer(minLength: 0)
-                        if let time { time }
+                        if let time, !isOpen { time }
                     }
                 }
                 if let onTranscribe {
                     transcribeButton(onTranscribe)
                 }
             }
-            if transcript == .expanded, let text = voice.transcript {
-                transcriptText(text)
+            if isOpen {
+                transcriptBody
+                    .padding(.top, 4)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .frame(minWidth: 200, maxWidth: 280, alignment: .leading)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: transcript)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: transcript)
+    }
+
+    /// Текст расшифровки или ошибка раскрыты под дорожкой.
+    private var isOpen: Bool {
+        transcript == .failed || (transcript == .expanded && voice.transcript != nil)
     }
 
     // MARK: Расшифровка
 
-    /// «→T» свернуто, круг — идёт расшифровка, «^» на подсвеченной плашке — текст раскрыт.
+    /// Акцент голосового: белый в своём пузыре, фирменный — в чужом.
+    private var accent: Color {
+        outgoing ? Color.white : Color.orbitleAccent
+    }
+
     private func transcribeButton(_ action: @escaping () -> Void) -> some View {
-        let expanded = transcript == .expanded
-        return Button(action: action) {
+        Button(action: action) {
             ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(transcribeFill(expanded: expanded))
-                switch transcript {
-                case .loading:
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(outgoing ? Color.white : Color.orbitleAccent)
-                case .expanded:
-                    Image(systemName: "chevron.up")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(outgoing ? Color.orbitleOutgoing : Color.white)
-                        .transition(.scale(scale: 0.6).combined(with: .opacity))
-                case .collapsed:
-                    Text(verbatim: "→T")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(outgoing ? Color.white : Color.orbitleAccent)
-                        .transition(.scale(scale: 0.6).combined(with: .opacity))
-                }
+                glyph
+                    .id(glyphKey)
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
             }
-            .frame(width: 32, height: 28)
-            .contentShape(Rectangle())
+            .frame(width: 40, height: 28)
+            .background(accent.opacity(0.14), in: Capsule())
+            .contentShape(Capsule())
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: glyphKey)
         }
         .buttonStyle(.plain)
         .disabled(transcript == .loading)
         .accessibilityLabel(transcribeLabel)
     }
 
-    private func transcribeFill(expanded: Bool) -> Color {
-        if expanded { return outgoing ? Color.white : Color.orbitleAccent }
-        return outgoing ? Color.white.opacity(0.2) : Color.orbitleAccent.opacity(0.14)
-    }
-
-    private var transcribeLabel: String {
+    /// Значок капсулы: меняется вместе с состоянием, сворачивание и ошибка — один «^».
+    private var glyphKey: Int {
         switch transcript {
-        case .collapsed: "Расшифровать голосовое"
-        case .loading: "Расшифровывается"
-        case .expanded: "Скрыть расшифровку"
+        case .collapsed: 0
+        case .loading: 1
+        case .expanded, .failed: 2
         }
     }
 
     @ViewBuilder
-    private func transcriptText(_ text: String) -> some View {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            Text("Речь не распознана")
-                .font(.footnote.italic())
-                .foregroundStyle(secondary)
-        } else {
-            Text(trimmed)
-                .font(.subheadline)
-                .foregroundStyle(outgoing ? Color.white : Color.primary)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+    private var glyph: some View {
+        switch transcript {
+        case .loading:
+            ProgressView()
+                .controlSize(.mini)
+                .tint(accent)
+        case .expanded, .failed:
+            Image(systemName: "chevron.up")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(accent)
+        case .collapsed:
+            Text(verbatim: "→Т")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(accent)
         }
+    }
+
+    private var transcribeLabel: String {
+        switch transcript {
+        case .collapsed: "Расшифровать"
+        case .loading: "Расшифровывается"
+        case .expanded, .failed: "Скрыть расшифровку"
+        }
+    }
+
+    /// Текст во всю ширину обычным размером; время — в конце последней строки, под него
+    /// оставлено невидимое место, чтобы строка не заходила под время.
+    private var transcriptBody: some View {
+        ZStack(alignment: .bottomTrailing) {
+            (transcriptText + Text(verbatim: time == nil ? "" : "\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}").font(.caption2))
+                .font(.body)
+                .foregroundStyle(transcript == .failed ? secondary : (outgoing ? Color.white : Color.primary))
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+            if let time { time }
+        }
+    }
+
+    private var transcriptText: Text {
+        if transcript == .failed { return Text("Не удалось расшифровать").italic() }
+        let trimmed = (voice.transcript ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? Text("Речь не распознана").italic() : Text(trimmed)
     }
 
     private var secondary: Color {

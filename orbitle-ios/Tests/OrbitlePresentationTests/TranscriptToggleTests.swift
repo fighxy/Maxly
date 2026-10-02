@@ -36,14 +36,16 @@ struct TranscriptToggleTests {
         #expect(model.canTranscribe(message) == false)
     }
 
-    @Test("Ошибка запроса: загрузка снимается, кнопка снова «→T»")
+    @Test("Ошибка запроса: ошибка раскрыта в пузыре, «^» сворачивает, кнопка снова «→Т»")
     func failed() async {
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository())
         let message = voice(transcript: nil)
         let clip = message.content.voices[0]
         model.toggleTranscript(message)
         #expect(model.transcriptPhase(for: clip) == .loading)
-        #expect(await eventually { model.transcriptPhase(for: clip) == .collapsed })
-        #expect(model.errorMessage != nil)
+        #expect(await eventually { model.transcriptPhase(for: clip) == .failed })
+        #expect(model.errorMessage == nil)
+        model.toggleTranscript(message)
+        #expect(model.transcriptPhase(for: clip) == .collapsed)
     }
 }

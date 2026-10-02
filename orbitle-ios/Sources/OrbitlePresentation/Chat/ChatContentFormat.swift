@@ -2,11 +2,13 @@ import Foundation
 import OrbitleDomain
 
 /// Фаза воспроизведения голосового. Её считает экран, плеер только играет.
-/// Расшифровка голосового в пузыре: кнопка «→T», круг загрузки или раскрытый текст («^»).
+/// Расшифровка голосового в пузыре: кнопка «→Т», круг загрузки, раскрытый текст («^») или
+/// раскрытая ошибка («^», «Не удалось расшифровать»), как в Komet (KometTeam/Komet#147).
 public enum TranscriptPhase: Equatable, Sendable {
     case collapsed
     case loading
     case expanded
+    case failed
 }
 
 public enum VoicePhase: Equatable, Sendable {
