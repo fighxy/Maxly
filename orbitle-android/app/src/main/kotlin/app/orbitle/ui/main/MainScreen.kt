@@ -53,6 +53,10 @@ import app.orbitle.ui.profile.ProfileScreen
 import app.orbitle.ui.chat.EmojiSupport
 import app.orbitle.ui.chat.ChatScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
+import app.orbitle.presentation.settings.AccountSettingsViewModel
+import app.orbitle.ui.settings.BlockedUsersScreen
+import app.orbitle.ui.settings.PrivacyScreen
+import app.orbitle.ui.settings.ProfileEditScreen
 import app.orbitle.presentation.chatlist.ChatListFormatter
 import app.orbitle.presentation.chatlist.ChatListViewModel
 import app.orbitle.ui.chatlist.ChatListScreen
@@ -84,6 +88,7 @@ fun MainScreen(
     val chats by chatList.state.collectAsStateWithLifecycle()
     val callsModel = viewModel { CallsViewModel(container.calls, container.callMarks) }
     val calls by callsModel.state.collectAsStateWithLifecycle()
+    val accountModel = viewModel { AccountSettingsViewModel(container.account) }
     val contactsModel = viewModel { ContactsViewModel(container.contacts, { container.messages.currentUserId }) }
     val showsBar = Tab.entries.any { it.route == route } || route == null
     fun openChat(id: String, title: String? = null) {
@@ -135,8 +140,13 @@ fun MainScreen(
                     onContacts = { openTab(Tab.CONTACTS) },
                     onDevices = { nav.navigate("devices") },
                     onAppearance = { nav.navigate("appearance") },
+                    onEditProfile = { nav.navigate("profile-edit") },
+                    onPrivacy = { nav.navigate("privacy") },
                 )
             }
+            composable("profile-edit") { ProfileEditScreen(accountModel, onBack = { nav.popBackStack() }) }
+            composable("privacy") { PrivacyScreen(accountModel, onBack = { nav.popBackStack() }, onBlocked = { nav.navigate("blocked") }) }
+            composable("blocked") { BlockedUsersScreen(accountModel, onBack = { nav.popBackStack() }) }
             composable("about") { AboutScreen(onBack = { nav.popBackStack() }) }
             composable("devices") { DevicesScreen(container.sessions, onBack = { nav.popBackStack() }) }
             composable("appearance") { AppearanceScreen(container.appearance, onBack = { nav.popBackStack() }) }

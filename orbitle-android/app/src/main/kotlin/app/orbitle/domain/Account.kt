@@ -10,6 +10,8 @@ data class Account(
     val avatarUrl: String?,
     val description: String? = null,
     val link: String? = null,
+    /** Есть фото профиля: его можно удалить. */
+    val hasPhoto: Boolean = avatarUrl != null,
 ) {
     val displayName: String get() = listOf(firstName, lastName).filter { it.isNotBlank() }.joinToString(" ")
 }

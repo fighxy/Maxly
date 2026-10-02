@@ -94,7 +94,20 @@ class DemoActivity : ComponentActivity() {
                             val model = viewModel { ProfileViewModel("10", "Анна Смирнова", DemoProfiles(group), messages, player, DemoFiles(applicationContext)) }
                             ProfileScreen(model, onBack = { finish() }, onWrite = {})
                         }
-                        "settings" -> SettingsScreen(Account("1", "Иван", "Петров", "+79001234567", null), onAbout = {}, onLogout = {})
+                        "settings" -> {
+                            val model = viewModel { app.orbitle.presentation.settings.AccountSettingsViewModel(DemoAccount()) }
+                            val state by model.state.collectAsState()
+                            SettingsScreen(state.account, onAbout = {}, onLogout = {})
+                        }
+                        "profile-edit" -> app.orbitle.ui.settings.ProfileEditScreen(
+                            viewModel { app.orbitle.presentation.settings.AccountSettingsViewModel(DemoAccount()) }, onBack = { finish() },
+                        )
+                        "privacy" -> app.orbitle.ui.settings.PrivacyScreen(
+                            viewModel { app.orbitle.presentation.settings.AccountSettingsViewModel(DemoAccount()) }, onBack = { finish() }, onBlocked = {},
+                        )
+                        "blocked" -> app.orbitle.ui.settings.BlockedUsersScreen(
+                            viewModel { app.orbitle.presentation.settings.AccountSettingsViewModel(DemoAccount()) }, onBack = { finish() },
+                        )
                         else -> {
                             val model = viewModel { ChatViewModel(
                                 "10", DemoMessages(group, channel), voicePlayer = player, files = DemoFiles(applicationContext),

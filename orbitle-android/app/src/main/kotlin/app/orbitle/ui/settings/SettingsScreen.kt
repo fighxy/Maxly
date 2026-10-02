@@ -11,6 +11,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Contacts
 import androidx.compose.material.icons.outlined.Devices
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Visibility
@@ -59,8 +63,6 @@ import app.orbitle.BuildConfig
 import app.orbitle.R
 import app.orbitle.domain.Account
 import app.orbitle.presentation.auth.PhoneNumber
-import app.orbitle.presentation.chatlist.ChatAvatar
-import app.orbitle.ui.components.Avatar
 
 /** Шапка профиля и пункты настроек. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -73,6 +75,8 @@ fun SettingsScreen(
     onContacts: () -> Unit = {},
     onDevices: () -> Unit = {},
     onAppearance: () -> Unit = {},
+    onEditProfile: () -> Unit = {},
+    onPrivacy: () -> Unit = {},
 ) {
     var confirm by rememberSaveable { mutableStateOf(false) }
     Scaffold(
@@ -80,9 +84,11 @@ fun SettingsScreen(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())) {
-            ProfileHeader(account)
-            Spacer(Modifier.height(8.dp))
+            ProfileHeader(account, onEditProfile)
+            SettingsItem(Icons.Outlined.Edit, "Изменить профиль", onClick = onEditProfile)
+            HorizontalDivider(Modifier.padding(vertical = 4.dp))
             SettingsItem(Icons.Outlined.Notifications, "Уведомления и звук", subtitle = "Скоро", enabled = false) {}
+            SettingsItem(Icons.Outlined.Lock, "Конфиденциальность", onClick = onPrivacy)
             SettingsItem(Icons.Outlined.Devices, "Устройства", onClick = onDevices)
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
             SettingsItem(Icons.Outlined.BookmarkBorder, "Избранное", onClick = onSaved)
@@ -115,16 +121,23 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun ProfileHeader(account: Account?) {
+private fun ProfileHeader(account: Account?, onEdit: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         val name = account?.displayName.orEmpty()
-        val id = account?.id.orEmpty()
-        val initials = ChatAvatar.initials(name.ifEmpty { "?" })
-        val avatar = account?.avatarUrl?.let { ChatAvatar(ChatAvatar.Kind.Photo(it, initials), ChatAvatar.colorIndex(id)) }
-            ?: ChatAvatar(ChatAvatar.Kind.Initials(initials), ChatAvatar.colorIndex(id))
-        Avatar(avatar, 96.dp)
+        Box(Modifier.clip(CircleShape).clickable(onClick = onEdit)) { AccountAvatar(account, 96.dp) }
         Spacer(Modifier.height(12.dp))
         Text(name.ifEmpty { " " }, style = MaterialTheme.typography.headlineSmall)
+        account?.description?.let {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                it,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                maxLines = 3,
+                modifier = Modifier.padding(horizontal = 32.dp),
+            )
+        }
         account?.phone?.let {
             // Номер скрыт при каждом открытии вкладки, глаз показывает его.
             var shown by remember { mutableStateOf(false) }
