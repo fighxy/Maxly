@@ -60,9 +60,12 @@ struct TranscriptBottomStateTests {
         // iOS 17: метка низа за экраном, пока прыжок в пути.
         state.markerMoved(bottomY: 5_000, viewportHeight: 700)
         #expect(state.atBottom)
-        #expect(state.finishJump(id))
+        // `finishJump` меняет состояние, поэтому вызывается вне `#expect`.
+        let finished = state.finishJump(id)
+        #expect(finished)
         #expect(state.jump == nil)
-        #expect(!state.finishJump(id))
+        let again = state.finishJump(id)
+        #expect(!again)
     }
 
     @Test("Палец во время прыжка: доводки нет, лента снова может уйти от низа")
@@ -73,7 +76,8 @@ struct TranscriptBottomStateTests {
         state.userTookOver()
         state.scrolled(distance: 900, dragging: true)
         #expect(!state.atBottom)
-        #expect(!state.finishJump(id))
+        let finished = state.finishJump(id)
+        #expect(!finished)
     }
 
     @Test("Повторное касание заменяет прыжок: доводит только последний")
@@ -83,8 +87,10 @@ struct TranscriptBottomStateTests {
         let first = state.beginJump()
         let second = state.beginJump()
         #expect(first != second)
-        #expect(!state.finishJump(first))
-        #expect(state.finishJump(second))
+        let stale = state.finishJump(first)
+        let latest = state.finishJump(second)
+        #expect(!stale)
+        #expect(latest)
     }
 
     @Test("iOS 17: метка низа на экране — внизу, ушла — нет; запас больше, пока внизу")
