@@ -163,6 +163,25 @@ public final class ChatProfileViewModel {
         (profile?.commands ?? []).map { CommandRow(command: "/" + $0.name, description: $0.description) }
     }
 
+    // MARK: Общие медиа
+
+    /// Вложения чата по вкладкам. Профиль, открытый из чата, собирает их из его истории.
+    public private(set) var shared = SharedMedia()
+    /// Открытая вкладка; пустые вкладки не показываются.
+    public var sharedTab: SharedMediaTab = .media
+
+    public func updateShared(_ messages: [Message], currentUserId: String) {
+        let next = SharedMedia.collect(messages, currentUserId: currentUserId, now: now())
+        guard next != shared else { return }
+        shared = next
+        if let first = next.tabs.first, !next.tabs.contains(sharedTab) { sharedTab = first }
+    }
+
+    /// Вторая строка шапки чата с живыми данными списка (сеть, «печатает…»).
+    public func headerStatus(_ live: ChatHeaderLive) -> ChatHeaderStatus {
+        ChatHeaderStatus.make(kind: shown.kind, subtitle: subtitle, isOnline: isOnline, live: live)
+    }
+
     /// Что отдать в «Поделиться»: публичная ссылка, если есть.
     public var shareURL: URL? { profile?.linkURL }
 
