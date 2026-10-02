@@ -186,6 +186,12 @@ private struct AttachmentPreview: View {
     let data: Data
     @State private var decoded: DecodedImage?
 
+    init(data: Data) {
+        self.data = data
+        // Уже декодированная миниатюра видна сразу: при прокрутке назад пузырь не мигает серым.
+        _decoded = State(initialValue: PreviewCache.shared.object(forKey: data as NSData))
+    }
+
     var body: some View {
         Group {
             if let decoded {
@@ -199,11 +205,30 @@ private struct AttachmentPreview: View {
             }
         }
         .task(id: data) {
+            if let hit = PreviewCache.shared.object(forKey: data as NSData) {
+                decoded = hit
+                return
+            }
             let bytes = data
             let task = Task.detached(priority: .userInitiated) { DecodedImage.decode(bytes, maxPixel: 256) }
             let image = await task.value
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, let image else { return }
+            PreviewCache.shared.setObject(image, forKey: bytes as NSData)
             decoded = image
         }
     }
+}
+
+/// Декодированные миниатюры вложений (несколько сотен байт WebP каждая): `NSCache`
+/// потокобезопасен сам, обёртка только сообщает это компилятору.
+private final class PreviewCache: @unchecked Sendable {
+    static let shared = PreviewCache()
+    private let cache: NSCache<NSData, DecodedImage> = {
+        let cache = NSCache<NSData, DecodedImage>()
+        cache.countLimit = 300
+        return cache
+    }()
+
+    func object(forKey key: NSData) -> DecodedImage? { cache.object(forKey: key) }
+    func setObject(_ image: DecodedImage, forKey key: NSData) { cache.setObject(image, forKey: key) }
 }

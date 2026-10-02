@@ -44,10 +44,31 @@ public final class ChatListViewModel {
     public private(set) var chats: [Chat] = []
     /// Строки выбранной папки без архива, в пределах показанных страниц.
     public private(set) var items: [ChatListItem] = [] {
-        didSet { itemsChange = CollectionChange.between(oldValue.map(\.id), items.map(\.id)) }
+        didSet {
+            let ids = items.map(\.id)
+            let oldIds = oldValue.map(\.id)
+            itemsChange = CollectionChange.between(oldIds, ids)
+            if ids != oldIds { itemsVersion &+= 1 }
+        }
     }
     /// Как список изменился последним обновлением: смена папки и новая страница — без анимации.
     public private(set) var itemsChange: CollectionChange = .none
+    /// Растёт, когда меняются состав или порядок строк: экран анимирует по нему, не сравнивая
+    /// списки id при каждой перерисовке.
+    public private(set) var itemsVersion = 0
+
+    /// Аватары и миниатюры первых строк — их качают заранее, пока список докручивается.
+    public func prefetchImageURLs(limit: Int = 40) -> [URL] {
+        var seen = Set<URL>()
+        var urls: [URL] = []
+        for item in items.prefix(limit) {
+            var candidates: [URL] = []
+            if case .photo(let url, _) = item.avatar.kind { candidates.append(url) }
+            if let thumbnail = item.thumbnailURL { candidates.append(thumbnail) }
+            for url in candidates where !url.isFileURL && seen.insert(url).inserted { urls.append(url) }
+        }
+        return urls
+    }
     public private(set) var archive: ChatArchiveSummary?
     public private(set) var folders: [ChatFolderTab] = []
     public private(set) var selectedFolderId = ChatFolder.allId

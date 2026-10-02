@@ -20,7 +20,7 @@ struct ChatListView: View {
         .environment(\.editMode, .constant(viewModel.isEditing ? .active : .inactive))
         // Новое сообщение поднимает строку наверх плавно, а не скачком. Первая загрузка,
         // следующая страница и смена папки — сразу (`CollectionChange.animatesList`).
-        .animation(OrbitleMotion.list(viewModel.itemsChange, reduceMotion: reduceMotion), value: viewModel.items.map(\.id))
+        .animation(OrbitleMotion.list(viewModel.itemsChange, reduceMotion: reduceMotion), value: viewModel.itemsVersion)
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.isSearchActive)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if viewModel.isEditing { editBar }
@@ -35,6 +35,12 @@ struct ChatListView: View {
         .task {
             viewModel.activate()
             await viewModel.refresh()
+        }
+        // Аватары первых строк качаются заранее: при прокрутке они проявляются сразу.
+        .task(id: viewModel.itemsVersion) {
+            let urls = viewModel.prefetchImageURLs()
+            guard !urls.isEmpty else { return }
+            await ImagePipeline.shared.prefetch(urls)
         }
         .onChange(of: selection) { _, id in
             guard let id, viewModel.isSearchActive else { return }
