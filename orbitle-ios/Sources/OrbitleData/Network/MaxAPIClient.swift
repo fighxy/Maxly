@@ -85,6 +85,8 @@ public protocol MaxAPI: Sendable {
     func fetchReactions(chatId: String, messageIds: [String]) async -> Result<[String: ReactionUpdate], MaxAPIError>
     /// Кто поставил реакции на сообщение.
     func reactionUsers(chatId: String, messageId: String) async -> Result<[ReactionUser], MaxAPIError>
+    /// Расшифровка голосового: `messageId` серверный, `audioId` — id вложения.
+    func transcribe(chatId: String, messageId: String, audioId: String) async -> Result<CoreTranscription, MaxAPIError>
     /// Эмодзи каталога реакций сервера.
     func reactionCatalog() async -> Result<[String], MaxAPIError>
     /// Загрузить вложения и отправить одним сообщением с подписью. Контакт уходит один,
@@ -116,6 +118,9 @@ public extension MaxAPI {
         .failure(.invalidResponse)
     }
     func reactionUsers(chatId: String, messageId: String) async -> Result<[ReactionUser], MaxAPIError> {
+        .failure(.invalidResponse)
+    }
+    func transcribe(chatId: String, messageId: String, audioId: String) async -> Result<CoreTranscription, MaxAPIError> {
         .failure(.invalidResponse)
     }
     func reactionCatalog() async -> Result<[String], MaxAPIError> { .failure(.invalidResponse) }
@@ -227,6 +232,12 @@ public final class MaxAPIClient: MaxAPI, Sendable {
     public func reactionUsers(chatId: String, messageId: String) async -> Result<[ReactionUser], MaxAPIError> {
         await catching {
             try await core.loadReactionUsers(chatId: chatId, messageId: messageId)
+        }
+    }
+
+    public func transcribe(chatId: String, messageId: String, audioId: String) async -> Result<CoreTranscription, MaxAPIError> {
+        await catching {
+            try await core.transcribeVoice(chatId: chatId, messageId: messageId, audioId: audioId)
         }
     }
 

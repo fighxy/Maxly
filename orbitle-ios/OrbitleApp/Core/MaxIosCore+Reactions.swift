@@ -43,6 +43,18 @@ extension MaxIosCore {
         }
     }
 
+    func transcribeVoice(chatId: String, messageId: String, audioId: String) async throws -> CoreTranscription {
+        try await call("transcribeVoice") { done in
+            self.client.transcribeVoice(chatId: chatId, messageId: messageId, audioId: audioId) { result, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(CoreTranscription(status: Int(result.status), text: result.text)))
+                }
+            }
+        }
+    }
+
     func loadReactionUsers(chatId: String, messageId: String) async throws -> [ReactionUser] {
         try await call("loadReactionUsers") { done in
             self.client.loadReactionUsers(chatId: chatId, messageId: messageId) { users, kind, key in

@@ -34,6 +34,9 @@ public protocol MessageRepository: Sendable {
     func sendComment(text: String, chatId: String, postId: String) async throws(OrbitleError)
     /// Запомнить скачанный файл у вложения, не стирая остальной фрагмент.
     func noteDownloaded(messageId: String, attachmentId: String, localPath: String) async
+    /// Расшифровать голосовое `attachmentId` сообщения. `true` — текст уже записан в сообщение,
+    /// `false` — сервер ещё работает, текст придёт пушем и тоже ляжет в сообщение.
+    func transcribe(messageId: String, attachmentId: String) async throws(OrbitleError) -> Bool
     /// Запомнить счётчики комментариев постов (серверный id → число): при следующем открытии
     /// пузырь сразу ляжет с полосой комментариев, а не вырастет после запроса.
     func noteCommentCounts(chatId: String, counts: [String: Int]) async
@@ -81,6 +84,10 @@ extension MessageRepository {
     public func sendComment(text: String, chatId: String, postId: String) async throws(OrbitleError) {}
 
     public func noteDownloaded(messageId: String, attachmentId: String, localPath: String) async {}
+
+    public func transcribe(messageId: String, attachmentId: String) async throws(OrbitleError) -> Bool {
+        throw .invalidRequest
+    }
 
     public func noteCommentCounts(chatId: String, counts: [String: Int]) async {}
 

@@ -38,6 +38,9 @@ public struct MessageBubble: View {
     private let onEdit: (() -> Void)?
     /// «Сохранить в Фото» (фото и видео) и «Сохранить в Файлы» (любые вложения).
     private let onSaveToPhotos: (() -> Void)?
+    /// Расшифровка голосового: состояние кнопки «→T» и действие (`nil` — кнопки нет).
+    private let transcript: TranscriptPhase
+    private let onTranscribe: (() -> Void)?
     private let onSaveToFiles: (() -> Void)?
     /// «Ответить» и свайп ответа есть, только если в чат можно писать.
     private let allowsReply: Bool
@@ -100,7 +103,9 @@ public struct MessageBubble: View {
         onCancelUpload: (() -> Void)? = nil,
         roundPlayer: AnyView? = nil,
         onSaveToPhotos: (() -> Void)? = nil,
-        onSaveToFiles: (() -> Void)? = nil
+        onSaveToFiles: (() -> Void)? = nil,
+        transcript: TranscriptPhase = .collapsed,
+        onTranscribe: (() -> Void)? = nil
     ) {
         self.message = message
         self.isOutgoing = isOutgoing
@@ -126,6 +131,8 @@ public struct MessageBubble: View {
         self.onDelete = onDelete
         self.onEdit = onEdit
         self.onSaveToPhotos = onSaveToPhotos
+        self.transcript = transcript
+        self.onTranscribe = onTranscribe
         self.onSaveToFiles = onSaveToFiles
         self.allowsReply = allowsReply
         self.allowsReactions = allowsReactions
@@ -355,6 +362,8 @@ public struct MessageBubble: View {
                     phase: phase,
                     outgoing: isOutgoing,
                     time: hasText ? nil : AnyView(meta),
+                    transcript: transcript,
+                    onTranscribe: onTranscribe,
                     onToggle: onVoice
                 )
                 .padding(.horizontal, 10)

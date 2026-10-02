@@ -502,6 +502,56 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         }
     }
 
+    // MARK: Расшифровка голосовых
+
+    public func transcribe(messageId: String, attachmentId: String) async throws(OrbitleError) -> Bool {
+        let stored = (try? message(id: messageId)) ?? (try? message(serverId: messageId))
+        guard let stored, let serverId = stored.serverId, Int64(serverId) != nil, stored.status == .sent,
+              Int64(attachmentId) != nil else {
+            throw .rejected("Голосовое ещё не отправлено")
+        }
+        let chatId = stored.chatId
+        let localId = stored.id
+        switch await api.transcribe(chatId: chatId, messageId: serverId, audioId: attachmentId) {
+        case .success(let result):
+            switch result.status {
+            case 1:
+                if let message = try? message(id: localId) { saveTranscript(result.text, voiceId: attachmentId, in: message) }
+                return true
+            case 0:
+                return false
+            default:
+                throw .rejected("Не удалось расшифровать голосовое")
+            }
+        case .failure(let error):
+            throw error.orbitleError
+        }
+    }
+
+    /// Пуш расшифровки (`TRANSCRIPTION_RESULT`): текст ложится в первое голосовое сообщения.
+    public func applyTranscription(chatId: String, messageId: String, text: String) {
+        guard let stored = try? message(serverId: messageId), chatId.isEmpty || stored.chatId == chatId else { return }
+        saveTranscript(text, voiceId: nil, in: stored)
+    }
+
+    private func saveTranscript(_ text: String, voiceId: String?, in message: SDMessage) {
+        var content = Self.content(of: message)
+        var changed = false
+        var done = false
+        content.attachments = content.attachments.map { attachment in
+            guard !done, case .voice(var voice) = attachment, voiceId == nil || voice.id == voiceId else { return attachment }
+            done = true
+            guard voice.transcript != text else { return attachment }
+            voice.transcript = text
+            changed = true
+            return .voice(voice)
+        }
+        guard changed else { return }
+        message.contentJSON = MessageContentCodec.encode(content)
+        try? modelContext.save()
+        notify(chatId: message.chatId)
+    }
+
     public func noteCommentCounts(chatId: String, counts: [String: Int]) async {
         guard !counts.isEmpty, let rows = try? messages(serverIds: Array(counts.keys)) else { return }
         var changed = false
@@ -1173,6 +1223,15 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             // Счётчик комментариев приходит отдельным запросом: история его не несёт, и без
             // этого полоса комментариев пропадала бы до следующего запроса — пузырь прыгал.
             if content.comments == nil { content.comments = stored.comments }
+            // Расшифровку история не несёт: текст, полученный по запросу, не пропадает.
+            let transcripts = Dictionary(stored.voices.compactMap { voice in voice.transcript.map { (voice.id, $0) } }, uniquingKeysWith: { first, _ in first })
+            if !transcripts.isEmpty {
+                content.attachments = content.attachments.map { attachment in
+                    guard case .voice(var voice) = attachment, voice.transcript == nil, let kept = transcripts[voice.id] else { return attachment }
+                    voice.transcript = kept
+                    return .voice(voice)
+                }
+            }
             message.contentJSON = MessageContentCodec.encode(content)
             message.threadOf = record.threadOf
         } else if fresh {

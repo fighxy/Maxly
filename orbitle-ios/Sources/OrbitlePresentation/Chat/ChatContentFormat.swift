@@ -2,6 +2,13 @@ import Foundation
 import OrbitleDomain
 
 /// Фаза воспроизведения голосового. Её считает экран, плеер только играет.
+/// Расшифровка голосового в пузыре: кнопка «→T», круг загрузки или раскрытый текст («^»).
+public enum TranscriptPhase: Equatable, Sendable {
+    case collapsed
+    case loading
+    case expanded
+}
+
 public enum VoicePhase: Equatable, Sendable {
     case idle
     case downloading(Double)

@@ -16,8 +16,15 @@ public final class ChatViewModel {
             if !isRestoringHistory, Self.contentChanged(from: oldValue, to: messages) { contentVersion &+= 1 }
             if ids != oldIds { transcriptVersion &+= 1 }
             rows = TranscriptLayout.rows(messages, currentUserId: currentUserId)
+            settleTranscripts()
         }
     }
+    /// Голосовые (id вложения), чья расшифровка идёт: текст ещё не пришёл.
+    public private(set) var transcribing: Set<String> = []
+    /// Голосовые, у которых расшифровка раскрыта.
+    public private(set) var openTranscripts: Set<String> = []
+    /// Столько ждём пуша с текстом, если сервер ответил «ещё расшифровываю».
+    static let transcriptWait: Duration = .seconds(60)
     /// Строки ленты с разделителями дней, склейкой и подписями автора (`TranscriptLayout`).
     public private(set) var rows: [TranscriptRow] = []
     /// Растёт, когда меняется состав ленты (новое, удалённое, история): экран анимирует по нему,
@@ -669,6 +676,65 @@ public final class ChatViewModel {
     /// Кружок доиграл или ушёл из ленты.
     public func stopRound(id: String) {
         if roundPlayback?.id == id { roundPlayback = nil }
+    }
+
+    // MARK: Расшифровка голосовых
+
+    /// Расшифровать можно голосовое, уже принятое сервером.
+    public func canTranscribe(_ message: Message) -> Bool {
+        guard let voice = message.content.voices.first else { return false }
+        if voice.transcript != nil { return true }
+        return message.status == .sent && message.serverId.flatMap { Int64($0) } != nil && Int64(voice.id) != nil
+    }
+
+    public func transcriptPhase(for voice: VoiceContent) -> TranscriptPhase {
+        if transcribing.contains(voice.id) { return .loading }
+        if openTranscripts.contains(voice.id), voice.transcript != nil { return .expanded }
+        return .collapsed
+    }
+
+    /// «→T»: раскрыть расшифровку (запросив её у сервера, если её ещё нет) или свернуть.
+    public func toggleTranscript(_ message: Message) {
+        guard let voice = message.content.voices.first, !transcribing.contains(voice.id) else { return }
+        if openTranscripts.contains(voice.id) {
+            openTranscripts.remove(voice.id)
+            return
+        }
+        if voice.transcript != nil {
+            openTranscripts.insert(voice.id)
+            return
+        }
+        guard canTranscribe(message) else { return }
+        let id = voice.id
+        transcribing.insert(id)
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let ready = try await self.repository.transcribe(messageId: message.id, attachmentId: id)
+                if ready {
+                    // Текст уже в базе; снимок ленты с ним мог прийти раньше ответа.
+                    if self.transcribing.remove(id) != nil { self.openTranscripts.insert(id) }
+                    return
+                }
+                // Сервер ещё работает: текст придёт пушем (`settleTranscripts`).
+                try? await Task.sleep(for: Self.transcriptWait)
+                if self.transcribing.remove(id) != nil { self.showNotice("Расшифровка ещё не готова, попробуйте позже") }
+            } catch {
+                self.transcribing.remove(id)
+                self.show(error)
+            }
+        }
+    }
+
+    /// Пришёл текст голосового, чья расшифровка шла: она раскрывается.
+    private func settleTranscripts() {
+        guard !transcribing.isEmpty else { return }
+        for message in messages {
+            for voice in message.content.voices where voice.transcript != nil && transcribing.contains(voice.id) {
+                transcribing.remove(voice.id)
+                openTranscripts.insert(voice.id)
+            }
+        }
     }
 
     public func toggleVoice(_ message: Message) {

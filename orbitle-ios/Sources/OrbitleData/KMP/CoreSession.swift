@@ -276,6 +276,9 @@ public struct CoreEvent: Sendable, Equatable {
         case read
         /// Изменились реакции сообщения `messageId`, сами они в `reactionsJSON`.
         case reactions
+        /// Сервер расшифровал голосовое `messageId`: текст в `text`, статус в `unread`
+        /// (`1` готово, `0` ещё идёт).
+        case transcription
     }
 
     public var kind: Kind
@@ -365,6 +368,8 @@ public protocol MaxCore: Sendable {
     func loadReactionCatalog() async throws -> [String]
     /// Кто поставил реакции на сообщение.
     func loadReactionUsers(chatId: String, messageId: String) async throws -> [ReactionUser]
+    /// Расшифровка голосового (`AUDIO_TRANSCRIPTION` 202). `audioId` — id вложения.
+    func transcribeVoice(chatId: String, messageId: String, audioId: String) async throws -> CoreTranscription
     /// Выключить уведомления чата насовсем или включить обратно (`CONFIG`, `dontDisturbUntil`).
     func setChatMuted(chatId: String, muted: Bool) async throws
     /// User-Agent сессии для CDN: адреса видео и файлов выданы под Android-клиента.
@@ -518,4 +523,17 @@ public extension MaxCore {
     func loadReactions(chatId: String, messageIds: [String]) async throws -> [String: String] { throw unsupported }
     func loadReactionCatalog() async throws -> [String] { throw unsupported }
     func loadReactionUsers(chatId: String, messageId: String) async throws -> [ReactionUser] { throw unsupported }
+    func transcribeVoice(chatId: String, messageId: String, audioId: String) async throws -> CoreTranscription { throw unsupported }
+}
+
+/// Ответ расшифровки голосового: `status` `1` — готово (`text` пуст, если речи не нашлось),
+/// `0` — сервер ещё работает, текст придёт пушем, `-1` — не вышло.
+public struct CoreTranscription: Sendable, Equatable {
+    public var status: Int
+    public var text: String
+
+    public init(status: Int, text: String) {
+        self.status = status
+        self.text = text
+    }
 }

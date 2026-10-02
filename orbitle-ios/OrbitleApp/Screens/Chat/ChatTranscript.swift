@@ -240,7 +240,9 @@ struct ChatTranscript: View {
             canEdit: viewModel.canEdit(message),
             savesToPhotos: viewModel.canSave(message, to: .photos),
             savesToFiles: viewModel.canSave(message, to: .files),
-            roundPlayback: round
+            roundPlayback: round,
+            transcript: message.content.voices.first.map { viewModel.transcriptPhase(for: $0) } ?? .collapsed,
+            canTranscribe: viewModel.canTranscribe(message)
         )
     }
 
@@ -298,6 +300,9 @@ struct TranscriptBubble: View, Equatable {
         var savesToFiles: Bool
         /// Кружок этого сообщения, играющий в ленте.
         var roundPlayback: RoundPlayback?
+        /// Расшифровка голосового: «→T», загрузка или раскрытый текст.
+        var transcript: TranscriptPhase
+        var canTranscribe: Bool
     }
 
     let state: Snapshot
@@ -376,7 +381,9 @@ struct TranscriptBubble: View, Equatable {
             onCancelUpload: { Task { await viewModel.cancelUpload(message) } },
             roundPlayer: roundPlayer,
             onSaveToPhotos: state.savesToPhotos ? { viewModel.save(message, to: .photos) } : nil,
-            onSaveToFiles: state.savesToFiles ? { viewModel.save(message, to: .files) } : nil
+            onSaveToFiles: state.savesToFiles ? { viewModel.save(message, to: .files) } : nil,
+            transcript: state.transcript,
+            onTranscribe: state.canTranscribe ? { viewModel.toggleTranscript(message) } : nil
         )
     }
 
