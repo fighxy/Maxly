@@ -75,6 +75,8 @@ data class ChatListItem(
     val hasMention: Boolean,
     val isForwarded: Boolean,
     val accessibilityLabel: String,
+    /** Есть что читать: счётчик или ручная пометка. */
+    val isUnread: Boolean = false,
 ) {
     enum class PreviewStyle { MESSAGE, DRAFT, TYPING, EMPTY }
 
@@ -146,6 +148,7 @@ class ChatListFormatter(private val zone: ZoneId = ZoneId.systemDefault()) {
             hasMention = chat.unreadMentions > 0,
             isForwarded = style == ChatListItem.PreviewStyle.MESSAGE && chat.lastMessage?.isForwarded == true,
             accessibilityLabel = "",
+            isUnread = chat.isUnread,
         )
         return item.copy(accessibilityLabel = spoken(item, chat))
     }

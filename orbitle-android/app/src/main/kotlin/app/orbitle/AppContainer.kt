@@ -15,6 +15,8 @@ import app.orbitle.data.SessionRepository
 import app.orbitle.presentation.calls.CallMarks
 import app.orbitle.presentation.chat.MessageFiles
 import app.orbitle.presentation.chat.DraftStore
+import app.orbitle.presentation.chatlist.ChatLocalMarks
+import app.orbitle.domain.ChatDraft
 import app.orbitle.data.CoreStickerRepository
 import app.orbitle.data.RecentStickerStore
 import app.orbitle.data.StickerRepository
@@ -81,14 +83,32 @@ class AppContainer(context: Context) {
 
     val stickers: StickerRepository = CoreStickerRepository(client)
 
-    /** Черновики чатов: свои у каждого аккаунта. */
-    val drafts = object : DraftStore {
-        private fun key(chatId: String) = "draft.${client.store.state.value.me ?: 0}.$chatId"
-        override fun get(chatId: String): String? = prefs.getString(key(chatId), null)
+    /** Черновики чатов и ручные пометки «непрочитано»: свои у каждого аккаунта. */
+    private val localMarks = object : DraftStore, ChatLocalMarks {
+        private fun account() = client.store.state.value.me ?: 0
+        private fun key(chatId: String) = "draft.${account()}.$chatId"
+        override fun get(chatId: String): String? = prefs.getString(key(chatId), null)?.substringAfter('\t')
         override fun put(chatId: String, text: String) {
-            prefs.edit().apply { if (text.isBlank()) remove(key(chatId)) else putString(key(chatId), text) }.apply()
+            prefs.edit().apply {
+                if (text.isBlank()) remove(key(chatId)) else putString(key(chatId), "${System.currentTimeMillis()}\t$text")
+            }.apply()
         }
+        override fun drafts(): Map<String, ChatDraft> {
+            val prefix = "draft.${account()}."
+            return prefs.all.mapNotNull { (k, v) ->
+                if (!k.startsWith(prefix) || v !is String) return@mapNotNull null
+                val time = v.substringBefore('\t').toLongOrNull() ?: 0L
+                val text = v.substringAfter('\t').trim()
+                if (text.isEmpty()) null else k.removePrefix(prefix) to ChatDraft(text, time)
+            }.toMap()
+        }
+        override var markedUnread: Set<String>
+            get() = prefs.getStringSet("unread.${account()}", emptySet()).orEmpty().toSet()
+            set(value) = prefs.edit().putStringSet("unread.${account()}", value).apply()
     }
+
+    val drafts: DraftStore = localMarks
+    val chatMarks: ChatLocalMarks = localMarks
 
     /** Недавние эмодзи и стикеры панели. */
     val stickerRecents = object : RecentStickerStore {

@@ -75,7 +75,7 @@ private fun Root(container: AppContainer) {
     when (phase) {
         AuthPhase.Restoring -> Launch()
         is AuthPhase.SignedIn -> {
-            val chats = viewModel { ChatListViewModel(container.chats, container.session.connection) }
+            val chats = viewModel { ChatListViewModel(container.chats, container.session.connection, local = container.chatMarks) }
             val account by container.account.account.collectAsStateWithLifecycle(initialValue = null)
             MainScreen(container, chats, account, onLogout = { scope.launch { container.session.logout() } })
         }

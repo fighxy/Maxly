@@ -83,6 +83,20 @@ class CoreChatRepository(
         MaxCoreGateway.call { client.setPinnedChats(next) }
     }
 
+    override suspend fun setMuted(chatId: String, muted: Boolean) {
+        val id = chatId.toLongOrNull() ?: return
+        MaxCoreGateway.call { client.setChatMuted(id, muted) }
+    }
+
+    override suspend fun markAsRead(chatId: String) {
+        val id = chatId.toLongOrNull() ?: return
+        val state = client.store.state.value
+        val last = state.chats[id]?.lastMessage?.id ?: state.messagesOf(id).maxByOrNull { it.time }?.id ?: return
+        val read = MaxCoreGateway.call { client.api.messages.markRead(id, last) }
+        val me = state.me ?: return
+        client.store.apply(com.max.core.events.MaxEvent.MessageRead(id, me, read.mark, false, 0, null))
+    }
+
     override fun clear() {
         loaded.value = false
         usersRequested = mutableSetOf()
