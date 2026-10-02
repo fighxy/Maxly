@@ -1,38 +1,44 @@
 import SwiftUI
+import UIKit
 
-/// Размытая полоса под шапкой чата: на всю ширину от верхнего края экрана через
-/// статус-бар и ряд заголовка. Лента уходит под неё и размывается, нижний край тает
-/// на `fade` пунктов. Капсула названия и круглые кнопки остаются поверх: они живут в
-/// панели навигации, а полоса — в содержимом экрана и касаний не ловит.
+/// Тонкая размытая полоса вдоль самого верхнего края экрана: под статус-баром, с коротким
+/// тающим краем. Пузыри, уезжая вверх, мягко гаснут у края, а не обрезаются о статус-бар.
+/// Ряд заголовка полоса не закрывает: капсула названия и круглые кнопки висят над лентой
+/// сами, как в привычных мессенджерах. Касаний полоса не ловит.
 struct ChatHeaderBlur: View {
-    /// Высота тающего края под панелью навигации.
-    static let fade: CGFloat = 28
+    /// Высота тающего края под статус-баром.
+    static let fade: CGFloat = 12
 
     var body: some View {
-        // Читатель геометрии сам выходит за верхний край: его `safeAreaInsets.top` — это
-        // статус-бар вместе с панелью навигации, а содержимое встаёт от края экрана.
-        // Сдвигать полосу вверх ещё раз не нужно, иначе она уезжает за экран.
-        GeometryReader { geo in
-            let solid = geo.safeAreaInsets.top
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .mask {
-                    VStack(spacing: 0) {
-                        Rectangle().frame(height: solid)
-                        LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-                            .frame(height: Self.fade)
-                    }
+        // Высота — статус-бар окна, а не верхний отступ экрана: в отступ входит и панель
+        // навигации, и полоса вышла бы толстой.
+        let solid = Self.statusBarHeight
+        Rectangle()
+            .fill(.ultraThinMaterial)
+            .mask {
+                VStack(spacing: 0) {
+                    Rectangle().frame(height: solid)
+                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                        .frame(height: Self.fade)
                 }
-                .frame(width: geo.size.width, height: solid + Self.fade)
-        }
-        .ignoresSafeArea(edges: .top)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
+            }
+            .frame(height: solid + Self.fade)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .ignoresSafeArea(edges: .top)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    private static var statusBarHeight: CGFloat {
+        let top = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.keyWindow?.safeAreaInsets.top }
+            .first ?? 0
+        return top > 0 ? top : 20
     }
 }
 
 extension View {
-    /// Шапка чата без системной подложки, с размытой полосой под ней.
+    /// Шапка чата без системной подложки, с тонкой размытой полосой у верхнего края.
     ///
     /// Материал, а не стекло iOS 26: кнопки панели уже стеклянные, стекло под стеклом
     /// Apple не советует. На iOS 26 у панели навигации есть свой мягкий край прокрутки;
