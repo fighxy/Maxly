@@ -306,7 +306,8 @@ public struct ChatListFormatter: Sendable {
         case .location: "Геопозиция"
         case .contact: "Контакт"
         case .poll: "Опрос"
-        case .call: "Звонок"
+        case .call: CallBubbleText.preview(isGroup: false)
+        case .groupCall: CallBubbleText.preview(isGroup: true)
         }
     }
 

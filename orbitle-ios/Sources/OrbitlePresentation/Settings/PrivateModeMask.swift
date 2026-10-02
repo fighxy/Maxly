@@ -21,6 +21,13 @@ public enum PrivateModeMask {
         outgoing ? sentText : receivedText
     }
 
+    /// Подпись-заглушка конкретного сообщения. Звонок остаётся звонком, но без направления,
+    /// исхода и длительности — как строка вкладки «Звонки» в приватном режиме.
+    public static func messageText(for message: Message, outgoing: Bool) -> String {
+        if let call = message.content.call { return callTitle(isGroup: call.isGroup) }
+        return messageText(outgoing: outgoing)
+    }
+
     /// Общий заголовок чата по типу. «Избранное» своё и ничего не выдаёт, оно остаётся.
     public static func chatTitle(type: ChatType, isSavedMessages: Bool = false) -> String {
         if isSavedMessages { return ChatListFormatter.savedMessagesTitle }
@@ -36,7 +43,7 @@ public enum PrivateModeMask {
     }
 
     public static func callTitle(isGroup: Bool) -> String {
-        isGroup ? "Групповой звонок" : "Звонок"
+        CallBubbleText.preview(isGroup: isGroup)
     }
 
     /// Однотонный круг того же цвета: без фото и букв. Значки «Избранного» и архива остаются.
@@ -54,7 +61,12 @@ public enum PrivateModeMask {
         let title = chatTitle(for: item)
         let preview: String
         switch item.previewStyle {
-        case .message: preview = messageText(outgoing: item.lastIsOutgoing)
+        case .message:
+            switch item.media {
+            case .call: preview = callTitle(isGroup: false)
+            case .groupCall: preview = callTitle(isGroup: true)
+            default: preview = messageText(outgoing: item.lastIsOutgoing)
+            }
         case .draft: preview = draftText
         // «печатает…» и «Нет сообщений» имён не содержат.
         case .typing, .empty: preview = item.preview
@@ -106,7 +118,7 @@ public enum PrivateModeMask {
             serverId: message.serverId,
             chatId: message.chatId,
             authorId: message.authorId,
-            text: messageText(outgoing: outgoing),
+            text: messageText(for: message, outgoing: outgoing),
             timestamp: message.timestamp,
             status: message.status,
             content: .empty

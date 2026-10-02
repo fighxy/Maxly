@@ -195,9 +195,29 @@ enum MessageContentCodec {
                 width: integer(map["width"]),
                 height: integer(map["height"])
             ))
+        case "CALL":
+            return .call(callContent(map))
         default:
             return nil
         }
+    }
+
+    /// Звонок: `duration` в миллисекундах, `callType` AUDIO или VIDEO, `hangupType` HUNGUP,
+    /// CANCELED, REJECTED или MISSED; у группового есть `joinLink`. id вложения постоянный:
+    /// пузырь не пересоздаётся при каждом разборе.
+    private static func callContent(_ map: [String: Any]) -> CallContent {
+        let conversation = stringId(map["conversationId"])
+        let link = (map["joinLink"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let contacts = (map["contactIds"] as? [Any] ?? []).compactMap { stringId($0) }
+        return CallContent(
+            id: "call-\(conversation ?? "message")",
+            durationMs: durationMs(map["duration"]),
+            callType: (map["callType"] as? String)?.uppercased() == CallContent.CallType.video.rawValue ? .video : .audio,
+            hangupType: (map["hangupType"] as? String) ?? "",
+            conversationId: conversation,
+            contactIds: contacts,
+            joinLink: link
+        )
     }
 
     /// `reactionsJSON` ядра: `{counters:[{reaction, count}], totalCount, yourReaction}`.
@@ -248,6 +268,7 @@ enum MessageContentCodec {
         }
         if attachments.contains(where: { $0.contact != nil }) { return "Контакт" }
         if attachments.contains(where: { $0.sticker != nil }) { return "Стикер" }
+        if let call = attachments.compactMap(\.call).first { return call.isGroup ? "Групповой звонок" : "Звонок" }
         return ""
     }
 

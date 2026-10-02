@@ -471,9 +471,21 @@ public struct MessageBubble: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
             }
+            ForEach(message.content.calls, id: \.id) { call in
+                // Время звонка — в его строке, как у голосового; при тексте или реакциях
+                // оно уходит туда.
+                CallBubble(
+                    call: call,
+                    outgoing: isOutgoing,
+                    time: hasText || timeInReactions ? nil : AnyView(meta),
+                    timeText: ChatContentFormat.time(message.timestamp)
+                )
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+            }
             if hasText {
                 textBody
-            } else if visuals.isEmpty, message.content.voices.isEmpty, !reactionsInside {
+            } else if visuals.isEmpty, message.content.voices.isEmpty, message.content.calls.isEmpty, !reactionsInside {
                 // Пустое сообщение, только файл или контакт: время отдельной строкой.
                 if message.content.files.isEmpty, message.content.contacts.isEmpty {
                     Text(message.text.isEmpty ? " " : message.text)
@@ -776,7 +788,7 @@ public struct MessageBubble: View {
 
     private var stretchesText: Bool {
         !visuals.isEmpty || !message.content.voices.isEmpty || !message.content.files.isEmpty
-            || !message.content.contacts.isEmpty || showsComments
+            || !message.content.contacts.isEmpty || !message.content.calls.isEmpty || showsComments
     }
 
     private var hasHeader: Bool {
