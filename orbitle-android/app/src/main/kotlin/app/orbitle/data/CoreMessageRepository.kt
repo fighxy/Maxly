@@ -242,6 +242,20 @@ class CoreMessageRepository(
         MaxCoreGateway.call { client.setReaction(chatId.toLong(), messageId.toLong(), emoji) }
     }
 
+    override suspend fun reactionUsers(chatId: String, messageId: String): List<app.orbitle.domain.ReactionUser> {
+        val users = MaxCoreGateway.call { client.loadReactionUsers(chatId.toLong(), messageId.toLong()) }
+        val known = client.store.state.value.users
+        return users.map { entry ->
+            val user = known[entry.userId]
+            app.orbitle.domain.ReactionUser(
+                userId = entry.userId.toString(),
+                name = user?.displayName.orEmpty(),
+                avatarUrl = user?.baseUrl?.takeIf { it.isNotBlank() },
+                emoji = entry.reaction,
+            )
+        }
+    }
+
     override suspend fun reactionCatalog(): List<String> =
         runCatching { MaxCoreGateway.call { client.reactionCatalog() } }.getOrDefault(emptyList()).map { it.emoji }.filter { it.isNotEmpty() }
 

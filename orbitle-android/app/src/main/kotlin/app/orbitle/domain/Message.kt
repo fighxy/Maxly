@@ -96,6 +96,9 @@ data class MessageReply(val messageId: String, val authorName: String, val previ
 
 data class MessageReaction(val emoji: String, val count: Int, val mine: Boolean)
 
+/** Кто поставил реакцию. Пустое имя — профиль не загрузился. */
+data class ReactionUser(val userId: String, val name: String, val avatarUrl: String?, val emoji: String)
+
 sealed interface ChatAttachment {
     val id: String
 

@@ -79,6 +79,10 @@ interface MessageRepository {
     fun transcriptions(): Flow<Pair<String, String>> = emptyFlow()
 
     /** Прямой адрес видео или файла сообщения для плеера и загрузки. */
+    /** Кто отреагировал на сообщение. */
+    suspend fun reactionUsers(chatId: String, messageId: String): List<app.orbitle.domain.ReactionUser> =
+        throw OrbitleError.Rejected("Список недоступен")
+
     /** Пересылает сообщение [messageId] из [chatId] в чат [targetChatId]. */
     suspend fun forward(chatId: String, messageId: String, targetChatId: String): Unit = throw OrbitleError.Rejected("Пересылка недоступна")
 
