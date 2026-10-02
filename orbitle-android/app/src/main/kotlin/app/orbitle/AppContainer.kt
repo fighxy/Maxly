@@ -79,10 +79,15 @@ class AppContainer(context: Context) {
 
     private val prefs = context.getSharedPreferences("orbitle", Context.MODE_PRIVATE)
 
-    val appearance = AppearanceSettings(object : PreferenceStore {
+    private val preferenceStore = object : PreferenceStore {
         override fun get(key: String): String? = prefs.getString(key, null)
         override fun put(key: String, value: String) = prefs.edit().putString(key, value).apply()
-    })
+    }
+
+    val appearance = AppearanceSettings(preferenceStore)
+
+    /** Приватный режим: только на этом устройстве. */
+    val privateMode = app.orbitle.data.PrivateModeSettings(preferenceStore)
 
     val stickers: StickerRepository = CoreStickerRepository(client)
 

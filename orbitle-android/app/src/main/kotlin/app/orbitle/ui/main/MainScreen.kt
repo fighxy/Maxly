@@ -94,6 +94,8 @@ fun MainScreen(
     val calls by callsModel.state.collectAsStateWithLifecycle()
     val accountModel = viewModel { AccountSettingsViewModel(container.account) }
     val contactsModel = viewModel { ContactsViewModel(container.contacts, { container.messages.currentUserId }) }
+    val privatePrefs by container.privateMode.state.collectAsStateWithLifecycle()
+    val privateDisplay = app.orbitle.data.PrivateModeSettings.display(privatePrefs, canBlur = android.os.Build.VERSION.SDK_INT >= 31)
     val showsBar = Tab.entries.any { it.route == route } || route == null
     fun openChat(id: String, title: String? = null) {
         nav.navigate(if (title == null) "chat/$id" else "chat/$id?title=${Uri.encode(title)}")
@@ -129,8 +131,16 @@ fun MainScreen(
             }
         },
     ) { padding ->
+        androidx.compose.runtime.CompositionLocalProvider(app.orbitle.ui.components.LocalPrivateMode provides privateDisplay) {
         NavHost(nav, startDestination = Tab.CHATS.route, modifier = Modifier.padding(padding).consumeWindowInsets(padding)) {
-            composable(Tab.CHATS.route) { ChatListScreen(chatList, onOpenChat = { openChat(it.id) }) }
+            composable(Tab.CHATS.route) {
+                ChatListScreen(
+                    chatList,
+                    onOpenChat = { openChat(it.id) },
+                    privateMode = privatePrefs,
+                    onTogglePrivateMode = container.privateMode::toggle,
+                )
+            }
             composable(Tab.CALLS.route) { CallsScreen(callsModel, onOpenChat = { openChat(it) }) }
             composable(Tab.CONTACTS.route) {
                 ContactsScreen(contactsModel, onOpen = { row -> contactsModel.chatId(row.id)?.let { openChat(it, row.title) } })
@@ -151,7 +161,7 @@ fun MainScreen(
                 )
             }
             composable("profile-edit") { ProfileEditScreen(accountModel, onBack = { nav.popBackStack() }) }
-            composable("privacy") { PrivacyScreen(accountModel, onBack = { nav.popBackStack() }, onBlocked = { nav.navigate("blocked") }) }
+            composable("privacy") { PrivacyScreen(accountModel, onBack = { nav.popBackStack() }, onBlocked = { nav.navigate("blocked") }, privateMode = container.privateMode) }
             composable("storage") { StorageScreen(viewModel { StorageViewModel(container.storage) }, onBack = { nav.popBackStack() }) }
             composable("folders") {
                 FoldersScreen(
@@ -206,6 +216,7 @@ fun MainScreen(
                     mediaUserAgent = container.videoSourceUserAgent(),
                 )
             }
+        }
         }
     }
 }

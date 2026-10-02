@@ -29,6 +29,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Forward
 import androidx.compose.material.icons.filled.Done
@@ -93,12 +95,18 @@ import app.orbitle.presentation.chatlist.ChatListItem
 import app.orbitle.presentation.chatlist.ChatListUiState
 import app.orbitle.presentation.chatlist.ChatListViewModel
 import app.orbitle.ui.components.Avatar
+import app.orbitle.ui.components.privateBlur
 import coil3.compose.AsyncImage
 
 /** Вкладка «Чаты»: папки, поиск, закреплённые, плашка соединения. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatListScreen(viewModel: ChatListViewModel, onOpenChat: (ChatListItem) -> Unit) {
+fun ChatListScreen(
+    viewModel: ChatListViewModel,
+    onOpenChat: (ChatListItem) -> Unit,
+    privateMode: app.orbitle.domain.PrivateModePreferences = app.orbitle.domain.PrivateModePreferences(),
+    onTogglePrivateMode: () -> Unit = {},
+) {
     LifecycleResumeEffect(viewModel) {
         viewModel.reloadLocal()
         onPauseOrDispose {}
@@ -134,6 +142,21 @@ fun ChatListScreen(viewModel: ChatListViewModel, onOpenChat: (ChatListItem) -> U
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
+        floatingActionButton = {
+            // Глаз включает и выключает приватный режим; при поиске кнопки нет.
+            if (privateMode.quickToggle && !state.isSearchActive) {
+                androidx.compose.material3.SmallFloatingActionButton(
+                    onClick = onTogglePrivateMode,
+                    containerColor = if (privateMode.enabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                ) {
+                    Icon(
+                        if (privateMode.enabled) Icons.Filled.VisibilityOff else Icons.Outlined.Visibility,
+                        if (privateMode.enabled) "Выключить приватный режим" else "Включить приватный режим",
+                        tint = if (privateMode.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
     ) { padding ->
         PullToRefreshBox(
@@ -239,8 +262,16 @@ class ChatRowActions(val pin: (String) -> Unit, val read: (String) -> Unit = {},
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ChatRow(item: ChatListItem, onClick: () -> Unit, actions: ChatRowActions, modifier: Modifier = Modifier) {
+fun ChatRow(original: ChatListItem, onClick: () -> Unit, actions: ChatRowActions, modifier: Modifier = Modifier) {
     var menu by remember { mutableStateOf(false) }
+    val privacy = app.orbitle.ui.components.LocalPrivateMode.current
+    val item = if (privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER) {
+        remember(original) { app.orbitle.presentation.settings.PrivateModeMask.item(original) }
+    } else if (privacy == app.orbitle.domain.PrivateModeDisplay.BLUR) {
+        original.copy(isOnline = false)
+    } else {
+        original
+    }
     Box(modifier) {
         Row(
             Modifier
@@ -251,7 +282,7 @@ fun ChatRow(item: ChatListItem, onClick: () -> Unit, actions: ChatRowActions, mo
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Avatar(item.avatar, 56.dp, online = item.isOnline)
+            Avatar(item.avatar, 56.dp, online = item.isOnline, modifier = Modifier.privateBlur(privacy, 8.dp))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -261,7 +292,7 @@ fun ChatRow(item: ChatListItem, onClick: () -> Unit, actions: ChatRowActions, mo
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
+                        modifier = Modifier.weight(1f, fill = false).privateBlur(privacy, 7.dp),
                     )
                     if (item.isVerified) {
                         Spacer(Modifier.width(4.dp))
@@ -278,7 +309,7 @@ fun ChatRow(item: ChatListItem, onClick: () -> Unit, actions: ChatRowActions, mo
                 }
                 Spacer(Modifier.height(3.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Preview(item, Modifier.weight(1f))
+                    Preview(item, Modifier.weight(1f).privateBlur(privacy, 7.dp))
                     Spacer(Modifier.width(8.dp))
                     Trailing(item)
                 }

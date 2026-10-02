@@ -25,6 +25,8 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.BlurOn
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Block
@@ -230,7 +232,12 @@ fun ProfileEditScreen(model: AccountSettingsViewModel, onBack: () -> Unit) {
 /** «Конфиденциальность»: номер, статус «в сети», безопасный режим, срок неактивности, чёрный список. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrivacyScreen(model: AccountSettingsViewModel, onBack: () -> Unit, onBlocked: () -> Unit) {
+fun PrivacyScreen(
+    model: AccountSettingsViewModel,
+    onBack: () -> Unit,
+    onBlocked: () -> Unit,
+    privateMode: app.orbitle.data.PrivateModeSettings? = null,
+) {
     val state by model.state.collectAsStateWithLifecycle()
     val settings = state.settings
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
@@ -268,6 +275,10 @@ fun PrivacyScreen(model: AccountSettingsViewModel, onBack: () -> Unit, onBlocked
                 colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
                 modifier = Modifier.clickable(enabled = enabled) { model.setSafeMode(!settings.safeMode) },
             )
+            privateMode?.let {
+                HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                PrivateModeSection(it) { dialog = "privateStyle" }
+            }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
             SettingsItem(Icons.Outlined.Block, "Чёрный список", onClick = onBlocked)
             SettingsItem(
@@ -284,6 +295,11 @@ fun PrivacyScreen(model: AccountSettingsViewModel, onBack: () -> Unit, onBlocked
         }
         "online" -> ChoiceDialog("Кто видит, что я в сети", listOf(false, true), settings.onlineHidden, { if (it) "Никто" else "Мои контакты" }, { dialog = null }) {
             model.setOnlineHidden(it)
+        }
+        "privateStyle" -> privateMode?.let { settings ->
+            ChoiceDialog("Вид", app.orbitle.domain.PrivateModeStyle.entries, settings.state.value.style, { it.title }, { dialog = null }) {
+                settings.setStyle(it)
+            }
         }
         "ttl" -> ChoiceDialog("Удалить аккаунт, если меня нет", InactiveTtl.entries, settings.inactiveTtl, { it.title }, { dialog = null }) {
             model.setInactiveTtl(it)
@@ -385,4 +401,40 @@ fun BlockedUsersScreen(model: AccountSettingsViewModel, onBack: () -> Unit) {
         )
     }
     ErrorDialog(model)
+}
+
+/** Приватный режим: только на этом устройстве, в протокол не уходит. */
+@Composable
+private fun PrivateModeSection(settings: app.orbitle.data.PrivateModeSettings, onStyle: () -> Unit) {
+    val prefs by settings.state.collectAsStateWithLifecycle()
+    Text(
+        "Приватный режим",
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+    )
+    ListItem(
+        leadingContent = { Icon(Icons.Outlined.VisibilityOff, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+        headlineContent = { Text("Приватный режим") },
+        supportingContent = { Text("Прячет названия чатов, аватары и тексты сообщений") },
+        trailingContent = { Switch(prefs.enabled, onCheckedChange = settings::setEnabled) },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier.clickable { settings.setEnabled(!prefs.enabled) },
+    )
+    if (prefs.enabled) {
+        SettingsItem(Icons.Outlined.BlurOn, "Вид", subtitle = prefs.style.title, onClick = onStyle)
+    }
+    ListItem(
+        leadingContent = { Icon(Icons.Outlined.Visibility, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+        headlineContent = { Text("Кнопка в списке чатов") },
+        trailingContent = { Switch(prefs.quickToggle, onCheckedChange = settings::setQuickToggle) },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier.clickable { settings.setQuickToggle(!prefs.quickToggle) },
+    )
+    Text(
+        "Сообщение открывается касанием на 15 секунд. Настройка действует только на этом устройстве, уведомления не меняются.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    )
 }
