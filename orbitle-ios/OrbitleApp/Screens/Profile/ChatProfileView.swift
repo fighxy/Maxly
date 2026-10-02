@@ -66,6 +66,12 @@ struct ChatProfileView: View {
                 await chat.sharedHistory()
             }
         }
+        .task(id: hasSharedAnchor) {
+            // Все общие медиа с сервера, а не только загруженная в чате история. Ключ меняется
+            // один раз — когда у чата появляется серверное сообщение; новое сообщение обход не сбивает.
+            guard let chat = context?.chat, hasSharedAnchor else { return }
+            await viewModel.loadRemoteShared(window: chat.messages) { await chat.sharedMedia($0) }
+        }
         .overlay(alignment: .bottom) { toast }
         .animation(.snappy, value: copied)
         .animation(.snappy, value: context?.chat.notice)
@@ -77,6 +83,10 @@ struct ChatProfileView: View {
 
     /// Шапка ушла под панель навигации — имя и статус видны в ней.
     private var titleShown: Bool { offset < -(Self.avatarSize + 24) }
+
+    private var hasSharedAnchor: Bool {
+        context.map { SharedMediaPager.anchor(in: $0.chat.messages) != nil } ?? false
+    }
 
     private var sharedVersion: Int {
         guard let chat = context?.chat else { return 0 }
@@ -380,6 +390,13 @@ struct ChatProfileView: View {
                     }
                 }
                 .padding(.top, viewModel.sharedTab == .media ? 1 : 0)
+                if viewModel.isLoadingRemoteShared {
+                    // Сервер ещё отдаёт страницы: под сеткой видно, что будет больше.
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                }
             }
             .background(Color(uiColor: .secondarySystemGroupedBackground))
         }

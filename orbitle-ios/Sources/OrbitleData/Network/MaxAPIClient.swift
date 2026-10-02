@@ -59,6 +59,8 @@ public protocol MaxAPI: Sendable {
     func fetchChat(id: String) async -> Result<ChatRecord, MaxAPIError>
     /// Сообщения чата строго старше `before` (самые новые, если `nil`), не больше `limit`.
     func fetchMessages(chatId: String, before: Date?, limit: Int) async -> Result<[MessageRecord], MaxAPIError>
+    /// Сообщения с вложениями `types` вокруг `anchorId`: до `forward` новее, до `backward` старше.
+    func fetchSharedMedia(chatId: String, types: [SharedAttachType], anchorId: String, forward: Int, backward: Int) async -> Result<[MessageRecord], MaxAPIError>
     /// `clientId` это локальный id. Ядро само ставит числовой `cid` в пакет, локальный id на сервер не уходит.
     func sendMessage(chatId: String, text: String, clientId: String) async -> Result<SentMessage, MaxAPIError>
     /// Ответ на сообщение `replyTo` (серверный id). `nil` — обычное сообщение.
@@ -98,6 +100,10 @@ public protocol MaxAPI: Sendable {
 }
 
 public extension MaxAPI {
+    /// Источник без серверных общих медиа: профиль обходится историей из кэша.
+    func fetchSharedMedia(chatId: String, types: [SharedAttachType], anchorId: String, forward: Int, backward: Int) async -> Result<[MessageRecord], MaxAPIError> {
+        .failure(.invalidResponse)
+    }
     /// Источник без серверных закреплённых: запрос отклоняется.
     func setPinnedChats(_ chatIds: [String]) async -> Result<[String], MaxAPIError> { .failure(.invalidResponse) }
     func setChatMuted(chatId: String, muted: Bool) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
@@ -169,6 +175,16 @@ public final class MaxAPIClient: MaxAPI, Sendable {
     public func fetchMessages(chatId: String, before: Date?, limit: Int) async -> Result<[MessageRecord], MaxAPIError> {
         await catching {
             let page = try await core.loadHistory(chatId: chatId, beforeMs: before?.unixMillis ?? 0, limit: limit)
+            return page.map(CoreMapping.message)
+        }
+    }
+
+    public func fetchSharedMedia(chatId: String, types: [SharedAttachType], anchorId: String, forward: Int, backward: Int) async -> Result<[MessageRecord], MaxAPIError> {
+        await catching {
+            let page = try await core.loadSharedMedia(
+                chatId: chatId, anchorId: anchorId, attachTypes: types.map(\.rawValue),
+                forward: forward, backward: backward
+            )
             return page.map(CoreMapping.message)
         }
     }

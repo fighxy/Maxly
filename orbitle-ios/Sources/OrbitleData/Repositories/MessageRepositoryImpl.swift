@@ -1222,6 +1222,16 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         return rows.reversed().map { Self.record($0).domain }
     }
 
+    /// Общие медиа с сервера. В кэш не пишутся: страница из одних вложений сочла бы пропущенные
+    /// между ними сообщения загруженными, и в ленте появились бы дыры.
+    public func sharedMedia(chatId: String, types: [SharedAttachType], anchorId: String, forward: Int, backward: Int) async -> [Message]? {
+        guard !types.isEmpty, !anchorId.isEmpty else { return nil }
+        switch await api.fetchSharedMedia(chatId: chatId, types: types, anchorId: anchorId, forward: forward, backward: backward) {
+        case .success(let records): return records.map(\.domain)
+        case .failure: return nil
+        }
+    }
+
     /// Основная лента — последние сообщения окна от старых к новым. Тред — хронологически.
     private func snapshot(chatId: String, threadOf: String) -> [Message] {
         if threadOf.isEmpty {

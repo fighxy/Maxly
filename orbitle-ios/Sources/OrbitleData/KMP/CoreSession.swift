@@ -344,6 +344,8 @@ public protocol MaxCore: Sendable {
     func loadChats() async throws -> [CoreChat]
     func loadChat(id: String) async throws -> CoreChat
     func loadHistory(chatId: String, beforeMs: Int64, limit: Int) async throws -> [CoreMessage]
+    /// Сообщения с вложениями `attachTypes` вокруг `anchorId` с сервера (`CHAT_MEDIA`).
+    func loadSharedMedia(chatId: String, anchorId: String, attachTypes: [String], forward: Int, backward: Int) async throws -> [CoreMessage]
     func sendText(chatId: String, text: String) async throws -> CoreMessage
     /// Ответ: `replyTo` — серверный id сообщения, на которое отвечают.
     func sendText(chatId: String, text: String, replyTo: String) async throws -> CoreMessage
@@ -460,6 +462,9 @@ public extension MaxCore {
     func loadAnimatedEmoji() async throws -> [AnimatedEmoji] { throw CoreFailure(kind: "UNKNOWN", key: "unsupported") }
     /// Фейки в тестах, которым контакты не нужны.
     func loadContacts() async throws -> [CoreContact] { [] }
+    func loadSharedMedia(chatId: String, anchorId: String, attachTypes: [String], forward: Int, backward: Int) async throws -> [CoreMessage] {
+        throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
+    }
     func loadCallHistory() async throws -> [CoreCall] { [] }
     func loadProfile(chatId: String) async throws -> CoreProfile {
         throw CoreFailure(kind: "NOT_FOUND", key: nil)

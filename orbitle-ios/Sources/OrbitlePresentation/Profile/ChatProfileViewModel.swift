@@ -170,14 +170,20 @@ public final class ChatProfileViewModel {
 
     // MARK: Общие медиа
 
-    /// Вложения чата по вкладкам. Профиль, открытый из чата, собирает их из его истории.
+    /// Вложения чата по вкладкам: окно чата, история из кэша и всё, что отдал сервер.
     public private(set) var shared = SharedMedia()
     /// Открытая вкладка; пустые вкладки не показываются.
     public var sharedTab: SharedMediaTab = .media
+    /// Идёт обход общих медиа на сервере.
+    public private(set) var isLoadingRemoteShared = false
 
     /// История из кэша устройства: общие медиа не ограничены окном, загруженным в чате.
     @ObservationIgnored private var history: [Message] = []
     @ObservationIgnored private var historyLoaded = false
+    @ObservationIgnored private var window: [Message] = []
+    @ObservationIgnored private var sharedUserId = ""
+    /// Общие медиа с сервера (`CHAT_MEDIA`): не зависят от того, докуда пролистан чат.
+    @ObservationIgnored private var pager = SharedMediaPager()
 
     /// `window` — сообщения открытого чата (свежее кэша), `history` — сохранённая история,
     /// читается один раз.
@@ -190,9 +196,45 @@ public final class ChatProfileViewModel {
             historyLoaded = true
             history = await load()
         }
+        self.window = window
+        sharedUserId = currentUserId
+        rebuildShared()
+    }
+
+    /// Все общие медиа чата с сервера, страница за страницей, пока сервер присылает новое.
+    /// `window` — окно чата: его последнее серверное сообщение служит якорем первой страницы.
+    /// Отмена задачи (профиль закрыт) сохраняет место: следующий вызов продолжит с него.
+    public func loadRemoteShared(
+        window: [Message],
+        fetch: (SharedMediaRequest) async -> [Message]?
+    ) async {
+        guard !isLoadingRemoteShared, let latest = SharedMediaPager.anchor(in: window) else { return }
+        isLoadingRemoteShared = true
+        defer { isLoadingRemoteShared = false }
+        pager.retryFailed()
+        while !Task.isCancelled {
+            let round = pager.round(latest: latest)
+            if round.isEmpty { break }
+            var changed = false
+            for request in round {
+                let page = await fetch(request)
+                // Ответ отменённой задачи не значит, что у вкладки всё: её продолжит следующий вызов.
+                if Task.isCancelled { break }
+                if pager.receive(page, for: request) { changed = true }
+            }
+            if changed { rebuildShared() }
+        }
+    }
+
+    /// Окно новее кэша, кэш новее сервера: локальная копия знает скачанные файлы.
+    private func rebuildShared() {
         let windowIds = Set(window.map(\.id))
         let older = history.filter { !windowIds.contains($0.id) && $0.timestamp <= (window.first?.timestamp ?? .distantFuture) }
-        let next = SharedMedia.collect(older + window, currentUserId: currentUserId, now: now())
+        let local = older + window
+        let localKeys = Set(local.map(SharedMediaPager.key))
+        let remote = pager.messages.values.filter { !localKeys.contains($0.id) }
+        let all = remote.isEmpty ? local : (local + remote).sorted { $0.timestamp < $1.timestamp }
+        let next = SharedMedia.collect(all, currentUserId: sharedUserId, now: now())
         guard next != shared else { return }
         shared = next
         if let first = next.tabs.first, !next.tabs.contains(sharedTab) { sharedTab = first }

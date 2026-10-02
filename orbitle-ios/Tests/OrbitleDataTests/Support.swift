@@ -66,6 +66,17 @@ actor FakeMaxAPI: MaxAPI {
         return .success(Array(older.prefix(limit)))
     }
 
+    /// Ответ на запрос общих медиа и сами запросы: типы, якорь, вперёд, назад.
+    var sharedMediaResult: Result<[MessageRecord], MaxAPIError> = .failure(.invalidResponse)
+    private(set) var sharedMediaRequests: [([SharedAttachType], String, Int, Int)] = []
+
+    func setSharedMediaResult(_ result: Result<[MessageRecord], MaxAPIError>) { sharedMediaResult = result }
+
+    func fetchSharedMedia(chatId: String, types: [SharedAttachType], anchorId: String, forward: Int, backward: Int) async -> Result<[MessageRecord], MaxAPIError> {
+        sharedMediaRequests.append((types, anchorId, forward, backward))
+        return sharedMediaResult
+    }
+
     /// Если задан, отправка ждёт, пока тест его не откроет.
     var sendGate: Gate?
 
