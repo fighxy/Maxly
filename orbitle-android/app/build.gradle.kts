@@ -110,6 +110,10 @@ dependencies {
     implementation(libs.media3.ui)
     // QR-коды профиля и приглашения.
     implementation(libs.zxing.core)
+    // Сканер QR-кода входа на другом устройстве.
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
+    implementation(libs.camera.view)
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.junit)
