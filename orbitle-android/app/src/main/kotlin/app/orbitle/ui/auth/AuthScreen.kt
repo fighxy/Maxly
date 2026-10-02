@@ -53,6 +53,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -110,23 +111,26 @@ fun AuthScreen(viewModel: AuthViewModel) {
             transitionSpec = { fadeIn() togetherWith fadeOut() },
             modifier = Modifier.padding(padding).fillMaxSize().imePadding(),
             label = "authStep",
-        ) { _ ->
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp, vertical = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                when (state.step) {
-                    AuthStep.Phone -> PhoneStep(state, viewModel)
-                    is AuthStep.Code -> CodeStep(state, viewModel)
-                    is AuthStep.Password -> PasswordStep(state, viewModel)
-                    AuthStep.Registration -> RegistrationStep(state, viewModel)
-                }
-                state.errorMessage?.let {
-                    Spacer(Modifier.height(16.dp))
-                    Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
+        ) { step ->
+            // Свой экран у каждого шага: поля и фокус не переносятся между шагами.
+            key(step) {
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 24.dp, vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    when (state.step) {
+                        AuthStep.Phone -> PhoneStep(state, viewModel)
+                        is AuthStep.Code -> CodeStep(state, viewModel)
+                        is AuthStep.Password -> PasswordStep(state, viewModel)
+                        AuthStep.Registration -> RegistrationStep(state, viewModel)
+                    }
+                    state.errorMessage?.let {
+                        Spacer(Modifier.height(16.dp))
+                        Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
+                    }
                 }
             }
         }
