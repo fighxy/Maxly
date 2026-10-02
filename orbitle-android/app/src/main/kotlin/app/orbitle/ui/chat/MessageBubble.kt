@@ -194,6 +194,27 @@ fun BubbleRow(
             onClick = { if (message.status == MessageStatus.FAILED) onRetry(message) },
             onLongClick = { onLongPress(message) },
         )
+        val roundVideo = (message.content.visuals.singleOrNull() as? ChatAttachment.Video)?.video
+            ?.takeIf { it.isRound && message.displayText.isBlank() && message.content.reply == null }
+        if (roundVideo != null) {
+            Column(horizontalAlignment = if (item.outgoing) Alignment.End else Alignment.Start) {
+                item.authorName?.let {
+                    Text(it, color = AvatarPalette.nameColor(item.authorColor), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp, bottom = 2.dp))
+                }
+                RoundNote(message, roundVideo, onLongPress = { onLongPress(message) })
+                Surface(shape = RoundedCornerShape(10.dp), color = Color.Black.copy(alpha = 0.35f), modifier = Modifier.padding(top = 4.dp)) {
+                    TimeRow(item, Color.White, Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                }
+                Reactions(message.content.reactions, colors, item.outgoing) { onReaction(message, it) }
+                val count = item.comments
+                if (count != null && onComments != null) {
+                    Surface(shape = RoundedCornerShape(14.dp), color = colors.container, contentColor = colors.content, modifier = Modifier.padding(top = 4.dp).widthIn(max = 220.dp)) {
+                        CommentsFooter(count, colors) { onComments(message) }
+                    }
+                }
+            }
+            return@Row
+        }
         if (onlySticker) {
             Column(horizontalAlignment = if (item.outgoing) Alignment.End else Alignment.Start) {
                 AsyncImage(

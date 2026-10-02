@@ -33,6 +33,9 @@ data class MediaViewerState(
     val videoUrls: Map<String, String> = emptyMap(),
 )
 
+/** Кружок, который играет прямо в ленте. [url] — `null`, пока адрес спрашивается у сервера. */
+data class RoundPlayback(val messageId: String, val videoId: String, val url: String?)
+
 /** Скачанный файл, который экран должен открыть системным приложением. */
 data class OpenFile(val path: String, val name: String)
 
@@ -45,6 +48,7 @@ data class ChatMediaState(
     val openFile: OpenFile? = null,
     /** Сообщения, вложения которых сейчас сохраняются. */
     val saving: Set<String> = emptySet(),
+    val round: RoundPlayback? = null,
 )
 
 /** Скачанные файлы сообщений. */
@@ -91,6 +95,7 @@ class ChatMedia(
 
     /** Пуск или пауза; другое голосовое останавливает текущее. */
     fun toggleVoice(message: Message, voice: VoiceContent) {
+        _state.value.round?.let { stopRound(it.videoId) }
         val player = player ?: return
         val url = voice.url
         if (url.isNullOrEmpty()) {
@@ -161,7 +166,39 @@ class ChatMedia(
 
     // Фото и видео
 
+    // Кружки
+
+    /** Касание кружка: играть в ленте, повторное — остановить. Голосовое при этом замолкает. */
+    fun toggleRound(message: Message, video: app.orbitle.domain.VideoContent) {
+        if (_state.value.round?.videoId == video.id) {
+            stopRound(video.id)
+            return
+        }
+        player?.stop()
+        val local = video.url?.takeIf { it.isNotEmpty() && message.id.toLongOrNull() == null }
+        _state.update { it.copy(round = RoundPlayback(message.id, video.id, local)) }
+        if (local != null) return
+        scope.launch {
+            try {
+                val url = video.url?.takeIf { it.isNotEmpty() } ?: repository.mediaLink(chatId, message.id, ChatAttachment.Video(video))
+                _state.update { state -> if (state.round?.videoId == video.id) state.copy(round = state.round.copy(url = url)) else state }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                stopRound(video.id)
+                onError(e)
+            }
+        }
+    }
+
+    /** Кружок доиграл или его остановили. */
+    fun stopRound(videoId: String) = _state.update { if (it.round?.videoId == videoId) it.copy(round = null) else it }
+
     fun openVisual(message: Message, attachment: ChatAttachment) {
+        if (attachment is ChatAttachment.Video && attachment.video.isRound) {
+            toggleRound(message, attachment.video)
+            return
+        }
         val items = message.content.visuals
         val index = items.indexOfFirst { it.id == attachment.id }.coerceAtLeast(0)
         if (items.isEmpty()) return

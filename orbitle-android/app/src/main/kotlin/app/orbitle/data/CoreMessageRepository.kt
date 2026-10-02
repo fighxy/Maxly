@@ -16,6 +16,7 @@ import com.max.core.events.MaxEvent
 import com.max.core.protocol.Opcode
 import com.max.shared.MaxClient
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
@@ -128,6 +129,16 @@ class CoreMessageRepository(
         }
     }
 
+    /** Идущие загрузки вложений по id своего сообщения: их можно отменить. */
+    private val uploads = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Job>()
+    /** Загрузки живут дольше экрана: уход из чата их не обрывает. */
+    private val uploadScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+
+    override fun cancelUpload(chatId: String, localId: String) {
+        uploads.remove(localId)?.cancel()
+        discard(chatId, localId)
+    }
+
     /** Вложения не ушедших сообщений: нужны для повтора. */
     private val pendingMedia = java.util.concurrent.ConcurrentHashMap<String, List<OutgoingFile>>()
 
@@ -173,10 +184,22 @@ class CoreMessageRepository(
                     MaxCoreGateway.call { client.sendText(chatId.toLong(), local.text, replyTo?.toLongOrNull()) }
                 } else {
                     val outgoing = media.map { OutgoingMedia(it.path, coreKind(it.kind), it.name) }
-                    MaxCoreGateway.call {
-                        client.sendMedia(chatId.toLong(), outgoing, local.text.takeIf { it.isNotBlank() }, replyTo?.toLongOrNull()) { sent, total ->
-                            if (total > 0) progress((sent.toFloat() / total).coerceIn(0f, 1f))
+                    val work = uploadScope.async {
+                        MaxCoreGateway.call {
+                            client.sendMedia(chatId.toLong(), outgoing, local.text.takeIf { it.isNotBlank() }, replyTo?.toLongOrNull()) { sent, total ->
+                                if (total > 0) progress((sent.toFloat() / total).coerceIn(0f, 1f))
+                            }
                         }
+                    }
+                    uploads[local.id] = work
+                    try {
+                        work.await()
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        // Отменили кнопкой: сообщение уже убрано, это не ошибка.
+                        if (work.isCancelled) return@withContext
+                        throw e
+                    } finally {
+                        uploads.remove(local.id)
                     }
                 }
             }

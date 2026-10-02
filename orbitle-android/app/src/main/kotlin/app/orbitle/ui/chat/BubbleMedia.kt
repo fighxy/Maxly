@@ -24,6 +24,9 @@ class BubbleMedia(
     val onTranscript: (Message, VoiceContent) -> Unit = { _, _ -> },
     val onVisual: (Message, ChatAttachment) -> Unit = { _, _ -> },
     val onFile: (Message, FileContent) -> Unit = { _, _ -> },
+    val onRoundEnded: (String) -> Unit = {},
+    /** User-Agent для CDN видео. */
+    val userAgent: String = "",
 ) {
     companion object {
         val None = BubbleMedia(mutableStateOf(null), mutableStateOf(ChatMediaState()))
