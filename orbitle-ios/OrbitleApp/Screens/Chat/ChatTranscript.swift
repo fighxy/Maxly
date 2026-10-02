@@ -17,10 +17,9 @@ struct ChatTranscript: View {
     let canWrite: Bool
     let reveal: PrivateModeReveal
     var focus: FocusState<Bool>.Binding
-    /// Низ ленты виден. Пока он виден, новые сообщения прокручивают ленту сами.
-    @State private var atBottom = true
-    /// Сообщения, пришедшие, пока лента прокручена вверх: число на кнопке «вниз».
-    @State private var unseen = 0
+    /// Низ ленты виден (пока виден, новые сообщения прокручивают ленту сами), число новых
+    /// на кнопке «вниз» и прыжок к последнему сообщению.
+    @State private var bottom = TranscriptBottomState()
     @State private var isOpening = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -66,19 +65,19 @@ struct ChatTranscript: View {
                     // Новое снизу, удалённое, переставленное — плавно; первая страница и старая
                     // история сверху — сразу, иначе лента дёргается. Правило в `CollectionChange`.
                     .animation(
-                        atBottom && !viewModel.isRestoringHistory ? OrbitleMotion.transcript(viewModel.messagesChange, reduceMotion: reduceMotion) : nil,
+                        bottom.atBottom && !viewModel.isRestoringHistory ? OrbitleMotion.transcript(viewModel.messagesChange, reduceMotion: reduceMotion) : nil,
                         value: viewModel.transcriptVersion
                     )
                     // Реакция или правка меняет размер пузыря: соседи раздвигаются плавно.
                     .animation(
-                        viewModel.messagesChange == .none && !viewModel.isRestoringHistory && atBottom ? OrbitleMotion.quick(reduceMotion: reduceMotion) : nil,
+                        viewModel.messagesChange == .none && !viewModel.isRestoringHistory && bottom.atBottom ? OrbitleMotion.quick(reduceMotion: reduceMotion) : nil,
                         value: viewModel.contentVersion
                     )
                 }
                 // Чат открывается сразу внизу, а не сверху до загрузки истории.
                 .defaultScrollAnchor(.bottom)
                 .coordinateSpace(name: "transcript-viewport")
-                .modifier(TranscriptBottomTracking(atBottom: $atBottom, unseen: $unseen, viewportHeight: geo.size.height))
+                .modifier(TranscriptBottomTracking(bottom: $bottom, viewportHeight: geo.size.height))
                 // Клавиатура уходит, когда ленту тянут вниз вслед за пальцем или просто касаются
                 // её: касание не мешает кнопкам пузырей, жест срабатывает вместе с ними.
                 .scrollDismissesKeyboard(.interactively)
@@ -90,7 +89,7 @@ struct ChatTranscript: View {
                     guard !restoring else { return }
                     let opening = isOpening
                     isOpening = false
-                    guard Self.scrollsToBottomByHand, opening || atBottom else { return }
+                    guard Self.scrollsToBottomByHand, opening || bottom.atBottom else { return }
                     jumpToBottom(proxy)
                 }
                 .overlay(alignment: .bottom) {
@@ -104,17 +103,15 @@ struct ChatTranscript: View {
                 .animation(OrbitleMotion.fade, value: viewModel.showsSavedPlaceholder)
                 .overlay(alignment: .bottomTrailing) {
                     Group {
-                        if !atBottom, !viewModel.messages.isEmpty {
-                            ScrollDownButton(unseen: unseen) {
-                                withAnimation(OrbitleMotion.standard(reduceMotion: reduceMotion)) { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
-                                unseen = 0
-                            }
-                            .padding(.trailing, OrbitleTheme.pad)
-                            .padding(.bottom, 10)
-                            .transition(.orbitlePop(reduceMotion: reduceMotion))
+                        if bottom.showsButton(hasMessages: !viewModel.messages.isEmpty) {
+                            ScrollDownButton(unseen: bottom.unseen) { scrollToLatest(proxy) }
+                                .padding(.trailing, OrbitleTheme.pad)
+                                .padding(.bottom, 10)
+                                .transition(.orbitlePop(reduceMotion: reduceMotion))
                         }
                     }
-                    .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: atBottom)
+                    .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: bottom.atBottom)
+                    .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: bottom.unseen)
                 }
                 .onChange(of: viewModel.scrollToken) { _, _ in
                     guard let id = viewModel.scrollTarget else { return }
@@ -188,17 +185,36 @@ struct ChatTranscript: View {
         if viewModel.isRestoringHistory || change == .reload || change == .initial {
             // Первое открытие — сразу к последнему. Вернулись в чат (из профиля собеседника),
             // читая историю, — место в ленте не теряется.
-            if Self.scrollsToBottomByHand, isOpening || atBottom { jumpToBottom(proxy) }
+            if Self.scrollsToBottomByHand, isOpening || bottom.atBottom { jumpToBottom(proxy) }
             return
         }
         guard case .appended(let count) = change, count > 0 else { return }
         let added = viewModel.messages.suffix(count)
-        if atBottom || added.contains(where: viewModel.isOutgoing) {
+        if bottom.atBottom || added.contains(where: viewModel.isOutgoing) {
             withAnimation(OrbitleMotion.standard(reduceMotion: reduceMotion)) {
                 proxy.scrollTo(Self.bottomId, anchor: .bottom)
             }
         } else {
-            unseen += added.filter { !viewModel.isOutgoing($0) }.count
+            bottom.received(added.filter { !viewModel.isOutgoing($0) }.count)
+        }
+    }
+
+    /// Кнопка «вниз»: плавно к последнему сообщению, затем без анимации до настоящего низа.
+    /// Лента ленивая, и анимированный путь считается по прикидке высот ещё не измеренных
+    /// строк: без доводки прокрутка иногда вставала выше последнего сообщения. Доводка
+    /// повторяется на следующем проходе цикла — к нему строки у низа уже измерены.
+    private func scrollToLatest(_ proxy: ScrollViewProxy) {
+        let jump = bottom.beginJump()
+        withAnimation(OrbitleMotion.standard(reduceMotion: reduceMotion)) {
+            proxy.scrollTo(Self.bottomId, anchor: .bottom)
+        } completion: {
+            guard bottom.finishJump(jump) else { return }
+            jumpToBottom(proxy)
+            Task { @MainActor in
+                await Task.yield()
+                guard bottom.atBottom, bottom.jump == nil else { return }
+                jumpToBottom(proxy)
+            }
         }
     }
 
@@ -465,39 +481,39 @@ private struct SavedMessagesPlaceholder: View {
 /// (`defaultScrollAnchor(.bottom, for: .sizeChanges)`): прежние пузыри уезжают вверх в том
 /// же кадре, без второго рывка. На iOS 17 — метка низа, как раньше.
 private struct TranscriptBottomTracking: ViewModifier {
-    @Binding var atBottom: Bool
-    @Binding var unseen: Int
+    @Binding var bottom: TranscriptBottomState
     let viewportHeight: CGFloat
     @State private var dragging = false
 
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
             content
-                .defaultScrollAnchor(atBottom ? .bottom : .top, for: .sizeChanges)
+                .defaultScrollAnchor(bottom.atBottom ? .bottom : .top, for: .sizeChanges)
                 .onScrollPhaseChange { _, phase in
                     dragging = phase == .tracking || phase == .interacting || phase == .decelerating
+                    // Палец взял ленту во время прыжка «вниз»: доводки к низу не будет.
+                    if phase == .tracking || phase == .interacting { update { $0.userTookOver() } }
                 }
                 .onScrollGeometryChange(for: CGFloat.self) { geometry in
                     geometry.contentSize.height + geometry.contentInsets.bottom
                         - geometry.contentOffset.y - geometry.containerSize.height
                 } action: { _, distance in
-                    if distance <= 24 {
-                        set(true)
-                    } else if dragging, distance > 64 {
-                        set(false)
-                    }
+                    update { $0.scrolled(distance: Double(distance), dragging: dragging) }
                 }
         } else {
             content
                 .onPreferenceChange(TranscriptBottomPreference.self) { bottomY in
-                    set(bottomY.isFinite && bottomY >= 0 && bottomY <= viewportHeight + (atBottom ? 64 : 24))
+                    update { $0.markerMoved(bottomY: Double(bottomY), viewportHeight: Double(viewportHeight)) }
                 }
         }
     }
 
-    private func set(_ value: Bool) {
-        if atBottom != value { atBottom = value }
-        if value, unseen != 0 { unseen = 0 }
+    /// Прокрутка сообщает о себе каждый кадр: состояние пишется, только если поменялось,
+    /// иначе лента пересобиралась бы на каждом кадре.
+    private func update(_ change: (inout TranscriptBottomState) -> Void) {
+        var next = bottom
+        change(&next)
+        if next != bottom { bottom = next }
     }
 }
 
