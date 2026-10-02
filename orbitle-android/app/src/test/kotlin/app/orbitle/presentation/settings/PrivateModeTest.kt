@@ -103,3 +103,47 @@ class PrivateModeTest {
         assertEquals("Канал", PrivateModeMask.chatTitle(ChatType.CHANNEL))
     }
 }
+
+class PrivateModeChatTest {
+    private val reaction = app.orbitle.domain.MessageContent()
+
+    @Test
+    fun `bubble keeps id, time and status but drops content and author`() {
+        val message = app.orbitle.domain.Message(
+            id = "42", chatId = "5", authorId = "7", text = "Пароль от wifi", timeMs = 1_000L,
+            status = app.orbitle.domain.MessageStatus.SENT, authorName = "Борис", authorAvatarUrl = "https://x/a.jpg", isRead = true,
+        )
+        val avatar = ChatAvatar(ChatAvatar.Kind.Photo("https://x/a.jpg", "Б"), 3)
+        val item = app.orbitle.presentation.chat.ChatItem.Bubble(message, false, "12:00", "Борис", 2, true, avatar, false, true, comments = 4)
+        val masked = PrivateModeMask.bubble(item)
+        assertEquals("42", masked.message.id)
+        assertEquals("7", masked.message.authorId)
+        assertEquals(1_000L, masked.message.timeMs)
+        assertTrue(masked.message.isRead)
+        assertEquals("Вы получили сообщение", masked.message.text)
+        assertEquals("", masked.message.authorName)
+        assertNull(masked.message.authorAvatarUrl)
+        assertEquals(reaction, masked.message.content)
+        assertNull(masked.authorName)
+        assertNull(masked.comments)
+        assertEquals(ChatAvatar(ChatAvatar.Kind.Initials(""), 3), masked.avatar)
+        assertEquals("12:00", masked.time)
+        assertEquals("Вы отправили сообщение", PrivateModeMask.bubble(item.copy(outgoing = true)).message.text)
+        assertEquals("Сообщение скрыто", PrivateModeMask.panelText(message, editing = false))
+        assertEquals("Вы отправили сообщение", PrivateModeMask.panelText(message, editing = true))
+    }
+
+    @Test
+    fun `header gets a generic title and keeps the status line`() {
+        val header = app.orbitle.presentation.chat.ChatHeaderUi(
+            "Анна", "в сети", true, ChatAvatar(ChatAvatar.Kind.Initials("А"), 1), isVerified = true, type = ChatType.PRIVATE,
+        )
+        val masked = PrivateModeMask.header(header)
+        assertEquals("Личный чат", masked.title)
+        assertEquals("в сети", masked.subtitle)
+        assertFalse(masked.isVerified)
+        assertEquals(ChatAvatar.Kind.Initials(""), masked.avatar.kind)
+        assertEquals("Групповой чат", PrivateModeMask.header(header.copy(type = ChatType.GROUP)).title)
+        assertEquals("Избранное", PrivateModeMask.header(header.copy(isSavedMessages = true)).title)
+    }
+}
