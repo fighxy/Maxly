@@ -1,0 +1,180 @@
+package app.orbitle.data
+
+import app.orbitle.domain.Message
+import app.orbitle.domain.MessageContent
+import app.orbitle.domain.MessageReply
+import app.orbitle.domain.MessageStatus
+import com.max.core.events.MaxEvent
+import com.max.shared.MaxClient
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.update
+import java.util.concurrent.atomic.AtomicLong
+
+/** [MessageRepository] над стором `MaxClient`: история и события ядра плюс своя очередь отправки. */
+class CoreMessageRepository(
+    private val client: MaxClient,
+    private val clock: () -> Long = System::currentTimeMillis,
+) : MessageRepository {
+
+    /** Свои сообщения, которых ещё нет на сервере: id чата → сообщения. */
+    private val pending = MutableStateFlow<Map<String, List<Message>>>(emptyMap())
+    private val localIds = AtomicLong(0)
+
+    override val currentUserId: String? get() = client.store.state.value.me?.toString()
+
+    override fun messages(chatId: String): Flow<List<Message>> {
+        val id = chatId.toLongOrNull() ?: 0L
+        return combine(client.store.state, pending) { state, queued ->
+            val chat = state.chats[id]
+            val peerRead = maxOf(
+                chat?.let { ChatMapping.peerReadMark(it, state.me) } ?: 0L,
+                state.readMarks[id].orEmpty().filterKeys { it != state.me }.values.maxOrNull() ?: 0L,
+            )
+            val stored = state.messagesOf(id).map { MessageMapping.message(it, id, state, peerRead) }
+            stored + queued[chatId].orEmpty()
+        }.distinctUntilChanged()
+    }
+
+    private val ticks: Flow<Long> = flow {
+        while (true) {
+            emit(clock())
+            delay(1_000)
+        }
+    }
+
+    override fun header(chatId: String): Flow<ChatHeaderInfo?> {
+        val id = chatId.toLongOrNull() ?: 0L
+        return combine(client.store.state, client.accountConfig, ticks) { state, config, now ->
+            val raw = state.chats[id] ?: return@combine null
+            val chat = ChatMapping.chat(raw, state, config, now)
+            val peer = ChatMapping.dialogPeer(raw, state.me)
+            val seen = peer?.let { state.presence[it]?.seen }?.let { if (it < 100_000_000_000L) it * 1000 else it } ?: 0L
+            val typing = state.typingUsers(id, now).filter { it != state.me }
+                .map { state.users[it]?.displayName?.takeIf(String::isNotBlank) ?: "Кто-то" }
+            ChatHeaderInfo(chat, participants(raw.raw), seen, typing)
+        }.distinctUntilChanged()
+    }
+
+    private fun participants(raw: Map<*, *>): Int? {
+        ChatMapping.longOf(raw["participantsCount"])?.let { return it.toInt() }
+        return (raw["participants"] as? Map<*, *>)?.size?.takeIf { it > 0 }
+    }
+
+    override suspend fun loadLatest(chatId: String) {
+        val id = chatId.toLong()
+        MaxCoreGateway.call { client.loadHistory(id, from = null, backward = PAGE) }
+        resolveSenders(id)
+    }
+
+    override suspend fun loadOlder(chatId: String): Boolean {
+        val id = chatId.toLong()
+        val oldest = client.store.state.value.messagesOf(id).minByOrNull { it.time } ?: return false
+        val before = client.store.state.value.messagesOf(id).size
+        val page = MaxCoreGateway.call { client.loadHistory(id, from = oldest.time, backward = PAGE) }
+        resolveSenders(id)
+        val grown = client.store.state.value.messagesOf(id).size > before
+        return grown && page.messages.any { it.id != oldest.id }
+    }
+
+    /** Имена авторов групп: неизвестных пользователей спросить у сервера. */
+    private suspend fun resolveSenders(chatId: Long) {
+        val state = client.store.state.value
+        val unknown = state.messagesOf(chatId).mapNotNull { it.sender }.distinct().filter { it !in state.users }
+        if (unknown.isEmpty()) return
+        runCatching { MaxCoreGateway.call { client.loadUsers(unknown.take(100)) } }
+    }
+
+    override suspend fun send(chatId: String, text: String, replyTo: String?) {
+        val local = Message(
+            id = "local-${localIds.incrementAndGet()}",
+            chatId = chatId,
+            authorId = currentUserId.orEmpty(),
+            text = text,
+            timeMs = clock(),
+            status = MessageStatus.SENDING,
+            content = MessageContent(reply = replyTo?.let { replyPreview(chatId, it) }),
+        )
+        put(chatId, local)
+        deliver(chatId, local, replyTo)
+    }
+
+    private fun replyPreview(chatId: String, messageId: String): MessageReply? {
+        val state = client.store.state.value
+        val id = chatId.toLongOrNull() ?: return null
+        val source = state.messagesOf(id).firstOrNull { it.id.toString() == messageId } ?: return null
+        val message = MessageMapping.message(source, id, state)
+        return MessageReply(messageId, message.authorName.ifEmpty { "Сообщение" }, message.replySnippet, message.replyKind)
+    }
+
+    private suspend fun deliver(chatId: String, local: Message, replyTo: String?) {
+        // Уход с экрана не должен обрывать отправку на полпути.
+        try {
+            withContext(NonCancellable) {
+                MaxCoreGateway.call { client.sendText(chatId.toLong(), local.text, replyTo?.toLongOrNull()) }
+            }
+            remove(chatId, local.id)
+        } catch (failure: Exception) {
+            put(chatId, local.copy(status = MessageStatus.FAILED))
+            throw failure
+        }
+    }
+
+    override suspend fun retry(chatId: String, localId: String) {
+        val message = pending.value[chatId]?.firstOrNull { it.id == localId } ?: return
+        val sending = message.copy(status = MessageStatus.SENDING, timeMs = clock())
+        put(chatId, sending)
+        deliver(chatId, sending, message.content.reply?.messageId)
+    }
+
+    override fun discard(chatId: String, localId: String) = remove(chatId, localId)
+
+    private fun put(chatId: String, message: Message) = pending.update { all ->
+        val list = all[chatId].orEmpty().filterNot { it.id == message.id } + message
+        all + (chatId to list.sortedBy { it.timeMs })
+    }
+
+    private fun remove(chatId: String, localId: String) = pending.update { all ->
+        val list = all[chatId].orEmpty().filterNot { it.id == localId }
+        if (list.isEmpty()) all - chatId else all + (chatId to list)
+    }
+
+    override suspend fun edit(chatId: String, messageId: String, text: String) {
+        val edited = MaxCoreGateway.call { client.api.messages.editMessage(chatId.toLong(), messageId.toLong(), text) }
+        // Своя правка сервером обратно не присылается.
+        client.store.apply(MaxEvent.MessageEdited(edited.copy(chatId = edited.chatId ?: chatId.toLong()), 0, null))
+    }
+
+    override suspend fun delete(chatId: String, messageIds: List<String>, forEveryone: Boolean) {
+        val ids = messageIds.mapNotNull { it.toLongOrNull() }
+        messageIds.filter { it.startsWith("local-") }.forEach { remove(chatId, it) }
+        if (ids.isEmpty()) return
+        MaxCoreGateway.call { client.api.messages.deleteMessages(chatId.toLong(), ids, forMe = !forEveryone) }
+        client.store.apply(MaxEvent.MessagesDeleted(chatId.toLong(), ids, null, null, false, 0, null))
+    }
+
+    override suspend fun markRead(chatId: String, messageId: String) {
+        val id = chatId.toLong()
+        val message = messageId.toLongOrNull() ?: return
+        val state = MaxCoreGateway.call { client.api.messages.markRead(id, message) }
+        val me = client.store.state.value.me ?: return
+        client.store.apply(MaxEvent.MessageRead(id, me, state.mark, false, 0, null))
+    }
+
+    override suspend fun react(chatId: String, messageId: String, emoji: String?) {
+        MaxCoreGateway.call { client.setReaction(chatId.toLong(), messageId.toLong(), emoji) }
+    }
+
+    override suspend fun reactionCatalog(): List<String> =
+        runCatching { MaxCoreGateway.call { client.reactionCatalog() } }.getOrDefault(emptyList()).map { it.emoji }.filter { it.isNotEmpty() }
+
+    private companion object {
+        const val PAGE = 40
+    }
+}

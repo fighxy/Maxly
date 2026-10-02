@@ -49,7 +49,7 @@ private fun Root(container: AppContainer) {
         is AuthPhase.SignedIn -> {
             val chats = viewModel { ChatListViewModel(container.chats, container.session.connection) }
             val account by container.account.account.collectAsStateWithLifecycle(initialValue = null)
-            MainScreen(chats, account, onLogout = { scope.launch { container.session.logout() } })
+            MainScreen(chats, container.messages, account, onLogout = { scope.launch { container.session.logout() } })
         }
         else -> {
             val auth = viewModel { AuthViewModel(container.session) }
