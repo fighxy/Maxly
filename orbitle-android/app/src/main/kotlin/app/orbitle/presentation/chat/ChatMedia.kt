@@ -43,6 +43,8 @@ data class ChatMediaState(
     val downloads: Map<String, Float> = emptyMap(),
     val viewer: MediaViewerState? = null,
     val openFile: OpenFile? = null,
+    /** Сообщения, вложения которых сейчас сохраняются. */
+    val saving: Set<String> = emptySet(),
 )
 
 /** Скачанные файлы сообщений. */
@@ -58,6 +60,9 @@ class ChatMedia(
     private val scope: CoroutineScope,
     private val player: VoicePlayer?,
     private val files: MessageFiles?,
+    /** Галерея и «Загрузки»; `null` — сохранять некуда. */
+    private val saver: MediaSaver? = null,
+    private val onNotice: (String) -> Unit = {},
     private val onError: (Exception) -> Unit,
 ) {
     private val _state = MutableStateFlow(ChatMediaState())
@@ -230,6 +235,66 @@ class ChatMedia(
     }
 
     fun consumeOpenFile() = _state.update { it.copy(openFile = null) }
+
+    // Сохранение
+
+    fun canSave(message: Message, target: SaveTarget): Boolean =
+        saver != null && files != null && message.id.toLongOrNull() != null && SaveNaming.attachments(message, target).isNotEmpty()
+
+    /** Скачать вложения сообщения и положить их в галерею или «Загрузки». */
+    fun save(message: Message, target: SaveTarget) {
+        if (!canSave(message, target)) return
+        saveItems(message.id, message.timeMs, SaveNaming.attachments(message, target), target)
+    }
+
+    /** Сохранить в галерею фото или видео, открытое в просмотре. */
+    fun saveViewed() {
+        val viewer = _state.value.viewer ?: return
+        val item = viewer.items.getOrNull(viewer.index) ?: return
+        if (saver == null || files == null || viewer.messageId.toLongOrNull() == null) return
+        saveItems(viewer.messageId, viewer.timeMs, listOf(item), SaveTarget.GALLERY, indexBase = viewer.index)
+    }
+
+    private fun saveItems(messageId: String, timeMs: Long, items: List<ChatAttachment>, target: SaveTarget, indexBase: Int = 0) {
+        val saver = saver ?: return
+        val files = files ?: return
+        if (messageId in _state.value.saving || items.isEmpty()) return
+        _state.update { it.copy(saving = it.saving + messageId) }
+        scope.launch {
+            try {
+                items.forEachIndexed { position, attachment ->
+                    val index = indexBase + position
+                    val (url, cacheName) = when (attachment) {
+                        is ChatAttachment.Photo -> (attachment.photo.url ?: throw OrbitleError.Rejected("Фото недоступно")) to "photo-${attachment.id}"
+                        is ChatAttachment.Video -> repository.mediaLink(chatId, messageId, attachment) to "video-${attachment.id}.mp4"
+                        is ChatAttachment.File -> (attachment.file.url?.takeIf { it.isNotEmpty() } ?: repository.mediaLink(chatId, messageId, attachment)) to attachment.file.name
+                        is ChatAttachment.Voice -> (attachment.voice.url ?: throw OrbitleError.Rejected("Голосовое недоступно")) to "voice-${attachment.id}.m4a"
+                        else -> return@forEachIndexed
+                    }
+                    val path = files.download(url, attachment.id, cacheName) {}
+                    val (name, kind) = when (attachment) {
+                        is ChatAttachment.Photo -> SaveNaming.name(timeMs, index, SaveNaming.imageExtension(header(path))) to SavedKind.IMAGE
+                        is ChatAttachment.Video -> SaveNaming.name(timeMs, index, "mp4") to SavedKind.VIDEO
+                        is ChatAttachment.Voice -> SaveNaming.name(timeMs, index, "m4a") to SavedKind.OTHER
+                        is ChatAttachment.File -> attachment.file.name.ifBlank { SaveNaming.name(timeMs, index, "bin") } to SavedKind.OTHER
+                        else -> return@forEachIndexed
+                    }
+                    saver.save(path, name, kind)
+                }
+                onNotice(if (target == SaveTarget.GALLERY) "Сохранено в галерею" else "Сохранено в «Загрузки»")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onError(e as? OrbitleError ?: OrbitleError.Rejected("Не удалось сохранить"))
+            } finally {
+                _state.update { it.copy(saving = it.saving - messageId) }
+            }
+        }
+    }
+
+    private fun header(path: String): ByteArray = runCatching {
+        java.io.File(path).inputStream().use { input -> ByteArray(16).let { buf -> buf.copyOf(maxOf(0, input.read(buf))) } }
+    }.getOrDefault(ByteArray(0))
 
     companion object {
         const val EMPTY_TRANSCRIPT = "Речь не распознана"

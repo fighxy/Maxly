@@ -215,7 +215,7 @@ fun BubbleRow(
             contentColor = colors.content,
             modifier = Modifier.widthIn(max = maxWidth).clip(shape).then(press),
         ) {
-            BubbleContent(item, colors, maxWidth, onReaction, onReplyClick, onComments)
+            BubbleContent(item, colors, maxWidth, onReaction, onReplyClick, onComments, onLongPress = { onLongPress(message) })
         }
     }
     }
@@ -229,6 +229,7 @@ private fun BubbleContent(
     onReaction: (Message, String) -> Unit,
     onReplyClick: (String) -> Unit,
     onComments: ((Message) -> Unit)? = null,
+    onLongPress: () -> Unit = {},
 ) {
     val message = item.message
     val content = message.content
@@ -270,7 +271,7 @@ private fun BubbleContent(
         }
         if (visuals.isNotEmpty()) {
             val bubbleMedia = LocalBubbleMedia.current
-            Visuals(visuals, maxWidth - 6.dp, Modifier.padding(top = if (item.authorName != null || content.forward != null || content.reply != null) 6.dp else 0.dp)) {
+            Visuals(visuals, maxWidth - 6.dp, Modifier.padding(top = if (item.authorName != null || content.forward != null || content.reply != null) 6.dp else 0.dp), onLongPress = onLongPress) {
                 bubbleMedia.onVisual(message, it)
             }
         }
@@ -392,7 +393,7 @@ fun ReplyQuote(author: String, preview: String, colors: BubbleColors, modifier: 
 
 /** Фото и видео: одно — по пропорциям, несколько — сеткой по два. */
 @Composable
-private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modifier = Modifier, onOpen: (ChatAttachment) -> Unit) {
+private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modifier = Modifier, onLongPress: () -> Unit = {}, onOpen: (ChatAttachment) -> Unit) {
     val shape = RoundedCornerShape(15.dp)
     if (visuals.size == 1) {
         val (w, h) = when (val v = visuals.first()) {
@@ -401,14 +402,14 @@ private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modif
             else -> null to null
         }
         val frame = ChatContentFormat.frame(w, h, maxWidth.value.toDouble(), 360.0)
-        Box(modifier.size(frame.width.dp, frame.height.dp).clip(shape).clickable { onOpen(visuals.first()) }) { VisualCell(visuals.first()) }
+        Box(modifier.size(frame.width.dp, frame.height.dp).clip(shape).combinedClickable(onLongClick = onLongPress) { onOpen(visuals.first()) }) { VisualCell(visuals.first()) }
         return
     }
     val cell = (maxWidth - 2.dp) / 2
     Column(modifier.clip(shape), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         visuals.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                row.forEach { Box(Modifier.size(if (row.size == 1) maxWidth else cell, cell).clickable { onOpen(it) }) { VisualCell(it) } }
+                row.forEach { Box(Modifier.size(if (row.size == 1) maxWidth else cell, cell).combinedClickable(onLongClick = onLongPress) { onOpen(it) }) { VisualCell(it) } }
             }
         }
     }

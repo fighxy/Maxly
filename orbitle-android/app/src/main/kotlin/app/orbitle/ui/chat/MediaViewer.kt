@@ -1,5 +1,7 @@
 package app.orbitle.ui.chat
 
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.outlined.Download
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -69,6 +71,9 @@ fun MediaViewer(
     userAgent: String,
     onPage: (Int) -> Unit,
     onClose: () -> Unit,
+    /** Сохранить открытое в галерею; `null` — без кнопки. */
+    onSave: (() -> Unit)? = null,
+    saving: Boolean = false,
 ) {
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         BackHandler(onBack = onClose)
@@ -96,6 +101,13 @@ fun MediaViewer(
                     }
                     if (state.items.size > 1) {
                         Text("${pager.currentPage + 1} из ${state.items.size}", color = Color.White, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(end = 12.dp))
+                    }
+                    if (onSave != null) {
+                        if (saving) {
+                            androidx.compose.material3.CircularProgressIndicator(Modifier.padding(12.dp).size(24.dp), color = Color.White, strokeWidth = 2.dp)
+                        } else {
+                            IconButton(onClick = onSave) { Icon(Icons.Outlined.Download, "Сохранить в галерею", tint = Color.White) }
+                        }
                     }
                 }
             }

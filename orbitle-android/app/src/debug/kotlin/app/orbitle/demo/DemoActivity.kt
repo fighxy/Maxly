@@ -98,7 +98,7 @@ class DemoActivity : ComponentActivity() {
                             val model = viewModel { ChatViewModel(
                                 "10", DemoMessages(group, channel), voicePlayer = player, files = DemoFiles(applicationContext),
                                 stickerRepository = DemoStickers(), stickerRecents = demoRecents, emojiSupported = app.orbitle.ui.chat.EmojiSupport::canDraw,
-                                comments = DemoComments(),
+                                comments = DemoComments(), mediaSaver = app.orbitle.media.MediaStoreSaver(applicationContext),
                             ) }
                             ChatScreen(model, onBack = { finish() }, forwardTargets = {
                                 val formatter = app.orbitle.presentation.chatlist.ChatListFormatter()
@@ -285,7 +285,11 @@ private class DemoFiles(private val context: android.content.Context) : MessageF
         }
         val target = file(fileId, name)
         target.parentFile?.mkdirs()
-        target.writeText("Демо-отчёт Orbitle")
+        if (url.startsWith("android.resource:")) {
+            context.contentResolver.openInputStream(android.net.Uri.parse(url))!!.use { input -> target.outputStream().use { input.copyTo(it) } }
+        } else {
+            target.writeText("Демо-отчёт Orbitle")
+        }
         return target.absolutePath
     }
 }
