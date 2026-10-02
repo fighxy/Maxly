@@ -5,6 +5,8 @@ import app.orbitle.data.AccountRepository
 import app.orbitle.data.ChatRepository
 import app.orbitle.data.CoreAccountRepository
 import app.orbitle.data.CoreChatRepository
+import app.orbitle.data.CoreMessageRepository
+import app.orbitle.data.MessageRepository
 import app.orbitle.data.MaxCoreGateway
 import app.orbitle.data.SessionManager
 import app.orbitle.data.UserIdStore
@@ -18,11 +20,13 @@ import kotlinx.coroutines.SupervisorJob
 class AppContainer(context: Context) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    val client: MaxClient = MaxClient(MaxClientConfig(namespace = CORE_NAMESPACE))
+    val client: MaxClient = MaxClient(MaxClientConfig(namespace = CORE_NAMESPACE, messageLimit = MESSAGE_LIMIT))
 
     val chats: ChatRepository = CoreChatRepository(client)
 
     val account: AccountRepository = CoreAccountRepository(client)
+
+    val messages: MessageRepository = CoreMessageRepository(client)
 
     private val prefs = context.getSharedPreferences("orbitle", Context.MODE_PRIVATE)
 
@@ -48,5 +52,7 @@ class AppContainer(context: Context) {
     private companion object {
         const val CORE_NAMESPACE = "orbitle"
         const val KEY_LAST_USER = "lastUserId"
+        /** Сколько сообщений одного чата держит стор ядра: хватает на долгую прокрутку истории. */
+        const val MESSAGE_LIMIT = 3_000
     }
 }

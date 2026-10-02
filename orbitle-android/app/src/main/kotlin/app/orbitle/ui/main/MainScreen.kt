@@ -1,6 +1,7 @@
 package app.orbitle.ui.main
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,6 +36,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import app.orbitle.R
+import app.orbitle.data.MessageRepository
+import app.orbitle.presentation.chat.ChatViewModel
+import app.orbitle.ui.chat.ChatScreen
+import androidx.lifecycle.viewmodel.compose.viewModel
 import app.orbitle.presentation.chatlist.ChatListFormatter
 import app.orbitle.presentation.chatlist.ChatListViewModel
 import app.orbitle.ui.chatlist.ChatListScreen
@@ -56,6 +61,7 @@ enum class Tab(val route: String, val title: Int, val icon: ImageVector, val sel
 @Composable
 fun MainScreen(
     chatList: ChatListViewModel,
+    messages: MessageRepository,
     account: Account?,
     onLogout: () -> Unit,
 ) {
@@ -93,13 +99,17 @@ fun MainScreen(
             }
         },
     ) { padding ->
-        NavHost(nav, startDestination = Tab.CHATS.route, modifier = Modifier.padding(padding)) {
+        NavHost(nav, startDestination = Tab.CHATS.route, modifier = Modifier.padding(padding).consumeWindowInsets(padding)) {
             composable(Tab.CHATS.route) { ChatListScreen(chatList, onOpenChat = { nav.navigate("chat/${it.id}") }) }
             composable(Tab.CALLS.route) { Soon(R.string.calls_title) }
             composable(Tab.CONTACTS.route) { Soon(R.string.contacts_title) }
             composable(Tab.SETTINGS.route) { SettingsScreen(account, onAbout = { nav.navigate("about") }, onLogout = onLogout) }
             composable("about") { AboutScreen(onBack = { nav.popBackStack() }) }
-            composable("chat/{chatId}") { Soon(R.string.tab_chats) }
+            composable("chat/{chatId}") { entry ->
+                val chatId = entry.arguments?.getString("chatId").orEmpty()
+                val model = viewModel(key = "chat-$chatId") { ChatViewModel(chatId, messages) }
+                ChatScreen(model, onBack = { nav.popBackStack() })
+            }
         }
     }
 }
