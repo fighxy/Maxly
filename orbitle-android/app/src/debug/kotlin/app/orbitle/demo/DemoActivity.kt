@@ -71,6 +71,10 @@ class DemoActivity : ComponentActivity() {
         })
         intent.getStringExtra("wallpaper")?.let { appearance.setWallpaper(ChatWallpaper.valueOf(it)) }
         val player = ExoVoicePlayer(applicationContext, lifecycleScope, { "Orbitle demo" })
+        val demoRecents = object : app.orbitle.data.RecentStickerStore {
+            override var recentEmoji: List<String> = listOf("🔥", "👍", "😂")
+            override var recentStickers: List<app.orbitle.domain.Sticker> = emptyList()
+        }
         setContent {
             val prefs by appearance.state.collectAsState()
             val dark = isSystemInDarkTheme()
@@ -87,7 +91,10 @@ class DemoActivity : ComponentActivity() {
                         }
                         "settings" -> SettingsScreen(Account("1", "Иван", "Петров", "+79001234567", null), onAbout = {}, onLogout = {})
                         else -> {
-                            val model = viewModel { ChatViewModel("10", DemoMessages(group), voicePlayer = player, files = DemoFiles(applicationContext)) }
+                            val model = viewModel { ChatViewModel(
+                                "10", DemoMessages(group), voicePlayer = player, files = DemoFiles(applicationContext),
+                                stickerRepository = DemoStickers(), stickerRecents = demoRecents, emojiSupported = app.orbitle.ui.chat.EmojiSupport::canDraw,
+                            ) }
                             ChatScreen(model, onBack = { finish() })
                         }
                     }
@@ -165,6 +172,10 @@ private class DemoMessages(group: Boolean) : MessageRepository {
         list.update { it + msg("${it.size + 100}", "1", System.currentTimeMillis(), caption, content = MessageContent(attachments = attachments)) }
     }
     override suspend fun mediaLink(chatId: String, messageId: String, attachment: ChatAttachment) = "demo://${attachment.id}"
+    override suspend fun sendSticker(chatId: String, sticker: app.orbitle.domain.Sticker, replyTo: String?) {
+        val content = MessageContent(attachments = listOf(ChatAttachment.Sticker(app.orbitle.domain.StickerContent(sticker.id, sticker.id, sticker.url))))
+        list.update { it + msg("${it.size + 100}", "1", System.currentTimeMillis(), "", content = content) }
+    }
     override suspend fun transcribe(chatId: String, messageId: String, voiceId: String): String? {
         kotlinx.coroutines.delay(800)
         return "Привет! Давайте в субботу поедем на дачу, я возьму мангал."
@@ -180,6 +191,20 @@ private class DemoProfiles(private val group: Boolean) : app.orbitle.data.Profil
     override fun cached(chatId: String) = card
     override suspend fun profile(chatId: String) = card
     override suspend fun sharedPage(chatId: String, tab: app.orbitle.domain.SharedMediaTab, beforeMessageId: String) = emptyList<Message>()
+}
+
+private class DemoStickers : app.orbitle.data.StickerRepository {
+    private val res = listOf(
+        app.orbitle.R.drawable.wallpaper_autumn_thumb, app.orbitle.R.drawable.wallpaper_autumn_dark_thumb,
+        app.orbitle.R.drawable.wallpaper_autumn_night_thumb, app.orbitle.R.drawable.orbitle_mark,
+    )
+    override suspend fun catalog() = app.orbitle.domain.StickerCatalog(
+        listOf("1"),
+        listOf(app.orbitle.domain.StickerSet("s1", "Осень", null, (1..8).map { "$it" })),
+    )
+    override suspend fun stickers(ids: List<String>) = ids.map {
+        app.orbitle.domain.Sticker(it, "android.resource://app.orbitle.android.debug/${res[it.toInt() % res.size]}")
+    }
 }
 
 /** Файлы демо: «скачивание» пишет текст в кэш. */

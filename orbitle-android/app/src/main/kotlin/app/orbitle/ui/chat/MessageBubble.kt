@@ -1,5 +1,12 @@
 package app.orbitle.ui.chat
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.material.icons.automirrored.filled.Reply
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -116,14 +123,50 @@ fun BubbleRow(
     onReplyClick: (String) -> Unit,
     onRetry: (Message) -> Unit,
     highlighted: Boolean = false,
+    onSwipeReply: ((Message) -> Unit)? = null,
 ) {
     val message = item.message
     val maxWidth = (LocalConfiguration.current.screenWidthDp * 0.8f).dp
     val sticker = message.content.sticker
     val onlySticker = sticker != null && message.displayText.isBlank() && message.content.reply == null
+    // Свайп влево — ответ, как в популярных мессенджерах.
+    val density = LocalDensity.current
+    val threshold = with(density) { 64.dp.toPx() }
+    val swipe = remember { Animatable(0f) }
+    val swipeScope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
+    val canSwipe = onSwipeReply != null && message.status == MessageStatus.SENT && message.id.toLongOrNull() != null && !message.isService
+    Box(Modifier.fillMaxWidth()) {
+    if (swipe.value != 0f) {
+        val progress = (-swipe.value / threshold).coerceIn(0f, 1f)
+        Box(
+            Modifier.align(Alignment.CenterEnd).padding(end = 16.dp).size(32.dp).graphicsLayer { alpha = progress; scaleX = 0.6f + 0.4f * progress; scaleY = scaleX }
+                .clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+            contentAlignment = Alignment.Center,
+        ) { Icon(Icons.AutoMirrored.Filled.Reply, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)) }
+    }
     Row(
         Modifier
             .fillMaxWidth()
+            .then(
+                if (!canSwipe) Modifier else Modifier.pointerInput(message.id) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (-swipe.value >= threshold) onSwipeReply?.invoke(message)
+                            swipeScope.launch { swipe.animateTo(0f) }
+                        },
+                        onDragCancel = { swipeScope.launch { swipe.animateTo(0f) } },
+                        onHorizontalDrag = { change, delta ->
+                            val before = swipe.value
+                            val next = (before + delta).coerceIn(-threshold * 1.4f, 0f)
+                            if (-before < threshold && -next >= threshold) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            swipeScope.launch { swipe.snapTo(next) }
+                            change.consume()
+                        },
+                    )
+                },
+            )
+            .graphicsLayer { translationX = swipe.value }
             .background(if (highlighted) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent)
             .padding(start = 8.dp, end = 8.dp, top = if (item.authorName != null) 6.dp else 1.dp, bottom = if (item.continues) 1.dp else 4.dp),
         horizontalArrangement = if (item.outgoing) Arrangement.End else Arrangement.Start,
@@ -169,6 +212,7 @@ fun BubbleRow(
         ) {
             BubbleContent(item, colors, maxWidth, onReaction, onReplyClick)
         }
+    }
     }
 }
 

@@ -14,6 +14,11 @@ import app.orbitle.data.PreferenceStore
 import app.orbitle.data.SessionRepository
 import app.orbitle.presentation.calls.CallMarks
 import app.orbitle.presentation.chat.MessageFiles
+import app.orbitle.presentation.chat.DraftStore
+import app.orbitle.data.CoreStickerRepository
+import app.orbitle.data.RecentStickerStore
+import app.orbitle.data.StickerRepository
+import app.orbitle.domain.Sticker
 import app.orbitle.presentation.chat.VoicePlayer
 import app.orbitle.media.ExoVoicePlayer
 import app.orbitle.media.FileDownloader
@@ -73,6 +78,34 @@ class AppContainer(context: Context) {
         override fun get(key: String): String? = prefs.getString(key, null)
         override fun put(key: String, value: String) = prefs.edit().putString(key, value).apply()
     })
+
+    val stickers: StickerRepository = CoreStickerRepository(client)
+
+    /** Черновики чатов: свои у каждого аккаунта. */
+    val drafts = object : DraftStore {
+        private fun key(chatId: String) = "draft.${client.store.state.value.me ?: 0}.$chatId"
+        override fun get(chatId: String): String? = prefs.getString(key(chatId), null)
+        override fun put(chatId: String, text: String) {
+            prefs.edit().apply { if (text.isBlank()) remove(key(chatId)) else putString(key(chatId), text) }.apply()
+        }
+    }
+
+    /** Недавние эмодзи и стикеры панели. */
+    val stickerRecents = object : RecentStickerStore {
+        override var recentEmoji: List<String>
+            get() = prefs.getString("recent.emoji", null)?.split('\n')?.filter { it.isNotEmpty() }.orEmpty()
+            set(value) = prefs.edit().putString("recent.emoji", value.joinToString("\n")).apply()
+        override var recentStickers: List<Sticker>
+            get() = prefs.getString("recent.stickers", null)?.lines()?.mapNotNull(::decodeSticker).orEmpty()
+            set(value) = prefs.edit().putString("recent.stickers", value.joinToString("\n", transform = ::encodeSticker)).apply()
+
+        private fun encodeSticker(s: Sticker) = listOf(s.id, s.url, s.lottieUrl.orEmpty(), s.width?.toString().orEmpty(), s.height?.toString().orEmpty()).joinToString("\t")
+        private fun decodeSticker(line: String): Sticker? {
+            val p = line.split('\t')
+            if (p.size < 2 || p[0].isEmpty()) return null
+            return Sticker(p[0], p[1], p.getOrNull(2)?.takeIf { it.isNotEmpty() }, null, p.getOrNull(3)?.toIntOrNull(), p.getOrNull(4)?.toIntOrNull())
+        }
+    }
 
     /** Просмотренные и скрытые звонки: свои у каждого аккаунта. */
     val callMarks = object : CallMarks {

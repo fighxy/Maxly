@@ -1,5 +1,15 @@
 package app.orbitle.ui.chat
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.material.icons.outlined.EmojiEmotions
+import androidx.compose.material.icons.outlined.Keyboard
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import app.orbitle.domain.Sticker
+import app.orbitle.presentation.stickers.StickerPanel
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -228,6 +238,7 @@ fun ChatScreen(model: ChatViewModel, onBack: () -> Unit, onOpenProfile: () -> Un
                                 },
                                 onRetry = { actionsFor = it },
                                 highlighted = highlighted == item.key,
+                                onSwipeReply = if (state.canWrite) model::beginReply else null,
                             )
                         }
                     }
@@ -260,6 +271,8 @@ fun ChatScreen(model: ChatViewModel, onBack: () -> Unit, onOpenProfile: () -> Un
                     onCancelEdit = model::cancelEdit,
                     onAttach = { attaching = true },
                     onRemoveAttachment = model::removeAttachment,
+                    panel = model.stickers,
+                    onSticker = model::sendSticker,
                 )
             } else {
                 Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
@@ -362,6 +375,7 @@ private fun EmptyHint(text: String, modifier: Modifier) {
 }
 
 /** Поле ввода с плашкой ответа или правки. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Composer(
     state: ChatUiState,
@@ -371,9 +385,20 @@ private fun Composer(
     onCancelEdit: () -> Unit,
     onAttach: () -> Unit,
     onRemoveAttachment: (OutgoingFile) -> Unit,
+    panel: StickerPanel? = null,
+    onSticker: (Sticker) -> Unit = {},
 ) {
+    var showPanel by rememberSaveable { mutableStateOf(false) }
+    val hasPanel = panel != null
+    val onPanel: (Boolean) -> Unit = { showPanel = it }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val insertEmoji = remember { mutableStateOf<(String) -> Unit>({}) }
+    val imeVisible = WindowInsets.isImeVisible
+    // Клавиатура открылась поверх панели: панель уходит.
+    LaunchedEffect(imeVisible) { if (imeVisible) showPanel = false }
+    BackHandler(enabled = showPanel) { showPanel = false }
     Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
-        Column(Modifier.navigationBarsPadding()) {
+        Column(if (showPanel) Modifier else Modifier.navigationBarsPadding()) {
             val editing = state.editing
             val reply = state.replyTo
             state.uploadProgress?.let { progress ->
@@ -409,33 +434,62 @@ private fun Composer(
                     }
                     Spacer(Modifier.width(2.dp))
                 }
-                Box(
+                // Текст правки или восстановленный черновик приходит извне: курсор в конец.
+                var field by remember { mutableStateOf(TextFieldValue(state.draft, TextRange(state.draft.length))) }
+                if (field.text != state.draft) field = TextFieldValue(state.draft, TextRange(state.draft.length))
+                val focus = remember { FocusRequester() }
+                insertEmoji.value = { emoji ->
+                    val start = field.selection.min.coerceIn(0, field.text.length)
+                    val end = field.selection.max.coerceIn(0, field.text.length)
+                    val text = field.text.substring(0, start) + emoji + field.text.substring(end)
+                    field = TextFieldValue(text, TextRange(start + emoji.length))
+                    onDraft(text)
+                }
+                LaunchedEffect(editing?.id, reply?.id) { if ((editing != null || reply != null) && !showPanel) runCatching { focus.requestFocus() } }
+                Row(
                     Modifier
                         .weight(1f)
                         .heightIn(min = 44.dp)
                         .clip(RoundedCornerShape(22.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                        .padding(horizontal = 16.dp, vertical = 11.dp),
-                    contentAlignment = Alignment.CenterStart,
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                    verticalAlignment = Alignment.Bottom,
                 ) {
-                    if (state.draft.isEmpty()) Text("Сообщение", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 16.sp)
-                    // Текст правки или восстановленный черновик приходит извне: курсор в конец.
-                    var field by remember { mutableStateOf(TextFieldValue(state.draft, TextRange(state.draft.length))) }
-                    if (field.text != state.draft) field = TextFieldValue(state.draft, TextRange(state.draft.length))
-                    val focus = remember { FocusRequester() }
-                    LaunchedEffect(editing?.id, reply?.id) { if (editing != null || reply != null) runCatching { focus.requestFocus() } }
-                    BasicTextField(
-                        value = field,
-                        onValueChange = {
-                            field = it
-                            if (it.text != state.draft) onDraft(it.text)
-                        },
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp),
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                        maxLines = 6,
-                        modifier = Modifier.fillMaxWidth().focusRequester(focus),
-                    )
+                    Box(Modifier.weight(1f).padding(start = 16.dp, top = 11.dp, bottom = 11.dp, end = 4.dp), contentAlignment = Alignment.CenterStart) {
+                        if (state.draft.isEmpty()) Text("Сообщение", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 16.sp)
+                        BasicTextField(
+                            value = field,
+                            onValueChange = {
+                                field = it
+                                if (it.text != state.draft) onDraft(it.text)
+                            },
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                            maxLines = 6,
+                            modifier = Modifier.fillMaxWidth().focusRequester(focus).onFocusChanged { if (it.isFocused && showPanel) onPanel(false) },
+                        )
+                    }
+                    if (hasPanel) {
+                        IconButton(
+                            onClick = {
+                                if (showPanel) {
+                                    onPanel(false)
+                                    runCatching { focus.requestFocus() }
+                                    keyboard?.show()
+                                } else {
+                                    keyboard?.hide()
+                                    onPanel(true)
+                                }
+                            },
+                            modifier = Modifier.size(44.dp),
+                        ) {
+                            Icon(
+                                if (showPanel) Icons.Outlined.Keyboard else Icons.Outlined.EmojiEmotions,
+                                if (showPanel) "Клавиатура" else "Эмодзи и стикеры",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
                 Spacer(Modifier.width(6.dp))
                 val enabled = state.canSend
@@ -452,6 +506,13 @@ private fun Composer(
                         contentDescription = "Отправить",
                         tint = if (enabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+            }
+            if (showPanel && panel != null) {
+                Column(Modifier.navigationBarsPadding()) {
+                    StickerPanelView(panel, 300.dp, onEmoji = { insertEmoji.value(it) }, onSticker = {
+                        onSticker(it)
+                    })
                 }
             }
         }
