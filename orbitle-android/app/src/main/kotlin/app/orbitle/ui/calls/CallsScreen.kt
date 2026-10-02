@@ -57,6 +57,7 @@ import app.orbitle.presentation.calls.CallsUiState
 import app.orbitle.presentation.calls.CallsViewModel
 import app.orbitle.ui.chatlist.Placeholder
 import app.orbitle.ui.components.Avatar
+import app.orbitle.ui.components.privateBlur
 
 private val MissedRed = Color(0xFFE5484D)
 
@@ -118,11 +119,13 @@ fun CallsScreen(model: CallsViewModel, onOpenChat: (String) -> Unit) {
 @Composable
 private fun CallRowItem(row: CallRow, onOpen: () -> Unit, onHide: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
+    val privacy = app.orbitle.ui.components.LocalPrivateMode.current
+    val hidden = privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER
     Box {
         ListItem(
-            leadingContent = { Avatar(row.avatar, 48.dp) },
+            leadingContent = { Avatar(if (hidden) app.orbitle.presentation.settings.PrivateModeMask.avatar(row.avatar) else row.avatar, 48.dp, modifier = Modifier.privateBlur(privacy, 8.dp)) },
             headlineContent = {
-                Text(row.title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (row.isMissed) MissedRed else MaterialTheme.colorScheme.onSurface)
+                Text(if (hidden) app.orbitle.presentation.settings.PrivateModeMask.callTitle(row.isGroup) else row.title, modifier = Modifier.privateBlur(privacy, 7.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (row.isMissed) MissedRed else MaterialTheme.colorScheme.onSurface)
             },
             supportingContent = {
                 Row(verticalAlignment = Alignment.CenterVertically) {

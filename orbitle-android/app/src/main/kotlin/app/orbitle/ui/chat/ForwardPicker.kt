@@ -32,6 +32,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.orbitle.presentation.chatlist.ChatListItem
 import app.orbitle.ui.components.Avatar
+import app.orbitle.ui.components.privateBlur
 
 /** Выбор чата для пересылки: поиск по названию и список чатов. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,6 +40,7 @@ import app.orbitle.ui.components.Avatar
 fun ForwardPicker(targets: List<ChatListItem>, onPick: (String) -> Unit, onDismiss: () -> Unit) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var query by remember { mutableStateOf("") }
+    val privacy = app.orbitle.ui.components.LocalPrivateMode.current
     val shown = remember(targets, query) {
         val text = query.trim()
         if (text.isEmpty()) targets else targets.filter { it.title.contains(text, ignoreCase = true) }
@@ -68,10 +70,11 @@ fun ForwardPicker(targets: List<ChatListItem>, onPick: (String) -> Unit, onDismi
             }
         }
         LazyColumn(Modifier.fillMaxWidth().fillMaxHeight(0.85f)) {
-            items(shown, key = { it.id }) { item ->
+            items(shown, key = { it.id }) { original ->
+                val item = if (privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER) app.orbitle.presentation.settings.PrivateModeMask.item(original) else original
                 ListItem(
-                    headlineContent = { Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    leadingContent = { Avatar(item.avatar, 44.dp) },
+                    headlineContent = { Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.privateBlur(privacy, 7.dp)) },
+                    leadingContent = { Avatar(item.avatar, 44.dp, modifier = Modifier.privateBlur(privacy, 8.dp)) },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     modifier = Modifier.clickable { onPick(item.id) },
                 )

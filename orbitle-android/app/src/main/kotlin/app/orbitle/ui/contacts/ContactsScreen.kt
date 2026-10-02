@@ -46,6 +46,7 @@ import app.orbitle.presentation.contacts.ContactsUiState
 import app.orbitle.presentation.contacts.ContactsViewModel
 import app.orbitle.ui.chatlist.Placeholder
 import app.orbitle.ui.components.Avatar
+import app.orbitle.ui.components.privateBlur
 
 /** Вкладка «Контакты»: разделы по буквам, поиск, «в сети». Нажатие открывает диалог. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -143,9 +144,16 @@ private fun countText(count: Int): String =
 
 @Composable
 private fun ContactItem(row: ContactRow, onClick: () -> Unit) {
+    val privacy = app.orbitle.ui.components.LocalPrivateMode.current
+    val hidden = privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER
+    val private = privacy != app.orbitle.domain.PrivateModeDisplay.VISIBLE
     ListItem(
-        leadingContent = { Avatar(row.avatar, 44.dp, online = row.isOnline) },
-        headlineContent = { Text(row.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        leadingContent = {
+            Avatar(if (hidden) app.orbitle.presentation.settings.PrivateModeMask.avatar(row.avatar) else row.avatar, 44.dp, online = row.isOnline && !private, modifier = Modifier.privateBlur(privacy, 8.dp))
+        },
+        headlineContent = {
+            Text(if (hidden) app.orbitle.presentation.settings.PrivateModeMask.CONTACT_TITLE else row.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.privateBlur(privacy, 7.dp))
+        },
         supportingContent = {
             Text(row.status, color = if (row.isOnline) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         },
