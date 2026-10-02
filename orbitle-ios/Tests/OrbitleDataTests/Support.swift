@@ -169,6 +169,17 @@ actor FakeMaxAPI: MaxAPI {
 
     func reactionCatalog() async -> Result<[String], MaxAPIError> { .success(["👍", "👍", "", "🔥"]) }
 
+    // MARK: Расшифровка
+
+    var transcription: Result<CoreTranscription, MaxAPIError> = .success(CoreTranscription(status: 1, text: ""))
+    private(set) var transcriptionCalls: [String] = []
+    func setTranscription(_ result: Result<CoreTranscription, MaxAPIError>) { transcription = result }
+
+    func transcribe(chatId: String, messageId: String, audioId: String) async -> Result<CoreTranscription, MaxAPIError> {
+        transcriptionCalls.append("\(chatId):\(messageId):\(audioId)")
+        return transcription
+    }
+
     // MARK: Вложения
 
     struct AttachmentCall: Equatable, Sendable {

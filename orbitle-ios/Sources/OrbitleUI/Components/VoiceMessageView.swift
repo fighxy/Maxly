@@ -2,16 +2,22 @@ import SwiftUI
 import OrbitleDomain
 import OrbitlePresentation
 
-/// Голосовое: круглая кнопка, дорожка громкости и время.
+/// Голосовое: круглая кнопка, дорожка громкости, время и кнопка расшифровки «→T».
 ///
 /// Во время воспроизведения прослушанная часть дорожки закрашивается, а время показывает,
 /// сколько уже прозвучало. Без текста в сообщении справа снизу стоит время отправки.
+/// «→T»: пока сервер расшифровывает — круг загрузки, раскрытый текст —
+/// кнопка «^» подсвечена, текст под дорожкой.
 struct VoiceMessageView: View {
     let voice: VoiceContent
     let phase: VoicePhase
     let outgoing: Bool
     var time: AnyView?
+    var transcript: TranscriptPhase = .collapsed
+    /// `nil` — расшифровать нельзя (ещё не отправлено): кнопки нет.
+    var onTranscribe: (() -> Void)?
     let onToggle: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -33,14 +39,80 @@ struct VoiceMessageView: View {
                         if let time { time }
                     }
                 }
+                if let onTranscribe {
+                    transcribeButton(onTranscribe)
+                }
             }
-            if let transcript = voice.transcript, !transcript.isEmpty {
-                Text(transcript)
-                    .font(.footnote)
-                    .foregroundStyle(outgoing ? Color.white.opacity(0.9) : Color.primary)
+            if transcript == .expanded, let text = voice.transcript {
+                transcriptText(text)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .frame(minWidth: 200, maxWidth: 280, alignment: .leading)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: transcript)
+    }
+
+    // MARK: Расшифровка
+
+    /// «→T» свернуто, круг — идёт расшифровка, «^» на подсвеченной плашке — текст раскрыт.
+    private func transcribeButton(_ action: @escaping () -> Void) -> some View {
+        let expanded = transcript == .expanded
+        return Button(action: action) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(transcribeFill(expanded: expanded))
+                switch transcript {
+                case .loading:
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(outgoing ? Color.white : Color.orbitleAccent)
+                case .expanded:
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(outgoing ? Color.orbitleOutgoing : Color.white)
+                        .transition(.scale(scale: 0.6).combined(with: .opacity))
+                case .collapsed:
+                    Text(verbatim: "→T")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(outgoing ? Color.white : Color.orbitleAccent)
+                        .transition(.scale(scale: 0.6).combined(with: .opacity))
+                }
+            }
+            .frame(width: 32, height: 28)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(transcript == .loading)
+        .accessibilityLabel(transcribeLabel)
+    }
+
+    private func transcribeFill(expanded: Bool) -> Color {
+        if expanded { return outgoing ? Color.white : Color.orbitleAccent }
+        return outgoing ? Color.white.opacity(0.2) : Color.orbitleAccent.opacity(0.14)
+    }
+
+    private var transcribeLabel: String {
+        switch transcript {
+        case .collapsed: "Расшифровать голосовое"
+        case .loading: "Расшифровывается"
+        case .expanded: "Скрыть расшифровку"
+        }
+    }
+
+    @ViewBuilder
+    private func transcriptText(_ text: String) -> some View {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            Text("Речь не распознана")
+                .font(.footnote.italic())
+                .foregroundStyle(secondary)
+        } else {
+            Text(trimmed)
+                .font(.subheadline)
+                .foregroundStyle(outgoing ? Color.white : Color.primary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var secondary: Color {
