@@ -107,4 +107,28 @@ struct TranscriptBottomStateTests {
         state.markerMoved(bottomY: .infinity, viewportHeight: 700)
         #expect(!state.atBottom)
     }
+
+    @Test("iOS 18: у самого низа кнопка прячется по метке, даже если расстояние до низа не дошло до порога")
+    func markerHidesAtBottom() {
+        var state = TranscriptBottomState()
+        state.markerMoved(bottomY: 3_000, viewportHeight: 700, dragging: true)
+        #expect(state.showsButton(hasMessages: true))
+        // Расстояние у низа завышено отступом под поле ввода: само по себе признак не включит.
+        state.scrolled(distance: 90, dragging: false)
+        #expect(state.showsButton(hasMessages: true))
+        state.markerMoved(bottomY: 700, viewportHeight: 700, dragging: true)
+        #expect(!state.showsButton(hasMessages: true))
+    }
+
+    @Test("iOS 18: без пальца метка за экраном (картинка выросла, лента не тронута) кнопку не показывает")
+    func markerGrowthWithoutFinger() {
+        var state = TranscriptBottomState()
+        state.markerMoved(bottomY: 1_200, viewportHeight: 700, dragging: false)
+        #expect(state.atBottom)
+        // Ленивая лента убрала метку — тоже не повод без пальца.
+        state.markerMoved(bottomY: .infinity, viewportHeight: 700, dragging: false)
+        #expect(state.atBottom)
+        state.markerMoved(bottomY: .infinity, viewportHeight: 700, dragging: true)
+        #expect(!state.atBottom)
+    }
 }

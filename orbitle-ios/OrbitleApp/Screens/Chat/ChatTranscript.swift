@@ -479,7 +479,8 @@ private struct SavedMessagesPlaceholder: View {
 /// признак сбрасывался, кнопка «вниз» мигала, а следующее сообщение уже не прокручивало
 /// ленту. Пока лента внизу, при росте содержимого она держится низом
 /// (`defaultScrollAnchor(.bottom, for: .sizeChanges)`): прежние пузыри уезжают вверх в том
-/// же кадре, без второго рывка. На iOS 17 — метка низа, как раньше.
+/// же кадре, без второго рывка. Где низ, на обеих версиях говорит метка низа (на iOS 18
+/// ещё и расстояние до низа, но только чтобы признак включить).
 private struct TranscriptBottomTracking: ViewModifier {
     @Binding var bottom: TranscriptBottomState
     let viewportHeight: CGFloat
@@ -494,11 +495,16 @@ private struct TranscriptBottomTracking: ViewModifier {
                     // Палец взял ленту во время прыжка «вниз»: доводки к низу не будет.
                     if phase == .tracking || phase == .interacting { update { $0.userTookOver() } }
                 }
+                // Доезд до низа по расстоянию — только признак «внизу»; уход от низа решает
+                // метка низа и только под пальцем (см. `TranscriptBottomState.markerMoved`).
                 .onScrollGeometryChange(for: CGFloat.self) { geometry in
                     geometry.contentSize.height + geometry.contentInsets.bottom
                         - geometry.contentOffset.y - geometry.containerSize.height
                 } action: { _, distance in
-                    update { $0.scrolled(distance: Double(distance), dragging: dragging) }
+                    update { $0.scrolled(distance: Double(distance), dragging: false) }
+                }
+                .onPreferenceChange(TranscriptBottomPreference.self) { bottomY in
+                    update { $0.markerMoved(bottomY: Double(bottomY), viewportHeight: Double(viewportHeight), dragging: dragging) }
                 }
         } else {
             content
