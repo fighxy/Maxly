@@ -124,6 +124,8 @@ struct ChatView: View {
                 }
             }
         }
+        // Своя размытая полоса вместо системной подложки: лента уходит под шапку.
+        .chatHeaderBlur()
         .navigationDestination(isPresented: $profileShown) {
             if let profile {
                 ChatProfileView(
