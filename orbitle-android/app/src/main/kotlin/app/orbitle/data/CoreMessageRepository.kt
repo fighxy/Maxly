@@ -157,6 +157,36 @@ class CoreMessageRepository(
         deliver(chatId, local, replyTo, progress)
     }
 
+    /** Голосовые не ушедших сообщений: нужны для повтора. */
+    private val pendingVoice = java.util.concurrent.ConcurrentHashMap<String, app.orbitle.domain.VoiceRecording>()
+
+    override suspend fun sendVoice(chatId: String, recording: app.orbitle.domain.VoiceRecording, replyTo: String?) {
+        val voice = app.orbitle.domain.VoiceContent("local-voice", "file://${recording.path}", recording.waveform, recording.durationMs)
+        val local = Message(
+            id = "local-${localIds.incrementAndGet()}",
+            chatId = chatId,
+            authorId = currentUserId.orEmpty(),
+            text = "",
+            timeMs = clock(),
+            status = MessageStatus.SENDING,
+            content = MessageContent(reply = replyTo?.let { replyPreview(chatId, it) }, attachments = listOf(ChatAttachment.Voice(voice))),
+        )
+        pendingVoice[local.id] = recording
+        put(chatId, local)
+        deliver(chatId, local, replyTo)
+    }
+
+    /** Загрузка голосового и одно сообщение с ним; волна уходит столбиками 0…120. */
+    private suspend fun uploadVoice(chatId: String, recording: app.orbitle.domain.VoiceRecording, replyTo: String?, progress: (Float) -> Unit) {
+        val bytes = java.io.File(recording.path).readBytes()
+        val uploaded = client.media.uploadVoice(bytes, recording.fileName, recording.durationMs) { sent, total ->
+            if (total > 0) progress((sent.toFloat() / total).coerceIn(0f, 1f))
+        }
+        val wave = ByteArray(recording.waveform.size) { recording.waveform[it].coerceIn(0, 255).toByte() }
+        val attachment = if (wave.isEmpty()) uploaded else uploaded.copy(wave = wave)
+        client.sendAttachments(chatId.toLong(), listOf(attachment), null, replyTo?.toLongOrNull())
+    }
+
     private fun localAttachment(index: Int, item: OutgoingFile): ChatAttachment {
         val id = "local-$index"
         val uri = "file://${item.path}"
@@ -179,8 +209,11 @@ class CoreMessageRepository(
         // Уход с экрана не должен обрывать отправку на полпути.
         try {
             val media = pendingMedia[local.id]
+            val recording = pendingVoice[local.id]
             withContext(NonCancellable) {
-                if (media == null) {
+                if (recording != null) {
+                    MaxCoreGateway.call { uploadVoice(chatId, recording, replyTo, progress) }
+                } else if (media == null) {
                     MaxCoreGateway.call { client.sendText(chatId.toLong(), local.text, replyTo?.toLongOrNull()) }
                 } else {
                     val outgoing = media.map { OutgoingMedia(it.path, coreKind(it.kind), it.name) }
@@ -204,6 +237,7 @@ class CoreMessageRepository(
                 }
             }
             pendingMedia.remove(local.id)
+            pendingVoice.remove(local.id)?.let { java.io.File(it.path).delete() }
             remove(chatId, local.id)
         } catch (failure: Exception) {
             put(chatId, local.copy(status = MessageStatus.FAILED))
@@ -220,6 +254,7 @@ class CoreMessageRepository(
 
     override fun discard(chatId: String, localId: String) {
         pendingMedia.remove(localId)
+        pendingVoice.remove(localId)?.let { java.io.File(it.path).delete() }
         remove(chatId, localId)
     }
 

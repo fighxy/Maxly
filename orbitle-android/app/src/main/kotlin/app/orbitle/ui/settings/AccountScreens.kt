@@ -297,7 +297,8 @@ fun PrivacyScreen(
             model.setOnlineHidden(it)
         }
         "privateStyle" -> privateMode?.let { settings ->
-            ChoiceDialog("Вид", app.orbitle.domain.PrivateModeStyle.entries, settings.state.value.style, { it.title }, { dialog = null }) {
+            val prefs by settings.state.collectAsStateWithLifecycle()
+            ChoiceDialog("Вид", app.orbitle.domain.PrivateModeStyle.entries, prefs.style, { it.title }, { dialog = null }) {
                 settings.setStyle(it)
             }
         }

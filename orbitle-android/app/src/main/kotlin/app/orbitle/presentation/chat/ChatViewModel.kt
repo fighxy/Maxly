@@ -202,6 +202,21 @@ class ChatViewModel(
     }
 
     /** Отправить стикер сразу, с текущим ответом. */
+    /** Отправить записанное голосовое; ответ, если был, уходит с ним. */
+    fun sendVoice(recording: app.orbitle.domain.VoiceRecording) {
+        val reply = _state.value.replyTo
+        _state.update { it.copy(replyTo = null) }
+        viewModelScope.launch {
+            try {
+                repository.sendVoice(chatId, recording, reply?.id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                show(e)
+            }
+        }
+    }
+
     fun sendSticker(sticker: Sticker) {
         val reply = _state.value.replyTo
         _state.update { it.copy(replyTo = null) }

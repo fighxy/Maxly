@@ -24,3 +24,11 @@ data class OutgoingFile(
         const val LIMIT = 10
     }
 }
+
+/** Записанное голосовое: файл на устройстве, длительность и 80 столбиков волны 0…120. */
+data class VoiceRecording(
+    val path: String,
+    val durationMs: Long,
+    val waveform: List<Int>,
+    val fileName: String = "voice.ogg",
+)

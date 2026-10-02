@@ -46,6 +46,10 @@ interface MessageRepository {
     suspend fun sendMedia(chatId: String, items: List<OutgoingFile>, caption: String, replyTo: String?, progress: (Float) -> Unit = {}): Unit =
         throw OrbitleError.Rejected("Отправка вложений недоступна")
 
+    /** Отправить записанное голосовое. Сообщение сразу встаёт в ленту, как вложения. */
+    suspend fun sendVoice(chatId: String, recording: app.orbitle.domain.VoiceRecording, replyTo: String?): Unit =
+        throw OrbitleError.Rejected("Голосовые недоступны")
+
     /** Отправить стикер каталога. */
     suspend fun sendSticker(chatId: String, sticker: app.orbitle.domain.Sticker, replyTo: String?): Unit =
         throw OrbitleError.Rejected("Стикеры недоступны")
