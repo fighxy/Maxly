@@ -105,6 +105,9 @@ class DemoActivity : ComponentActivity() {
                         "privacy" -> app.orbitle.ui.settings.PrivacyScreen(
                             viewModel { app.orbitle.presentation.settings.AccountSettingsViewModel(DemoAccount()) }, onBack = { finish() }, onBlocked = {},
                         )
+                        "storage" -> app.orbitle.ui.settings.StorageScreen(
+                            viewModel { app.orbitle.presentation.settings.StorageViewModel(DemoStorage()) }, onBack = { finish() },
+                        )
                         "blocked" -> app.orbitle.ui.settings.BlockedUsersScreen(
                             viewModel { app.orbitle.presentation.settings.AccountSettingsViewModel(DemoAccount()) }, onBack = { finish() },
                         )

@@ -55,6 +55,7 @@ class AppContainer(context: Context) {
     val contacts: ContactRepository = CoreContactRepository(client)
 
     val sessions: SessionRepository = CoreSessionRepository(client)
+    val storage: app.orbitle.data.StorageRepository = app.orbitle.media.CacheStorage(context.applicationContext)
 
     val profiles: ProfileRepository = CoreProfileRepository(client)
 
