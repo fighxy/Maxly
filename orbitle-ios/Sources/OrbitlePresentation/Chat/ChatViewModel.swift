@@ -727,7 +727,7 @@ public final class ChatViewModel {
             } catch {
                 // Ошибка — в самом пузыре, как в Komet, а не над полем ввода.
                 self.transcribing.remove(id)
-                if error != .cancelled { self.failedTranscripts.insert(id) }
+                if (error as? OrbitleError) != .cancelled { self.failedTranscripts.insert(id) }
             }
         }
     }
