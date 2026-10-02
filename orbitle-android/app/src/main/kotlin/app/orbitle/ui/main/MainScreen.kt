@@ -56,6 +56,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import app.orbitle.presentation.settings.AccountSettingsViewModel
 import app.orbitle.ui.settings.BlockedUsersScreen
 import app.orbitle.ui.settings.PrivacyScreen
+import app.orbitle.ui.settings.StorageScreen
+import app.orbitle.presentation.settings.StorageViewModel
 import app.orbitle.ui.settings.ProfileEditScreen
 import app.orbitle.presentation.chatlist.ChatListFormatter
 import app.orbitle.presentation.chatlist.ChatListViewModel
@@ -142,10 +144,12 @@ fun MainScreen(
                     onAppearance = { nav.navigate("appearance") },
                     onEditProfile = { nav.navigate("profile-edit") },
                     onPrivacy = { nav.navigate("privacy") },
+                    onStorage = { nav.navigate("storage") },
                 )
             }
             composable("profile-edit") { ProfileEditScreen(accountModel, onBack = { nav.popBackStack() }) }
             composable("privacy") { PrivacyScreen(accountModel, onBack = { nav.popBackStack() }, onBlocked = { nav.navigate("blocked") }) }
+            composable("storage") { StorageScreen(viewModel { StorageViewModel(container.storage) }, onBack = { nav.popBackStack() }) }
             composable("blocked") { BlockedUsersScreen(accountModel, onBack = { nav.popBackStack() }) }
             composable("about") { AboutScreen(onBack = { nav.popBackStack() }) }
             composable("devices") { DevicesScreen(container.sessions, onBack = { nav.popBackStack() }) }

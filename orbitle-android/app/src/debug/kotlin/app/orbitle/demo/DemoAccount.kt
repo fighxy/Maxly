@@ -57,3 +57,21 @@ class DemoAccount : AccountRepository {
         blocked.removeAll { it.id == userId }
     }
 }
+
+/** Кэш для DemoActivity: выдуманные размеры, очистка обнуляет отмеченное. */
+class DemoStorage : app.orbitle.data.StorageRepository {
+    private val sizes = mutableMapOf(
+        app.orbitle.domain.StorageCategory.PHOTOS to 184_320_000L,
+        app.orbitle.domain.StorageCategory.FILES to 96_500_000L,
+        app.orbitle.domain.StorageCategory.OUTGOING to 12_400_000L,
+        app.orbitle.domain.StorageCategory.OTHER to 640_000L,
+    )
+    override suspend fun usage(): app.orbitle.domain.StorageUsage {
+        delay(300)
+        return app.orbitle.domain.StorageUsage(sizes.toMap())
+    }
+    override suspend fun clear(categories: Set<app.orbitle.domain.StorageCategory>) {
+        delay(800)
+        categories.forEach { sizes[it] = 0L }
+    }
+}

@@ -13,6 +13,7 @@ import androidx.compose.material.icons.outlined.Contacts
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.outlined.Notifications
@@ -77,6 +78,7 @@ fun SettingsScreen(
     onAppearance: () -> Unit = {},
     onEditProfile: () -> Unit = {},
     onPrivacy: () -> Unit = {},
+    onStorage: () -> Unit = {},
 ) {
     var confirm by rememberSaveable { mutableStateOf(false) }
     Scaffold(
@@ -90,6 +92,7 @@ fun SettingsScreen(
             SettingsItem(Icons.Outlined.Notifications, "Уведомления и звук", subtitle = "Скоро", enabled = false) {}
             SettingsItem(Icons.Outlined.Lock, "Конфиденциальность", onClick = onPrivacy)
             SettingsItem(Icons.Outlined.Devices, "Устройства", onClick = onDevices)
+            SettingsItem(Icons.Outlined.Storage, "Данные и память", onClick = onStorage)
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
             SettingsItem(Icons.Outlined.BookmarkBorder, "Избранное", onClick = onSaved)
             SettingsItem(Icons.Outlined.Contacts, "Контакты", onClick = onContacts)
