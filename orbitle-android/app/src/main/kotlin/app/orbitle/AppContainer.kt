@@ -84,6 +84,7 @@ class AppContainer(context: Context) {
     val stickers: StickerRepository = CoreStickerRepository(client)
 
     val comments: app.orbitle.data.CommentsRepository = app.orbitle.data.CoreCommentsRepository(client)
+    val mediaSaver: app.orbitle.presentation.chat.MediaSaver = app.orbitle.media.MediaStoreSaver(context)
 
     /** Черновики чатов и ручные пометки «непрочитано»: свои у каждого аккаунта. */
     private val localMarks = object : DraftStore, ChatLocalMarks {

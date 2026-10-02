@@ -101,6 +101,7 @@ class ChatViewModel(
     emojiSupported: (String) -> Boolean = { true },
     /** Комментарии постов канала; `null` — без них. */
     private val comments: CommentsRepository? = null,
+    mediaSaver: MediaSaver? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatUiState())
@@ -111,7 +112,7 @@ class ChatViewModel(
     val messages: StateFlow<String?> = _messages.asStateFlow()
 
     /** Голосовые, расшифровка, просмотр фото и видео, файлы. */
-    val media = ChatMedia(chatId, repository, viewModelScope, voicePlayer, files, onError = { show(it) })
+    val media = ChatMedia(chatId, repository, viewModelScope, voicePlayer, files, mediaSaver, onNotice = { _messages.value = it }, onError = { show(it) })
 
     /** Панель эмодзи и стикеров. */
     val stickers: StickerPanel? = stickerRecents?.let { StickerPanel(stickerRepository, it, viewModelScope, emojiSupported) }

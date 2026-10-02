@@ -150,6 +150,7 @@ fun MainScreen(
                         chatId, container.messages, fallbackTitle = title, voicePlayer = container.voicePlayer, files = container.files,
                         stickerRepository = container.stickers, stickerRecents = container.stickerRecents, drafts = container.drafts,
                         emojiSupported = EmojiSupport::canDraw, comments = container.comments,
+                        mediaSaver = container.mediaSaver,
                     ) }
                 ChatScreen(
                     model,

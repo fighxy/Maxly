@@ -1,5 +1,8 @@
 package app.orbitle.ui.chat
 
+import app.orbitle.presentation.chat.SaveTarget
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.Download
 import app.orbitle.presentation.chat.ReactionPalette
 import androidx.compose.material.icons.outlined.Group
 import androidx.activity.compose.BackHandler
@@ -165,6 +168,27 @@ fun ChatScreen(
     }
     val pickVisual = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(OutgoingFile.LIMIT), importUris)
     val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments(), importUris)
+    // До Android 10 запись в общие папки требует разрешения.
+    var pendingSave by remember { mutableStateOf<Pair<Message, SaveTarget>?>(null) }
+    val storagePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        pendingSave?.let { (message, target) -> if (granted) model.media.save(message, target) else model.notify("Нет доступа к памяти телефона") }
+        pendingSave = null
+    }
+    val requestViewerSave: () -> Unit = {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q ||
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) model.media.saveViewed() else storagePermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+    }
+    val requestSave: (Message, SaveTarget) -> Unit = { message, target ->
+        val allowed = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q ||
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (allowed) {
+            model.media.save(message, target)
+        } else {
+            pendingSave = message to target
+            storagePermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+    }
     val openFile = mediaState.value.openFile
     LaunchedEffect(openFile) {
         val file = openFile ?: return@LaunchedEffect
@@ -332,7 +356,13 @@ fun ChatScreen(
         )
     }
     mediaState.value.viewer?.let { viewer ->
-        MediaViewer(viewer, mediaUserAgent, onPage = model.media::showPage, onClose = model.media::closeViewer)
+        MediaViewer(
+            viewer, mediaUserAgent, onPage = model.media::showPage, onClose = model.media::closeViewer,
+            onSave = if (model.media.canSave(Message(viewer.messageId, model.chatId, "", "", viewer.timeMs, content = app.orbitle.domain.MessageContent(attachments = viewer.items)), SaveTarget.GALLERY)) {
+                { requestViewerSave() }
+            } else null,
+            saving = viewer.messageId in mediaState.value.saving,
+        )
     }
     actionsFor?.let { message ->
         MessageActions(
@@ -342,6 +372,7 @@ fun ChatScreen(
             onDelete = { deleting = message },
             onForward = { forwarding = message },
             onReactionUsers = { reactionUsers = model.reactionUsers(message) },
+            onSave = { target -> requestSave(message, target) },
         )
     }
     reactionUsers?.let { users ->
@@ -625,6 +656,7 @@ private fun MessageActions(
     onDelete: () -> Unit,
     onForward: () -> Unit,
     onReactionUsers: () -> Unit,
+    onSave: (SaveTarget) -> Unit,
 ) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val clipboard = LocalClipboardManager.current
@@ -696,6 +728,22 @@ private fun MessageActions(
                     clipboard.setText(AnnotatedString(message.displayText))
                     onDismiss()
                 },
+            )
+        }
+        if (model.media.canSave(message, SaveTarget.GALLERY)) {
+            ListItem(
+                headlineContent = { Text("Сохранить в галерею") },
+                leadingContent = { Icon(Icons.Outlined.Download, null) },
+                colors = colors,
+                modifier = Modifier.clickable { onDismiss(); onSave(SaveTarget.GALLERY) },
+            )
+        }
+        if (model.media.canSave(message, SaveTarget.DOWNLOADS)) {
+            ListItem(
+                headlineContent = { Text("Сохранить в «Загрузки»") },
+                leadingContent = { Icon(Icons.Outlined.Folder, null) },
+                colors = colors,
+                modifier = Modifier.clickable { onDismiss(); onSave(SaveTarget.DOWNLOADS) },
             )
         }
         if (model.canForward(message)) {
