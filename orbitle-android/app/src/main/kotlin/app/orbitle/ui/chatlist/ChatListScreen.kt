@@ -375,26 +375,31 @@ fun ChatRow(original: ChatListItem, onClick: () -> Unit, actions: ChatRowActions
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        item.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false).privateBlur(privacy, 7.dp),
-                    )
-                    if (item.isVerified) {
-                        Spacer(Modifier.width(4.dp))
-                        Icon(Icons.Filled.Verified, stringResource(R.string.chats_verified), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                    // Название с отметками занимает всё свободное место, время прижато к правому краю.
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            item.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false).privateBlur(privacy, 7.dp),
+                        )
+                        if (item.isVerified) {
+                            Spacer(Modifier.width(4.dp))
+                            Icon(Icons.Filled.Verified, stringResource(R.string.chats_verified), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                        }
+                        if (item.isMuted) {
+                            Spacer(Modifier.width(4.dp))
+                            Icon(Icons.AutoMirrored.Filled.VolumeOff, stringResource(R.string.chats_muted), Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
-                    if (item.isMuted) {
+                    Spacer(Modifier.width(8.dp))
+                    item.delivery?.let {
+                        DeliveryIcon(it)
                         Spacer(Modifier.width(4.dp))
-                        Icon(Icons.AutoMirrored.Filled.VolumeOff, stringResource(R.string.chats_muted), Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Spacer(Modifier.weight(1f))
-                    item.delivery?.let { DeliveryIcon(it) }
-                    Spacer(Modifier.width(4.dp))
-                    Text(item.time, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(item.time, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
                 Spacer(Modifier.height(3.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {

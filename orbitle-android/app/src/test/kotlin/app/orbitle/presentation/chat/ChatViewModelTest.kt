@@ -293,6 +293,26 @@ class ChatViewModelTest {
     }
 
     @Test
+    fun savedMessagesHideTheWelcomeKey() {
+        val saved = vm(Chat.SAVED_MESSAGES_ID)
+        val welcome = msg("1", at = now - day).copy(isService = true, text = " ${app.orbitle.domain.SavedMessagesWelcome.KEY}\n")
+        repo.list.value = listOf(welcome)
+        // Только приветствие — лента пуста и видна подсказка «Избранного».
+        assertTrue(saved.state.value.items.isEmpty())
+        assertTrue(saved.state.value.emptyHint!!.contains("только вы"))
+        repo.list.value = listOf(welcome, msg("2"))
+        assertEquals(listOf("2", "day-2026-09-29"), saved.state.value.items.map { it.key })
+        assertNull(saved.state.value.emptyHint)
+    }
+
+    @Test
+    fun welcomeKeyStaysOutsideSavedMessages() {
+        val model = vm()
+        repo.list.value = listOf(msg("1", text = app.orbitle.domain.SavedMessagesWelcome.KEY))
+        assertEquals(listOf("1", "day-2026-09-29"), model.state.value.items.map { it.key })
+    }
+
+    @Test
     fun serviceMessagesBecomeChips() {
         val model = vm()
         repo.list.value = listOf(msg("1").copy(isService = true, text = "Чат создан"), msg("2"))
