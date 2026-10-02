@@ -115,6 +115,10 @@ class CoreMessageRepository(
         deliver(chatId, local, replyTo)
     }
 
+    override suspend fun sendSticker(chatId: String, sticker: app.orbitle.domain.Sticker, replyTo: String?) {
+        MaxCoreGateway.call { client.sendSticker(chatId.toLong(), sticker.id.toLong(), replyTo?.toLongOrNull()) }
+    }
+
     /** Вложения не ушедших сообщений: нужны для повтора. */
     private val pendingMedia = java.util.concurrent.ConcurrentHashMap<String, List<OutgoingFile>>()
 

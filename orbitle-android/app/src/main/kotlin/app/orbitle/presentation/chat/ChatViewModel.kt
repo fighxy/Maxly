@@ -10,6 +10,10 @@ import app.orbitle.domain.Message
 import app.orbitle.domain.MessageStatus
 import app.orbitle.domain.OrbitleError
 import app.orbitle.domain.OutgoingFile
+import app.orbitle.domain.Sticker
+import app.orbitle.data.RecentStickerStore
+import app.orbitle.data.StickerRepository
+import app.orbitle.presentation.stickers.StickerPanel
 import app.orbitle.presentation.chatlist.ChatAvatar
 import app.orbitle.presentation.chatlist.ChatListFormatter
 import kotlinx.coroutines.CancellationException
@@ -87,6 +91,11 @@ class ChatViewModel(
     private val fallbackTitle: String? = null,
     voicePlayer: VoicePlayer? = null,
     files: MessageFiles? = null,
+    stickerRepository: StickerRepository? = null,
+    stickerRecents: RecentStickerStore? = null,
+    /** Черновики полей ввода по чатам: переживают выход из чата и перезапуск. */
+    private val drafts: DraftStore? = null,
+    emojiSupported: (String) -> Boolean = { true },
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatUiState())
@@ -99,6 +108,9 @@ class ChatViewModel(
     /** Голосовые, расшифровка, просмотр фото и видео, файлы. */
     val media = ChatMedia(chatId, repository, viewModelScope, voicePlayer, files, onError = { show(it) })
 
+    /** Панель эмодзи и стикеров. */
+    val stickers: StickerPanel? = stickerRecents?.let { StickerPanel(stickerRepository, it, viewModelScope, emojiSupported) }
+
     private var history: List<Message> = emptyList()
     private var header: ChatHeaderInfo? = null
     private var latestLoaded = false
@@ -108,6 +120,7 @@ class ChatViewModel(
     private var builtFor: ChatType? = null
 
     init {
+        drafts?.get(chatId)?.takeIf { it.isNotEmpty() }?.let { saved -> _state.update { it.copy(draft = saved) } }
         viewModelScope.launch {
             repository.messages(chatId).collect {
                 history = it
@@ -166,7 +179,26 @@ class ChatViewModel(
         if (value) markRead()
     }
 
-    fun setDraft(text: String) = _state.update { it.copy(draft = text) }
+    fun setDraft(text: String) {
+        _state.update { it.copy(draft = text) }
+        if (_state.value.editing == null) drafts?.put(chatId, text)
+    }
+
+    /** Отправить стикер сразу, с текущим ответом. */
+    fun sendSticker(sticker: Sticker) {
+        val reply = _state.value.replyTo
+        _state.update { it.copy(replyTo = null) }
+        stickers?.usedSticker(sticker)
+        viewModelScope.launch {
+            try {
+                repository.sendSticker(chatId, sticker, reply?.id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                show(e)
+            }
+        }
+    }
 
     /** Добавить выбранные вложения; сверх лимита — подсказка. */
     fun addAttachments(items: List<OutgoingFile>) {
@@ -191,6 +223,7 @@ class ChatViewModel(
         _state.value.editing?.let { saveEdit(it, text); return }
         val reply = _state.value.replyTo
         _state.update { it.copy(draft = "", replyTo = null) }
+        drafts?.put(chatId, "")
         viewModelScope.launch {
             try {
                 repository.send(chatId, text, reply?.id)
@@ -205,6 +238,7 @@ class ChatViewModel(
     private fun sendAttachments(items: List<OutgoingFile>, caption: String) {
         val reply = _state.value.replyTo
         _state.update { it.copy(draft = "", replyTo = null, attachments = emptyList(), uploadProgress = 0f) }
+        drafts?.put(chatId, "")
         viewModelScope.launch {
             try {
                 repository.sendMedia(chatId, items, caption, reply?.id) { fraction ->
@@ -462,6 +496,12 @@ class ChatViewModel(
     companion object {
         const val REACTION_FAILURE = "Не удалось поставить реакцию"
     }
+}
+
+/** Черновики полей ввода: id чата → текст. */
+interface DraftStore {
+    fun get(chatId: String): String?
+    fun put(chatId: String, text: String)
 }
 
 /** Быстрые реакции меню сообщения. */

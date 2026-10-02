@@ -50,6 +50,7 @@ import app.orbitle.ui.settings.DevicesScreen
 import app.orbitle.presentation.chat.ChatViewModel
 import app.orbitle.presentation.profile.ProfileViewModel
 import app.orbitle.ui.profile.ProfileScreen
+import app.orbitle.ui.chat.EmojiSupport
 import app.orbitle.ui.chat.ChatScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.orbitle.presentation.chatlist.ChatListFormatter
@@ -145,7 +146,11 @@ fun MainScreen(
             ) { entry ->
                 val chatId = entry.arguments?.getString("chatId").orEmpty()
                 val title = entry.arguments?.getString("title")
-                val model = viewModel(key = "chat-$chatId") { ChatViewModel(chatId, container.messages, fallbackTitle = title, voicePlayer = container.voicePlayer, files = container.files) }
+                val model = viewModel(key = "chat-$chatId") { ChatViewModel(
+                        chatId, container.messages, fallbackTitle = title, voicePlayer = container.voicePlayer, files = container.files,
+                        stickerRepository = container.stickers, stickerRecents = container.stickerRecents, drafts = container.drafts,
+                        emojiSupported = EmojiSupport::canDraw,
+                    ) }
                 ChatScreen(
                     model,
                     onBack = { nav.popBackStack() },

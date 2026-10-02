@@ -46,6 +46,10 @@ interface MessageRepository {
     suspend fun sendMedia(chatId: String, items: List<OutgoingFile>, caption: String, replyTo: String?, progress: (Float) -> Unit = {}): Unit =
         throw OrbitleError.Rejected("Отправка вложений недоступна")
 
+    /** Отправить стикер каталога. */
+    suspend fun sendSticker(chatId: String, sticker: app.orbitle.domain.Sticker, replyTo: String?): Unit =
+        throw OrbitleError.Rejected("Стикеры недоступны")
+
     /** Повторить не ушедшее сообщение. */
     suspend fun retry(chatId: String, localId: String)
 
