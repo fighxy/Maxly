@@ -971,7 +971,7 @@ public final class ChatViewModel {
             switch attachment {
             case .photo, .video: true
             case .voice, .file: target == .files
-            case .contact, .sticker: false
+            case .contact, .sticker, .call: false
             }
         }
     }
@@ -1059,6 +1059,8 @@ public final class ChatViewModel {
             throw .rejected("Контакт нельзя сохранить файлом")
         case .sticker:
             throw .rejected("Стикер нельзя сохранить файлом")
+        case .call:
+            throw .rejected("Звонок нельзя сохранить файлом")
         }
     }
 

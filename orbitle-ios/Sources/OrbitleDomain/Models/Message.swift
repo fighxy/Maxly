@@ -75,6 +75,9 @@ public struct Message: Identifiable, Hashable, Sendable {
         if let contact = content.attachments.compactMap(\.contact).first {
             return contact.name.isEmpty ? "Контакт" : "Контакт: \(contact.name)"
         }
+        if let call = content.call {
+            return call.isGroup ? "Групповой звонок" : "Звонок"
+        }
         return "Сообщение"
     }
 

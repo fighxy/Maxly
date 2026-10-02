@@ -324,7 +324,7 @@ struct TranscriptBubble: View, Equatable {
             }
             PrivateBubbleGate(
                 isRevealed: state.isRevealed,
-                accessibilityText: PrivateModeMask.messageText(outgoing: state.row.isOutgoing),
+                accessibilityText: PrivateModeMask.messageText(for: message, outgoing: state.row.isOutgoing),
                 onReveal: { [reveal, id = message.id] in
                     withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { reveal.reveal(id) }
                 }

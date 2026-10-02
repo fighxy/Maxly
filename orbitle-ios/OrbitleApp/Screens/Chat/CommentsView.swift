@@ -90,7 +90,7 @@ struct CommentsView: View {
     ) -> some View {
         PrivateBubbleGate(
             isRevealed: reveal.isRevealed(message.id),
-            accessibilityText: PrivateModeMask.messageText(outgoing: outgoing),
+            accessibilityText: PrivateModeMask.messageText(for: message, outgoing: outgoing),
             onReveal: { withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { reveal.reveal(message.id) } },
             real: real,
             masked: {

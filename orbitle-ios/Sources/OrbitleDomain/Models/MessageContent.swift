@@ -73,6 +73,15 @@ public struct MessageContent: Hashable, Sendable, Codable {
         attachments.lazy.compactMap(\.sticker).first
     }
 
+    public var calls: [CallContent] {
+        attachments.compactMap(\.call)
+    }
+
+    /// Звонок сообщения: сервер кладёт его отдельным сообщением без текста.
+    public var call: CallContent? {
+        attachments.lazy.compactMap(\.call).first
+    }
+
     /// Вид первого вложения для строки списка чатов.
     public var previewMedia: MessageMediaKind? {
         switch attachments.first {
@@ -82,6 +91,7 @@ public struct MessageContent: Hashable, Sendable, Codable {
         case .file: .file
         case .contact: .contact
         case .sticker: .sticker
+        case .call(let call): call.isGroup ? .groupCall : .call
         case nil: nil
         }
     }
@@ -181,6 +191,8 @@ public enum ChatAttachment: Hashable, Sendable, Codable {
     case file(FileContent)
     case contact(ContactContent)
     case sticker(StickerContent)
+    /// Звонок: что было и чем закончилось.
+    case call(CallContent)
 
     public var id: String {
         switch self {
@@ -190,6 +202,7 @@ public enum ChatAttachment: Hashable, Sendable, Codable {
         case .file(let item): item.id
         case .contact(let item): item.id
         case .sticker(let item): item.id
+        case .call(let item): item.id
         }
     }
 
@@ -227,6 +240,11 @@ public enum ChatAttachment: Hashable, Sendable, Codable {
         return nil
     }
 
+    public var call: CallContent? {
+        if case .call(let item) = self { return item }
+        return nil
+    }
+
     public func withLocalPath(_ path: String, id: String) -> ChatAttachment {
         switch self {
         case .photo(var item):
@@ -245,7 +263,7 @@ public enum ChatAttachment: Hashable, Sendable, Codable {
             guard item.id == id else { return self }
             item.localPath = path
             return .file(item)
-        case .contact, .sticker:
+        case .contact, .sticker, .call:
             return self
         }
     }
