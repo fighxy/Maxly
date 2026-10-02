@@ -510,14 +510,15 @@ public struct MessageBubble: View {
         let name = showsAuthorName && !authorTitle.isEmpty
         if name || message.content.reply != nil || message.content.forward != nil {
             VStack(alignment: .leading, spacing: 4) {
-                if let forward = message.content.forward {
-                    forwardLabel(forward)
-                }
+                // Как в Telegram: сначала кто прислал в группу, под ним — от кого переслано.
                 if name {
                     Text(authorTitle)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(authorColor)
                         .lineLimit(1)
+                }
+                if let forward = message.content.forward {
+                    forwardLabel(forward)
                 }
                 if let reply = message.content.reply {
                     quote(reply)
@@ -619,7 +620,9 @@ public struct MessageBubble: View {
         var reserve = Text(verbatim: "\u{2007}\u{2007}")
         if isEdited { reserve = reserve + Text(verbatim: "изм.\u{2007}") }
         reserve = reserve + Text(verbatim: ChatContentFormat.time(message.timestamp)).monospacedDigit()
-        if isOutgoing { reserve = reserve + Text(verbatim: "\u{2007}\u{2007}\u{2007}\u{2007}") }
+        // Под галочки — видимые знаки (их прячет прозрачный цвет), а не пробелы: пробелы в конце
+        // строки «висят» за её краем и не занимают места, и последнее слово заезжало под время.
+        if isOutgoing { reserve = reserve + Text(verbatim: "\u{2007}000").monospacedDigit() }
         return reserve.font(.caption2)
     }
 

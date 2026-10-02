@@ -86,6 +86,10 @@ public actor MediaRepositoryImpl: MediaRepository {
         let ext = item.url.pathExtension
         if !ext.isEmpty, ext.allSatisfy({ $0.isLetter || $0.isNumber }) {
             url.appendPathExtension(ext)
+        } else if item.type == .video || item.type == .videoNote {
+            // Адреса роликов CDN Max без расширения: AVPlayer не узнаёт формат файла без него
+            // (AVFoundationErrorDomain −11828) и кружок из кэша не играет.
+            url.appendPathExtension("mp4")
         }
         return url
     }

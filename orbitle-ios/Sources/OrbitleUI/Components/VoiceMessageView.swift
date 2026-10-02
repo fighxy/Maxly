@@ -48,10 +48,12 @@ struct VoiceMessageView: View {
             if isOpen {
                 transcriptBody
                     .padding(.top, 4)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    // Только растворение: сдвиг сверху вместе с ростом пузыря давал рывок.
+                    .transition(.opacity)
             }
         }
-        .frame(minWidth: 200, maxWidth: 280, alignment: .leading)
+        // Пузырь не шире места в ленте: дорожка сжимается, кнопки остаются целиком.
+        .frame(minWidth: 180, maxWidth: 300, alignment: .leading)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: transcript)
     }
 
@@ -171,27 +173,35 @@ struct VoiceMessageView: View {
         }
     }
 
+    /// Дорожка во всю отведённую ширину: число полосок по ширине, сама ширина — от длины
+    /// записи (короткое голосовое — короткий пузырь, как в Telegram).
     private var bars: some View {
-        let samples = ChatContentFormat.waveBars(samples: voice.waveform, count: 36)
-        return HStack(alignment: .center, spacing: 2) {
-            ForEach(Array(samples.enumerated()), id: \.offset) { index, height in
-                Capsule()
-                    .fill(barColor(index: index, count: samples.count))
-                    .frame(width: 2.5, height: max(3, 22 * height))
+        let wave = voice.waveform
+        let played = (phase.isPlaying || isPaused) ? phase.progress : 0
+        let active = outgoing ? Color.white : Color.orbitleAccent
+        let rest = outgoing ? Color.white.opacity(0.45) : Color.orbitleAccent.opacity(0.35)
+        return Canvas { context, size in
+            let step: CGFloat = 4.5
+            let bar: CGFloat = 2.5
+            let count = max(8, Int((size.width + step - bar) / step))
+            let heights = ChatContentFormat.waveBars(samples: wave, count: count)
+            for (index, height) in heights.enumerated() {
+                let h = max(3, size.height * height)
+                let rect = CGRect(x: CGFloat(index) * step, y: (size.height - h) / 2, width: bar, height: h)
+                let color = Double(index) < played * Double(count) ? active : rest
+                context.fill(Path(roundedRect: rect, cornerRadius: bar / 2), with: .color(color))
             }
         }
-        .frame(height: 22, alignment: .center)
+        .frame(height: 22)
+        .frame(minWidth: 72, idealWidth: waveWidth, maxWidth: waveWidth)
         .animation(.linear(duration: 0.1), value: phase.progress)
         .accessibilityHidden(true)
     }
 
-    private func barColor(index: Int, count: Int) -> Color {
-        let played = phase.progress * Double(max(count, 1))
-        let active = (phase.isPlaying || isPaused) && Double(index) < played
-        if outgoing {
-            return Color.white.opacity(active ? 1 : 0.45)
-        }
-        return active ? Color.orbitleAccent : Color.orbitleAccent.opacity(0.35)
+    /// 96 pt для пары секунд, до 190 pt для минуты и длиннее.
+    private var waveWidth: CGFloat {
+        let seconds = CGFloat(max(voice.durationMs, 0)) / 1000
+        return min(190, max(96, 70 + seconds * 2.4))
     }
 
     private var isPaused: Bool {

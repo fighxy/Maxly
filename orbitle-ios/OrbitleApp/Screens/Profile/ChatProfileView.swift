@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import AVFoundation
 import OrbitleDomain
 import OrbitlePresentation
 import OrbitleUI
@@ -706,7 +707,12 @@ private struct SharedRow<Icon: View, Title: View, Details: View>: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 10)
-            .overlay(alignment: .bottom) { Divider() }
+            // Своя линия: `Divider` в overlay строки HStack становился вертикальным.
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(Color(uiColor: .separator))
+                    .frame(height: 1 / 3)
+            }
         }
         .padding(.leading, OrbitleTheme.pad)
         .contentShape(Rectangle())
@@ -722,14 +728,18 @@ private struct SharedMediaCell: View {
         Color(uiColor: .tertiarySystemFill)
             .aspectRatio(1, contentMode: .fit)
             .overlay {
-                RemoteImage(url: item.thumbnailURL, maxPixel: 360) {
-                    if let data = item.preview, let image = UIImage(data: data) {
-                        Image(uiImage: image).resizable().scaledToFill()
-                    } else {
-                        Color.clear
+                if item.thumbnailURL == nil, let file = item.videoFile {
+                    VideoFrame(file: file)
+                } else {
+                    RemoteImage(url: item.thumbnailURL, maxPixel: 360) {
+                        if let data = item.preview, let image = UIImage(data: data) {
+                            Image(uiImage: image).resizable().scaledToFill()
+                        } else {
+                            Color.clear
+                        }
                     }
+                    .scaledToFill()
                 }
-                .scaledToFill()
             }
             .clipped()
             .overlay(alignment: .bottomTrailing) {
@@ -748,6 +758,33 @@ private struct SharedMediaCell: View {
             }
             .contentShape(Rectangle())
             .accessibilityLabel(item.duration == nil ? "Фото" : "Видео, \(item.duration ?? "")")
+    }
+}
+
+/// Первый кадр своего ролика без обложки (вне главного потока).
+private struct VideoFrame: View {
+    let file: URL
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                Color.clear
+            }
+        }
+        .task(id: file) {
+            if let frame = await Self.frame(file) { image = UIImage(cgImage: frame) }
+        }
+    }
+
+    /// Генератор живёт внутри одного вызова и не пересекает границы акторов.
+    private nonisolated static func frame(_ file: URL) async -> CGImage? {
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: file))
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 360, height: 360)
+        return try? await generator.image(at: .zero).image
     }
 }
 

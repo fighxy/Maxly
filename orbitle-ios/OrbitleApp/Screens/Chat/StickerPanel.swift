@@ -253,10 +253,13 @@ private struct EmojiCell: View {
     var body: some View {
         Button(action: onTap) {
             Group {
-                if let animated = item.animated {
-                    AnimatedSticker(lottieURL: animated.lottieURL, stillURL: animated.iconURL, size: 34) {
+                if let animated = item.animated, let icon = animated.iconURL {
+                    // В сетке — картинка анимодзи: десятки Lottie сразу тормозили панель.
+                    // Анимация играет в отправленном сообщении.
+                    RemoteImage(url: icon, maxPixel: 102) {
                         Text(item.emoji).font(.system(size: 30))
                     }
+                    .frame(width: 34, height: 34)
                 } else {
                     Text(item.emoji).font(.system(size: 30))
                 }
@@ -280,7 +283,9 @@ private struct StickerCell: View {
             let side = min(geo.size.width, geo.size.height)
             if let sticker {
                 Button { onSend(sticker) } label: {
-                    AnimatedSticker(lottieURL: sticker.lottieURL, stillURL: sticker.url, size: side) {
+                    // В сетке картинка, Lottie — только если картинки нет (и стоит на первом
+                    // кадре); анимация — в крупном просмотре и в сообщении.
+                    AnimatedSticker(lottieURL: sticker.url == nil ? sticker.lottieURL : nil, stillURL: sticker.url, size: side, playing: false) {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(Color.secondary.opacity(0.1))
                     }

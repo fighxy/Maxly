@@ -224,10 +224,11 @@ struct ChatView: View {
         // Режим выключили или сменили вид — открытые пузыри снова закрыты при следующем включении.
         .onChange(of: privateMode) { _, _ in reveal.hideAll() }
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.notice)
-        .confirmationDialog(
+        // Окно по центру: на iOS 26 confirmationDialog всплывает облаком от вида, к которому
+        // привязан, — у шапки, далеко от выбранного сообщения.
+        .alert(
             "Удалить сообщение?",
             isPresented: deletionShown,
-            titleVisibility: .visible,
             presenting: viewModel.deletionCandidate
         ) { message in
             if viewModel.deletesWithoutChoice {

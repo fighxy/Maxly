@@ -58,6 +58,21 @@ struct SharedMediaTests {
         #expect(shared.files.first?.ext == "PDF")
     }
 
+    @Test("Видео в сетке — по обложке; свой ролик без обложки отдаёт файл для кадра, кружков нет")
+    func videos() {
+        let messages = [
+            message("1", attachments: [.video(VideoContent(id: "v1", url: URL(string: "https://x/v.mp4"), posterURL: URL(string: "https://x/p.jpg"), durationMs: 5_000))]),
+            message("2", attachments: [.video(VideoContent(id: "v2", url: nil, durationMs: 3_000, localPath: "/tmp/own.mp4"))], at: 60),
+            message("3", attachments: [.video(VideoContent(id: "v3", url: nil, durationMs: 2_000, isRound: true))], at: 120),
+        ]
+        let shared = SharedMedia.collect(messages, calendar: calendar, now: Date(timeIntervalSince1970: 1_757_000_000))
+        #expect(shared.media.map(\.attachmentId) == ["v2", "v1"])
+        #expect(shared.media[0].thumbnailURL == nil)
+        #expect(shared.media[0].videoFile == URL(fileURLWithPath: "/tmp/own.mp4"))
+        #expect(shared.media[1].thumbnailURL == URL(string: "https://x/p.jpg"))
+        #expect(shared.media[1].videoFile == nil)
+    }
+
     @Test("Ссылки из текста и разметки без повторов, своё голосовое — «Вы»")
     func linksAndVoice() {
         let messages = [
