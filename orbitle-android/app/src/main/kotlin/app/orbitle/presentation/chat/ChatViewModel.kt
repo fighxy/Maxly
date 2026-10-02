@@ -266,6 +266,24 @@ class ChatViewModel(
         }
     }
 
+    /** Пересылать можно только сообщения, уже лежащие на сервере. */
+    fun canForward(message: Message): Boolean =
+        isServer(message) && message.status == MessageStatus.SENT && !message.isService
+
+    fun forward(message: Message, targetChatId: String) {
+        if (!canForward(message)) return
+        viewModelScope.launch {
+            try {
+                repository.forward(chatId, message.id, targetChatId)
+                _messages.value = "Сообщение переслано"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                show(e)
+            }
+        }
+    }
+
     fun isOutgoing(message: Message): Boolean {
         val me = repository.currentUserId
         return !me.isNullOrEmpty() && message.authorId == me

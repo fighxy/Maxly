@@ -79,5 +79,8 @@ interface MessageRepository {
     fun transcriptions(): Flow<Pair<String, String>> = emptyFlow()
 
     /** Прямой адрес видео или файла сообщения для плеера и загрузки. */
+    /** Пересылает сообщение [messageId] из [chatId] в чат [targetChatId]. */
+    suspend fun forward(chatId: String, messageId: String, targetChatId: String): Unit = throw OrbitleError.Rejected("Пересылка недоступна")
+
     suspend fun mediaLink(chatId: String, messageId: String, attachment: ChatAttachment): String = throw OrbitleError.Rejected("Вложение недоступно")
 }

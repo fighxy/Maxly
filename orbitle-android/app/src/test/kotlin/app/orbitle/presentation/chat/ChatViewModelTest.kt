@@ -46,6 +46,12 @@ class FakeMessages : MessageRepository {
         sent += text to replyTo
         sendFailure?.let { throw it }
     }
+    val forwards = mutableListOf<Triple<String, String, String>>()
+    var forwardFailure: Exception? = null
+    override suspend fun forward(chatId: String, messageId: String, targetChatId: String) {
+        forwardFailure?.let { throw it }
+        forwards += Triple(chatId, messageId, targetChatId)
+    }
     override suspend fun retry(chatId: String, localId: String) = Unit
     override fun discard(chatId: String, localId: String) {
         list.value = list.value.filterNot { it.id == localId }
@@ -292,5 +298,26 @@ class ChatViewModelTest {
         repo.list.value = listOf(msg("1").copy(isService = true, text = "Чат создан"), msg("2"))
         val service = model.state.value.items.filterIsInstance<ChatItem.Service>().single()
         assertEquals("Чат создан", service.text)
+    }
+
+    @Test
+    fun forwardsServerMessagesOnly() {
+        val model = vm()
+        val sent = msg("5")
+        val pending = msg("local-1", author = "1", status = MessageStatus.SENDING)
+        assertTrue(model.canForward(sent))
+        assertFalse(model.canForward(pending))
+        model.forward(pending, "20")
+        model.forward(sent, "20")
+        assertEquals(listOf(Triple("10", "5", "20")), repo.forwards)
+        assertEquals("Сообщение переслано", model.messages.value)
+    }
+
+    @Test
+    fun forwardFailureShowsError() {
+        val model = vm()
+        repo.forwardFailure = app.orbitle.domain.OrbitleError.Rejected("Нельзя переслать")
+        model.forward(msg("5"), "20")
+        assertEquals("Нельзя переслать", model.messages.value)
     }
 }

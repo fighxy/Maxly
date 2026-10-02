@@ -198,4 +198,13 @@ class ChatListViewModelTest {
         vm.reloadLocal()
         assertTrue(vm.state.value.items.single().preview.contains("привет"))
     }
+
+    @Test
+    fun forwardTargetsSkipCurrentArchivedAndReadOnly() {
+        repo.chats.value = listOf(
+            chat("a", at = now - 10), chat("b", pin = 0), chat("c"),
+            chat("d").copy(isArchived = true), chat("e", type = ChatType.CHANNEL).copy(canWrite = false),
+        )
+        assertEquals(listOf("b", "a"), vm.forwardTargets(excluding = "c").map { it.id })
+    }
 }
