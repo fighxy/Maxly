@@ -244,6 +244,18 @@ class ChatListViewModel(
             .map { formatter.item(it, at, showDraft = false) }
     }
 
+    /** Чаты для папки: всё, кроме архива, в порядке списка. */
+    fun folderCandidates(): List<ChatListItem> {
+        val at = now()
+        return ordered().filter { !it.isArchived }.map { formatter.item(it, at, showDraft = false) }
+    }
+
+    /** Сколько чатов попадает в серверную папку; для «Все» — все чаты вне архива. */
+    fun folderCount(folder: app.orbitle.domain.ServerFolder): Int {
+        val rule = if (folder.isAllChats) app.orbitle.domain.ChatFolder.all else folder.chatFolder
+        return ordered().count(rule::contains)
+    }
+
     private fun ordered(): List<Chat> = chats.map { chat ->
         var next = chat
         if (pendingPins.containsKey(chat.id)) next = next.copy(pinOrder = pendingPins[chat.id])
