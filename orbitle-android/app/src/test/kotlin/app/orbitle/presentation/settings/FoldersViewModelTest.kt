@@ -79,6 +79,81 @@ class FoldersViewModelTest {
     }
 
     @Test
+    fun `drop with a new order sends it once with all chats first`() {
+        val repo = FakeFolders(listOf(all, work, bots, family))
+        val model = FoldersViewModel(repo)
+        model.reorder(listOf("f", "w", "b"))
+        assertEquals(listOf("order [all.chat.folder, f, w, b]"), repo.calls.filter { it.startsWith("order") })
+        assertEquals(listOf("all.chat.folder", "f", "w", "b"), model.state.value.folders!!.map { it.id })
+        assertFalse(model.state.value.working)
+    }
+
+    @Test
+    fun `drop with the same order sends nothing`() {
+        val repo = FakeFolders(listOf(all, work, bots))
+        val model = FoldersViewModel(repo)
+        model.reorder(listOf("w", "b"))
+        assertTrue(repo.calls.none { it.startsWith("order") })
+        assertFalse(model.state.value.working)
+    }
+
+    @Test
+    fun `failed reorder restores the server order and shows an error`() {
+        val repo = FakeFolders(listOf(all, work, bots, family))
+        repo.failing = true
+        val model = FoldersViewModel(repo)
+        model.reorder(listOf("b", "f", "w"))
+        assertEquals(listOf("w", "b", "f"), model.state.value.editable.map { it.id })
+        assertTrue(model.state.value.error!!.startsWith("Не удалось изменить порядок папок"))
+        assertFalse(model.state.value.working)
+    }
+
+    @Test
+    fun `all chats can not be moved`() {
+        val repo = FakeFolders(listOf(all, work, bots))
+        val model = FoldersViewModel(repo)
+        model.move(all, 1)
+        // Порядок с «Все» среди редактируемых или с чужим набором отбрасывается.
+        model.reorder(listOf("w", "all.chat.folder", "b"))
+        model.reorder(listOf("b", "x"))
+        model.reorder(listOf("b", "b"))
+        model.reorder(listOf("b"))
+        assertTrue(repo.calls.none { it.startsWith("order") })
+        assertEquals(listOf("all.chat.folder", "w", "b"), model.state.value.folders!!.map { it.id })
+    }
+
+    @Test
+    fun `accessibility moves go through the same reorder`() {
+        val repo = FakeFolders(listOf(all, work, bots, family))
+        val model = FoldersViewModel(repo)
+        model.move(work, 1)
+        model.move(work, 5)
+        assertEquals(listOf("order [all.chat.folder, b, w, f]", "order [all.chat.folder, b, f, w]"), repo.calls.filter { it.startsWith("order") })
+        model.move(work, 1)
+        assertEquals(2, repo.calls.count { it.startsWith("order") })
+    }
+
+    @Test
+    fun `folder order moves and clamps`() {
+        val ids = listOf("a", "b", "c", "d")
+        assertEquals(listOf("b", "c", "a", "d"), FolderOrder.moved(ids, 0, 2))
+        assertEquals(listOf("d", "a", "b", "c"), FolderOrder.moved(ids, 3, 0))
+        assertEquals(listOf("a", "c", "d", "b"), FolderOrder.moved(ids, 1, 9))
+        assertEquals(listOf("b", "a", "c", "d"), FolderOrder.moved(ids, 1, -4))
+        assertEquals(ids, FolderOrder.moved(ids, 2, 2))
+        assertEquals(ids, FolderOrder.moved(ids, 7, 0))
+        assertEquals(emptyList<String>(), FolderOrder.moved(emptyList(), 0, 1))
+    }
+
+    @Test
+    fun `folder order recognizes permutations`() {
+        assertTrue(FolderOrder.isPermutation(listOf("b", "a"), listOf("a", "b")))
+        assertFalse(FolderOrder.isPermutation(listOf("a", "a"), listOf("a", "b")))
+        assertFalse(FolderOrder.isPermutation(listOf("a"), listOf("a", "b")))
+        assertFalse(FolderOrder.isPermutation(listOf("a", "c"), listOf("a", "b")))
+    }
+
+    @Test
     fun `failed delete restores the folder and shows an error`() {
         val repo = FakeFolders(listOf(all, work))
         repo.failing = true

@@ -85,16 +85,27 @@ class FoldersViewModel(private val repository: FolderRepository) : ViewModel() {
         work("Не удалось удалить папку", restoring = before) { repository.delete(folder.id) }
     }
 
-    /** Сдвигает папку на [offset] позиций среди редактируемых. */
+    /** Сдвигает папку на [offset] позиций среди редактируемых (действия TalkBack «выше»/«ниже»). */
     fun move(folder: ServerFolder, offset: Int) {
-        val current = _state.value.folders ?: return
-        val rest = current.filterNot { it.isAllChats }.toMutableList()
-        val from = rest.indexOfFirst { it.id == folder.id }
+        val ids = _state.value.editable.map { it.id }
+        val from = ids.indexOf(folder.id)
         if (from < 0) return
-        val to = (from + offset).coerceIn(0, rest.lastIndex)
-        if (to == from) return
-        rest.add(to, rest.removeAt(from))
-        val next = current.filter { it.isAllChats } + rest
+        reorder(FolderOrder.moved(ids, from, from + offset))
+    }
+
+    /**
+     * Папку отпустили после перетаскивания: [editableIds] — новый порядок папок кроме «Все».
+     * Тот же порядок ничего не отправляет; иначе сервер получает весь порядок с «Все» первой,
+     * а при отказе возвращается прежний. Порядок, не совпадающий с текущим набором папок, отбрасывается.
+     */
+    fun reorder(editableIds: List<String>) {
+        val current = _state.value.folders ?: return
+        val pinned = current.filter { it.isAllChats }
+        val rest = current.filterNot { it.isAllChats }
+        val restIds = rest.map { it.id }
+        if (editableIds == restIds || !FolderOrder.isPermutation(editableIds, restIds)) return
+        val byId = rest.associateBy { it.id }
+        val next = pinned + editableIds.map(byId::getValue)
         _state.update { it.copy(folders = next) }
         work("Не удалось изменить порядок папок", restoring = current) { repository.reorder(next.map { it.id }) }
     }
