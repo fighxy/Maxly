@@ -100,9 +100,13 @@ public actor OutboxQueue {
                 if Task.isCancelled { return }
                 // Ответ уходит ссылкой на серверный id. Цитата своего ещё не отправленного
                 // сообщения (локальный id) остаётся только на устройстве.
-                let quoted = MessageContentCodec.decode(record.contentJSON).reply?.messageId
+                let content = MessageContentCodec.decode(record.contentJSON)
+                let quoted = content.reply?.messageId
                 let replyTo = quoted.flatMap { Int64($0) == nil ? nil : $0 }
-                let result = await api.sendMessage(chatId: record.chatId, text: record.text, clientId: record.id, replyTo: replyTo)
+                let result = await api.sendMessage(
+                    chatId: record.chatId, text: record.text, clientId: record.id, replyTo: replyTo,
+                    animoji: CoreAnimojiMark.marks(content.formatting)
+                )
                 switch result {
                 case .success(let sent):
                     await store.markSent(localId: localId, serverId: sent.serverId, timestamp: sent.timestamp)

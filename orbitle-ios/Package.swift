@@ -13,7 +13,10 @@ let package = Package(
         .library(name: "OrbitleUI", targets: ["OrbitleUI"]),
         .library(name: "OrbitlePresentation", targets: ["OrbitlePresentation"]),
     ],
-    dependencies: [],
+    // Lottie (airbnb, бинарная сборка): анимированные стикеры и эмодзи Max (docs/stickers.md).
+    dependencies: [
+        .package(url: "https://github.com/airbnb/lottie-spm.git", from: "4.5.0"),
+    ],
     targets: [
         .target(name: "OrbitleDomain"),
         // Ядро не линкуется здесь: XCFramework собирает скрипт из core.lock,
@@ -24,7 +27,10 @@ let package = Package(
             exclude: ["Storage/README.md"]
         ),
         // Компоненты рисуют готовые строки из ViewModel (например, `ChatListItem`).
-        .target(name: "OrbitleUI", dependencies: ["OrbitleDomain", "OrbitlePresentation"]),
+        .target(
+            name: "OrbitleUI",
+            dependencies: ["OrbitleDomain", "OrbitlePresentation", .product(name: "Lottie", package: "lottie-spm")]
+        ),
         // ViewModel экранов: чистый Swift поверх протоколов домена, без SwiftUI и ядра.
         // Так логика экранов проходит `swift test` без Xcode-таргета приложения.
         .target(name: "OrbitlePresentation", dependencies: ["OrbitleDomain"]),

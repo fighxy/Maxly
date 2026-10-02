@@ -246,6 +246,7 @@ struct MainTabView: View {
                 isMuted: container.isMuted(id: id),
                 onToggleMute: { Task { await container.toggleMute(id: id) } },
                 contactList: { container.attachmentContacts() },
+                stickerPanel: container.stickerPanelModel(),
                 live: { container.headerLive(id: id) }
             ) {
                 container.profileViewModel(chatId: id)

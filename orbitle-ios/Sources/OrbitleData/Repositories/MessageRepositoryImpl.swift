@@ -150,9 +150,14 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
 
     /// Текст уходит в очередь. Цитата хранится локально: фасад пока отправляет только текст.
     public func send(text: String, chatId: String, replyTo: String?) async throws(OrbitleError) {
+        try await send(text: text, chatId: chatId, replyTo: replyTo, formatting: [])
+    }
+
+    public func send(text: String, chatId: String, replyTo: String?, formatting: [TextSpan]) async throws(OrbitleError) {
         let localId = "local-\(UUID().uuidString)"
         var content = MessageContent.empty
         content.reply = replyQuote(replyTo)
+        content.formatting = formatting.isEmpty ? nil : formatting
         let message = SDMessage(
             id: localId,
             chatId: chatId,
@@ -186,7 +191,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         content.reply = replyQuote(replyTo)
         content.attachments = drafts.enumerated().map { $0.element.preview(index: $0.offset) }
         content.drafts = drafts
-        let text = drafts.contains { $0.kind == .contact || $0.isRecording } ? "" : caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = drafts.contains { $0.kind == .contact || $0.kind == .sticker || $0.isRecording } ? "" : caption.trimmingCharacters(in: .whitespacesAndNewlines)
         let message = SDMessage(
             id: localId,
             chatId: chatId,
@@ -334,6 +339,14 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
                 // Своё голосовое играет с записанного файла, без скачивания.
                 if item.localPath == nil, let path = voices.popFirst() { item.localPath = path }
                 return .voice(item)
+            case .sticker(var item):
+                // Ответ на отправку может прийти без адресов: остаются те, что были в пузыре.
+                if let mine = local.compactMap(\.sticker).first(where: { $0.stickerId == item.stickerId }) {
+                    if item.url == nil { item.url = mine.url }
+                    if item.lottieURL == nil { item.lottieURL = mine.lottieURL }
+                    if item.width == nil { item.width = mine.width; item.height = mine.height }
+                }
+                return .sticker(item)
             default:
                 return attachment
             }

@@ -75,10 +75,19 @@ enum MessageContentCodec {
             case "QUOTE": kind = .quote
             case "LINK": kind = .link
             case "USER_MENTION": kind = .mention
+            case "ANIMOJI": kind = .animoji
             default: return nil
             }
             guard let from = integer(map["from"]), let length = integer(map["length"]), from >= 0, length > 0 else { return nil }
             let attributes = map["attributes"] as? [String: Any]
+            if kind == .animoji {
+                // Анимодзи поверх эмодзи текста: id и его Lottie (KometTeam/Komet `RichMessageController`).
+                return TextSpan(
+                    kind: .animoji, from: from, length: length,
+                    url: (attributes?["animojiLottieUrl"] as? String) ?? (attributes?["lottieUrl"] as? String),
+                    entityId: stringId(map["entityId"])
+                )
+            }
             return TextSpan(
                 kind: kind,
                 from: from,
@@ -174,6 +183,16 @@ enum MessageContentCodec {
                 phone: stringId(map["phone"]) ?? stringId(map["phoneNumber"]) ?? "",
                 avatarURL: url(map["photoUrl"]) ?? url(map["baseUrl"])
             ))
+        case "STICKER":
+            let stickerId = stringId(map["stickerId"]) ?? stringId(map["id"]) ?? stableId(map)
+            return .sticker(StickerContent(
+                id: stickerId,
+                stickerId: stickerId,
+                url: url(map["url"]) ?? url(map["baseUrl"]),
+                lottieURL: url(map["lottieUrl"]),
+                width: integer(map["width"]),
+                height: integer(map["height"])
+            ))
         default:
             return nil
         }
@@ -226,6 +245,7 @@ enum MessageContentCodec {
             return name.isEmpty ? "Файл" : name
         }
         if attachments.contains(where: { $0.contact != nil }) { return "Контакт" }
+        if attachments.contains(where: { $0.sticker != nil }) { return "Стикер" }
         return ""
     }
 

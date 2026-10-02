@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import OrbitleDomain
 import OrbitlePresentation
 import OrbitleUI
@@ -19,6 +20,8 @@ struct ChatView: View {
     var onToggleMute: (() -> Void)?
     /// Контакты для вкладки «Контакт» листа вложений. `nil` — вкладка пустая.
     var contactList: (() -> AsyncStream<[Contact]>)? = nil
+    /// Панель эмодзи и стикеров (одна на приложение: каталог грузится раз).
+    var stickerPanel: StickerPanelModel? = nil
     /// Сеть, «печатает…», звук и галочка — живые данные из списка чатов для шапки.
     var live: () -> ChatHeaderLive = { ChatHeaderLive() }
     /// Модель профиля чата: шапка берёт из неё статус, нажатие на шапку открывает профиль.
@@ -27,6 +30,9 @@ struct ChatView: View {
     @State private var profileShown = false
     @State private var forwardList: [ChatListItem] = []
     @State private var attachmentsShown = false
+    @State private var panelShown = false
+    /// Высота последней клавиатуры без нижнего отступа: панель встаёт на её место.
+    @State private var keyboardHeight: CGFloat = 300
     @State private var recording = RecordingSession()
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var composerFocused: Bool
@@ -52,16 +58,42 @@ struct ChatView: View {
         // Режим включают и выключают и с другого экрана: капсула всё равно выезжает плавно.
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: privateMode)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            ChatComposer(
-                viewModel: viewModel,
-                recording: recording,
-                focus: $composerFocused,
-                attachmentsShown: $attachmentsShown,
-                canWrite: canWrite,
-                chatType: chatType,
-                isMuted: isMuted,
-                onToggleMute: onToggleMute
-            )
+            VStack(spacing: 0) {
+                ChatComposer(
+                    viewModel: viewModel,
+                    recording: recording,
+                    focus: $composerFocused,
+                    attachmentsShown: $attachmentsShown,
+                    panelShown: $panelShown,
+                    canWrite: canWrite,
+                    chatType: chatType,
+                    isMuted: isMuted,
+                    onToggleMute: onToggleMute
+                )
+                if panelShown, canWrite, let stickerPanel {
+                    StickerPanel(
+                        model: stickerPanel,
+                        height: keyboardHeight,
+                        onEmoji: { viewModel.insertEmoji($0.emoji, animated: $0.animated) },
+                        onBackspace: { viewModel.deleteBackward() },
+                        onSticker: { sticker in Task { await viewModel.sendSticker(sticker) } }
+                    )
+                    .transition(.move(edge: .bottom))
+                }
+            }
+        }
+        .onChange(of: composerFocused) { _, focused in
+            // Клавиатура вернулась — панель уходит под неё без анимации: место то же.
+            if focused, panelShown { panelShown = false }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+            guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            let bottom = UIApplication.shared.connectedScenes
+                .compactMap { ($0 as? UIWindowScene)?.keyWindow?.safeAreaInsets.bottom }
+                .first ?? 0
+            let height = frame.height - bottom
+            // Плавающая и внешняя клавиатуры низкие: панель остаётся обычной высоты.
+            if height > 200 { keyboardHeight = height }
         }
         // Видимость tab bar управляется стабильным MainTabView.
         // Системный заголовок (и подпись кнопки «назад» следующего экрана) размыть нельзя:
@@ -184,6 +216,7 @@ struct ChatView: View {
             await viewModel.loadLatest()
         }
         .onDisappear {
+            panelShown = false
             recording.cancel()
             viewModel.deactivate()
             reveal.hideAll()
