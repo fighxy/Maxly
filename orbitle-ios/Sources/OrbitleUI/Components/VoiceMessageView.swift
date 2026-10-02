@@ -5,11 +5,11 @@ import OrbitlePresentation
 /// Голосовое: круглая кнопка, дорожка громкости, время и кнопка расшифровки «→T».
 ///
 /// Во время воспроизведения прослушанная часть дорожки закрашивается, а время показывает,
-/// сколько уже прозвучало. Без текста в сообщении справа снизу стоит время отправки.
-/// Расшифровка, как в Komet (KometTeam/Komet#147): капсула 40×28 с бледной заливкой цвета
-/// акцента; «→Т» свёрнуто, круг — идёт расшифровка, «^» — текст раскрыт. Значок сменяется
-/// растворением с масштабом. Раскрытый текст — во всю ширину пузыря, время переезжает в
-/// конец его последней строки.
+/// сколько уже прозвучало. Время отправки и галочки стоят слева от кнопки расшифровки,
+/// на одной линии с ней. Длительность остаётся под началом дорожки.
+/// Расшифровка: капсула 40×28 с бледной заливкой цвета акцента; «→Т» свёрнуто,
+/// круг — идёт расшифровка, «^» — текст раскрыт. Раскрытый текст — во всю ширину пузыря,
+/// время переезжает в конец его последней строки.
 struct VoiceMessageView: View {
     let voice: VoiceContent
     let phase: VoicePhase
@@ -23,7 +23,7 @@ struct VoiceMessageView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .center, spacing: 10) {
+            HStack(alignment: .center, spacing: 8) {
                 button
                 VStack(alignment: .leading, spacing: 4) {
                     bars
@@ -37,10 +37,10 @@ struct VoiceMessageView: View {
                                 .foregroundStyle(outgoing ? Color.white.opacity(0.85) : Color.red)
                                 .lineLimit(1)
                         }
-                        Spacer(minLength: 0)
-                        if let time, !isOpen { time }
                     }
                 }
+                Spacer(minLength: 4)
+                if let time, !isOpen { time }
                 if let onTranscribe {
                     transcribeButton(onTranscribe)
                 }
@@ -48,23 +48,17 @@ struct VoiceMessageView: View {
             if isOpen {
                 transcriptBody
                     .padding(.top, 4)
-                    // Только растворение: сдвиг сверху вместе с ростом пузыря давал рывок.
                     .transition(.opacity)
             }
         }
-        // Пузырь не шире места в ленте: дорожка сжимается, кнопки остаются целиком.
         .frame(minWidth: 180, maxWidth: 300, alignment: .leading)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: transcript)
     }
 
-    /// Текст расшифровки или ошибка раскрыты под дорожкой.
     private var isOpen: Bool {
         transcript == .failed || (transcript == .expanded && voice.transcript != nil)
     }
 
-    // MARK: Расшифровка
-
-    /// Акцент голосового: белый в своём пузыре, фирменный — в чужом.
     private var accent: Color {
         outgoing ? Color.white : Color.orbitleAccent
     }
@@ -86,7 +80,6 @@ struct VoiceMessageView: View {
         .accessibilityLabel(transcribeLabel)
     }
 
-    /// Значок капсулы: меняется вместе с состоянием, сворачивание и ошибка — один «^».
     private var glyphKey: Int {
         switch transcript {
         case .collapsed: 0
@@ -121,8 +114,6 @@ struct VoiceMessageView: View {
         }
     }
 
-    /// Текст во всю ширину обычным размером; время — в конце последней строки, под него
-    /// оставлено невидимое место, чтобы строка не заходила под время.
     private var transcriptBody: some View {
         ZStack(alignment: .bottomTrailing) {
             (transcriptText + Text(verbatim: time == nil ? "" : "\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}").font(.caption2))
@@ -173,8 +164,6 @@ struct VoiceMessageView: View {
         }
     }
 
-    /// Дорожка во всю отведённую ширину: число полосок по ширине, сама ширина — от длины
-    /// записи (короткое голосовое — короткий пузырь).
     private var bars: some View {
         let wave = voice.waveform
         let played = (phase.isPlaying || isPaused) ? phase.progress : 0
@@ -198,7 +187,6 @@ struct VoiceMessageView: View {
         .accessibilityHidden(true)
     }
 
-    /// 96 pt для пары секунд, до 190 pt для минуты и длиннее.
     private var waveWidth: CGFloat {
         let seconds = CGFloat(max(voice.durationMs, 0)) / 1000
         return min(190, max(96, 70 + seconds * 2.4))
