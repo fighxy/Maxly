@@ -151,7 +151,11 @@ public struct MessageBubble: View {
                 authorMark
             }
             VStack(alignment: isOutgoing ? .trailing : .leading, spacing: 4) {
-                bubble
+                if let standalone {
+                    standaloneBody(standalone)
+                } else {
+                    bubble
+                }
                 if message.status == .failed {
                     Button("Не отправлено. Повторить", action: onRetry)
                         .font(.caption2)
@@ -302,6 +306,94 @@ public struct MessageBubble: View {
         .buttonStyle(.plain)
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: count)
         .accessibilityLabel("\(ChatContentFormat.comments(count)), открыть")
+    }
+
+    // MARK: Стикеры и крупные эмодзи
+
+    /// Сообщение без подложки: стикер или от одного до трёх эмодзи (одно анимодзи — Lottie).
+    private enum Standalone {
+        case sticker(StickerContent)
+        case emoji([String], lottie: URL?)
+    }
+
+    private var standalone: Standalone? {
+        if let sticker = message.content.sticker { return .sticker(sticker) }
+        guard message.content.attachments.isEmpty, message.content.reply == nil, message.content.forward == nil,
+              !showsComments, let emoji = ChatContentFormat.bigEmoji(message.displayText) else { return nil }
+        let lottie = emoji.count == 1
+            ? (message.content.formatting ?? []).first { $0.kind == .animoji }?.url.flatMap(URL.init(string:))
+            : nil
+        return .emoji(emoji, lottie: lottie)
+    }
+
+    private static let stickerSize: CGFloat = 168
+
+    @ViewBuilder
+    private func standaloneBody(_ standalone: Standalone) -> some View {
+        VStack(alignment: isOutgoing ? .trailing : .leading, spacing: 4) {
+            if showsAuthorName, !authorTitle.isEmpty {
+                Text(authorTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(authorColor)
+                    .lineLimit(1)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(.ultraThinMaterial, in: Capsule())
+            }
+            if let reply = message.content.reply {
+                quote(reply)
+                    .padding(8)
+                    .frame(maxWidth: 220, alignment: .leading)
+                    .background(fill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            Group {
+                switch standalone {
+                case .sticker(let sticker):
+                    AnimatedSticker(lottieURL: sticker.lottieURL, stillURL: sticker.url, size: Self.stickerSize) {
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .fill(Color.secondary.opacity(0.12))
+                    }
+                    .accessibilityLabel("Стикер")
+                case .emoji(let emoji, let lottie):
+                    let font = ChatContentFormat.bigEmojiSize(count: emoji.count)
+                    if let lottie {
+                        AnimatedSticker(lottieURL: lottie, stillURL: nil, size: 120) {
+                            Text(emoji.joined()).font(.system(size: font))
+                        }
+                        .accessibilityLabel(emoji.joined())
+                    } else {
+                        Text(emoji.joined())
+                            .font(.system(size: font))
+                            .padding(.horizontal, 2)
+                    }
+                }
+            }
+            .padding(.bottom, 18)
+            .overlay(alignment: .bottomTrailing) { chipMeta }
+        }
+        .overlay {
+            if let uploadProgress {
+                UploadRing(progress: uploadProgress, onCancel: onCancelUpload)
+            }
+        }
+    }
+
+    /// Время на полупрозрачной плашке под стикером.
+    private var chipMeta: some View {
+        HStack(spacing: 3) {
+            Text(ChatContentFormat.time(message.timestamp))
+                .font(.caption2.monospacedDigit())
+                .lineLimit(1)
+            if isOutgoing {
+                statusIcon
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(Color.black.opacity(0.35), in: Capsule())
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: message.status)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: Каркас
@@ -488,7 +580,7 @@ public struct MessageBubble: View {
 
     /// Реакции лежат внутри пузыря, если у него есть подложка (фото без подписи — под ним).
     private var reactionsInside: Bool {
-        hasFill && !message.content.reactions.isEmpty
+        standalone == nil && hasFill && !message.content.reactions.isEmpty
     }
 
     /// Время переезжает из текста в ряд реакций, как в привычных мессенджерах. У голосового
@@ -676,7 +768,7 @@ public struct MessageBubble: View {
     }
 
     private var hasText: Bool {
-        !message.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !message.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && message.content.sticker == nil
     }
 
     private var stretchesText: Bool {

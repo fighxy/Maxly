@@ -68,6 +68,11 @@ public struct MessageContent: Hashable, Sendable, Codable {
         attachments.compactMap(\.contact)
     }
 
+    /// Стикер сообщения: он всегда один и без текста.
+    public var sticker: StickerContent? {
+        attachments.lazy.compactMap(\.sticker).first
+    }
+
     /// Вид первого вложения для строки списка чатов.
     public var previewMedia: MessageMediaKind? {
         switch attachments.first {
@@ -76,6 +81,7 @@ public struct MessageContent: Hashable, Sendable, Codable {
         case .voice: .voice
         case .file: .file
         case .contact: .contact
+        case .sticker: .sticker
         case nil: nil
         }
     }
@@ -85,6 +91,7 @@ public struct MessageContent: Hashable, Sendable, Codable {
         switch attachments.first {
         case .photo(let photo): photo.url
         case .video(let video): video.posterURL
+        case .sticker(let sticker): sticker.url
         default: nil
         }
     }
@@ -108,6 +115,8 @@ public struct TextSpan: Hashable, Sendable, Codable {
         case quote
         case link
         case mention
+        /// Анимодзи (`ANIMOJI`): `entityId` — id анимодзи, `url` — его Lottie.
+        case animoji
     }
 
     public var kind: Kind
@@ -117,13 +126,16 @@ public struct TextSpan: Hashable, Sendable, Codable {
     public var url: String?
     /// Пользователь упоминания (`USER_MENTION`).
     public var userId: String?
+    /// id анимодзи (`ANIMOJI`).
+    public var entityId: String?
 
-    public init(kind: Kind, from: Int, length: Int, url: String? = nil, userId: String? = nil) {
+    public init(kind: Kind, from: Int, length: Int, url: String? = nil, userId: String? = nil, entityId: String? = nil) {
         self.kind = kind
         self.from = from
         self.length = length
         self.url = url
         self.userId = userId
+        self.entityId = entityId
     }
 }
 
@@ -168,6 +180,7 @@ public enum ChatAttachment: Hashable, Sendable, Codable {
     case voice(VoiceContent)
     case file(FileContent)
     case contact(ContactContent)
+    case sticker(StickerContent)
 
     public var id: String {
         switch self {
@@ -176,6 +189,7 @@ public enum ChatAttachment: Hashable, Sendable, Codable {
         case .voice(let item): item.id
         case .file(let item): item.id
         case .contact(let item): item.id
+        case .sticker(let item): item.id
         }
     }
 
@@ -208,6 +222,11 @@ public enum ChatAttachment: Hashable, Sendable, Codable {
         return nil
     }
 
+    public var sticker: StickerContent? {
+        if case .sticker(let item) = self { return item }
+        return nil
+    }
+
     public func withLocalPath(_ path: String, id: String) -> ChatAttachment {
         switch self {
         case .photo(var item):
@@ -226,7 +245,7 @@ public enum ChatAttachment: Hashable, Sendable, Codable {
             guard item.id == id else { return self }
             item.localPath = path
             return .file(item)
-        case .contact:
+        case .contact, .sticker:
             return self
         }
     }
@@ -423,6 +442,9 @@ public struct AttachmentDraft: Hashable, Sendable, Codable {
         case voice
         /// Записанное круглое видеосообщение: квадратный MP4.
         case videoNote
+        /// Стикер каталога: файла нет, в `contactId` — id стикера, в `path` — адрес картинки,
+        /// в `fileName` — адрес Lottie для пузыря до ответа сервера.
+        case sticker
     }
 
     public var kind: Kind
@@ -498,6 +520,17 @@ public struct AttachmentDraft: Hashable, Sendable, Codable {
     /// Записи голосом и кружком уходят одни, без подписи.
     public var isRecording: Bool { kind == .voice || kind == .videoNote }
 
+    public static func sticker(_ sticker: Sticker) -> AttachmentDraft {
+        AttachmentDraft(
+            kind: .sticker,
+            path: sticker.url?.absoluteString ?? "",
+            fileName: sticker.lottieURL?.absoluteString ?? "",
+            width: sticker.width,
+            height: sticker.height,
+            contactId: sticker.id
+        )
+    }
+
     public static func contact(id: String, name: String, phone: String = "") -> AttachmentDraft {
         AttachmentDraft(kind: .contact, contactId: id, contactName: name, contactPhone: phone)
     }
@@ -507,6 +540,11 @@ public struct AttachmentDraft: Hashable, Sendable, Codable {
         let id = "draft-\(index)"
         let local = path.isEmpty ? nil : path
         switch kind {
+        case .sticker:
+            return .sticker(StickerContent(
+                id: contactId, stickerId: contactId, url: URL(string: path),
+                lottieURL: fileName.isEmpty ? nil : URL(string: fileName), width: width, height: height
+            ))
         case .photo:
             return .photo(PhotoContent(id: id, url: nil, width: width, height: height, localPath: local))
         case .video:

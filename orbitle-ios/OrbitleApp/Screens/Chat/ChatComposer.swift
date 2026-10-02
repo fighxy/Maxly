@@ -11,6 +11,8 @@ struct ChatComposer: View {
     let recording: RecordingSession
     var focus: FocusState<Bool>.Binding
     @Binding var attachmentsShown: Bool
+    /// Панель эмодзи и стикеров на месте клавиатуры.
+    @Binding var panelShown: Bool
     let canWrite: Bool
     let chatType: ChatType
     let isMuted: Bool
@@ -108,15 +110,18 @@ struct ChatComposer: View {
                         .accessibilityLabel("Прикрепить")
                     }
                     if !recording.isActive {
-                        TextField("Сообщение", text: $viewModel.draft, axis: .vertical)
-                            .focused(focus)
-                            .lineLimit(1...5)
-                            .textFieldStyle(.plain)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 11)
-                            .frame(minHeight: 44)
-                            .orbitleGlassRounded(radius: 22)
-                            .orbitleGlassID("field", in: composerGlass)
+                        HStack(alignment: .bottom, spacing: 0) {
+                            TextField("Сообщение", text: $viewModel.draft, axis: .vertical)
+                                .focused(focus)
+                                .lineLimit(1...5)
+                                .textFieldStyle(.plain)
+                                .padding(.leading, 16)
+                                .padding(.vertical, 11)
+                            panelButton
+                        }
+                        .frame(minHeight: 44)
+                        .orbitleGlassRounded(radius: 22)
+                        .orbitleGlassID("field", in: composerGlass)
                     }
                     ZStack {
                         if showsRecordButton {
@@ -134,6 +139,31 @@ struct ChatComposer: View {
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: recording.isActive)
         // Скрепка прячется при правке и возвращается после неё.
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.editTarget == nil)
+    }
+
+    /// Смайлик в поле ввода открывает панель эмодзи и стикеров вместо клавиатуры, на открытой
+    /// панели он становится клавиатурой и возвращает её.
+    private var panelButton: some View {
+        Button {
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
+                if panelShown {
+                    panelShown = false
+                    focus.wrappedValue = true
+                } else {
+                    focus.wrappedValue = false
+                    panelShown = true
+                }
+            }
+        } label: {
+            Image(systemName: panelShown ? "keyboard" : "face.smiling")
+                .font(.system(size: 20, weight: .regular))
+                .foregroundStyle(.secondary)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 42, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(panelShown ? "Клавиатура" : "Эмодзи и стикеры")
     }
 
     /// Кнопка записи видна, пока поле пустое (и не идёт правка) или пока идёт запись.

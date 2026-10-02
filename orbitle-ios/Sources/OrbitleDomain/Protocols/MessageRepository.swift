@@ -15,6 +15,8 @@ public protocol MessageRepository: Sendable {
     func fetchLatest(chatId: String) async throws(OrbitleError)
     /// Оптимистичная отправка со статусом `sending`. `replyTo` — локальный или серверный id цитаты.
     func send(text: String, chatId: String, replyTo: String?) async throws(OrbitleError)
+    /// Текст с разметкой, которую ставит само поле ввода (анимодзи из панели эмодзи).
+    func send(text: String, chatId: String, replyTo: String?, formatting: [TextSpan]) async throws(OrbitleError)
     /// Повторная отправка сообщения со статусом `failed`.
     func retry(messageId: String) async throws(OrbitleError)
     /// Поставить реакцию `emoji` или снять её, если она уже своя. Другая своя реакция
@@ -71,6 +73,10 @@ extension MessageRepository {
     }
 
     public func refreshReactions(chatId: String) async {}
+
+    public func send(text: String, chatId: String, replyTo: String?, formatting: [TextSpan]) async throws(OrbitleError) {
+        try await send(text: text, chatId: chatId, replyTo: replyTo)
+    }
 
     public func sharedHistory(chatId: String, limit: Int) async -> [Message] { [] }
 

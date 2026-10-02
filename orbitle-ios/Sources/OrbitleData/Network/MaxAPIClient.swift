@@ -63,6 +63,8 @@ public protocol MaxAPI: Sendable {
     func sendMessage(chatId: String, text: String, clientId: String) async -> Result<SentMessage, MaxAPIError>
     /// Ответ на сообщение `replyTo` (серверный id). `nil` — обычное сообщение.
     func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?) async -> Result<SentMessage, MaxAPIError>
+    /// Текст с анимодзи (`ANIMOJI` поверх эмодзи). Без отметок — как обычный текст.
+    func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?, animoji: [CoreAnimojiMark]) async -> Result<SentMessage, MaxAPIError>
     /// Заменить текст отправленного сообщения (по серверному id).
     func editMessage(chatId: String, messageId: String, text: String) async -> Result<MessageRecord, MaxAPIError>
     /// Удалить сообщения по серверным id: у себя или у всех.
@@ -133,6 +135,10 @@ public extension MaxAPI {
     func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?) async -> Result<SentMessage, MaxAPIError> {
         await sendMessage(chatId: chatId, text: text, clientId: clientId)
     }
+    /// Источник без анимодзи отправляет их обычными эмодзи.
+    func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?, animoji: [CoreAnimojiMark]) async -> Result<SentMessage, MaxAPIError> {
+        await sendMessage(chatId: chatId, text: text, clientId: clientId, replyTo: replyTo)
+    }
 }
 
 /// Клиент API Max поверх `MaxCore`. Типы Kotlin сюда не попадают.
@@ -180,6 +186,14 @@ public final class MaxAPIClient: MaxAPI, Sendable {
             } else {
                 sent = try await core.sendText(chatId: chatId, text: text)
             }
+            return SentMessage(serverId: sent.id, timestamp: Date(unixMillis: sent.timeMs))
+        }
+    }
+
+    public func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?, animoji: [CoreAnimojiMark]) async -> Result<SentMessage, MaxAPIError> {
+        guard !animoji.isEmpty else { return await sendMessage(chatId: chatId, text: text, clientId: clientId, replyTo: replyTo) }
+        return await catching {
+            let sent = try await core.sendText(chatId: chatId, text: text, replyTo: replyTo ?? "", animoji: animoji)
             return SentMessage(serverId: sent.id, timestamp: Date(unixMillis: sent.timeMs))
         }
     }
@@ -255,6 +269,13 @@ public final class MaxAPIClient: MaxAPI, Sendable {
             guard drafts.count == 1, !contact.contactId.isEmpty else { return .failure(.invalidResponse) }
             return await catching {
                 CoreMapping.message(try await core.sendContact(chatId: chatId, contactId: contact.contactId, replyTo: reply))
+            }
+        }
+        if let sticker = drafts.first(where: { $0.kind == .sticker }) {
+            // Стикер — отдельное сообщение без подписи.
+            guard drafts.count == 1, !sticker.contactId.isEmpty else { return .failure(.invalidResponse) }
+            return await catching {
+                CoreMapping.message(try await core.sendSticker(chatId: chatId, stickerId: sticker.contactId, replyTo: reply))
             }
         }
         if let recording = drafts.first(where: \.isRecording) {

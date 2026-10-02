@@ -50,6 +50,10 @@ final class AppContainer {
     @ObservationIgnored private var coreContacts: CoreContactRepository?
     @ObservationIgnored private var coreCalls: CoreCallHistoryRepository?
     @ObservationIgnored private var profiles: (any ChatProfileRepository)?
+    /// Стикеры и анимодзи (docs/stickers.md); панель одна на все чаты: каталог грузится раз.
+    @ObservationIgnored private var stickerRepository: CoreStickerRepository?
+    @ObservationIgnored private let recentStickers = UserDefaultsRecentStickers()
+    @ObservationIgnored private var stickerPanel: StickerPanelModel?
     // Свой аккаунт и серверные папки для «Настроек» (docs/settings.md).
     @ObservationIgnored private var accounts: any AccountRepository = UnavailableAccountRepository()
     @ObservationIgnored private var folderRepository: any FolderRepository = UnavailableFolderRepository()
@@ -176,6 +180,7 @@ final class AppContainer {
             self.contacts = coreContacts
             self.calls = coreCalls
             self.profiles = CoreChatProfileRepository(core: core, cache: self.profileCache)
+            self.stickerRepository = CoreStickerRepository(core: core)
             self.accounts = CoreAccountRepository(core: core)
             self.folderRepository = CoreFolderRepository(core: core)
             self.session = session
@@ -273,6 +278,14 @@ final class AppContainer {
             isVerified: chat.isVerified,
             typingCount: list.typing[id]?.count ?? 0
         )
+    }
+
+    /// Панель эмодзи и стикеров под полем ввода.
+    func stickerPanelModel() -> StickerPanelModel {
+        if let stickerPanel { return stickerPanel }
+        let model = StickerPanelModel(repository: stickerRepository, recents: recentStickers)
+        stickerPanel = model
+        return model
     }
 
     /// Профиль контакта из вкладки «Контакты»: до открытия диалога его может не быть в списке.
@@ -488,6 +501,10 @@ final class AppContainer {
         if !userId.isEmpty { UserDefaultsCallHistoryMarks.erase(userId: userId) }
         await recentSearches.clear()
         await profileCache.removeAll()
+        await stickerRepository?.removeAll()
+        recentStickers.clear()
+        LottieStore.shared.removeAll()
+        stickerPanel = nil
         await ImagePipeline.shared.removeAll()
         dropScreenModels()
         authModel?.deactivate()

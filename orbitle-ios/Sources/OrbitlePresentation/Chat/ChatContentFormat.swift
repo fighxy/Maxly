@@ -199,6 +199,34 @@ public struct BubbleGroup: Hashable, Sendable {
 
 /// Подписи и размеры контента в пузыре. Без SwiftUI, чтобы их считали тесты.
 public enum ChatContentFormat {
+    /// Сообщение из одних эмодзи (от одного до трёх, пробелы не в счёт) рисуется крупно без
+    /// подложки. `nil` — обычный текст.
+    public static func bigEmoji(_ text: String, limit: Int = 3) -> [String]? {
+        var found: [String] = []
+        for character in text where !character.isWhitespace {
+            guard isEmoji(character), found.count < limit else { return nil }
+            found.append(String(character))
+        }
+        return found.isEmpty ? nil : found
+    }
+
+    /// Символ — эмодзи: со своим видом эмодзи или с модификатором (флаг, ZWJ, `FE0F`).
+    /// Цифры и `#` с одним скаляром сюда не попадают.
+    public static func isEmoji(_ character: Character) -> Bool {
+        guard let first = character.unicodeScalars.first else { return false }
+        if first.properties.isEmojiPresentation { return true }
+        return first.properties.isEmoji && character.unicodeScalars.count > 1
+    }
+
+    /// Размер шрифта крупных эмодзи: один — крупнее всего.
+    public static func bigEmojiSize(count: Int) -> Double {
+        switch count {
+        case 1: 64
+        case 2: 52
+        default: 44
+        }
+    }
+
     public static func clock(ms: Int64) -> String {
         let seconds = max(0, Int(ms / 1000))
         return String(format: "%d:%02d", seconds / 60, seconds % 60)

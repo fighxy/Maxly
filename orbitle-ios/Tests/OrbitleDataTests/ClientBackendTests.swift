@@ -37,6 +37,28 @@ actor FakeMaxCore: MaxCore {
     nonisolated let pushes: AsyncStream<CoreEvent>.Continuation?
     private nonisolated let pushStream: AsyncStream<CoreEvent>?
 
+    // Стикеры (docs/stickers.md): без каталога ядро «без сети».
+    var stickerCatalog: StickerCatalog?
+    private(set) var stickerCalls: [(stickerId: String, replyTo: String)] = []
+
+    func setStickerCatalog(_ catalog: StickerCatalog?) { stickerCatalog = catalog }
+
+    func loadStickerCatalog() async throws -> StickerCatalog {
+        guard let stickerCatalog else { throw CoreFailure(kind: "NETWORK", key: nil) }
+        return stickerCatalog
+    }
+
+    func loadStickers(ids: [String]) async throws -> [Sticker] {
+        guard stickerCatalog != nil else { throw CoreFailure(kind: "NETWORK", key: nil) }
+        return ids.map { Sticker(id: $0, url: URL(string: "https://st/\($0).webp")) }
+    }
+
+    func sendSticker(chatId: String, stickerId: String, replyTo: String) async throws -> CoreMessage {
+        stickerCalls.append((stickerId, replyTo))
+        if let sendError { throw sendError }
+        return sent
+    }
+
     func loadContacts() async throws -> [CoreContact] {
         if let directoryError { throw directoryError }
         return contactList

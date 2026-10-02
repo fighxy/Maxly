@@ -345,17 +345,41 @@ public final class ChatViewModel {
             return
         }
         let reply = replyTarget
+        let animoji = animojiDraft
+        let spans = animoji.spans(in: text)
         draft = ""
+        animojiDraft.clear()
         replyTarget = nil
         stickToBottom = true
         do {
-            try await repository.send(text: text, chatId: chatId, replyTo: reply?.id)
+            try await repository.send(text: text, chatId: chatId, replyTo: reply?.id, formatting: spans)
             error = nil
         } catch {
             draft = text
+            animojiDraft = animoji
             replyTarget = reply
             show(error)
         }
+    }
+
+    /// Анимодзи, вставленные в поле из панели: уходят с текстом отметками `ANIMOJI`.
+    @ObservationIgnored public private(set) var animojiDraft = AnimojiDraft()
+
+    /// Эмодзи из панели встаёт в конец поля (курсор SwiftUI-полю не известен).
+    public func insertEmoji(_ emoji: String, animated: AnimatedEmoji? = nil) {
+        draft += emoji
+        if let animated { animojiDraft.insert(animated) }
+    }
+
+    /// Стрелка «стереть» панели эмодзи: убирает последний символ, эмодзи целиком.
+    public func deleteBackward() {
+        guard !draft.isEmpty else { return }
+        draft.removeLast()
+    }
+
+    /// Стикер уходит сразу отдельным сообщением; цитата — если отвечали.
+    public func sendSticker(_ sticker: Sticker) async {
+        await sendAttachments([.sticker(sticker)], caption: "")
     }
 
     public func beginReply(to message: Message) {
@@ -947,7 +971,7 @@ public final class ChatViewModel {
             switch attachment {
             case .photo, .video: true
             case .voice, .file: target == .files
-            case .contact: false
+            case .contact, .sticker: false
             }
         }
     }
@@ -1033,6 +1057,8 @@ public final class ChatViewModel {
             return SavedFile(url: Self.namedCopy(of: local, name: file.name, id: file.id), name: file.name, kind: .other)
         case .contact:
             throw .rejected("Контакт нельзя сохранить файлом")
+        case .sticker:
+            throw .rejected("Стикер нельзя сохранить файлом")
         }
     }
 

@@ -436,9 +436,28 @@ public protocol MaxCore: Sendable {
     func setFolderChats(_ folderId: String, chatIds: [String]) async throws
     func deleteFolder(_ folderId: String) async throws
     func reorderFolders(_ order: [String]) async throws
+    /// Стикер каталога `stickerId` (`{_type: STICKER, stickerId}`).
+    func sendSticker(chatId: String, stickerId: String, replyTo: String) async throws -> CoreMessage
+    /// Текст с анимодзи: каждая отметка — `ANIMOJI` поверх эмодзи (смещения UTF-16).
+    func sendText(chatId: String, text: String, replyTo: String, animoji: [CoreAnimojiMark]) async throws -> CoreMessage
+    /// Наборы стикеров (свои первыми) и недавние стикеры.
+    func loadStickerCatalog() async throws -> StickerCatalog
+    func loadStickers(ids: [String]) async throws -> [Sticker]
+    /// Анимодзи сервера с Lottie, в его порядке.
+    func loadAnimatedEmoji() async throws -> [AnimatedEmoji]
 }
 
 public extension MaxCore {
+    func sendSticker(chatId: String, stickerId: String, replyTo: String) async throws -> CoreMessage {
+        throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
+    }
+    func sendText(chatId: String, text: String, replyTo: String, animoji: [CoreAnimojiMark]) async throws -> CoreMessage {
+        if replyTo.isEmpty { return try await sendText(chatId: chatId, text: text) }
+        return try await sendText(chatId: chatId, text: text, replyTo: replyTo)
+    }
+    func loadStickerCatalog() async throws -> StickerCatalog { throw CoreFailure(kind: "UNKNOWN", key: "unsupported") }
+    func loadStickers(ids: [String]) async throws -> [Sticker] { throw CoreFailure(kind: "UNKNOWN", key: "unsupported") }
+    func loadAnimatedEmoji() async throws -> [AnimatedEmoji] { throw CoreFailure(kind: "UNKNOWN", key: "unsupported") }
     /// Фейки в тестах, которым контакты не нужны.
     func loadContacts() async throws -> [CoreContact] { [] }
     func loadCallHistory() async throws -> [CoreCall] { [] }
@@ -535,5 +554,28 @@ public struct CoreTranscription: Sendable, Equatable {
     public init(status: Int, text: String) {
         self.status = status
         self.text = text
+    }
+}
+
+/// Анимодзи в отправляемом тексте: эмодзи на `from`/`length` (UTF-16).
+public struct CoreAnimojiMark: Sendable, Equatable {
+    public var from: Int
+    public var length: Int
+    public var animojiId: String
+    public var lottieURL: String
+
+    public init(from: Int, length: Int, animojiId: String, lottieURL: String) {
+        self.from = from
+        self.length = length
+        self.animojiId = animojiId
+        self.lottieURL = lottieURL
+    }
+
+    /// Отметки из разметки сообщения (`TextSpan.Kind.animoji`).
+    public static func marks(_ spans: [TextSpan]?) -> [CoreAnimojiMark] {
+        (spans ?? []).compactMap { span in
+            guard span.kind == .animoji, let id = span.entityId, !id.isEmpty, span.length > 0 else { return nil }
+            return CoreAnimojiMark(from: span.from, length: span.length, animojiId: id, lottieURL: span.url ?? "")
+        }
     }
 }
