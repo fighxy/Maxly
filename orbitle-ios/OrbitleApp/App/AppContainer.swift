@@ -261,6 +261,18 @@ final class AppContainer {
         )
     }
 
+    /// Живые данные шапки чата: сеть, «печатает…», звук. Читаются из наблюдаемого списка,
+    /// поэтому шапка обновляется сама.
+    func headerLive(id: String) -> ChatHeaderLive {
+        guard let list = listModel, let chat = list.chat(id: id) else { return ChatHeaderLive() }
+        return ChatHeaderLive(
+            isOnline: chat.isOnline,
+            isMuted: chat.isMuted,
+            isVerified: chat.isVerified,
+            typingCount: list.typing[id]?.count ?? 0
+        )
+    }
+
     /// Профиль контакта из вкладки «Контакты»: до открытия диалога его может не быть в списке.
     func profileViewModel(dialog: DialogDraft) -> ChatProfileViewModel? {
         guard let profiles else { return nil }

@@ -19,8 +19,12 @@ struct ChatView: View {
     var onToggleMute: (() -> Void)?
     /// Контакты для вкладки «Контакт» листа вложений. `nil` — вкладка пустая.
     var contactList: (() -> AsyncStream<[Contact]>)? = nil
-    /// Модель профиля чата для перехода по нажатию на заголовок.
+    /// Сеть, «печатает…», звук и галочка — живые данные из списка чатов для шапки.
+    var live: () -> ChatHeaderLive = { ChatHeaderLive() }
+    /// Модель профиля чата: шапка берёт из неё статус, нажатие на шапку открывает профиль.
     var makeProfile: (() -> ChatProfileViewModel?)?
+    @State private var profile: ChatProfileViewModel?
+    @State private var profileShown = false
     @State private var forwardList: [ChatListItem] = []
     @State private var attachmentsShown = false
     @State private var recording = RecordingSession()
@@ -65,19 +69,49 @@ struct ChatView: View {
         .navigationTitle(shownTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if let makeProfile {
-                ToolbarItem(placement: .principal) {
-                    NavigationLink {
-                        ProfileDestination(make: makeProfile)
-                    } label: {
-                        PrivateText(title, placeholder: maskedTitle)
-                            .font(.headline)
-                            .lineLimit(1)
-                            .foregroundStyle(.primary)
+            ToolbarItem(placement: .principal) {
+                Button(action: openProfile) {
+                    ChatHeaderTitle(
+                        title: title,
+                        maskedTitle: maskedTitle,
+                        status: privateMode.isMasked ? .none : headerStatus,
+                        isVerified: live().isVerified || profile?.isOfficial == true,
+                        isMuted: isMuted
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(shownTitle), открыть профиль")
+            }
+            if let profile {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: openProfile) {
+                        ChatHeaderAvatar(viewModel: profile, size: 36)
                     }
-                    .accessibilityLabel("\(shownTitle), открыть профиль")
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Профиль")
                 }
             }
+        }
+        .navigationDestination(isPresented: $profileShown) {
+            if let profile {
+                ChatProfileView(
+                    viewModel: profile,
+                    context: ChatProfileContext(
+                        chat: viewModel,
+                        isMuted: isMuted,
+                        onToggleMute: onToggleMute,
+                        onShowMessage: { showInChat($0) }
+                    ),
+                    live: live()
+                )
+                // Профиль открывают осознанно, и приватный режим его не прячет.
+                .environment(\.privateMode, .visible)
+            }
+        }
+        .task {
+            // Шапка: статус и аватар из карточки чата, она же открывается профилем.
+            if profile == nil { profile = makeProfile?() }
+            await profile?.load()
         }
         .sheet(item: $viewModel.openedComments, onDismiss: { viewModel.closeComments() }) { post in
             if let model = viewModel.commentsModel(for: post) {
@@ -113,7 +147,7 @@ struct ChatView: View {
             ReactionUsersView(model: model) { viewModel.reactionUsers = nil }
                 .environment(\.privateMode, .visible)
         }
-        .fullScreenCover(item: $viewModel.viewer) { request in
+        .fullScreenCover(item: profileShown ? .constant(nil) : $viewModel.viewer) { request in
             MediaViewer(
                 request: request,
                 download: { await viewModel.downloadVideo($0) },
@@ -125,7 +159,7 @@ struct ChatView: View {
                 .environment(\.privateMode, .visible)
         }
         .fileExportSheet(viewModel, fromViewer: false)
-        .fullScreenCover(item: $viewModel.openedFile) { file in
+        .fullScreenCover(item: profileShown ? .constant(nil) : $viewModel.openedFile) { file in
             FileQuickLook(url: file.url, title: file.name) { viewModel.openedFile = nil }
                 .environment(\.privateMode, .visible)
         }
@@ -210,6 +244,26 @@ struct ChatView: View {
             }
             // Пуши реакций, пока приложение было в фоне, могли потеряться: сверить с сервером.
             if phase == .active { Task { await viewModel.refreshReactions() } }
+        }
+    }
+
+    private var headerStatus: ChatHeaderStatus {
+        profile?.headerStatus(live()) ?? .none
+    }
+
+    private func openProfile() {
+        guard profile != nil else { return }
+        composerFocused = false
+        profileShown = true
+    }
+
+    /// «Показать в чате» из общих медиа: профиль закрывается, сообщение подсвечивается.
+    private func showInChat(_ message: Message) {
+        profileShown = false
+        Task {
+            // Сначала уезжает профиль, потом лента прокручивается к сообщению.
+            try? await Task.sleep(for: .milliseconds(350))
+            viewModel.focusReply(message.id)
         }
     }
 

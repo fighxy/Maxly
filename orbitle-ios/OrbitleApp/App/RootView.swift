@@ -205,7 +205,9 @@ struct MainTabView: View {
                 ChatListView(viewModel: list, selection: $router.chatId)
             } detail: {
                 if let id = router.chatId {
-                    chatScreen(id)
+                    // Свой стек у колонки: из чата открывается профиль.
+                    NavigationStack { chatScreen(id) }
+                        .id(id)
                 } else {
                     ContentUnavailableView {
                         Label {
@@ -243,7 +245,8 @@ struct MainTabView: View {
                 canWrite: container.canWrite(id: id),
                 isMuted: container.isMuted(id: id),
                 onToggleMute: { Task { await container.toggleMute(id: id) } },
-                contactList: { container.attachmentContacts() }
+                contactList: { container.attachmentContacts() },
+                live: { container.headerLive(id: id) }
             ) {
                 container.profileViewModel(chatId: id)
             }
