@@ -115,7 +115,10 @@ fun bubbleColors(outgoing: Boolean): BubbleColors {
         // Свой пузырь в обеих темах — фирменный акцент с белым текстом.
         BubbleColors(OrbitleAccent, Color.White, Color.White.copy(alpha = 0.72f), Color.White)
     } else {
-        BubbleColors(scheme.surfaceContainerHigh, scheme.onSurface, scheme.onSurfaceVariant, scheme.primary)
+        // На обоях в светлой теме чужой пузырь белый, чтобы читался на светлом узоре.
+        val backdrop = app.orbitle.ui.components.LocalChatBackdrop.current
+        val onWallpaper = !backdrop.dark && backdrop.wallpaper.image(false) != null
+        BubbleColors(if (onWallpaper) Color.White else scheme.surfaceContainerHigh, scheme.onSurface, scheme.onSurfaceVariant, scheme.primary)
     }
 }
 

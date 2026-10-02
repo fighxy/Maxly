@@ -140,6 +140,7 @@ import app.orbitle.presentation.chat.ChatViewModel
 import app.orbitle.presentation.chatlist.ChatListItem
 import app.orbitle.ui.components.Avatar
 import app.orbitle.ui.components.ChatWallpaperBackground
+import app.orbitle.ui.components.edgeFade
 import app.orbitle.ui.components.LocalChatBackdrop
 import app.orbitle.ui.theme.OrbitleAccent
 import kotlinx.coroutines.delay
@@ -274,18 +275,24 @@ fun ChatScreen(
             listState.animateScrollToItem(0)
         }
     }
-    val awayFromBottom by remember { derivedStateOf { listState.firstVisibleItemIndex > 2 } }
+    val awayFromBottom by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            app.orbitle.presentation.chat.ScrollDown.isVisible(info.visibleItemsInfo.map { it.index }, info.totalItemsCount)
+        }
+    }
 
     CompositionLocalProvider(LocalBubbleMedia provides bubbleMedia) { Box(Modifier.fillMaxSize()) {
+    // Обои на весь экран: не прокручиваются с лентой и не двигаются за клавиатурой.
+    ChatWallpaperBackground(LocalChatBackdrop.current)
     Scaffold(
         topBar = { ChatTopBar(state, onBack, onOpenProfile, privacy) },
         snackbarHost = { SnackbarHost(snackbar) },
         contentWindowInsets = WindowInsets(0),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+        containerColor = Color.Transparent,
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().imePadding()) {
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                ChatWallpaperBackground(LocalChatBackdrop.current)
                 when {
                     state.isLoading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                     state.emptyHint != null -> EmptyHint(state.emptyHint!!, Modifier.align(Alignment.Center))
@@ -293,8 +300,9 @@ fun ChatScreen(
                 LazyColumn(
                     state = listState,
                     reverseLayout = true,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(top = if (privacy != app.orbitle.domain.PrivateModeDisplay.VISIBLE) 88.dp else 8.dp, bottom = 8.dp),
+                    // Тонкое растворение сверху, лёгкое снизу — в обои или фон.
+                    modifier = Modifier.fillMaxSize().edgeFade(top = 10.dp, bottom = 16.dp),
+                    contentPadding = PaddingValues(top = if (privacy != app.orbitle.domain.PrivateModeDisplay.VISIBLE) 88.dp else 10.dp, bottom = 12.dp),
                 ) {
                     items(state.items, key = { it.key }, contentType = { it::class }) { item ->
                         when (item) {
