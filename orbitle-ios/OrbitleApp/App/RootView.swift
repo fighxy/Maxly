@@ -15,9 +15,10 @@ struct RootView: View {
                 content
             }
         }
-        // Размер текста и тема из «Оформления» — на всё приложение, включая экран сбоя.
+        // Размер текста, тема и обои чата из «Оформления» — на всё приложение, включая экран сбоя.
         .dynamicTypeSize(container.appearance.textSize.dynamicTypeSize)
         .background(InterfaceStyleOverride(theme: container.appearance.theme))
+        .environment(\.chatWallpaper, container.appearance.wallpaper)
         .task { await container.bootstrap() }
         .task(id: router.chatId) { await container.focus(chatId: router.chatId) }
         .onChange(of: container.phase) { old, phase in

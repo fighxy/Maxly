@@ -3,12 +3,13 @@ import OrbitleDomain
 
 /// Настройки оформления в `UserDefaults`: одни на устройство, выход из аккаунта их не трогает.
 ///
-/// Шаг и тема хранятся именами (`large`, `dark`), незнакомое имя читается как значение
+/// Шаг, тема и обои хранятся именами (`large`, `dark`, `autumnAuto`), незнакомое имя читается как значение
 /// по умолчанию.
 @MainActor
 public final class UserDefaultsAppearanceStore: AppearanceStore {
     public static let textSizeKey = "orbitle.appearance.textSize"
     public static let themeKey = "orbitle.appearance.theme"
+    public static let wallpaperKey = "orbitle.appearance.wallpaper"
 
     private let defaults: UserDefaults
 
@@ -19,11 +20,13 @@ public final class UserDefaultsAppearanceStore: AppearanceStore {
     public func load() -> AppearancePreferences {
         let size = defaults.string(forKey: Self.textSizeKey).flatMap(TextSizeStep.init(rawValue:))
         let theme = defaults.string(forKey: Self.themeKey).flatMap(ThemeMode.init(rawValue:))
-        return AppearancePreferences(textSize: size ?? .standard, theme: theme ?? .system)
+        let wallpaper = defaults.string(forKey: Self.wallpaperKey).flatMap(ChatWallpaper.init(rawValue:))
+        return AppearancePreferences(textSize: size ?? .standard, theme: theme ?? .system, wallpaper: wallpaper ?? .standard)
     }
 
     public func save(_ preferences: AppearancePreferences) {
         defaults.set(preferences.textSize.rawValue, forKey: Self.textSizeKey)
         defaults.set(preferences.theme.rawValue, forKey: Self.themeKey)
+        defaults.set(preferences.wallpaper.rawValue, forKey: Self.wallpaperKey)
     }
 }

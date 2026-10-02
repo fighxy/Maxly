@@ -66,6 +66,8 @@ public struct MessageBubble: View {
     /// Палец ведёт по дорожке голосового: горизонтальный жест — перемотка, не ответ.
     @State private var scrubbing = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Обои за лентой: входящий пузырь светлой темы на них белый.
+    @Environment(\.chatWallpaper) private var wallpaper
     private static let replyThreshold: CGFloat = 56
 
     private static let radius: CGFloat = 18
@@ -821,7 +823,8 @@ public struct MessageBubble: View {
 
     private var fill: Color {
         guard hasFill else { return .clear }
-        return isOutgoing ? Color.orbitleOutgoing : Color.orbitleIncoming
+        if isOutgoing { return Color.orbitleOutgoing }
+        return wallpaper.hasImage ? Color.orbitleIncomingOnWallpaper : Color.orbitleIncoming
     }
 
     private var textColor: Color {

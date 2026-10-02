@@ -20,11 +20,14 @@ struct ChatTranscript: View {
     /// Верх нижних кнопок (поле ввода или плашка канала) в глобальных координатах: от него
     /// поднимается мягкое размытие низа. `0` — ещё не измерено.
     var bottomControlsTop: CGFloat = 0
+    /// Где на экране лежит фон с обоями: низ ленты тает в ту же картинку.
+    var wallpaperFrame: CGRect = .zero
     /// Низ ленты виден (пока виден, новые сообщения прокручивают ленту сами), число новых
     /// на кнопке «вниз» и прыжок к последнему сообщению.
     @State private var bottom = TranscriptBottomState()
     @State private var isOpening = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.chatWallpaper) private var wallpaper
 
     static let bottomId = "transcript-bottom"
     /// Отступ ленты от краёв: пузыри ближе к краю экрана.
@@ -97,7 +100,7 @@ struct ChatTranscript: View {
                 }
                 .chatSystemEdgeEffectHidden()
                 // Лёгкий переход в фон под нижними кнопками. Раньше кнопки «вниз»: она рисуется поверх.
-                .overlay { ChatBottomBlur(controlsTop: bottomControlsTop) }
+                .overlay { ChatBottomBlur(controlsTop: bottomControlsTop, wallpaper: wallpaper, wallpaperFrame: wallpaperFrame) }
                 .overlay(alignment: .bottom) {
                     if viewModel.showsSavedPlaceholder {
                         SavedMessagesPlaceholder()
