@@ -46,6 +46,19 @@ final class SystemVoicePlayer: VoicePlaying {
         return player.currentItem?.status != .failed
     }
 
+    func seek(to fraction: Double) {
+        let fraction = min(max(fraction, 0), 1)
+        if let audio {
+            audio.currentTime = audio.duration * fraction
+            return
+        }
+        guard let player, let item = player.currentItem else { return }
+        let duration = item.duration.seconds
+        guard duration.isFinite, duration > 0 else { return }
+        let time = CMTime(seconds: duration * fraction, preferredTimescale: 600)
+        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
     func stop() {
         audio?.stop()
         audio = nil

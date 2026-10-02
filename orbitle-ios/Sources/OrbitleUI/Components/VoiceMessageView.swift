@@ -23,7 +23,16 @@ struct VoiceMessageView: View {
     /// `nil` — расшифровать нельзя (ещё не отправлено): кнопки нет.
     var onTranscribe: (() -> Void)?
     let onToggle: () -> Void
+    /// Перемотка по дорожке (доля 0…1). `nil` — дорожка не перематывается.
+    var onSeek: ((Double) -> Void)?
+    /// Идёт протяжка по дорожке: пузырь в это время не отвечает свайпом.
+    var onScrubbing: ((Bool) -> Void)?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Доля под пальцем, пока идёт протяжка: закраска и время следуют за пальцем.
+    @State private var scrub: Double?
+    /// Ширина колонки дорожки: по ней палец переводится в долю.
+    @State private var columnWidth: CGFloat = 0
+    @State private var scrubStarts = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -32,7 +41,7 @@ struct VoiceMessageView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     bars
                     HStack(spacing: 6) {
-                        Text(ChatContentFormat.voiceClock(durationMs: voice.durationMs, phase: phase))
+                        Text(ChatContentFormat.voiceClock(durationMs: voice.durationMs, phase: scrub.map { VoicePhase.paused($0) } ?? phase))
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(secondary)
                         if case .failed = phase {
@@ -47,6 +56,16 @@ struct VoiceMessageView: View {
                 // Дорожка занимает всё место между кнопкой и правой колонкой: пустого
                 // промежутка перед кнопкой расшифровки нет, в широком пузыре она тянется.
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // Колонка дорожки и времени — место для пальца: выше самой дорожки, но
+                // с тем же левым краем и шириной, поэтому доля считается по ней.
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { columnWidth = $0 }
+                .waveformScrub(
+                    enabled: onSeek != nil,
+                    onTap: { x in onSeek?(fraction(at: x)) },
+                    onBegin: beginScrub,
+                    onChange: { x in scrub = fraction(at: x) },
+                    onEnd: endScrub
+                )
                 trailingColumn
             }
             if isOpen {
@@ -59,6 +78,29 @@ struct VoiceMessageView: View {
         // на всю его ширину, кнопка расшифровки у правого края.
         .frame(minWidth: 180, maxWidth: .infinity, alignment: .leading)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: transcript)
+        .sensoryFeedback(.impact(weight: .light), trigger: scrubStarts)
+    }
+
+    // MARK: Перемотка
+
+    /// Доля дорожки под пальцем — по той же раскладке столбиков, что и рисунок.
+    private func fraction(at x: CGFloat) -> Double {
+        WaveformLayout(width: Double(columnWidth), barWidth: Self.barWidth, spacing: Self.barSpacing)
+            .progress(atX: Double(x))
+    }
+
+    private func beginScrub() {
+        scrubStarts += 1
+        scrub = (phase.isPlaying || isPaused) ? phase.progress : 0
+        onScrubbing?(true)
+    }
+
+    /// Отпущенный палец перематывает: играющее продолжает с нового места, остальное
+    /// начинает играть с него (решает модель чата).
+    private func endScrub(_ commit: Bool) {
+        if commit, let scrub { onSeek?(scrub) }
+        scrub = nil
+        onScrubbing?(false)
     }
 
     /// Правый край верхнего ряда: кнопка расшифровки наверху, время с галочками внизу,
@@ -196,7 +238,7 @@ struct VoiceMessageView: View {
 
     private var bars: some View {
         let wave = voice.waveform
-        let played = (phase.isPlaying || isPaused) ? phase.progress : 0
+        let played = scrub ?? ((phase.isPlaying || isPaused) ? phase.progress : 0)
         let active = outgoing ? Color.white : Color.orbitleAccent
         let rest = outgoing ? Color.white.opacity(0.45) : Color.orbitleAccent.opacity(0.35)
         return Canvas { context, size in
@@ -213,7 +255,8 @@ struct VoiceMessageView: View {
         .frame(height: 22)
         // Идеальная ширина от длительности задаёт ширину пузыря; данная — заполняется целиком.
         .frame(minWidth: 72, idealWidth: waveWidth, maxWidth: .infinity)
-        .animation(.linear(duration: 0.1), value: phase.progress)
+        // Под пальцем закраска идёт без задержки, от плеера — плавно.
+        .animation(scrub == nil ? .linear(duration: 0.1) : nil, value: phase.progress)
         .accessibilityHidden(true)
     }
 
