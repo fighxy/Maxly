@@ -34,6 +34,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.CallReceived
 import androidx.compose.material.icons.filled.Call
@@ -299,7 +301,13 @@ private fun BubbleContent(
         content.sticker?.let { sticker ->
             AsyncImage(sticker.url, "Стикер", Modifier.padding(8.dp).size(140.dp), contentScale = ContentScale.Fit)
         }
-        content.voices.forEach { PlayableVoice(message, it, colors, maxWidth) }
+        // Одно голосовое без текста: время и галочки справа внизу самого голосового.
+        val voiceOnly = text.isEmpty() && content.voices.size == 1 && visuals.isEmpty() && content.files.isEmpty() &&
+            content.call == null && content.sticker == null
+        val transcriptShown = voiceOnly && LocalBubbleMedia.current.media.value.transcripts[message.id] != null
+        content.voices.forEach {
+            PlayableVoice(message, it, colors, maxWidth, footer = if (voiceOnly) ({ TimeRow(item, colors.secondary) }) else null)
+        }
         content.files.forEach { file -> FileRow(message, file, colors) }
         content.attachments.filterIsInstance<ChatAttachment.Contact>().forEach { contact ->
             AttachmentRow(
@@ -329,6 +337,8 @@ private fun BubbleContent(
         }
         if (text.isNotEmpty()) {
             TextWithTime(item, text, colors)
+        } else if (voiceOnly && !transcriptShown) {
+            Spacer(Modifier.height(6.dp))
         } else {
             TimeRow(item, colors.secondary, Modifier.align(Alignment.End).padding(start = 12.dp, end = 10.dp, bottom = 6.dp, top = 2.dp))
         }
@@ -473,7 +483,7 @@ private fun VideoCell(video: VideoContent, modifier: Modifier) {
 
 /** Голосовое пузыря: плеер, перемотка по дорожке и расшифровка. */
 @Composable
-private fun PlayableVoice(message: Message, voice: VoiceContent, colors: BubbleColors, maxWidth: Dp) {
+private fun PlayableVoice(message: Message, voice: VoiceContent, colors: BubbleColors, maxWidth: Dp, footer: (@Composable () -> Unit)? = null) {
     val media = LocalBubbleMedia.current
     val playback = media.playback.value?.takeIf { it.matches(message.id, voice.id) }
     val transcript = media.media.value.transcripts[message.id]
@@ -489,6 +499,8 @@ private fun PlayableVoice(message: Message, voice: VoiceContent, colors: BubbleC
         onSeek = if (media.canPlay(voice)) ({ media.onSeek(message, voice, it) }) else null,
         transcriptOpen = transcript != null,
         onTranscript = if (media.canTranscribe(message, voice)) ({ media.onTranscript(message, voice) }) else null,
+        // С открытой расшифровкой время встаёт под неё, как у текста.
+        footer = footer.takeIf { transcript == null },
     )
     when (transcript) {
         TranscriptUi.Loading -> Row(Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -506,7 +518,11 @@ private fun PlayableVoice(message: Message, voice: VoiceContent, colors: BubbleC
     }
 }
 
-/** Голосовое: кнопка, дорожка и длительность. Прогресс рисуется, если идёт воспроизведение. */
+/**
+ * Голосовое: кнопка, дорожка на всю ширину пузыря, справа сверху — расшифровка, снизу —
+ * длительность и [footer] (время и галочки пузыря). Касание дорожки переходит к месту под
+ * пальцем, горизонтальное перетаскивание перематывает с подсветкой и временем под пальцем.
+ */
 @Composable
 fun VoiceRow(
     voice: VoiceContent,
@@ -520,55 +536,80 @@ fun VoiceRow(
     onSeek: ((Float) -> Unit)? = null,
     transcriptOpen: Boolean = false,
     onTranscript: (() -> Unit)? = null,
+    footer: (@Composable () -> Unit)? = null,
 ) {
-    Row(Modifier.padding(start = 8.dp, end = 12.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            Modifier.size(42.dp).clip(CircleShape).background(colors.accent).clickable(enabled = onToggle != null) { onToggle?.invoke() },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (playing) "Пауза" else "Воспроизвести", tint = colors.container)
-            if (buffering) CircularProgressIndicator(Modifier.size(42.dp), color = colors.container, strokeWidth = 2.dp)
-        }
-        Spacer(Modifier.width(10.dp))
-        Column {
-            val width = minOf(maxWidth - if (onTranscript != null) 126.dp else 90.dp, 200.dp)
-            var dragging by remember { mutableStateOf<Float?>(null) }
+    val density = LocalDensity.current
+    val haptic = LocalHapticFeedback.current
+    var dragging by remember { mutableStateOf<Float?>(null) }
+    // Та же раскладка столбиков, что у рисунка: граница подсветки встаёт ровно под палец.
+    fun fraction(x: Float, width: Int): Float {
+        val layout = WaveformLayout.of(width.toDouble(), with(density) { 3.dp.toPx() }.toDouble(), with(density) { 2.dp.toPx() }.toDouble())
+        return layout.progressAt(x.toDouble()).toFloat().coerceIn(0f, 1f)
+    }
+    Column(Modifier.width(minOf(maxWidth - 8.dp, 300.dp)).padding(start = 8.dp, end = 10.dp, top = 8.dp)) {
+        Row(verticalAlignment = Alignment.Top) {
+            Box(
+                Modifier.size(42.dp).clip(CircleShape).background(colors.accent).clickable(enabled = onToggle != null) { onToggle?.invoke() },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (playing) "Пауза" else "Воспроизвести", tint = colors.container)
+                if (buffering) CircularProgressIndicator(Modifier.size(42.dp), color = colors.container, strokeWidth = 2.dp)
+            }
+            Spacer(Modifier.width(10.dp))
             val seek = if (onSeek == null) Modifier else Modifier
                 .pointerInput(onSeek) {
-                    detectTapGestures { offset -> onSeek((offset.x / size.width).coerceIn(0f, 1f)) }
+                    detectTapGestures { offset -> onSeek(fraction(offset.x, size.width)) }
                 }
                 .pointerInput(onSeek) {
                     detectHorizontalDragGestures(
-                        onDragStart = { dragging = (it.x / size.width).coerceIn(0f, 1f) },
-                        onHorizontalDrag = { change, _ -> dragging = (change.position.x / size.width).coerceIn(0f, 1f) },
-                        onDragEnd = { dragging?.let(onSeek); dragging = null },
+                        onDragStart = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            dragging = fraction(it.x, size.width)
+                        },
+                        onHorizontalDrag = { change, _ ->
+                            change.consume()
+                            dragging = fraction(change.position.x, size.width)
+                        },
+                        onDragEnd = {
+                            dragging?.let(onSeek)
+                            dragging = null
+                        },
                         onDragCancel = { dragging = null },
                     )
                 }
-            Waveform(voice.waveform, dragging ?: progress, colors, Modifier.width(width).height(26.dp).then(seek))
+            Waveform(
+                voice.waveform,
+                dragging ?: progress,
+                colors,
+                Modifier.weight(1f).padding(top = 4.dp).height(34.dp).then(seek).semantics { contentDescription = "Дорожка голосового" },
+            )
+            if (onTranscript != null) {
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    Modifier.size(30.dp).clip(RoundedCornerShape(8.dp))
+                        .background(colors.accent.copy(alpha = if (transcriptOpen) 0.3f else 0.14f))
+                        .clickable(onClick = onTranscript),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("А", color = colors.accent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Icon(
+                        if (transcriptOpen) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                        "Расшифровка",
+                        tint = colors.accent,
+                        modifier = Modifier.size(12.dp).align(Alignment.BottomEnd),
+                    )
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(start = 52.dp), verticalAlignment = Alignment.CenterVertically) {
             val shown = when {
                 dragging != null && voice.durationMs > 0 -> (dragging!! * voice.durationMs).toLong()
                 positionMs != null && (playing || positionMs > 0) -> positionMs
                 else -> voice.durationMs
             }
             Text(CallBubbleText.clock(shown), color = colors.secondary, fontSize = 12.sp)
-        }
-        if (onTranscript != null) {
-            Spacer(Modifier.width(6.dp))
-            Box(
-                Modifier.size(30.dp).clip(RoundedCornerShape(8.dp))
-                    .background(colors.accent.copy(alpha = if (transcriptOpen) 0.3f else 0.14f))
-                    .clickable(onClick = onTranscript),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("А", color = colors.accent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                Icon(
-                    if (transcriptOpen) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                    "Расшифровка",
-                    tint = colors.accent,
-                    modifier = Modifier.size(12.dp).align(Alignment.BottomEnd),
-                )
-            }
+            Spacer(Modifier.weight(1f))
+            footer?.invoke()
         }
     }
 }
