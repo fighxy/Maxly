@@ -1,6 +1,14 @@
 package app.orbitle.ui.settings
 
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -18,8 +26,7 @@ import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.KeyboardArrowDown
-import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.MoreVert
@@ -44,6 +51,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,16 +61,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerInputScope
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.orbitle.domain.ServerFolder
 import app.orbitle.presentation.chatlist.ChatListItem
+import app.orbitle.presentation.settings.FolderOrder
 import app.orbitle.presentation.settings.FoldersViewModel
 import app.orbitle.presentation.settings.chatsCount
 import app.orbitle.presentation.settings.folderSummary
 import app.orbitle.ui.components.Avatar
+import kotlinx.coroutines.launch
 
 /**
  * «Папки»: серверные папки чатов. «Все» не меняется, остальные переставляются,
@@ -79,6 +100,18 @@ fun FoldersScreen(
     var deleting by remember { mutableStateOf<ServerFolder?>(null) }
     var picking by remember { mutableStateOf<ServerFolder?>(null) }
     var creating by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    val drag = remember(listState) { FolderDrag(listState) }
+    val haptic = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    val currentEditable by rememberUpdatedState(state.editable)
+    val editableIds = { currentEditable.map { it.id } }
+    // Отпустили: порядок уходит в модель один раз, строка доезжает до своего места.
+    val drop = {
+        drag.finish()?.let(model::reorder)
+        scope.launch { drag.settle() }
+        Unit
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -93,7 +126,7 @@ fun FoldersScreen(
             Box(Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             return@Scaffold
         }
-        LazyColumn(Modifier.padding(padding).fillMaxSize()) {
+        LazyColumn(Modifier.padding(padding).fillMaxSize(), state = listState) {
             folders.firstOrNull { it.isAllChats }?.let { all ->
                 item(key = "all") {
                     ListItem(
@@ -116,18 +149,42 @@ fun FoldersScreen(
                 }
             }
             val editable = state.editable
-            items(editable, key = { it.id }) { folder ->
-                val index = editable.indexOf(folder)
+            val byId = editable.associateBy { it.id }
+            // Во время перетаскивания — рабочий порядок экрана, иначе порядок сервера.
+            val shown = drag.order?.mapNotNull(byId::get) ?: editable
+            items(shown, key = { it.id }) { folder ->
+                val index = shown.indexOf(folder)
+                val dragged = drag.draggedId == folder.id
                 FolderRow(
                     folder = folder,
                     count = count(folder),
                     canMoveUp = index > 0,
-                    canMoveDown = index < editable.lastIndex,
+                    canMoveDown = index < shown.lastIndex,
                     enabled = !state.working,
+                    dragged = dragged,
                     onRename = { renaming = folder },
                     onPick = { picking = folder },
                     onDelete = { deleting = folder },
                     onMove = { model.move(folder, it) },
+                    dragGestures = {
+                        detectDragGestures(
+                            onDragStart = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                drag.start(folder.id, editableIds())
+                            },
+                            onDrag = { change, amount ->
+                                change.consume()
+                                drag.drag(amount.y)
+                            },
+                            onDragEnd = { drop() },
+                            onDragCancel = { drop() },
+                        )
+                    },
+                    modifier = if (dragged) {
+                        Modifier.zIndex(1f).graphicsLayer { translationY = drag.offset }
+                    } else {
+                        Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null)
+                    },
                 )
             }
             if (folders.size > 1) {
@@ -223,53 +280,127 @@ private fun FolderRow(
     canMoveUp: Boolean,
     canMoveDown: Boolean,
     enabled: Boolean,
+    dragged: Boolean,
     onRename: () -> Unit,
     onPick: () -> Unit,
     onDelete: () -> Unit,
     onMove: (Int) -> Unit,
+    /** Жесты ручки перетаскивания. */
+    dragGestures: suspend PointerInputScope.() -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var menu by remember { mutableStateOf(false) }
+    val elevation by animateDpAsState(if (dragged) 6.dp else 0.dp, label = "folderDragElevation")
+    // Перекомпоновка во время перетаскивания не должна перезапускать жест.
+    val gestures by rememberUpdatedState(dragGestures)
     ListItem(
         headlineContent = { Text(folder.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         supportingContent = folderSummary(folder, count)?.let { { Text(it) } },
         leadingContent = { Icon(Icons.Outlined.Folder, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
         trailingContent = {
-            Box {
-                IconButton(onClick = { menu = true }, enabled = enabled) { Icon(Icons.Outlined.MoreVert, "Действия с папкой") }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("Переименовать") }, leadingIcon = { Icon(Icons.Outlined.Edit, null) }, onClick = {
-                        menu = false
-                        onRename()
-                    })
-                    DropdownMenuItem(text = { Text("Выбрать чаты") }, leadingIcon = { Icon(Icons.Outlined.Checklist, null) }, onClick = {
-                        menu = false
-                        onPick()
-                    })
-                    if (canMoveUp) {
-                        DropdownMenuItem(text = { Text("Выше") }, leadingIcon = { Icon(Icons.Outlined.KeyboardArrowUp, null) }, onClick = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box {
+                    IconButton(onClick = { menu = true }, enabled = enabled) { Icon(Icons.Outlined.MoreVert, "Действия с папкой") }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text("Переименовать") }, leadingIcon = { Icon(Icons.Outlined.Edit, null) }, onClick = {
                             menu = false
-                            onMove(-1)
+                            onRename()
                         })
-                    }
-                    if (canMoveDown) {
-                        DropdownMenuItem(text = { Text("Ниже") }, leadingIcon = { Icon(Icons.Outlined.KeyboardArrowDown, null) }, onClick = {
+                        DropdownMenuItem(text = { Text("Выбрать чаты") }, leadingIcon = { Icon(Icons.Outlined.Checklist, null) }, onClick = {
                             menu = false
-                            onMove(1)
+                            onPick()
                         })
+                        DropdownMenuItem(
+                            text = { Text("Удалить", color = MaterialTheme.colorScheme.error) },
+                            leadingIcon = { Icon(Icons.Outlined.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                            onClick = {
+                                menu = false
+                                onDelete()
+                            },
+                        )
                     }
-                    DropdownMenuItem(
-                        text = { Text("Удалить", color = MaterialTheme.colorScheme.error) },
-                        leadingIcon = { Icon(Icons.Outlined.Delete, null, tint = MaterialTheme.colorScheme.error) },
-                        onClick = {
-                            menu = false
-                            onDelete()
-                        },
+                }
+                // Ручка: потянуть вверх или вниз, чтобы поменять порядок. Для TalkBack — действия строки.
+                Box(
+                    Modifier.size(48.dp).then(if (enabled) Modifier.pointerInput(folder.id) { gestures(this) } else Modifier),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.DragHandle,
+                        null,
+                        tint = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                     )
                 }
             }
         },
-        modifier = Modifier.clickable(enabled = enabled, onClick = onPick),
+        colors = ListItemDefaults.colors(containerColor = if (dragged) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surface),
+        tonalElevation = elevation,
+        shadowElevation = elevation,
+        modifier = modifier.clickable(enabled = enabled, onClick = onPick).semantics {
+            val actions = buildList {
+                if (canMoveUp) add(CustomAccessibilityAction("Переместить выше") { onMove(-1); true })
+                if (canMoveDown) add(CustomAccessibilityAction("Переместить ниже") { onMove(1); true })
+            }
+            if (enabled && actions.isNotEmpty()) customActions = actions
+        },
     )
+}
+
+/**
+ * Перетаскивание папки за ручку: рабочий порядок живёт только на экране, пока палец не отпущен.
+ * Строка едет за пальцем, соседи меняются местами, когда центр строки заходит на них.
+ */
+private class FolderDrag(private val list: LazyListState) {
+    var order by mutableStateOf<List<String>?>(null)
+        private set
+    var draggedId by mutableStateOf<String?>(null)
+        private set
+    var offset by mutableFloatStateOf(0f)
+        private set
+    /** Новое перетаскивание обрывает доводку прошлого. */
+    private var settleToken = 0
+
+    fun start(id: String, current: List<String>) {
+        if (id !in current) return
+        settleToken++
+        order = current
+        draggedId = id
+        offset = 0f
+    }
+
+    fun drag(dy: Float) {
+        val id = draggedId ?: return
+        val ids = order ?: return
+        offset += dy
+        val visible = list.layoutInfo.visibleItemsInfo
+        val dragged = visible.firstOrNull { it.key == id } ?: return
+        val center = dragged.offset + offset + dragged.size / 2f
+        val target = visible.firstOrNull { info ->
+            info.key != id && info.key in ids && center >= info.offset && center < info.offset + info.size
+        } ?: return
+        val from = ids.indexOf(id)
+        val to = ids.indexOf(target.key)
+        // Раскладка ещё не догнала прошлый обмен — ждём следующего кадра.
+        if (target.index - dragged.index != to - from) return
+        val landed = if (to > from) target.offset + target.size - dragged.size else target.offset
+        order = FolderOrder.moved(ids, from, to)
+        offset += dragged.offset - landed
+    }
+
+    /** Отпустили: рабочий порядок для модели (или `null`, если тянуть было нечего). */
+    fun finish(): List<String>? {
+        val result = order
+        order = null
+        return result
+    }
+
+    /** Строка плавно встаёт на место, потом перестаёт быть перетаскиваемой. */
+    suspend fun settle() {
+        if (draggedId == null) return
+        val token = ++settleToken
+        animate(offset, 0f, animationSpec = tween(150)) { value, _ -> if (token == settleToken) offset = value }
+        if (token == settleToken) draggedId = null
+    }
 }
 
 @Composable
