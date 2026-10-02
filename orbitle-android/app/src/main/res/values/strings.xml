@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Orbitle</string>
+
+    <!-- Вкладки -->
+    <string name="tab_chats">Чаты</string>
+    <string name="tab_calls">Звонки</string>
+    <string name="tab_contacts">Контакты</string>
+    <string name="tab_settings">Настройки</string>
+
+    <!-- Вход -->
+    <string name="auth_welcome_title">Orbitle</string>
+    <string name="auth_welcome_subtitle">Мессенджер для Max. Введите номер телефона, чтобы войти</string>
+    <string name="auth_country">Страна</string>
+    <string name="auth_country_code">Код</string>
+    <string name="auth_phone">Номер телефона</string>
+    <string name="auth_next">Далее</string>
+    <string name="auth_session_expired">Сессия истекла. Войдите снова</string>
+    <string name="auth_code_label">Код</string>
+    <string name="auth_verify">Подтвердить</string>
+    <string name="auth_change_number">Изменить номер</string>
+    <string name="auth_password_label">Облачный пароль</string>
+    <string name="auth_sign_in">Войти</string>
+    <string name="auth_first_name">Имя</string>
+    <string name="auth_last_name">Фамилия (необязательно)</string>
+    <string name="auth_register_prompt">Номер ещё не зарегистрирован. Как вас зовут?</string>
+    <string name="auth_create_account">Создать аккаунт</string>
+    <string name="auth_back">Назад</string>
+    <string name="auth_show_password">Показать пароль</string>
+    <string name="auth_hide_password">Скрыть пароль</string>
+    <string name="country_picker_title">Выберите страну</string>
+    <string name="country_search">Поиск страны</string>
+    <string name="country_not_found">Ничего не нашлось</string>
+
+    <!-- Список чатов -->
+    <string name="chats_title">Чаты</string>
+    <string name="chats_search">Поиск</string>
+    <string name="chats_empty">Пока нет чатов</string>
+    <string name="chats_empty_hint">Начните переписку из контактов</string>
+    <string name="chats_search_empty">Ничего не найдено</string>
+    <string name="chats_offline">Нет соединения с сервером</string>
+    <string name="chats_retry">Повторить</string>
+    <string name="chats_pin">Закрепить</string>
+    <string name="chats_unpin">Открепить</string>
+    <string name="chats_pinned">Закреплён</string>
+    <string name="chats_muted">Без звука</string>
+    <string name="chats_verified">Подтверждённый</string>
+    <string name="chats_draft">Черновик:</string>
+    <string name="chats_close_search">Закрыть поиск</string>
+
+    <!-- Заглушки вкладок -->
+    <string name="calls_title">Звонки</string>
+    <string name="contacts_title">Контакты</string>
+    <string name="soon">Скоро здесь появится</string>
+
+    <!-- Настройки -->
+    <string name="settings_title">Настройки</string>
+    <string name="settings_about">О приложении</string>
+    <string name="settings_logout">Выйти</string>
+    <string name="settings_logout_confirm_title">Выйти из аккаунта?</string>
+    <string name="settings_logout_confirm_text">Чтобы вернуться, понадобится код из SMS</string>
+    <string name="settings_cancel">Отмена</string>
+    <string name="about_version">Версия</string>
+    <string name="about_build">Сборка</string>
+    <string name="about_core">Ядро max-kmp-core</string>
+    <string name="about_text">Неофициальный клиент Max для Android. Работает на открытом ядре max-kmp-core и представляется сервису как Android-устройство.</string>
+    <string name="about_source">Исходный код</string>
+</resources>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Токен входа ядра не уходит в облачную копию: на новом устройстве нужен новый вход. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="." />
+</full-backup-content>

@@ -1,0 +1,132 @@
+name: Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "orbitle-android/**"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "orbitle-android/**"
+      - ".github/workflows/android.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Tests and APK
+    runs-on: ubuntu-latest
+    # Выпуск с .apk (шаг «Publish APK») создаёт релиз в этом репозитории.
+    permissions:
+      contents: write
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: orbitle-android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: ""
+      # Приложению нужен SDK 37, ядру (AGP 8.7) — SDK 35.
+      - name: Android SDK packages
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install "platforms;android-37.0" "platforms;android-35" "build-tools;37.0.0" "build-tools;35.0.0" > /dev/null
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+      - uses: gradle/actions/setup-gradle@v4
+      # AAR ядра зависят только от ревизии в core.lock: кэш экономит сборку ядра.
+      - name: Cache core AAR
+        id: core-cache
+        uses: actions/cache@v4
+        with:
+          path: orbitle-android/vendor
+          key: max-core-aar-${{ hashFiles('orbitle-android/core.lock', 'orbitle-android/scripts/fetch-core.sh') }}
+      - name: Fetch max-kmp-core
+        if: steps.core-cache.outputs.cache-hit != 'true'
+        env:
+          MAX_KMP_CORE_TOKEN: ${{ secrets.MAX_KMP_CORE_TOKEN }}
+        run: bash scripts/fetch-core.sh
+      - name: Unit tests
+        run: ./gradlew --console=plain testDebugUnitTest
+      - name: Test report
+        if: failure()
+        run: |
+          find app/build/test-results -name '*.xml' -exec grep -l '<failure' {} + 2>/dev/null | while read -r report; do
+            echo "::group::$report"
+            head -c 20000 "$report"
+            echo "::endgroup::"
+          done
+      # Ключ подписи: секрет ORBITLE_KEYSTORE_BASE64 (с паролями), иначе общий ключ разработки
+      # из orbitle-android/signing. Один ключ на все сборки — обновления ставятся поверх.
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ORBITLE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ORBITLE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ORBITLE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ORBITLE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/orbitle.keystore"
+            {
+              echo "ORBITLE_KEYSTORE_FILE=$RUNNER_TEMP/orbitle.keystore"
+              echo "ORBITLE_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+              echo "ORBITLE_KEY_ALIAS=$KEY_ALIAS"
+              echo "ORBITLE_KEY_PASSWORD=$KEY_PASSWORD"
+            } >> "$GITHUB_ENV"
+            echo "Подпись ключом из секрета ORBITLE_KEYSTORE_BASE64"
+          else
+            echo "::notice::Нет секрета ORBITLE_KEYSTORE_BASE64: APK подписан ключом разработки из репозитория"
+          fi
+      - name: Build APK
+        env:
+          ORBITLE_BUILD_SHA: ${{ github.sha }}
+          ORBITLE_VERSION_CODE: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          ./gradlew --console=plain assembleRelease
+          apk="app/build/outputs/apk/release/app-release.apk"
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --print-certs "$apk" | head -n 3
+          "$ANDROID_HOME/build-tools/37.0.0/aapt2" dump badging "$apk" | head -n 1
+          mkdir -p ../build && cp "$apk" ../build/Orbitle.apk
+          ls -lh ../build/Orbitle.apk
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Orbitle-apk-${{ github.sha }}
+          path: build/Orbitle.apk
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+      # Пререлиз с самим .apk: ссылку можно открыть в браузере на телефоне и сразу поставить.
+      # Хранятся последние 5 сборок.
+      - name: Publish APK
+        if: github.event_name != 'pull_request'
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          short="${GITHUB_SHA::7}"
+          apk="build/Orbitle-${short}.apk"
+          cp build/Orbitle.apk "$apk"
+          gh release delete "android-${short}" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "android-${short}" "$apk" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --prerelease --title "Orbitle Android ${short}" \
+            --notes "Сборка для Android ${GITHUB_SHA}. Откройте Orbitle-${short}.apk в браузере на телефоне и установите (нужно разрешить установку из этого источника)."
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | startswith("android-"))] | sort_by(.createdAt) | reverse | .[5:] | .[].tagName' |
+            while read -r old; do
+              gh release delete "$old" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+            done
