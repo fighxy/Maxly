@@ -37,6 +37,8 @@ final class AppContainer {
     private let recentSearches = RecentSearchesStore()
     @ObservationIgnored private var authModel: AuthViewModel?
     @ObservationIgnored private var listModel: ChatListViewModel?
+    /// Карточки профилей на диске: шапка чата и профиль видны сразу.
+    @ObservationIgnored private let profileCache = ChatProfileCache.standard()
     @ObservationIgnored private var chatModels: [String: ChatViewModel] = [:]
     /// Диалоги, открытые из контактов: по ним экран знает имя собеседника, пока чата нет в списке.
     @ObservationIgnored private var dialogDrafts: [String: DialogDraft] = [:]
@@ -173,7 +175,7 @@ final class AppContainer {
             self.coreCalls = coreCalls
             self.contacts = coreContacts
             self.calls = coreCalls
-            self.profiles = CoreChatProfileRepository(core: core)
+            self.profiles = CoreChatProfileRepository(core: core, cache: self.profileCache)
             self.accounts = CoreAccountRepository(core: core)
             self.folderRepository = CoreFolderRepository(core: core)
             self.session = session
@@ -485,6 +487,7 @@ final class AppContainer {
         await session?.logout()
         if !userId.isEmpty { UserDefaultsCallHistoryMarks.erase(userId: userId) }
         await recentSearches.clear()
+        await profileCache.removeAll()
         await ImagePipeline.shared.removeAll()
         dropScreenModels()
         authModel?.deactivate()

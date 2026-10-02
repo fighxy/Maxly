@@ -72,3 +72,37 @@ struct SharedMediaTests {
         #expect(shared.voices.first?.details.hasSuffix("0:42") == true)
     }
 }
+
+private struct CachedProfiles: ChatProfileRepository {
+    let cached: ChatProfile
+    func profile(chatId: String) async throws(OrbitleError) -> ChatProfile { throw .networkUnavailable }
+    func cachedProfile(chatId: String) async -> ChatProfile? { cached }
+}
+
+@Suite("Профиль из кэша")
+@MainActor
+struct ChatProfileCacheTests {
+    @Test("Без сети профиль показывает сохранённую карточку, а не ошибку")
+    func offline() async {
+        let card = ChatProfile(kind: .group, chatId: "7", title: "Семья", participants: 4)
+        let model = ChatProfileViewModel(chatId: "7", title: "Семья", repository: CachedProfiles(cached: card))
+        await model.load()
+        #expect(model.state == .loaded)
+        #expect(model.subtitle == "4 участника")
+    }
+
+    @Test("Общие медиа берут историю из кэша и окно чата без повторов")
+    func sharedFromHistory() async {
+        let model = ChatProfileViewModel(chatId: "7", title: "Семья", repository: CachedProfiles(cached: ChatProfile(kind: .group, chatId: "7", title: "Семья")))
+        func photo(_ id: String, _ seconds: TimeInterval) -> Message {
+            Message(
+                id: id, chatId: "7", authorId: "2", text: "",
+                timestamp: Date(timeIntervalSince1970: seconds), status: .sent,
+                content: MessageContent(attachments: [.photo(PhotoContent(id: "p" + id, url: URL(string: "https://x/\(id).jpg")))])
+            )
+        }
+        let window = [photo("3", 300), photo("4", 400)]
+        await model.updateShared(window, currentUserId: "me") { [photo("1", 100), photo("2", 200), photo("3", 300)] }
+        #expect(model.shared.media.map(\.attachmentId) == ["p4", "p3", "p2", "p1"])
+    }
+}

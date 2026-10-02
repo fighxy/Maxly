@@ -61,7 +61,9 @@ struct ChatProfileView: View {
         .refreshable { await viewModel.load() }
         .task(id: sharedVersion) {
             guard let chat = context?.chat else { return }
-            viewModel.updateShared(chat.messages, currentUserId: chat.currentUserId)
+            await viewModel.updateShared(chat.messages, currentUserId: chat.currentUserId) {
+                await chat.sharedHistory()
+            }
         }
         .overlay(alignment: .bottom) { toast }
         .animation(.snappy, value: copied)

@@ -62,6 +62,11 @@ public final class ChatProfileViewModel {
     public var shown: ChatProfile { profile ?? placeholder }
 
     public func load() async {
+        // Сначала карточка с устройства: профиль и статус видны сразу, сервер потом обновит.
+        if profile == nil, let cached = await repository.cachedProfile(chatId: chatId) {
+            profile = cached
+            state = .loaded
+        }
         if profile == nil { state = .loading }
         do {
             profile = try await repository.profile(chatId: chatId)
@@ -170,8 +175,24 @@ public final class ChatProfileViewModel {
     /// Открытая вкладка; пустые вкладки не показываются.
     public var sharedTab: SharedMediaTab = .media
 
-    public func updateShared(_ messages: [Message], currentUserId: String) {
-        let next = SharedMedia.collect(messages, currentUserId: currentUserId, now: now())
+    /// История из кэша устройства: общие медиа не ограничены окном, загруженным в чате.
+    @ObservationIgnored private var history: [Message] = []
+    @ObservationIgnored private var historyLoaded = false
+
+    /// `window` — сообщения открытого чата (свежее кэша), `history` — сохранённая история,
+    /// читается один раз.
+    public func updateShared(
+        _ window: [Message],
+        currentUserId: String,
+        history load: () async -> [Message] = { [] }
+    ) async {
+        if !historyLoaded {
+            historyLoaded = true
+            history = await load()
+        }
+        let windowIds = Set(window.map(\.id))
+        let older = history.filter { !windowIds.contains($0.id) && $0.timestamp <= (window.first?.timestamp ?? .distantFuture) }
+        let next = SharedMedia.collect(older + window, currentUserId: currentUserId, now: now())
         guard next != shared else { return }
         shared = next
         if let first = next.tabs.first, !next.tabs.contains(sharedTab) { sharedTab = first }
