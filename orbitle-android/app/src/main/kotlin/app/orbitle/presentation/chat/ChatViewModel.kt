@@ -78,6 +78,8 @@ class ChatViewModel(
     private val repository: MessageRepository,
     private val formatter: ChatFormatter = ChatFormatter(),
     private val now: () -> Long = System::currentTimeMillis,
+    /** Название, пока чата нет в сторе (новый диалог из контактов). */
+    private val fallbackTitle: String? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatUiState())
@@ -321,7 +323,11 @@ class ChatViewModel(
     private fun rebuildHeader() {
         val info = header
         if (info == null) {
-            _state.update { it.copy(header = null) }
+            val title = fallbackTitle?.takeIf { it.isNotBlank() }
+            val placeholder = title?.let {
+                ChatHeaderUi(it, "", false, ChatAvatar(ChatAvatar.Kind.Initials(ChatAvatar.initials(it)), ChatAvatar.colorIndex(chatId)))
+            }
+            _state.update { it.copy(header = placeholder) }
             return
         }
         val chat = info.chat

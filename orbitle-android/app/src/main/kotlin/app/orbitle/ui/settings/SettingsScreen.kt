@@ -7,6 +7,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.Contacts
+import androidx.compose.material.icons.outlined.Devices
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -54,7 +65,15 @@ import app.orbitle.ui.components.Avatar
 /** Шапка профиля и пункты настроек. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(account: Account?, onAbout: () -> Unit, onLogout: () -> Unit) {
+fun SettingsScreen(
+    account: Account?,
+    onAbout: () -> Unit,
+    onLogout: () -> Unit,
+    onSaved: () -> Unit = {},
+    onContacts: () -> Unit = {},
+    onDevices: () -> Unit = {},
+    onAppearance: () -> Unit = {},
+) {
     var confirm by rememberSaveable { mutableStateOf(false) }
     Scaffold(
         topBar = { TopAppBar(title = { Text(stringResource(R.string.settings_title)) }) },
@@ -63,7 +82,19 @@ fun SettingsScreen(account: Account?, onAbout: () -> Unit, onLogout: () -> Unit)
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())) {
             ProfileHeader(account)
             Spacer(Modifier.height(8.dp))
-            SettingsItem(Icons.Outlined.Info, stringResource(R.string.settings_about), onClick = onAbout)
+            SettingsItem(Icons.Outlined.Notifications, "Уведомления и звук", subtitle = "Скоро", enabled = false) {}
+            SettingsItem(Icons.Outlined.Devices, "Устройства", onClick = onDevices)
+            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            SettingsItem(Icons.Outlined.BookmarkBorder, "Избранное", onClick = onSaved)
+            SettingsItem(Icons.Outlined.Contacts, "Контакты", onClick = onContacts)
+            SettingsItem(Icons.Outlined.Palette, "Оформление", onClick = onAppearance)
+            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            SettingsItem(
+                Icons.Outlined.Info,
+                stringResource(R.string.settings_about),
+                trailing = { Text(BuildConfig.VERSION_NAME, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                onClick = onAbout,
+            )
             SettingsItem(Icons.AutoMirrored.Filled.Logout, stringResource(R.string.settings_logout), destructive = true) { confirm = true }
         }
     }
@@ -95,10 +126,28 @@ private fun ProfileHeader(account: Account?) {
         Spacer(Modifier.height(12.dp))
         Text(name.ifEmpty { " " }, style = MaterialTheme.typography.headlineSmall)
         account?.phone?.let {
+            // Номер скрыт при каждом открытии вкладки, глаз показывает его.
+            var shown by remember { mutableStateOf(false) }
             Spacer(Modifier.height(4.dp))
-            Text(PhoneNumber.display(it), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (shown) PhoneNumber.display(it) else maskedPhone(it),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                IconButton(onClick = { shown = !shown }) {
+                    Icon(if (shown) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, if (shown) "Скрыть номер" else "Показать номер", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
     }
+}
+
+/** `+7 ••• ••• •• ••`: код страны виден, остальное скрыто. */
+fun maskedPhone(phone: String): String {
+    val digits = phone.filter { it.isDigit() }
+    val code = if (digits.startsWith("7") || digits.length <= 10) digits.take(1) else digits.take(digits.length - 10)
+    return "+$code ••• ••• •• ••"
 }
 
 @Composable
@@ -107,6 +156,7 @@ fun SettingsItem(
     title: String,
     subtitle: String? = null,
     destructive: Boolean = false,
+    enabled: Boolean = true,
     trailing: (@Composable () -> Unit)? = null,
     onClick: () -> Unit,
 ) {
@@ -117,7 +167,7 @@ fun SettingsItem(
         leadingContent = { Icon(icon, null, tint = if (destructive) color else MaterialTheme.colorScheme.onSurfaceVariant) },
         trailingContent = trailing,
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.clickable(enabled = enabled, onClick = onClick).alpha(if (enabled) 1f else 0.5f),
     )
 }
 

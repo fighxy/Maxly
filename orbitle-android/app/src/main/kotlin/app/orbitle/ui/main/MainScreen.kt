@@ -36,7 +36,17 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import app.orbitle.R
-import app.orbitle.data.MessageRepository
+import android.net.Uri
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import app.orbitle.AppContainer
+import app.orbitle.domain.Chat
+import app.orbitle.presentation.calls.CallsViewModel
+import app.orbitle.presentation.contacts.ContactsViewModel
+import app.orbitle.ui.calls.CallsScreen
+import app.orbitle.ui.contacts.ContactsScreen
+import app.orbitle.ui.settings.AppearanceScreen
+import app.orbitle.ui.settings.DevicesScreen
 import app.orbitle.presentation.chat.ChatViewModel
 import app.orbitle.ui.chat.ChatScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -60,8 +70,8 @@ enum class Tab(val route: String, val title: Int, val icon: ImageVector, val sel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
+    container: AppContainer,
     chatList: ChatListViewModel,
-    messages: MessageRepository,
     account: Account?,
     onLogout: () -> Unit,
 ) {
@@ -69,7 +79,20 @@ fun MainScreen(
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
     val chats by chatList.state.collectAsStateWithLifecycle()
+    val callsModel = viewModel { CallsViewModel(container.calls, container.callMarks) }
+    val calls by callsModel.state.collectAsStateWithLifecycle()
+    val contactsModel = viewModel { ContactsViewModel(container.contacts, { container.messages.currentUserId }) }
     val showsBar = Tab.entries.any { it.route == route } || route == null
+    fun openChat(id: String, title: String? = null) {
+        nav.navigate(if (title == null) "chat/$id" else "chat/$id?title=${Uri.encode(title)}")
+    }
+    fun openTab(tab: Tab) {
+        nav.navigate(tab.route) {
+            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
     Scaffold(
         bottomBar = {
             if (showsBar) {
@@ -78,16 +101,11 @@ fun MainScreen(
                         val selected = route == tab.route
                         NavigationBarItem(
                             selected = selected,
-                            onClick = {
-                                nav.navigate(tab.route) {
-                                    popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
+                            onClick = { openTab(tab) },
                             icon = {
                                 BadgedBox(badge = {
                                     if (tab == Tab.CHATS && chats.tabBadge > 0) Badge { Text(ChatListFormatter.compactCount(chats.tabBadge)) }
+                                    if (tab == Tab.CALLS && calls.unseenMissed > 0) Badge { Text(ChatListFormatter.compactCount(calls.unseenMissed)) }
                                 }) {
                                     Icon(if (selected) tab.selectedIcon else tab.icon, contentDescription = null)
                                 }
@@ -100,14 +118,32 @@ fun MainScreen(
         },
     ) { padding ->
         NavHost(nav, startDestination = Tab.CHATS.route, modifier = Modifier.padding(padding).consumeWindowInsets(padding)) {
-            composable(Tab.CHATS.route) { ChatListScreen(chatList, onOpenChat = { nav.navigate("chat/${it.id}") }) }
-            composable(Tab.CALLS.route) { Soon(R.string.calls_title) }
-            composable(Tab.CONTACTS.route) { Soon(R.string.contacts_title) }
-            composable(Tab.SETTINGS.route) { SettingsScreen(account, onAbout = { nav.navigate("about") }, onLogout = onLogout) }
+            composable(Tab.CHATS.route) { ChatListScreen(chatList, onOpenChat = { openChat(it.id) }) }
+            composable(Tab.CALLS.route) { CallsScreen(callsModel, onOpenChat = { openChat(it) }) }
+            composable(Tab.CONTACTS.route) {
+                ContactsScreen(contactsModel, onOpen = { row -> contactsModel.chatId(row.id)?.let { openChat(it, row.title) } })
+            }
+            composable(Tab.SETTINGS.route) {
+                SettingsScreen(
+                    account,
+                    onAbout = { nav.navigate("about") },
+                    onLogout = onLogout,
+                    onSaved = { openChat(Chat.SAVED_MESSAGES_ID) },
+                    onContacts = { openTab(Tab.CONTACTS) },
+                    onDevices = { nav.navigate("devices") },
+                    onAppearance = { nav.navigate("appearance") },
+                )
+            }
             composable("about") { AboutScreen(onBack = { nav.popBackStack() }) }
-            composable("chat/{chatId}") { entry ->
+            composable("devices") { DevicesScreen(container.sessions, onBack = { nav.popBackStack() }) }
+            composable("appearance") { AppearanceScreen(container.appearance, onBack = { nav.popBackStack() }) }
+            composable(
+                "chat/{chatId}?title={title}",
+                arguments = listOf(navArgument("title") { type = NavType.StringType; nullable = true; defaultValue = null }),
+            ) { entry ->
                 val chatId = entry.arguments?.getString("chatId").orEmpty()
-                val model = viewModel(key = "chat-$chatId") { ChatViewModel(chatId, messages) }
+                val title = entry.arguments?.getString("title")
+                val model = viewModel(key = "chat-$chatId") { ChatViewModel(chatId, container.messages, fallbackTitle = title) }
                 ChatScreen(model, onBack = { nav.popBackStack() })
             }
         }

@@ -94,6 +94,8 @@ import app.orbitle.presentation.chat.ChatItem
 import app.orbitle.presentation.chat.ChatUiState
 import app.orbitle.presentation.chat.ChatViewModel
 import app.orbitle.ui.components.Avatar
+import app.orbitle.ui.components.ChatWallpaperBackground
+import app.orbitle.ui.components.LocalChatBackdrop
 import app.orbitle.ui.theme.OrbitleAccent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -150,6 +152,7 @@ fun ChatScreen(model: ChatViewModel, onBack: () -> Unit, onOpenProfile: () -> Un
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().imePadding()) {
             Box(Modifier.weight(1f).fillMaxWidth()) {
+                ChatWallpaperBackground(LocalChatBackdrop.current)
                 when {
                     state.isLoading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                     state.emptyHint != null -> EmptyHint(state.emptyHint!!, Modifier.align(Alignment.Center))
