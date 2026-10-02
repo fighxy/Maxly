@@ -4,7 +4,7 @@ import OrbitleUI
 
 /// Заголовок чата в панели навигации: название с галочкой и значком
 /// «без звука», под ним статус — «в сети» цветом акцента, «печатает» с бегущими точками,
-/// число участников или подписчиков серым. Смена статуса плавная.
+/// число участников или подписчиков серым. Смена статуса плавная. Всё — в стеклянной капсуле.
 struct ChatHeaderTitle: View {
     let title: String
     let maskedTitle: String
@@ -35,9 +35,13 @@ struct ChatHeaderTitle: View {
                 .id(statusKey)
                 .transition(.opacity)
         }
-        .frame(maxWidth: 260)
+        .frame(maxWidth: 230)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: status)
-        .contentShape(Rectangle())
+        // Капсула на стекле: той же высоты, что круглые «назад» и аватар.
+        .padding(.horizontal, 18)
+        .frame(minHeight: 44)
+        .orbitleGlassCapsule()
+        .contentShape(Capsule())
     }
 
     @ViewBuilder
