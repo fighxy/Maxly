@@ -92,6 +92,10 @@ final class ImageDiskCache: @unchecked Sendable {
         directory.appending(path: Self.name(for: url))
     }
 
+    func contains(_ url: URL) -> Bool {
+        FileManager.default.fileExists(atPath: file(for: url).path)
+    }
+
     func data(for url: URL) -> Data? {
         let file = file(for: url)
         guard let data = try? Data(contentsOf: file) else { return nil }
@@ -245,6 +249,30 @@ public actor ImagePipeline {
         return result
     }
 
+    /// Скачать картинки заранее (на диск, не декодируя) для ячеек, которые
+    /// вот-вот появятся: при показе фото уже не ждёт сети. Уже скачанное пропускается,
+    /// одновременно — не больше четырёх загрузок.
+    public func prefetch(_ urls: [URL]) async {
+        let started = generation
+        let wanted = urls.filter { !$0.isFileURL && disk?.contains($0) == false && dataInFlight[$0] == nil }
+        guard !wanted.isEmpty else { return }
+        await withTaskGroup(of: Void.self) { group in
+            var running = 0
+            for url in wanted {
+                if running >= 4 {
+                    await group.next()
+                    running -= 1
+                }
+                group.addTask { _ = await self.data(for: url, generation: started) }
+                running += 1
+            }
+        }
+        // Байты уже на диске: держать их в памяти незачем, если картинку сейчас не декодируют.
+        for url in wanted where !inFlight.keys.contains(where: { $0.url == url }) {
+            dataInFlight[url] = nil
+        }
+    }
+
     /// Байты читаются как картинка: только такие ложатся на диск.
     private static func isImage(_ data: Data) -> Bool {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return false }
@@ -289,6 +317,9 @@ public struct RemoteImage<Placeholder: View>: View {
     private let placeholder: Placeholder
     @State private var loaded: DecodedImage?
     @State private var loadedRequest: ImageRequest?
+    /// Картинка проявилась полностью: заглушку под ней можно не рисовать.
+    @State private var settled = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(url: URL?, maxPixel: Int = ImagePipeline.fullSize, pipeline: ImagePipeline = .shared, @ViewBuilder placeholder: () -> Placeholder) {
         self.url = url
@@ -297,28 +328,51 @@ public struct RemoteImage<Placeholder: View>: View {
         self.placeholder = placeholder()
     }
 
+    /// Картинка из памяти видна сразу, скачанная или прочитанная с диска
+    /// проявляется поверх заглушки (размытой миниатюры, букв аватара) за 0,2 с — без
+    /// мигания пустым местом. Заглушка остаётся под картинкой, пока та не проявится.
     public var body: some View {
-        Group {
-            if let image = current {
+        let image = current
+        ZStack {
+            if image == nil || !settled {
+                placeholder
+            }
+            if let image {
                 image
                     .resizable()
                     .scaledToFill()
-            } else {
-                placeholder
+                    .transition(.opacity)
             }
         }
         .task(id: request) {
-            guard let request else { loaded = nil; loadedRequest = nil; return }
-            let image: DecodedImage?
-            if let hit = pipeline.cached(request.url, maxPixel: request.maxPixel) {
-                image = hit
-            } else {
-                image = await pipeline.image(for: request.url, maxPixel: request.maxPixel)
+            guard let request else {
+                loaded = nil
+                loadedRequest = nil
+                settled = false
+                return
             }
+            if let hit = pipeline.cached(request.url, maxPixel: request.maxPixel) {
+                loaded = hit
+                loadedRequest = request
+                settled = true
+                return
+            }
+            let fresh = loaded == nil
+            let image = await pipeline.image(for: request.url, maxPixel: request.maxPixel)
             guard !Task.isCancelled, let image else { return }
-            // Смена готовых пикселей не анимирует размер всей строки/ленты.
-            loaded = image
-            loadedRequest = request
+            guard fresh, !reduceMotion else {
+                // Смена уже показанной картинки (переподписанный адрес) — без движения.
+                loaded = image
+                loadedRequest = request
+                settled = true
+                return
+            }
+            withAnimation(.easeOut(duration: 0.2)) {
+                loaded = image
+                loadedRequest = request
+            } completion: {
+                settled = true
+            }
         }
     }
 

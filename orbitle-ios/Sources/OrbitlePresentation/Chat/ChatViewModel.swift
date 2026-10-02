@@ -10,10 +10,19 @@ public final class ChatViewModel {
     public let currentUserId: String
     public private(set) var messages: [Message] = [] {
         didSet {
-            messagesChange = isRestoringHistory ? .reload : CollectionChange.between(oldValue.map(\.id), messages.map(\.id))
+            let ids = messages.map(\.id)
+            let oldIds = oldValue.map(\.id)
+            messagesChange = isRestoringHistory ? .reload : CollectionChange.between(oldIds, ids)
             if !isRestoringHistory, Self.contentChanged(from: oldValue, to: messages) { contentVersion &+= 1 }
+            if ids != oldIds { transcriptVersion &+= 1 }
+            rows = TranscriptLayout.rows(messages, currentUserId: currentUserId)
         }
     }
+    /// Строки ленты с разделителями дней, склейкой и подписями автора (`TranscriptLayout`).
+    public private(set) var rows: [TranscriptRow] = []
+    /// Растёт, когда меняется состав ленты (новое, удалённое, история): экран анимирует по нему,
+    /// не сравнивая списки id при каждой перерисовке.
+    public private(set) var transcriptVersion = 0
     /// Как лента изменилась последним обновлением: экран по нему решает, анимировать ли.
     public private(set) var messagesChange: CollectionChange = .none
     /// Растёт, когда у уже показанных сообщений поменялись реакции или текст: пузырь
