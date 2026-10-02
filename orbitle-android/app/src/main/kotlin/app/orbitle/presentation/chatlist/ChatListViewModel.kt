@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import app.orbitle.data.ChatRepository
 import app.orbitle.data.CoreErrors
 import app.orbitle.domain.Chat
+import app.orbitle.domain.ChatDraft
 import app.orbitle.domain.ChatFolder
 import app.orbitle.domain.ConnectionState
 import app.orbitle.domain.OrbitleError
@@ -15,6 +16,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+
+/** Что список хранит на устройстве: ручные пометки «непрочитано» и черновики. */
+interface ChatLocalMarks {
+    var markedUnread: Set<String>
+    fun drafts(): Map<String, ChatDraft>
+}
 
 /** Папка в полосе над списком с числом непрочитанных чатов. */
 data class ChatFolderTab(val id: String, val title: String, val unreadCount: Int) {
@@ -55,6 +62,8 @@ class ChatListViewModel(
     private val formatter: ChatListFormatter = ChatListFormatter(),
     private val now: () -> Long = System::currentTimeMillis,
     private val pinLimit: Int = DEFAULT_PIN_LIMIT,
+    /** Пометки и черновики на устройстве. */
+    private val local: ChatLocalMarks? = null,
 ) : ViewModel() {
 
     private var chats: List<Chat> = emptyList()
@@ -65,6 +74,9 @@ class ChatListViewModel(
     private var connection = ConnectionState.CONNECTING
     private var refreshError: OrbitleError? = null
     private var pendingPins: MutableMap<String, Int?> = mutableMapOf()
+    private var pendingMutes: MutableMap<String, Boolean> = mutableMapOf()
+    private var markedUnread: Set<String> = local?.markedUnread.orEmpty()
+    private var drafts: Map<String, ChatDraft> = local?.drafts().orEmpty()
 
     private val _state = MutableStateFlow(ChatListUiState())
     val state: StateFlow<ChatListUiState> = _state.asStateFlow()
@@ -80,6 +92,7 @@ class ChatListViewModel(
                     hasSnapshot = true
                     chats = next
                     pendingPins.entries.removeAll { (id, order) -> next.firstOrNull { it.id == id }?.let { (it.pinOrder == null) == (order == null) } ?: true }
+                    pendingMutes.entries.removeAll { (id, muted) -> next.firstOrNull { it.id == id }?.let { it.isMuted == muted } ?: true }
                 }
                 rebuild()
             }
@@ -166,12 +179,71 @@ class ChatListViewModel(
         }
     }
 
+    /** Экран снова виден: черновики и пометки могли поменяться в чате. */
+    fun reloadLocal() {
+        val store = local ?: return
+        markedUnread = store.markedUnread
+        drafts = store.drafts()
+        rebuild()
+    }
+
+    /** Чат открыт: ручная пометка «непрочитано» снимается. */
+    fun opened(chatId: String) {
+        if (chatId !in markedUnread) return
+        markedUnread = markedUnread - chatId
+        local?.markedUnread = markedUnread
+        rebuild()
+    }
+
+    /** Непрочитанный — прочитать на сервере; прочитанный — пометить непрочитанным на устройстве. */
+    fun toggleRead(chatId: String) {
+        val chat = chats.firstOrNull { it.id == chatId } ?: return
+        if (chat.unreadCount > 0 || chatId in markedUnread) {
+            markedUnread = markedUnread - chatId
+            local?.markedUnread = markedUnread
+            rebuild()
+            if (chat.unreadCount > 0) viewModelScope.launch {
+                try {
+                    repository.markAsRead(chatId)
+                } catch (e: Throwable) {
+                    _messages.value = CoreErrors.map(e).userMessage
+                }
+            }
+        } else {
+            markedUnread = markedUnread + chatId
+            local?.markedUnread = markedUnread
+            rebuild()
+        }
+    }
+
+    fun toggleMute(chatId: String) {
+        val chat = chats.firstOrNull { it.id == chatId } ?: return
+        val previous = pendingMutes[chatId]
+        val mutedNow = previous ?: chat.isMuted
+        pendingMutes[chatId] = !mutedNow
+        rebuild()
+        viewModelScope.launch {
+            try {
+                repository.setMuted(chatId, !mutedNow)
+            } catch (e: Throwable) {
+                if (previous == null) pendingMutes.remove(chatId) else pendingMutes[chatId] = previous
+                _messages.value = CoreErrors.map(e).userMessage
+                rebuild()
+            }
+        }
+    }
+
     fun consumeMessage() {
         _messages.value = null
     }
 
     private fun ordered(): List<Chat> = chats.map { chat ->
-        if (pendingPins.containsKey(chat.id)) chat.copy(pinOrder = pendingPins[chat.id]) else chat
+        var next = chat
+        if (pendingPins.containsKey(chat.id)) next = next.copy(pinOrder = pendingPins[chat.id])
+        pendingMutes[chat.id]?.let { next = next.copy(isMuted = it) }
+        if (chat.id in markedUnread && chat.unreadCount == 0) next = next.copy(isMarkedUnread = true)
+        drafts[chat.id]?.let { next = next.copy(draft = it) }
+        next
     }.sortedWith(Chat.listOrder)
 
     private fun rebuild() {

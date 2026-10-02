@@ -4,12 +4,14 @@ import app.orbitle.MainDispatcherRule
 import app.orbitle.data.ChatRepository
 import app.orbitle.data.CoreFailure
 import app.orbitle.domain.Chat
+import app.orbitle.domain.ChatDraft
 import app.orbitle.domain.ChatType
 import app.orbitle.domain.ConnectionState
 import app.orbitle.domain.ServerFolder
 import app.orbitle.presentation.chatlist.ChatListContent
 import app.orbitle.presentation.chatlist.ChatListFormatter
 import app.orbitle.presentation.chatlist.ChatListViewModel
+import app.orbitle.presentation.chatlist.ChatLocalMarks
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -36,7 +38,26 @@ class FakeChats : ChatRepository {
         chats.value = chats.value?.map { if (it.id == chatId) it.copy(pinOrder = if (pinned) 0 else null) else it }
     }
 
+    val mutes = mutableListOf<Pair<String, Boolean>>()
+    val reads = mutableListOf<String>()
+    var muteFailure: Throwable? = null
+
+    override suspend fun setMuted(chatId: String, muted: Boolean) {
+        mutes += chatId to muted
+        muteFailure?.let { throw it }
+    }
+
+    override suspend fun markAsRead(chatId: String) {
+        reads += chatId
+    }
+
     override fun clear() = Unit
+}
+
+class FakeMarks : ChatLocalMarks {
+    override var markedUnread: Set<String> = emptySet()
+    var stored: Map<String, ChatDraft> = emptyMap()
+    override fun drafts(): Map<String, ChatDraft> = stored
 }
 
 class ChatListViewModelTest {
@@ -45,7 +66,8 @@ class ChatListViewModelTest {
     private val repo = FakeChats()
     private val connection = MutableStateFlow(ConnectionState.ONLINE)
     private val now = 1_790_683_200_000L
-    private val vm by lazy { ChatListViewModel(repo, connection, ChatListFormatter(ZoneOffset.UTC), now = { now }) }
+    private val marks = FakeMarks()
+    private val vm by lazy { ChatListViewModel(repo, connection, ChatListFormatter(ZoneOffset.UTC), now = { now }, local = marks) }
 
     private fun chat(id: String, type: ChatType = ChatType.PRIVATE, at: Long = now, unread: Int = 0, pin: Int? = null, muted: Boolean = false) =
         Chat(id = id, title = "Чат $id", type = type, lastMessageId = "1", unreadCount = unread, updatedAtMs = at, preview = "текст", pinOrder = pin, isMuted = muted)
@@ -130,5 +152,50 @@ class ChatListViewModelTest {
         repo.chats.value = listOf(chat("1"))
         repo.typing.value = mapOf("1" to listOf("5"))
         assertEquals("печатает…", vm.state.value.items.single().preview)
+    }
+
+    @Test
+    fun toggleReadMarksLocallyAndReadsOnServer() {
+        repo.chats.value = listOf(chat("a"), chat("b", unread = 3))
+        vm.toggleRead("a")
+        assertTrue(vm.state.value.items.first { it.id == "a" }.isUnread)
+        assertEquals(setOf("a"), marks.markedUnread)
+        assertTrue(repo.reads.isEmpty())
+        vm.toggleRead("a")
+        assertFalse(vm.state.value.items.first { it.id == "a" }.isUnread)
+        assertEquals(emptySet<String>(), marks.markedUnread)
+        vm.toggleRead("b")
+        assertEquals(listOf("b"), repo.reads)
+    }
+
+    @Test
+    fun openingClearsManualMark() {
+        marks.markedUnread = setOf("a")
+        repo.chats.value = listOf(chat("a"))
+        assertTrue(vm.state.value.items.single().isUnread)
+        vm.opened("a")
+        assertFalse(vm.state.value.items.single().isUnread)
+        assertTrue(marks.markedUnread.isEmpty())
+    }
+
+    @Test
+    fun toggleMuteIsOptimisticAndRollsBack() {
+        repo.chats.value = listOf(chat("a"))
+        vm.toggleMute("a")
+        assertTrue(vm.state.value.items.single().isMuted)
+        assertEquals(listOf("a" to true), repo.mutes)
+        repo.muteFailure = CoreFailure("SERVER", "boom")
+        vm.toggleMute("a")
+        assertTrue(vm.state.value.items.single().isMuted)
+        assertTrue(vm.messages.value != null)
+    }
+
+    @Test
+    fun draftsShowInPreviewAfterReload() {
+        repo.chats.value = listOf(chat("a"))
+        assertEquals("текст", vm.state.value.items.single().preview)
+        marks.stored = mapOf("a" to ChatDraft("привет", now))
+        vm.reloadLocal()
+        assertTrue(vm.state.value.items.single().preview.contains("привет"))
     }
 }

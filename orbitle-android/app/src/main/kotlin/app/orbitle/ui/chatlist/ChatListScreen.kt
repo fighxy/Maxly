@@ -1,5 +1,10 @@
 package app.orbitle.ui.chatlist
 
+import androidx.compose.material.icons.outlined.MarkChatRead
+import androidx.compose.material.icons.outlined.MarkChatUnread
+import androidx.compose.material.icons.outlined.NotificationsActive
+import androidx.compose.material.icons.outlined.NotificationsOff
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -94,6 +99,10 @@ import coil3.compose.AsyncImage
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatListScreen(viewModel: ChatListViewModel, onOpenChat: (ChatListItem) -> Unit) {
+    LifecycleResumeEffect(viewModel) {
+        viewModel.reloadLocal()
+        onPauseOrDispose {}
+    }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val message by viewModel.messages.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
@@ -134,7 +143,14 @@ fun ChatListScreen(viewModel: ChatListViewModel, onOpenChat: (ChatListItem) -> U
         ) {
             when (val content = state.content) {
                 ChatListContent.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                ChatListContent.List -> ChatList(state, onOpenChat, viewModel::togglePin)
+                ChatListContent.List -> ChatList(
+                    state,
+                    onOpenChat = {
+                        viewModel.opened(it.id)
+                        onOpenChat(it)
+                    },
+                    actions = ChatRowActions(viewModel::togglePin, viewModel::toggleRead, viewModel::toggleMute),
+                )
                 ChatListContent.Empty -> Placeholder(
                     icon = { Icon(Icons.Outlined.ChatBubbleOutline, null, Modifier.size(56.dp)) },
                     title = stringResource(if (state.searchQuery.isNotBlank()) R.string.chats_search_empty else R.string.chats_empty),
@@ -208,19 +224,22 @@ private fun FolderTabs(state: ChatListUiState, onSelect: (String) -> Unit) {
 }
 
 @Composable
-private fun ChatList(state: ChatListUiState, onOpenChat: (ChatListItem) -> Unit, onTogglePin: (String) -> Unit) {
+private fun ChatList(state: ChatListUiState, onOpenChat: (ChatListItem) -> Unit, actions: ChatRowActions) {
     val listState = rememberLazyListState()
     LaunchedEffect(state.selectedFolderId) { listState.scrollToItem(0) }
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         items(state.items, key = { it.id }) { item ->
-            ChatRow(item, onClick = { onOpenChat(item) }, onTogglePin = { onTogglePin(item.id) }, modifier = Modifier.animateItem())
+            ChatRow(item, onClick = { onOpenChat(item) }, actions = actions, modifier = Modifier.animateItem())
         }
     }
 }
 
+/** Действия меню строки чата. */
+class ChatRowActions(val pin: (String) -> Unit, val read: (String) -> Unit = {}, val mute: (String) -> Unit = {})
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ChatRow(item: ChatListItem, onClick: () -> Unit, onTogglePin: () -> Unit, modifier: Modifier = Modifier) {
+fun ChatRow(item: ChatListItem, onClick: () -> Unit, actions: ChatRowActions, modifier: Modifier = Modifier) {
     var menu by remember { mutableStateOf(false) }
     Box(modifier) {
         Row(
@@ -271,7 +290,23 @@ fun ChatRow(item: ChatListItem, onClick: () -> Unit, onTogglePin: () -> Unit, mo
                 leadingIcon = { Icon(Icons.Filled.PushPin, null) },
                 onClick = {
                     menu = false
-                    onTogglePin()
+                    actions.pin(item.id)
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(if (item.isUnread) "Прочитать" else "Пометить непрочитанным") },
+                leadingIcon = { Icon(if (item.isUnread) Icons.Outlined.MarkChatRead else Icons.Outlined.MarkChatUnread, null) },
+                onClick = {
+                    menu = false
+                    actions.read(item.id)
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(if (item.isMuted) "Включить уведомления" else "Выключить уведомления") },
+                leadingIcon = { Icon(if (item.isMuted) Icons.Outlined.NotificationsActive else Icons.Outlined.NotificationsOff, null) },
+                onClick = {
+                    menu = false
+                    actions.mute(item.id)
                 },
             )
         }

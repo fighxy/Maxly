@@ -15,6 +15,12 @@ interface ChatRepository {
     /** Первая загрузка после входа берёт все страницы и папки. */
     suspend fun refresh()
     suspend fun setPinned(chatId: String, pinned: Boolean)
+
+    /** Выключить уведомления чата насовсем или включить обратно. */
+    suspend fun setMuted(chatId: String, muted: Boolean) {}
+
+    /** Прочитать всё в чате: отметка до последнего сообщения. */
+    suspend fun markAsRead(chatId: String) {}
     /** Забыть всё про аккаунт (выход). */
     fun clear()
 }

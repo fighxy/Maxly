@@ -28,6 +28,8 @@ import app.orbitle.domain.MessageStatus
 import app.orbitle.domain.VoiceContent
 import app.orbitle.presentation.chat.ChatViewModel
 import app.orbitle.ui.chat.ChatScreen
+import app.orbitle.ui.chatlist.ChatListScreen
+import app.orbitle.presentation.chatlist.ChatListViewModel
 import app.orbitle.ui.theme.OrbitleTheme
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.CompositionLocalProvider
@@ -81,6 +83,7 @@ class DemoActivity : ComponentActivity() {
             OrbitleTheme {
                 CompositionLocalProvider(LocalChatBackdrop provides ChatBackdrop(prefs.wallpaper, dark)) {
                     when (screen) {
+                        "chats" -> ChatListScreen(viewModel { ChatListViewModel(DemoChats(), local = DemoMarks()) }, onOpenChat = {})
                         "calls" -> CallsScreen(viewModel { CallsViewModel(DemoCalls()) }, onOpenChat = {})
                         "contacts" -> ContactsScreen(viewModel { ContactsViewModel(DemoContacts(), { "1" }) }, onOpen = {})
                         "appearance" -> AppearanceScreen(appearance, onBack = { finish() })
@@ -102,6 +105,35 @@ class DemoActivity : ComponentActivity() {
             }
         }
     }
+}
+
+private class DemoMarks : app.orbitle.presentation.chatlist.ChatLocalMarks {
+    override var markedUnread: Set<String> = setOf("12")
+    override fun drafts() = mapOf("13" to app.orbitle.domain.ChatDraft("Завтра в десять?", System.currentTimeMillis() - 60_000))
+}
+
+private class DemoChats : app.orbitle.data.ChatRepository {
+    private val now = System.currentTimeMillis()
+    override val chats = kotlinx.coroutines.flow.MutableStateFlow<List<app.orbitle.domain.Chat>?>(listOf(
+        app.orbitle.domain.Chat("10", "Анна Смирнова", app.orbitle.domain.ChatType.PRIVATE, unreadCount = 2, updatedAtMs = now - 120_000, preview = "Созвонимся вечером?", pinOrder = 0, isOnline = true),
+        app.orbitle.domain.Chat("11", "Команда проекта", app.orbitle.domain.ChatType.GROUP, unreadCount = 14, updatedAtMs = now - 300_000, preview = "Сборка готова", isMuted = true),
+        app.orbitle.domain.Chat("12", "Пётр", app.orbitle.domain.ChatType.PRIVATE, updatedAtMs = now - 3_600_000, preview = "Спасибо!"),
+        app.orbitle.domain.Chat("13", "Мама", app.orbitle.domain.ChatType.PRIVATE, updatedAtMs = now - 7_200_000, preview = "Позвони"),
+        app.orbitle.domain.Chat("14", "Новости Max", app.orbitle.domain.ChatType.CHANNEL, updatedAtMs = now - 86_400_000, preview = "Обновление уже доступно", isVerified = true),
+    ))
+    override val folders = kotlinx.coroutines.flow.MutableStateFlow<List<app.orbitle.domain.ServerFolder>>(emptyList())
+    override val typing = kotlinx.coroutines.flow.MutableStateFlow<Map<String, List<String>>>(emptyMap())
+    override suspend fun refresh() = Unit
+    override suspend fun setPinned(chatId: String, pinned: Boolean) {
+        chats.value = chats.value?.map { if (it.id == chatId) it.copy(pinOrder = if (pinned) 1 else null) else it }
+    }
+    override suspend fun setMuted(chatId: String, muted: Boolean) {
+        chats.value = chats.value?.map { if (it.id == chatId) it.copy(isMuted = muted) else it }
+    }
+    override suspend fun markAsRead(chatId: String) {
+        chats.value = chats.value?.map { if (it.id == chatId) it.copy(unreadCount = 0) else it }
+    }
+    override fun clear() = Unit
 }
 
 private class DemoMessages(group: Boolean) : MessageRepository {
