@@ -17,6 +17,9 @@ struct ChatTranscript: View {
     let canWrite: Bool
     let reveal: PrivateModeReveal
     var focus: FocusState<Bool>.Binding
+    /// Верх нижних кнопок (поле ввода или плашка канала) в глобальных координатах: от него
+    /// поднимается мягкое размытие низа. `0` — ещё не измерено.
+    var bottomControlsTop: CGFloat = 0
     /// Низ ленты виден (пока виден, новые сообщения прокручивают ленту сами), число новых
     /// на кнопке «вниз» и прыжок к последнему сообщению.
     @State private var bottom = TranscriptBottomState()
@@ -92,6 +95,9 @@ struct ChatTranscript: View {
                     guard Self.scrollsToBottomByHand, opening || bottom.atBottom else { return }
                     jumpToBottom(proxy)
                 }
+                .chatSystemEdgeEffectHidden()
+                // Мягкое размытие под нижними кнопками. Раньше кнопки «вниз»: она рисуется поверх.
+                .overlay { ChatBottomBlur(controlsTop: bottomControlsTop) }
                 .overlay(alignment: .bottom) {
                     if viewModel.showsSavedPlaceholder {
                         SavedMessagesPlaceholder()

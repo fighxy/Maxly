@@ -33,6 +33,8 @@ struct ChatView: View {
     @State private var panelShown = false
     /// Высота последней клавиатуры без нижнего отступа: панель встаёт на её место.
     @State private var keyboardHeight: CGFloat = 300
+    /// Верх нижних кнопок на экране, для мягкого размытия низа ленты.
+    @State private var bottomControlsTop: CGFloat = 0
     @State private var recording = RecordingSession()
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var composerFocused: Bool
@@ -50,7 +52,8 @@ struct ChatView: View {
             commentsEnabled: commentsEnabled,
             canWrite: canWrite,
             reveal: reveal,
-            focus: $composerFocused
+            focus: $composerFocused,
+            bottomControlsTop: bottomControlsTop
         )
         .safeAreaInset(edge: .top, spacing: 0) {
             if privateMode.isMasked { privateModeBanner }
@@ -81,6 +84,8 @@ struct ChatView: View {
                     .transition(.move(edge: .bottom))
                 }
             }
+            // Верх поля ввода — от него лента размывается к низу экрана (`ChatBottomBlur`).
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { bottomControlsTop = $0 }
         }
         .onChange(of: composerFocused) { _, focused in
             // Клавиатура вернулась — панель уходит под неё без анимации: место то же.
