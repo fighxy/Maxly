@@ -156,6 +156,7 @@ fun MainScreen(
                     onBack = { nav.popBackStack() },
                     onOpenProfile = { nav.navigate("profile/$chatId?fromChat=true") },
                     mediaUserAgent = container.videoSourceUserAgent(),
+                    forwardTargets = { chatList.forwardTargets(excluding = chatId) },
                 )
             }
             composable(

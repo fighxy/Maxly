@@ -54,6 +54,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Forward
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Check
@@ -119,6 +120,7 @@ import app.orbitle.domain.MessageStatus
 import app.orbitle.presentation.chat.ChatItem
 import app.orbitle.presentation.chat.ChatUiState
 import app.orbitle.presentation.chat.ChatViewModel
+import app.orbitle.presentation.chatlist.ChatListItem
 import app.orbitle.ui.components.Avatar
 import app.orbitle.ui.components.ChatWallpaperBackground
 import app.orbitle.ui.components.LocalChatBackdrop
@@ -129,7 +131,14 @@ import kotlinx.coroutines.launch
 /** Экран переписки. Лента перевёрнута: новые сообщения внизу, история догружается вверх. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(model: ChatViewModel, onBack: () -> Unit, onOpenProfile: () -> Unit = {}, mediaUserAgent: String = "") {
+fun ChatScreen(
+    model: ChatViewModel,
+    onBack: () -> Unit,
+    onOpenProfile: () -> Unit = {},
+    mediaUserAgent: String = "",
+    /** Куда можно переслать сообщение. */
+    forwardTargets: () -> List<ChatListItem> = { emptyList() },
+) {
     val state by model.state.collectAsStateWithLifecycle()
     val mediaState = model.media.state.collectAsStateWithLifecycle()
     val playback = model.media.playback.collectAsStateWithLifecycle()
@@ -166,6 +175,7 @@ fun ChatScreen(model: ChatViewModel, onBack: () -> Unit, onOpenProfile: () -> Un
     val scope = rememberCoroutineScope()
     var actionsFor by remember { mutableStateOf<Message?>(null) }
     var deleting by remember { mutableStateOf<Message?>(null) }
+    var forwarding by remember { mutableStateOf<Message?>(null) }
     var highlighted by remember { mutableStateOf<String?>(null) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
 
@@ -311,6 +321,18 @@ fun ChatScreen(model: ChatViewModel, onBack: () -> Unit, onOpenProfile: () -> Un
             message = message,
             onDismiss = { actionsFor = null },
             onDelete = { deleting = message },
+            onForward = { forwarding = message },
+        )
+    }
+    forwarding?.let { message ->
+        val targets = remember(message) { forwardTargets() }
+        ForwardPicker(
+            targets = targets,
+            onPick = { target ->
+                forwarding = null
+                model.forward(message, target)
+            },
+            onDismiss = { forwarding = null },
         )
     }
     deleting?.let { message ->
@@ -573,7 +595,7 @@ private fun AttachSheet(onDismiss: () -> Unit, onMedia: () -> Unit, onFile: () -
 /** Меню сообщения: быстрые реакции и действия. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MessageActions(model: ChatViewModel, message: Message, onDismiss: () -> Unit, onDelete: () -> Unit) {
+private fun MessageActions(model: ChatViewModel, message: Message, onDismiss: () -> Unit, onDelete: () -> Unit, onForward: () -> Unit) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val clipboard = LocalClipboardManager.current
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
@@ -621,6 +643,14 @@ private fun MessageActions(model: ChatViewModel, message: Message, onDismiss: ()
                     clipboard.setText(AnnotatedString(message.displayText))
                     onDismiss()
                 },
+            )
+        }
+        if (model.canForward(message)) {
+            ListItem(
+                headlineContent = { Text("Переслать") },
+                leadingContent = { Icon(Icons.AutoMirrored.Filled.Forward, null) },
+                colors = colors,
+                modifier = Modifier.clickable { onDismiss(); onForward() },
             )
         }
         if (model.canEdit(message)) {

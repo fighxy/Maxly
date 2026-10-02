@@ -98,7 +98,10 @@ class DemoActivity : ComponentActivity() {
                                 "10", DemoMessages(group), voicePlayer = player, files = DemoFiles(applicationContext),
                                 stickerRepository = DemoStickers(), stickerRecents = demoRecents, emojiSupported = app.orbitle.ui.chat.EmojiSupport::canDraw,
                             ) }
-                            ChatScreen(model, onBack = { finish() })
+                            ChatScreen(model, onBack = { finish() }, forwardTargets = {
+                                val formatter = app.orbitle.presentation.chatlist.ChatListFormatter()
+                                DemoChats().chats.value.orEmpty().filter { it.id != "10" }.map { formatter.item(it, System.currentTimeMillis(), showDraft = false) }
+                            })
                         }
                     }
                 }
@@ -138,6 +141,7 @@ private class DemoChats : app.orbitle.data.ChatRepository {
 
 private class DemoMessages(group: Boolean) : MessageRepository {
     private val now = System.currentTimeMillis()
+    override suspend fun forward(chatId: String, messageId: String, targetChatId: String) = Unit
     private val minute = 60_000L
     override val currentUserId = "1"
     private val chat = Chat(id = "10", title = if (group) "Дача 🌲" else "Анна Смирнова", type = if (group) ChatType.GROUP else ChatType.PRIVATE, updatedAtMs = now, isOnline = true)

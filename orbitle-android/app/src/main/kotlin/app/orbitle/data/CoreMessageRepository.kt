@@ -119,6 +119,15 @@ class CoreMessageRepository(
         MaxCoreGateway.call { client.sendSticker(chatId.toLong(), sticker.id.toLong(), replyTo?.toLongOrNull()) }
     }
 
+    override suspend fun forward(chatId: String, messageId: String, targetChatId: String) {
+        val target = targetChatId.toLong()
+        MaxCoreGateway.call {
+            // Свои сообщения сервер не присылает обратно: копию в целевом чате кладём сами.
+            val sent = client.api.messages.forwardMessage(target, messageId.toLong(), sourceChatId = chatId.toLong())
+            client.store.putSentMessage(target, sent)
+        }
+    }
+
     /** Вложения не ушедших сообщений: нужны для повтора. */
     private val pendingMedia = java.util.concurrent.ConcurrentHashMap<String, List<OutgoingFile>>()
 

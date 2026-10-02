@@ -237,6 +237,13 @@ class ChatListViewModel(
         _messages.value = null
     }
 
+    /** Куда можно переслать сообщение: чаты вне архива в порядке списка, кроме [excluding]. */
+    fun forwardTargets(excluding: String? = null): List<ChatListItem> {
+        val at = now()
+        return ordered().filter { !it.isArchived && it.id != excluding && it.canWrite != false }
+            .map { formatter.item(it, at, showDraft = false) }
+    }
+
     private fun ordered(): List<Chat> = chats.map { chat ->
         var next = chat
         if (pendingPins.containsKey(chat.id)) next = next.copy(pinOrder = pendingPins[chat.id])
