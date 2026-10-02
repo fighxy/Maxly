@@ -33,6 +33,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.PersonAdd
+import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.outlined.Code
@@ -81,10 +83,23 @@ fun SettingsScreen(
     onPrivacy: () -> Unit = {},
     onStorage: () -> Unit = {},
     onFolders: () -> Unit = {},
+    /** Ссылка на свой профиль для QR и приглашения; `null` — сервер её ещё не дал. */
+    profileLink: String? = null,
 ) {
     var confirm by rememberSaveable { mutableStateOf(false) }
+    var sheet by rememberSaveable { mutableStateOf<String?>(null) }
     Scaffold(
-        topBar = { TopAppBar(title = { Text(stringResource(R.string.settings_title)) }) },
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.settings_title)) },
+                actions = {
+                    if (profileLink != null) {
+                        IconButton(onClick = { sheet = "qr" }) { Icon(Icons.Outlined.QrCode2, "QR-код профиля") }
+                    }
+                    IconButton(onClick = onEditProfile) { Icon(Icons.Outlined.Edit, "Изменить профиль") }
+                },
+            )
+        },
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -100,6 +115,9 @@ fun SettingsScreen(
             SettingsItem(Icons.Outlined.Contacts, "Контакты", onClick = onContacts)
             SettingsItem(Icons.Outlined.Folder, "Папки", onClick = onFolders)
             SettingsItem(Icons.Outlined.Palette, "Оформление", onClick = onAppearance)
+            if (profileLink != null) {
+                SettingsItem(Icons.Outlined.PersonAdd, "Пригласить друзей") { sheet = "invite" }
+            }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
             SettingsItem(
                 Icons.Outlined.Info,
@@ -108,6 +126,12 @@ fun SettingsScreen(
                 onClick = onAbout,
             )
             SettingsItem(Icons.AutoMirrored.Filled.Logout, stringResource(R.string.settings_logout), destructive = true) { confirm = true }
+        }
+    }
+    if (profileLink != null) {
+        when (sheet) {
+            "qr" -> ProfileQrSheet(profileLink, "Мой профиль", invite = false) { sheet = null }
+            "invite" -> ProfileQrSheet(profileLink, "Пригласить друзей", invite = true) { sheet = null }
         }
     }
     if (confirm) {
