@@ -143,6 +143,19 @@ private class DemoMessages(group: Boolean) : MessageRepository {
         }
     }
     override suspend fun reactionCatalog() = listOf("👍", "❤️", "🔥", "🤣", "😭", "😍", "👏")
+    override suspend fun sendMedia(chatId: String, items: List<app.orbitle.domain.OutgoingFile>, caption: String, replyTo: String?, progress: (Float) -> Unit) {
+        for (step in 1..10) {
+            kotlinx.coroutines.delay(200)
+            progress(step / 10f)
+        }
+        val attachments = items.mapIndexed { i, item ->
+            when (item.kind) {
+                app.orbitle.domain.OutgoingFile.Kind.PHOTO -> ChatAttachment.Photo(PhotoContent("s$i", "file://${item.path}", item.width, item.height))
+                else -> ChatAttachment.File(FileContent("s$i", item.name, item.size))
+            }
+        }
+        list.update { it + msg("${it.size + 100}", "1", System.currentTimeMillis(), caption, content = MessageContent(attachments = attachments)) }
+    }
     override suspend fun mediaLink(chatId: String, messageId: String, attachment: ChatAttachment) = "demo://${attachment.id}"
     override suspend fun transcribe(chatId: String, messageId: String, voiceId: String): String? {
         kotlinx.coroutines.delay(800)

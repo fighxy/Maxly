@@ -9,6 +9,7 @@ import app.orbitle.domain.ChatType
 import app.orbitle.domain.Message
 import app.orbitle.domain.MessageStatus
 import app.orbitle.domain.OrbitleError
+import app.orbitle.domain.OutgoingFile
 import app.orbitle.presentation.chatlist.ChatAvatar
 import app.orbitle.presentation.chatlist.ChatListFormatter
 import kotlinx.coroutines.CancellationException
@@ -68,8 +69,12 @@ data class ChatUiState(
     val quickReactions: List<String> = ReactionPalette.FALLBACK,
     val reactionCatalog: List<String> = emptyList(),
     val unreadBelow: Int = 0,
+    /** Выбранные вложения: уйдут одним сообщением с текстом поля как подписью. */
+    val attachments: List<OutgoingFile> = emptyList(),
+    /** Доля загрузки отправляемых вложений, `null` — ничего не грузится. */
+    val uploadProgress: Float? = null,
 ) {
-    val canSend: Boolean get() = draft.isNotBlank()
+    val canSend: Boolean get() = draft.isNotBlank() || attachments.isNotEmpty()
 }
 
 /** Экран переписки: лента, поле ввода, ответ, правка, удаление, реакции. */
@@ -163,8 +168,25 @@ class ChatViewModel(
 
     fun setDraft(text: String) = _state.update { it.copy(draft = text) }
 
+    /** Добавить выбранные вложения; сверх лимита — подсказка. */
+    fun addAttachments(items: List<OutgoingFile>) {
+        if (items.isEmpty()) return
+        if (_state.value.editing != null) cancelEdit()
+        val current = _state.value.attachments
+        val merged = (current + items).distinctBy { it.path }
+        if (merged.size > OutgoingFile.LIMIT) _messages.value = "Можно отправить не больше ${OutgoingFile.LIMIT} вложений за раз"
+        _state.update { it.copy(attachments = merged.take(OutgoingFile.LIMIT)) }
+    }
+
+    fun removeAttachment(item: OutgoingFile) = _state.update { it.copy(attachments = it.attachments.filterNot { a -> a.path == item.path }) }
+
     fun send() {
         val text = _state.value.draft.trim()
+        val attachments = _state.value.attachments
+        if (attachments.isNotEmpty() && _state.value.editing == null) {
+            sendAttachments(attachments, text)
+            return
+        }
         if (text.isEmpty()) return
         _state.value.editing?.let { saveEdit(it, text); return }
         val reply = _state.value.replyTo
@@ -176,6 +198,24 @@ class ChatViewModel(
                 throw e
             } catch (e: Exception) {
                 show(e)
+            }
+        }
+    }
+
+    private fun sendAttachments(items: List<OutgoingFile>, caption: String) {
+        val reply = _state.value.replyTo
+        _state.update { it.copy(draft = "", replyTo = null, attachments = emptyList(), uploadProgress = 0f) }
+        viewModelScope.launch {
+            try {
+                repository.sendMedia(chatId, items, caption, reply?.id) { fraction ->
+                    _state.update { it.copy(uploadProgress = fraction) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                show(e)
+            } finally {
+                _state.update { it.copy(uploadProgress = null) }
             }
         }
     }

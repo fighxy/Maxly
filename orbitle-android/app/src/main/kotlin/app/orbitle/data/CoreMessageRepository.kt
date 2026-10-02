@@ -3,6 +3,11 @@ package app.orbitle.data
 import app.orbitle.domain.ChatAttachment
 import app.orbitle.domain.Message
 import app.orbitle.domain.OrbitleError
+import app.orbitle.domain.OutgoingFile
+import app.orbitle.domain.PhotoContent
+import app.orbitle.domain.VideoContent
+import app.orbitle.domain.FileContent
+import com.max.core.media.OutgoingMedia
 import app.orbitle.domain.MessageContent
 import app.orbitle.domain.MessageReply
 import app.orbitle.domain.MessageStatus
@@ -110,6 +115,34 @@ class CoreMessageRepository(
         deliver(chatId, local, replyTo)
     }
 
+    /** Вложения не ушедших сообщений: нужны для повтора. */
+    private val pendingMedia = java.util.concurrent.ConcurrentHashMap<String, List<OutgoingFile>>()
+
+    override suspend fun sendMedia(chatId: String, items: List<OutgoingFile>, caption: String, replyTo: String?, progress: (Float) -> Unit) {
+        val local = Message(
+            id = "local-${localIds.incrementAndGet()}",
+            chatId = chatId,
+            authorId = currentUserId.orEmpty(),
+            text = caption,
+            timeMs = clock(),
+            status = MessageStatus.SENDING,
+            content = MessageContent(reply = replyTo?.let { replyPreview(chatId, it) }, attachments = items.mapIndexed(::localAttachment)),
+        )
+        pendingMedia[local.id] = items
+        put(chatId, local)
+        deliver(chatId, local, replyTo, progress)
+    }
+
+    private fun localAttachment(index: Int, item: OutgoingFile): ChatAttachment {
+        val id = "local-$index"
+        val uri = "file://${item.path}"
+        return when (item.kind) {
+            OutgoingFile.Kind.PHOTO -> ChatAttachment.Photo(PhotoContent(id, uri, item.width, item.height))
+            OutgoingFile.Kind.VIDEO -> ChatAttachment.Video(VideoContent(id, uri, width = item.width, height = item.height))
+            OutgoingFile.Kind.FILE -> ChatAttachment.File(FileContent(id, item.name, item.size))
+        }
+    }
+
     private fun replyPreview(chatId: String, messageId: String): MessageReply? {
         val state = client.store.state.value
         val id = chatId.toLongOrNull() ?: return null
@@ -118,12 +151,23 @@ class CoreMessageRepository(
         return MessageReply(messageId, message.authorName.ifEmpty { "Сообщение" }, message.replySnippet, message.replyKind)
     }
 
-    private suspend fun deliver(chatId: String, local: Message, replyTo: String?) {
+    private suspend fun deliver(chatId: String, local: Message, replyTo: String?, progress: (Float) -> Unit = {}) {
         // Уход с экрана не должен обрывать отправку на полпути.
         try {
+            val media = pendingMedia[local.id]
             withContext(NonCancellable) {
-                MaxCoreGateway.call { client.sendText(chatId.toLong(), local.text, replyTo?.toLongOrNull()) }
+                if (media == null) {
+                    MaxCoreGateway.call { client.sendText(chatId.toLong(), local.text, replyTo?.toLongOrNull()) }
+                } else {
+                    val outgoing = media.map { OutgoingMedia(it.path, coreKind(it.kind), it.name) }
+                    MaxCoreGateway.call {
+                        client.sendMedia(chatId.toLong(), outgoing, local.text.takeIf { it.isNotBlank() }, replyTo?.toLongOrNull()) { sent, total ->
+                            if (total > 0) progress((sent.toFloat() / total).coerceIn(0f, 1f))
+                        }
+                    }
+                }
             }
+            pendingMedia.remove(local.id)
             remove(chatId, local.id)
         } catch (failure: Exception) {
             put(chatId, local.copy(status = MessageStatus.FAILED))
@@ -138,7 +182,16 @@ class CoreMessageRepository(
         deliver(chatId, sending, message.content.reply?.messageId)
     }
 
-    override fun discard(chatId: String, localId: String) = remove(chatId, localId)
+    override fun discard(chatId: String, localId: String) {
+        pendingMedia.remove(localId)
+        remove(chatId, localId)
+    }
+
+    private fun coreKind(kind: OutgoingFile.Kind) = when (kind) {
+        OutgoingFile.Kind.PHOTO -> OutgoingMedia.Kind.PHOTO
+        OutgoingFile.Kind.VIDEO -> OutgoingMedia.Kind.VIDEO
+        OutgoingFile.Kind.FILE -> OutgoingMedia.Kind.FILE
+    }
 
     private fun put(chatId: String, message: Message) = pending.update { all ->
         val list = all[chatId].orEmpty().filterNot { it.id == message.id } + message
