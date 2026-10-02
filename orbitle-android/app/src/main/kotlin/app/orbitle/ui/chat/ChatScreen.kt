@@ -209,7 +209,7 @@ fun ChatScreen(
     }
     val awayFromBottom by remember { derivedStateOf { listState.firstVisibleItemIndex > 2 } }
 
-    CompositionLocalProvider(LocalBubbleMedia provides bubbleMedia) {
+    CompositionLocalProvider(LocalBubbleMedia provides bubbleMedia) { Box(Modifier.fillMaxSize()) {
     Scaffold(
         topBar = { ChatTopBar(state, onBack, onOpenProfile) },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -249,6 +249,7 @@ fun ChatScreen(
                                 onRetry = { actionsFor = it },
                                 highlighted = highlighted == item.key,
                                 onSwipeReply = if (state.canWrite) model::beginReply else null,
+                                onComments = model::openComments,
                             )
                         }
                     }
@@ -297,7 +298,22 @@ fun ChatScreen(
         }
     }
 
-    }
+        val openedComments by model.commentsModel.collectAsStateWithLifecycle()
+        openedComments?.let { comments ->
+            val postItem = remember(comments, state.items) {
+                (state.items.firstOrNull { it.key == comments.post.id } as? ChatItem.Bubble)?.copy(comments = null)
+                    ?: ChatItem.Bubble(comments.post, false, "", null, 0, false, null, false, false)
+            }
+            CommentsScreen(
+                model = comments,
+                postItem = postItem,
+                knownCount = model.commentCount(comments.post),
+                canWrite = true,
+                quickReactions = state.reactionCatalog,
+                onClose = model::closeComments,
+            )
+        }
+    } }
 
     if (attaching) {
         AttachSheet(
