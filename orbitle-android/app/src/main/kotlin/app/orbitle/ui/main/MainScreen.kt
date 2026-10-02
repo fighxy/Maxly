@@ -93,6 +93,7 @@ fun MainScreen(
     val callsModel = viewModel { CallsViewModel(container.calls, container.callMarks) }
     val calls by callsModel.state.collectAsStateWithLifecycle()
     val accountModel = viewModel { AccountSettingsViewModel(container.account) }
+    val accountState by accountModel.state.collectAsStateWithLifecycle()
     val contactsModel = viewModel { ContactsViewModel(container.contacts, { container.messages.currentUserId }) }
     val privatePrefs by container.privateMode.state.collectAsStateWithLifecycle()
     val privateDisplay = app.orbitle.data.PrivateModeSettings.display(privatePrefs, canBlur = android.os.Build.VERSION.SDK_INT >= 31)
@@ -158,6 +159,7 @@ fun MainScreen(
                     onPrivacy = { nav.navigate("privacy") },
                     onStorage = { nav.navigate("storage") },
                     onFolders = { nav.navigate("folders") },
+                    profileLink = app.orbitle.presentation.settings.ProfileLink.link(accountState.settings.inviteLink, account?.link),
                 )
             }
             composable("profile-edit") { ProfileEditScreen(accountModel, onBack = { nav.popBackStack() }) }
