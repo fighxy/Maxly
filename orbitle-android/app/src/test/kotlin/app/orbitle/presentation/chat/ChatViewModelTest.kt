@@ -64,6 +64,24 @@ class FakeMessages : MessageRepository {
         reactions += messageId to emoji
     }
     override suspend fun reactionCatalog() = catalog
+
+    var transcript: String? = "Привет"
+    var transcribeFailure: Exception? = null
+    val transcribeCalls = mutableListOf<Pair<String, String>>()
+    val pushes = kotlinx.coroutines.flow.MutableSharedFlow<Pair<String, String>>(extraBufferCapacity = 8)
+    var link = "https://cdn.example/v.mp4"
+    val linkCalls = mutableListOf<String>()
+
+    override suspend fun transcribe(chatId: String, messageId: String, voiceId: String): String? {
+        transcribeCalls += messageId to voiceId
+        transcribeFailure?.let { throw it }
+        return transcript
+    }
+    override fun transcriptions() = pushes
+    override suspend fun mediaLink(chatId: String, messageId: String, attachment: app.orbitle.domain.ChatAttachment): String {
+        linkCalls += attachment.id
+        return link
+    }
 }
 
 class ChatViewModelTest {

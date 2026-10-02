@@ -59,6 +59,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -69,6 +70,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -103,8 +105,30 @@ import kotlinx.coroutines.launch
 /** Экран переписки. Лента перевёрнута: новые сообщения внизу, история догружается вверх. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(model: ChatViewModel, onBack: () -> Unit, onOpenProfile: () -> Unit = {}) {
+fun ChatScreen(model: ChatViewModel, onBack: () -> Unit, onOpenProfile: () -> Unit = {}, mediaUserAgent: String = "") {
     val state by model.state.collectAsStateWithLifecycle()
+    val mediaState = model.media.state.collectAsStateWithLifecycle()
+    val playback = model.media.playback.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val bubbleMedia = remember(model) {
+        BubbleMedia(
+            playback = playback,
+            media = mediaState,
+            canPlay = model.media::canPlay,
+            canTranscribe = model.media::canTranscribe,
+            onVoice = model.media::toggleVoice,
+            onSeek = model.media::seekVoice,
+            onTranscript = model.media::toggleTranscript,
+            onVisual = model.media::openVisual,
+            onFile = model.media::openFile,
+        )
+    }
+    val openFile = mediaState.value.openFile
+    LaunchedEffect(openFile) {
+        val file = openFile ?: return@LaunchedEffect
+        model.media.consumeOpenFile()
+        if (!FileOpener.open(context, file)) model.notify("Нет приложения, чтобы открыть этот файл")
+    }
     val notice by model.messages.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
@@ -144,6 +168,7 @@ fun ChatScreen(model: ChatViewModel, onBack: () -> Unit, onOpenProfile: () -> Un
     }
     val awayFromBottom by remember { derivedStateOf { listState.firstVisibleItemIndex > 2 } }
 
+    CompositionLocalProvider(LocalBubbleMedia provides bubbleMedia) {
     Scaffold(
         topBar = { ChatTopBar(state, onBack, onOpenProfile) },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -226,6 +251,11 @@ fun ChatScreen(model: ChatViewModel, onBack: () -> Unit, onOpenProfile: () -> Un
         }
     }
 
+    }
+
+    mediaState.value.viewer?.let { viewer ->
+        MediaViewer(viewer, mediaUserAgent, onPage = model.media::showPage, onClose = model.media::closeViewer)
+    }
     actionsFor?.let { message ->
         MessageActions(
             model = model,

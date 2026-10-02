@@ -80,6 +80,8 @@ class ChatViewModel(
     private val now: () -> Long = System::currentTimeMillis,
     /** Название, пока чата нет в сторе (новый диалог из контактов). */
     private val fallbackTitle: String? = null,
+    voicePlayer: VoicePlayer? = null,
+    files: MessageFiles? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatUiState())
@@ -88,6 +90,9 @@ class ChatViewModel(
     private val _messages = MutableStateFlow<String?>(null)
     /** Ошибки и уведомления для снекбара. */
     val messages: StateFlow<String?> = _messages.asStateFlow()
+
+    /** Голосовые, расшифровка, просмотр фото и видео, файлы. */
+    val media = ChatMedia(chatId, repository, viewModelScope, voicePlayer, files, onError = { show(it) })
 
     private var history: List<Message> = emptyList()
     private var header: ChatHeaderInfo? = null
@@ -401,6 +406,12 @@ class ChatViewModel(
             else -> "Здесь пока нет сообщений"
         }
         _state.update { it.copy(items = result, emptyHint = hint, isLoading = !latestLoaded && history.isEmpty()) }
+    }
+
+    override fun onCleared() {
+        // Ушли из чата: его голосовое больше не играет.
+        val playing = media.playback.value
+        if (playing != null && history.any { it.id == playing.messageId }) media.stopVoice()
     }
 
     private fun show(error: Exception) {

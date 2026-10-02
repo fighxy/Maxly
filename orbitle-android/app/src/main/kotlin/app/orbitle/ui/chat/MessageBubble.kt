@@ -26,6 +26,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.CallReceived
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
@@ -37,12 +40,19 @@ import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material.icons.outlined.InsertDriveFile
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,6 +72,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.orbitle.domain.ChatAttachment
+import app.orbitle.domain.FileContent
 import app.orbitle.domain.Message
 import app.orbitle.domain.MessageReaction
 import app.orbitle.domain.MessageStatus
@@ -71,6 +82,7 @@ import app.orbitle.domain.VoiceContent
 import app.orbitle.presentation.chat.CallBubbleText
 import app.orbitle.presentation.chat.ChatContentFormat
 import app.orbitle.presentation.chat.ChatItem
+import app.orbitle.presentation.chat.TranscriptUi
 import app.orbitle.presentation.chat.WaveformLayout
 import app.orbitle.presentation.chatlist.ChatListFormatter
 import app.orbitle.ui.components.Avatar
@@ -207,20 +219,16 @@ private fun BubbleContent(
             )
         }
         if (visuals.isNotEmpty()) {
-            Visuals(visuals, maxWidth - 6.dp, Modifier.padding(top = if (item.authorName != null || content.forward != null || content.reply != null) 6.dp else 0.dp))
+            val bubbleMedia = LocalBubbleMedia.current
+            Visuals(visuals, maxWidth - 6.dp, Modifier.padding(top = if (item.authorName != null || content.forward != null || content.reply != null) 6.dp else 0.dp)) {
+                bubbleMedia.onVisual(message, it)
+            }
         }
         content.sticker?.let { sticker ->
             AsyncImage(sticker.url, "Стикер", Modifier.padding(8.dp).size(140.dp), contentScale = ContentScale.Fit)
         }
-        content.voices.forEach { VoiceRow(it, colors, maxWidth) }
-        content.files.forEach { file ->
-            AttachmentRow(
-                icon = { Icon(Icons.Outlined.InsertDriveFile, null, tint = colors.container, modifier = Modifier.size(22.dp)) },
-                title = file.name,
-                subtitle = ChatContentFormat.fileSize(file.size),
-                colors = colors,
-            )
-        }
+        content.voices.forEach { PlayableVoice(message, it, colors, maxWidth) }
+        content.files.forEach { file -> FileRow(message, file, colors) }
         content.attachments.filterIsInstance<ChatAttachment.Contact>().forEach { contact ->
             AttachmentRow(
                 icon = { Icon(Icons.Outlined.Person, null, tint = colors.container, modifier = Modifier.size(22.dp)) },
@@ -317,7 +325,7 @@ fun ReplyQuote(author: String, preview: String, colors: BubbleColors, modifier: 
 
 /** Фото и видео: одно — по пропорциям, несколько — сеткой по два. */
 @Composable
-private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modifier = Modifier) {
+private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modifier = Modifier, onOpen: (ChatAttachment) -> Unit) {
     val shape = RoundedCornerShape(15.dp)
     if (visuals.size == 1) {
         val (w, h) = when (val v = visuals.first()) {
@@ -326,14 +334,14 @@ private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modif
             else -> null to null
         }
         val frame = ChatContentFormat.frame(w, h, maxWidth.value.toDouble(), 360.0)
-        Box(modifier.size(frame.width.dp, frame.height.dp).clip(shape)) { VisualCell(visuals.first()) }
+        Box(modifier.size(frame.width.dp, frame.height.dp).clip(shape).clickable { onOpen(visuals.first()) }) { VisualCell(visuals.first()) }
         return
     }
     val cell = (maxWidth - 2.dp) / 2
     Column(modifier.clip(shape), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         visuals.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                row.forEach { Box(Modifier.size(if (row.size == 1) maxWidth else cell, cell)) { VisualCell(it) } }
+                row.forEach { Box(Modifier.size(if (row.size == 1) maxWidth else cell, cell).clickable { onOpen(it) }) { VisualCell(it) } }
             }
         }
     }
@@ -374,6 +382,41 @@ private fun VideoCell(video: VideoContent, modifier: Modifier) {
     }
 }
 
+/** Голосовое пузыря: плеер, перемотка по дорожке и расшифровка. */
+@Composable
+private fun PlayableVoice(message: Message, voice: VoiceContent, colors: BubbleColors, maxWidth: Dp) {
+    val media = LocalBubbleMedia.current
+    val playback = media.playback.value?.takeIf { it.matches(message.id, voice.id) }
+    val transcript = media.media.value.transcripts[message.id]
+    VoiceRow(
+        voice = voice,
+        colors = colors,
+        maxWidth = maxWidth,
+        progress = playback?.progress ?: 0f,
+        playing = playback?.isPlaying == true,
+        buffering = playback?.isBuffering == true,
+        positionMs = playback?.positionMs,
+        onToggle = if (media.canPlay(voice)) ({ media.onVoice(message, voice) }) else null,
+        onSeek = if (media.canPlay(voice)) ({ media.onSeek(message, voice, it) }) else null,
+        transcriptOpen = transcript != null,
+        onTranscript = if (media.canTranscribe(message, voice)) ({ media.onTranscript(message, voice) }) else null,
+    )
+    when (transcript) {
+        TranscriptUi.Loading -> Row(Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(Modifier.size(12.dp), color = colors.secondary, strokeWidth = 1.5.dp)
+            Spacer(Modifier.width(6.dp))
+            Text("Расшифровка…", color = colors.secondary, style = MaterialTheme.typography.bodySmall)
+        }
+        is TranscriptUi.Text -> Text(
+            transcript.text,
+            color = colors.content,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp).widthIn(max = maxWidth - 24.dp),
+        )
+        null -> Unit
+    }
+}
+
 /** Голосовое: кнопка, дорожка и длительность. Прогресс рисуется, если идёт воспроизведение. */
 @Composable
 fun VoiceRow(
@@ -382,20 +425,98 @@ fun VoiceRow(
     maxWidth: Dp,
     progress: Float = 0f,
     playing: Boolean = false,
+    buffering: Boolean = false,
+    positionMs: Long? = null,
     onToggle: (() -> Unit)? = null,
+    onSeek: ((Float) -> Unit)? = null,
+    transcriptOpen: Boolean = false,
+    onTranscript: (() -> Unit)? = null,
 ) {
     Row(Modifier.padding(start = 8.dp, end = 12.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(
-            Modifier.size(42.dp).clip(CircleShape).background(colors.accent).clickable { onToggle?.invoke() },
+            Modifier.size(42.dp).clip(CircleShape).background(colors.accent).clickable(enabled = onToggle != null) { onToggle?.invoke() },
             contentAlignment = Alignment.Center,
         ) {
-            Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, "Воспроизвести", tint = colors.container)
+            Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (playing) "Пауза" else "Воспроизвести", tint = colors.container)
+            if (buffering) CircularProgressIndicator(Modifier.size(42.dp), color = colors.container, strokeWidth = 2.dp)
         }
         Spacer(Modifier.width(10.dp))
         Column {
-            val width = minOf(maxWidth - 90.dp, 200.dp)
-            Waveform(voice.waveform, progress, colors, Modifier.width(width).height(26.dp))
-            Text(CallBubbleText.clock(voice.durationMs), color = colors.secondary, fontSize = 12.sp)
+            val width = minOf(maxWidth - if (onTranscript != null) 126.dp else 90.dp, 200.dp)
+            var dragging by remember { mutableStateOf<Float?>(null) }
+            val seek = if (onSeek == null) Modifier else Modifier
+                .pointerInput(onSeek) {
+                    detectTapGestures { offset -> onSeek((offset.x / size.width).coerceIn(0f, 1f)) }
+                }
+                .pointerInput(onSeek) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { dragging = (it.x / size.width).coerceIn(0f, 1f) },
+                        onHorizontalDrag = { change, _ -> dragging = (change.position.x / size.width).coerceIn(0f, 1f) },
+                        onDragEnd = { dragging?.let(onSeek); dragging = null },
+                        onDragCancel = { dragging = null },
+                    )
+                }
+            Waveform(voice.waveform, dragging ?: progress, colors, Modifier.width(width).height(26.dp).then(seek))
+            val shown = when {
+                dragging != null && voice.durationMs > 0 -> (dragging!! * voice.durationMs).toLong()
+                positionMs != null && (playing || positionMs > 0) -> positionMs
+                else -> voice.durationMs
+            }
+            Text(CallBubbleText.clock(shown), color = colors.secondary, fontSize = 12.sp)
+        }
+        if (onTranscript != null) {
+            Spacer(Modifier.width(6.dp))
+            Box(
+                Modifier.size(30.dp).clip(RoundedCornerShape(8.dp))
+                    .background(colors.accent.copy(alpha = if (transcriptOpen) 0.3f else 0.14f))
+                    .clickable(onClick = onTranscript),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("А", color = colors.accent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Icon(
+                    if (transcriptOpen) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                    "Расшифровка",
+                    tint = colors.accent,
+                    modifier = Modifier.size(12.dp).align(Alignment.BottomEnd),
+                )
+            }
+        }
+    }
+}
+
+/** Файл: нажатие скачивает и открывает, во время загрузки — кольцо прогресса. */
+@Composable
+private fun FileRow(message: Message, file: FileContent, colors: BubbleColors) {
+    val media = LocalBubbleMedia.current
+    val progress = media.media.value.downloads[file.id]
+    Row(
+        Modifier.clip(RoundedCornerShape(12.dp)).clickable { media.onFile(message, file) }
+            .padding(start = 8.dp, end = 12.dp, top = 8.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(42.dp).clip(CircleShape).background(colors.accent), contentAlignment = Alignment.Center) {
+            if (progress != null) {
+                CircularProgressIndicator(
+                    progress = { progress.coerceAtLeast(0.02f) },
+                    modifier = Modifier.size(36.dp),
+                    color = colors.container,
+                    strokeWidth = 2.5.dp,
+                    trackColor = colors.container.copy(alpha = 0.25f),
+                )
+                Icon(Icons.Filled.Close, "Отменить", tint = colors.container, modifier = Modifier.size(18.dp))
+            } else {
+                Icon(Icons.Outlined.InsertDriveFile, null, tint = colors.container, modifier = Modifier.size(22.dp))
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text(file.name, color = colors.content, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            val subtitle = if (progress != null && file.size > 0) {
+                "${ChatContentFormat.fileSize((file.size * progress).toLong())} из ${ChatContentFormat.fileSize(file.size)}"
+            } else {
+                ChatContentFormat.fileSize(file.size)
+            }
+            Text(subtitle, color = colors.secondary, style = MaterialTheme.typography.bodySmall, maxLines = 1)
         }
     }
 }

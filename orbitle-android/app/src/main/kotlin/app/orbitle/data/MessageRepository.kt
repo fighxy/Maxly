@@ -1,8 +1,11 @@
 package app.orbitle.data
 
 import app.orbitle.domain.Chat
+import app.orbitle.domain.ChatAttachment
+import app.orbitle.domain.OrbitleError
 import app.orbitle.domain.Message
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 
 /** Шапка чата: сам чат и живые данные для второй строки. */
 data class ChatHeaderInfo(
@@ -53,4 +56,16 @@ interface MessageRepository {
 
     /** Эмодзи реакций из каталога сервера. */
     suspend fun reactionCatalog(): List<String>
+
+    /**
+     * Расшифровка голосового [voiceId] сообщения [messageId]. `null` — сервер ещё расшифровывает,
+     * готовый текст придёт в [transcriptions].
+     */
+    suspend fun transcribe(chatId: String, messageId: String, voiceId: String): String? = throw OrbitleError.Rejected("Расшифровка недоступна")
+
+    /** Готовые расшифровки, присланные сервером позже: id сообщения → текст. */
+    fun transcriptions(): Flow<Pair<String, String>> = emptyFlow()
+
+    /** Прямой адрес видео или файла сообщения для плеера и загрузки. */
+    suspend fun mediaLink(chatId: String, messageId: String, attachment: ChatAttachment): String = throw OrbitleError.Rejected("Вложение недоступно")
 }
