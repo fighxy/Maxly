@@ -13,6 +13,26 @@ extension Date {
 }
 
 enum CoreMapping {
+    /// Публичный чат из поиска. Без названия — по типу: «Канал», «Группа» или «Чат».
+    static func searchResult(_ found: CoreSearchChat) -> ChatSearchResult {
+        let type = ChatType.fromCore(found.type)
+        let title = found.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallback: String
+        switch type {
+        case .channel: fallback = "Канал"
+        case .group: fallback = "Группа"
+        case .private: fallback = "Чат"
+        }
+        let subtitle = found.subtitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ChatSearchResult(
+            id: found.id,
+            title: title.isEmpty ? fallback : title,
+            subtitle: subtitle.isEmpty ? nil : subtitle,
+            type: type,
+            avatarURL: found.avatarURL.isEmpty ? nil : URL(string: found.avatarURL)
+        )
+    }
+
     static func chat(_ chat: CoreChat) -> ChatRecord {
         ChatRecord(
             id: chat.id,

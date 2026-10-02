@@ -224,6 +224,17 @@ actor FakeMaxAPI: MaxAPI {
 
     /// Запросы звука чатов: id и «без звука».
     private(set) var muteCalls: [(String, Bool)] = []
+    private(set) var searchCalls: [String] = []
+    var searchResult: Result<[ChatSearchResult], MaxAPIError> = .success([])
+
+    func searchPublic(query: String) async -> Result<[ChatSearchResult], MaxAPIError> {
+        searchCalls.append(query)
+        return searchResult
+    }
+
+    func setSearchResult(_ result: Result<[ChatSearchResult], MaxAPIError>) {
+        searchResult = result
+    }
     var muteError: MaxAPIError?
     func setMuteError(_ error: MaxAPIError?) { muteError = error }
 

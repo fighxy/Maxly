@@ -421,4 +421,25 @@ struct ChatListDataTests {
         #expect(row.avatarURL == URL(string: "https://a/b.jpg"))
         #expect(row.lastMessage?.isOutgoing == true)
     }
+
+    @Test("Поиск на сервере: запрос без пробелов, пустой не отправляется, ошибка доходит")
+    func serverSearch() async throws {
+        let parts = try await makeParts()
+        #expect(parts.chats.capabilities.contains(.serverSearch))
+        let found = ChatSearchResult(id: "77", title: "Новости", subtitle: "@news", type: .channel)
+        await parts.api.setSearchResult(.success([found]))
+        #expect(try await parts.chats.search(query: "  новости ") == [found])
+        #expect(try await parts.chats.search(query: "   ") == [])
+        #expect(await parts.api.searchCalls == ["новости"])
+        await parts.api.setSearchResult(.failure(.offline))
+        await #expect(throws: OrbitleError.self) { try await parts.chats.search(query: "x") }
+    }
+
+    @Test("Найденный чат из ядра: тип, подпись, картинка и название по умолчанию")
+    func searchMapping() {
+        let channel = CoreMapping.searchResult(CoreSearchChat(id: "5", type: "CHANNEL", title: " Новости ", subtitle: "@news", avatarURL: "https://i/5"))
+        #expect(channel == ChatSearchResult(id: "5", title: "Новости", subtitle: "@news", type: .channel, avatarURL: URL(string: "https://i/5")))
+        let group = CoreSearchChat(id: "6", type: "CHAT", title: "", subtitle: " ")
+        #expect(CoreMapping.searchResult(group) == ChatSearchResult(id: "6", title: "Группа", subtitle: nil, type: .group))
+    }
 }

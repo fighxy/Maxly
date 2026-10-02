@@ -43,6 +43,27 @@ public enum CoreAuthStep: Sendable, Equatable {
     case register(token: String)
 }
 
+/// Публичный чат или канал из поиска на сервере (`PUBLIC_SEARCH`).
+public struct CoreSearchChat: Sendable, Equatable {
+    public var id: String
+    /// `DIALOG`, `CHAT` или `CHANNEL`.
+    public var type: String
+    public var title: String
+    /// `@ссылка` или текст последнего сообщения. Пусто, если нет ни того, ни другого.
+    public var subtitle: String
+    public var avatarURL: String
+    public var participantsCount: Int
+
+    public init(id: String, type: String, title: String, subtitle: String = "", avatarURL: String = "", participantsCount: Int = 0) {
+        self.id = id
+        self.type = type
+        self.title = title
+        self.subtitle = subtitle
+        self.avatarURL = avatarURL
+        self.participantsCount = participantsCount
+    }
+}
+
 public struct CoreChat: Sendable, Equatable {
     public var id: String
     public var title: String
@@ -412,6 +433,8 @@ public protocol MaxCore: Sendable {
     func removeAvatar() async throws -> MyProfile
     /// Мс Unix момента удаления, 0 — сервер не назвал.
     func deleteAccount() async throws -> Int64
+    /// Публичные чаты и каналы по запросу, страница `from`..`from + count`.
+    func searchPublic(query: String, from: Int, count: Int) async throws -> [CoreSearchChat]
     /// Настройки сейчас и после каждого изменения.
     func accountSettings() -> AsyncStream<AccountSettings>
     func setPhonePrivacy(_ access: PrivacyAccess) async throws -> AccountSettings
@@ -517,6 +540,7 @@ public extension MaxCore {
     func uploadAvatar(jpeg: Data) async throws -> MyProfile { throw unsupported }
     func removeAvatar() async throws -> MyProfile { throw unsupported }
     func deleteAccount() async throws -> Int64 { throw unsupported }
+    func searchPublic(query: String, from: Int, count: Int) async throws -> [CoreSearchChat] { throw unsupported }
     func accountSettings() -> AsyncStream<AccountSettings> { AsyncStream { $0.finish() } }
     func setPhonePrivacy(_ access: PrivacyAccess) async throws -> AccountSettings { throw unsupported }
     func setOnlineHidden(_ hidden: Bool) async throws -> AccountSettings { throw unsupported }

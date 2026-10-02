@@ -54,7 +54,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         self.api = api
         self.typingTTL = typingTTL
         self.clock = clock
-        self.capabilities = [.pin, .reorderPins, .markUnread, .mute]
+        self.capabilities = [.pin, .reorderPins, .markUnread, .mute, .serverSearch]
     }
 
     public static func make(stack: SwiftDataStack, api: any MaxAPI) -> ChatRepositoryImpl {
@@ -465,6 +465,19 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             throw .storageError
         }
         notify()
+    }
+
+    /// Публичные чаты и каналы на сервере. Пустой запрос сервер не спрашивает.
+    public nonisolated func search(query: String) async throws(OrbitleError) -> [ChatSearchResult] {
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty else { return [] }
+        switch await api.searchPublic(query: term) {
+        case .success(let results):
+            return results
+        case .failure(let error):
+            Log.warning(.chats, "Поиск на сервере не удался: \(error)")
+            throw error.orbitleError
+        }
     }
 
     /// Звук чата: сначала сервер, затем база. При ошибке строка остаётся как была.
