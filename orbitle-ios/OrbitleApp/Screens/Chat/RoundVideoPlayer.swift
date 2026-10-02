@@ -3,7 +3,7 @@ import SwiftUI
 import OrbitleDomain
 import UIKit
 
-/// Кружок, играющий прямо в ленте, как в Telegram: ролик со звуком в круге и кольцо
+/// Кружок, играющий прямо в ленте: ролик со звуком в круге и кольцо
 /// прогресса по краю. Доиграв, возвращает пузырь к кадру-обложке (`onEnd`).
 struct RoundVideoPlayer: View {
     let url: URL

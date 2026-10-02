@@ -95,7 +95,7 @@ struct MediaViewer: View {
         .onChange(of: selection) { _, _ in zoomed = false }
     }
 
-    /// «Сохранить в Фото» и «Сохранить в Файлы» для открытого кадра, как в Telegram.
+    /// «Сохранить в Фото» и «Сохранить в Файлы» для открытого кадра.
     private func saveMenu(_ onSave: @escaping (String, SaveTarget) -> Void) -> some View {
         Menu {
             Button("Сохранить в Фото", systemImage: "square.and.arrow.down") { onSave(selection, .photos) }

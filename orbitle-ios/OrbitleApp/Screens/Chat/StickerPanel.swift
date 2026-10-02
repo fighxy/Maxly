@@ -4,7 +4,7 @@ import OrbitleDomain
 import OrbitlePresentation
 import OrbitleUI
 
-/// Панель эмодзи и стикеров на месте клавиатуры, как в Telegram iOS: сверху полоса
+/// Панель эмодзи и стикеров на месте клавиатуры: сверху полоса
 /// разделов (нажатие прокручивает к разделу, текущий подсвечен), сетка с заголовками,
 /// снизу переключатель «Эмодзи | Стикеры» и «стереть».
 struct StickerPanel: View {
@@ -270,7 +270,7 @@ private struct EmojiCell: View {
 }
 
 /// Ячейка стикера: пока стикер не загружен — серая заглушка. Долгое нажатие — крупный
-/// просмотр с «Отправить», как в Telegram.
+/// просмотр с «Отправить».
 private struct StickerCell: View {
     let sticker: Sticker?
     let onSend: (Sticker) -> Void
@@ -305,7 +305,7 @@ private struct StickerCell: View {
     }
 }
 
-/// Нажатие слегка уменьшает ячейку, как в Telegram.
+/// Нажатие слегка уменьшает ячейку.
 private struct PressScale: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label

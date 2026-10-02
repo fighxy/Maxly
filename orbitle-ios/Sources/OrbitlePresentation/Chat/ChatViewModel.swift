@@ -69,7 +69,7 @@ public final class ChatViewModel {
     public private(set) var notice: String?
     /// Просмотр фото и видео.
     public var viewer: MediaViewerRequest?
-    /// Кружок, который играет прямо в ленте, как в Telegram (не на весь экран).
+    /// Кружок, который играет прямо в ленте (не на весь экран).
     public private(set) var roundPlayback: RoundPlayback?
     /// Открытый файл.
     public var openedFile: OpenedFile?
@@ -377,7 +377,7 @@ public final class ChatViewModel {
         draft.removeLast()
     }
 
-    /// Стикер уходит сразу отдельным сообщением, как в Telegram; цитата — если отвечали.
+    /// Стикер уходит сразу отдельным сообщением; цитата — если отвечали.
     public func sendSticker(_ sticker: Sticker) async {
         await sendAttachments([.sticker(sticker)], caption: "")
     }

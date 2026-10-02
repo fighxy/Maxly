@@ -2,7 +2,7 @@ import Foundation
 import Observation
 import OrbitleDomain
 
-/// Экран «Данные и память», как «Использование памяти» в Telegram: сколько места занимает
+/// Экран «Данные и память»: сколько места занимает
 /// кэш по категориям, очистка выбранного, срок хранения медиа и предел размера кэша.
 ///
 /// Кэш — копии медиа из облака Max. После очистки они снова скачаются, когда понадобятся;
@@ -12,7 +12,7 @@ import OrbitleDomain
 public final class StorageSettingsModel {
     public private(set) var usage: StorageUsage?
     public private(set) var policy: StoragePolicy = .standard
-    /// Отмеченные для очистки категории. Как в Telegram, по умолчанию отмечено всё.
+    /// Отмеченные для очистки категории. По умолчанию отмечено всё.
     public private(set) var selection: Set<StorageCategory> = Set(StorageCategory.allCases)
     public private(set) var isClearing = false
 
@@ -30,7 +30,7 @@ public final class StorageSettingsModel {
         usage = await storage.usage()
     }
 
-    /// Непустые категории, от большей к меньшей. Пустые, как в Telegram, не показываются.
+    /// Непустые категории, от большей к меньшей. Пустые не показываются.
     public var categories: [StorageCategory] {
         guard let usage else { return [] }
         return StorageCategory.allCases

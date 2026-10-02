@@ -17,7 +17,7 @@ public struct ChatHeaderLive: Equatable, Sendable {
     }
 }
 
-/// Вторая строка шапки чата, как в Telegram: «печатает…» с точками, «в сети» цветом акцента,
+/// Вторая строка шапки чата: «печатает…» с точками, «в сети» цветом акцента,
 /// остальное серым. У «Избранного» строки нет.
 public enum ChatHeaderStatus: Equatable, Sendable {
     case none
@@ -47,7 +47,7 @@ public enum ChatHeaderStatus: Equatable, Sendable {
                 return .typing(text.hasSuffix("…") ? String(text.dropLast()) : text)
             }
             if kind == .user, live.isOnline || isOnline { return .accent("в сети") }
-            // «Был(а) недавно» карточки в шапке со строчной, как в Telegram.
+            // «Был(а) недавно» карточки в шапке со строчной.
             return .plain(subtitle.prefix(1).lowercased() + subtitle.dropFirst())
         }
     }

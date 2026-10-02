@@ -200,7 +200,7 @@ public struct BubbleGroup: Hashable, Sendable {
 /// Подписи и размеры контента в пузыре. Без SwiftUI, чтобы их считали тесты.
 public enum ChatContentFormat {
     /// Сообщение из одних эмодзи (от одного до трёх, пробелы не в счёт) рисуется крупно без
-    /// подложки, как в Telegram. `nil` — обычный текст.
+    /// подложки. `nil` — обычный текст.
     public static func bigEmoji(_ text: String, limit: Int = 3) -> [String]? {
         var found: [String] = []
         for character in text where !character.isWhitespace {

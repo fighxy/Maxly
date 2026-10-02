@@ -51,7 +51,7 @@ public struct FileExport: Identifiable, Hashable, Sendable {
 
 /// Имена сохраняемых файлов и их тип по первым байтам.
 public enum SaveNaming {
-    /// «Orbitle 2026-10-01 14.05.33.jpg», как «telegram-photo-…» у Telegram: по времени
+    /// «Orbitle 2026-10-01 14.05.33.jpg»: имя с префиксом приложения и по времени
     /// сообщения, номер для второго и следующих вложений одного сообщения.
     public static func name(for date: Date, index: Int, ext: String, timeZone: TimeZone = .current) -> String {
         let formatter = DateFormatter()

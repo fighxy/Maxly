@@ -49,7 +49,7 @@ public struct StickerSection: Identifiable, Hashable, Sendable {
     public let stickerIds: [String]
 }
 
-/// Панель эмодзи и стикеров под полем ввода, как в Telegram: вместо клавиатуры, две вкладки.
+/// Панель эмодзи и стикеров под полем ввода: вместо клавиатуры, две вкладки.
 ///
 /// Эмодзи: «Недавние» (если ими пользовались), «Анимированные» (анимодзи сервера, Lottie из
 /// KometTeam/Komet `EmojiPanel`), затем обычные категории Unicode. Стикеры: недавние, затем
@@ -80,7 +80,7 @@ public final class StickerPanelModel {
 
     public static let recentTitle = "Недавние"
     public static let animatedTitle = "Анимированные"
-    /// Сколько недавних эмодзи видно в первом разделе (как у Telegram — две-три строки).
+    /// Сколько недавних эмодзи видно в первом разделе (две-три строки).
     public static let recentEmojiShown = 24
 
     public init(repository: (any StickerRepository)?, recents: any RecentStickerStore) {

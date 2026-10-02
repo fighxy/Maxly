@@ -142,7 +142,7 @@ struct ChatComposer: View {
     }
 
     /// Смайлик в поле ввода открывает панель эмодзи и стикеров вместо клавиатуры, на открытой
-    /// панели он становится клавиатурой и возвращает её — как в Telegram.
+    /// панели он становится клавиатурой и возвращает её.
     private var panelButton: some View {
         Button {
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {

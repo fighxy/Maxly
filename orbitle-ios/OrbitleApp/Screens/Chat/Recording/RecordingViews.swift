@@ -147,7 +147,7 @@ struct RecordingBar: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// `0:07,4` — минуты, секунды и десятые, как в Telegram.
+    /// `0:07,4` — минуты, секунды и десятые.
     static func clock(_ seconds: TimeInterval) -> String {
         let tenths = Int((max(0, seconds) * 10).rounded(.down))
         return String(format: "%d:%02d,%d", tenths / 600, tenths / 10 % 60, tenths % 10)

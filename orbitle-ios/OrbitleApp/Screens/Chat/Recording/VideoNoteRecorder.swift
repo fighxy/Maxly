@@ -12,7 +12,7 @@ struct VideoNoteRecording: Sendable {
     let side: Int
 }
 
-/// Запись круглого видеосообщения, как в Telegram: фронтальная камера, до минуты.
+/// Запись круглого видеосообщения: фронтальная камера, до минуты.
 ///
 /// Камера пишет обычный ролик, после остановки он обрезается по центру в квадрат
 /// 480×480 и перекодируется в MP4 как у Komet (`VideoNoteExporter`): круг рисует уже пузырь.
@@ -189,7 +189,7 @@ final class CaptureController: NSObject, AVCaptureFileOutputRecordingDelegate, @
         if let connection = output.connection(with: .video) {
             if connection.isVideoRotationAngleSupported(90) { connection.videoRotationAngle = 90 }
             if connection.isVideoMirroringSupported {
-                // Как в зеркале: так видит себя пишущий и так кружок выглядит в Telegram.
+                // Как в зеркале: так видит себя пишущий и так кружок привычно выглядит в мессенджерах.
                 connection.automaticallyAdjustsVideoMirroring = false
                 connection.isVideoMirrored = true
             }

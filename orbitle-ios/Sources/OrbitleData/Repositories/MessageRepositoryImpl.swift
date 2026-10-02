@@ -491,7 +491,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     }
 
     /// История канала приходит без реакций (`reactionsKnown == false`): они дозапрашиваются
-    /// (`MSG_GET_REACTIONS`) до записи, и пузырь сразу ложится с реакциями, как в Telegram, —
+    /// (`MSG_GET_REACTIONS`) до записи, и пузырь сразу ложится с реакциями —
     /// а не вырастает через мгновение после показа. Не ответил сервер — записи как были:
     /// реакции догонит `syncReactions`.
     func withReactions(_ records: [MessageRecord], chatId: String) async -> [MessageRecord] {

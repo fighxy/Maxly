@@ -18,7 +18,7 @@ struct MediaMosaic: View {
     /// Одиночный кадр занимает всю ширину (пузырь с подписью не должен быть шире фото).
     var fillsWidth = false
     /// Играющий в ленте кружок (плеер от приложения): рисуется в круге поверх обложки,
-    /// а сам круг на время воспроизведения крупнее, как в Telegram.
+    /// а сам круг на время воспроизведения крупнее.
     var roundPlayer: AnyView?
     let onOpen: (String) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -164,7 +164,7 @@ struct MediaMosaic: View {
         ))
     }
 
-    /// Диаметр кружка в ленте, как в Telegram: не во всю ширину.
+    /// Диаметр кружка в ленте: не во всю ширину.
     static let roundSide: CGFloat = 220
     /// Диаметр играющего кружка.
     static let playingRoundSide: CGFloat = 300

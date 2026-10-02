@@ -1,7 +1,7 @@
 import Foundation
 import OrbitleDomain
 
-/// Вкладки общих медиа в профиле, как в Telegram: фото и видео, файлы, ссылки, голосовые.
+/// Вкладки общих медиа в профиле: фото и видео, файлы, ссылки, голосовые.
 public enum SharedMediaTab: String, CaseIterable, Identifiable, Hashable, Sendable {
     case media, files, links, voice
 

@@ -109,7 +109,7 @@ public actor CoreStickerRepository: StickerRepository {
     }
 }
 
-/// Недавние эмодзи и стикеры в `UserDefaults`, как «Недавние» в Telegram: последние сверху.
+/// Недавние эмодзи и стикеры в `UserDefaults` (раздел «Недавние»): последние сверху.
 public final class UserDefaultsRecentStickers: RecentStickerStore, @unchecked Sendable {
     public static let emojiLimit = 32
     public static let stickerLimit = 20

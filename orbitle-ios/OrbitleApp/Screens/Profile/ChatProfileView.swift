@@ -13,7 +13,7 @@ struct ChatProfileContext {
     var onShowMessage: (Message) -> Void
 }
 
-/// Профиль собеседника, бота, группы или канала, как в Telegram iOS: крупный аватар и имя,
+/// Профиль собеседника, бота, группы или канала: крупный аватар и имя,
 /// ряд кнопок, карточка сведений, команды бота и общие медиа по вкладкам.
 ///
 /// Шапка видна сразу по данным из списка чатов, остальное подгружается с сервера. Когда имя
@@ -120,7 +120,7 @@ struct ChatProfileView: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// Аватар растёт, когда профиль тянут вниз, и уменьшается и тает при прокрутке, как в Telegram.
+    /// Аватар растёт, когда профиль тянут вниз, и уменьшается и тает при прокрутке.
     private var avatar: some View {
         let pull = max(offset, 0)
         let scroll = min(offset, 0)
@@ -384,7 +384,7 @@ struct ChatProfileView: View {
         }
     }
 
-    /// Вкладки строкой с полоской под выбранной, как в Telegram.
+    /// Вкладки строкой с полоской под выбранной.
     private func tabStrip(_ list: [SharedMediaTab]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 22) {

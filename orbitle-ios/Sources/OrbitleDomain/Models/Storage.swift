@@ -15,7 +15,7 @@ public enum StorageCategory: String, CaseIterable, Codable, Hashable, Sendable {
     public var folder: String { rawValue }
 }
 
-/// Сколько хранить медиа, к которым не обращались. Как «Хранить медиа» в Telegram.
+/// Сколько хранить медиа, к которым не обращались (настройка «Хранить медиа»).
 public enum KeepMediaPeriod: String, CaseIterable, Codable, Hashable, Sendable {
     case threeDays
     case week
@@ -33,7 +33,7 @@ public enum KeepMediaPeriod: String, CaseIterable, Codable, Hashable, Sendable {
     }
 }
 
-/// Предел размера кэша. Как «Максимальный размер кэша» в Telegram.
+/// Предел размера кэша (настройка «Максимальный размер кэша»).
 public enum CacheSizeLimit: String, CaseIterable, Codable, Hashable, Sendable {
     case gb1
     case gb5
