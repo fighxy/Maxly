@@ -39,6 +39,7 @@
     <string name="chats_empty_hint">Начните переписку из контактов</string>
     <string name="chats_search_empty">Ничего не найдено</string>
     <string name="chats_search_global">Глобальный поиск</string>
+    <string name="chats_search_messages">Сообщения</string>
     <string name="chats_offline">Нет соединения с сервером</string>
     <string name="chats_retry">Повторить</string>
     <string name="chats_pin">Закрепить</string>

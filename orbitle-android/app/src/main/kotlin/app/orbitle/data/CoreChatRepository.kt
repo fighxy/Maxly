@@ -3,7 +3,11 @@ package app.orbitle.data
 import app.orbitle.domain.Chat
 import app.orbitle.domain.ChatSearchResult
 import app.orbitle.domain.ChatType
+import app.orbitle.domain.FoundMessage
+import com.max.core.api.MaxMessage
 import com.max.core.api.PublicSearchHit
+import com.max.core.state.MaxState
+import kotlinx.coroutines.CancellationException
 import app.orbitle.domain.ServerFolder
 import com.max.shared.MaxClient
 import kotlinx.coroutines.delay
@@ -98,6 +102,20 @@ class CoreChatRepository(
         return hits.mapNotNull(::searchResultOf)
     }
 
+    override suspend fun searchMessages(query: String): List<FoundMessage> {
+        val term = query.trim()
+        if (term.isEmpty()) return emptyList()
+        // Без ответа сервера остаются совпадения среди загруженных сообщений.
+        val hits = try {
+            MaxCoreGateway.call { client.api.search.searchMessages(term, MESSAGE_SEARCH_COUNT) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            emptyList()
+        }
+        return foundMessages(term, hits.map { it.chatId to it.message }, client.store.state.value)
+    }
+
     override suspend fun markAsRead(chatId: String) {
         val id = chatId.toLongOrNull() ?: return
         val state = client.store.state.value
@@ -117,6 +135,36 @@ class CoreChatRepository(
 
         /** Сколько публичных чатов просить за раз. */
         const val SEARCH_PAGE_SIZE = 20
+
+        /** Сколько найденных сообщений просить у сервера. */
+        const val MESSAGE_SEARCH_COUNT = 50
+
+        /**
+         * Найденное сервером вместе с совпадениями среди загруженных сообщений: без повторов
+         * (у загруженной копии точное время), без пустых и без чата 0, новые сверху.
+         */
+        fun foundMessages(query: String, server: List<Pair<Long, MaxMessage>>, state: MaxState): List<FoundMessage> {
+            val term = query.trim()
+            if (term.isEmpty()) return emptyList()
+            val local = state.messages.flatMap { (chatId, list) ->
+                list.filter { it.text.contains(term, ignoreCase = true) }.map { chatId to it }
+            }
+            return (local + server)
+                .filter { (chatId, message) -> chatId != 0L && message.text.isNotBlank() }
+                .distinctBy { (chatId, message) -> chatId to message.id }
+                .sortedByDescending { (_, message) -> message.time }
+                .map { (chatId, message) ->
+                    val sender = message.sender
+                    FoundMessage(
+                        chatId = chatId.toString(),
+                        messageId = message.id.toString(),
+                        senderName = sender?.let { state.users[it]?.displayName }?.takeIf { it.isNotBlank() },
+                        isOutgoing = sender != null && sender == state.me,
+                        text = message.text.trim(),
+                        timeMs = message.time,
+                    )
+                }
+        }
 
         /**
          * Найденный чат или канал. Люди пропускаются: у найденного человека ещё нет чата,

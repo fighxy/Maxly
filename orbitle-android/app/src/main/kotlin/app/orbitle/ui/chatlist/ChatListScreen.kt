@@ -100,6 +100,7 @@ import app.orbitle.R
 import app.orbitle.domain.ChatSearchResult
 import app.orbitle.domain.DeliveryState
 import app.orbitle.presentation.chatlist.ChatAvatar
+import app.orbitle.presentation.chatlist.FoundMessageItem
 import app.orbitle.presentation.chatlist.ChatBadge
 import app.orbitle.presentation.chatlist.ChatListContent
 import app.orbitle.presentation.chatlist.ChatListItem
@@ -116,6 +117,7 @@ fun ChatListScreen(
     viewModel: ChatListViewModel,
     onOpenChat: (ChatListItem) -> Unit,
     onOpenFound: (ChatSearchResult) -> Unit = {},
+    onOpenMessage: (FoundMessageItem) -> Unit = {},
     privateMode: app.orbitle.domain.PrivateModePreferences = app.orbitle.domain.PrivateModePreferences(),
     onTogglePrivateMode: () -> Unit = {},
 ) {
@@ -222,8 +224,9 @@ fun ChatListScreen(
                 LaunchedEffect(state.selectedFolderId) { listState.scrollToItem(0) }
                 val searching = state.isSearchActive && state.searchQuery.isNotBlank()
                 val showsResults = state.content == ChatListContent.List || state.content == ChatListContent.Empty
-                if (searching && showsResults && (state.global.isNotEmpty() || state.isSearchingServer)) {
-                    SearchResults(state, listState, open, onOpenFound, actions)
+                val hasFound = state.global.isNotEmpty() || state.messages.isNotEmpty() || state.isSearchingServer
+                if (searching && showsResults && hasFound) {
+                    SearchResults(state, listState, open, onOpenFound, onOpenMessage, actions)
                 } else {
                     ChatListBody(
                         state.content, state.items, searching = searching, listState = listState,
@@ -363,22 +366,24 @@ private fun SearchResults(
     listState: LazyListState,
     onOpenChat: (ChatListItem) -> Unit,
     onOpenFound: (ChatSearchResult) -> Unit,
+    onOpenMessage: (FoundMessageItem) -> Unit,
     actions: ChatRowActions,
 ) {
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         items(state.items, key = { it.id }) { item ->
             ChatRow(item, onClick = { onOpenChat(item) }, actions = actions, modifier = Modifier.animateItem())
         }
-        item(key = "global-header") {
-            Text(
-                stringResource(R.string.chats_search_global),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
-            )
+        if (state.global.isNotEmpty() || (state.isSearchingServer && state.messages.isEmpty())) {
+            item(key = "global-header") { SectionHeader(stringResource(R.string.chats_search_global)) }
         }
         items(state.global, key = { "global-${it.id}" }) { found ->
             FoundChatRow(found, onClick = { onOpenFound(found) })
+        }
+        if (state.messages.isNotEmpty()) {
+            item(key = "messages-header") { SectionHeader(stringResource(R.string.chats_search_messages)) }
+        }
+        items(state.messages, key = { "message-${it.chatId}-${it.messageId}" }) { found ->
+            FoundMessageRow(found, onClick = { onOpenMessage(found) })
         }
         if (state.isSearchingServer) {
             item(key = "global-progress") {
@@ -386,6 +391,59 @@ private fun SearchResults(
                     CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
+    )
+}
+
+/** Найденное сообщение: чат, время, автор и текст; в приватном режиме — как строка чата. */
+@Composable
+private fun FoundMessageRow(found: FoundMessageItem, onClick: () -> Unit) {
+    val privacy = app.orbitle.ui.components.LocalPrivateMode.current
+    val masked = privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER
+    val mask = app.orbitle.presentation.settings.PrivateModeMask
+    val title = if (masked) mask.chatTitle(found.chatType, found.isSavedMessages) else found.chatTitle
+    val text = if (masked) mask.HIDDEN_TEXT else found.author?.let { "$it: ${found.snippet}" } ?: found.snippet
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).privateBlur(privacy, 7.dp),
+                )
+                if (found.time.isNotEmpty()) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(found.time, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.privateBlur(privacy, 7.dp),
+            )
         }
     }
 }

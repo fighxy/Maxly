@@ -2,6 +2,7 @@ package app.orbitle.data
 
 import app.orbitle.domain.Chat
 import app.orbitle.domain.ChatSearchResult
+import app.orbitle.domain.FoundMessage
 import app.orbitle.domain.ServerFolder
 import kotlinx.coroutines.flow.Flow
 
@@ -25,6 +26,9 @@ interface ChatRepository {
 
     /** Публичные чаты и каналы на сервере по названию или ссылке. Без поиска на сервере — пусто. */
     suspend fun searchPublic(query: String): List<ChatSearchResult> = emptyList()
+
+    /** Сообщения во всех чатах по тексту, новые сверху. Без поиска — пусто. */
+    suspend fun searchMessages(query: String): List<FoundMessage> = emptyList()
     /** Забыть всё про аккаунт (выход). */
     fun clear()
 }
