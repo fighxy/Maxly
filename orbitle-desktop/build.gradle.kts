@@ -19,6 +19,39 @@ if (!coreDir.resolve("core/src/commonMain/kotlin").isDirectory) {
     )
 }
 
+/** Ревизия ядра из core.lock: короткий хеш для экрана «О приложении». */
+val coreRevision: String = file("core.lock").readLines()
+    .firstOrNull { it.startsWith("revision=") }?.substringAfter('=')?.trim()?.take(7)
+    ?: throw GradleException("В orbitle-desktop/core.lock нет строки revision=")
+
+// BuildConfig собирается из core.lock и переменных CI при каждой сборке, поэтому не устаревает.
+val generateBuildConfig = tasks.register("generateBuildConfig") {
+    val outputDir = layout.buildDirectory.dir("generated/buildConfig")
+    val versionName = "0.1.0"
+    val buildSha = System.getenv("ORBITLE_BUILD_SHA")?.takeIf { it.isNotBlank() } ?: "dev"
+    val revision = coreRevision
+    inputs.property("versionName", versionName)
+    inputs.property("buildSha", buildSha)
+    inputs.property("coreRevision", revision)
+    outputs.dir(outputDir)
+    doLast {
+        val target = outputDir.get().file("app/orbitle/BuildConfig.kt").asFile
+        target.parentFile.mkdirs()
+        target.writeText(
+            """
+            |package app.orbitle
+            |
+            |/** Сведения сборки для экрана «О приложении». Файл пишет задача generateBuildConfig из core.lock. */
+            |object BuildConfig {
+            |    const val VERSION_NAME = "$versionName"
+            |    const val BUILD_SHA = "$buildSha"
+            |    const val CORE_REVISION = "$revision"
+            |}
+            |""".trimMargin(),
+        )
+    }
+}
+
 kotlin {
     jvm {
         compilations.configureEach {
@@ -52,6 +85,7 @@ kotlin {
                     layout.projectDirectory.dir("src/main/kotlin"),
                 ),
             )
+            kotlin.srcDir(generateBuildConfig)
             resources.srcDir("src/main/resources")
             dependencies {
                 implementation("com.squareup.okhttp3:okhttp:4.12.0")
