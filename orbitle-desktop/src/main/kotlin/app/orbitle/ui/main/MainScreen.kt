@@ -1,5 +1,6 @@
 package app.orbitle.ui.main
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -129,7 +130,7 @@ fun MainScreen(
         chatTitle = null
     }
     CompositionLocalProvider(LocalPrivateMode provides privateDisplay) {
-        Row(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             NavigationRail {
                 Tab.entries.forEach { item ->
                     val selected = tab == item
