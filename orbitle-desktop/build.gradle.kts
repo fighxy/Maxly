@@ -8,9 +8,15 @@ plugins {
     id("org.jetbrains.compose") version "1.7.3"
 }
 
-val coreDir = rootProject.file("../.build/max-kmp-core")
+// Исходники ядра: по умолчанию .build/max-kmp-core в корне репозитория (ревизия из core.lock),
+// MAX_KMP_CORE_DIR — своя локальная копия.
+val coreDir = System.getenv("MAX_KMP_CORE_DIR")?.takeIf { it.isNotBlank() }?.let(::file)
+    ?: rootProject.file("../.build/max-kmp-core")
 if (!coreDir.resolve("core/src/commonMain/kotlin").isDirectory) {
-    throw GradleException("Нет ядра в $coreDir. Запустите scripts/fetch-core.ps1 из корня репозитория")
+    throw GradleException(
+        "Нет ядра в $coreDir. Запустите bash orbitle-desktop/scripts/fetch-core.sh " +
+            "(Windows: scripts/fetch-core.ps1) из корня репозитория",
+    )
 }
 
 kotlin {
