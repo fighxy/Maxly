@@ -86,6 +86,7 @@ if (coreAars.any { !file(it).exists() }) {
 }
 
 dependencies {
+    implementation(project(":shared"))
     // Ядро max-kmp-core (Android-цель), собранное scripts/fetch-core-android.sh по core.lock.
     implementation(files(coreAars))
     // Зависимости ядра: AAR-файлы не несут POM, поэтому их объявляет приложение.

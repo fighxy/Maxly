@@ -16,3 +16,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "orbitle-android"
 include(":app")
+// Общий для Android и десктопа код: модели, слой данных над ядром и ViewModel.
+include(":shared")
+project(":shared").projectDir = file("../orbitle-shared")

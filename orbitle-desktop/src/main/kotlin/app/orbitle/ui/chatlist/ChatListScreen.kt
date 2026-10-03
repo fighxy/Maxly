@@ -620,7 +620,8 @@ private fun Preview(item: ChatListItem, modifier: Modifier) {
                 else -> {
                     item.sender?.let { withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface)) { append(it); append(": ") } }
                     // Подпись вложения без текста — акцентом, как в популярных мессенджерах.
-                    if (item.media != null && item.preview == app.orbitle.presentation.chatlist.ChatListFormatter.mediaLabel(item.media)) {
+                    val media = item.media
+                    if (media != null && item.preview == app.orbitle.presentation.chatlist.ChatListFormatter.mediaLabel(media)) {
                         withStyle(SpanStyle(color = accent)) { append(item.preview) }
                     } else {
                         append(item.preview)
@@ -635,17 +636,18 @@ private fun Preview(item: ChatListItem, modifier: Modifier) {
 @Composable
 private fun Trailing(item: ChatListItem) {
     val muted = MaterialTheme.colorScheme.outline
+    val badge = item.badge
     when {
         item.hasMention -> Box(
             Modifier.size(22.dp).clip(CircleShape).background(if (item.badgeMuted) muted else MaterialTheme.colorScheme.primary),
             contentAlignment = Alignment.Center,
         ) { Text("@", color = Color.White, style = MaterialTheme.typography.labelMedium) }
-        item.badge is ChatBadge.Count -> Box(
+        badge is ChatBadge.Count -> Box(
             Modifier.defaultMinSize(minWidth = 22.dp, minHeight = 22.dp).clip(CircleShape)
                 .background(if (item.badgeMuted) muted else MaterialTheme.colorScheme.primary)
                 .padding(horizontal = 6.dp),
             contentAlignment = Alignment.Center,
-        ) { Text(item.badge.text, color = Color.White, style = MaterialTheme.typography.labelMedium) }
+        ) { Text(badge.text, color = Color.White, style = MaterialTheme.typography.labelMedium) }
         item.badge == ChatBadge.Dot -> Box(
             Modifier.size(12.dp).clip(CircleShape).background(if (item.badgeMuted) muted else MaterialTheme.colorScheme.primary),
         )

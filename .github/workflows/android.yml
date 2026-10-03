@@ -6,10 +6,12 @@ on:
     branches: [main]
     paths:
       - "orbitle-android/**"
+      - "orbitle-shared/**"
       - ".github/workflows/android.yml"
   pull_request:
     paths:
       - "orbitle-android/**"
+      - "orbitle-shared/**"
       - ".github/workflows/android.yml"
 
 permissions:
@@ -63,7 +65,7 @@ jobs:
       - name: Test report
         if: failure()
         run: |
-          find app/build/test-results -name '*.xml' -exec grep -l '<failure' {} + 2>/dev/null | while read -r report; do
+          find app/build/test-results ../orbitle-shared/build/test-results -name '*.xml' -exec grep -l '<failure' {} + 2>/dev/null | while read -r report; do
             echo "::group::$report"
             head -c 20000 "$report"
             echo "::endgroup::"
