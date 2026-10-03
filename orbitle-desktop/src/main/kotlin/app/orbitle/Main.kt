@@ -77,6 +77,7 @@ fun main() {
         Window(
             onCloseRequest = ::exitApplication,
             title = "Orbitle",
+            icon = painterResource(R.drawable.app_icon),
             state = rememberWindowState(size = DpSize(1100.dp, 760.dp)),
         ) {
             CompositionLocalProvider(

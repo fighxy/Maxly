@@ -71,6 +71,7 @@ object R {
         const val wallpaper_autumn_dark_thumb = 1006
         const val wallpaper_autumn_night = 1007
         const val wallpaper_autumn_night_thumb = 1008
+        const val app_icon = 1009
     }
 }
 
@@ -143,4 +144,5 @@ internal val DRAWABLE_FILES: Map<Int, String> = mapOf(
     R.drawable.wallpaper_autumn_dark_thumb to "wallpaper_autumn_dark_thumb.jpg",
     R.drawable.wallpaper_autumn_night to "wallpaper_autumn_night.jpg",
     R.drawable.wallpaper_autumn_night_thumb to "wallpaper_autumn_night_thumb.jpg",
+    R.drawable.app_icon to "app_icon.png",
 )

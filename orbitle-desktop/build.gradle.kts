@@ -138,6 +138,28 @@ compose.desktop {
             // Только ASCII: WiX собирает .msi в кодовой странице 1252, кириллица в описании ломает packageMsi.
             description = "Orbitle desktop client"
             vendor = "Orbitle"
+            // Значки собраны из orbitle-ios AppIcon.png (1024 px): .ico 16–256, .icns, .png 512.
+            windows {
+                // Ярлык на рабочем столе и в меню «Пуск», установка без прав администратора
+                // в профиль пользователя с выбором папки.
+                shortcut = true
+                menu = true
+                menuGroup = "Orbitle"
+                perUserInstall = true
+                dirChooser = true
+                // Постоянный UUID: новая версия .msi обновляет установленную, а не ставится рядом.
+                upgradeUuid = "27980db0-5d2d-4976-a4b1-28b2c36ed9b4"
+                iconFile.set(project.file("icons/orbitle.ico"))
+            }
+            macOS {
+                bundleID = "app.orbitle.desktop"
+                iconFile.set(project.file("icons/orbitle.icns"))
+            }
+            linux {
+                shortcut = true
+                menuGroup = "Network;InstantMessaging"
+                iconFile.set(project.file("icons/orbitle.png"))
+            }
         }
     }
 }
