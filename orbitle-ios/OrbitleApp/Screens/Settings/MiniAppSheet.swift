@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import WebKit
+import Security
 import OrbitleDomain
 import OrbitlePresentation
 
@@ -76,7 +77,13 @@ struct MiniAppSheet: View {
 @MainActor
 final class MiniAppWebController {
     weak var webView: WKWebView?
-    let bridge = MiniAppBridge(entryPoint: "settings")
+    var bridge = MiniAppBridge(entryPoint: "settings")
+
+    /// Идентификатор бота известен только когда страница уже запущена.
+    func use(botId: Int64) {
+        if bridge.botId == botId, !bridge.deviceId.isEmpty { return }
+        bridge = MiniAppBridge(entryPoint: "settings", botId: botId, deviceId: SessionDeviceId.read())
+    }
 
     func pressBack() {
         perform(bridge.backPressed)
@@ -142,6 +149,7 @@ struct MiniAppWebView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> WKWebView {
+        controller.use(botId: app.botId)
         let configuration = WKWebViewConfiguration()
         configuration.allowsInlineMediaPlayback = true
         configuration.websiteDataStore = .default()
@@ -162,6 +170,7 @@ struct MiniAppWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
+        controller.use(botId: app.botId)
         controller.webView = webView
         // Новый запуск после внешнего шага (Госуслуги): тот же вид, новый адрес.
         if context.coordinator.loadedURL != app.url {
@@ -270,6 +279,26 @@ struct MiniAppWebView: UIViewRepresentable {
             if navigationAction.targetFrame == nil { webView.load(navigationAction.request) }
             return nil
         }
+    }
+}
+
+/// `deviceId` сеанса из Keychain ядра. Страница Цифрового ID сверяет его с рукопожатием.
+/// Сервис `com.max.kmp.<namespace>`, учётная запись `max.<namespace>.deviceId`. На iOS namespace — `default`.
+private enum SessionDeviceId {
+    static func read() -> String {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.max.kmp.default",
+            kSecAttrAccount as String: "max.default.deviceId",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data,
+              let text = String(data: data, encoding: .utf8),
+              !text.isEmpty else { return "" }
+        return text
     }
 }
 

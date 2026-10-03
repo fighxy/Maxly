@@ -37,6 +37,7 @@ import app.orbitle.platform.AppPaths
 import app.orbitle.platform.BackHandler
 import app.orbitle.platform.DesktopActions
 import app.orbitle.presentation.settings.MiniAppBridge
+import app.orbitle.presentation.settings.MiniAppVault
 import app.orbitle.presentation.settings.MiniAppViewModel
 import dev.datlag.kcef.KCEF
 import dev.datlag.kcef.KCEFBrowser
@@ -53,6 +54,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -178,9 +181,14 @@ private fun RuntimeGate(content: @Composable () -> Unit) {
 
 @Composable
 private fun MiniAppHost(app: MiniApp, page: MiniAppPage, model: MiniAppViewModel, onClose: () -> Unit) {
-    val bridge = remember { MiniAppBridge() }
+    val vault = remember { MiniAppVault.file(File(AppPaths.home, "mini-app-vault.json")) }
+    val bridge = remember(app.botId, app.deviceId) {
+        MiniAppBridge(botId = app.botId, deviceId = app.deviceId, vault = vault)
+    }
     var share by remember { mutableStateOf<Pair<String, String?>?>(null) }
-    val session = remember(app.url) { runCatching { MiniAppSession(app.url) }.getOrNull() }
+    val session = remember(app.url) {
+        runCatching { MiniAppSession(app.url, mobileUserAgent = model.kind == MiniApp.Kind.DIGITAL_ID) }.getOrNull()
+    }
     if (session == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("Не удалось открыть страницу")
@@ -251,7 +259,11 @@ private fun MiniAppHost(app: MiniApp, page: MiniAppPage, model: MiniAppViewModel
  * сам движок остаётся: следующее открытие не качает его заново.
  * Каталог кэша общий, поэтому куки Госуслуг переживают перезапуск страницы.
  */
-private class MiniAppSession(url: String) {
+/** UA системного WebView на том же профиле, что сеанс: Android 14, Pixel 8. */
+private const val DIGITAL_ID_USER_AGENT =
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0.0.0 Mobile Safari/537.36"
+
+private class MiniAppSession(url: String, mobileUserAgent: Boolean) {
     interface Listener {
         fun onEvent(name: String, json: String?)
         fun onExternalCallback(url: String)
@@ -311,9 +323,52 @@ private class MiniAppSession(url: String) {
                 return true
             }
         })
-        browser = client.createBrowser(url, CefRendering.DEFAULT, false)
+        // Пустая страница, пока DevTools не поставит скрипт до документа.
+        // bridge.js выбирает транспорт один раз: если WebViewHandler появится позже, события теряются.
+        browser = client.createBrowser("about:blank", CefRendering.DEFAULT, false)
+        arm(url, mobileUserAgent)
         val ui = browser.uiComponent ?: error("Страница не создалась")
         component = ui as? JComponent ?: JPanel(BorderLayout()).apply { add(ui, BorderLayout.CENTER) }
+    }
+
+    /**
+     * Скрипт на старте каждого документа и, для Цифрового ID, UA настоящего WebView.
+     * Антифрод Госуслуг и страница id отбрасывают и UA ядра `OKMessages`, и десктопный Chrome.
+     * Если DevTools не ответил, адрес всё равно открывается: запасной ввод остаётся в `onLoadStart`.
+     */
+    private fun arm(url: String, mobileUserAgent: Boolean) {
+        val opened = AtomicBoolean(false)
+        fun open() {
+            if (opened.compareAndSet(false, true)) browser.loadURL(url)
+        }
+        val dev = runCatching { browser.devToolsClient }.getOrNull()
+        if (dev == null) {
+            open()
+            return
+        }
+        val prepared = runCatching {
+            if (mobileUserAgent) {
+                dev.executeDevToolsMethod(
+                    "Emulation.setUserAgentOverride",
+                    """{"userAgent":${Json.encodeToString(DIGITAL_ID_USER_AGENT)},"platform":"Linux armv8l"}""",
+                )
+            } else {
+                java.util.concurrent.CompletableFuture.completedFuture("")
+            }
+        }.getOrElse {
+            open()
+            return
+        }
+        prepared.whenComplete { _, _ ->
+            val injected = runCatching {
+                dev.executeDevToolsMethod(
+                    "Page.addScriptToEvaluateOnNewDocument",
+                    """{"source":${Json.encodeToString(MiniAppBridge.userScript(MiniAppBridge.DESKTOP_POST))}}""",
+                )
+            }.getOrNull()
+            if (injected == null) open() else injected.whenComplete { _, _ -> open() }
+        }
+        javax.swing.Timer(2_000) { open() }.apply { isRepeats = false; start() }
     }
 
     fun close() {

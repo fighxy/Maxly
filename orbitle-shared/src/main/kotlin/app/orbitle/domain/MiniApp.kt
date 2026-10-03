@@ -11,6 +11,8 @@ data class MiniApp(
     val botId: Long,
     val url: String,
     val queryId: String? = null,
+    /** `deviceId` сеанса. Страница Цифрового ID отправляет его на сервер. */
+    val deviceId: String = "",
 ) {
     val id: String get() = "$botId:$url"
 

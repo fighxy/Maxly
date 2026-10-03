@@ -162,12 +162,12 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
             MiniApp.Kind.DIGITAL_ID -> EntryApp.DIGITAL_ID
         }
         val botId = (client.accountConfig.value ?: AccountConfig()).entryAppBotId(entry)
-        miniAppOf(botId, client.api.bots.getWebAppInitData(botId))
+        miniAppOf(botId, client.api.bots.getWebAppInitData(botId), client.device.deviceId)
     }
 
     override suspend fun miniAppCallback(url: String): MiniApp = MaxCoreGateway.call {
         val next = client.api.bots.externalCallback(url)
-        miniAppOf(next.botId, client.api.bots.getWebAppInitData(next.botId, startParam = next.startParam))
+        miniAppOf(next.botId, client.api.bots.getWebAppInitData(next.botId, startParam = next.startParam), client.device.deviceId)
     }
 
     private suspend fun <T> guarded(map: (Throwable) -> OrbitleError, block: suspend () -> T): T = try {
@@ -181,7 +181,8 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
     companion object {
         fun statusOf(details: TwoFactorDetails) = TwoFactorStatus.of(details.enabled, details.email, details.hint)
 
-        fun miniAppOf(botId: Long, data: WebAppInitData) = MiniApp(botId, data.url, data.queryId)
+        fun miniAppOf(botId: Long, data: WebAppInitData, deviceId: String = "") =
+            MiniApp(botId, data.url, data.queryId, deviceId)
 
         private const val BLOCKED_PAGES = 10
         private const val BLOCKED_PAGE_SIZE = 100

@@ -308,6 +308,17 @@ struct MiniAppBridgeTests {
         #expect(MiniAppBridge.slug("WebAppBiometryGetInfo") == "biometry_get_info")
     }
 
+    @Test("Биометрия Цифрового ID отвечает локально и помнит токен")
+    func biometry() {
+        let defaults = UserDefaults(suiteName: "orbitle.test.miniapp.\(UUID().uuidString)")!
+        let bridge = MiniAppBridge(botId: 8250447, deviceId: "dev1", vault: MiniAppVault(defaults: defaults, key: "v"))
+        let size = CGSize(width: 390, height: 700)
+        #expect(bridge.handle(event: "WebAppBiometryGetInfo", json: #"{"requestId":"b"}"#, viewport: size)
+            == [.reply(event: "WebAppBiometryGetInfo", json: #"{"accessGranted":false,"accessRequested":false,"available":true,"deviceId":"dev1","requestId":"b","tokenSaved":false,"type":["unknown"]}"#)])
+        #expect(bridge.handle(event: "WebAppBiometryUpdateToken", json: #"{"token":"t1","requestId":"u"}"#, viewport: size)
+            == [.reply(event: "WebAppBiometryUpdateToken", json: #"{"requestId":"u","status":"updated"}"#)])
+    }
+
     @Test("Поделиться собирает текст и ссылку")
     func share() {
         #expect(bridge.handle(event: "WebAppShare", json: #"{"text":"Привет","link":"https://max.ru","requestId":"s"}"#, viewport: size)

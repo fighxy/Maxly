@@ -43,12 +43,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import java.io.File
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import app.orbitle.domain.MiniApp
 import app.orbitle.presentation.settings.MiniAppBridge
+import app.orbitle.presentation.settings.MiniAppVault
 import app.orbitle.presentation.settings.MiniAppViewModel
 
 /**
@@ -137,7 +139,10 @@ private fun MiniAppWeb(
     modifier: Modifier,
 ) {
     val context = LocalContext.current
-    val bridge = remember { MiniAppBridge() }
+    val vault = remember { MiniAppVault.file(File(context.filesDir, "mini-app-vault.json")) }
+    val bridge = remember(app.botId, app.deviceId) {
+        MiniAppBridge(botId = app.botId, deviceId = app.deviceId, vault = vault)
+    }
     var webView by remember { mutableStateOf<WebView?>(null) }
     var share by remember { mutableStateOf<Pair<String, String?>?>(null) }
     fun deliver(action: MiniAppBridge.Action) {

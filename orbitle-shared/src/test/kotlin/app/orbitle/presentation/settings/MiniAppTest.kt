@@ -10,6 +10,9 @@ import app.orbitle.domain.OrbitleError
 import app.orbitle.domain.PrivacyChange
 import app.orbitle.domain.TwoFactorStatus
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -120,6 +123,48 @@ class MiniAppTest {
                 """{"isScreenCaptureEnabled":true,"requestId":"c"}""",
             )),
             bridge.handle("WebAppSetupScreenCaptureBehavior", """{"isScreenCaptureEnabled":true,"requestId":"c"}""", 390, 700),
+        )
+    }
+
+    @Test
+    fun `digital id biometry answers locally and keeps the session device`() {
+        val bridge = MiniAppBridge(botId = 8250447, deviceId = "dev1", vault = MiniAppVault.memory())
+        assertEquals(
+            listOf(MiniAppBridge.Action.Reply(
+                "WebAppBiometryGetInfo",
+                """{"accessGranted":false,"accessRequested":false,"available":true,"deviceId":"dev1","requestId":"b","tokenSaved":false,"type":["unknown"]}""",
+            )),
+            bridge.handle("WebAppBiometryGetInfo", """{"requestId":"b"}""", 390, 700),
+        )
+        assertEquals(
+            listOf(MiniAppBridge.Action.Reply("WebAppBiometryUpdateToken", """{"requestId":"u","status":"updated"}""")),
+            bridge.handle("WebAppBiometryUpdateToken", """{"token":"t1","requestId":"u"}""", 390, 700),
+        )
+        assertEquals(
+            listOf(MiniAppBridge.Action.Reply(
+                "WebAppBiometryGetInfo",
+                """{"accessGranted":true,"accessRequested":true,"available":true,"deviceId":"dev1","requestId":"b","tokenSaved":true,"type":["unknown"]}""",
+            )),
+            bridge.handle("WebAppBiometryGetInfo", """{"requestId":"b"}""", 390, 700),
+        )
+        val auth = bridge.handle("WebAppBiometryRequestAuth", """{"requestId":"a"}""", 390, 700).single() as MiniAppBridge.Action.Reply
+        val body = Json.parseToJsonElement(auth.json).jsonObject
+        assertEquals("t1", body.getValue("token").jsonPrimitive.content)
+        assertEquals("authorized", body.getValue("status").jsonPrimitive.content)
+        assertEquals(
+            listOf(MiniAppBridge.Action.Reply(
+                "WebAppSecureStorageGetKey",
+                """{"error":{"code":"client.secure_storage_get_key.not_found"},"requestId":"k"}""",
+            )),
+            bridge.handle("WebAppSecureStorageGetKey", """{"key":"pin","requestId":"k"}""", 390, 700),
+        )
+        assertEquals(
+            listOf(MiniAppBridge.Action.Reply("WebAppSecureStorageSaveKey", """{"requestId":"k","status":"saved"}""")),
+            bridge.handle("WebAppSecureStorageSaveKey", """{"key":"pin","value":"salt","requestId":"k"}""", 390, 700),
+        )
+        assertEquals(
+            listOf(MiniAppBridge.Action.Reply("WebAppSecureStorageGetKey", """{"key":"pin","requestId":"k","value":"salt"}""")),
+            bridge.handle("WebAppSecureStorageGetKey", """{"key":"pin","requestId":"k"}""", 390, 700),
         )
     }
 
