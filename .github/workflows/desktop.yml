@@ -1,0 +1,143 @@
+name: Desktop
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "orbitle-desktop/**"
+      - "orbitle-shared/**"
+      - "scripts/fetch-core.ps1"
+      - ".github/workflows/desktop.yml"
+  pull_request:
+    paths:
+      - "orbitle-desktop/**"
+      - "orbitle-shared/**"
+      - "scripts/fetch-core.ps1"
+      - ".github/workflows/desktop.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Build and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: orbitle-desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      # Десктоп собирает ядро из исходников ревизии orbitle-desktop/core.lock.
+      - name: Fetch max-kmp-core
+        env:
+          MAX_KMP_CORE_TOKEN: ${{ secrets.MAX_KMP_CORE_TOKEN }}
+        run: bash scripts/fetch-core.sh
+      # build включает jvmTest: тесты общего кода из orbitle-shared на библиотеках десктопа.
+      - name: Build and tests
+        env:
+          ORBITLE_BUILD_SHA: ${{ github.sha }}
+        run: ./gradlew --console=plain build
+      - name: Test report
+        if: failure()
+        run: |
+          find build/test-results -name '*.xml' -exec grep -l '<failure' {} + 2>/dev/null | while read -r report; do
+            echo "::group::$report"
+            head -c 20000 "$report"
+            echo "::endgroup::"
+          done
+
+  package:
+    name: Installer (${{ matrix.format }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            format: deb
+            task: packageDeb
+          - os: windows-latest
+            format: msi
+            task: packageMsi
+          - os: macos-latest
+            format: dmg
+            task: packageDmg
+    defaults:
+      run:
+        working-directory: orbitle-desktop
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      # jpackage берёт инструменты упаковки из этого JDK.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      # jpackage собирает .deb через fakeroot.
+      - name: Packaging tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q fakeroot
+      - name: Fetch max-kmp-core
+        if: runner.os != 'Windows'
+        env:
+          MAX_KMP_CORE_TOKEN: ${{ secrets.MAX_KMP_CORE_TOKEN }}
+        run: bash scripts/fetch-core.sh
+      - name: Fetch max-kmp-core
+        if: runner.os == 'Windows'
+        working-directory: .
+        shell: pwsh
+        env:
+          MAX_KMP_CORE_TOKEN: ${{ secrets.MAX_KMP_CORE_TOKEN }}
+        run: ./scripts/fetch-core.ps1
+      # Для .msi плагин Compose сам скачивает WiX; .dmg без подписи и нотаризации.
+      - name: Build installer
+        if: runner.os != 'Windows'
+        env:
+          ORBITLE_BUILD_SHA: ${{ github.sha }}
+        run: ./gradlew --console=plain ${{ matrix.task }}
+      - name: Build installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          ORBITLE_BUILD_SHA: ${{ github.sha }}
+        run: .\gradlew.bat --console=plain ${{ matrix.task }}
+      - name: Collect installer
+        run: |
+          set -euo pipefail
+          mkdir -p ../build
+          found=0
+          for file in build/compose/binaries/main/${{ matrix.format }}/*.${{ matrix.format }}; do
+            [ -f "$file" ] || continue
+            cp "$file" ../build/
+            found=1
+          done
+          if [ "$found" -ne 1 ]; then
+            echo "::error::Нет .${{ matrix.format }} в build/compose/binaries/main/${{ matrix.format }}"
+            ls -R build/compose/binaries || true
+            exit 1
+          fi
+          ls -lh ../build
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Orbitle-desktop-${{ matrix.format }}-${{ github.sha }}
+          path: build/*.${{ matrix.format }}
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
