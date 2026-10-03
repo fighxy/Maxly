@@ -135,7 +135,8 @@ compose.desktop {
             packageName = "Orbitle"
             // Установщик не принимает старший номер 0: версия пакета отдельно от версии клиента.
             packageVersion = "1.0.0"
-            description = "Orbitle для компьютера"
+            // Только ASCII: WiX собирает .msi в кодовой странице 1252, кириллица в описании ломает packageMsi.
+            description = "Orbitle desktop client"
             vendor = "Orbitle"
         }
     }
