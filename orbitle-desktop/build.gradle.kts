@@ -80,7 +80,7 @@ kotlin {
                     coreDir.resolve("core/src/jvmMain/kotlin"),
                     coreDir.resolve("core/src/jvmAndroidShared/kotlin"),
                     coreDir.resolve("shared/src/jvmMain/kotlin"),
-                    // Общий с Android код (domain, data, presentation). Его тесты идут в сборке orbitle-android.
+                    // Общий с Android код (domain, data, presentation). Его тесты — в jvmTest ниже и в сборке orbitle-android.
                     layout.projectDirectory.dir("../orbitle-shared/src/main/kotlin"),
                     layout.projectDirectory.dir("src/main/kotlin"),
                 ),
@@ -103,7 +103,13 @@ kotlin {
             }
         }
         val jvmTest by getting {
-            kotlin.setSrcDirs(listOf(layout.projectDirectory.dir("src/test/kotlin")))
+            kotlin.setSrcDirs(
+                listOf(
+                    // Тесты общего кода: здесь они проверяют его на версиях библиотек десктопа.
+                    layout.projectDirectory.dir("../orbitle-shared/src/test/kotlin"),
+                    layout.projectDirectory.dir("src/test/kotlin"),
+                ),
+            )
             dependencies {
                 implementation(kotlin("test-junit"))
                 implementation("junit:junit:4.13.2")
