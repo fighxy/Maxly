@@ -135,6 +135,17 @@ compose.desktop {
             packageName = "Orbitle"
             // Установщик не принимает старший номер 0: версия пакета отдельно от версии клиента.
             packageVersion = "1.0.0"
+            // Код продукта MSI считается из имени и версии. Пока версия 1.0.0, Windows видит
+            // тот же продукт и пишет, что приложение уже установлено. Номер растёт каждую секунду,
+            // старая установка снимается по постоянному upgradeUuid.
+            val windowsMsiVersion = run {
+                // Секунды с 2026-01-01. Поля MSI: старший до 255, средний до 255, младший до 65535.
+                val delta = (System.currentTimeMillis() / 1000 - 1_767_225_600L).coerceAtLeast(1)
+                val build = delta % 65536L
+                val minor = (delta / 65536L) % 256L
+                val major = (1 + delta / (65536L * 256)).coerceAtMost(255)
+                "$major.$minor.$build"
+            }
             // Только ASCII: WiX собирает .msi в кодовой странице 1252, кириллица в описании ломает packageMsi.
             description = "Orbitle desktop client"
             vendor = "Orbitle"
@@ -149,6 +160,7 @@ compose.desktop {
                 dirChooser = true
                 // Постоянный UUID: новая версия .msi обновляет установленную, а не ставится рядом.
                 upgradeUuid = "27980db0-5d2d-4976-a4b1-28b2c36ed9b4"
+                msiPackageVersion = windowsMsiVersion
                 iconFile.set(project.file("icons/orbitle.ico"))
             }
             macOS {

@@ -88,6 +88,7 @@
 				AA0000000000000000000002 /* Sources */,
 				AA0000000000000000000003 /* Frameworks */,
 				AA000000000000000000001C /* Resources */,
+				AA000000000000000000001D /* Stamp version */,
 			);
 			buildRules = (
 			);
@@ -175,6 +176,26 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "if [ ! -d \"$PROJECT_DIR/Vendor/MaxIos.xcframework\" ]; then\n  echo \"error: Нет Vendor/MaxIos.xcframework. Соберите его скриптом scripts/fetch-core.sh\"\n  exit 1\nfi\n";
+			showEnvVarsInLog = 0;
+		};
+		AA000000000000000000001D /* Stamp version */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Stamp version";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "plist=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif [ ! -f \"$plist\" ]; then\n  echo \"error: Нет $plist, версию сборки некуда записать\"\n  exit 1\nfi\n# iOS и eSign не ставят сборку поверх, если короткая версия и номер сборки не выросли.\n# Обратные кавычки: Xcode сам раскрывает $(...) как настройку сборки.\nstamp=`date +%s`\npatch=`expr \"$stamp\" - 1767225600`\nif [ \"$patch\" -lt 1 ]; then patch=1; fi\n/usr/libexec/PlistBuddy -c \"Set :CFBundleShortVersionString 0.1.$patch\" \"$plist\"\n/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $stamp\" \"$plist\"\necho \"Orbitle 0.1.$patch ($stamp)\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
