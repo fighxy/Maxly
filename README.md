@@ -8,6 +8,6 @@ Orbitle — клиент мессенджера поверх общего ядр
 |---|---|---|---|
 | `orbitle-ios/` | iOS | SwiftUI | статический XCFramework, ревизия в `orbitle-ios/core.lock` |
 | `orbitle-android/` | Android | нативный Kotlin | Gradle-зависимость |
-| `orbitle-desktop/` | Desktop (JVM) | Compose Multiplatform | напрямую, JVM-артефакт ядра |
+| `orbitle-desktop/` | Desktop (JVM) | Compose Multiplatform | исходники JVM ядра, ревизия в `orbitle-desktop/core.lock` |
 
-iOS-клиент — первый прототип: вход по SMS, пароль и регистрация, список чатов, история, оптимистичная отправка текста, входящие события и каркас кэша медиа. Токен сессии хранит ядро. Каталоги `orbitle-android/` и `orbitle-desktop/` зарезервированы под свои клиенты, общее между платформами только ядро.
+Три клиента повторяют один и тот же функционал. Общее между ними только ядро: токен сессии хранит оно. У десктопа свой каталог `~/.orbitle` и своё пространство сессии `orbitle-desktop`, оно не делит вход с Android.

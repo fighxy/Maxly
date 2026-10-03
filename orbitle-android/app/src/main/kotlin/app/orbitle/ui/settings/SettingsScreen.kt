@@ -8,11 +8,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.School
 import androidx.compose.material.icons.outlined.Contacts
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.foundation.layout.Box
@@ -81,8 +84,11 @@ fun SettingsScreen(
     onAppearance: () -> Unit = {},
     onEditProfile: () -> Unit = {},
     onPrivacy: () -> Unit = {},
+    onSecurity: () -> Unit = {},
     onStorage: () -> Unit = {},
     onFolders: () -> Unit = {},
+    onDigitalId: () -> Unit = {},
+    onSferum: () -> Unit = {},
     /** Ссылка на свой профиль для QR и приглашения; `null` — сервер её ещё не дал. */
     profileLink: String? = null,
 ) {
@@ -106,7 +112,11 @@ fun SettingsScreen(
             ProfileHeader(account, onEditProfile)
             SettingsItem(Icons.Outlined.Edit, "Изменить профиль", onClick = onEditProfile)
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            SettingsItem(Icons.Outlined.Badge, "Цифровой ID", onClick = onDigitalId)
+            SettingsItem(Icons.Outlined.School, "Войти в Сферум", onClick = onSferum)
+            HorizontalDivider(Modifier.padding(vertical = 4.dp))
             SettingsItem(Icons.Outlined.Notifications, "Уведомления и звук", subtitle = "Скоро", enabled = false) {}
+            SettingsItem(Icons.Outlined.Key, "Безопасность", onClick = onSecurity)
             SettingsItem(Icons.Outlined.Lock, "Конфиденциальность", onClick = onPrivacy)
             SettingsItem(Icons.Outlined.Devices, "Устройства", onClick = onDevices)
             SettingsItem(Icons.Outlined.Storage, "Данные и память", onClick = onStorage)

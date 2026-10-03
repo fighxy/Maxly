@@ -54,10 +54,10 @@ Repository
 - **Ядро:** обычная Gradle-зависимость. Язык общий, поэтому корутины и `Flow` ядра используются в репозитории без обёрток.
 
 ### Desktop (`orbitle-desktop/`)
-- **UI:** Compose Multiplatform на JVM, ViewModel держат состояние в `StateFlow`.
-- **База:** SQLDelight.
-- **Сеть:** Ktor Client.
-- **Ядро:** подключается напрямую как JVM-артефакт, без промежуточных обёрток.
+- **UI:** Compose Multiplatform на JVM. Окно: боковой рельс, список чатов и открытый чат рядом. ViewModel держат состояние в `StateFlow`.
+- **База:** стор ядра (`MaxClient.store`). Настройки окна — файл `~/.orbitle/preferences.properties`. Отдельной SQLDelight нет.
+- **Сеть:** OkHttp, как у Android. Голос пишется через Java Sound и уходит в Ogg/Opus через ffmpeg.
+- **Ядро:** исходники `commonMain`, `jvmMain` и `jvmAndroidShared` собираются внутри клиента. Ревизия в `orbitle-desktop/core.lock`. Пространство сессии — `orbitle-desktop`.
 
 ## Что общее, а что нет
 

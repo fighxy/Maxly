@@ -54,8 +54,15 @@ import app.orbitle.ui.chat.EmojiSupport
 import app.orbitle.ui.chat.ChatScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.orbitle.presentation.settings.AccountSettingsViewModel
+import app.orbitle.presentation.settings.RecoveryEmailViewModel
+import app.orbitle.presentation.settings.SecurityViewModel
 import app.orbitle.ui.settings.BlockedUsersScreen
 import app.orbitle.ui.settings.PrivacyScreen
+import app.orbitle.ui.settings.RecoveryEmailScreen
+import app.orbitle.domain.MiniApp
+import app.orbitle.presentation.settings.MiniAppViewModel
+import app.orbitle.ui.settings.MiniAppScreen
+import app.orbitle.ui.settings.SecurityScreen
 import app.orbitle.ui.settings.StorageScreen
 import app.orbitle.ui.settings.FoldersScreen
 import app.orbitle.presentation.settings.FoldersViewModel
@@ -93,6 +100,7 @@ fun MainScreen(
     val callsModel = viewModel { CallsViewModel(container.calls, container.callMarks) }
     val calls by callsModel.state.collectAsStateWithLifecycle()
     val accountModel = viewModel { AccountSettingsViewModel(container.account) }
+    val securityModel = viewModel { SecurityViewModel(container.account) }
     val accountState by accountModel.state.collectAsStateWithLifecycle()
     val contactsModel = viewModel { ContactsViewModel(container.contacts, { container.messages.currentUserId }) }
     val privatePrefs by container.privateMode.state.collectAsStateWithLifecycle()
@@ -160,6 +168,9 @@ fun MainScreen(
                     onAppearance = { nav.navigate("appearance") },
                     onEditProfile = { nav.navigate("profile-edit") },
                     onPrivacy = { nav.navigate("privacy") },
+                    onSecurity = { nav.navigate("security") },
+                    onDigitalId = { nav.navigate("mini-app/${MiniApp.Kind.DIGITAL_ID.wire}") },
+                    onSferum = { nav.navigate("mini-app/${MiniApp.Kind.SFERUM.wire}") },
                     onStorage = { nav.navigate("storage") },
                     onFolders = { nav.navigate("folders") },
                     profileLink = app.orbitle.presentation.settings.ProfileLink.link(accountState.settings.inviteLink, account?.link),
@@ -167,6 +178,27 @@ fun MainScreen(
             }
             composable("profile-edit") { ProfileEditScreen(accountModel, onBack = { nav.popBackStack() }, onLogout = onLogout) }
             composable("privacy") { PrivacyScreen(accountModel, onBack = { nav.popBackStack() }, onBlocked = { nav.navigate("blocked") }, privateMode = container.privateMode) }
+            composable("security") {
+                SecurityScreen(securityModel, onBack = { nav.popBackStack() }, onChangeEmail = { nav.navigate("recovery-email") })
+            }
+            composable(
+                "mini-app/{kind}",
+                arguments = listOf(navArgument("kind") { type = NavType.StringType }),
+            ) { entry ->
+                val kind = MiniApp.Kind.fromWire(entry.arguments?.getString("kind")) ?: return@composable
+                MiniAppScreen(viewModel { MiniAppViewModel(kind, container.account) }) { nav.popBackStack() }
+            }
+            composable("recovery-email") {
+                val flow = viewModel { RecoveryEmailViewModel(container.account) }
+                RecoveryEmailScreen(
+                    flow,
+                    onBack = { nav.popBackStack() },
+                    onDone = { status ->
+                        securityModel.apply(status)
+                        nav.popBackStack()
+                    },
+                )
+            }
             composable("storage") { StorageScreen(viewModel { StorageViewModel(container.storage) }, onBack = { nav.popBackStack() }) }
             composable("folders") {
                 FoldersScreen(

@@ -4,8 +4,10 @@ import app.orbitle.data.AccountRepository
 import app.orbitle.domain.Account
 import app.orbitle.domain.AccountSettings
 import app.orbitle.domain.BlockedUser
+import app.orbitle.domain.MiniApp
 import app.orbitle.domain.OrbitleError
 import app.orbitle.domain.PrivacyChange
+import app.orbitle.domain.TwoFactorStatus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -60,6 +62,36 @@ class DemoAccount : AccountRepository {
     override suspend fun unblock(userId: String) {
         delay(400)
         blocked.removeAll { it.id == userId }
+    }
+
+    override suspend fun twoFactorStatus(): TwoFactorStatus = TwoFactorStatus.of(true, "ivan@ya.ru")
+
+    override suspend fun startEmailChange(password: String): String {
+        delay(400)
+        if (password != "secret") throw OrbitleError.Rejected("Неверный пароль")
+        return "track"
+    }
+
+    override suspend fun sendEmailCode(trackId: String, email: String): Int {
+        delay(400)
+        return 60
+    }
+
+    override suspend fun confirmEmail(trackId: String, code: String): TwoFactorStatus {
+        delay(400)
+        if (code != "123456") throw OrbitleError.Rejected("Неверный код")
+        return TwoFactorStatus.of(true, "ivan@ya.ru")
+    }
+
+    override suspend fun launchMiniApp(kind: MiniApp.Kind): MiniApp {
+        delay(400)
+        val bot = if (kind == MiniApp.Kind.SFERUM) 2340831L else 8250447L
+        return MiniApp(bot, "https://web.max.ru/$bot", "demo")
+    }
+
+    override suspend fun miniAppCallback(url: String): MiniApp {
+        delay(400)
+        return MiniApp(8250447L, "https://web.max.ru/back", "demo")
     }
 }
 

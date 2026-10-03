@@ -1,0 +1,163 @@
+package app.orbitle.ui.contacts
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.orbitle.presentation.contacts.ContactRow
+import app.orbitle.presentation.contacts.ContactsUiState
+import app.orbitle.presentation.contacts.ContactsViewModel
+import app.orbitle.ui.chatlist.Placeholder
+import app.orbitle.ui.components.Avatar
+import app.orbitle.ui.components.privateBlur
+
+/** Вкладка «Контакты»: разделы по буквам, поиск, «в сети». Нажатие открывает диалог. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ContactsScreen(model: ContactsViewModel, onOpen: (ContactRow) -> Unit) {
+    val state by model.state.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { model.appeared() }
+    Scaffold(
+        topBar = {
+            if (state.isSearching) {
+                val focus = remember { FocusRequester() }
+                LaunchedEffect(Unit) { focus.requestFocus() }
+                TopAppBar(
+                    navigationIcon = { IconButton(onClick = { model.setSearching(false) }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Закрыть поиск") } },
+                    title = {
+                        TextField(
+                            value = state.query,
+                            onValueChange = model::setQuery,
+                            placeholder = { Text("Имя или номер") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                            ),
+                            modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                        )
+                    },
+                )
+            } else {
+                TopAppBar(
+                    title = { Text("Контакты") },
+                    actions = { IconButton(onClick = { model.setSearching(true) }) { Icon(Icons.Filled.Search, "Поиск") } },
+                )
+            }
+        },
+        contentWindowInsets = WindowInsets(0),
+    ) { padding ->
+        PullToRefreshBox(
+            isRefreshing = state.isSyncing && state.content == ContactsUiState.Content.READY,
+            onRefresh = model::sync,
+            modifier = Modifier.padding(padding).fillMaxSize(),
+        ) {
+            when {
+                state.isFiltering -> LazyColumn(Modifier.fillMaxSize()) {
+                    if (state.searchResults.isEmpty()) {
+                        item { Text("Ничего не найдено", Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                    items(state.searchResults, key = { it.id }) { ContactItem(it) { onOpen(it) } }
+                }
+                state.content == ContactsUiState.Content.LOADING -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                state.content == ContactsUiState.Content.EMPTY -> LazyColumn(Modifier.fillMaxSize()) {
+                    item {
+                        Box(Modifier.fillParentMaxSize()) {
+                            Placeholder(
+                                icon = { Icon(Icons.Outlined.Person, null, Modifier.size(56.dp)) },
+                                title = "Контактов пока нет",
+                                text = "Контакты из MAX появятся здесь после синхронизации",
+                            )
+                        }
+                    }
+                }
+                else -> LazyColumn(Modifier.fillMaxSize()) {
+                    state.sections.forEach { section ->
+                        item(key = "h-${section.letter}") {
+                            Text(
+                                section.letter,
+                                Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        items(section.rows, key = { it.id }) { ContactItem(it) { onOpen(it) } }
+                    }
+                    item(key = "count") {
+                        Text(
+                            countText(state.count),
+                            Modifier.fillMaxWidth().padding(24.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun countText(count: Int): String =
+    "$count ${app.orbitle.presentation.common.PresenceText.plural(count, "контакт", "контакта", "контактов")}"
+
+@Composable
+private fun ContactItem(row: ContactRow, onClick: () -> Unit) {
+    val privacy = app.orbitle.ui.components.LocalPrivateMode.current
+    val hidden = privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER
+    val private = privacy != app.orbitle.domain.PrivateModeDisplay.VISIBLE
+    ListItem(
+        leadingContent = {
+            Avatar(if (hidden) app.orbitle.presentation.settings.PrivateModeMask.avatar(row.avatar) else row.avatar, 44.dp, online = row.isOnline && !private, modifier = Modifier.privateBlur(privacy, 8.dp))
+        },
+        headlineContent = {
+            Text(if (hidden) app.orbitle.presentation.settings.PrivateModeMask.CONTACT_TITLE else row.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.privateBlur(privacy, 7.dp))
+        },
+        supportingContent = {
+            Text(row.status, color = if (row.isOnline) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier.clickable(onClick = onClick),
+    )
+}
