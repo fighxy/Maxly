@@ -337,7 +337,10 @@ struct PhotoEditor: View {
                 context.stroke(grid,with: .color(.gray),lineWidth: 1)
                 var path = Path()
                 for (i,v) in adjustments.curves[curveChannel].enumerated() {
-                    let p = CGPoint(x: size.width*CGFloat(i)/4,y: size.height*(1-v))
+                    // Только CGFloat: смесь Double и CGFloat здесь неоднозначна для компилятора.
+                    let x: CGFloat = size.width * CGFloat(i) / 4
+                    let y: CGFloat = size.height * (1 - CGFloat(v))
+                    let p = CGPoint(x: x, y: y)
                     if i == 0 { path.move(to: p) } else { path.addLine(to: p) }
                     context.fill(Path(ellipseIn: CGRect(x: p.x-5,y: p.y-5,width: 10,height: 10)),with: .color(.white))
                 }
