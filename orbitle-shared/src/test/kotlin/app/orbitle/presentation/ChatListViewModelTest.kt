@@ -19,6 +19,7 @@ import app.orbitle.presentation.chatlist.ChatLocalMarks
 import app.orbitle.presentation.chatlist.PreferenceRecentSearches
 import app.orbitle.presentation.chatlist.RecentSearchList
 import app.orbitle.presentation.chatlist.RecentSearchStore
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
@@ -45,6 +46,19 @@ class FakeChats : ChatRepository {
         pins += chatId to pinned
         pinFailure?.let { throw it }
         chats.value = chats.value?.map { if (it.id == chatId) it.copy(pinOrder = if (pinned) 0 else null) else it }
+    }
+
+    val reorders = mutableListOf<List<String>>()
+    var reorderFailure: Throwable? = null
+    /** Пока не завершён, ответ сервера на перестановку не пришёл. */
+    var reorderGate: CompletableDeferred<Unit>? = null
+
+    /** Как ядро: стор меняется только после ответа сервера. */
+    override suspend fun reorderPinned(chatIds: List<String>) {
+        reorders += chatIds
+        reorderGate?.await()
+        reorderFailure?.let { throw it }
+        chats.value = chats.value?.map { chat -> chatIds.indexOf(chat.id).takeIf { it >= 0 }?.let { chat.copy(pinOrder = it) } ?: chat }
     }
 
     val mutes = mutableListOf<Pair<String, Boolean>>()
@@ -355,6 +369,77 @@ class ChatListViewModelTest {
         // Ошибка сервера возвращает строку на место и показывает текст.
         assertEquals(listOf("a", "b"), vm.state.value.items.map { it.id })
         assertEquals("Нет соединения с сервером", vm.messages.value)
+    }
+
+    @Test
+    fun pinReorderNeedsTwoPinsInAllChats() {
+        repo.chats.value = listOf(chat("a", pin = 0), chat("b"))
+        assertFalse(vm.state.value.canReorderPins)
+        vm.startPinReorder()
+        assertFalse(vm.state.value.isReorderingPins)
+
+        repo.chats.value = listOf(chat("a", pin = 0), chat("b", pin = 1), chat("c", ChatType.CHANNEL))
+        assertTrue(vm.state.value.canReorderPins)
+        vm.setSearchActive(true)
+        assertFalse(vm.state.value.canReorderPins)
+        vm.setSearchActive(false)
+        repo.folders.value = listOf(ServerFolder("f", "Каналы", filters = listOf("CHANNEL")))
+        vm.selectFolder("f")
+        assertFalse(vm.state.value.canReorderPins)
+
+        // Режим открывает папку «Все», а когда закреплённых меньше двух — закрывается сам.
+        vm.selectFolder("all")
+        vm.startPinReorder()
+        assertTrue(vm.state.value.isReorderingPins)
+        repo.chats.value = listOf(chat("a", pin = 0), chat("b"), chat("c", ChatType.CHANNEL))
+        assertFalse(vm.state.value.isReorderingPins)
+    }
+
+    @Test
+    fun reorderShowsAtOnceAndWaitsForServer() {
+        repo.chats.value = listOf(chat("a", pin = 0), chat("b", pin = 1), chat("c", pin = 2), chat("x"))
+        val gate = CompletableDeferred<Unit>()
+        repo.reorderGate = gate
+        vm.reorderPinned(listOf("c", "a", "b"))
+        assertEquals(listOf("c", "a", "b", "x"), vm.state.value.items.map { it.id })
+        assertEquals(listOf(listOf("c", "a", "b")), repo.reorders)
+        // Снимок без нового порядка (пришло сообщение) не возвращает строки на старые места.
+        repo.chats.value = listOf(chat("a", pin = 0), chat("b", pin = 1), chat("c", pin = 2), chat("x", unread = 1))
+        assertEquals(listOf("c", "a", "b", "x"), vm.state.value.items.map { it.id })
+        gate.complete(Unit)
+        assertEquals(listOf("c", "a", "b", "x"), vm.state.value.items.map { it.id })
+        // Дальше порядок снова берётся с сервера: например, переставили на другом устройстве.
+        repo.chats.value = listOf(chat("a", pin = 1), chat("b", pin = 0), chat("c", pin = 2), chat("x"))
+        assertEquals(listOf("b", "a", "c", "x"), vm.state.value.items.map { it.id })
+    }
+
+    @Test
+    fun reorderFailureRestoresServerOrder() {
+        repo.reorderFailure = CoreFailure("NETWORK", null)
+        repo.chats.value = listOf(chat("a", pin = 0), chat("b", pin = 1))
+        vm.reorderPinned(listOf("b", "a"))
+        assertEquals(listOf("a", "b"), vm.state.value.items.map { it.id })
+        assertEquals("Нет соединения с сервером", vm.messages.value)
+    }
+
+    @Test
+    fun reorderIgnoresStaleOrUnchangedOrder() {
+        repo.chats.value = listOf(chat("a", pin = 0), chat("b", pin = 1), chat("c"))
+        vm.reorderPinned(listOf("a", "b"))
+        vm.reorderPinned(listOf("b", "c"))
+        vm.reorderPinned(listOf("b"))
+        assertTrue(repo.reorders.isEmpty())
+    }
+
+    @Test
+    fun movePinnedByOneStep() {
+        repo.chats.value = listOf(chat("a", pin = 0), chat("b", pin = 1), chat("c", pin = 2))
+        vm.movePinned("a", 1)
+        assertEquals(listOf("b", "a", "c"), repo.reorders.last())
+        vm.movePinned("c", -5)
+        assertEquals(listOf("c", "b", "a"), repo.reorders.last())
+        vm.movePinned("c", -1)
+        assertEquals(2, repo.reorders.size)
     }
 
     @Test

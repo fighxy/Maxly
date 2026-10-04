@@ -112,6 +112,25 @@ import app.orbitle.presentation.chatlist.ChatListUiState
 import app.orbitle.presentation.chatlist.ChatListViewModel
 import app.orbitle.presentation.chatlist.NewChatModel
 import app.orbitle.ui.components.Avatar
+import app.orbitle.platform.BackHandler
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerInputScope
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.zIndex
+import app.orbitle.domain.ChatFolder
+import app.orbitle.ui.components.DragReorder
+import kotlinx.coroutines.launch
 import app.orbitle.ui.components.privateBlur
 import coil3.compose.AsyncImage
 
@@ -163,11 +182,17 @@ fun ChatListScreen(
             viewModel.consumeMessage()
         }
     }
+    BackHandler(enabled = state.isReorderingPins) { viewModel.finishPinReorder() }
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
         topBar = {
             Column {
-                if (state.isSearchActive) {
+                if (state.isReorderingPins) {
+                    TopAppBar(
+                        title = { Text("Закреплённые") },
+                        actions = { TextButton(onClick = viewModel::finishPinReorder) { Text("Готово") } },
+                    )
+                } else if (state.isSearchActive) {
                     SearchBarRow(state.searchQuery, viewModel::setSearchQuery) { viewModel.setSearchActive(false) }
                 } else {
                     TopAppBar(
@@ -180,7 +205,7 @@ fun ChatListScreen(
                         scrollBehavior = scroll,
                     )
                 }
-                if (state.showsFolders && !state.isSearchActive) {
+                if (state.showsFolders && !state.isSearchActive && !state.isReorderingPins) {
                     FolderTabs(state, selected = if (paged) pagerState.targetPage else selectedPage, onSelect = viewModel::selectFolder)
                 }
             }
@@ -188,7 +213,7 @@ fun ChatListScreen(
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
             // При поиске кнопок нет. Глаз — приватный режим, карандаш — новое сообщение.
-            if (!state.isSearchActive && (privateMode.quickToggle || newChat != null)) {
+            if (!state.isSearchActive && !state.isReorderingPins && (privateMode.quickToggle || newChat != null)) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.End) {
                     if (privateMode.quickToggle) {
                         androidx.compose.material3.SmallFloatingActionButton(
@@ -231,9 +256,14 @@ fun ChatListScreen(
                 onOpenMessage(it)
             }
             val actions = remember(viewModel) {
-                ChatRowActions(viewModel::togglePin, viewModel::toggleRead, viewModel::toggleMute, viewModel::deleteChat, viewModel::clearHistory)
+                ChatRowActions(
+                    viewModel::togglePin, viewModel::toggleRead, viewModel::toggleMute, viewModel::deleteChat, viewModel::clearHistory,
+                    reorderPins = viewModel::startPinReorder,
+                )
             }
-            if (paged) {
+            if (state.isReorderingPins) {
+                PinnedOrderList(state.items.filter { it.isPinned }, onReorder = viewModel::reorderPinned, onMove = viewModel::movePinned)
+            } else if (paged) {
                 HorizontalPager(
                     state = pagerState,
                     beyondViewportPageCount = 1,
@@ -244,6 +274,7 @@ fun ChatListScreen(
                     ChatListBody(
                         folderPage.content, folderPage.items, searching = false, listState = listStates.of(folderPage.id),
                         onOpenChat = open, actions = actions, onRetry = viewModel::refresh,
+                        canReorderPins = state.canReorderPins && folderPage.id == ChatFolder.ALL_ID,
                     )
                 }
             } else {
@@ -260,6 +291,7 @@ fun ChatListScreen(
                     ChatListBody(
                         state.content, state.items, searching = searching, listState = listState,
                         onOpenChat = open, actions = actions, onRetry = viewModel::refresh,
+                        canReorderPins = state.canReorderPins,
                     )
                 }
             }
@@ -286,10 +318,12 @@ private fun ChatListBody(
     onOpenChat: (ChatListItem) -> Unit,
     actions: ChatRowActions,
     onRetry: () -> Unit,
+    /** В меню закреплённых строк есть «Изменить порядок». */
+    canReorderPins: Boolean = false,
 ) {
     when (content) {
         ChatListContent.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        ChatListContent.List -> ChatList(items, listState, onOpenChat, actions)
+        ChatListContent.List -> ChatList(items, listState, onOpenChat, actions, canReorderPins)
         ChatListContent.Empty -> Placeholder(
             icon = { Icon(Icons.Outlined.ChatBubbleOutline, null, Modifier.size(56.dp)) },
             title = stringResource(if (searching) R.string.chats_search_empty else R.string.chats_empty),
@@ -389,12 +423,131 @@ private fun FolderTabs(state: ChatListUiState, selected: Int, onSelect: (String)
 }
 
 @Composable
-private fun ChatList(items: List<ChatListItem>, listState: LazyListState, onOpenChat: (ChatListItem) -> Unit, actions: ChatRowActions) {
+private fun ChatList(
+    items: List<ChatListItem>,
+    listState: LazyListState,
+    onOpenChat: (ChatListItem) -> Unit,
+    actions: ChatRowActions,
+    canReorderPins: Boolean = false,
+) {
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         items(items, key = { it.id }) { item ->
-            ChatRow(item, onClick = { onOpenChat(item) }, actions = actions, modifier = Modifier.animateItem())
+            ChatRow(
+                item,
+                onClick = { onOpenChat(item) },
+                actions = actions,
+                modifier = Modifier.animateItem(),
+                canReorderPins = canReorderPins && item.isPinned,
+            )
         }
     }
+}
+
+/**
+ * Режим перестановки: только закреплённые чаты с ручками. Новый порядок уходит в модель один раз,
+ * когда строку отпустили; дальше строка доезжает до своего места.
+ */
+@Composable
+private fun PinnedOrderList(items: List<ChatListItem>, onReorder: (List<String>) -> Unit, onMove: (String, Int) -> Unit) {
+    val listState = rememberLazyListState()
+    val drag = remember(listState) { DragReorder(listState) }
+    val haptic = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    val currentIds by rememberUpdatedState(items.map { it.id })
+    val drop = {
+        drag.finish()?.let(onReorder)
+        scope.launch { drag.settle() }
+        Unit
+    }
+    val byId = items.associateBy { it.id }
+    // Во время перетаскивания — рабочий порядок экрана, иначе порядок модели.
+    val shown = drag.order?.mapNotNull(byId::get) ?: items
+    LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+        items(shown, key = { it.id }) { item ->
+            val index = shown.indexOf(item)
+            val dragged = drag.draggedId == item.id
+            PinnedOrderRow(
+                original = item,
+                dragged = dragged,
+                canMoveUp = index > 0,
+                canMoveDown = index < shown.lastIndex,
+                onMove = { onMove(item.id, it) },
+                dragGestures = {
+                    detectDragGestures(
+                        onDragStart = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            drag.start(item.id, currentIds)
+                        },
+                        onDrag = { change, amount ->
+                            change.consume()
+                            drag.drag(amount.y)
+                        },
+                        onDragEnd = { drop() },
+                        onDragCancel = { drop() },
+                    )
+                },
+                modifier = if (dragged) {
+                    Modifier.zIndex(1f).graphicsLayer { translationY = drag.offset }
+                } else {
+                    Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null)
+                },
+            )
+        }
+        item(key = "pinned-order-hint") {
+            Text(
+                "Потяните за ручку, чтобы поменять порядок. Он сохранится на сервере и будет таким же на других устройствах.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PinnedOrderRow(
+    original: ChatListItem,
+    dragged: Boolean,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onMove: (Int) -> Unit,
+    /** Жесты ручки перетаскивания. */
+    dragGestures: suspend PointerInputScope.() -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val privacy = app.orbitle.ui.components.LocalPrivateMode.current
+    val item = if (privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER) {
+        remember(original) { app.orbitle.presentation.settings.PrivateModeMask.item(original) }
+    } else {
+        original
+    }
+    val elevation by animateDpAsState(if (dragged) 6.dp else 0.dp, label = "pinDragElevation")
+    // Перекомпоновка во время перетаскивания не должна перезапускать жест.
+    val gestures by rememberUpdatedState(dragGestures)
+    ListItem(
+        headlineContent = {
+            Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.privateBlur(privacy, 7.dp))
+        },
+        leadingContent = { Avatar(item.avatar, 44.dp, modifier = Modifier.privateBlur(privacy, 8.dp)) },
+        trailingContent = {
+            // Ручка: потянуть вверх или вниз. Для TalkBack — действия строки «выше» и «ниже».
+            Box(Modifier.size(48.dp).pointerInput(original.id) { gestures(this) }, contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.DragHandle, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        colors = ListItemDefaults.colors(
+            containerColor = if (dragged) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surface,
+        ),
+        tonalElevation = elevation,
+        shadowElevation = elevation,
+        modifier = modifier.semantics {
+            val actions = buildList {
+                if (canMoveUp) add(CustomAccessibilityAction("Переместить выше") { onMove(-1); true })
+                if (canMoveDown) add(CustomAccessibilityAction("Переместить ниже") { onMove(1); true })
+            }
+            if (actions.isNotEmpty()) customActions = actions
+        },
+    )
 }
 
 /** Пустой поиск: недавние чаты, без всего списка. */
@@ -580,11 +733,20 @@ class ChatRowActions(
     val mute: (String) -> Unit = {},
     val deleteChat: (String, Boolean) -> Unit = { _, _ -> },
     val clearHistory: (String, Boolean) -> Unit = { _, _ -> },
+    /** Открыть режим перестановки закреплённых. */
+    val reorderPins: () -> Unit = {},
 )
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ChatRow(original: ChatListItem, onClick: () -> Unit, actions: ChatRowActions, modifier: Modifier = Modifier) {
+fun ChatRow(
+    original: ChatListItem,
+    onClick: () -> Unit,
+    actions: ChatRowActions,
+    modifier: Modifier = Modifier,
+    /** В меню есть «Изменить порядок»: строка закреплена, а список — папка «Все» без поиска. */
+    canReorderPins: Boolean = false,
+) {
     var menu by remember { mutableStateOf(false) }
     var erase by remember { mutableStateOf<app.orbitle.ui.chat.ChatErase?>(null) }
     val privacy = app.orbitle.ui.components.LocalPrivateMode.current
@@ -652,6 +814,16 @@ fun ChatRow(original: ChatListItem, onClick: () -> Unit, actions: ChatRowActions
                     actions.pin(item.id)
                 },
             )
+            if (canReorderPins) {
+                DropdownMenuItem(
+                    text = { Text("Изменить порядок") },
+                    leadingIcon = { Icon(Icons.Filled.SwapVert, null) },
+                    onClick = {
+                        menu = false
+                        actions.reorderPins()
+                    },
+                )
+            }
             DropdownMenuItem(
                 text = { Text(if (item.isUnread) "Прочитать" else "Пометить непрочитанным") },
                 leadingIcon = { Icon(if (item.isUnread) Icons.Outlined.MarkChatRead else Icons.Outlined.MarkChatUnread, null) },

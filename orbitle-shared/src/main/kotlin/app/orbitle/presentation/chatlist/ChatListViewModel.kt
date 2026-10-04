@@ -13,6 +13,7 @@ import app.orbitle.domain.ChatSearchResult
 import kotlinx.coroutines.CancellationException
 import app.orbitle.domain.ChatType
 import app.orbitle.domain.FoundMessage
+import app.orbitle.presentation.common.ListOrder
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -73,6 +74,10 @@ data class ChatListUiState(
     val isSearchingServer: Boolean = false,
     /** Недавние чаты пустого поиска. Только те, что ещё есть в списке, сначала последний выбранный. */
     val recent: List<ChatListItem> = emptyList(),
+    /** Закреплённые можно переставить: папка «Все», поиск закрыт, закреплённых больше одного. */
+    val canReorderPins: Boolean = false,
+    /** Открыт режим перестановки закреплённых: список показывает только их, с ручками. */
+    val isReorderingPins: Boolean = false,
 ) {
     /** Полоса папок видна, только если у пользователя есть папки кроме «Все». */
     val showsFolders: Boolean get() = folders.size > 1
@@ -104,6 +109,10 @@ class ChatListViewModel(
     private var connection = ConnectionState.CONNECTING
     private var refreshError: OrbitleError? = null
     private var pendingPins: MutableMap<String, Int?> = mutableMapOf()
+    /** Порядок закреплённых после перетаскивания, пока снимок стора его не показал. */
+    private var pendingPinOrder: List<String>? = null
+    /** Сервер принял [pendingPinOrder]: следующий снимок уже с ним. */
+    private var pinOrderAccepted = false
     private var pendingMutes: MutableMap<String, Boolean> = mutableMapOf()
     private var markedUnread: Set<String> = local?.markedUnread.orEmpty()
     private var drafts: Map<String, ChatDraft> = local?.drafts().orEmpty()
@@ -124,6 +133,10 @@ class ChatListViewModel(
                     chats = next
                     pendingPins.entries.removeAll { (id, order) -> next.firstOrNull { it.id == id }?.let { (it.pinOrder == null) == (order == null) } ?: true }
                     pendingMutes.entries.removeAll { (id, muted) -> next.firstOrNull { it.id == id }?.let { it.isMuted == muted } ?: true }
+                    if (pendingPinOrder != null && (pinOrderAccepted || pinnedIds(next) == pendingPinOrder)) {
+                        pendingPinOrder = null
+                        pinOrderAccepted = false
+                    }
                 }
                 rebuild()
             }
@@ -312,6 +325,62 @@ class ChatListViewModel(
         }
     }
 
+    /** Режим перестановки закреплённых: открывает папку «Все» и закрывает поиск. */
+    fun startPinReorder() {
+        if (!_state.value.canReorderPins) return
+        _state.value = _state.value.copy(
+            selectedFolderId = ChatFolder.ALL_ID,
+            isSearchActive = false,
+            searchQuery = "",
+            isReorderingPins = true,
+        )
+        rebuild()
+    }
+
+    fun finishPinReorder() {
+        if (!_state.value.isReorderingPins) return
+        _state.value = _state.value.copy(isReorderingPins = false)
+    }
+
+    /**
+     * Новый порядок закреплённых сверху вниз (все закреплённые папки «Все»). Список встаёт в этот
+     * порядок сразу; если сервер откажет, возвращается порядок сервера и показывается ошибка.
+     */
+    fun reorderPinned(order: List<String>) {
+        val pinned = pinnedIds(ordered())
+        if (order == pinned || !ListOrder.isPermutation(order, pinned)) return
+        pendingPinOrder = order
+        pinOrderAccepted = false
+        rebuild()
+        viewModelScope.launch {
+            try {
+                repository.reorderPinned(order)
+                if (pendingPinOrder == order) {
+                    // Стор мог прислать новый порядок раньше ответа — тогда держать нечего.
+                    if (pinnedIds(chats) == order) pendingPinOrder = null else pinOrderAccepted = true
+                    rebuild()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                if (pendingPinOrder == order) {
+                    pendingPinOrder = null
+                    pinOrderAccepted = false
+                }
+                _messages.value = CoreErrors.map(e).userMessage
+                rebuild()
+            }
+        }
+    }
+
+    /** Сдвинуть закреплённый чат на [offset] мест (действия «выше» и «ниже» для TalkBack). */
+    fun movePinned(chatId: String, offset: Int) {
+        val pinned = pinnedIds(ordered())
+        val from = pinned.indexOf(chatId)
+        if (from < 0) return
+        reorderPinned(ListOrder.moved(pinned, from, from + offset))
+    }
+
     /** Экран снова виден: черновики, пометки и недавний поиск могли поменяться. */
     fun reloadLocal() {
         val store = local
@@ -419,14 +488,25 @@ class ChatListViewModel(
         return ordered().count(rule::contains)
     }
 
-    private fun ordered(): List<Chat> = chats.map { chat ->
+    /** Закреплённые папки «Все» сверху вниз. */
+    private fun pinnedIds(list: List<Chat>): List<String> =
+        list.filter { it.isPinned && ChatFolder.all.contains(it) }.sortedWith(Chat.listOrder).map { it.id }
+
+    private fun ordered(): List<Chat> {
+        val pinPlaces = pendingPinOrder?.withIndex()?.associate { (index, id) -> id to index }
+        return chats.map { chat -> withPending(chat, pinPlaces) }.sortedWith(Chat.listOrder)
+    }
+
+    private fun withPending(chat: Chat, pinPlaces: Map<String, Int>?): Chat {
         var next = chat
         if (pendingPins.containsKey(chat.id)) next = next.copy(pinOrder = pendingPins[chat.id])
+        // Порядок после перетаскивания. Закреплённый позже остаётся сверху (`-1`), откреплённый не возвращается.
+        if (next.isPinned) pinPlaces?.get(chat.id)?.let { next = next.copy(pinOrder = it) }
         pendingMutes[chat.id]?.let { next = next.copy(isMuted = it) }
         if (chat.id in markedUnread && chat.unreadCount == 0) next = next.copy(isMarkedUnread = true)
         drafts[chat.id]?.let { next = next.copy(draft = it) }
-        next
-    }.sortedWith(Chat.listOrder)
+        return next
+    }
 
     private fun rebuild() {
         val current = _state.value
@@ -437,6 +517,7 @@ class ChatListViewModel(
         }
         val selected = if (tabs.any { it.id == current.selectedFolderId }) current.selectedFolderId else ChatFolder.ALL_ID
         val folder = definitions.firstOrNull { it.id == selected } ?: ChatFolder.all
+        val canReorderPins = selected == ChatFolder.ALL_ID && !current.isSearchActive && pinnedIds(sorted).size > 1
         val query = current.searchQuery.trim().lowercase()
         val nowMs = now()
         // Строка чата форматируется один раз, даже если чат входит в несколько папок.
@@ -475,6 +556,9 @@ class ChatListViewModel(
             } else {
                 emptyList()
             },
+            canReorderPins = canReorderPins,
+            // Закреплённых осталось меньше двух (открепили на другом устройстве) — режим закрывается.
+            isReorderingPins = current.isReorderingPins && canReorderPins,
         )
     }
 

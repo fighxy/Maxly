@@ -32,6 +32,8 @@ class CoreChatRepository(
     /** Снимок уже пришёл: до него список показывает загрузку, а не «Нет чатов». */
     private val loaded = MutableStateFlow(false)
     private val refreshLock = Mutex()
+    /** Закрепление и перестановка по очереди: каждый запрос строится от списка, принятого сервером. */
+    private val pinLock = Mutex()
     private var usersRequested = mutableSetOf<Long>()
 
     override val chats: Flow<List<Chat>?> =
@@ -88,9 +90,19 @@ class CoreChatRepository(
 
     override suspend fun setPinned(chatId: String, pinned: Boolean) {
         val id = chatId.toLongOrNull() ?: return
-        val current = client.store.state.value.pinnedChatIds.orEmpty()
-        val next = if (pinned) listOf(id) + current.filter { it != id } else current.filter { it != id }
-        MaxCoreGateway.call { client.setPinnedChats(next) }
+        pinLock.withLock {
+            val current = client.store.state.value.pinnedChatIds.orEmpty()
+            val next = if (pinned) listOf(id) + current.filter { it != id } else current.filter { it != id }
+            MaxCoreGateway.call { client.setPinnedChats(next) }
+        }
+    }
+
+    override suspend fun reorderPinned(chatIds: List<String>) {
+        pinLock.withLock {
+            val current = client.store.state.value.pinnedChatIds.orEmpty()
+            val next = pinOrder(current, chatIds)
+            if (next != current) MaxCoreGateway.call { client.setPinnedChats(next) }
+        }
     }
 
     override suspend fun setMuted(chatId: String, muted: Boolean) {
@@ -266,6 +278,15 @@ class CoreChatRepository(
 
     companion object {
         private const val TYPING_TICK_MS = 1_000L
+
+        /**
+         * Новый список закреплённых для сервера: [wanted] сверху в своём порядке (только те, что
+         * закреплены в [current]), остальные закреплённые после них в прежнем порядке.
+         */
+        fun pinOrder(current: List<Long>, wanted: List<String>): List<Long> {
+            val moved = wanted.mapNotNull { it.toLongOrNull() }.distinct().filter { it in current }
+            return moved + current.filter { it !in moved }
+        }
 
         /** Сколько публичных чатов просить за раз. */
         const val SEARCH_PAGE_SIZE = 20

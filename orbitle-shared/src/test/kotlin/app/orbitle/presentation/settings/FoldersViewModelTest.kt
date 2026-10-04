@@ -4,6 +4,7 @@ import app.orbitle.MainDispatcherRule
 import app.orbitle.data.CoreFolderRepository
 import app.orbitle.data.FolderRepository
 import app.orbitle.domain.ServerFolder
+import app.orbitle.presentation.common.ListOrder
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -136,21 +137,21 @@ class FoldersViewModelTest {
     @Test
     fun `folder order moves and clamps`() {
         val ids = listOf("a", "b", "c", "d")
-        assertEquals(listOf("b", "c", "a", "d"), FolderOrder.moved(ids, 0, 2))
-        assertEquals(listOf("d", "a", "b", "c"), FolderOrder.moved(ids, 3, 0))
-        assertEquals(listOf("a", "c", "d", "b"), FolderOrder.moved(ids, 1, 9))
-        assertEquals(listOf("b", "a", "c", "d"), FolderOrder.moved(ids, 1, -4))
-        assertEquals(ids, FolderOrder.moved(ids, 2, 2))
-        assertEquals(ids, FolderOrder.moved(ids, 7, 0))
-        assertEquals(emptyList<String>(), FolderOrder.moved(emptyList(), 0, 1))
+        assertEquals(listOf("b", "c", "a", "d"), ListOrder.moved(ids, 0, 2))
+        assertEquals(listOf("d", "a", "b", "c"), ListOrder.moved(ids, 3, 0))
+        assertEquals(listOf("a", "c", "d", "b"), ListOrder.moved(ids, 1, 9))
+        assertEquals(listOf("b", "a", "c", "d"), ListOrder.moved(ids, 1, -4))
+        assertEquals(ids, ListOrder.moved(ids, 2, 2))
+        assertEquals(ids, ListOrder.moved(ids, 7, 0))
+        assertEquals(emptyList<String>(), ListOrder.moved(emptyList(), 0, 1))
     }
 
     @Test
     fun `folder order recognizes permutations`() {
-        assertTrue(FolderOrder.isPermutation(listOf("b", "a"), listOf("a", "b")))
-        assertFalse(FolderOrder.isPermutation(listOf("a", "a"), listOf("a", "b")))
-        assertFalse(FolderOrder.isPermutation(listOf("a"), listOf("a", "b")))
-        assertFalse(FolderOrder.isPermutation(listOf("a", "c"), listOf("a", "b")))
+        assertTrue(ListOrder.isPermutation(listOf("b", "a"), listOf("a", "b")))
+        assertFalse(ListOrder.isPermutation(listOf("a", "a"), listOf("a", "b")))
+        assertFalse(ListOrder.isPermutation(listOf("a"), listOf("a", "b")))
+        assertFalse(ListOrder.isPermutation(listOf("a", "c"), listOf("a", "b")))
     }
 
     @Test

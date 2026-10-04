@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import app.orbitle.data.CoreErrors
 import app.orbitle.data.FolderRepository
 import app.orbitle.domain.ServerFolder
+import app.orbitle.presentation.common.ListOrder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -90,7 +91,7 @@ class FoldersViewModel(private val repository: FolderRepository) : ViewModel() {
         val ids = _state.value.editable.map { it.id }
         val from = ids.indexOf(folder.id)
         if (from < 0) return
-        reorder(FolderOrder.moved(ids, from, from + offset))
+        reorder(ListOrder.moved(ids, from, from + offset))
     }
 
     /**
@@ -103,7 +104,7 @@ class FoldersViewModel(private val repository: FolderRepository) : ViewModel() {
         val pinned = current.filter { it.isAllChats }
         val rest = current.filterNot { it.isAllChats }
         val restIds = rest.map { it.id }
-        if (editableIds == restIds || !FolderOrder.isPermutation(editableIds, restIds)) return
+        if (editableIds == restIds || !ListOrder.isPermutation(editableIds, restIds)) return
         val byId = rest.associateBy { it.id }
         val next = pinned + editableIds.map(byId::getValue)
         _state.update { it.copy(folders = next) }

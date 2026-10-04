@@ -18,6 +18,13 @@ interface ChatRepository {
     suspend fun refresh()
     suspend fun setPinned(chatId: String, pinned: Boolean)
 
+    /**
+     * Новый порядок закреплённых сверху вниз. Закреплённые, которых нет в [chatIds], остаются
+     * после них в прежнем порядке.
+     */
+    suspend fun reorderPinned(chatIds: List<String>): Unit =
+        throw app.orbitle.domain.OrbitleError.Rejected("Порядок закреплённых здесь не меняется")
+
     /** Выключить уведомления чата насовсем или включить обратно. */
     suspend fun setMuted(chatId: String, muted: Boolean) {}
 
