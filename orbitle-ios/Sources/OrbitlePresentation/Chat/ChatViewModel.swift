@@ -1054,7 +1054,7 @@ public final class ChatViewModel {
             switch attachment {
             case .photo, .video: true
             case .voice, .file: target == .files
-            case .contact, .sticker, .call: false
+            case .contact, .sticker, .call, .poll: false
             }
         }
     }

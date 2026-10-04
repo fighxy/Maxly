@@ -125,7 +125,7 @@ class FakeContacts : ContactRepository {
 class ContactsViewModelTest {
     @get:Rule val main = MainDispatcherRule()
     private val repo = FakeContacts()
-    private fun vm() = ContactsViewModel(repo, { "1" }, ZoneOffset.UTC) { 1_790_683_200_000L }
+    private fun vm() = ContactsViewModel(repo, { "1" }, ZoneOffset.UTC, now = { 1_790_683_200_000L })
 
     @Test
     fun sectionsCyrillicFirstWithoutSelf() {

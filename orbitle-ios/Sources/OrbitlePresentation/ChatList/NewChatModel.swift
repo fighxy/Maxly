@@ -297,7 +297,7 @@ public final class NewChatModel {
         return "+\(digits)"
     }
 
-    private func launch(failure: String, title: String, _ block: @escaping () async throws(OrbitleError) -> String?) {
+    private func launch(failure: String, title: String, _ block: @escaping () async throws -> String?) {
         let token = begin()
         Task {
             do {
