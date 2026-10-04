@@ -345,7 +345,8 @@ struct PhotoEditor: View {
             }.background(.black).gesture(DragGesture(minimumDistance: 0).onChanged { value in
                 guard !busy else { return }
                 let index = min(4,max(0,Int((value.location.x/proxy.size.width*4).rounded())))
-                adjustments.curves[curveChannel][index] = min(1,max(0,1-value.location.y/proxy.size.height))
+                let y = Double(value.location.y / proxy.size.height)
+                adjustments.curves[curveChannel][index] = min(1, max(0, 1 - y))
             })
         }.frame(height: 100)
     }

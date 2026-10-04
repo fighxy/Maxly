@@ -131,9 +131,13 @@ actor PhotoRenderer {
                     for p in points.dropFirst() { cg.addLine(to: CGPoint(x: p.x * size.width, y: p.y * size.height)) }
                     if brush == .arrow, let last = points.last, points.count > 1 {
                         let angle = atan2((last.y-first.y)*size.height,(last.x-first.x)*size.width), length = max(width*shortest*4,shortest*0.04)
-                        for side in [-1.0,1.0] {
+                        for side in [-1.0, 1.0] {
+                            let turn = Double(angle) + side * 0.5
                             cg.move(to: CGPoint(x: last.x*size.width,y: last.y*size.height))
-                            cg.addLine(to: CGPoint(x: last.x*size.width-length*cos(angle+side*0.5),y: last.y*size.height-length*sin(angle+side*0.5)))
+                            cg.addLine(to: CGPoint(
+                                x: last.x * size.width - length * CGFloat(cos(turn)),
+                                y: last.y * size.height - length * CGFloat(sin(turn))
+                            ))
                         }
                     }
                     if let blurred {

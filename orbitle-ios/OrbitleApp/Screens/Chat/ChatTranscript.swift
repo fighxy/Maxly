@@ -121,7 +121,7 @@ struct ChatTranscript: View {
                             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
                     } else if viewModel.messages.isEmpty, let error = viewModel.historyError {
                         VStack(spacing: 12) {
-                            Text(error.userMessage).multilineTextAlignment(.center)
+                            Text(error.userMessage ?? "Не удалось загрузить сообщения").multilineTextAlignment(.center)
                             Button("Повторить") { Task { await viewModel.loadLatest() } }
                         }
                         .padding(16)
