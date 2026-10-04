@@ -29,8 +29,13 @@ import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Phone
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,7 +52,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,10 +83,30 @@ import app.orbitle.ui.components.Avatar
 import app.orbitle.ui.theme.AvatarPalette
 import coil3.compose.AsyncImage
 
+/**
+ * Действия чата, из которого открыт профиль. Раньше они были кнопками «Поиск» и «Ещё» в шапке
+ * чата. Профиль закрывается, и действие открывается на экране чата ([app.orbitle.ui.chat.ChatAction]).
+ */
+class ProfileChatActions(
+    val onSearch: () -> Unit,
+    /** Участники, общие чаты и жалоба. */
+    val onTools: () -> Unit,
+    val onCall: () -> Unit,
+    val onClearHistory: () -> Unit,
+    val onDeleteChat: () -> Unit,
+)
+
 /** Профиль: шапка, сведения, команды бота и общие медиа по вкладкам. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfileScreen(model: ProfileViewModel, onBack: () -> Unit, onWrite: (() -> Unit)? = null, mediaUserAgent: String = "") {
+fun ProfileScreen(
+    model: ProfileViewModel,
+    onBack: () -> Unit,
+    onWrite: (() -> Unit)? = null,
+    mediaUserAgent: String = "",
+    /** Профиль открыт из чата: поиск, звонок и действия с чатом. */
+    chatActions: ProfileChatActions? = null,
+) {
     val state by model.state.collectAsStateWithLifecycle()
     val notice by model.notice.collectAsStateWithLifecycle()
     val mediaState by model.media.state.collectAsStateWithLifecycle()
@@ -133,13 +160,17 @@ fun ProfileScreen(model: ProfileViewModel, onBack: () -> Unit, onWrite: (() -> U
             item(key = "actions") {
                 val share = state.profile.link
                 val canWrite = onWrite != null && state.profile.kind in setOf(ChatProfile.Kind.USER, ChatProfile.Kind.BOT, ChatProfile.Kind.SAVED)
-                if (canWrite || share != null) {
+                val canCall = chatActions != null && state.profile.kind == ChatProfile.Kind.USER
+                if (canWrite || share != null || chatActions != null) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (canWrite) ActionButton("Написать", { Icon(Icons.AutoMirrored.Outlined.Chat, null) }, Modifier.weight(1f)) { onWrite?.invoke() }
+                        if (canCall) ActionButton("Звонок", { Icon(Icons.Outlined.Phone, null) }, Modifier.weight(1f)) { chatActions?.onCall?.invoke() }
+                        if (chatActions != null) ActionButton("Поиск", { Icon(Icons.Outlined.Search, null) }, Modifier.weight(1f)) { chatActions.onSearch() }
                         if (share != null) ActionButton("Поделиться", { Icon(Icons.Outlined.Share, null) }, Modifier.weight(1f)) {
                             val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, share)
                             start(context, Intent.createChooser(send, state.title))
                         }
+                        if (chatActions != null) MoreChatActions(chatActions, Modifier.weight(1f))
                     }
                 }
             }
@@ -302,6 +333,23 @@ private fun ActionButton(label: String, icon: @Composable () -> Unit, modifier: 
             icon()
             Spacer(Modifier.height(4.dp))
             Text(label, style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+/** Плитка «Ещё»: участники и жалоба, очистка истории, удаление чата. */
+@Composable
+private fun MoreChatActions(actions: ProfileChatActions, modifier: Modifier) {
+    var open by remember { mutableStateOf(false) }
+    Box(modifier) {
+        ActionButton("Ещё", { Icon(Icons.Outlined.MoreVert, null) }, Modifier.fillMaxWidth()) { open = true }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(text = { Text("Участники и жалоба") }, onClick = { open = false; actions.onTools() })
+            DropdownMenuItem(text = { Text("Очистить историю") }, onClick = { open = false; actions.onClearHistory() })
+            DropdownMenuItem(
+                text = { Text("Удалить чат", color = MaterialTheme.colorScheme.error) },
+                onClick = { open = false; actions.onDeleteChat() },
+            )
         }
     }
 }

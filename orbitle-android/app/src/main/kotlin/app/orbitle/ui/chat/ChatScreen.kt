@@ -82,9 +82,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.outlined.Poll
 import androidx.compose.material.icons.outlined.Schedule
@@ -167,6 +165,9 @@ fun ChatScreen(
     onDisablePrivateMode: () -> Unit = {},
     /** Эмодзи двойного нажатия. `null` — сервер выключил быструю реакцию. */
     quickReaction: String? = null,
+    /** Действие, выбранное в профиле этого чата: экран открывает его, когда профиль закрылся. */
+    requestedAction: ChatAction? = null,
+    onActionHandled: () -> Unit = {},
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val privacy = app.orbitle.ui.components.LocalPrivateMode.current
@@ -288,6 +289,23 @@ fun ChatScreen(
         snackbar.showSnackbar(text)
         model.consumeMessage()
     }
+    LaunchedEffect(requestedAction) {
+        val action = requestedAction ?: return@LaunchedEffect
+        // Сначала уезжает профиль, потом открывается лист. Запрос снимается после: смена ключа
+        // отменила бы эту задачу посреди паузы.
+        delay(300)
+        when (action) {
+            ChatAction.SEARCH -> searching = true
+            ChatAction.TOOLS -> {
+                toolsOpen = true
+                model.loadTools()
+            }
+            ChatAction.CALL -> confirmingCall = true
+            ChatAction.CLEAR_HISTORY -> eraseChat = ChatErase.CLEAR
+            ChatAction.DELETE_CHAT -> eraseChat = ChatErase.DELETE
+        }
+        onActionHandled()
+    }
     // Ближе к верху ленты — следующая страница истории.
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index to listState.layoutInfo.totalItemsCount }
@@ -313,11 +331,8 @@ fun ChatScreen(
     ChatWallpaperBackground(LocalChatBackdrop.current)
     Scaffold(
         topBar = {
-            ChatTopBar(
-                state, onBack, onOpenProfile, privacy,
-                onSearch = { searching = true },
-                onTools = { toolsOpen = true; model.loadTools() },
-            )
+            // Поиск и «Ещё» переехали в профиль чата: справа в шапке кнопок нет.
+            ChatTopBar(state, onBack, onOpenProfile, privacy)
         },
         snackbarHost = { SnackbarHost(snackbar) },
         contentWindowInsets = WindowInsets(0),
@@ -418,7 +433,7 @@ fun ChatScreen(
             } else {
                 Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
                     Text(
-                        "Писать в этот чат нельзя",
+                        if (state.header?.type == app.orbitle.domain.ChatType.CHANNEL) "Писать в канал могут только администраторы" else "Писать в этот чат нельзя",
                         Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp),
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -572,8 +587,6 @@ private fun ChatTopBar(
     onBack: () -> Unit,
     onOpenProfile: () -> Unit,
     privacy: app.orbitle.domain.PrivateModeDisplay = app.orbitle.domain.PrivateModeDisplay.VISIBLE,
-    onSearch: () -> Unit = {},
-    onTools: () -> Unit = {},
 ) {
     TopAppBar(
         navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад") } },
@@ -600,10 +613,6 @@ private fun ChatTopBar(
                     )
                 }
             }
-        },
-        actions = {
-            IconButton(onClick = onSearch) { Icon(Icons.Filled.Search, "Поиск") }
-            IconButton(onClick = onTools) { Icon(Icons.Filled.MoreVert, "Ещё") }
         },
     )
 }

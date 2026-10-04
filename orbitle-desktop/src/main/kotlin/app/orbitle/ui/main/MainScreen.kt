@@ -28,6 +28,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -58,11 +59,13 @@ import app.orbitle.presentation.settings.RecoveryEmailViewModel
 import app.orbitle.presentation.settings.SecurityViewModel
 import app.orbitle.presentation.settings.StorageViewModel
 import app.orbitle.ui.calls.CallsScreen
+import app.orbitle.ui.chat.ChatAction
 import app.orbitle.ui.chat.ChatScreen
 import app.orbitle.ui.chat.EmojiSupport
 import app.orbitle.ui.chatlist.ChatListScreen
 import app.orbitle.ui.components.LocalPrivateMode
 import app.orbitle.ui.contacts.ContactsScreen
+import app.orbitle.ui.profile.ProfileChatActions
 import app.orbitle.ui.profile.ProfileScreen
 import app.orbitle.ui.res.stringResource
 import app.orbitle.ui.settings.AboutScreen
@@ -240,6 +243,8 @@ private fun ChatPane(
     onCloseChat: () -> Unit,
     quickReaction: String? = null,
 ) {
+    // Действие из профиля (поиск, «О чате», звонок, очистка, удаление): чат откроет его после возврата.
+    var chatAction by remember { mutableStateOf<Pair<String, ChatAction>?>(null) }
     when {
         chatId == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
@@ -252,7 +257,16 @@ private fun ChatPane(
             val model = viewModel(key = "profile-$profileFor") {
                 ProfileViewModel(profileFor, chatTitle, container.profiles, container.messages, container.voicePlayer, container.files)
             }
-            ProfileScreen(model, onBack = onCloseProfile, onWrite = null, mediaUserAgent = container.videoSourceUserAgent())
+            ProfileScreen(
+                model,
+                onBack = onCloseProfile,
+                onWrite = null,
+                mediaUserAgent = container.videoSourceUserAgent(),
+                chatActions = profileChatActions { action ->
+                    chatAction = chatId to action
+                    onCloseProfile()
+                },
+            )
         }
         else -> {
             val model = viewModel(key = "chat-$chatId") {
@@ -272,10 +286,21 @@ private fun ChatPane(
                 forwardTargets = { chatList.forwardTargets(excluding = chatId) },
                 onDisablePrivateMode = { container.privateMode.setEnabled(false) },
                 quickReaction = quickReaction,
+                requestedAction = chatAction?.takeIf { it.first == chatId }?.second,
+                onActionHandled = { chatAction = null },
             )
         }
     }
 }
+
+/** Действия профиля, открытого из чата: каждое закрывает профиль и открывается в чате. */
+private fun profileChatActions(request: (ChatAction) -> Unit) = ProfileChatActions(
+    onSearch = { request(ChatAction.SEARCH) },
+    onTools = { request(ChatAction.TOOLS) },
+    onCall = { request(ChatAction.CALL) },
+    onClearHistory = { request(ChatAction.CLEAR_HISTORY) },
+    onDeleteChat = { request(ChatAction.DELETE_CHAT) },
+)
 
 @Composable
 private fun SettingsPane(

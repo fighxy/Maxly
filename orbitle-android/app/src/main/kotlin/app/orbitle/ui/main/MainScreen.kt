@@ -25,6 +25,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -49,8 +52,10 @@ import app.orbitle.ui.settings.AppearanceScreen
 import app.orbitle.ui.settings.DevicesScreen
 import app.orbitle.presentation.chat.ChatViewModel
 import app.orbitle.presentation.profile.ProfileViewModel
+import app.orbitle.ui.profile.ProfileChatActions
 import app.orbitle.ui.profile.ProfileScreen
 import app.orbitle.ui.chat.EmojiSupport
+import app.orbitle.ui.chat.ChatAction
 import app.orbitle.ui.chat.ChatScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.orbitle.presentation.settings.AccountSettingsViewModel
@@ -109,6 +114,8 @@ fun MainScreen(
     val privatePrefs by container.privateMode.state.collectAsStateWithLifecycle()
     val privateDisplay = app.orbitle.data.PrivateModeSettings.display(privatePrefs, canBlur = android.os.Build.VERSION.SDK_INT >= 31)
     val showsBar = Tab.entries.any { it.route == route } || route == null
+    // Действие из профиля чата (поиск, «О чате», звонок, очистка, удаление): чат откроет его после возврата.
+    var chatAction by remember { mutableStateOf<Pair<String, ChatAction>?>(null) }
     fun openChat(id: String, title: String? = null) {
         nav.navigate(if (title == null) "chat/$id" else "chat/$id?title=${Uri.encode(title)}")
     }
@@ -248,6 +255,8 @@ fun MainScreen(
                     forwardTargets = { chatList.forwardTargets(excluding = chatId) },
                     onDisablePrivateMode = { container.privateMode.setEnabled(false) },
                     quickReaction = accountState.settings.quickReaction.takeIf { accountState.settings.quickReactionEnabled },
+                    requestedAction = chatAction?.takeIf { it.first == chatId }?.second,
+                    onActionHandled = { chatAction = null },
                 )
             }
             composable(
@@ -269,6 +278,10 @@ fun MainScreen(
                     // Из чата профиль закрывается назад, «Написать» нужна только снаружи.
                     onWrite = if (fromChat) null else ({ openChat(chatId, title) }),
                     mediaUserAgent = container.videoSourceUserAgent(),
+                    chatActions = if (fromChat) profileChatActions { action ->
+                        chatAction = chatId to action
+                        nav.popBackStack()
+                    } else null,
                 )
             }
         }
@@ -288,3 +301,12 @@ private fun Soon(title: Int) {
         }
     }
 }
+
+/** Действия профиля, открытого из чата: каждое закрывает профиль и открывается в чате. */
+internal fun profileChatActions(request: (ChatAction) -> Unit) = ProfileChatActions(
+    onSearch = { request(ChatAction.SEARCH) },
+    onTools = { request(ChatAction.TOOLS) },
+    onCall = { request(ChatAction.CALL) },
+    onClearHistory = { request(ChatAction.CLEAR_HISTORY) },
+    onDeleteChat = { request(ChatAction.DELETE_CHAT) },
+)
