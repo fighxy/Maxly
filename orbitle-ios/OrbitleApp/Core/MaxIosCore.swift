@@ -311,6 +311,96 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func findByPhone(phone: String) async throws -> CoreContact {
+        try await call("findByPhone") { done in
+            self.client.findByPhone(phone: phone) { contact, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else if let contact {
+                    done(.success(Self.contact(contact)))
+                } else {
+                    done(.failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)))
+                }
+            }
+        }
+    }
+
+    func addContact(userId: String, firstName: String) async throws -> CoreContact {
+        try await call("addContact") { done in
+            self.client.addContact(userId: userId, firstName: firstName) { contact, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else if let contact {
+                    done(.success(Self.contact(contact)))
+                } else {
+                    done(.failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)))
+                }
+            }
+        }
+    }
+
+    func createGroup(title: String, memberIds: [String]) async throws -> CoreChat? {
+        try await call("createGroup") { done in
+            self.client.createGroup(title: title, userIds: memberIds) { chat, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(chat.map(Self.chat)))
+                }
+            }
+        }
+    }
+
+    func createChannel(title: String) async throws -> CoreChat? {
+        try await call("createChannel") { done in
+            self.client.createChannel(title: title) { chat, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(chat.map(Self.chat)))
+                }
+            }
+        }
+    }
+
+    func deleteChat(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async throws {
+        let _: Void = try await call("deleteChat") { done in
+            self.client.deleteChat(chatId: chatId, lastEventTimeMs: lastEventTimeMs, forAll: forEveryone) { kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(()))
+                }
+            }
+        }
+    }
+
+    func clearHistory(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async throws {
+        let _: Void = try await call("clearHistory") { done in
+            self.client.clearHistory(chatId: chatId, lastEventTimeMs: lastEventTimeMs, forAll: forEveryone) { kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(()))
+                }
+            }
+        }
+    }
+
+    func joinByLink(_ link: String) async throws -> CoreChat {
+        try await call("joinByLink") { done in
+            self.client.joinByLink(link: link) { chat, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else if let chat {
+                    done(.success(Self.chat(chat)))
+                } else {
+                    done(.failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)))
+                }
+            }
+        }
+    }
+
     func loadCallHistory() async throws -> [CoreCall] {
         try await call("loadCallHistory") { done in
             self.client.loadCallHistory { calls, kind, key in
@@ -457,7 +547,11 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             phone: contact.phone,
             avatarURL: contact.avatarUrl,
             lastSeenMs: contact.lastSeenMs,
-            online: contact.online
+            online: contact.online,
+            accountStatus: Int(contact.accountStatus),
+            isBot: contact.isBot,
+            isOfficial: contact.isOfficial,
+            isServiceAccount: contact.isServiceAccount
         )
     }
 

@@ -18,6 +18,8 @@ public protocol AccountRepository: Sendable {
     func setOnlineHidden(_ hidden: Bool) async throws(OrbitleError) -> AccountSettings
     func setSafeMode(_ enabled: Bool) async throws(OrbitleError) -> AccountSettings
     func setInactiveTTL(_ ttl: InactiveTTL) async throws(OrbitleError) -> AccountSettings
+    /// Быстрая реакция двойного нажатия. Пустую строку сервер не получает.
+    func setQuickReaction(_ emoji: String) async throws(OrbitleError) -> AccountSettings
 
     /// Текущий сеанс первым.
     func sessions() async throws(OrbitleError) -> [DeviceSession]
@@ -29,6 +31,9 @@ public protocol AccountRepository: Sendable {
     func unblock(userId: String) async throws(OrbitleError)
 
     func twoFactorStatus() async throws(OrbitleError) -> TwoFactorStatus
+    func enablePassword(password: String, hint: String) async throws(OrbitleError)
+    func changePassword(oldPassword: String, newPassword: String) async throws(OrbitleError)
+    func disablePassword(password: String) async throws(OrbitleError)
     /// Начать смену почты: проверка текущего пароля. Ответ — id шага для следующих вызовов.
     func startEmailChange(password: String) async throws(OrbitleError) -> String
     /// Выслать код на `email`. Ответ — через сколько секунд можно выслать снова.
@@ -38,6 +43,12 @@ public protocol AccountRepository: Sendable {
     func launchMiniApp(_ kind: MiniApp.Kind) async throws(OrbitleError) -> MiniApp
     /// Возврат внешнего шага мини-приложения на адрес `url` (`externalCallback=1`).
     func miniAppCallback(url: URL) async throws(OrbitleError) -> MiniApp
+}
+
+public extension AccountRepository {
+    func enablePassword(password: String, hint: String) async throws(OrbitleError) { throw .invalidRequest }
+    func changePassword(oldPassword: String, newPassword: String) async throws(OrbitleError) { throw .invalidRequest }
+    func disablePassword(password: String) async throws(OrbitleError) { throw .invalidRequest }
 }
 
 /// Серверные папки чатов.

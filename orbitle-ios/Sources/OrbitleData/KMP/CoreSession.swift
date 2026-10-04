@@ -151,8 +151,16 @@ public struct CoreContact: Sendable, Equatable {
     /// Последний визит, мс Unix; 0 — неизвестно.
     public var lastSeenMs: Int64
     public var online: Bool
+    /// `accountStatus`. `nil` или 0 — аккаунт жив. Другое значение — удалён и в список не входит.
+    public var accountStatus: Int?
+    public var isBot: Bool
+    public var isOfficial: Bool
+    public var isServiceAccount: Bool
 
-    public init(id: String, firstName: String, lastName: String, phone: String, avatarURL: String, lastSeenMs: Int64, online: Bool) {
+    public init(
+        id: String, firstName: String, lastName: String, phone: String, avatarURL: String, lastSeenMs: Int64, online: Bool,
+        accountStatus: Int? = nil, isBot: Bool = false, isOfficial: Bool = false, isServiceAccount: Bool = false
+    ) {
         self.id = id
         self.firstName = firstName
         self.lastName = lastName
@@ -160,6 +168,10 @@ public struct CoreContact: Sendable, Equatable {
         self.avatarURL = avatarURL
         self.lastSeenMs = lastSeenMs
         self.online = online
+        self.accountStatus = accountStatus
+        self.isBot = isBot
+        self.isOfficial = isOfficial
+        self.isServiceAccount = isServiceAccount
     }
 }
 
@@ -461,6 +473,7 @@ public protocol MaxCore: Sendable {
     func setOnlineHidden(_ hidden: Bool) async throws -> AccountSettings
     func setSafeMode(_ enabled: Bool) async throws -> AccountSettings
     func setInactiveTTL(_ ttl: InactiveTTL) async throws -> AccountSettings
+    func setQuickReaction(_ emoji: String) async throws -> AccountSettings
     func loadSessions() async throws -> [DeviceSession]
     func closeOtherSessions() async throws
     func approveQrLogin(_ link: String) async throws
@@ -490,6 +503,36 @@ public protocol MaxCore: Sendable {
     func loadStickers(ids: [String]) async throws -> [Sticker]
     /// Анимодзи сервера с Lottie, в его порядке.
     func loadAnimatedEmoji() async throws -> [AnimatedEmoji]
+    /// Человек по номеру (`CONTACT_INFO_BY_PHONE` 46). Телефон — `+` и цифры. В контакты не добавляет.
+    func findByPhone(phone: String) async throws -> CoreContact
+    /// Контакт (`CONTACT_UPDATE` 34, `{contactId, action: ADD}`). Пустое имя на сервер не уходит.
+    func addContact(userId: String, firstName: String) async throws -> CoreContact
+    /// Группа (`MSG_SEND` 64, `chatType: CHAT`). `nil` — в ответе нет чата.
+    func createGroup(title: String, memberIds: [String]) async throws -> CoreChat?
+    /// Канал: то же `MSG_SEND` 64, `chatType: CHANNEL`, без участников. `nil` — в ответе нет чата.
+    func createChannel(title: String) async throws -> CoreChat?
+    /// Вход по ссылке (`CHAT_JOIN` 57).
+    func joinByLink(_ link: String) async throws -> CoreChat
+    /// Удалить чат (`CHAT_DELETE` 52).
+    func deleteChat(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async throws
+    /// Очистить переписку (`CHAT_CLEAR` 54).
+    func clearHistory(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async throws
+    /// Текст с анимодзи и упоминаниями. Смещения UTF-16 по `text`.
+    func sendRichText(chatId: String, text: String, replyTo: String, animoji: [CoreAnimojiMark], mentions: [CoreMentionMark]) async throws -> CoreMessage
+    /// Закрепить сообщение. `messageId` `0` снимает закреп.
+    func pinMessage(chatId: String, messageId: String) async throws
+    func scheduleMessage(chatId: String, text: String, sendAtMs: Int64) async throws
+    func scheduledMessages(chatId: String) async throws -> [CoreFoundMessage]
+    func sendPoll(chatId: String, title: String, answers: [String]) async throws -> CoreMessage
+    func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws
+    func searchInChat(chatId: String, query: String) async throws -> [CoreFoundMessage]
+    func chatMembers(chatId: String) async throws -> [CoreChatMember]
+    func botCommands(botId: String) async throws -> [CoreBotCommand]
+    /// Сигнал звонка. `nil` — сервер не вернул адрес.
+    func signalCall(calleeId: String, isVideo: Bool) async throws -> CoreCallSignal?
+    func enablePassword(password: String, hint: String) async throws
+    func changePassword(oldPassword: String, newPassword: String) async throws
+    func disablePassword(password: String) async throws
 }
 
 public extension MaxCore {
@@ -567,6 +610,7 @@ public extension MaxCore {
     func setOnlineHidden(_ hidden: Bool) async throws -> AccountSettings { throw unsupported }
     func setSafeMode(_ enabled: Bool) async throws -> AccountSettings { throw unsupported }
     func setInactiveTTL(_ ttl: InactiveTTL) async throws -> AccountSettings { throw unsupported }
+    func setQuickReaction(_ emoji: String) async throws -> AccountSettings { throw unsupported }
     func loadSessions() async throws -> [DeviceSession] { throw unsupported }
     func closeOtherSessions() async throws { throw unsupported }
     func approveQrLogin(_ link: String) async throws { throw unsupported }
@@ -593,6 +637,30 @@ public extension MaxCore {
     func loadReactionCatalog() async throws -> [String] { throw unsupported }
     func loadReactionUsers(chatId: String, messageId: String) async throws -> [ReactionUser] { throw unsupported }
     func transcribeVoice(chatId: String, messageId: String, audioId: String) async throws -> CoreTranscription { throw unsupported }
+
+    func findByPhone(phone: String) async throws -> CoreContact { throw unsupported }
+    func addContact(userId: String, firstName: String) async throws -> CoreContact { throw unsupported }
+    func createGroup(title: String, memberIds: [String]) async throws -> CoreChat? { throw unsupported }
+    func createChannel(title: String) async throws -> CoreChat? { throw unsupported }
+    func joinByLink(_ link: String) async throws -> CoreChat { throw unsupported }
+    func deleteChat(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async throws { throw unsupported }
+    func clearHistory(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async throws { throw unsupported }
+    func sendRichText(chatId: String, text: String, replyTo: String, animoji: [CoreAnimojiMark], mentions: [CoreMentionMark]) async throws -> CoreMessage {
+        if mentions.isEmpty { return try await sendText(chatId: chatId, text: text, replyTo: replyTo, animoji: animoji) }
+        throw unsupported
+    }
+    func pinMessage(chatId: String, messageId: String) async throws { throw unsupported }
+    func scheduleMessage(chatId: String, text: String, sendAtMs: Int64) async throws { throw unsupported }
+    func scheduledMessages(chatId: String) async throws -> [CoreFoundMessage] { throw unsupported }
+    func sendPoll(chatId: String, title: String, answers: [String]) async throws -> CoreMessage { throw unsupported }
+    func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws { throw unsupported }
+    func searchInChat(chatId: String, query: String) async throws -> [CoreFoundMessage] { throw unsupported }
+    func chatMembers(chatId: String) async throws -> [CoreChatMember] { throw unsupported }
+    func botCommands(botId: String) async throws -> [CoreBotCommand] { throw unsupported }
+    func signalCall(calleeId: String, isVideo: Bool) async throws -> CoreCallSignal? { throw unsupported }
+    func enablePassword(password: String, hint: String) async throws { throw unsupported }
+    func changePassword(oldPassword: String, newPassword: String) async throws { throw unsupported }
+    func disablePassword(password: String) async throws { throw unsupported }
 }
 
 /// Ответ расшифровки голосового: `status` `1` — готово (`text` пуст, если речи не нашлось),
@@ -627,5 +695,55 @@ public struct CoreAnimojiMark: Sendable, Equatable {
             guard span.kind == .animoji, let id = span.entityId, !id.isEmpty, span.length > 0 else { return nil }
             return CoreAnimojiMark(from: span.from, length: span.length, animojiId: id, lottieURL: span.url ?? "")
         }
+    }
+}
+
+/// Упоминание в отправляемом тексте. Смещения UTF-16.
+public struct CoreMentionMark: Sendable, Equatable {
+    public var from: Int
+    public var length: Int
+    public var userId: String
+
+    public init(from: Int, length: Int, userId: String) {
+        self.from = from
+        self.length = length
+        self.userId = userId
+    }
+
+    public static func marks(_ spans: [TextSpan]?) -> [CoreMentionMark] {
+        (spans ?? []).compactMap { span in
+            guard span.kind == .mention, let id = span.userId, !id.isEmpty, span.length > 0 else { return nil }
+            return CoreMentionMark(from: span.from, length: span.length, userId: id)
+        }
+    }
+}
+
+public struct CoreChatMember: Sendable, Equatable {
+    public var id: String
+    public var name: String
+
+    public init(id: String, name: String) {
+        self.id = id
+        self.name = name
+    }
+}
+
+public struct CoreBotCommand: Sendable, Equatable {
+    public var name: String
+    public var summary: String
+
+    public init(name: String, summary: String) {
+        self.name = name
+        self.summary = summary
+    }
+}
+
+public struct CoreCallSignal: Sendable, Equatable {
+    public var conversationId: String
+    public var endpoint: String
+
+    public init(conversationId: String, endpoint: String) {
+        self.conversationId = conversationId
+        self.endpoint = endpoint
     }
 }

@@ -2,6 +2,7 @@ package app.orbitle.presentation.contacts
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.orbitle.data.ChatRepository
 import app.orbitle.data.ContactRepository
 import app.orbitle.domain.Contact
 import app.orbitle.presentation.chatlist.ChatAvatar
@@ -22,6 +23,8 @@ data class ContactRow(
     val status: String,
     val isOnline: Boolean,
     val avatar: ChatAvatar,
+    /** Опция `OFFICIAL`: рядом с именем галочка. */
+    val isOfficial: Boolean = false,
 )
 
 data class ContactSection(val letter: String, val rows: List<ContactRow>)
@@ -45,6 +48,7 @@ class ContactsViewModel(
     private val currentUserId: () -> String?,
     zone: ZoneId = ZoneId.systemDefault(),
     private val now: () -> Long = System::currentTimeMillis,
+    private val chats: ChatRepository? = null,
 ) : ViewModel() {
     private val presence = PresenceText(zone)
     private val _state = MutableStateFlow(ContactsUiState())
@@ -109,6 +113,24 @@ class ContactsViewModel(
         return (me xor other).toString()
     }
 
+    /**
+     * Открыть диалог с контактом. Id возвращается сразу, а строка списка ставится локально:
+     * сервер создаёт чат только первым сообщением.
+     */
+    fun prepare(contactId: String, title: String): String? {
+        val id = chatId(contactId) ?: return null
+        val repo = chats ?: return id
+        viewModelScope.launch {
+            try {
+                repo.prepareDialog(id, contactId, title)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
+        }
+        return id
+    }
+
     fun contact(id: String): Contact? = contacts.firstOrNull { it.id == id }
 
     private fun rebuild() {
@@ -128,15 +150,23 @@ class ContactsViewModel(
 
     private fun row(contact: Contact, nowMs: Long): ContactRow {
         val name = contact.displayName
+        val seen = presence.status(contact.isOnline, contact.lastSeenMs, nowMs).replaceFirstChar { it.uppercase() }
+        val status = when {
+            contact.isOnline -> seen
+            contact.isServiceAccount -> "Служебный аккаунт"
+            contact.isBot -> "Бот"
+            else -> seen
+        }
         return ContactRow(
             id = contact.id,
             title = name,
-            status = presence.status(contact.isOnline, contact.lastSeenMs, nowMs).replaceFirstChar { it.uppercase() },
+            status = status,
             isOnline = contact.isOnline,
             avatar = ChatAvatar(
                 contact.avatarUrl?.let { ChatAvatar.Kind.Photo(it, ChatAvatar.initials(name)) } ?: ChatAvatar.Kind.Initials(ChatAvatar.initials(name)),
                 ChatAvatar.colorIndex(contact.id),
             ),
+            isOfficial = contact.isOfficial,
         )
     }
 

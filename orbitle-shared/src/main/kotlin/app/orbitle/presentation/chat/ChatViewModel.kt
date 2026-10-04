@@ -1,9 +1,15 @@
 package app.orbitle.presentation.chat
 
+import app.orbitle.data.BotCommandRow
+import app.orbitle.data.ChatMemberRow
+import app.orbitle.data.ChatRepository
 import app.orbitle.data.CommentsRepository
+import app.orbitle.data.ComplaintChoice
+import app.orbitle.data.SharedChat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.orbitle.data.ChatHeaderInfo
+import app.orbitle.data.LockPayloads
 import app.orbitle.data.MessageRepository
 import app.orbitle.domain.Chat
 import app.orbitle.domain.ChatType
@@ -12,9 +18,14 @@ import app.orbitle.domain.MessageStatus
 import app.orbitle.domain.OrbitleError
 import app.orbitle.domain.OutgoingFile
 import app.orbitle.domain.SavedMessagesWelcome
+import app.orbitle.domain.AnimatedEmoji
+import app.orbitle.domain.FoundMessage
+import app.orbitle.domain.PinNotice
 import app.orbitle.domain.Sticker
+import app.orbitle.domain.TextSpan
 import app.orbitle.data.RecentStickerStore
 import app.orbitle.data.StickerRepository
+import app.orbitle.presentation.stickers.AnimojiDraft
 import app.orbitle.presentation.stickers.StickerPanel
 import app.orbitle.presentation.chatlist.ChatAvatar
 import app.orbitle.presentation.chatlist.ChatListFormatter
@@ -44,11 +55,13 @@ sealed interface ChatItem {
         /** Аватар автора слева (группы, последнее сообщение подряд). */
         val showsAvatar: Boolean,
         val avatar: ChatAvatar?,
-        /** Следующее сообщение того же автора: хвост пузыря не рисуется. */
+        /** Следующее сообщение того же автора в пределах 15 минут: отдельный нижний угол не рисуется. */
         val continues: Boolean,
         val isGroupChat: Boolean,
         /** Плашка комментариев под постом канала: число, `null` — плашки нет. */
         val comments: Int? = null,
+        /** Предыдущее сообщение того же автора в пределах 15 минут. Углы сверху не меняет. */
+        val joinsPrevious: Boolean = false,
     ) : ChatItem {
         override val key: String get() = message.id
     }
@@ -84,9 +97,38 @@ data class ChatUiState(
     val attachments: List<OutgoingFile> = emptyList(),
     /** Доля загрузки отправляемых вложений, `null` — ничего не грузится. */
     val uploadProgress: Float? = null,
+    /** Закреплённое сообщение. Пусто, если закрепа нет. */
+    val pinnedMessageId: String? = null,
+    val pinnedText: String? = null,
+    /** Подсказки `@` и `/` над полем ввода. */
+    val hints: ComposerHints = ComposerHints(),
 ) {
     val canSend: Boolean get() = draft.isNotBlank() || attachments.isNotEmpty()
 }
+
+/** Люди для `@` и команды бота для `/`. */
+data class ComposerHints(
+    val mentions: List<ChatMemberRow> = emptyList(),
+    val commands: List<BotCommandRow> = emptyList(),
+)
+
+/** Поиск внутри открытого чата. */
+data class InChatSearchState(
+    val query: String = "",
+    val hits: List<FoundMessage> = emptyList(),
+    val busy: Boolean = false,
+    val error: String? = null,
+)
+
+/** Участники, общие чаты, жалобы и сигнал звонка. */
+data class ChatToolsState(
+    val members: List<ChatMemberRow> = emptyList(),
+    val shared: List<SharedChat> = emptyList(),
+    val reasons: List<ComplaintChoice> = emptyList(),
+    val busy: Boolean = false,
+    val notice: String? = null,
+    val error: String? = null,
+)
 
 /** Экран переписки: лента, поле ввода, ответ, правка, удаление, реакции. */
 class ChatViewModel(
@@ -106,6 +148,7 @@ class ChatViewModel(
     /** Комментарии постов канала; `null` — без них. */
     private val comments: CommentsRepository? = null,
     mediaSaver: MediaSaver? = null,
+    private val chats: ChatRepository? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatUiState())
@@ -114,6 +157,15 @@ class ChatViewModel(
     private val _messages = MutableStateFlow<String?>(null)
     /** Ошибки и уведомления для снекбара. */
     val messages: StateFlow<String?> = _messages.asStateFlow()
+
+    private val _search = MutableStateFlow(InChatSearchState())
+    val search: StateFlow<InChatSearchState> = _search.asStateFlow()
+
+    private val _tools = MutableStateFlow(ChatToolsState())
+    val tools: StateFlow<ChatToolsState> = _tools.asStateFlow()
+
+    private val _scheduled = MutableStateFlow<List<FoundMessage>>(emptyList())
+    val scheduled: StateFlow<List<FoundMessage>> = _scheduled.asStateFlow()
 
     /** Голосовые, расшифровка, просмотр фото и видео, файлы. */
     val media = ChatMedia(chatId, repository, viewModelScope, voicePlayer, files, mediaSaver, onNotice = { _messages.value = it }, onError = { show(it) })
@@ -132,6 +184,19 @@ class ChatViewModel(
     /** Счётчики комментариев от сервера: id поста → число. */
     private val commentCounts = HashMap<String, Int>()
     private val askedCounts = HashSet<String>()
+    /** Сообщения, для которых уже спрашивали реакции (`MSG_GET_REACTIONS`). */
+    private val askedReactions = HashSet<String>()
+    /** Анимодзи, вставленные в поле из панели. */
+    private val animojiDraft = AnimojiDraft()
+    private val mentionDraft = MentionDraft()
+    /** Локальный закреп, пока в истории не появится более новое служебное pin/unpin. */
+    private var pinOverride: PinNotice? = null
+    /** Id сообщения истории, которое было последним pin-notice в момент локального pin/unpin. */
+    private var pinBaselineId: String? = null
+    private var memberRows: List<ChatMemberRow> = emptyList()
+    private var commandRows: List<BotCommandRow> = emptyList()
+    private var membersAsked = false
+    private var commandsAsked = false
 
     private val _comments = MutableStateFlow<CommentsModel?>(null)
     /** Открытое обсуждение поста. */
@@ -144,6 +209,7 @@ class ChatViewModel(
                 history = it
                 rebuild()
                 markRead()
+                requestReactions()
             }
         }
         viewModelScope.launch {
@@ -198,8 +264,37 @@ class ChatViewModel(
     }
 
     fun setDraft(text: String) {
+        if (text.isEmpty()) {
+            animojiDraft.clear()
+            mentionDraft.clear()
+        } else {
+            mentionDraft.retainPresent(text)
+        }
         _state.update { it.copy(draft = text) }
         if (_state.value.editing == null) drafts?.put(chatId, text)
+        refreshHints(text)
+    }
+
+    /** Вставить упоминание вместо хвоста `@запрос`. */
+    fun insertMention(member: ChatMemberRow) {
+        val draft = _state.value.draft
+        val at = draft.lastIndexOf('@')
+        if (at < 0) return
+        val token = "@${member.name}"
+        mentionDraft.insert(token, member.id)
+        setDraft(draft.substring(0, at) + token + " ")
+    }
+
+    /** Подставить команду бота в поле. */
+    fun insertCommand(command: BotCommandRow) {
+        val name = command.name.trim().removePrefix("/")
+        if (name.isEmpty()) return
+        setDraft("/$name ")
+    }
+
+    /** Анимодзи из панели: символ вставляет экран, отметка уйдёт вместе с текстом. */
+    fun noteAnimoji(emoji: AnimatedEmoji) {
+        animojiDraft.insert(emoji)
     }
 
     /** Отправить стикер сразу, с текущим ответом. */
@@ -249,17 +344,23 @@ class ChatViewModel(
         val text = _state.value.draft.trim()
         val attachments = _state.value.attachments
         if (attachments.isNotEmpty() && _state.value.editing == null) {
+            animojiDraft.clear()
+            mentionDraft.clear()
             sendAttachments(attachments, text)
             return
         }
         if (text.isEmpty()) return
+        val marks = animojiDraft.spans(text) + mentionDraft.spans(text)
+        animojiDraft.clear()
+        mentionDraft.clear()
         _state.value.editing?.let { saveEdit(it, text); return }
         val reply = _state.value.replyTo
         _state.update { it.copy(draft = "", replyTo = null) }
         drafts?.put(chatId, "")
         viewModelScope.launch {
             try {
-                repository.send(chatId, text, reply?.id)
+                if (marks.isEmpty()) repository.send(chatId, text, reply?.id)
+                else repository.sendFormatted(chatId, text, reply?.id, marks)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -415,6 +516,27 @@ class ChatViewModel(
 
     // Реакции
 
+    /**
+     * Реакции показанных сообщений (`MSG_GET_REACTIONS`): в истории канала их нет,
+     * а своя реакция с другого устройства приходит только в этом ответе.
+     * Каждое сообщение спрашивается один раз за открытие чата. Ошибка снимает отметку,
+     * и следующий приход истории спрашивает снова.
+     */
+    private fun requestReactions() {
+        val ids = history.filter { isServer(it) && !it.isService && it.id !in askedReactions }.map { it.id }
+        if (ids.isEmpty()) return
+        askedReactions += ids
+        viewModelScope.launch {
+            try {
+                repository.syncReactions(chatId, ids)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                askedReactions -= ids.toSet()
+            }
+        }
+    }
+
     fun canReact(message: Message): Boolean = isServer(message) && !message.isService
 
     fun quickReactions(message: Message): List<String> =
@@ -508,7 +630,320 @@ class ChatViewModel(
             chatId == Chat.SAVED_MESSAGES_ID -> "Пересылайте сюда сообщения, сохраняйте заметки и файлы — их видите только вы."
             else -> "Здесь пока нет сообщений"
         }
-        _state.update { it.copy(items = result, emptyHint = hint, isLoading = !latestLoaded && history.isEmpty()) }
+        val pinned = pinnedNow()
+        _state.update {
+            it.copy(
+                items = result,
+                emptyHint = hint,
+                isLoading = !latestLoaded && history.isEmpty(),
+                pinnedMessageId = pinned?.first,
+                pinnedText = pinned?.second,
+            )
+        }
+    }
+
+    /** Последнее служебное pin/unpin в истории: id сообщения и само уведомление. */
+    private fun latestPinAnchor(): Pair<String, PinNotice>? =
+        history.asReversed().firstNotNullOfOrNull { message -> message.content.pin?.let { message.id to it } }
+
+    private fun pinnedNow(): Pair<String, String>? {
+        val latest = latestPinAnchor()
+        if (pinOverride != null && latest?.first != pinBaselineId) {
+            pinOverride = null
+            pinBaselineId = null
+        }
+        val pin = pinOverride ?: latest?.second
+        val id = pin?.messageId ?: return null
+        return id to pin.preview.ifBlank { "Сообщение" }
+    }
+
+    fun canPin(message: Message): Boolean = isServer(message) && !message.isService
+
+    fun pin(message: Message) {
+        if (!canPin(message)) return
+        viewModelScope.launch {
+            try {
+                repository.pin(chatId, message.id)
+                pinBaselineId = latestPinAnchor()?.first
+                pinOverride = PinNotice(message.id, message.replySnippet)
+                rebuild()
+                _messages.value = "Сообщение закреплено"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                show(e)
+            }
+        }
+    }
+
+    fun unpin() {
+        viewModelScope.launch {
+            try {
+                repository.pin(chatId, "0")
+                pinBaselineId = latestPinAnchor()?.first
+                pinOverride = PinNotice(null, "")
+                rebuild()
+                _messages.value = "Закреп снят"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                show(e)
+            }
+        }
+    }
+
+    fun scheduleAt(text: String, sendAt: Long) {
+        val body = text.trim()
+        if (body.isEmpty()) {
+            _messages.value = "Нечего откладывать"
+            return
+        }
+        viewModelScope.launch {
+            try {
+                repository.schedule(chatId, body, sendAt)
+                _messages.value = "Сообщение отложено"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                show(e)
+            }
+        }
+    }
+
+    fun loadScheduled() {
+        viewModelScope.launch {
+            try {
+                _scheduled.value = repository.scheduled(chatId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                show(e)
+            }
+        }
+    }
+
+    fun sendPoll(title: String, answers: List<String>) {
+        val clean = answers.map { it.trim() }.filter { it.isNotEmpty() }
+        if (title.trim().isEmpty() || clean.size < 2) {
+            _messages.value = "Нужны вопрос и два ответа"
+            return
+        }
+        viewModelScope.launch {
+            try {
+                repository.sendPoll(chatId, title.trim(), clean)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                show(e)
+            }
+        }
+    }
+
+    fun vote(message: Message, answerId: String) {
+        val poll = message.content.poll ?: return
+        if (!isServer(message)) return
+        viewModelScope.launch {
+            try {
+                repository.votePoll(chatId, message.id, poll.id, answerId)
+                repository.loadLatest(chatId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                show(e)
+            }
+        }
+    }
+
+    fun searchInside(query: String) {
+        val term = query.trim()
+        if (term.isEmpty()) {
+            _search.value = InChatSearchState()
+            return
+        }
+        viewModelScope.launch {
+            _search.update { it.copy(query = term, busy = true, error = null) }
+            try {
+                val hits = repository.searchInChat(chatId, term)
+                if (_search.value.query != term) return@launch
+                _search.update { it.copy(hits = hits, busy = false) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (_search.value.query != term) return@launch
+                _search.update { it.copy(busy = false, hits = emptyList(), error = (e as? OrbitleError)?.userMessage ?: "Не удалось найти") }
+            }
+        }
+    }
+
+    /** Участники, общие чаты с собеседником и причины жалобы, если тип известен. */
+    fun loadTools() {
+        val source = chats ?: return
+        viewModelScope.launch {
+            _tools.update { it.copy(busy = true, error = null) }
+            try {
+                val chat = header?.chat
+                val members = runCatching { source.members(chatId) }.getOrDefault(emptyList())
+                val shared = chat?.peerId?.let { runCatching { source.commonChats(it) }.getOrDefault(emptyList()) }.orEmpty()
+                val typeId = when (chat?.type) {
+                    ChatType.CHANNEL -> LockPayloads.COMPLAINT_CHANNEL
+                    ChatType.PRIVATE -> LockPayloads.COMPLAINT_USER
+                    else -> null
+                }
+                val reasons = if (typeId == null) emptyList() else {
+                    runCatching { source.complaintReasons()[typeId].orEmpty() }.getOrDefault(emptyList())
+                }
+                _tools.update { it.copy(members = members, shared = shared, reasons = reasons, busy = false) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _tools.update { it.copy(busy = false, error = (e as? OrbitleError)?.userMessage ?: "Не удалось открыть сведения чата") }
+            }
+        }
+    }
+
+    fun complain(reasonId: Int) {
+        val source = chats ?: return
+        val chat = header?.chat ?: return
+        val (typeId, ids) = when (chat.type) {
+            ChatType.CHANNEL -> LockPayloads.COMPLAINT_CHANNEL to listOf(chatId)
+            ChatType.PRIVATE -> {
+                val peer = chat.peerId ?: return
+                LockPayloads.COMPLAINT_USER to listOf(peer)
+            }
+            else -> return
+        }
+        viewModelScope.launch {
+            _tools.update { it.copy(busy = true, error = null, notice = null) }
+            try {
+                val ok = source.complain(reasonId, typeId, ids)
+                _tools.update {
+                    it.copy(busy = false, notice = if (ok) "Жалоба отправлена" else "Сервер не принял жалобу")
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _tools.update { it.copy(busy = false, error = (e as? OrbitleError)?.userMessage ?: "Не удалось отправить жалобу") }
+            }
+        }
+    }
+
+    /** Удалить чат целиком. После успеха [onLeft] закрывает экран. */
+    fun deleteChat(forEveryone: Boolean, onLeft: () -> Unit) {
+        val source = chats ?: return
+        viewModelScope.launch {
+            _tools.update { it.copy(busy = true, error = null) }
+            try {
+                source.deleteChat(chatId, forEveryone)
+                _tools.update { it.copy(busy = false) }
+                onLeft()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _tools.update { it.copy(busy = false, error = (e as? OrbitleError)?.userMessage ?: "Не удалось удалить чат") }
+            }
+        }
+    }
+
+    /** Очистить переписку. Чат остаётся открытым. */
+    fun clearHistory(forEveryone: Boolean) {
+        val source = chats ?: return
+        viewModelScope.launch {
+            _tools.update { it.copy(busy = true, error = null, notice = null) }
+            try {
+                source.clearHistory(chatId, forEveryone)
+                _tools.update { it.copy(busy = false, notice = "История очищена") }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _tools.update { it.copy(busy = false, error = (e as? OrbitleError)?.userMessage ?: "Не удалось очистить историю") }
+            }
+        }
+    }
+
+    /**
+     * Просит сервер начать звонок. Звук и видео не передаются:
+     * в [messages] остаётся честная фраза, если сервер принял сигнал.
+     */
+    fun signalCall(video: Boolean) {
+        val source = chats ?: return
+        val peer = header?.chat?.peerId ?: return
+        if (header?.chat?.type != ChatType.PRIVATE) return
+        viewModelScope.launch {
+            _tools.update { it.copy(busy = true, error = null) }
+            try {
+                val call = source.signalCall(peer, video)
+                _tools.update { it.copy(busy = false) }
+                _messages.value = if (call == null) {
+                    "Сервер не принял звонок"
+                } else {
+                    "Сервер принял звонок. Звук и видео этот клиент не передаёт."
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _tools.update { it.copy(busy = false, error = (e as? OrbitleError)?.userMessage ?: "Не удалось позвонить") }
+            }
+        }
+    }
+
+    private fun refreshHints(text: String) {
+        val mention = mentionQuery(text)
+        val command = commandQuery(text)
+        val source = chats
+        if (source != null && mention != null && !membersAsked) {
+            membersAsked = true
+            viewModelScope.launch {
+                try {
+                    memberRows = source.members(chatId)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    membersAsked = false
+                }
+                publishHints(_state.value.draft)
+            }
+        }
+        val bot = header?.chat?.isBot == true
+        val peer = header?.chat?.peerId
+        if (source != null && command != null && bot && peer != null && !commandsAsked) {
+            commandsAsked = true
+            viewModelScope.launch {
+                try {
+                    commandRows = source.botCommands(peer)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    commandsAsked = false
+                }
+                publishHints(_state.value.draft)
+            }
+        }
+        publishHints(text)
+    }
+
+    private fun publishHints(text: String) {
+        val mention = mentionQuery(text)
+        val command = commandQuery(text)
+        val bot = header?.chat?.isBot == true
+        val mentions = if (mention == null) emptyList() else memberRows.filter { it.name.contains(mention, ignoreCase = true) }.take(8)
+        val commands = if (command == null || !bot) emptyList() else commandRows.filter {
+            it.name.removePrefix("/").contains(command, ignoreCase = true)
+        }.take(8)
+        _state.update { it.copy(hints = ComposerHints(mentions, commands)) }
+    }
+
+    private fun mentionQuery(text: String): String? {
+        val at = text.lastIndexOf('@')
+        if (at < 0) return null
+        val tail = text.substring(at + 1)
+        if (tail.any { it.isWhitespace() }) return null
+        return tail
+    }
+
+    private fun commandQuery(text: String): String? {
+        if (!text.startsWith("/")) return null
+        if (text.any { it.isWhitespace() }) return null
+        return text.removePrefix("/")
     }
 
     // Комментарии
@@ -538,6 +973,8 @@ class ChatViewModel(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
+                    // Спросить ещё раз, когда лента обновится: иначе плашка так и не появится.
+                    askedCounts -= chunk.toSet()
                     continue
                 }
                 if (counts.isEmpty()) continue
@@ -614,9 +1051,12 @@ internal fun feedItems(
             continue
         }
         val next = ordered.getOrNull(index + 1)
-        val sameAsPrevious = previous != null && previous.authorId == message.authorId
-        val sameAsNext = next != null && !next.isService && next.authorId == message.authorId &&
-            formatter.dayKey(next.timeMs) == day
+        val sameAsPrevious = previous != null && messagesAttach(
+            message.authorId, message.timeMs, previous.authorId, previous.timeMs, sameDay = true,
+        )
+        val sameAsNext = next != null && !next.isService && messagesAttach(
+            message.authorId, message.timeMs, next.authorId, next.timeMs, formatter.dayKey(next.timeMs) == day,
+        )
         val outgoing = isOutgoing(message)
         val author = if (isGroup && !outgoing && !sameAsPrevious) message.authorName.ifEmpty { null } else null
         val avatar = if (isGroup && !outgoing && !sameAsNext) {
@@ -637,6 +1077,7 @@ internal fun feedItems(
             continues = sameAsNext,
             isGroupChat = isGroup && !outgoing,
             comments = comments(message),
+            joinsPrevious = sameAsPrevious,
         )
         previous = message
     }

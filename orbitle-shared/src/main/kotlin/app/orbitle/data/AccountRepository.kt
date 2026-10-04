@@ -47,6 +47,15 @@ interface AccountRepository {
     /** Пароль для входа и почта восстановления (`AUTH_2FA_DETAILS` 104). */
     suspend fun twoFactorStatus(): TwoFactorStatus
 
+    /** Включить облачный пароль. Почта задаётся отдельно, уже после включения. */
+    suspend fun enablePassword(password: String, hint: String?) {}
+
+    /** Сменить облачный пароль: старый, затем новый. */
+    suspend fun changePassword(oldPassword: String, newPassword: String) {}
+
+    /** Выключить облачный пароль. */
+    suspend fun disablePassword(password: String) {}
+
     /**
      * Начинает смену почты: новый трек (`AUTH_CREATE_TRACK` 112) и проверка текущего пароля
      * (`AUTH_CHECK_PASSWORD` 113). Возвращает идентификатор трека.
@@ -138,6 +147,19 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
         statusOf(client.api.twoFactor.status())
     }
 
+    override suspend fun enablePassword(password: String, hint: String?) {
+        val trimmed = hint?.trim()?.takeIf { it.isNotEmpty() }
+        guarded(TwoFactorErrors::password) { client.api.twoFactor.enable(password, hint = trimmed) }
+    }
+
+    override suspend fun changePassword(oldPassword: String, newPassword: String) {
+        guarded(TwoFactorErrors::password) { client.api.twoFactor.changePassword(oldPassword, newPassword) }
+    }
+
+    override suspend fun disablePassword(password: String) {
+        guarded(TwoFactorErrors::password) { client.api.twoFactor.disable(password) }
+    }
+
     override suspend fun startEmailChange(password: String): String = guarded(TwoFactorErrors::password) {
         val track = client.api.twoFactor.createTrack()
         client.api.twoFactor.checkCurrentPassword(track, password)
@@ -204,7 +226,23 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
                 safeMode = c.userFlag("SAFE_MODE") ?: false,
                 inactiveTtl = InactiveTtl.of(c.userString("INACTIVE_TTL")),
                 inviteLink = c.inviteLink?.takeIf { it.isNotBlank() },
+                quickReaction = quickReactionOf(c),
+                quickReactionEnabled = c.userFlag("DOUBLE_TAP_REACTION_DISABLED") != true,
             )
+        }
+
+        /**
+         * `DOUBLE_TAP_REACTION_VALUE`: строка-эмодзи или карта с `id`.
+         * Пустое и неизвестное значение — [AccountSettings.DEFAULT_QUICK_REACTION].
+         */
+        fun quickReactionOf(config: AccountConfig): String {
+            val raw = config.user["DOUBLE_TAP_REACTION_VALUE"]
+            val text = when (raw) {
+                is String -> raw.trim()
+                is Map<*, *> -> ((raw["id"] ?: raw["reaction"]) as? String)?.trim()
+                else -> null
+            }
+            return text?.takeIf { it.isNotEmpty() && it.length <= 32 } ?: AccountSettings.DEFAULT_QUICK_REACTION
         }
 
         /**
@@ -216,6 +254,10 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
             is PrivacyChange.PhonePrivacy -> mapOf("PHONE_NUMBER_PRIVACY" to change.access.wire)
             is PrivacyChange.OnlineHidden -> mapOf("HIDDEN" to change.hidden)
             is PrivacyChange.Inactive -> mapOf("INACTIVE_TTL" to change.ttl.wire)
+            is PrivacyChange.QuickReaction -> linkedMapOf(
+                "DOUBLE_TAP_REACTION_VALUE" to change.emoji,
+                "DOUBLE_TAP_REACTION_DISABLED" to false,
+            )
             is PrivacyChange.SafeMode -> if (change.enabled) {
                 linkedMapOf(
                     "INCOMING_CALL" to "CONTACTS", "SEARCH_BY_PHONE" to "CONTACTS", "SAFE_MODE_NO_PIN" to true,

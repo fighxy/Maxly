@@ -12,6 +12,8 @@ struct ChatProfileContext {
     var onToggleMute: (() -> Void)?
     /// Вернуться в чат и подсветить сообщение.
     var onShowMessage: (Message) -> Void
+    /// Очистить переписку или удалить чат. `true` в первом аргументе — очистка, во втором — у всех.
+    var onEraseChat: ((Bool, Bool) -> Void)? = nil
 }
 
 /// Профиль собеседника, бота, группы или канала: крупный аватар и имя,
@@ -32,6 +34,8 @@ struct ChatProfileView: View {
     /// Сдвиг шапки: больше нуля — профиль тянут вниз, меньше — прокрутили.
     @State private var offset: CGFloat = 0
     @State private var avatarViewer: MediaViewerRequest?
+    /// Подтверждение очистки или удаления.
+    @State private var erase: EraseAsk?
     @Namespace private var tabs
 
     private static let avatarSize: CGFloat = 100
@@ -57,6 +61,32 @@ struct ChatProfileView: View {
                     .opacity(titleShown ? 1 : 0)
                     .animation(.easeOut(duration: 0.18), value: titleShown)
             }
+        }
+        .confirmationDialog(
+            erase == .clear ? "Очистить историю?" : "Удалить чат?",
+            isPresented: eraseShown,
+            titleVisibility: .visible
+        ) {
+            if let erase {
+                let saved = viewModel.shown.kind == .saved
+                let personal = viewModel.shown.kind == .user || viewModel.shown.kind == .bot
+                if !saved {
+                    Button(erase == .clear
+                           ? (personal ? "Очистить у меня и у собеседника" : "Очистить у всех")
+                           : (personal ? "Удалить у меня и у собеседника" : "Удалить у всех"),
+                           role: .destructive) {
+                        context?.onEraseChat?(erase == .clear, true)
+                    }
+                }
+                Button(erase == .clear ? (saved ? "Очистить" : "Очистить только у меня") : (saved ? "Удалить" : "Удалить только у меня"), role: .destructive) {
+                    context?.onEraseChat?(erase == .clear, false)
+                }
+            }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text(erase == .clear
+                 ? "Все сообщения в этом чате будут удалены без возможности восстановления."
+                 : "Чат будет удалён вместе со всей перепиской.")
         }
         .task { await viewModel.load() }
         .refreshable { await viewModel.load() }
@@ -245,7 +275,17 @@ struct ChatProfileView: View {
                 copy(phone.value, message: "Номер скопирован")
             })
         }
+        if context?.onEraseChat != nil {
+            items.append(Action(id: "clear", title: "Очистить историю", systemImage: "eraser") { erase = .clear })
+            items.append(Action(id: "delete", title: "Удалить чат", systemImage: "trash") { erase = .delete })
+        }
         return items
+    }
+
+    private enum EraseAsk: Equatable { case clear, delete }
+
+    private var eraseShown: Binding<Bool> {
+        Binding(get: { erase != nil }, set: { if !$0 { erase = nil } })
     }
 
     // MARK: Сведения

@@ -2,6 +2,7 @@ package app.orbitle.presentation.stickers
 
 import app.orbitle.data.RecentStickerStore
 import app.orbitle.data.StickerRepository
+import app.orbitle.domain.AnimatedEmoji
 import app.orbitle.domain.Sticker
 import app.orbitle.domain.StickerCatalog
 import app.orbitle.domain.StickerSet
@@ -20,7 +21,9 @@ class MemoryRecents : RecentStickerStore {
 private class FakeStickers : StickerRepository {
     var catalogCalls = 0
     var fail = false
+    var animated = emptyList<AnimatedEmoji>()
     val asked = mutableListOf<List<String>>()
+    override suspend fun animatedEmoji() = animated
     override suspend fun catalog(): StickerCatalog {
         catalogCalls++
         if (fail) throw IllegalStateException("нет сети")
@@ -82,6 +85,24 @@ class StickerPanelTest {
         panel.usedSticker(Sticker("2", "u2"))
         assertEquals(listOf("2", "9"), panel.state.value.sections.first().stickerIds)
         assertEquals("2", recents.recentStickers.single().id)
+    }
+
+    @Test
+    fun animatedSectionFollowsRecentsAndRemembersKey() {
+        val fire = AnimatedEmoji(id = "3", emoji = "🔥", iconUrl = "https://i/3.png", lottieUrl = "https://a/3.json")
+        repo.animated = listOf(fire)
+        recents.recentEmoji = listOf("😀", "animoji:3", "animoji:missing")
+        val panel = StickerPanel(repo, recents, scope)
+        panel.prepare()
+        assertEquals("3", panel.state.value.animated.single().id)
+        val tabs = emojiTabs(panel.state.value)
+        assertEquals(listOf("recent", "animated", "people"), tabs.map { it.id }.take(3))
+        assertEquals(listOf("😀", "🔥"), tabs.first().picks.map { it.glyph })
+        assertEquals("3", tabs.first().picks.last().animated?.id)
+        assertEquals(StickerPanel.ANIMATED_TITLE, tabs[1].title)
+        panel.usedAnimated(fire)
+        assertEquals("animoji:3", recents.recentEmoji.first())
+        assertEquals("animoji:3", panel.state.value.emoji.first().emoji.first())
     }
 
     @Test

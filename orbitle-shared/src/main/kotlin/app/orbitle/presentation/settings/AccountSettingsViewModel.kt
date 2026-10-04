@@ -146,6 +146,13 @@ class AccountSettingsViewModel(private val repository: AccountRepository) : View
     fun setSafeMode(enabled: Boolean) = change(PrivacyChange.SafeMode(enabled))
     fun setInactiveTtl(ttl: InactiveTtl) = change(PrivacyChange.Inactive(ttl))
 
+    /** Быстрая реакция двойного нажатия. Пустую строку сервер не получает. */
+    fun setQuickReaction(emoji: String) {
+        val clean = emoji.trim()
+        if (clean.isEmpty() || clean.length > 32) return
+        change(PrivacyChange.QuickReaction(clean))
+    }
+
     /** Сразу показывает новое значение; при ошибке откатывает только его поле. */
     private fun change(change: PrivacyChange) {
         val before = _state.value.settings

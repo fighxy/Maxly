@@ -328,14 +328,14 @@ public enum ChatContentFormat {
         return !sameAuthor(authorId, nextAuthorId)
     }
 
-    /// Пузыри одного автора подряд (в пределах `window` и одного дня) слипаются: у склеенной
-    /// стороны угол меньше, имя стоит у первого, аватар у последнего.
+    /// Пузыри одного автора подряд (в пределах `window` и одного дня) слипаются.
+    /// Нижний угол автора меньше только у последнего в серии. Имя стоит у первого, аватар у последнего.
     public static func group(
         authorId: String,
         date: Date,
         previous: (authorId: String, date: Date)?,
         next: (authorId: String, date: Date)?,
-        window: TimeInterval = 10 * 60,
+        window: TimeInterval = 15 * 60,
         calendar: Calendar = .current
     ) -> BubbleGroup {
         func joins(_ other: (authorId: String, date: Date)?) -> Bool {

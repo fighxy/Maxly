@@ -15,3 +15,11 @@ data class StickerSet(val id: String, val name: String, val iconUrl: String?, va
 
 /** Каталог панели: недавние стикеры сервера и наборы (свои первыми). */
 data class StickerCatalog(val recentIds: List<String> = emptyList(), val sets: List<StickerSet> = emptyList())
+
+/** Анимированный эмодзи сервера: тот же каталог, что у реакций. */
+data class AnimatedEmoji(
+    val id: String,
+    val emoji: String,
+    val iconUrl: String? = null,
+    val lottieUrl: String? = null,
+)

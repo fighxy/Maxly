@@ -22,6 +22,12 @@ public struct Contact: Identifiable, Hashable, Sendable {
     public var phone: String?
     public var avatarURL: URL?
     public var presence: Presence
+    /// Опция `BOT`.
+    public var isBot: Bool
+    /// Опция `OFFICIAL`.
+    public var isOfficial: Bool
+    /// Опция `SERVICE_ACCOUNT`.
+    public var isServiceAccount: Bool
 
     public init(
         id: String,
@@ -29,7 +35,10 @@ public struct Contact: Identifiable, Hashable, Sendable {
         lastName: String = "",
         phone: String? = nil,
         avatarURL: URL? = nil,
-        presence: Presence = .unknown
+        presence: Presence = .unknown,
+        isBot: Bool = false,
+        isOfficial: Bool = false,
+        isServiceAccount: Bool = false
     ) {
         self.id = id
         self.firstName = firstName
@@ -37,6 +46,9 @@ public struct Contact: Identifiable, Hashable, Sendable {
         self.phone = phone
         self.avatarURL = avatarURL
         self.presence = presence
+        self.isBot = isBot
+        self.isOfficial = isOfficial
+        self.isServiceAccount = isServiceAccount
     }
 
     /// Имя для списка: имя и фамилия, иначе телефон.

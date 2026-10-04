@@ -46,7 +46,8 @@ enum MessageContentCodec {
             threadOf: nil,
             formatting: elements,
             forward: forwarded?.info,
-            edited: (object["edited"] as? Bool) == true
+            edited: (object["edited"] as? Bool) == true,
+            pin: pinNotice(object["attaches"])
         )
     }
 
@@ -197,9 +198,53 @@ enum MessageContentCodec {
             ))
         case "CALL":
             return .call(callContent(map))
+        case "POLL":
+            return poll(map).map(ChatAttachment.poll)
         default:
             return nil
         }
+    }
+
+    /// Опрос: без `pollId` или меньше чем с двумя ответами вложение пропускается.
+    private static func poll(_ map: [String: Any]) -> PollContent? {
+        guard let id = stringId(map["pollId"]) else { return nil }
+        let state = map["state"] as? [String: Any]
+        let results = (state?["result"] as? [Any]) ?? []
+        let answers = ((map["answers"] as? [Any]) ?? []).compactMap { item -> PollAnswer? in
+            guard let answer = item as? [String: Any], let answerId = stringId(answer["answerId"]) else { return nil }
+            let text = (answer["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !text.isEmpty else { return nil }
+            let votes = results.compactMap { $0 as? [String: Any] }
+                .first { stringId($0["answerId"]) == answerId }
+                .flatMap { integer($0["voteCount"]) } ?? 0
+            return PollAnswer(id: answerId, text: text, votes: votes)
+        }
+        guard answers.count >= 2 else { return nil }
+        let total = integer(state?["total"]) ?? answers.reduce(0) { $0 + $1.votes }
+        let title = (map["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return PollContent(id: id, title: title.isEmpty ? "Опрос" : title, answers: answers, total: total)
+    }
+
+    /// `CONTROL` `pin` / `unpin`. Текст берётся из `pinnedMessage.text`.
+    private static func pinNotice(_ value: Any?) -> PinNotice? {
+        guard let list = value as? [Any] else { return nil }
+        for item in list {
+            guard let map = item as? [String: Any] else { continue }
+            let type = ((map["_type"] as? String) ?? (map["type"] as? String))?.uppercased()
+            guard type == "CONTROL" else { continue }
+            switch (map["event"] as? String)?.lowercased() {
+            case "unpin":
+                return PinNotice(messageId: nil, preview: "")
+            case "pin":
+                guard let pinned = map["pinnedMessage"] as? [String: Any] else { return PinNotice(messageId: nil, preview: "") }
+                guard let id = stringId(pinned["id"]) else { return nil }
+                let text = (pinned["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                return PinNotice(messageId: id, preview: text.isEmpty ? "Сообщение" : text)
+            default:
+                continue
+            }
+        }
+        return nil
     }
 
     /// Звонок: `duration` в миллисекундах, `callType` AUDIO или VIDEO, `hangupType` HUNGUP,

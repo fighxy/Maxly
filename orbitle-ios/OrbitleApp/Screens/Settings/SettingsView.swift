@@ -90,7 +90,7 @@ struct SettingsView: View {
 
             Section {
                 NavigationLink {
-                    PlaceholderSettingsView(title: "Сообщения", systemImage: "bubble.left.and.text.bubble.right")
+                    MessagesSettingsView(model: account) { await container.reactionChoices() }
                 } label: {
                     SettingsRowLabel("Сообщения", systemImage: "bubble.left.fill", tint: .green)
                 }

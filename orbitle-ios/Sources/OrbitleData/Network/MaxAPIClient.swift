@@ -67,6 +67,8 @@ public protocol MaxAPI: Sendable {
     func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?) async -> Result<SentMessage, MaxAPIError>
     /// Текст с анимодзи (`ANIMOJI` поверх эмодзи). Без отметок — как обычный текст.
     func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?, animoji: [CoreAnimojiMark]) async -> Result<SentMessage, MaxAPIError>
+    /// Текст с анимодзи и упоминаниями.
+    func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?, animoji: [CoreAnimojiMark], mentions: [CoreMentionMark]) async -> Result<SentMessage, MaxAPIError>
     /// Заменить текст отправленного сообщения (по серверному id).
     func editMessage(chatId: String, messageId: String, text: String) async -> Result<MessageRecord, MaxAPIError>
     /// Удалить сообщения по серверным id: у себя или у всех.
@@ -101,6 +103,25 @@ public protocol MaxAPI: Sendable {
     func searchPublic(query: String) async -> Result<[ChatSearchResult], MaxAPIError>
     /// Сообщения во всех чатах по тексту.
     func searchMessages(query: String) async -> Result<[FoundMessage], MaxAPIError>
+    /// Новая группа. `nil` в успехе — сервер не вернул чат.
+    func createGroup(title: String, memberIds: [String]) async -> Result<ChatRecord?, MaxAPIError>
+    /// Новый канал. `nil` в успехе — сервер не вернул чат.
+    func createChannel(title: String) async -> Result<ChatRecord?, MaxAPIError>
+    /// Вход по ссылке приглашения.
+    func joinByLink(_ link: String) async -> Result<ChatRecord?, MaxAPIError>
+    /// Удалить чат (`CHAT_DELETE` 52). `lastEventTimeMs` — время последнего события чата.
+    func deleteChat(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async -> Result<Void, MaxAPIError>
+    /// Очистить переписку (`CHAT_CLEAR` 54). Те же три поля, что у удаления чата.
+    func clearHistory(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async -> Result<Void, MaxAPIError>
+    func pinMessage(chatId: String, messageId: String) async -> Result<Void, MaxAPIError>
+    func scheduleMessage(chatId: String, text: String, sendAtMs: Int64) async -> Result<Void, MaxAPIError>
+    func scheduledMessages(chatId: String) async -> Result<[FoundMessage], MaxAPIError>
+    func sendPoll(chatId: String, title: String, answers: [String]) async -> Result<Void, MaxAPIError>
+    func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async -> Result<Void, MaxAPIError>
+    func searchInChat(chatId: String, query: String) async -> Result<[FoundMessage], MaxAPIError>
+    func chatMembers(chatId: String) async -> Result<[CoreChatMember], MaxAPIError>
+    func botCommands(botId: String) async -> Result<[CoreBotCommand], MaxAPIError>
+    func signalCall(calleeId: String, isVideo: Bool) async -> Result<CoreCallSignal?, MaxAPIError>
 }
 
 public extension MaxAPI {
@@ -139,6 +160,15 @@ public extension MaxAPI {
     /// Источник без поиска на сервере.
     func searchPublic(query: String) async -> Result<[ChatSearchResult], MaxAPIError> { .failure(.invalidResponse) }
     func searchMessages(query: String) async -> Result<[FoundMessage], MaxAPIError> { .failure(.invalidResponse) }
+    func createGroup(title: String, memberIds: [String]) async -> Result<ChatRecord?, MaxAPIError> { .failure(.invalidResponse) }
+    func createChannel(title: String) async -> Result<ChatRecord?, MaxAPIError> { .failure(.invalidResponse) }
+    func joinByLink(_ link: String) async -> Result<ChatRecord?, MaxAPIError> { .failure(.invalidResponse) }
+    func deleteChat(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async -> Result<Void, MaxAPIError> {
+        .failure(.invalidResponse)
+    }
+    func clearHistory(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async -> Result<Void, MaxAPIError> {
+        .failure(.invalidResponse)
+    }
     /// Источник без загрузок.
     func sendAttachments(chatId: String, drafts: [AttachmentDraft], caption: String, replyTo: String?,
                          progress: @escaping @Sendable (Double) -> Void) async -> Result<MessageRecord, MaxAPIError> {
@@ -152,6 +182,18 @@ public extension MaxAPI {
     func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?, animoji: [CoreAnimojiMark]) async -> Result<SentMessage, MaxAPIError> {
         await sendMessage(chatId: chatId, text: text, clientId: clientId, replyTo: replyTo)
     }
+    func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?, animoji: [CoreAnimojiMark], mentions: [CoreMentionMark]) async -> Result<SentMessage, MaxAPIError> {
+        await sendMessage(chatId: chatId, text: text, clientId: clientId, replyTo: replyTo, animoji: animoji)
+    }
+    func pinMessage(chatId: String, messageId: String) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
+    func scheduleMessage(chatId: String, text: String, sendAtMs: Int64) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
+    func scheduledMessages(chatId: String) async -> Result<[FoundMessage], MaxAPIError> { .failure(.invalidResponse) }
+    func sendPoll(chatId: String, title: String, answers: [String]) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
+    func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
+    func searchInChat(chatId: String, query: String) async -> Result<[FoundMessage], MaxAPIError> { .failure(.invalidResponse) }
+    func chatMembers(chatId: String) async -> Result<[CoreChatMember], MaxAPIError> { .failure(.invalidResponse) }
+    func botCommands(botId: String) async -> Result<[CoreBotCommand], MaxAPIError> { .failure(.invalidResponse) }
+    func signalCall(calleeId: String, isVideo: Bool) async -> Result<CoreCallSignal?, MaxAPIError> { .failure(.invalidResponse) }
 }
 
 /// Клиент API Max поверх `MaxCore`. Типы Kotlin сюда не попадают.
@@ -214,11 +256,73 @@ public final class MaxAPIClient: MaxAPI, Sendable {
     }
 
     public func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?, animoji: [CoreAnimojiMark]) async -> Result<SentMessage, MaxAPIError> {
-        guard !animoji.isEmpty else { return await sendMessage(chatId: chatId, text: text, clientId: clientId, replyTo: replyTo) }
+        await sendMessage(chatId: chatId, text: text, clientId: clientId, replyTo: replyTo, animoji: animoji, mentions: [])
+    }
+
+    public func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?, animoji: [CoreAnimojiMark], mentions: [CoreMentionMark]) async -> Result<SentMessage, MaxAPIError> {
+        guard !animoji.isEmpty || !mentions.isEmpty else {
+            return await sendMessage(chatId: chatId, text: text, clientId: clientId, replyTo: replyTo)
+        }
         return await catching {
-            let sent = try await core.sendText(chatId: chatId, text: text, replyTo: replyTo ?? "", animoji: animoji)
+            let sent = try await core.sendRichText(chatId: chatId, text: text, replyTo: replyTo ?? "", animoji: animoji, mentions: mentions)
             return SentMessage(serverId: sent.id, timestamp: Date(unixMillis: sent.timeMs))
         }
+    }
+
+    public func pinMessage(chatId: String, messageId: String) async -> Result<Void, MaxAPIError> {
+        await catching { try await core.pinMessage(chatId: chatId, messageId: messageId) }
+    }
+
+    public func scheduleMessage(chatId: String, text: String, sendAtMs: Int64) async -> Result<Void, MaxAPIError> {
+        await catching { try await core.scheduleMessage(chatId: chatId, text: text, sendAtMs: sendAtMs) }
+    }
+
+    public func scheduledMessages(chatId: String) async -> Result<[FoundMessage], MaxAPIError> {
+        await catching {
+            try await core.scheduledMessages(chatId: chatId).map { found in
+                FoundMessage(
+                    chatId: found.chatId,
+                    messageId: found.messageId,
+                    senderId: found.senderId,
+                    text: found.text.trimmingCharacters(in: .whitespacesAndNewlines),
+                    date: found.timeMs > 0 ? Date(timeIntervalSince1970: TimeInterval(found.timeMs) / 1000) : nil
+                )
+            }
+        }
+    }
+
+    public func sendPoll(chatId: String, title: String, answers: [String]) async -> Result<Void, MaxAPIError> {
+        await catching { _ = try await core.sendPoll(chatId: chatId, title: title, answers: answers) }
+    }
+
+    public func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async -> Result<Void, MaxAPIError> {
+        await catching { try await core.votePoll(chatId: chatId, messageId: messageId, pollId: pollId, answerId: answerId) }
+    }
+
+    public func searchInChat(chatId: String, query: String) async -> Result<[FoundMessage], MaxAPIError> {
+        await catching {
+            try await core.searchInChat(chatId: chatId, query: query).map { found in
+                FoundMessage(
+                    chatId: found.chatId.isEmpty ? chatId : found.chatId,
+                    messageId: found.messageId,
+                    senderId: found.senderId,
+                    text: found.text.trimmingCharacters(in: .whitespacesAndNewlines),
+                    date: found.timeMs > 0 ? Date(timeIntervalSince1970: TimeInterval(found.timeMs) / 1000) : nil
+                )
+            }
+        }
+    }
+
+    public func chatMembers(chatId: String) async -> Result<[CoreChatMember], MaxAPIError> {
+        await catching { try await core.chatMembers(chatId: chatId) }
+    }
+
+    public func botCommands(botId: String) async -> Result<[CoreBotCommand], MaxAPIError> {
+        await catching { try await core.botCommands(botId: botId) }
+    }
+
+    public func signalCall(calleeId: String, isVideo: Bool) async -> Result<CoreCallSignal?, MaxAPIError> {
+        await catching { try await core.signalCall(calleeId: calleeId, isVideo: isVideo) }
     }
 
     public func editMessage(chatId: String, messageId: String, text: String) async -> Result<MessageRecord, MaxAPIError> {
@@ -341,6 +445,38 @@ public final class MaxAPIClient: MaxAPI, Sendable {
     public func setPinnedChats(_ chatIds: [String]) async -> Result<[String], MaxAPIError> {
         await catching {
             try await core.setPinnedChats(chatIds)
+        }
+    }
+
+    public func createGroup(title: String, memberIds: [String]) async -> Result<ChatRecord?, MaxAPIError> {
+        await catching {
+            guard let chat = try await core.createGroup(title: title, memberIds: memberIds) else { return nil }
+            return CoreMapping.chat(chat)
+        }
+    }
+
+    public func createChannel(title: String) async -> Result<ChatRecord?, MaxAPIError> {
+        await catching {
+            guard let chat = try await core.createChannel(title: title) else { return nil }
+            return CoreMapping.chat(chat)
+        }
+    }
+
+    public func joinByLink(_ link: String) async -> Result<ChatRecord?, MaxAPIError> {
+        await catching {
+            CoreMapping.chat(try await core.joinByLink(link))
+        }
+    }
+
+    public func deleteChat(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async -> Result<Void, MaxAPIError> {
+        await catching {
+            try await core.deleteChat(chatId: chatId, lastEventTimeMs: lastEventTimeMs, forEveryone: forEveryone)
+        }
+    }
+
+    public func clearHistory(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async -> Result<Void, MaxAPIError> {
+        await catching {
+            try await core.clearHistory(chatId: chatId, lastEventTimeMs: lastEventTimeMs, forEveryone: forEveryone)
         }
     }
 

@@ -60,6 +60,12 @@ public struct MessageBubble: View {
     private let onCancelUpload: (() -> Void)?
     /// Плеер кружка, играющего в ленте.
     private let roundPlayer: AnyView?
+    /// Двойное нажатие ставит выбранную быструю реакцию. `nil` — жест не вешается.
+    private let onDoubleTap: (() -> Void)?
+    /// Закрепить сообщение. `nil` — пункта нет.
+    private let onPin: (() -> Void)?
+    /// Голос в опросе: id ответа.
+    private let onVote: ((String) -> Void)?
 
     /// Сдвиг пузыря при свайпе «ответить».
     @State private var swipe: CGFloat = 0
@@ -112,7 +118,10 @@ public struct MessageBubble: View {
         onSaveToFiles: (() -> Void)? = nil,
         transcript: TranscriptPhase = .collapsed,
         onTranscribe: (() -> Void)? = nil,
-        onSeekVoice: ((Double) -> Void)? = nil
+        onSeekVoice: ((Double) -> Void)? = nil,
+        onDoubleTap: (() -> Void)? = nil,
+        onPin: (() -> Void)? = nil,
+        onVote: ((String) -> Void)? = nil
     ) {
         self.message = message
         self.isOutgoing = isOutgoing
@@ -150,6 +159,9 @@ public struct MessageBubble: View {
         self.uploadProgress = uploadProgress
         self.onCancelUpload = onCancelUpload
         self.roundPlayer = roundPlayer
+        self.onDoubleTap = onDoubleTap
+        self.onPin = onPin
+        self.onVote = onVote
     }
 
     public var body: some View {
@@ -212,11 +224,15 @@ public struct MessageBubble: View {
             if let onForward, message.status == .sent {
                 Button("Переслать", systemImage: "arrowshape.turn.up.right", action: onForward)
             }
+            if let onPin, message.status == .sent {
+                Button("Закрепить", systemImage: "pin", action: onPin)
+            }
             if let onDelete {
                 Divider()
                 Button("Удалить", systemImage: "trash", role: .destructive, action: onDelete)
             }
         }
+        .modifier(QuickDoubleTap(action: onDoubleTap))
     }
 
     // MARK: Реакции
@@ -429,22 +445,20 @@ public struct MessageBubble: View {
     private var shape: UnevenRoundedRectangle {
         let big = Self.radius
         let small = Self.joined
-        // Сторона хвоста (у своих справа, у чужих слева): низ всегда острее, верх — если
-        // пузырь продолжает серию.
-        let topTail = group.joinsPrevious ? small : big
-        let bottomTail = small
+        // Верх всегда крупный. Нижний угол со стороны автора меньше только у последнего в серии.
+        let bottomAuthor = group.joinsNext ? big : small
         if isOutgoing {
             return UnevenRoundedRectangle(
                 topLeadingRadius: big,
                 bottomLeadingRadius: big,
-                bottomTrailingRadius: bottomTail,
-                topTrailingRadius: topTail,
+                bottomTrailingRadius: bottomAuthor,
+                topTrailingRadius: big,
                 style: .continuous
             )
         }
         return UnevenRoundedRectangle(
-            topLeadingRadius: topTail,
-            bottomLeadingRadius: bottomTail,
+            topLeadingRadius: big,
+            bottomLeadingRadius: bottomAuthor,
             bottomTrailingRadius: big,
             topTrailingRadius: big,
             style: .continuous
@@ -486,6 +500,11 @@ public struct MessageBubble: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
             }
+            if let poll = message.content.poll {
+                PollChoices(poll: poll, outgoing: isOutgoing, onVote: onVote)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+            }
             ForEach(message.content.calls, id: \.id) { call in
                 // Время звонка — в его строке, как у голосового; при тексте или реакциях
                 // оно уходит туда.
@@ -500,7 +519,7 @@ public struct MessageBubble: View {
             }
             if hasText {
                 textBody
-            } else if visuals.isEmpty, message.content.voices.isEmpty, message.content.calls.isEmpty, !reactionsInside {
+            } else if visuals.isEmpty, message.content.voices.isEmpty, message.content.calls.isEmpty, message.content.poll == nil, !reactionsInside {
                 // Пустое сообщение, только файл или контакт: время отдельной строкой.
                 if message.content.files.isEmpty, message.content.contacts.isEmpty {
                     Text(message.text.isEmpty ? " " : message.text)
@@ -573,7 +592,8 @@ public struct MessageBubble: View {
             loadingId: loadingId,
             fillsWidth: hasFill,
             roundPlayer: roundPlayer,
-            onOpen: onOpen
+            onOpen: onOpen,
+            onDoubleTap: onDoubleTap
         )
         .padding(.horizontal, inset)
         .padding(.top, hasHeader ? 0 : inset)
@@ -872,5 +892,60 @@ public struct DaySeparator: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
             .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// Двойное нажатие рядом с одиночным: фото по-прежнему открывается с первого касания.
+struct QuickDoubleTap: ViewModifier {
+    let action: (() -> Void)?
+
+    func body(content: Content) -> some View {
+        if let action {
+            content.simultaneousGesture(TapGesture(count: 2).onEnded(action))
+        } else {
+            content
+        }
+    }
+}
+
+/// Ответы опроса. Нажатие отправляет голос, если экран передал `onVote`.
+private struct PollChoices: View {
+    let poll: PollContent
+    let outgoing: Bool
+    let onVote: ((String) -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(poll.title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(outgoing ? Color.white : Color.primary)
+            ForEach(poll.answers, id: \.id) { answer in
+                Button {
+                    onVote?(answer.id)
+                } label: {
+                    HStack {
+                        Text(answer.text)
+                            .font(.subheadline)
+                            .foregroundStyle(outgoing ? Color.white : Color.primary)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: 8)
+                        Text("\(answer.votes)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(outgoing ? Color.white.opacity(0.8) : Color.secondary)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background((outgoing ? Color.white : Color.primary).opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(onVote == nil)
+            }
+            Text(poll.total == 1 ? "1 голос" : "\(poll.total) голосов")
+                .font(.caption)
+                .foregroundStyle(outgoing ? Color.white.opacity(0.75) : Color.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Опрос, \(poll.title)")
     }
 }

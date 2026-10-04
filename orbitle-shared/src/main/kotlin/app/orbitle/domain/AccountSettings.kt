@@ -38,12 +38,17 @@ data class AccountSettings(
     val safeMode: Boolean = false,
     val inactiveTtl: InactiveTtl = InactiveTtl.SIX_MONTHS,
     val inviteLink: String? = null,
+    /** Эмодзи двойного нажатия (`DOUBLE_TAP_REACTION_VALUE`). Пустого значения у сервера нет — 👍. */
+    val quickReaction: String = DEFAULT_QUICK_REACTION,
+    /** `false`, когда сервер прислал `DOUBLE_TAP_REACTION_DISABLED`. */
+    val quickReactionEnabled: Boolean = true,
 ) {
     fun applying(change: PrivacyChange): AccountSettings = when (change) {
         is PrivacyChange.PhonePrivacy -> copy(phonePrivacy = change.access)
         is PrivacyChange.OnlineHidden -> copy(onlineHidden = change.hidden)
         is PrivacyChange.SafeMode -> copy(safeMode = change.enabled)
         is PrivacyChange.Inactive -> copy(inactiveTtl = change.ttl)
+        is PrivacyChange.QuickReaction -> copy(quickReaction = change.emoji, quickReactionEnabled = true)
     }
 
     /** Поле, которое меняет [change], взято из [other]: откат одной настройки. */
@@ -52,6 +57,11 @@ data class AccountSettings(
         is PrivacyChange.OnlineHidden -> copy(onlineHidden = other.onlineHidden)
         is PrivacyChange.SafeMode -> copy(safeMode = other.safeMode)
         is PrivacyChange.Inactive -> copy(inactiveTtl = other.inactiveTtl)
+        is PrivacyChange.QuickReaction -> copy(quickReaction = other.quickReaction, quickReactionEnabled = other.quickReactionEnabled)
+    }
+
+    companion object {
+        const val DEFAULT_QUICK_REACTION = "👍"
     }
 }
 
@@ -61,6 +71,8 @@ sealed interface PrivacyChange {
     data class OnlineHidden(val hidden: Boolean) : PrivacyChange
     data class SafeMode(val enabled: Boolean) : PrivacyChange
     data class Inactive(val ttl: InactiveTtl) : PrivacyChange
+    /** Быстрая реакция: двойное нажатие ставит этот эмодзи. Заодно включает её, если была выключена. */
+    data class QuickReaction(val emoji: String) : PrivacyChange
 }
 
 /** Пользователь из чёрного списка. */

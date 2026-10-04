@@ -1,4 +1,5 @@
 .build/
+orbitle-shared/.gradle/
 orbitle-ios/Vendor/
 .swiftpm/
 xcuserdata/

@@ -18,12 +18,25 @@ public protocol ContactRepository: Sendable {
     /// Текущий список и все его изменения.
     func contacts() -> AsyncStream<[Contact]>
     func addContact(phone: String, firstName: String, lastName: String) async throws(OrbitleError) -> Contact
+    /// Человек по номеру (`CONTACT_INFO_BY_PHONE` 46). `nil` — не найден. В контакты сам не попадает.
+    /// Короче семи цифр запрос не уходит.
+    func findByPhone(_ phone: String) async throws(OrbitleError) -> Contact?
+    /// Уже известный пользователь в контакты (`CONTACT_UPDATE` 34, `action: ADD`). Пустое имя не уходит.
+    func addFoundContact(userId: String, firstName: String) async throws(OrbitleError) -> Contact
     /// Попросить сервер прислать список заново. Новые подписки получат уже его.
     func sync() async throws(OrbitleError)
 }
 
 public extension ContactRepository {
     func addContact(phone: String, firstName: String, lastName: String) async throws(OrbitleError) -> Contact {
+        throw .invalidRequest
+    }
+
+    func findByPhone(_ phone: String) async throws(OrbitleError) -> Contact? {
+        throw .invalidRequest
+    }
+
+    func addFoundContact(userId: String, firstName: String) async throws(OrbitleError) -> Contact {
         throw .invalidRequest
     }
 

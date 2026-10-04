@@ -216,6 +216,10 @@ actor FakeChatRepository: ChatRepository {
         try await record("delete \(chatId) \(forEveryone)")
     }
 
+    func clearHistory(chatId: String, forEveryone: Bool) async throws(OrbitleError) {
+        try await record("clear \(chatId) \(forEveryone)")
+    }
+
     func loadMoreChats() async throws(OrbitleError) -> Bool {
         pageLoads += 1
         return morePages

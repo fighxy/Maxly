@@ -15,6 +15,8 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     private var observers: [UUID: AsyncStream<[Chat]>.Continuation] = [:]
     /// Отметка прочтения собеседника выросла: сообщения чата перерисовывают галочки.
     private var peerReadHandler: (@Sendable (String, Int64) async -> Void)?
+    /// Переписка стёрта в этом контексте: лента открытого чата живёт в другом акторе.
+    private var historyDropped: (@Sendable (String) async -> Void)?
     private var typingObservers: [UUID: AsyncStream<[String: [String]]>.Continuation] = [:]
     /// Кто печатает: id чата → id пользователя → когда это перестанет быть правдой.
     private var typingUntil: [String: [String: Date]] = [:]
@@ -54,7 +56,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         self.api = api
         self.typingTTL = typingTTL
         self.clock = clock
-        self.capabilities = [.pin, .reorderPins, .markUnread, .mute, .serverSearch]
+        self.capabilities = [.pin, .reorderPins, .markUnread, .mute, .serverSearch, .delete]
     }
 
     public static func make(stack: SwiftDataStack, api: any MaxAPI) -> ChatRepositoryImpl {
@@ -112,6 +114,10 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// - отрицательный счётчик считается нулём.
     public func setPeerReadHandler(_ handler: (@Sendable (String, Int64) async -> Void)?) {
         peerReadHandler = handler
+    }
+
+    public func setHistoryDroppedHandler(_ handler: (@Sendable (String) async -> Void)?) {
+        historyDropped = handler
     }
 
     public func upsert(_ records: [ChatRecord]) throws(OrbitleError) {
@@ -320,6 +326,121 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// реализацию по умолчанию из расширения протокола, а не эту.
     public func prepareDialog(_ draft: DialogDraft) async {
         pendingDialogs[draft.chatId] = draft
+    }
+
+    /// `async`, как у `prepareDialog`: иначе Swift взял бы пустую реализацию протокола.
+    public func createGroup(title: String, memberIds: [String]) async throws(OrbitleError) -> String? {
+        try await storeCreated(await api.createGroup(title: title, memberIds: memberIds))
+    }
+
+    public func createChannel(title: String) async throws(OrbitleError) -> String? {
+        try await storeCreated(await api.createChannel(title: title))
+    }
+
+    public func members(chatId: String) async throws(OrbitleError) -> [ChatMemberRef] {
+        switch await api.chatMembers(chatId: chatId) {
+        case .success(let rows):
+            return rows.map { ChatMemberRef(id: $0.id, name: $0.name) }
+        case .failure(let error):
+            throw error.orbitleError
+        }
+    }
+
+    public func botCommands(botId: String) async throws(OrbitleError) -> [BotCommandRef] {
+        switch await api.botCommands(botId: botId) {
+        case .success(let rows):
+            return rows.map { BotCommandRef(name: $0.name, summary: $0.summary) }
+        case .failure(let error):
+            throw error.orbitleError
+        }
+    }
+
+    public func signalCall(calleeId: String, isVideo: Bool) async throws(OrbitleError) -> String? {
+        switch await api.signalCall(calleeId: calleeId, isVideo: isVideo) {
+        case .success(let signal):
+            return signal?.conversationId
+        case .failure(let error):
+            throw error.orbitleError
+        }
+    }
+
+    public func joinByLink(_ link: String) async throws(OrbitleError) -> String? {
+        try await storeCreated(await api.joinByLink(link))
+    }
+
+    /// `async`, как у `prepareDialog`: иначе Swift взял бы пустую реализацию протокола.
+    public func delete(chatId: String, forEveryone: Bool) async throws(OrbitleError) {
+        let started = generation
+        let time = try eventTimeMs(chatId)
+        if case .failure(let error) = await api.deleteChat(chatId: chatId, lastEventTimeMs: time, forEveryone: forEveryone) {
+            throw error.orbitleError
+        }
+        try ensureCurrent(started)
+        try delete(chatId: chatId)
+        await historyDropped?(chatId)
+    }
+
+    public func clearHistory(chatId: String, forEveryone: Bool) async throws(OrbitleError) {
+        let started = generation
+        let time = try eventTimeMs(chatId)
+        if case .failure(let error) = await api.clearHistory(chatId: chatId, lastEventTimeMs: time, forEveryone: forEveryone) {
+            throw error.orbitleError
+        }
+        try ensureCurrent(started)
+        try wipeMessages(chatId: chatId)
+        await historyDropped?(chatId)
+    }
+
+    /// Время последнего события чата, мс. Если строки нет — текущие часы.
+    private func eventTimeMs(_ chatId: String) throws(OrbitleError) -> Int64 {
+        do {
+            let ms = (try chat(id: chatId))?.updatedAt.unixMillis ?? 0
+            return ms > 0 ? ms : Int64(Date().timeIntervalSince1970 * 1000)
+        } catch {
+            throw .storageError
+        }
+    }
+
+    /// Сообщения стираются, строка чата остаётся без превью и счётчика.
+    private func wipeMessages(chatId: String) throws(OrbitleError) {
+        do {
+            let id = chatId
+            try modelContext.delete(model: SDMessage.self, where: #Predicate { $0.chatId == id })
+            if let chat = try chat(id: chatId) {
+                chat.lastMessageId = nil
+                chat.preview = nil
+                chat.unreadCount = 0
+                chat.lastAuthorId = nil
+                chat.lastOutgoing = false
+                chat.lastLocalId = nil
+                chat.lastDeliveryRaw = nil
+                chat.lastMediaRaw = nil
+                chat.lastThumbnailURLString = nil
+                chat.lastAuthorName = nil
+                chat.lastForwarded = false
+                chat.isMarkedUnread = false
+            }
+            try modelContext.save()
+        } catch let error as OrbitleError {
+            throw error
+        } catch {
+            throw .storageError
+        }
+        notify()
+    }
+
+    /// Чат из ответа сервера сразу попадает в список. `nil` — ответа с чатом не было.
+    private func storeCreated(_ result: Result<ChatRecord?, MaxAPIError>) async throws(OrbitleError) -> String? {
+        let started = generation
+        switch result {
+        case .success(let record):
+            guard let record, !record.id.isEmpty else { return nil }
+            try ensureCurrent(started)
+            try upsert([record])
+            return record.id
+        case .failure(let error):
+            throw error.orbitleError
+        }
     }
 
     /// Строка для диалога из `prepareDialog`, когда в нём появилось первое сообщение.

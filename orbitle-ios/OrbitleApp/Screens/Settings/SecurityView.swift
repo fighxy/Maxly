@@ -13,6 +13,8 @@ struct SecurityView: View {
     let makeEmailFlow: @MainActor () -> RecoveryEmailFlow
     @State private var emailFlow: RecoveryEmailFlow?
     @State private var confirmHideOnline = false
+    @State private var passwordDraft = ""
+    @State private var passwordHint = ""
 
     var body: some View {
         List {
@@ -168,10 +170,22 @@ struct SecurityView: View {
                     Button("Укажите почту для восстановления") { emailFlow = makeEmailFlow() }
                 }
             }
+            if model.passwordForm == .none, let status = model.twoFactor.value {
+                if status.isEnabled {
+                    Button("Сменить пароль") { model.openPasswordForm(.change) }
+                    Button("Выключить пароль") { model.openPasswordForm(.disable) }
+                } else {
+                    Button("Включить пароль") { model.openPasswordForm(.enable) }
+                }
+            }
+            if let notice = model.passwordNotice {
+                Text(notice).foregroundStyle(Color.orbitleAccent)
+            }
+            passwordEditor
         } footer: {
             switch model.twoFactor {
             case .loaded(let status) where !status.isEnabled:
-                Text("Пароль защищает вход с нового устройства. Включить его можно будет здесь — скоро.")
+                Text("Пароль защищает вход с нового устройства.")
             case .loaded:
                 Text("Почта нужна, чтобы восстановить доступ, если вы забудете пароль.")
             case .failed(let message):
@@ -179,6 +193,41 @@ struct SecurityView: View {
             case .loading:
                 EmptyView()
             }
+        }
+    }
+
+    @ViewBuilder
+    private var passwordEditor: some View {
+        switch model.passwordForm {
+        case .none:
+            EmptyView()
+        case .enable:
+            SecureField("Пароль", text: $passwordDraft)
+            TextField("Подсказка", text: $passwordHint)
+            Button("Включить") {
+                Task { await model.enablePassword(passwordDraft, hint: passwordHint) }
+            }
+            .disabled(model.passwordWorking)
+        case .change:
+            SecureField("Текущий пароль", text: $passwordDraft)
+            SecureField("Новый пароль", text: $passwordHint)
+            Button("Сменить") {
+                Task { await model.changePassword(oldPassword: passwordDraft, newPassword: passwordHint) }
+            }
+            .disabled(model.passwordWorking)
+        case .disable:
+            SecureField("Пароль", text: $passwordDraft)
+            Button("Выключить") {
+                Task { await model.disablePassword(passwordDraft) }
+            }
+            .disabled(model.passwordWorking)
+        }
+        if model.passwordForm != .none {
+            if let error = model.passwordError {
+                Text(error).foregroundStyle(.red)
+            }
+            Button("Отмена") { model.closePasswordForm() }
+                .disabled(model.passwordWorking)
         }
     }
 }

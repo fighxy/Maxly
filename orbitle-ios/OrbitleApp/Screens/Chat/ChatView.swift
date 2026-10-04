@@ -26,6 +26,10 @@ struct ChatView: View {
     var live: () -> ChatHeaderLive = { ChatHeaderLive() }
     /// Модель профиля чата: шапка берёт из неё статус, нажатие на шапку открывает профиль.
     var makeProfile: (() -> ChatProfileViewModel?)?
+    /// Очистка переписки или удаление чата из профиля. Первый флаг — очистка, второй — у всех.
+    var onEraseChat: ((Bool, Bool) -> Void)? = nil
+    /// Эмодзи двойного нажатия. `nil` — сервер выключил быструю реакцию.
+    var quickReaction: String? = nil
     @State private var profile: ChatProfileViewModel?
     @State private var profileShown = false
     @State private var forwardList: [ChatListItem] = []
@@ -33,6 +37,14 @@ struct ChatView: View {
     @State private var panelShown = false
     /// Высота последней клавиатуры без нижнего отступа: панель встаёт на её место.
     @State private var keyboardHeight: CGFloat = 300
+    @State private var searchShown = false
+    @State private var pollShown = false
+    @State private var scheduleShown = false
+    @State private var searchQuery = ""
+    @State private var pollTitle = ""
+    @State private var pollFirst = ""
+    @State private var pollSecond = ""
+    @State private var scheduleDate = Date().addingTimeInterval(3600)
     /// Верх нижних кнопок на экране, для мягкого размытия низа ленты.
     @State private var bottomControlsTop: CGFloat = 0
     /// Обои из «Оформления» и где они лежат на экране (для перехода в них у низа ленты).
@@ -57,7 +69,8 @@ struct ChatView: View {
             reveal: reveal,
             focus: $composerFocused,
             bottomControlsTop: bottomControlsTop,
-            wallpaperFrame: wallpaperFrame
+            wallpaperFrame: wallpaperFrame,
+            quickReaction: quickReaction
         )
         // Обои за лентой: на весь экран, под шапкой, полем ввода и клавиатурой, не
         // прокручиваются с сообщениями.
@@ -67,7 +80,12 @@ struct ChatView: View {
                 .ignoresSafeArea()
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            if privateMode.isMasked { privateModeBanner }
+            VStack(spacing: 0) {
+                if privateMode.isMasked { privateModeBanner }
+                if let pinned = viewModel.pinned {
+                    pinBanner(id: pinned.id, text: pinned.text)
+                }
+            }
         }
         // Режим включают и выключают и с другого экрана: капсула всё равно выезжает плавно.
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: privateMode)
@@ -130,6 +148,22 @@ struct ChatView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(shownTitle), открыть профиль")
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button("Поиск", systemImage: "magnifyingglass") { searchShown = true }
+                    if canWrite {
+                        Button("Опрос", systemImage: "chart.bar") { pollShown = true }
+                        Button("Отправить позже", systemImage: "clock") { scheduleShown = true }
+                    }
+                    if chatType == .private, viewModel.peerId != nil {
+                        Button("Аудиозвонок", systemImage: "phone") { Task { await viewModel.signalCall(video: false) } }
+                        Button("Видеозвонок", systemImage: "video") { Task { await viewModel.signalCall(video: true) } }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .accessibilityLabel("Действия чата")
+            }
             if let profile {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: openProfile) {
@@ -150,7 +184,8 @@ struct ChatView: View {
                         chat: viewModel,
                         isMuted: isMuted,
                         onToggleMute: onToggleMute,
-                        onShowMessage: { showInChat($0) }
+                        onShowMessage: { showInChat($0) },
+                        onEraseChat: onEraseChat
                     ),
                     live: live()
                 )
@@ -162,6 +197,7 @@ struct ChatView: View {
             // Шапка: статус и аватар из карточки чата, она же открывается профилем.
             if profile == nil { profile = makeProfile?() }
             await profile?.load()
+            viewModel.notePeer(profile?.shown.peerId, isBot: profile?.shown.kind == .bot)
             // Общие медиа из кэша — заранее, чтобы профиль открылся с ними. Пауза: сначала лента.
             try? await Task.sleep(for: .seconds(1))
             guard !Task.isCancelled, let card = profile else { return }
@@ -185,6 +221,72 @@ struct ChatView: View {
                 onClose: { viewModel.reactionPickerTarget = nil }
             )
             .environment(\.privateMode, .visible)
+        }
+        .sheet(isPresented: $searchShown) {
+            NavigationStack {
+                List(viewModel.searchHits, id: \.messageId) { hit in
+                    Button {
+                        searchShown = false
+                        viewModel.focusReply(hit.messageId)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(hit.text.isEmpty ? "Сообщение" : hit.text).lineLimit(2)
+                            if let date = hit.date {
+                                Text(ChatContentFormat.time(date)).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+                .navigationTitle("Поиск")
+                .navigationBarTitleDisplayMode(.inline)
+                .searchable(text: $searchQuery, prompt: "В этом чате")
+                .onSubmit(of: .search) { Task { await viewModel.searchInChat(searchQuery) } }
+                .overlay { if viewModel.searchBusy { ProgressView() } }
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { searchShown = false } }
+                }
+            }
+        }
+        .sheet(isPresented: $pollShown) {
+            NavigationStack {
+                Form {
+                    TextField("Вопрос", text: $pollTitle)
+                    TextField("Ответ 1", text: $pollFirst)
+                    TextField("Ответ 2", text: $pollSecond)
+                }
+                .navigationTitle("Опрос")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Отмена") { pollShown = false } }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Отправить") {
+                            pollShown = false
+                            Task { await viewModel.sendPoll(title: pollTitle, answers: [pollFirst, pollSecond]) }
+                        }
+                        .disabled(pollFirst.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || pollSecond.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $scheduleShown) {
+            NavigationStack {
+                Form {
+                    DatePicker("Когда", selection: $scheduleDate, in: Date()..., displayedComponents: [.date, .hourAndMinute])
+                }
+                .navigationTitle("Отправить позже")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Отмена") { scheduleShown = false } }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Запланировать") {
+                            scheduleShown = false
+                            Task { await viewModel.schedule(text: viewModel.draft, at: scheduleDate) }
+                        }
+                        .disabled(viewModel.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
         }
         .sheet(isPresented: $attachmentsShown) {
             AttachmentSheet(
@@ -338,6 +440,30 @@ struct ChatView: View {
 
     /// Верх ленты в приватном режиме: стеклянная капсула «Отключить приватный режим»
     /// и подсказка, что сообщение открывается касанием.
+    private func pinBanner(id: String, text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "pin.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.orbitleAccent)
+            Button {
+                viewModel.focusReply(id)
+            } label: {
+                Text(text)
+                    .font(.subheadline)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            Button("Снять") { Task { await viewModel.unpin() } }
+                .font(.caption.weight(.semibold))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Закреплено: \(text)")
+    }
+
     private var privateModeBanner: some View {
         OrbitleGlassGroup(spacing: 6) {
             VStack(spacing: 6) {

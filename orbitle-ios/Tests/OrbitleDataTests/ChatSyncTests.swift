@@ -211,4 +211,27 @@ struct ChatSyncTests {
         #expect(try await parts.messages.page(chatId: "c1", before: nil).isEmpty)
         #expect(await row(parts.chats) == nil)
     }
+
+    @Test("Удаление чата и очистка истории уходят на сервер и правят локальную строку")
+    func deleteAndClearReachTheServer() async throws {
+        let parts = try await makeSync()
+        try await parts.chats.upsert([makeChat()])
+        try await parts.messages.upsert([
+            MessageRecord(id: "m1", serverId: "m1", chatId: "c1", authorId: "bob", text: "Живое", timestamp: .init(timeIntervalSince1970: 2), status: .sent),
+        ])
+
+        try await parts.chats.clearHistory(chatId: "c1", forEveryone: false)
+        let clears = await parts.api.historyClears
+        #expect(clears == [("c1", 100_000, false)])
+        let kept = try #require(await row(parts.chats))
+        #expect(kept.preview == nil)
+        #expect(kept.lastMessageId == nil)
+        #expect(kept.unreadCount == 0)
+        #expect(try await parts.messages.page(chatId: "c1", before: nil).isEmpty)
+
+        try await parts.chats.delete(chatId: "c1", forEveryone: true)
+        let deletes = await parts.api.chatDeletes
+        #expect(deletes == [("c1", 100_000, true)])
+        #expect(await row(parts.chats) == nil)
+    }
 }

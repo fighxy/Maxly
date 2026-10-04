@@ -29,6 +29,64 @@ interface ChatRepository {
 
     /** Сообщения во всех чатах по тексту, новые сверху. Без поиска — пусто. */
     suspend fun searchMessages(query: String): List<FoundMessage> = emptyList()
+
+    /**
+     * Новая группа (`MSG_SEND` 64, вложение CONTROL `event: new`, `chatType: CHAT`).
+     * [memberIds] — другие пользователи; пустой список допустим. Возвращает id чата.
+     */
+    suspend fun createGroup(title: String, memberIds: List<String>): String? = null
+
+    /**
+     * Новый канал. Отдельного метода в ядре нет: тот же `MSG_SEND` 64, но `chatType: CHANNEL`
+     * и без участников. Возвращает id чата.
+     */
+    suspend fun createChannel(title: String): String? = null
+
+    /**
+     * Личный чат в списке до того, как сервер пришлёт его сам.
+     * Диалог на сервере появляется с первым сообщением. Уже существующий чат не перезаписывается.
+     */
+    suspend fun prepareDialog(chatId: String, peerId: String, title: String) {}
+
+    /** Участники группы или канала, первая страница. */
+    suspend fun members(chatId: String): List<ChatMemberRow> = emptyList()
+
+    /** Общие чаты с человеком (`CHAT_SEARCH_COMMON_PARTICIPANTS` 198). */
+    suspend fun commonChats(userId: String): List<SharedChat> = emptyList()
+
+    /** Справочник жалоб. Ключ — `typeId`. Подтверждены канал `2` и пользователь `6`. */
+    suspend fun complaintReasons(): Map<Int, List<ComplaintChoice>> = emptyMap()
+
+    /**
+     * Жалоба. [parentId] — чат сообщения, только если он известен.
+     * `true` — сервер ответил `success: true`.
+     */
+    suspend fun complain(reasonId: Int, typeId: Int, ids: List<String>, parentId: String? = null): Boolean = false
+
+    /**
+     * Сигнал личного звонка. Сервер получает запрос, звук и видео не открываются.
+     * `null` — сервер не вернул адрес сигналинга.
+     */
+    suspend fun signalCall(calleeId: String, isVideo: Boolean): SignaledCall? = null
+
+    /** Войти по ссылке-приглашению. Возвращает id чата. */
+    suspend fun joinByLink(link: String): String? = null
+
+    /**
+     * Удалить чат (`CHAT_DELETE` 52). `forEveryone` — у всех, иначе только у себя.
+     * После ответа сервера чат и его сообщения пропадают из списка.
+     */
+    suspend fun deleteChat(chatId: String, forEveryone: Boolean) {}
+
+    /**
+     * Очистить переписку (`CHAT_CLEAR` 54). `forEveryone` — у всех, иначе только у себя.
+     * Сам чат остаётся, сообщения и превью пропадают.
+     */
+    suspend fun clearHistory(chatId: String, forEveryone: Boolean) {}
+
+    /** Команды бота (`BOT_INFO` 145). */
+    suspend fun botCommands(botId: String): List<BotCommandRow> = emptyList()
+
     /** Забыть всё про аккаунт (выход). */
     fun clear()
 }

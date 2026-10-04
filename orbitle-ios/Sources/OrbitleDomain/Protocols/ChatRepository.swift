@@ -42,6 +42,28 @@ public struct ChatSearchResult: Identifiable, Hashable, Sendable {
     }
 }
 
+/// Участник чата для подсказок `@`.
+public struct ChatMemberRef: Hashable, Sendable, Identifiable {
+    public var id: String
+    public var name: String
+
+    public init(id: String, name: String) {
+        self.id = id
+        self.name = name
+    }
+}
+
+/// Команда бота для подсказок `/`.
+public struct BotCommandRef: Hashable, Sendable {
+    public var name: String
+    public var summary: String
+
+    public init(name: String, summary: String) {
+        self.name = name
+        self.summary = summary
+    }
+}
+
 /// Сообщение, найденное поиском на сервере по всем чатам.
 public struct FoundMessage: Hashable, Sendable {
     public var chatId: String
@@ -83,6 +105,8 @@ public protocol ChatRepository: Sendable {
     func setMuted(_ muted: Bool, chatId: String) async throws(OrbitleError)
     func setArchived(_ archived: Bool, chatId: String) async throws(OrbitleError)
     func delete(chatId: String, forEveryone: Bool) async throws(OrbitleError)
+    /// Очистить переписку (`CHAT_CLEAR` 54). Чат остаётся, сообщения пропадают.
+    func clearHistory(chatId: String, forEveryone: Bool) async throws(OrbitleError)
     /// Следующая страница списка. `false`, если страниц больше нет.
     func loadMoreChats() async throws(OrbitleError) -> Bool
     func search(query: String) async throws(OrbitleError) -> [ChatSearchResult]
@@ -95,6 +119,18 @@ public protocol ChatRepository: Sendable {
     /// Запомнить диалог, которого может не быть в списке: с первым своим сообщением в нём
     /// строка чата появится сразу, не дожидаясь сервера.
     func prepareDialog(_ draft: DialogDraft) async
+    /// Новая группа (`MSG_SEND` 64, `chatType: CHAT`). `nil` — в ответе нет чата.
+    func createGroup(title: String, memberIds: [String]) async throws(OrbitleError) -> String?
+    /// Новый канал: то же тело, `chatType: CHANNEL`, участников нет. `nil` — в ответе нет чата.
+    func createChannel(title: String) async throws(OrbitleError) -> String?
+    /// Вход по ссылке приглашения (`CHAT_JOIN` 57). `nil` — сервер не вернул чат.
+    func joinByLink(_ link: String) async throws(OrbitleError) -> String?
+    /// Первая страница участников группы или канала.
+    func members(chatId: String) async throws(OrbitleError) -> [ChatMemberRef]
+    /// Команды бота. Имена без ведущего слэша.
+    func botCommands(botId: String) async throws(OrbitleError) -> [BotCommandRef]
+    /// Сигнал личного звонка. `nil` — сервер не вернул адрес. Звук и видео не открываются.
+    func signalCall(calleeId: String, isVideo: Bool) async throws(OrbitleError) -> String?
 }
 
 /// Без поддержки источника необязательные действия недоступны: набор пуст,
@@ -107,12 +143,19 @@ public extension ChatRepository {
     func setMuted(_ muted: Bool, chatId: String) async throws(OrbitleError) { throw .invalidRequest }
     func setArchived(_ archived: Bool, chatId: String) async throws(OrbitleError) { throw .invalidRequest }
     func delete(chatId: String, forEveryone: Bool) async throws(OrbitleError) { throw .invalidRequest }
+    func clearHistory(chatId: String, forEveryone: Bool) async throws(OrbitleError) { throw .invalidRequest }
     func loadMoreChats() async throws(OrbitleError) -> Bool { false }
     func search(query: String) async throws(OrbitleError) -> [ChatSearchResult] { [] }
     func searchMessages(query: String) async throws(OrbitleError) -> [FoundMessage] { [] }
     func folders() -> AsyncStream<[ChatFolder]> { AsyncStream { $0.yield([]); $0.finish() } }
     func typing() -> AsyncStream<[String: [String]]> { AsyncStream { $0.yield([:]); $0.finish() } }
     func prepareDialog(_ draft: DialogDraft) async {}
+    func createGroup(title: String, memberIds: [String]) async throws(OrbitleError) -> String? { throw .invalidRequest }
+    func createChannel(title: String) async throws(OrbitleError) -> String? { throw .invalidRequest }
+    func joinByLink(_ link: String) async throws(OrbitleError) -> String? { throw .invalidRequest }
+    func members(chatId: String) async throws(OrbitleError) -> [ChatMemberRef] { throw .invalidRequest }
+    func botCommands(botId: String) async throws(OrbitleError) -> [BotCommandRef] { throw .invalidRequest }
+    func signalCall(calleeId: String, isVideo: Bool) async throws(OrbitleError) -> String? { throw .invalidRequest }
 }
 
 /// Черновики полей ввода. Хранятся только на устройстве.

@@ -43,6 +43,7 @@ final class AppContainer {
     /// Диалоги, открытые из контактов: по ним экран знает имя собеседника, пока чата нет в списке.
     @ObservationIgnored private var dialogDrafts: [String: DialogDraft] = [:]
     @ObservationIgnored private var contactsModel: ContactsViewModel?
+    @ObservationIgnored private var newChat: NewChatModel?
     @ObservationIgnored private var callsModel: CallsViewModel?
     // Контакты и журнал звонков из ядра. До сборки зависимостей экраны видят «недоступно».
     @ObservationIgnored private var contacts: any ContactRepository = UnavailableContactRepository()
@@ -315,6 +316,15 @@ final class AppContainer {
         await listModel?.toggleMute(chatId: id)
     }
 
+    /// Очистить переписку или удалить чат. `true` — чата больше нет, экран можно закрыть.
+    func eraseChat(id: String, clearHistory: Bool, forEveryone: Bool) async -> Bool {
+        if clearHistory {
+            await listModel?.confirmClear(chatId: id, forEveryone: forEveryone)
+            return false
+        }
+        return await listModel?.deleteNow(chatId: id, forEveryone: forEveryone) ?? false
+    }
+
     /// Чаты для выбора при пересылке.
     /// Контакты для вкладки «Контакт» в листе вложений.
     func attachmentContacts() -> AsyncStream<[Contact]> {
@@ -357,9 +367,20 @@ final class AppContainer {
             comments: commentsRepository,
             voice: voicePlayer,
             gallery: PhotoLibrarySaver(),
-            isNewDialog: isNew
+            isNewDialog: isNew,
+            chats: chats
         )
         chatModels[id] = model
+        return model
+    }
+
+    /// Лист «новое сообщение». Тот же на время сеанса. Список контактов поток отдаёт один раз,
+    /// поэтому каждое открытие листа читает его заново.
+    func newChatModel() -> NewChatModel? {
+        guard let chats else { return nil }
+        if let newChat { return newChat }
+        let model = NewChatModel(contacts: contacts, chats: chats, currentUserId: currentUserId)
+        newChat = model
         return model
     }
 
@@ -407,6 +428,16 @@ final class AppContainer {
     }
 
     // MARK: Настройки
+
+    /// Каталог реакций для выбора быстрой. Пустой ответ сервера — запасной ряд.
+    func reactionChoices() async -> [String] {
+        let loaded = await messages?.reactionCatalog() ?? []
+        var seen = Set<String>()
+        let clean = loaded
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+        return clean.isEmpty ? ReactionPalette.fallback : clean
+    }
 
     /// Шапка и настройки аккаунта. Одна модель на вход: номер скрыт при каждом входе.
     func accountSettingsModel() -> AccountSettingsModel {
@@ -527,6 +558,7 @@ final class AppContainer {
         listModel = nil
         contactsModel?.deactivate()
         contactsModel = nil
+        newChat = nil
         callsModel?.deactivate()
         callsModel = nil
         accountModel?.deactivate()

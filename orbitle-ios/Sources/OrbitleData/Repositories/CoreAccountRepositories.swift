@@ -50,6 +50,10 @@ public struct CoreAccountRepository: AccountRepository {
         try await run { try await core.setInactiveTTL(ttl) }
     }
 
+    public func setQuickReaction(_ emoji: String) async throws(OrbitleError) -> AccountSettings {
+        try await run { try await core.setQuickReaction(emoji) }
+    }
+
     public func sessions() async throws(OrbitleError) -> [DeviceSession] {
         let list = try await run { try await core.loadSessions() }
         // Текущий первым, остальные от недавних к давним.
@@ -77,6 +81,30 @@ public struct CoreAccountRepository: AccountRepository {
 
     public func twoFactorStatus() async throws(OrbitleError) -> TwoFactorStatus {
         try await run { try await core.loadTwoFactor() }
+    }
+
+    public func enablePassword(password: String, hint: String) async throws(OrbitleError) {
+        do {
+            try await core.enablePassword(password: password, hint: hint)
+        } catch {
+            throw AuthErrors.map(error, during: .password)
+        }
+    }
+
+    public func changePassword(oldPassword: String, newPassword: String) async throws(OrbitleError) {
+        do {
+            try await core.changePassword(oldPassword: oldPassword, newPassword: newPassword)
+        } catch {
+            throw AuthErrors.map(error, during: .password)
+        }
+    }
+
+    public func disablePassword(password: String) async throws(OrbitleError) {
+        do {
+            try await core.disablePassword(password: password)
+        } catch {
+            throw AuthErrors.map(error, during: .password)
+        }
     }
 
     public func startEmailChange(password: String) async throws(OrbitleError) -> String {

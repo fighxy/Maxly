@@ -8,6 +8,8 @@ import OrbitleUI
 struct ChatListView: View {
     @Bindable var viewModel: ChatListViewModel
     @Binding var selection: String?
+    var newChat: NewChatModel?
+    var onOpened: (NewChatOpened) -> Void = { _ in }
     @State private var composeShown = false
     /// Настройка приватного режима для плавающей кнопки. `nil` в превью без контейнера.
     @Environment(PrivateModeSettings.self) private var privateModeSettings: PrivateModeSettings?
@@ -46,22 +48,38 @@ struct ChatListView: View {
             guard let id, viewModel.isSearchActive else { return }
             Task { await viewModel.selectSearchResult(chatId: id) }
         }
-        .sheet(isPresented: $composeShown) { ComposeSheet() }
+        .sheet(isPresented: $composeShown, onDismiss: { newChat?.dismiss() }) {
+            if let newChat {
+                NewChatSheet(model: newChat) { opened in
+                    newChat.consumeOpened()
+                    composeShown = false
+                    onOpened(opened)
+                }
+                .task {
+                    newChat.show()
+                    newChat.activate()
+                }
+            } else {
+                ComposeSheet()
+            }
+        }
         .confirmationDialog(
             deletionTitle,
             isPresented: deletionShown,
             titleVisibility: .visible,
             presenting: viewModel.deletionCandidate
         ) { item in
-            if item.type == .private {
-                Button("Удалить у меня и у собеседника", role: .destructive) {
-                    Task { await viewModel.confirmDelete(forEveryone: true) }
-                }
-            }
-            Button(item.type == .private ? "Удалить только у меня" : "Удалить и выйти", role: .destructive) {
-                Task { await viewModel.confirmDelete(forEveryone: false) }
-            }
+            eraseButtons(item, clearing: false)
             Button("Отмена", role: .cancel) { viewModel.cancelDelete() }
+        }
+        .confirmationDialog(
+            clearTitle,
+            isPresented: clearShown,
+            titleVisibility: .visible,
+            presenting: viewModel.clearCandidate
+        ) { item in
+            eraseButtons(item, clearing: true)
+            Button("Отмена", role: .cancel) { viewModel.cancelClear() }
         }
     }
 
@@ -236,6 +254,9 @@ struct ChatListView: View {
             }
         }
         if viewModel.capabilities.contains(.delete) {
+            Button { viewModel.requestClear(chatId: item.id) } label: {
+                Label("Очистить историю", systemImage: "eraser")
+            }
             Button(role: .destructive) { viewModel.requestDelete(chatId: item.id) } label: {
                 Label("Удалить", systemImage: "trash")
             }
@@ -440,6 +461,40 @@ struct ChatListView: View {
         // Название чата не должно всплыть в диалоге, пока включён приватный режим.
         if privateMode.isMasked { return "Удалить этот чат?" }
         return "Удалить чат «\(item.title)»?"
+    }
+
+    private var clearShown: Binding<Bool> {
+        Binding(
+            get: { viewModel.clearCandidate != nil },
+            set: { if !$0 { viewModel.cancelClear() } }
+        )
+    }
+
+    private var clearTitle: String {
+        "Очистить историю?"
+    }
+
+    /// «Только у меня» всегда. «У всех» — кроме «Избранного», где собеседника нет.
+    @ViewBuilder
+    private func eraseButtons(_ item: ChatListItem, clearing: Bool) -> some View {
+        let saved = item.id == Chat.savedMessagesId
+        if !saved {
+            let everyone = clearing
+                ? (item.type == .private ? "Очистить у меня и у собеседника" : "Очистить у всех")
+                : (item.type == .private ? "Удалить у меня и у собеседника" : "Удалить у всех")
+            Button(everyone, role: .destructive) {
+                Task {
+                    if clearing { await viewModel.confirmClear(forEveryone: true) }
+                    else { await viewModel.confirmDelete(forEveryone: true) }
+                }
+            }
+        }
+        Button(clearing ? (saved ? "Очистить" : "Очистить только у меня") : (saved ? "Удалить" : "Удалить только у меня"), role: .destructive) {
+            Task {
+                if clearing { await viewModel.confirmClear(forEveryone: false) }
+                else { await viewModel.confirmDelete(forEveryone: false) }
+            }
+        }
     }
 }
 

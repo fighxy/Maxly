@@ -128,6 +128,62 @@ actor FakeMaxCore: MaxCore {
         directoryError = error
     }
 
+    /// Ответы `CONTACT_INFO_BY_PHONE`: ключ — телефон `+` и цифры.
+    var peopleByPhone: [String: CoreContact] = [:]
+    var phoneFailure: CoreFailure?
+    private(set) var phoneQueries: [String] = []
+    private(set) var contactAdds: [(id: String, firstName: String)] = []
+
+    func setPerson(phone: String, _ person: CoreContact?) {
+        if let person { peopleByPhone[phone] = person } else { peopleByPhone[phone] = nil }
+    }
+
+    func setPhoneFailure(_ error: CoreFailure?) { phoneFailure = error }
+
+    func findByPhone(phone: String) async throws -> CoreContact {
+        phoneQueries.append(phone)
+        if let phoneFailure { throw phoneFailure }
+        guard let person = peopleByPhone[phone] else {
+            throw CoreFailure(kind: "MALFORMED_REPLY", key: "no valid contact")
+        }
+        return person
+    }
+
+    func addContact(userId: String, firstName: String) async throws -> CoreContact {
+        contactAdds.append((userId, firstName))
+        if let directoryError { throw directoryError }
+        let saved = CoreContact(
+            id: userId, firstName: firstName, lastName: "", phone: "", avatarURL: "", lastSeenMs: 0, online: false
+        )
+        contactList.removeAll { $0.id == userId }
+        contactList.append(saved)
+        return saved
+    }
+
+    private(set) var groups: [(title: String, members: [String])] = []
+    private(set) var channels: [String] = []
+    private(set) var links: [String] = []
+    var createdChat: CoreChat?
+
+    func createGroup(title: String, memberIds: [String]) async throws -> CoreChat? {
+        groups.append((title, memberIds))
+        if let loadError { throw loadError }
+        return createdChat
+    }
+
+    func createChannel(title: String) async throws -> CoreChat? {
+        channels.append(title)
+        if let loadError { throw loadError }
+        return createdChat
+    }
+
+    func joinByLink(_ link: String) async throws -> CoreChat {
+        links.append(link)
+        if let loadError { throw loadError }
+        guard let createdChat else { throw CoreFailure(kind: "MALFORMED_REPLY", key: nil) }
+        return createdChat
+    }
+
     init(livePushes: Bool = false) {
         if livePushes {
             let pair = AsyncStream.makeStream(of: CoreEvent.self)
@@ -547,6 +603,7 @@ extension FakeMaxCore {
     func setVerifyError(_ error: CoreFailure?) { verifyError = error }
     func setCode(_ value: CoreCode) { code = value }
     func setLogoutError(_ error: CoreFailure?) { logoutError = error }
+    func setCreatedChat(_ chat: CoreChat?) { createdChat = chat }
 }
 
 @Suite("Сессия")

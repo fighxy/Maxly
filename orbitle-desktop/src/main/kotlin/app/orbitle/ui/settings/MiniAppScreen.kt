@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.orbitle.domain.MiniApp
@@ -43,7 +44,10 @@ import dev.datlag.kcef.KCEF
 import dev.datlag.kcef.KCEFBrowser
 import dev.datlag.kcef.KCEFClient
 import java.awt.BorderLayout
+import java.awt.event.ComponentAdapter
+import java.awt.event.ComponentEvent
 import java.io.File
+import java.util.concurrent.TimeUnit
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
@@ -227,7 +231,13 @@ private fun MiniAppHost(app: MiniApp, page: MiniAppPage, model: MiniAppViewModel
             session.close()
         }
     }
-    SwingPanel(factory = { session.component }, modifier = Modifier.fillMaxSize())
+    // Белый фон панели: прозрачная дырка Compose на Windows остаётся чёрной, пока Chromium не нарисовал кадр.
+    SwingPanel(
+        background = Color.White,
+        factory = { session.component },
+        modifier = Modifier.fillMaxSize(),
+        update = { session.refit() },
+    )
     val pending = share
     if (pending != null) {
         AlertDialog(
@@ -277,6 +287,10 @@ private class MiniAppSession(url: String, mobileUserAgent: Boolean) {
     )
     lateinit var browser: KCEFBrowser
     val component: JComponent
+    private val closed = AtomicBoolean(false)
+    private val armed = AtomicBoolean(false)
+    private val pageUrl = url
+    private val wantsMobileUserAgent = mobileUserAgent
 
     init {
         router.addHandler(object : CefMessageRouterHandlerAdapter() {
@@ -323,13 +337,53 @@ private class MiniAppSession(url: String, mobileUserAgent: Boolean) {
                 return true
             }
         })
-        // Пустая страница, пока DevTools не поставит скрипт до документа.
+        // Пустая страница, пока панель не получит размер и DevTools не поставит скрипт до документа.
+        // Окно Chromium, созданное в 0×0, на Windows так и остаётся чёрным прямоугольником.
         // bridge.js выбирает транспорт один раз: если WebViewHandler появится позже, события теряются.
         browser = client.createBrowser("about:blank", CefRendering.DEFAULT, false)
-        arm(url, mobileUserAgent)
         val ui = browser.uiComponent ?: error("Страница не создалась")
-        component = ui as? JComponent ?: JPanel(BorderLayout()).apply { add(ui, BorderLayout.CENTER) }
+        if (ui is JComponent) {
+            ui.isOpaque = true
+            ui.background = java.awt.Color.WHITE
+        }
+        component = JPanel(BorderLayout()).apply {
+            background = java.awt.Color.WHITE
+            isOpaque = true
+            add(ui, BorderLayout.CENTER)
+            addComponentListener(object : ComponentAdapter() {
+                override fun componentShown(e: ComponentEvent) = fit()
+                override fun componentResized(e: ComponentEvent) = fit()
+            })
+        }
     }
+
+    /**
+     * Compose ставит размер панели после первого кадра. Пока ширина нулевая,
+     * нативный вид Chromium не к чему привязать, и вместо страницы остаётся чёрное поле.
+     */
+    private var fitting = false
+
+    private fun fit() {
+        if (closed.get() || fitting) return
+        val width = component.width
+        val height = component.height
+        if (width <= 1 || height <= 1) return
+        val ui = browser.uiComponent ?: return
+        fitting = true
+        try {
+            ui.setBounds(0, 0, width, height)
+            runCatching { component.validate() }
+            runCatching { browser.createImmediately() }
+            runCatching { browser.wasResized(width, height) }
+            runCatching { browser.notifyScreenInfoChanged() }
+            if (armed.compareAndSet(false, true)) arm(pageUrl, wantsMobileUserAgent)
+        } finally {
+            fitting = false
+        }
+    }
+
+    /** Повторная примерка после того, как Compose поставил границы панели. */
+    fun refit() = fit()
 
     /**
      * Скрипт на старте каждого документа и, для Цифрового ID, UA настоящего WebView.
@@ -339,39 +393,47 @@ private class MiniAppSession(url: String, mobileUserAgent: Boolean) {
     private fun arm(url: String, mobileUserAgent: Boolean) {
         val opened = AtomicBoolean(false)
         fun open() {
-            if (opened.compareAndSet(false, true)) browser.loadURL(url)
-        }
-        val dev = runCatching { browser.devToolsClient }.getOrNull()
-        if (dev == null) {
-            open()
-            return
-        }
-        val prepared = runCatching {
-            if (mobileUserAgent) {
-                dev.executeDevToolsMethod(
-                    "Emulation.setUserAgentOverride",
-                    """{"userAgent":${Json.encodeToString(DIGITAL_ID_USER_AGENT)},"platform":"Linux armv8l"}""",
-                )
-            } else {
-                java.util.concurrent.CompletableFuture.completedFuture("")
+            if (closed.get() || !opened.compareAndSet(false, true)) return
+            val load = Runnable {
+                if (!closed.get()) {
+                    browser.setWindowVisibility(true)
+                    browser.loadURL(url)
+                }
             }
-        }.getOrElse {
-            open()
-            return
+            if (SwingUtilities.isEventDispatchThread()) load.run() else SwingUtilities.invokeLater(load)
         }
-        prepared.whenComplete { _, _ ->
-            val injected = runCatching {
+        // DevTools на потоке окна может не отпустить кадр: страница так и остаётся about:blank.
+        javax.swing.Timer(2_000) { open() }.apply { isRepeats = false; start() }
+        Thread({
+            val dev = runCatching { browser.devToolsClient }.getOrNull()
+            if (dev == null) {
+                open()
+                return@Thread
+            }
+            if (mobileUserAgent) {
+                val userAgent = runCatching {
+                    dev.executeDevToolsMethod(
+                        "Emulation.setUserAgentOverride",
+                        """{"userAgent":${Json.encodeToString(DIGITAL_ID_USER_AGENT)},"platform":"Linux armv8l"}""",
+                    ).get(1_500, TimeUnit.MILLISECONDS)
+                }
+                if (userAgent.isFailure) {
+                    open()
+                    return@Thread
+                }
+            }
+            runCatching {
                 dev.executeDevToolsMethod(
                     "Page.addScriptToEvaluateOnNewDocument",
                     """{"source":${Json.encodeToString(MiniAppBridge.userScript(MiniAppBridge.DESKTOP_POST))}}""",
-                )
-            }.getOrNull()
-            if (injected == null) open() else injected.whenComplete { _, _ -> open() }
-        }
-        javax.swing.Timer(2_000) { open() }.apply { isRepeats = false; start() }
+                ).get(1_500, TimeUnit.MILLISECONDS)
+            }
+            open()
+        }, "orbitle-mini-app").apply { isDaemon = true }.start()
     }
 
     fun close() {
+        closed.set(true)
         listener = null
         runCatching { client.removeMessageRouter(router) }
         runCatching { browser.dispose() }
@@ -433,6 +495,8 @@ private object DesktopWebRuntime {
                             settings {
                                 cachePath = cache.absolutePath
                                 persistSessionCookies = true
+                                // Непрозрачный фон ускоренного слоя. Ноль в альфе оставляет чёрный кадр.
+                                backgroundColor = org.cef.CefSettings().run { ColorType(255, 255, 255, 255) }
                             }
                             progress {
                                 onDownloading { value -> progress.value = value.coerceAtLeast(0f) }

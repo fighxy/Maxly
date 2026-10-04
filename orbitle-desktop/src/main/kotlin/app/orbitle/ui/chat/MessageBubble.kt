@@ -6,7 +6,6 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.Comment
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -17,11 +16,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.ui.semantics.Role
 import app.orbitle.presentation.chat.TranscriptToggle
 import androidx.compose.material.icons.automirrored.filled.Reply
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
-import kotlinx.coroutines.launch
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -40,6 +36,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
@@ -75,6 +72,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,6 +87,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.platform.LocalDensity
@@ -95,10 +100,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.orbitle.domain.ChatAttachment
+import app.orbitle.domain.PollContent
 import app.orbitle.domain.FileContent
 import app.orbitle.domain.Message
 import app.orbitle.domain.MessageReaction
 import app.orbitle.domain.MessageStatus
+import app.orbitle.domain.TextSpan
 import app.orbitle.domain.PhotoContent
 import app.orbitle.domain.VideoContent
 import app.orbitle.domain.VoiceContent
@@ -133,7 +140,7 @@ fun bubbleColors(outgoing: Boolean): BubbleColors {
 }
 
 /** Строка ленты с пузырём, аватаром автора группы и реакциями. */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
 fun BubbleRow(
     item: ChatItem.Bubble,
@@ -144,51 +151,37 @@ fun BubbleRow(
     highlighted: Boolean = false,
     onSwipeReply: ((Message) -> Unit)? = null,
     onComments: ((Message) -> Unit)? = null,
+    onVote: (Message, String) -> Unit = { _, _ -> },
+    onDoubleTap: (Message) -> Unit = {},
 ) {
     val message = item.message
     val sticker = message.content.sticker
     val onlySticker = sticker != null && message.displayText.isBlank() && message.content.reply == null
-    // Свайп влево — ответ, как в популярных мессенджерах.
-    val density = LocalDensity.current
-    val threshold = with(density) { 64.dp.toPx() }
-    val swipe = remember { Animatable(0f) }
-    val swipeScope = rememberCoroutineScope()
-    val haptic = LocalHapticFeedback.current
-    val canSwipe = onSwipeReply != null && message.status == MessageStatus.SENT && message.id.toLongOrNull() != null && !message.isService
+    // На широком окне ответ — кнопка у пузыря и правая кнопка мыши, а не свайп пальцем.
+    val canReply = onSwipeReply != null && message.status == MessageStatus.SENT && message.id.toLongOrNull() != null && !message.isService
+    val hover = remember { MutableInteractionSource() }
+    val hovered by hover.collectIsHoveredAsState()
+    val showReply = hovered && canReply
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-    val maxWidth = this.maxWidth * 0.8f
-    if (swipe.value != 0f) {
-        val progress = (-swipe.value / threshold).coerceIn(0f, 1f)
-        Box(
-            Modifier.align(Alignment.CenterEnd).padding(end = 16.dp).size(32.dp).graphicsLayer { alpha = progress; scaleX = 0.6f + 0.4f * progress; scaleY = scaleX }
-                .clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest),
-            contentAlignment = Alignment.Center,
-        ) { Icon(Icons.AutoMirrored.Filled.Reply, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)) }
-    }
+    // Ширина панели минус поля и аватар группы, но не больше потолка ширины пузыря.
+    // На широком мониторе короткий текст сжимается, длинный переносится на 430 dp и остаётся у своего края.
+    val gutter = 32.dp + if (item.isGroupChat) 40.dp else 0.dp
+    val available = (this.maxWidth - gutter).coerceAtLeast(120.dp)
+    val maxWidth = minOf(available, app.orbitle.presentation.chat.BubbleCorners.DESKTOP_MAX_DP.dp)
     Row(
         Modifier
             .fillMaxWidth()
-            .then(
-                if (!canSwipe) Modifier else Modifier.pointerInput(message.id) {
-                    detectHorizontalDragGestures(
-                        onDragEnd = {
-                            if (-swipe.value >= threshold) onSwipeReply?.invoke(message)
-                            swipeScope.launch { swipe.animateTo(0f) }
-                        },
-                        onDragCancel = { swipeScope.launch { swipe.animateTo(0f) } },
-                        onHorizontalDrag = { change, delta ->
-                            val before = swipe.value
-                            val next = (before + delta).coerceIn(-threshold * 1.4f, 0f)
-                            if (-before < threshold && -next >= threshold) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            swipeScope.launch { swipe.snapTo(next) }
-                            change.consume()
-                        },
-                    )
-                },
-            )
-            .graphicsLayer { translationX = swipe.value }
+            .hoverable(hover)
+            .onPointerEvent(PointerEventType.Press) {
+                if (it.buttons.isSecondaryPressed) onLongPress(message)
+            }
             .background(if (highlighted) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent)
-            .padding(start = 8.dp, end = 8.dp, top = if (item.authorName != null) 6.dp else 1.dp, bottom = if (item.continues) 1.dp else 4.dp),
+            .padding(
+                start = 16.dp,
+                end = 16.dp,
+                top = if (item.joinsPrevious) 1.dp else 8.dp,
+                bottom = if (item.continues) 0.dp else 2.dp,
+            ),
         horizontalArrangement = if (item.outgoing) Arrangement.End else Arrangement.Start,
         verticalAlignment = Alignment.Bottom,
     ) {
@@ -198,62 +191,124 @@ fun BubbleRow(
             }
         }
         val colors = bubbleColors(item.outgoing)
-        val tail = 6.dp
+        val radii = app.orbitle.presentation.chat.BubbleCorners.of(item.outgoing, item.joinsPrevious, item.continues)
         val shape = RoundedCornerShape(
-            topStart = 18.dp,
-            topEnd = 18.dp,
-            bottomEnd = if (item.outgoing && !item.continues) tail else 18.dp,
-            bottomStart = if (!item.outgoing && !item.continues) tail else 18.dp,
+            topStart = radii.topStart.dp,
+            topEnd = radii.topEnd.dp,
+            bottomEnd = radii.bottomEnd.dp,
+            bottomStart = radii.bottomStart.dp,
         )
         val press = Modifier.combinedClickable(
             onClick = { if (message.status == MessageStatus.FAILED) onRetry(message) },
             onLongClick = { onLongPress(message) },
+            onDoubleClick = { onDoubleTap(message) },
         )
         val roundVideo = (message.content.visuals.singleOrNull() as? ChatAttachment.Video)?.video
             ?.takeIf { it.isRound && message.displayText.isBlank() && message.content.reply == null }
-        if (roundVideo != null) {
-            Column(horizontalAlignment = if (item.outgoing) Alignment.End else Alignment.Start) {
-                item.authorName?.let {
-                    Text(it, color = AvatarPalette.nameColor(item.authorColor), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp, bottom = 2.dp))
-                }
-                RoundNote(message, roundVideo, onLongPress = { onLongPress(message) })
-                Surface(shape = RoundedCornerShape(10.dp), color = Color.Black.copy(alpha = 0.35f), modifier = Modifier.padding(top = 4.dp)) {
-                    TimeRow(item, Color.White, Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-                }
-                Reactions(message.content.reactions, colors, item.outgoing) { onReaction(message, it) }
-                val count = item.comments
-                if (count != null && onComments != null) {
-                    Surface(shape = RoundedCornerShape(14.dp), color = colors.container, contentColor = colors.content, modifier = Modifier.padding(top = 4.dp).widthIn(max = 220.dp)) {
-                        CommentsFooter(count, colors) { onComments(message) }
+        val bigEmoji = ChatContentFormat.bigEmoji(message.displayText)?.takeIf {
+            message.content.attachments.isEmpty() && message.content.reply == null &&
+                message.content.forward == null && item.comments == null
+        }
+        HoverReply(item.outgoing, showReply, if (canReply) ({ onSwipeReply?.invoke(message) }) else null) {
+            if (roundVideo != null) {
+                Column(horizontalAlignment = if (item.outgoing) Alignment.End else Alignment.Start) {
+                    item.authorName?.let {
+                        Text(it, color = AvatarPalette.nameColor(item.authorColor), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp, bottom = 2.dp))
+                    }
+                    RoundNote(message, roundVideo, onLongPress = { onLongPress(message) }, onDoubleTap = { onDoubleTap(message) })
+                    Surface(shape = RoundedCornerShape(10.dp), color = Color.Black.copy(alpha = 0.35f), modifier = Modifier.padding(top = 4.dp)) {
+                        TimeRow(item, Color.White, Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                    }
+                    Reactions(message.content.reactions, colors, item.outgoing) { onReaction(message, it) }
+                    val count = item.comments
+                    if (count != null && onComments != null) {
+                        Surface(shape = RoundedCornerShape(14.dp), color = colors.container, contentColor = colors.content, modifier = Modifier.padding(top = 4.dp).widthIn(max = 220.dp)) {
+                            CommentsFooter(count, colors) { onComments(message) }
+                        }
                     }
                 }
-            }
-            return@Row
-        }
-        if (onlySticker) {
-            Column(horizontalAlignment = if (item.outgoing) Alignment.End else Alignment.Start) {
-                AsyncImage(
-                    model = sticker!!.url,
-                    contentDescription = "Стикер",
-                    modifier = Modifier.size(160.dp).clip(RoundedCornerShape(12.dp)).then(press),
-                    contentScale = ContentScale.Fit,
-                )
-                Surface(shape = RoundedCornerShape(10.dp), color = Color.Black.copy(alpha = 0.35f)) {
-                    TimeRow(item, Color.White, Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+            } else if (bigEmoji != null) {
+                val lottie = message.content.formatting.firstOrNull { it.kind == TextSpan.Kind.ANIMOJI }?.url
+                Column(horizontalAlignment = if (item.outgoing) Alignment.End else Alignment.Start, modifier = press) {
+                    item.authorName?.let {
+                        Text(it, color = AvatarPalette.nameColor(item.authorColor), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp, bottom = 2.dp))
+                    }
+                    if (bigEmoji.size == 1 && !lottie.isNullOrBlank()) {
+                        LottieOrStill(lottie, null, Modifier.size(120.dp), bigEmoji.single())
+                    } else {
+                        Text(bigEmoji.joinToString(""), fontSize = ChatContentFormat.bigEmojiSize(bigEmoji.size).sp, modifier = Modifier.padding(horizontal = 2.dp))
+                    }
+                    Surface(shape = RoundedCornerShape(10.dp), color = Color.Black.copy(alpha = 0.35f), modifier = Modifier.padding(top = 4.dp)) {
+                        TimeRow(item, Color.White, Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                    }
+                    Reactions(message.content.reactions, colors, item.outgoing) { onReaction(message, it) }
                 }
-                Reactions(message.content.reactions, colors, item.outgoing) { onReaction(message, it) }
+            } else if (onlySticker) {
+                Column(horizontalAlignment = if (item.outgoing) Alignment.End else Alignment.Start) {
+                    LottieOrStill(
+                        sticker!!.lottieUrl,
+                        sticker.url,
+                        Modifier.size(168.dp).clip(RoundedCornerShape(12.dp)).then(press),
+                        "Стикер",
+                    )
+                    Surface(shape = RoundedCornerShape(10.dp), color = Color.Black.copy(alpha = 0.35f)) {
+                        TimeRow(item, Color.White, Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                    }
+                    Reactions(message.content.reactions, colors, item.outgoing) { onReaction(message, it) }
+                    val count = item.comments
+                    if (count != null && onComments != null) {
+                        Surface(shape = RoundedCornerShape(14.dp), color = colors.container, contentColor = colors.content, modifier = Modifier.padding(top = 4.dp).widthIn(max = 220.dp)) {
+                            CommentsFooter(count, colors) { onComments(message) }
+                        }
+                    }
+                }
+            } else {
+                Surface(
+                    shape = shape,
+                    color = colors.container,
+                    contentColor = colors.content,
+                    modifier = Modifier.widthIn(max = maxWidth).clip(shape).then(press),
+                ) {
+                    BubbleContent(item, colors, maxWidth, shape, onReaction, onReplyClick, onComments, onLongPress = { onLongPress(message) }, onVote = onVote, onDoubleTap = { onDoubleTap(message) })
+                }
             }
-            return@Row
-        }
-        Surface(
-            shape = shape,
-            color = colors.container,
-            contentColor = colors.content,
-            modifier = Modifier.widthIn(max = maxWidth).clip(shape).then(press),
-        ) {
-            BubbleContent(item, colors, maxWidth, onReaction, onReplyClick, onComments, onLongPress = { onLongPress(message) })
         }
     }
+    }
+}
+
+/**
+ * Кнопка ответа к центру панели, поверх пустого места.
+ * Пузырь не сдвигается: кнопка рисуется сдвигом от его края и видна только под курсором.
+ */
+@Composable
+private fun HoverReply(
+    outgoing: Boolean,
+    visible: Boolean,
+    onReply: (() -> Unit)?,
+    content: @Composable () -> Unit,
+) {
+    Box {
+        content()
+        if (visible && onReply != null) {
+            Box(
+                Modifier
+                    .align(if (outgoing) Alignment.CenterStart else Alignment.CenterEnd)
+                    .offset(x = if (outgoing) (-36).dp else 36.dp)
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .clickable(onClick = onReply),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Reply,
+                    contentDescription = "Ответить",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
     }
 }
 
@@ -262,10 +317,13 @@ private fun BubbleContent(
     item: ChatItem.Bubble,
     colors: BubbleColors,
     maxWidth: Dp,
+    mediaShape: Shape,
     onReaction: (Message, String) -> Unit,
     onReplyClick: (String) -> Unit,
     onComments: ((Message) -> Unit)? = null,
     onLongPress: () -> Unit = {},
+    onVote: (Message, String) -> Unit = { _, _ -> },
+    onDoubleTap: () -> Unit = {},
 ) {
     val message = item.message
     val content = message.content
@@ -307,12 +365,12 @@ private fun BubbleContent(
         }
         if (visuals.isNotEmpty()) {
             val bubbleMedia = LocalBubbleMedia.current
-            Visuals(visuals, maxWidth - 6.dp, Modifier.padding(top = if (item.authorName != null || content.forward != null || content.reply != null) 6.dp else 0.dp), onLongPress = onLongPress) {
+            Visuals(visuals, maxWidth - 6.dp, Modifier.padding(top = if (item.authorName != null || content.forward != null || content.reply != null) 6.dp else 0.dp), mediaShape, onLongPress = onLongPress, onDoubleTap = onDoubleTap) {
                 bubbleMedia.onVisual(message, it)
             }
         }
         content.sticker?.let { sticker ->
-            AsyncImage(sticker.url, "Стикер", Modifier.padding(8.dp).size(140.dp), contentScale = ContentScale.Fit)
+            LottieOrStill(sticker.lottieUrl, sticker.url, Modifier.padding(8.dp).size(140.dp), "Стикер")
         }
         // Одно голосовое без текста: время и галочки справа внизу самого голосового.
         val voiceOnly = text.isEmpty() && content.voices.size == 1 && visuals.isEmpty() && content.files.isEmpty() &&
@@ -348,6 +406,7 @@ private fun BubbleContent(
                 circle = if (alert) MissedRed else null,
             )
         }
+        content.poll?.let { poll -> PollChoices(poll, colors) { onVote(message, it) } }
         if (text.isNotEmpty()) {
             TextWithTime(item, text, colors)
         } else if (voiceOnly && !transcriptShown) {
@@ -358,6 +417,51 @@ private fun BubbleContent(
         Reactions(content.reactions, colors, item.outgoing, Modifier.padding(start = 8.dp, end = 8.dp, bottom = 6.dp)) { onReaction(message, it) }
         val count = item.comments
         if (count != null && onComments != null) CommentsFooter(count, colors) { onComments(message) }
+    }
+}
+
+/** Ответы опроса. Касание строки отправляет голос, если сообщение уже на сервере. */
+@Composable
+private fun PollChoices(poll: PollContent, colors: BubbleColors, onVote: (String) -> Unit) {
+    Column(Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp).fillMaxWidth()) {
+        Text(poll.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        poll.answers.forEach { answer ->
+            val fraction = if (poll.total <= 0) 0f else answer.votes.toFloat() / poll.total.toFloat()
+            Column(
+                Modifier
+                    .padding(top = 6.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { onVote(answer.id) }
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(answer.text, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(answer.votes.toString(), style = MaterialTheme.typography.labelMedium, color = colors.secondary)
+                }
+                Box(
+                    Modifier
+                        .padding(top = 4.dp)
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(colors.content.copy(alpha = 0.12f)),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                            .height(4.dp)
+                            .background(colors.accent),
+                    )
+                }
+            }
+        }
+        Text(
+            "Голосов: ${poll.total}",
+            style = MaterialTheme.typography.labelSmall,
+            color = colors.secondary,
+            modifier = Modifier.padding(top = 4.dp, start = 4.dp),
+        )
     }
 }
 
@@ -438,8 +542,7 @@ fun ReplyQuote(author: String, preview: String, colors: BubbleColors, modifier: 
 /** Фото и видео: одно — по пропорциям, несколько — сеткой по два. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modifier = Modifier, onLongPress: () -> Unit = {}, onOpen: (ChatAttachment) -> Unit) {
-    val shape = RoundedCornerShape(15.dp)
+private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modifier = Modifier, shape: Shape, onLongPress: () -> Unit = {}, onDoubleTap: () -> Unit = {}, onOpen: (ChatAttachment) -> Unit) {
     if (visuals.size == 1) {
         val (w, h) = when (val v = visuals.first()) {
             is ChatAttachment.Photo -> v.photo.width to v.photo.height
@@ -447,14 +550,14 @@ private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modif
             else -> null to null
         }
         val frame = ChatContentFormat.frame(w, h, maxWidth.value.toDouble(), 360.0)
-        Box(modifier.size(frame.width.dp, frame.height.dp).clip(shape).combinedClickable(onLongClick = onLongPress) { onOpen(visuals.first()) }) { VisualCell(visuals.first()) }
+        Box(modifier.size(frame.width.dp, frame.height.dp).clip(shape).combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(visuals.first()) }) { VisualCell(visuals.first()) }
         return
     }
     val cell = (maxWidth - 2.dp) / 2
     Column(modifier.clip(shape), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         visuals.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                row.forEach { Box(Modifier.size(if (row.size == 1) maxWidth else cell, cell).combinedClickable(onLongClick = onLongPress) { onOpen(it) }) { VisualCell(it) } }
+                row.forEach { Box(Modifier.size(if (row.size == 1) maxWidth else cell, cell).combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(it) }) { VisualCell(it) } }
             }
         }
     }

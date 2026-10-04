@@ -33,6 +33,7 @@ import app.orbitle.domain.AuthPhase
 import app.orbitle.presentation.auth.AuthViewModel
 import app.orbitle.presentation.chatlist.ChatListViewModel
 import app.orbitle.ui.auth.AuthScreen
+import app.orbitle.ui.auth.NewSessionNotice
 import app.orbitle.ui.main.MainScreen
 import app.orbitle.ui.theme.OrbitleTheme
 import kotlinx.coroutines.launch
@@ -75,7 +76,7 @@ private fun Root(container: AppContainer) {
     when (phase) {
         AuthPhase.Restoring -> Launch()
         is AuthPhase.SignedIn -> {
-            val chats = viewModel { ChatListViewModel(container.chats, container.session.connection, local = container.chatMarks) }
+            val chats = viewModel { ChatListViewModel(container.chats, container.session.connection, local = container.chatMarks, recents = container.recentSearches) }
             val account by container.account.account.collectAsStateWithLifecycle(initialValue = null)
             MainScreen(container, chats, account, onLogout = { scope.launch { container.session.logout() } })
         }
@@ -83,6 +84,10 @@ private fun Root(container: AppContainer) {
             val auth = viewModel { AuthViewModel(container.session) }
             AuthScreen(auth)
         }
+    }
+    val showFresh by container.freshSessionNotice.collectAsStateWithLifecycle()
+    if (showFresh && phase is AuthPhase.SignedIn) {
+        NewSessionNotice(onDismiss = container::dismissFreshSessionNotice)
     }
 }
 

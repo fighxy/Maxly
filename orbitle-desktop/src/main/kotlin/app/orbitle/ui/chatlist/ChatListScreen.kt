@@ -47,7 +47,10 @@ import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
@@ -69,6 +72,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
@@ -106,6 +110,7 @@ import app.orbitle.presentation.chatlist.ChatListContent
 import app.orbitle.presentation.chatlist.ChatListItem
 import app.orbitle.presentation.chatlist.ChatListUiState
 import app.orbitle.presentation.chatlist.ChatListViewModel
+import app.orbitle.presentation.chatlist.NewChatModel
 import app.orbitle.ui.components.Avatar
 import app.orbitle.ui.components.privateBlur
 import coil3.compose.AsyncImage
@@ -120,6 +125,8 @@ fun ChatListScreen(
     onOpenMessage: (FoundMessageItem) -> Unit = {},
     privateMode: app.orbitle.domain.PrivateModePreferences = app.orbitle.domain.PrivateModePreferences(),
     onTogglePrivateMode: () -> Unit = {},
+    newChat: NewChatModel? = null,
+    onOpenCreated: (id: String, title: String) -> Unit = { _, _ -> },
 ) {
     LifecycleResumeEffect(viewModel) {
         viewModel.reloadLocal()
@@ -180,17 +187,26 @@ fun ChatListScreen(
         },
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
-            // Глаз включает и выключает приватный режим; при поиске кнопки нет.
-            if (privateMode.quickToggle && !state.isSearchActive) {
-                androidx.compose.material3.SmallFloatingActionButton(
-                    onClick = onTogglePrivateMode,
-                    containerColor = if (privateMode.enabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-                ) {
-                    Icon(
-                        if (privateMode.enabled) Icons.Filled.VisibilityOff else Icons.Outlined.Visibility,
-                        if (privateMode.enabled) "Выключить приватный режим" else "Включить приватный режим",
-                        tint = if (privateMode.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            // При поиске кнопок нет. Глаз — приватный режим, карандаш — новое сообщение.
+            if (!state.isSearchActive && (privateMode.quickToggle || newChat != null)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.End) {
+                    if (privateMode.quickToggle) {
+                        androidx.compose.material3.SmallFloatingActionButton(
+                            onClick = onTogglePrivateMode,
+                            containerColor = if (privateMode.enabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        ) {
+                            Icon(
+                                if (privateMode.enabled) Icons.Filled.VisibilityOff else Icons.Outlined.Visibility,
+                                if (privateMode.enabled) "Выключить приватный режим" else "Включить приватный режим",
+                                tint = if (privateMode.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    if (newChat != null) {
+                        FloatingActionButton(onClick = newChat::show) {
+                            Icon(Icons.Filled.Edit, "Новое сообщение")
+                        }
+                    }
                 }
             }
         },
@@ -202,10 +218,21 @@ fun ChatListScreen(
             modifier = Modifier.padding(padding).fillMaxSize(),
         ) {
             val open: (ChatListItem) -> Unit = {
+                if (state.isSearchActive) viewModel.selectSearchResult(it.id)
                 viewModel.opened(it.id)
                 onOpenChat(it)
             }
-            val actions = remember(viewModel) { ChatRowActions(viewModel::togglePin, viewModel::toggleRead, viewModel::toggleMute) }
+            val openFound: (ChatSearchResult) -> Unit = {
+                viewModel.selectSearchResult(it.id)
+                onOpenFound(it)
+            }
+            val openMessage: (FoundMessageItem) -> Unit = {
+                viewModel.selectSearchResult(it.chatId)
+                onOpenMessage(it)
+            }
+            val actions = remember(viewModel) {
+                ChatRowActions(viewModel::togglePin, viewModel::toggleRead, viewModel::toggleMute, viewModel::deleteChat, viewModel::clearHistory)
+            }
             if (paged) {
                 HorizontalPager(
                     state = pagerState,
@@ -225,8 +252,10 @@ fun ChatListScreen(
                 val searching = state.isSearchActive && state.searchQuery.isNotBlank()
                 val showsResults = state.content == ChatListContent.List || state.content == ChatListContent.Empty
                 val hasFound = state.global.isNotEmpty() || state.messages.isNotEmpty() || state.isSearchingServer
-                if (searching && showsResults && hasFound) {
-                    SearchResults(state, listState, open, onOpenFound, onOpenMessage, actions)
+                if (state.isSearchActive && state.searchQuery.isBlank()) {
+                    RecentSearches(state.recent, listState, open, viewModel::removeRecent, viewModel::clearRecent, actions)
+                } else if (searching && showsResults && hasFound) {
+                    SearchResults(state, listState, open, openFound, openMessage, actions)
                 } else {
                     ChatListBody(
                         state.content, state.items, searching = searching, listState = listState,
@@ -235,6 +264,15 @@ fun ChatListScreen(
                 }
             }
         }
+    }
+    if (newChat != null) {
+        val compose by newChat.state.collectAsStateWithLifecycle()
+        LaunchedEffect(compose.opened) {
+            val opened = compose.opened ?: return@LaunchedEffect
+            onOpenCreated(opened.id, opened.title)
+            newChat.consumeOpened()
+        }
+        if (compose.visible) NewChatSheet(compose, newChat)
     }
 }
 
@@ -355,6 +393,43 @@ private fun ChatList(items: List<ChatListItem>, listState: LazyListState, onOpen
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         items(items, key = { it.id }) { item ->
             ChatRow(item, onClick = { onOpenChat(item) }, actions = actions, modifier = Modifier.animateItem())
+        }
+    }
+}
+
+/** Пустой поиск: недавние чаты, без всего списка. */
+@Composable
+private fun RecentSearches(
+    rows: List<ChatListItem>,
+    listState: LazyListState,
+    onOpenChat: (ChatListItem) -> Unit,
+    onRemove: (String) -> Unit,
+    onClear: () -> Unit,
+    actions: ChatRowActions,
+) {
+    LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+        if (rows.isEmpty()) return@LazyColumn
+        item(key = "recent-header") {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(R.string.chats_search_recent),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onClear) { Text(stringResource(R.string.chats_search_clear)) }
+            }
+        }
+        items(rows, key = { "recent-${it.id}" }) { item ->
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                ChatRow(item, onClick = { onOpenChat(item) }, actions = actions, modifier = Modifier.weight(1f))
+                IconButton(onClick = { onRemove(item.id) }) {
+                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.chats_search_remove_recent))
+                }
+            }
         }
     }
 }
@@ -499,12 +574,19 @@ private fun FoundChatRow(found: ChatSearchResult, onClick: () -> Unit) {
 }
 
 /** Действия меню строки чата. */
-class ChatRowActions(val pin: (String) -> Unit, val read: (String) -> Unit = {}, val mute: (String) -> Unit = {})
+class ChatRowActions(
+    val pin: (String) -> Unit,
+    val read: (String) -> Unit = {},
+    val mute: (String) -> Unit = {},
+    val deleteChat: (String, Boolean) -> Unit = { _, _ -> },
+    val clearHistory: (String, Boolean) -> Unit = { _, _ -> },
+)
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ChatRow(original: ChatListItem, onClick: () -> Unit, actions: ChatRowActions, modifier: Modifier = Modifier) {
     var menu by remember { mutableStateOf(false) }
+    var erase by remember { mutableStateOf<app.orbitle.ui.chat.ChatErase?>(null) }
     val privacy = app.orbitle.ui.components.LocalPrivateMode.current
     val item = if (privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER) {
         remember(original) { app.orbitle.presentation.settings.PrivateModeMask.item(original) }
@@ -585,6 +667,35 @@ fun ChatRow(original: ChatListItem, onClick: () -> Unit, actions: ChatRowActions
                     menu = false
                     actions.mute(item.id)
                 },
+            )
+            DropdownMenuItem(
+                text = { Text("Очистить историю") },
+                onClick = {
+                    menu = false
+                    erase = app.orbitle.ui.chat.ChatErase.CLEAR
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Удалить чат") },
+                onClick = {
+                    menu = false
+                    erase = app.orbitle.ui.chat.ChatErase.DELETE
+                },
+            )
+        }
+        erase?.let { kind ->
+            val hidden = privacy != app.orbitle.domain.PrivateModeDisplay.VISIBLE
+            app.orbitle.ui.chat.EraseChatDialog(
+                kind = kind,
+                type = original.type,
+                saved = original.id == app.orbitle.domain.Chat.SAVED_MESSAGES_ID,
+                title = if (hidden) "этот чат" else original.title,
+                onChoose = { forEveryone ->
+                    erase = null
+                    if (kind == app.orbitle.ui.chat.ChatErase.DELETE) actions.deleteChat(original.id, forEveryone)
+                    else actions.clearHistory(original.id, forEveryone)
+                },
+                onDismiss = { erase = null },
             )
         }
     }

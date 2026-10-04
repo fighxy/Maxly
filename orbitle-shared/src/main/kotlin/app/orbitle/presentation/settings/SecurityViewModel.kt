@@ -14,10 +14,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * «Безопасность»: статус пароля для входа и почта восстановления.
- * Включить, сменить и выключить пароль здесь нельзя: на iPhone это ещё «Скоро».
+ * «Безопасность»: статус облачного пароля, его включение, смена и выключение,
+ * и почта восстановления. Семейная защита отдельным запросом не пишется.
  */
 class SecurityViewModel(private val repository: AccountRepository) : ViewModel() {
+
+    enum class PasswordForm { NONE, ENABLE, CHANGE, DISABLE }
 
     data class State(
         /** `true`, пока первый ответ ещё не пришёл. */
@@ -25,6 +27,10 @@ class SecurityViewModel(private val repository: AccountRepository) : ViewModel()
         val status: TwoFactorStatus? = null,
         /** Текст, если статус не загрузился. Почта при этом не показывается. */
         val failure: String? = null,
+        val form: PasswordForm = PasswordForm.NONE,
+        val working: Boolean = false,
+        val formError: String? = null,
+        val notice: String? = null,
     )
 
     private val _state = MutableStateFlow(State())
@@ -50,6 +56,62 @@ class SecurityViewModel(private val repository: AccountRepository) : ViewModel()
     /** Статус сразу после смены почты, без повторного запроса. */
     fun apply(status: TwoFactorStatus) {
         _state.update { it.copy(loading = false, status = status, failure = null) }
+    }
+
+    fun openForm(form: PasswordForm) {
+        _state.update { it.copy(form = form, formError = null, notice = null) }
+    }
+
+    fun closeForm() {
+        _state.update { it.copy(form = PasswordForm.NONE, formError = null, working = false) }
+    }
+
+    fun enablePassword(password: String, hint: String) {
+        if (password.isEmpty() || _state.value.working) {
+            if (password.isEmpty()) _state.update { it.copy(formError = "Введите пароль") }
+            return
+        }
+        work("Пароль включён") { repository.enablePassword(password, hint) }
+    }
+
+    fun changePassword(oldPassword: String, newPassword: String) {
+        when {
+            _state.value.working -> return
+            oldPassword.isEmpty() || newPassword.isEmpty() -> _state.update { it.copy(formError = "Введите оба пароля") }
+            oldPassword == newPassword -> _state.update { it.copy(formError = "Новый пароль совпадает со старым") }
+            else -> work("Пароль изменён") { repository.changePassword(oldPassword, newPassword) }
+        }
+    }
+
+    fun disablePassword(password: String) {
+        if (password.isEmpty() || _state.value.working) {
+            if (password.isEmpty()) _state.update { it.copy(formError = "Введите пароль") }
+            return
+        }
+        work("Пароль выключен") { repository.disablePassword(password) }
+    }
+
+    private fun work(notice: String, block: suspend () -> Unit) {
+        _state.update { it.copy(working = true, formError = null, notice = null) }
+        viewModelScope.launch {
+            try {
+                block()
+                val status = runCatching { repository.twoFactorStatus() }.getOrNull()
+                _state.update {
+                    it.copy(
+                        working = false,
+                        form = PasswordForm.NONE,
+                        notice = notice,
+                        status = status ?: it.status,
+                        loading = false,
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                _state.update { it.copy(working = false, formError = (e as? OrbitleError)?.userMessage ?: "Не удалось изменить пароль") }
+            }
+        }
     }
 
     private fun message(e: Throwable): String = (e as? OrbitleError)?.userMessage ?: CoreErrors.map(e).userMessage ?: "Что-то пошло не так"

@@ -21,6 +21,8 @@ struct MediaMosaic: View {
     /// а сам круг на время воспроизведения крупнее.
     var roundPlayer: AnyView?
     let onOpen: (String) -> Void
+    /// Двойное нажатие по фото или видео: быстрая реакция. Одиночное касание по-прежнему открывает.
+    var onDoubleTap: (() -> Void)? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -93,6 +95,7 @@ struct MediaMosaic: View {
             }
         }
         .onTapGesture { onOpen(item.id) }
+        .modifier(QuickDoubleTap(action: onDoubleTap))
         .frame(width: width, height: height, alignment: .center)
         .offset(x: CGFloat(tile.x), y: CGFloat(tile.y))
         .accessibilityElement(children: .ignore)

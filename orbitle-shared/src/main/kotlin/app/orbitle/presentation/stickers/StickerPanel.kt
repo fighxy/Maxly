@@ -2,6 +2,7 @@ package app.orbitle.presentation.stickers
 
 import app.orbitle.data.RecentStickerStore
 import app.orbitle.data.StickerRepository
+import app.orbitle.domain.AnimatedEmoji
 import app.orbitle.domain.Sticker
 import app.orbitle.domain.StickerCatalog
 import kotlinx.coroutines.CancellationException
@@ -21,6 +22,8 @@ data class StickerSection(val id: String, val title: String, val iconUrl: String
 data class StickerPanelState(
     val mode: Mode = Mode.EMOJI,
     val emoji: List<EmojiCategory> = emptyList(),
+    /** Анимодзи сервера: раздел «Анимированные» сразу после недавних. */
+    val animated: List<AnimatedEmoji> = emptyList(),
     val sections: List<StickerSection> = emptyList(),
     val stickers: Map<String, Sticker> = emptyMap(),
     val isLoading: Boolean = false,
@@ -29,9 +32,48 @@ data class StickerPanelState(
     enum class Mode { EMOJI, STICKERS }
 }
 
+/** Ячейка сетки эмодзи. `animated` задан у анимодзи сервера, в том числе в «Недавних». */
+data class EmojiPick(val key: String, val glyph: String, val animated: AnimatedEmoji?)
+
+/** Раздел сетки эмодзи. */
+data class EmojiTab(val id: String, val title: String, val picks: List<EmojiPick>)
+
+/**
+ * Порядок панели: «Недавние», затем «Анимированные», затем категории Unicode.
+ * Ключ `animoji:` в недавних показывается эмодзи каталога. Неизвестный id скрыт.
+ */
+fun emojiTabs(state: StickerPanelState): List<EmojiTab> {
+    val animatedById = state.animated.associateBy { it.id }
+    val tabs = ArrayList<EmojiTab>()
+    val recent = state.emoji.firstOrNull { it.id == "recent" }
+    if (recent != null) {
+        val picks = recent.emoji.mapNotNull { token ->
+            if (token.startsWith(StickerPanel.ANIMOJI_PREFIX)) {
+                val item = animatedById[token.removePrefix(StickerPanel.ANIMOJI_PREFIX)] ?: return@mapNotNull null
+                EmojiPick("recent:a${item.id}", item.emoji, item)
+            } else {
+                EmojiPick("recent:$token", token, null)
+            }
+        }
+        if (picks.isNotEmpty()) tabs += EmojiTab("recent", recent.title, picks)
+    }
+    if (state.animated.isNotEmpty()) {
+        tabs += EmojiTab(
+            "animated",
+            StickerPanel.ANIMATED_TITLE,
+            state.animated.map { EmojiPick("animated:${it.id}", it.emoji, it) },
+        )
+    }
+    state.emoji.filter { it.id != "recent" }.forEach { category ->
+        tabs += EmojiTab(category.id, category.title, category.emoji.map { EmojiPick("${category.id}:$it", it, null) })
+    }
+    return tabs
+}
+
 /**
  * Панель эмодзи и стикеров под полем ввода. Эмодзи: «Недавние», если ими пользовались,
- * затем категории Unicode. Стикеры: недавние, затем наборы (свои первыми).
+ * затем «Анимированные» (анимодзи сервера), затем категории Unicode.
+ * Стикеры: недавние, затем наборы (свои первыми).
  * Каталог сервера грузится один раз при первом открытии, стикеры раздела — когда он виден.
  */
 class StickerPanel(
@@ -59,6 +101,14 @@ class StickerPanel(
         loaded = true
         _state.update { it.copy(isLoading = true, failure = null) }
         scope.launch {
+            try {
+                val fresh = repository.animatedEmoji()
+                if (fresh.isNotEmpty()) _state.update { it.copy(animated = fresh) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Раздел анимодзи необязателен: обычные эмодзи остаются.
+            }
             try {
                 catalog = repository.catalog()
                 rebuildStickers()
@@ -100,6 +150,13 @@ class StickerPanel(
         rebuildEmoji()
     }
 
+    /** Анимодзи ушёл в поле: в недавних хранится ключ `animoji:` и id, не сам символ. */
+    fun usedAnimated(emoji: AnimatedEmoji) {
+        val key = ANIMOJI_PREFIX + emoji.id
+        recents.recentEmoji = (listOf(key) + recents.recentEmoji.filter { it != key }).take(RECENT_EMOJI)
+        rebuildEmoji()
+    }
+
     fun usedSticker(sticker: Sticker) {
         recents.recentStickers = (listOf(sticker) + recents.recentStickers.filter { it.id != sticker.id }).take(RECENT_STICKERS)
         rebuildStickers()
@@ -123,6 +180,8 @@ class StickerPanel(
 
     companion object {
         const val RECENT_TITLE = "Недавние"
+        const val ANIMATED_TITLE = "Анимированные"
+        const val ANIMOJI_PREFIX = "animoji:"
         const val RECENT_EMOJI = 40
         const val RECENT_EMOJI_SHOWN = 24
         const val RECENT_STICKERS = 20

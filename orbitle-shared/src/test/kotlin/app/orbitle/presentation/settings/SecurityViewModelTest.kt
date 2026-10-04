@@ -100,6 +100,29 @@ class SecurityViewModelTest {
         assertEquals("a•••@b.ru", model.maskedEmail)
         assertNull(model.state.value.failure)
     }
+
+    @Test
+    fun `password form checks the fields and then calls the repository`() {
+        val repo = EmailAccount()
+        val model = SecurityViewModel(repo)
+        model.enablePassword("", "кот")
+        assertNull(repo.enabled)
+        assertEquals("Введите пароль", model.state.value.formError)
+        model.enablePassword("secret", "кот")
+        assertEquals("secret" to "кот", repo.enabled)
+        assertEquals("Пароль включён", model.state.value.notice)
+        assertEquals(SecurityViewModel.PasswordForm.NONE, model.state.value.form)
+        model.changePassword("a", "a")
+        assertEquals("Новый пароль совпадает со старым", model.state.value.formError)
+        assertNull(repo.changed)
+        model.changePassword("old", "new")
+        assertEquals("old" to "new", repo.changed)
+        model.disablePassword("")
+        assertNull(repo.disabled)
+        model.disablePassword("secret")
+        assertEquals("secret", repo.disabled)
+        assertEquals("Пароль выключен", model.state.value.notice)
+    }
 }
 
 /** Аккаунт только для смены почты: остальное не используется. */
@@ -119,9 +142,25 @@ private class EmailAccount : AccountRepository {
     override suspend fun blockedUsers(): List<BlockedUser> = emptyList()
     override suspend fun unblock(userId: String) = Unit
 
+    var enabled: Pair<String, String?>? = null
+    var changed: Pair<String, String>? = null
+    var disabled: String? = null
+
     override suspend fun twoFactorStatus(): TwoFactorStatus {
         failure?.let { throw it }
         return TwoFactorStatus.of(true, "ivan@ya.ru")
+    }
+
+    override suspend fun enablePassword(password: String, hint: String?) {
+        enabled = password to hint
+    }
+
+    override suspend fun changePassword(oldPassword: String, newPassword: String) {
+        changed = oldPassword to newPassword
+    }
+
+    override suspend fun disablePassword(password: String) {
+        disabled = password
     }
 
     override suspend fun startEmailChange(password: String): String {

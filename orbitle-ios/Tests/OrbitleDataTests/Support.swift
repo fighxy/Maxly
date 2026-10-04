@@ -247,6 +247,52 @@ actor FakeMaxAPI: MaxAPI {
     func setMessageSearchResult(_ result: Result<[FoundMessage], MaxAPIError>) {
         messageSearchResult = result
     }
+
+    private(set) var groupCalls: [(String, [String])] = []
+    private(set) var channelCalls: [String] = []
+    private(set) var linkCalls: [String] = []
+    var createdGroup: ChatRecord?
+    var createdChannel: ChatRecord?
+    var joinedChat: ChatRecord?
+    var createError: MaxAPIError?
+
+    func createGroup(title: String, memberIds: [String]) async -> Result<ChatRecord?, MaxAPIError> {
+        groupCalls.append((title, memberIds))
+        if let createError { return .failure(createError) }
+        return .success(createdGroup)
+    }
+
+    func createChannel(title: String) async -> Result<ChatRecord?, MaxAPIError> {
+        channelCalls.append(title)
+        if let createError { return .failure(createError) }
+        return .success(createdChannel)
+    }
+
+    private(set) var chatDeletes: [(String, Int64, Bool)] = []
+    private(set) var historyClears: [(String, Int64, Bool)] = []
+    var chatDeleteResult: Result<Void, MaxAPIError> = .success(())
+    var historyClearResult: Result<Void, MaxAPIError> = .success(())
+
+    func deleteChat(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async -> Result<Void, MaxAPIError> {
+        chatDeletes.append((chatId, lastEventTimeMs, forEveryone))
+        return chatDeleteResult
+    }
+
+    func clearHistory(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async -> Result<Void, MaxAPIError> {
+        historyClears.append((chatId, lastEventTimeMs, forEveryone))
+        return historyClearResult
+    }
+
+    func joinByLink(_ link: String) async -> Result<ChatRecord?, MaxAPIError> {
+        linkCalls.append(link)
+        if let createError { return .failure(createError) }
+        return .success(joinedChat)
+    }
+
+    func setCreatedGroup(_ record: ChatRecord?) { createdGroup = record }
+    func setCreatedChannel(_ record: ChatRecord?) { createdChannel = record }
+    func setJoinedChat(_ record: ChatRecord?) { joinedChat = record }
+    func setCreateError(_ error: MaxAPIError?) { createError = error }
     var muteError: MaxAPIError?
     func setMuteError(_ error: MaxAPIError?) { muteError = error }
 

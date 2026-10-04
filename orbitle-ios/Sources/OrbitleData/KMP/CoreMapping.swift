@@ -84,7 +84,10 @@ enum CoreMapping {
             lastName: contact.lastName,
             phone: contact.phone.isEmpty ? nil : "+" + contact.phone,
             avatarURL: contact.avatarURL.isEmpty ? nil : URL(string: contact.avatarURL),
-            presence: presence
+            presence: presence,
+            isBot: contact.isBot,
+            isOfficial: contact.isOfficial,
+            isServiceAccount: contact.isServiceAccount
         )
     }
 

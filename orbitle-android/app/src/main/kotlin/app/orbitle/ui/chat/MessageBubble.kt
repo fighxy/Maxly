@@ -83,6 +83,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -95,10 +96,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.orbitle.domain.ChatAttachment
+import app.orbitle.domain.PollContent
 import app.orbitle.domain.FileContent
 import app.orbitle.domain.Message
 import app.orbitle.domain.MessageReaction
 import app.orbitle.domain.MessageStatus
+import app.orbitle.domain.TextSpan
 import app.orbitle.domain.PhotoContent
 import app.orbitle.domain.VideoContent
 import app.orbitle.domain.VoiceContent
@@ -144,6 +147,8 @@ fun BubbleRow(
     highlighted: Boolean = false,
     onSwipeReply: ((Message) -> Unit)? = null,
     onComments: ((Message) -> Unit)? = null,
+    onVote: (Message, String) -> Unit = { _, _ -> },
+    onDoubleTap: (Message) -> Unit = {},
 ) {
     val message = item.message
     val maxWidth = (LocalConfiguration.current.screenWidthDp * 0.8f).dp
@@ -198,16 +203,17 @@ fun BubbleRow(
             }
         }
         val colors = bubbleColors(item.outgoing)
-        val tail = 6.dp
+        val radii = app.orbitle.presentation.chat.BubbleCorners.of(item.outgoing, item.joinsPrevious, item.continues)
         val shape = RoundedCornerShape(
-            topStart = 18.dp,
-            topEnd = 18.dp,
-            bottomEnd = if (item.outgoing && !item.continues) tail else 18.dp,
-            bottomStart = if (!item.outgoing && !item.continues) tail else 18.dp,
+            topStart = radii.topStart.dp,
+            topEnd = radii.topEnd.dp,
+            bottomEnd = radii.bottomEnd.dp,
+            bottomStart = radii.bottomStart.dp,
         )
         val press = Modifier.combinedClickable(
             onClick = { if (message.status == MessageStatus.FAILED) onRetry(message) },
             onLongClick = { onLongPress(message) },
+            onDoubleClick = { onDoubleTap(message) },
         )
         val roundVideo = (message.content.visuals.singleOrNull() as? ChatAttachment.Video)?.video
             ?.takeIf { it.isRound && message.displayText.isBlank() && message.content.reply == null }
@@ -216,7 +222,7 @@ fun BubbleRow(
                 item.authorName?.let {
                     Text(it, color = AvatarPalette.nameColor(item.authorColor), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp, bottom = 2.dp))
                 }
-                RoundNote(message, roundVideo, onLongPress = { onLongPress(message) })
+                RoundNote(message, roundVideo, onLongPress = { onLongPress(message) }, onDoubleTap = { onDoubleTap(message) })
                 Surface(shape = RoundedCornerShape(10.dp), color = Color.Black.copy(alpha = 0.35f), modifier = Modifier.padding(top = 4.dp)) {
                     TimeRow(item, Color.White, Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                 }
@@ -230,18 +236,46 @@ fun BubbleRow(
             }
             return@Row
         }
+        val bigEmoji = ChatContentFormat.bigEmoji(message.displayText)?.takeIf {
+            message.content.attachments.isEmpty() && message.content.reply == null &&
+                message.content.forward == null && item.comments == null
+        }
+        if (bigEmoji != null) {
+            val lottie = message.content.formatting.firstOrNull { it.kind == TextSpan.Kind.ANIMOJI }?.url
+            Column(horizontalAlignment = if (item.outgoing) Alignment.End else Alignment.Start, modifier = press) {
+                item.authorName?.let {
+                    Text(it, color = AvatarPalette.nameColor(item.authorColor), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp, bottom = 2.dp))
+                }
+                if (bigEmoji.size == 1 && !lottie.isNullOrBlank()) {
+                    LottieOrStill(lottie, null, Modifier.size(120.dp), bigEmoji.single())
+                } else {
+                    Text(bigEmoji.joinToString(""), fontSize = ChatContentFormat.bigEmojiSize(bigEmoji.size).sp, modifier = Modifier.padding(horizontal = 2.dp))
+                }
+                Surface(shape = RoundedCornerShape(10.dp), color = Color.Black.copy(alpha = 0.35f), modifier = Modifier.padding(top = 4.dp)) {
+                    TimeRow(item, Color.White, Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                }
+                Reactions(message.content.reactions, colors, item.outgoing) { onReaction(message, it) }
+            }
+            return@Row
+        }
         if (onlySticker) {
             Column(horizontalAlignment = if (item.outgoing) Alignment.End else Alignment.Start) {
-                AsyncImage(
-                    model = sticker!!.url,
-                    contentDescription = "Стикер",
-                    modifier = Modifier.size(160.dp).clip(RoundedCornerShape(12.dp)).then(press),
-                    contentScale = ContentScale.Fit,
+                LottieOrStill(
+                    sticker!!.lottieUrl,
+                    sticker.url,
+                    Modifier.size(168.dp).clip(RoundedCornerShape(12.dp)).then(press),
+                    "Стикер",
                 )
                 Surface(shape = RoundedCornerShape(10.dp), color = Color.Black.copy(alpha = 0.35f)) {
                     TimeRow(item, Color.White, Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                 }
                 Reactions(message.content.reactions, colors, item.outgoing) { onReaction(message, it) }
+                val count = item.comments
+                if (count != null && onComments != null) {
+                    Surface(shape = RoundedCornerShape(14.dp), color = colors.container, contentColor = colors.content, modifier = Modifier.padding(top = 4.dp).widthIn(max = 220.dp)) {
+                        CommentsFooter(count, colors) { onComments(message) }
+                    }
+                }
             }
             return@Row
         }
@@ -251,7 +285,7 @@ fun BubbleRow(
             contentColor = colors.content,
             modifier = Modifier.widthIn(max = maxWidth).clip(shape).then(press),
         ) {
-            BubbleContent(item, colors, maxWidth, onReaction, onReplyClick, onComments, onLongPress = { onLongPress(message) })
+            BubbleContent(item, colors, maxWidth, shape, onReaction, onReplyClick, onComments, onLongPress = { onLongPress(message) }, onVote = onVote, onDoubleTap = { onDoubleTap(message) })
         }
     }
     }
@@ -262,10 +296,13 @@ private fun BubbleContent(
     item: ChatItem.Bubble,
     colors: BubbleColors,
     maxWidth: Dp,
+    mediaShape: Shape,
     onReaction: (Message, String) -> Unit,
     onReplyClick: (String) -> Unit,
     onComments: ((Message) -> Unit)? = null,
     onLongPress: () -> Unit = {},
+    onVote: (Message, String) -> Unit = { _, _ -> },
+    onDoubleTap: () -> Unit = {},
 ) {
     val message = item.message
     val content = message.content
@@ -307,12 +344,12 @@ private fun BubbleContent(
         }
         if (visuals.isNotEmpty()) {
             val bubbleMedia = LocalBubbleMedia.current
-            Visuals(visuals, maxWidth - 6.dp, Modifier.padding(top = if (item.authorName != null || content.forward != null || content.reply != null) 6.dp else 0.dp), onLongPress = onLongPress) {
+            Visuals(visuals, maxWidth - 6.dp, Modifier.padding(top = if (item.authorName != null || content.forward != null || content.reply != null) 6.dp else 0.dp), mediaShape, onLongPress = onLongPress, onDoubleTap = onDoubleTap) {
                 bubbleMedia.onVisual(message, it)
             }
         }
         content.sticker?.let { sticker ->
-            AsyncImage(sticker.url, "Стикер", Modifier.padding(8.dp).size(140.dp), contentScale = ContentScale.Fit)
+            LottieOrStill(sticker.lottieUrl, sticker.url, Modifier.padding(8.dp).size(140.dp), "Стикер")
         }
         // Одно голосовое без текста: время и галочки справа внизу самого голосового.
         val voiceOnly = text.isEmpty() && content.voices.size == 1 && visuals.isEmpty() && content.files.isEmpty() &&
@@ -348,6 +385,7 @@ private fun BubbleContent(
                 circle = if (alert) MissedRed else null,
             )
         }
+        content.poll?.let { poll -> PollChoices(poll, colors) { onVote(message, it) } }
         if (text.isNotEmpty()) {
             TextWithTime(item, text, colors)
         } else if (voiceOnly && !transcriptShown) {
@@ -358,6 +396,51 @@ private fun BubbleContent(
         Reactions(content.reactions, colors, item.outgoing, Modifier.padding(start = 8.dp, end = 8.dp, bottom = 6.dp)) { onReaction(message, it) }
         val count = item.comments
         if (count != null && onComments != null) CommentsFooter(count, colors) { onComments(message) }
+    }
+}
+
+/** Ответы опроса. Касание строки отправляет голос, если сообщение уже на сервере. */
+@Composable
+private fun PollChoices(poll: PollContent, colors: BubbleColors, onVote: (String) -> Unit) {
+    Column(Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp).fillMaxWidth()) {
+        Text(poll.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        poll.answers.forEach { answer ->
+            val fraction = if (poll.total <= 0) 0f else answer.votes.toFloat() / poll.total.toFloat()
+            Column(
+                Modifier
+                    .padding(top = 6.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { onVote(answer.id) }
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(answer.text, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(answer.votes.toString(), style = MaterialTheme.typography.labelMedium, color = colors.secondary)
+                }
+                Box(
+                    Modifier
+                        .padding(top = 4.dp)
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(colors.content.copy(alpha = 0.12f)),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                            .height(4.dp)
+                            .background(colors.accent),
+                    )
+                }
+            }
+        }
+        Text(
+            "Голосов: ${poll.total}",
+            style = MaterialTheme.typography.labelSmall,
+            color = colors.secondary,
+            modifier = Modifier.padding(top = 4.dp, start = 4.dp),
+        )
     }
 }
 
@@ -436,9 +519,9 @@ fun ReplyQuote(author: String, preview: String, colors: BubbleColors, modifier: 
 }
 
 /** Фото и видео: одно — по пропорциям, несколько — сеткой по два. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modifier = Modifier, onLongPress: () -> Unit = {}, onOpen: (ChatAttachment) -> Unit) {
-    val shape = RoundedCornerShape(15.dp)
+private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modifier = Modifier, shape: Shape, onLongPress: () -> Unit = {}, onDoubleTap: () -> Unit = {}, onOpen: (ChatAttachment) -> Unit) {
     if (visuals.size == 1) {
         val (w, h) = when (val v = visuals.first()) {
             is ChatAttachment.Photo -> v.photo.width to v.photo.height
@@ -446,14 +529,14 @@ private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modif
             else -> null to null
         }
         val frame = ChatContentFormat.frame(w, h, maxWidth.value.toDouble(), 360.0)
-        Box(modifier.size(frame.width.dp, frame.height.dp).clip(shape).combinedClickable(onLongClick = onLongPress) { onOpen(visuals.first()) }) { VisualCell(visuals.first()) }
+        Box(modifier.size(frame.width.dp, frame.height.dp).clip(shape).combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(visuals.first()) }) { VisualCell(visuals.first()) }
         return
     }
     val cell = (maxWidth - 2.dp) / 2
     Column(modifier.clip(shape), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         visuals.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                row.forEach { Box(Modifier.size(if (row.size == 1) maxWidth else cell, cell).combinedClickable(onLongClick = onLongPress) { onOpen(it) }) { VisualCell(it) } }
+                row.forEach { Box(Modifier.size(if (row.size == 1) maxWidth else cell, cell).combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(it) }) { VisualCell(it) } }
             }
         }
     }

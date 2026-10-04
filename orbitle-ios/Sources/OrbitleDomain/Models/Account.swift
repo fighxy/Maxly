@@ -115,11 +115,18 @@ public struct AccountSettings: Sendable, Hashable {
     public var inviteLink: URL?
     public var sferumBotId: Int64
     public var digitalIdBotId: Int64
+    /// Эмодзи двойного нажатия в чате.
+    public var quickReaction: String
+    /// Сервер не выключил быструю реакцию (`DOUBLE_TAP_REACTION_DISABLED` не `true`).
+    public var quickReactionEnabled: Bool
+
+    public static let defaultQuickReaction = "👍"
 
     public init(
         isKnown: Bool = false, phonePrivacy: PrivacyAccess = .everybody, onlineHidden: Bool = false,
         safeMode: Bool = false, familyProtection: Bool = false, inactiveTTL: InactiveTTL = .sixMonths,
-        inviteLink: URL? = nil, sferumBotId: Int64 = 2_340_831, digitalIdBotId: Int64 = 8_250_447
+        inviteLink: URL? = nil, sferumBotId: Int64 = 2_340_831, digitalIdBotId: Int64 = 8_250_447,
+        quickReaction: String = AccountSettings.defaultQuickReaction, quickReactionEnabled: Bool = true
     ) {
         self.isKnown = isKnown
         self.phonePrivacy = phonePrivacy
@@ -130,6 +137,8 @@ public struct AccountSettings: Sendable, Hashable {
         self.inviteLink = inviteLink
         self.sferumBotId = sferumBotId
         self.digitalIdBotId = digitalIdBotId
+        self.quickReaction = quickReaction
+        self.quickReactionEnabled = quickReactionEnabled
     }
 
     public static let unknown = AccountSettings()

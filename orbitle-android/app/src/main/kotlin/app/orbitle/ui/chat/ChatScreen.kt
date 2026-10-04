@@ -13,6 +13,7 @@ import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import app.orbitle.domain.AnimatedEmoji
 import app.orbitle.domain.Sticker
 import app.orbitle.presentation.stickers.StickerPanel
 import android.net.Uri
@@ -80,7 +81,12 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.outlined.Poll
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -158,6 +164,8 @@ fun ChatScreen(
     forwardTargets: () -> List<ChatListItem> = { emptyList() },
     /** Капсула «Отключить приватный режим» над лентой. */
     onDisablePrivateMode: () -> Unit = {},
+    /** Эмодзи двойного нажатия. `null` — сервер выключил быструю реакцию. */
+    quickReaction: String? = null,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val privacy = app.orbitle.ui.components.LocalPrivateMode.current
@@ -244,6 +252,21 @@ fun ChatScreen(
     var forwarding by remember { mutableStateOf<Message?>(null) }
     var reactionUsers by remember { mutableStateOf<app.orbitle.presentation.chat.ReactionUsersModel?>(null) }
     var highlighted by remember { mutableStateOf<String?>(null) }
+    var searching by remember { mutableStateOf(false) }
+    var toolsOpen by remember { mutableStateOf(false) }
+    var eraseChat by remember { mutableStateOf<ChatErase?>(null) }
+    var makingPoll by remember { mutableStateOf(false) }
+    var scheduling by remember { mutableStateOf(false) }
+    var confirmingCall by remember { mutableStateOf(false) }
+    val scrollToMessage: (String) -> Unit = { id ->
+        val index = state.items.indexOfFirst { it.key == id }
+        if (index >= 0) scope.launch {
+            listState.animateScrollToItem(index)
+            highlighted = id
+            delay(1_200)
+            highlighted = null
+        }
+    }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
 
     LaunchedEffect(lifecycle) {
@@ -286,12 +309,21 @@ fun ChatScreen(
     // Обои на весь экран: не прокручиваются с лентой и не двигаются за клавиатурой.
     ChatWallpaperBackground(LocalChatBackdrop.current)
     Scaffold(
-        topBar = { ChatTopBar(state, onBack, onOpenProfile, privacy) },
+        topBar = {
+            ChatTopBar(
+                state, onBack, onOpenProfile, privacy,
+                onSearch = { searching = true },
+                onTools = { toolsOpen = true; model.loadTools() },
+            )
+        },
         snackbarHost = { SnackbarHost(snackbar) },
         contentWindowInsets = WindowInsets(0),
         containerColor = Color.Transparent,
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().imePadding()) {
+            state.pinnedText?.let { pinned ->
+                PinBanner(pinned, onOpen = { state.pinnedMessageId?.let(scrollToMessage) }, onUnpin = model::unpin)
+            }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when {
                     state.isLoading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -327,6 +359,8 @@ fun ChatScreen(
                                 highlighted = highlighted == item.key,
                                 onSwipeReply = if (state.canWrite) model::beginReply else null,
                                 onComments = model::openComments,
+                                onVote = model::vote,
+                                onDoubleTap = { message -> quickReaction?.let { model.toggleReaction(message, it) } },
                             )
                         }
                     }
@@ -369,10 +403,13 @@ fun ChatScreen(
                     onRemoveAttachment = model::removeAttachment,
                     panel = model.stickers,
                     onSticker = model::sendSticker,
+                    onAnimoji = model::noteAnimoji,
                     onCancelUpload = { model.cancelUpload() },
                     recorder = voiceRecorder,
                     onVoice = model::sendVoice,
                     onRecordingStart = model.media::stopVoice,
+                    onMention = model::insertMention,
+                    onCommand = model::insertCommand,
                 )
             } else {
                 Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
@@ -415,6 +452,14 @@ fun ChatScreen(
                 attaching = false
                 pickFiles.launch(arrayOf("*/*"))
             },
+            onPoll = {
+                attaching = false
+                makingPoll = true
+            },
+            onSchedule = {
+                attaching = false
+                scheduling = true
+            },
         )
     }
     mediaState.value.viewer?.let { viewer ->
@@ -454,6 +499,55 @@ fun ChatScreen(
     deleting?.let { message ->
         DeleteDialog(model, message, onDismiss = { deleting = null })
     }
+    if (searching) {
+        InChatSearchSheet(
+            model,
+            onHit = { id ->
+                searching = false
+                scrollToMessage(id)
+            },
+            onDismiss = {
+                searching = false
+                model.searchInside("")
+            },
+        )
+    }
+    if (toolsOpen) {
+        ChatToolsSheet(
+            model,
+            onCall = { confirmingCall = true },
+            onDeleteChat = { toolsOpen = false; eraseChat = ChatErase.DELETE },
+            onClearHistory = { toolsOpen = false; eraseChat = ChatErase.CLEAR },
+            onDismiss = { toolsOpen = false },
+        )
+    }
+    eraseChat?.let { kind ->
+        val header = state.header
+        EraseChatDialog(
+            kind = kind,
+            type = header?.type ?: app.orbitle.domain.ChatType.PRIVATE,
+            saved = header?.isSavedMessages == true,
+            title = header?.title.orEmpty(),
+            onChoose = { forEveryone ->
+                eraseChat = null
+                if (kind == ChatErase.DELETE) model.deleteChat(forEveryone, onBack) else model.clearHistory(forEveryone)
+            },
+            onDismiss = { eraseChat = null },
+        )
+    }
+    if (makingPoll) {
+        PollComposerSheet(onSend = model::sendPoll, onDismiss = { makingPoll = false })
+    }
+    if (scheduling) {
+        ScheduleSheet(model, onDismiss = { scheduling = false })
+    }
+    if (confirmingCall) {
+        CallConfirmDialog(
+            onAudio = { confirmingCall = false; model.signalCall(false) },
+            onVideo = { confirmingCall = false; model.signalCall(true) },
+            onDismiss = { confirmingCall = false },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -463,6 +557,8 @@ private fun ChatTopBar(
     onBack: () -> Unit,
     onOpenProfile: () -> Unit,
     privacy: app.orbitle.domain.PrivateModeDisplay = app.orbitle.domain.PrivateModeDisplay.VISIBLE,
+    onSearch: () -> Unit = {},
+    onTools: () -> Unit = {},
 ) {
     TopAppBar(
         navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад") } },
@@ -489,6 +585,10 @@ private fun ChatTopBar(
                     )
                 }
             }
+        },
+        actions = {
+            IconButton(onClick = onSearch) { Icon(Icons.Filled.Search, "Поиск") }
+            IconButton(onClick = onTools) { Icon(Icons.Filled.MoreVert, "Ещё") }
         },
     )
 }
@@ -590,10 +690,13 @@ private fun Composer(
     onRemoveAttachment: (OutgoingFile) -> Unit,
     panel: StickerPanel? = null,
     onSticker: (Sticker) -> Unit = {},
+    onAnimoji: (AnimatedEmoji) -> Unit = {},
     onCancelUpload: () -> Unit = {},
     recorder: app.orbitle.media.AndroidVoiceRecorder? = null,
     onVoice: (app.orbitle.domain.VoiceRecording) -> Unit = {},
     onRecordingStart: () -> Unit = {},
+    onMention: (app.orbitle.data.ChatMemberRow) -> Unit = {},
+    onCommand: (app.orbitle.data.BotCommandRow) -> Unit = {},
 ) {
     var showPanel by rememberSaveable { mutableStateOf(false) }
     val voice = rememberVoiceRecording(recorder, onVoice, onRecordingStart)
@@ -650,6 +753,7 @@ private fun Composer(
                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                 )
             }
+            ComposerHintsBar(state.hints, onMention, onCommand)
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.Bottom) {
                 if (editing == null) {
                     IconButton(onClick = onAttach, modifier = Modifier.size(44.dp)) {
@@ -738,9 +842,16 @@ private fun Composer(
             }
             if (showPanel && panel != null) {
                 Column(Modifier.navigationBarsPadding()) {
-                    StickerPanelView(panel, 300.dp, onEmoji = { insertEmoji.value(it) }, onSticker = {
-                        onSticker(it)
-                    })
+                    StickerPanelView(
+                        panel,
+                        300.dp,
+                        onEmoji = { insertEmoji.value(it) },
+                        onSticker = { onSticker(it) },
+                        onAnimoji = { emoji ->
+                            onAnimoji(emoji)
+                            insertEmoji.value(emoji.emoji)
+                        },
+                    )
                 }
             }
         }
@@ -777,7 +888,13 @@ private fun AttachmentStrip(items: List<OutgoingFile>, onRemove: (OutgoingFile) 
 /** Что прикрепить: фото и видео из галереи или любой файл. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AttachSheet(onDismiss: () -> Unit, onMedia: () -> Unit, onFile: () -> Unit) {
+private fun AttachSheet(
+    onDismiss: () -> Unit,
+    onMedia: () -> Unit,
+    onFile: () -> Unit,
+    onPoll: () -> Unit,
+    onSchedule: () -> Unit,
+) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         val colors = ListItemDefaults.colors(containerColor = Color.Transparent)
         ListItem(
@@ -793,6 +910,20 @@ private fun AttachSheet(onDismiss: () -> Unit, onMedia: () -> Unit, onFile: () -
             leadingContent = { Icon(Icons.Outlined.InsertDriveFile, null, tint = MaterialTheme.colorScheme.primary) },
             colors = colors,
             modifier = Modifier.clickable(onClick = onFile),
+        )
+        ListItem(
+            headlineContent = { Text("Опрос") },
+            supportingContent = { Text("Вопрос и ответы") },
+            leadingContent = { Icon(Icons.Outlined.Poll, null, tint = MaterialTheme.colorScheme.primary) },
+            colors = colors,
+            modifier = Modifier.clickable(onClick = onPoll),
+        )
+        ListItem(
+            headlineContent = { Text("Отложить") },
+            supportingContent = { Text("Отправить текст из поля позже") },
+            leadingContent = { Icon(Icons.Outlined.Schedule, null, tint = MaterialTheme.colorScheme.primary) },
+            colors = colors,
+            modifier = Modifier.clickable(onClick = onSchedule),
         )
         Spacer(Modifier.size(24.dp))
     }
@@ -912,6 +1043,14 @@ private fun MessageActions(
                 leadingContent = { Icon(Icons.AutoMirrored.Filled.Forward, null) },
                 colors = colors,
                 modifier = Modifier.clickable { onDismiss(); onForward() },
+            )
+        }
+        if (model.canPin(message)) {
+            ListItem(
+                headlineContent = { Text("Закрепить") },
+                leadingContent = { Icon(Icons.Filled.PushPin, null) },
+                colors = colors,
+                modifier = Modifier.clickable { model.pin(message); onDismiss() },
             )
         }
         if (model.canEdit(message)) {

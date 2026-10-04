@@ -11,6 +11,9 @@ import app.orbitle.domain.MessageReaction
 import app.orbitle.domain.MessageReply
 import app.orbitle.domain.MessageStatus
 import app.orbitle.domain.PhotoContent
+import app.orbitle.domain.PinNotice
+import app.orbitle.domain.PollAnswer
+import app.orbitle.domain.PollContent
 import app.orbitle.domain.StickerContent
 import app.orbitle.domain.TextSpan
 import app.orbitle.domain.VideoContent
@@ -84,7 +87,25 @@ object MessageMapping {
             formatting = elements,
             forward = forwarded?.first,
             edited = message.status == "EDITED",
+            pin = pinNotice(message.attaches),
         )
+    }
+
+    /** `CONTROL` `pin` / `unpin`. Текст берётся из `pinnedMessage.text`. */
+    fun pinNotice(attaches: List<*>?): PinNotice? {
+        val control = attaches.orEmpty().firstNotNullOfOrNull { item ->
+            (item as? Map<*, *>)?.takeIf { it["_type"] == "CONTROL" }
+        } ?: return null
+        return when ((control["event"] as? String)?.lowercase()) {
+            "unpin" -> PinNotice(null, "")
+            "pin" -> {
+                val pinned = control["pinnedMessage"] as? Map<*, *> ?: return PinNotice(null, "")
+                val id = stringId(pinned["id"]) ?: return null
+                val text = (pinned["text"] as? String)?.trim().orEmpty().ifEmpty { "Сообщение" }
+                PinNotice(id, text)
+            }
+            else -> null
+        }
     }
 
     /** Ссылка `FORWARD`: автор и текст оригинала. */
@@ -216,8 +237,32 @@ object MessageMapping {
                 )
             }
             "CALL" -> ChatAttachment.Call(call(map))
+            "POLL" -> poll(map)?.let(ChatAttachment::Poll)
             else -> null
         }
+    }
+
+    /** Опрос: без `pollId` голос отправить нечем, такое вложение пропускается. */
+    fun poll(map: Map<*, *>): PollContent? {
+        val id = stringId(map["pollId"]) ?: return null
+        val answers = (map["answers"] as? List<*>).orEmpty().mapNotNull { item ->
+            val answer = item as? Map<*, *> ?: return@mapNotNull null
+            val answerId = stringId(answer["answerId"]) ?: return@mapNotNull null
+            val text = (answer["text"] as? String)?.trim().orEmpty()
+            if (text.isEmpty()) return@mapNotNull null
+            val votes = (map["state"] as? Map<*, *>)?.let { state ->
+                (state["result"] as? List<*>).orEmpty().firstNotNullOfOrNull { row ->
+                    val result = row as? Map<*, *> ?: return@firstNotNullOfOrNull null
+                    if (stringId(result["answerId"]) != answerId) return@firstNotNullOfOrNull null
+                    integer(result["voteCount"])
+                }
+            } ?: 0
+            PollAnswer(answerId, text, votes)
+        }
+        if (answers.size < 2) return null
+        val total = integer((map["state"] as? Map<*, *>)?.get("total")) ?: answers.sumOf { it.votes }
+        val title = (map["title"] as? String)?.trim().orEmpty().ifEmpty { "Опрос" }
+        return PollContent(id, title, answers, total)
     }
 
     /** Звонок: id вложения постоянный, чтобы пузырь не пересоздавался при каждом разборе. */
@@ -258,6 +303,7 @@ object MessageMapping {
         attachments.filterIsInstance<ChatAttachment.File>().firstOrNull()?.let { return it.file.name.trim().ifEmpty { "Файл" } }
         if (attachments.any { it is ChatAttachment.Contact }) return "Контакт"
         if (attachments.any { it is ChatAttachment.Sticker }) return "Стикер"
+        attachments.filterIsInstance<ChatAttachment.Poll>().firstOrNull()?.let { return "Опрос" }
         attachments.filterIsInstance<ChatAttachment.Call>().firstOrNull()?.let { return if (it.call.isGroup) "Групповой звонок" else "Звонок" }
         return ""
     }

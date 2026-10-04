@@ -108,6 +108,9 @@ public actor SyncEngine {
         await chats.setPeerReadHandler { chatId, mark in
             await readers.notePeerRead(chatId: chatId, mark: mark)
         }
+        await chats.setHistoryDroppedHandler { chatId in
+            await readers.dropLocalHistory(chatId: chatId)
+        }
         await messages.setOutgoingHandler { [weak messages] change in
             switch change {
             case .queued(let record):

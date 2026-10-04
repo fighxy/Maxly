@@ -107,6 +107,8 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.material.icons)
     implementation(libs.coil.compose)
+    // Lottie 1.1.x собирается с Compose 1.6. Ветка 2.x требует Compose 1.10.
+    implementation("io.github.alexzhirkevich:compottie:1.1.2")
     implementation(libs.coil.network.okhttp)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)

@@ -40,6 +40,14 @@ interface MessageRepository {
     suspend fun send(chatId: String, text: String, replyTo: String?)
 
     /**
+     * Текст с отметками `ANIMOJI` (смещения UTF-16). Без отметок это обычная [send].
+     * Реализация по умолчанию отметки не шлёт: так устроены подмены в тестах.
+     */
+    suspend fun sendFormatted(chatId: String, text: String, replyTo: String?, marks: List<app.orbitle.domain.TextSpan>) {
+        send(chatId, text, replyTo)
+    }
+
+    /**
      * Отправка вложений одним сообщением с подписью. Сообщение сразу встаёт в ленту;
      * [progress] получает долю загрузки 0…1.
      */
@@ -73,6 +81,12 @@ interface MessageRepository {
     /** Поставить реакцию или снять свою (`null`). */
     suspend fun react(chatId: String, messageId: String, emoji: String?)
 
+    /**
+     * Реакции показанных сообщений (`MSG_GET_REACTIONS` 180), пачками до 100.
+     * Пропуск id и пустая запись реакций не стирают: так сервер молчит, когда id не узнал.
+     */
+    suspend fun syncReactions(chatId: String, messageIds: List<String>) {}
+
     /** Эмодзи реакций из каталога сервера. */
     suspend fun reactionCatalog(): List<String>
 
@@ -92,6 +106,24 @@ interface MessageRepository {
 
     /** Пересылает сообщение [messageId] из [chatId] в чат [targetChatId]. */
     suspend fun forward(chatId: String, messageId: String, targetChatId: String): Unit = throw OrbitleError.Rejected("Пересылка недоступна")
+
+    /** Закрепить сообщение. `"0"` снимает закреп (`pinMessageId` 0). */
+    suspend fun pin(chatId: String, messageId: String) {}
+
+    /** Отложить текст до [sendAt] (мс). В обычную ленту оно не встаёт. */
+    suspend fun schedule(chatId: String, text: String, sendAt: Long) {}
+
+    /** Уже отложенные сообщения этого чата. */
+    suspend fun scheduled(chatId: String): List<app.orbitle.domain.FoundMessage> = emptyList()
+
+    /** Опрос: вопрос и минимум два ответа. */
+    suspend fun sendPoll(chatId: String, title: String, answers: List<String>) {}
+
+    /** Голос за один ответ опроса. */
+    suspend fun votePoll(chatId: String, messageId: String, pollId: String, answerId: String) {}
+
+    /** Поиск по сообщениям открытого чата (`MSG_SEARCH` 73). */
+    suspend fun searchInChat(chatId: String, query: String): List<app.orbitle.domain.FoundMessage> = emptyList()
 
     suspend fun mediaLink(chatId: String, messageId: String, attachment: ChatAttachment): String = throw OrbitleError.Rejected("Вложение недоступно")
 }

@@ -71,6 +71,8 @@ data class ChatListUiState(
     val messages: List<FoundMessageItem> = emptyList(),
     /** Запрос к серверу ещё идёт. */
     val isSearchingServer: Boolean = false,
+    /** Недавние чаты пустого поиска. Только те, что ещё есть в списке, сначала последний выбранный. */
+    val recent: List<ChatListItem> = emptyList(),
 ) {
     /** Полоса папок видна, только если у пользователя есть папки кроме «Все». */
     val showsFolders: Boolean get() = folders.size > 1
@@ -85,6 +87,8 @@ class ChatListViewModel(
     private val pinLimit: Int = DEFAULT_PIN_LIMIT,
     /** Пометки и черновики на устройстве. */
     private val local: ChatLocalMarks? = null,
+    /** Недавние чаты поиска. `null` в тестах, которым список не нужен. */
+    private val recents: RecentSearchStore? = null,
     /** Пауза после последней буквы перед запросом к серверу. */
     private val searchDelayMs: Long = SEARCH_DELAY_MS,
 ) : ViewModel() {
@@ -103,6 +107,7 @@ class ChatListViewModel(
     private var pendingMutes: MutableMap<String, Boolean> = mutableMapOf()
     private var markedUnread: Set<String> = local?.markedUnread.orEmpty()
     private var drafts: Map<String, ChatDraft> = local?.drafts().orEmpty()
+    private var recentIds: List<String> = recents?.recent().orEmpty()
 
     private val _state = MutableStateFlow(ChatListUiState())
     val state: StateFlow<ChatListUiState> = _state.asStateFlow()
@@ -185,6 +190,30 @@ class ChatListViewModel(
         _state.value = _state.value.copy(searchQuery = query)
         rebuild()
         if (changed) scheduleServerSearch()
+    }
+
+    /** Чат выбран из поиска: он становится первым в недавних. */
+    fun selectSearchResult(chatId: String) {
+        val next = RecentSearchList.add(recentIds, chatId)
+        if (next == recentIds) return
+        recentIds = next
+        recents?.add(chatId)
+        rebuild()
+    }
+
+    fun removeRecent(chatId: String) {
+        val next = RecentSearchList.remove(recentIds, chatId)
+        if (next == recentIds) return
+        recentIds = next
+        recents?.remove(chatId)
+        rebuild()
+    }
+
+    fun clearRecent() {
+        if (recentIds.isEmpty()) return
+        recentIds = emptyList()
+        recents?.clear()
+        rebuild()
     }
 
     /**
@@ -283,12 +312,16 @@ class ChatListViewModel(
         }
     }
 
-    /** Экран снова виден: черновики и пометки могли поменяться в чате. */
+    /** Экран снова виден: черновики, пометки и недавний поиск могли поменяться. */
     fun reloadLocal() {
-        val store = local ?: return
-        markedUnread = store.markedUnread
-        drafts = store.drafts()
-        rebuild()
+        val store = local
+        if (store != null) {
+            markedUnread = store.markedUnread
+            drafts = store.drafts()
+        }
+        val fresh = recents?.recent()
+        if (fresh != null) recentIds = fresh
+        if (store != null || fresh != null) rebuild()
     }
 
     /** Чат открыт: ручная пометка «непрочитано» снимается. */
@@ -317,6 +350,32 @@ class ChatListViewModel(
             markedUnread = markedUnread + chatId
             local?.markedUnread = markedUnread
             rebuild()
+        }
+    }
+
+    /** Удалить чат: `forEveryone` — у всех, иначе только у себя. */
+    fun deleteChat(chatId: String, forEveryone: Boolean) {
+        viewModelScope.launch {
+            try {
+                repository.deleteChat(chatId, forEveryone)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                _messages.value = CoreErrors.map(e).userMessage
+            }
+        }
+    }
+
+    /** Очистить переписку. Чат остаётся в списке. */
+    fun clearHistory(chatId: String, forEveryone: Boolean) {
+        viewModelScope.launch {
+            try {
+                repository.clearHistory(chatId, forEveryone)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                _messages.value = CoreErrors.map(e).userMessage
+            }
         }
     }
 
@@ -411,6 +470,11 @@ class ChatListViewModel(
             // Чат мог появиться в списке, пока шёл поиск: тогда он среди своих, а не найденных.
             global = if (current.global.isEmpty()) current.global else current.global.filterNot { g -> chats.any { it.id == g.id } },
             messages = if (current.messages.isEmpty()) current.messages else messageItems(),
+            recent = if (current.isSearchActive && query.isEmpty()) {
+                recentIds.mapNotNull { id -> sorted.firstOrNull { it.id == id }?.let(::itemOf) }
+            } else {
+                emptyList()
+            },
         )
     }
 

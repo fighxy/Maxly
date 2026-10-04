@@ -46,6 +46,7 @@ import app.orbitle.presentation.calls.CallsViewModel
 import app.orbitle.presentation.chat.ChatViewModel
 import app.orbitle.presentation.chatlist.ChatListFormatter
 import app.orbitle.presentation.chatlist.ChatListViewModel
+import app.orbitle.presentation.chatlist.NewChatModel
 import app.orbitle.presentation.contacts.ContactsViewModel
 import app.orbitle.presentation.profile.ProfileViewModel
 import app.orbitle.presentation.settings.AccountSettingsViewModel
@@ -69,6 +70,7 @@ import app.orbitle.ui.settings.AppearanceScreen
 import app.orbitle.ui.settings.BlockedUsersScreen
 import app.orbitle.ui.settings.DevicesScreen
 import app.orbitle.ui.settings.FoldersScreen
+import app.orbitle.ui.settings.MessagesScreen
 import app.orbitle.ui.settings.MiniAppScreen
 import app.orbitle.ui.settings.PrivacyScreen
 import app.orbitle.ui.settings.ProfileEditScreen
@@ -85,7 +87,7 @@ enum class Tab(val title: Int, val icon: ImageVector, val selectedIcon: ImageVec
     SETTINGS(R.string.tab_settings, Icons.Outlined.Settings, Icons.Filled.Settings),
 }
 
-private enum class SettingsPage { Home, About, Devices, Appearance, Profile, Privacy, Security, RecoveryEmail, Storage, Folders, Blocked, MiniApp }
+private enum class SettingsPage { Home, About, Devices, Appearance, Profile, Privacy, Security, RecoveryEmail, Storage, Folders, Blocked, MiniApp, Messages }
 
 /** Окно после входа: рельс вкладок, список чатов и открытый чат рядом. */
 @Composable
@@ -108,7 +110,8 @@ fun MainScreen(
     val calls by callsModel.state.collectAsStateWithLifecycle()
     val accountModel = viewModel { AccountSettingsViewModel(container.account) }
     val accountState by accountModel.state.collectAsStateWithLifecycle()
-    val contactsModel = viewModel { ContactsViewModel(container.contacts, { container.messages.currentUserId }) }
+    val contactsModel = viewModel { ContactsViewModel(container.contacts, { container.messages.currentUserId }, chats = container.chats) }
+    val newChat = viewModel(key = "new-chat") { NewChatModel(container.contacts, container.chats) { container.messages.currentUserId } }
     val privatePrefs by container.privateMode.state.collectAsStateWithLifecycle()
     val privateDisplay = PrivateModeSettings.display(privatePrefs, canBlur = true)
     fun openChat(id: String, title: String? = null) {
@@ -159,6 +162,8 @@ fun MainScreen(
                             onOpenMessage = { openChat(it.chatId) },
                             privateMode = privatePrefs,
                             onTogglePrivateMode = container.privateMode::toggle,
+                            newChat = newChat,
+                            onOpenCreated = { id, title -> openChat(id, title) },
                         )
                     }
                     VerticalDivider()
@@ -175,6 +180,7 @@ fun MainScreen(
                                 chatId = null
                                 chatTitle = null
                             },
+                            quickReaction = accountState.settings.quickReaction.takeIf { accountState.settings.quickReactionEnabled },
                         )
                     }
                 }
@@ -182,7 +188,7 @@ fun MainScreen(
                     CallsScreen(callsModel, onOpenChat = { openChat(it) })
                 }
                 Tab.CONTACTS -> Box(Modifier.weight(1f).fillMaxHeight()) {
-                    ContactsScreen(contactsModel, onOpen = { row -> contactsModel.chatId(row.id)?.let { openChat(it, row.title) } })
+                    ContactsScreen(contactsModel, onOpen = { row -> contactsModel.prepare(row.id, row.title)?.let { openChat(it, row.title) } })
                 }
                 Tab.SETTINGS -> Box(Modifier.weight(1f).fillMaxHeight()) {
                     SettingsPane(
@@ -232,6 +238,7 @@ private fun ChatPane(
     onOpenProfile: () -> Unit,
     onCloseProfile: () -> Unit,
     onCloseChat: () -> Unit,
+    quickReaction: String? = null,
 ) {
     when {
         chatId == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -254,6 +261,7 @@ private fun ChatPane(
                     stickerRepository = container.stickers, stickerRecents = container.stickerRecents, drafts = container.drafts,
                     emojiSupported = EmojiSupport::canDraw, comments = container.comments,
                     mediaSaver = container.mediaSaver,
+                    chats = container.chats,
                 )
             }
             ChatScreen(
@@ -263,6 +271,7 @@ private fun ChatPane(
                 mediaUserAgent = container.videoSourceUserAgent(),
                 forwardTargets = { chatList.forwardTargets(excluding = chatId) },
                 onDisablePrivateMode = { container.privateMode.setEnabled(false) },
+                quickReaction = quickReaction,
             )
         }
     }
@@ -304,7 +313,13 @@ private fun SettingsPane(
             onSferum = { onOpenMiniApp(MiniApp.Kind.SFERUM) },
             onStorage = { onOpen(SettingsPage.Storage) },
             onFolders = { onOpen(SettingsPage.Folders) },
+            onMessages = { onOpen(SettingsPage.Messages) },
             profileLink = profileLink,
+        )
+        SettingsPage.Messages -> MessagesScreen(
+            accountModel,
+            loadCatalog = { container.messages.reactionCatalog() },
+            onBack = onBack,
         )
         SettingsPage.About -> AboutScreen(onBack)
         SettingsPage.Devices -> DevicesScreen(container.sessions, onBack)

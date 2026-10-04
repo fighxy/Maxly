@@ -96,6 +96,8 @@ kotlin {
                 implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
                 implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
                 implementation("io.coil-kt.coil3:coil-compose:3.0.4")
+                // Lottie 1.1.x собирается с Compose 1.6 и подходит к 1.7. Ветка 2.x требует Compose 1.10.
+                implementation("io.github.alexzhirkevich:compottie:1.1.2")
                 implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
                 implementation("com.google.zxing:core:3.5.3")
                 // Встроенный Chromium для мини-приложений. Наборы CEF качаются при первом открытии.

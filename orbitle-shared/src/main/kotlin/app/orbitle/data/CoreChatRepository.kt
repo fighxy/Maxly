@@ -4,8 +4,11 @@ import app.orbitle.domain.Chat
 import app.orbitle.domain.ChatSearchResult
 import app.orbitle.domain.ChatType
 import app.orbitle.domain.FoundMessage
+import com.max.core.api.Chat as CoreChat
 import com.max.core.api.MaxMessage
 import com.max.core.api.PublicSearchHit
+import com.max.core.events.MaxEvent
+import com.max.core.protocol.Opcode
 import com.max.core.state.MaxState
 import kotlinx.coroutines.CancellationException
 import app.orbitle.domain.ServerFolder
@@ -116,6 +119,32 @@ class CoreChatRepository(
         return foundMessages(term, hits.map { it.chatId to it.message }, client.store.state.value)
     }
 
+    override suspend fun createGroup(title: String, memberIds: List<String>): String? {
+        val ids = memberIds.mapNotNull { it.toLongOrNull() }
+        val created = MaxCoreGateway.call { client.api.chats.createGroup(title, ids, notify = true) } ?: return null
+        client.store.putChats(listOf(created.chat))
+        return created.chat.id.toString()
+    }
+
+    override suspend fun createChannel(title: String): String? {
+        val chat = MaxCoreGateway.call {
+            val payload = channelCreatePayload(client.api.messages.nextCid(), title)
+            val map = client.session.request(Opcode.MSG_SEND, payload).payload as? Map<*, *> ?: return@call null
+            CoreChat.from(map["chat"])
+        } ?: return null
+        client.store.putChats(listOf(chat))
+        return chat.id.toString()
+    }
+
+    override suspend fun prepareDialog(chatId: String, peerId: String, title: String) {
+        val id = chatId.toLongOrNull() ?: return
+        val peer = peerId.toLongOrNull() ?: return
+        val state = client.store.state.value
+        if (id in state.chats) return
+        val me = state.me ?: client.userId.value
+        client.store.putChats(listOf(dialogPlaceholder(id, me, peer, title)))
+    }
+
     override suspend fun markAsRead(chatId: String) {
         val id = chatId.toLongOrNull() ?: return
         val state = client.store.state.value
@@ -123,6 +152,111 @@ class CoreChatRepository(
         val read = MaxCoreGateway.call { client.api.messages.markRead(id, last) }
         val me = state.me ?: return
         client.store.apply(com.max.core.events.MaxEvent.MessageRead(id, me, read.mark, false, 0, null))
+    }
+
+    override suspend fun members(chatId: String): List<ChatMemberRow> {
+        val id = chatId.toLongOrNull() ?: return emptyList()
+        val page = MaxCoreGateway.call { client.api.chats.getChatMembers(id) }
+        return page.members.mapNotNull { member ->
+            val user = com.max.core.api.MaxUser.from(member.contact) ?: return@mapNotNull null
+            ChatMemberRow(user.id.toString(), user.displayName?.trim().orEmpty().ifEmpty { "Участник" })
+        }
+    }
+
+    override suspend fun commonChats(userId: String): List<SharedChat> {
+        val id = userId.toLongOrNull() ?: return emptyList()
+        val packet = MaxCoreGateway.call {
+            client.session.request(Opcode.CHAT_SEARCH_COMMON_PARTICIPANTS, LockPayloads.commonChats(id))
+        }
+        return LockPayloads.sharedChats(packet.payload)
+    }
+
+    override suspend fun complaintReasons(): Map<Int, List<ComplaintChoice>> {
+        val packet = MaxCoreGateway.call {
+            client.session.request(Opcode.COMPLAIN_REASONS_GET, LockPayloads.complaintReasons())
+        }
+        return LockPayloads.complaintChoices(packet.payload)
+    }
+
+    override suspend fun complain(reasonId: Int, typeId: Int, ids: List<String>, parentId: String?): Boolean {
+        val numeric = ids.mapNotNull { it.toLongOrNull() }
+        if (numeric.isEmpty()) return false
+        val parent = parentId?.toLongOrNull()
+        val packet = MaxCoreGateway.call {
+            client.session.request(Opcode.COMPLAIN, LockPayloads.complaint(reasonId, typeId, numeric, parent))
+        }
+        return (packet.payload as? Map<*, *>)?.get("success") == true
+    }
+
+    override suspend fun signalCall(calleeId: String, isVideo: Boolean): SignaledCall? {
+        val id = calleeId.toLongOrNull() ?: return null
+        val conversationId = java.util.UUID.randomUUID().toString()
+        val packet = MaxCoreGateway.call {
+            client.session.request(
+                Opcode.VIDEO_CHAT_START_ACTIVE,
+                LockPayloads.initiateCall(conversationId, id, client.device.deviceId, isVideo),
+            )
+        }
+        val map = packet.payload as? Map<*, *> ?: return null
+        val endpoint = LockPayloads.endpointOf(map["internalCallerParams"] as? String) ?: return null
+        val conversation = (map["conversationId"] as? String)?.takeIf { it.isNotEmpty() } ?: conversationId
+        return SignaledCall(conversation, endpoint)
+    }
+
+    override suspend fun joinByLink(link: String): String? {
+        val trimmed = link.trim()
+        if (trimmed.isEmpty()) return null
+        val chat = MaxCoreGateway.call { client.api.chats.join(trimmed) }
+        client.store.putChats(listOf(chat))
+        return chat.id.toString()
+    }
+
+    override suspend fun deleteChat(chatId: String, forEveryone: Boolean) {
+        val id = chatId.toLongOrNull() ?: return
+        val stored = client.store.state.value.chats[id]
+        val time = stored?.lastEventTime?.takeIf { it > 0 }
+        MaxCoreGateway.call { client.api.chats.deleteChat(id, time, forEveryone) }
+        client.store.removeChat(id)
+    }
+
+    override suspend fun clearHistory(chatId: String, forEveryone: Boolean) {
+        val id = chatId.toLongOrNull() ?: return
+        val stored = client.store.state.value.chats[id]
+        val time = stored?.lastEventTime?.takeIf { it > 0 } ?: clock()
+        MaxCoreGateway.call {
+            client.session.request(Opcode.CHAT_CLEAR, LockPayloads.clearHistory(id, time, forEveryone))
+        }
+        dropHistory(id)
+    }
+
+    /** Сообщения чата убираются локально, сам чат остаётся, превью и непрочитанные сбрасываются. */
+    private fun dropHistory(chatId: Long) {
+        val state = client.store.state.value
+        val chat = state.chats[chatId]
+        val ids = ArrayList(state.messagesOf(chatId).map { it.id })
+        val last = chat?.lastMessage?.id
+        if (last != null && last !in ids) ids.add(last)
+        if (chat != null) client.store.putChats(listOf(chat.copy(newMessages = 0)))
+        if (ids.isNotEmpty()) {
+            client.store.apply(
+                MaxEvent.MessagesDeleted(
+                    chatId = chatId,
+                    messageIds = ids,
+                    chat = null,
+                    message = null,
+                    ttl = false,
+                    opcode = Opcode.CHAT_CLEAR.value,
+                    raw = null,
+                ),
+            )
+        }
+        client.store.closeHistoryGap(chatId)
+    }
+
+    override suspend fun botCommands(botId: String): List<BotCommandRow> {
+        val id = botId.toLongOrNull() ?: return emptyList()
+        val info = MaxCoreGateway.call { client.api.bots.getBotInfo(id) }
+        return info.commands.map { BotCommandRow(it.name, it.description.orEmpty()) }
     }
 
     override fun clear() {
@@ -138,6 +272,52 @@ class CoreChatRepository(
 
         /** Сколько найденных сообщений просить у сервера. */
         const val MESSAGE_SEARCH_COUNT = 50
+
+        /**
+         * Тело `MSG_SEND` для нового канала: то же вложение, что у [com.max.core.api.ChatsApi.createGroup],
+         * но `chatType` — `CHANNEL`, а участников нет. Opcode 63 не используется.
+         */
+        fun channelCreatePayload(cid: Long, title: String): Map<String, Any?> {
+            val attach = linkedMapOf<String, Any?>(
+                "_type" to "CONTROL",
+                "event" to "new",
+                "chatType" to "CHANNEL",
+                "title" to title,
+                "userIds" to emptyList<Long>(),
+            )
+            return linkedMapOf("message" to linkedMapOf("cid" to cid, "attaches" to listOf(attach)), "notify" to true)
+        }
+
+        /** Локальный `DIALOG`, пока сервер не прислал чат. Первое сообщение создаёт его на сервере. */
+        fun dialogPlaceholder(chatId: Long, me: Long?, peerId: Long, title: String): CoreChat {
+            val participants = linkedMapOf<String, Any?>()
+            if (me != null) participants[me.toString()] = 0L
+            participants[peerId.toString()] = 0L
+            val name = title.trim().ifEmpty { null }
+            val raw = linkedMapOf<String, Any?>(
+                "id" to chatId,
+                "type" to "DIALOG",
+                "status" to "ACTIVE",
+                "owner" to me,
+                "participantsCount" to participants.size,
+                "newMessages" to 0,
+                "lastEventTime" to 0L,
+                "participants" to participants,
+            )
+            if (name != null) raw["title"] = name
+            return CoreChat(
+                id = chatId,
+                type = "DIALOG",
+                status = "ACTIVE",
+                owner = me,
+                title = name,
+                participantsCount = participants.size,
+                newMessages = 0,
+                lastEventTime = 0L,
+                lastMessage = null,
+                raw = raw,
+            )
+        }
 
         /**
          * Найденное сервером вместе с совпадениями среди загруженных сообщений: без повторов

@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -48,15 +49,23 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.orbitle.domain.AnimatedEmoji
 import app.orbitle.domain.Sticker
 import app.orbitle.presentation.stickers.StickerPanel
 import app.orbitle.presentation.stickers.StickerPanelState
+import app.orbitle.presentation.stickers.emojiTabs
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 
 /** Панель эмодзи и стикеров вместо клавиатуры. */
 @Composable
-fun StickerPanelView(panel: StickerPanel, height: Dp, onEmoji: (String) -> Unit, onSticker: (Sticker) -> Unit) {
+fun StickerPanelView(
+    panel: StickerPanel,
+    height: Dp,
+    onEmoji: (String) -> Unit,
+    onSticker: (Sticker) -> Unit,
+    onAnimoji: (AnimatedEmoji) -> Unit = {},
+) {
     val state by panel.state.collectAsStateWithLifecycle()
     LaunchedEffect(panel) { panel.prepare() }
     Column(Modifier.fillMaxWidth().height(height).background(MaterialTheme.colorScheme.surfaceContainer)) {
@@ -71,47 +80,67 @@ fun StickerPanelView(panel: StickerPanel, height: Dp, onEmoji: (String) -> Unit,
             }
         }
         when (state.mode) {
-            StickerPanelState.Mode.EMOJI -> EmojiGrid(state, onEmoji = {
-                panel.usedEmoji(it)
-                onEmoji(it)
-            })
+            StickerPanelState.Mode.EMOJI -> EmojiGrid(
+                state,
+                onEmoji = {
+                    panel.usedEmoji(it)
+                    onEmoji(it)
+                },
+                onAnimoji = {
+                    panel.usedAnimated(it)
+                    onAnimoji(it)
+                },
+            )
             StickerPanelState.Mode.STICKERS -> StickerGrid(panel, state, onSticker)
         }
     }
 }
 
 @Composable
-private fun EmojiGrid(state: StickerPanelState, onEmoji: (String) -> Unit) {
+private fun EmojiGrid(state: StickerPanelState, onEmoji: (String) -> Unit, onAnimoji: (AnimatedEmoji) -> Unit) {
     val grid = rememberLazyGridState()
     val scope = rememberCoroutineScope()
-    // Начало каждого раздела в сетке: заголовок плюс его эмодзи.
-    val starts = remember(state.emoji) {
+    val tabs = remember(state.emoji, state.animated) { emojiTabs(state) }
+    // Начало каждого раздела в сетке: заголовок плюс его ячейки.
+    val starts = remember(tabs) {
         var index = 0
-        state.emoji.map { category -> index.also { index += 1 + category.emoji.size } }
+        tabs.map { tab -> index.also { index += 1 + tab.picks.size } }
     }
     val current by remember(starts) { derivedStateOf { starts.indexOfLast { it <= grid.firstVisibleItemIndex }.coerceAtLeast(0) } }
     Column {
         LazyRow(Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 8.dp)) {
-            itemsIndexed(state.emoji, key = { _, c -> c.id }) { index, category ->
+            itemsIndexed(tabs, key = { _, tab -> tab.id }) { index, tab ->
                 Box(
                     Modifier.size(40.dp).clip(CircleShape)
                         .background(if (index == current) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceContainer)
                         .clickable { scope.launch { grid.scrollToItem(starts[index]) } },
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (category.id == "recent") Icon(Icons.Outlined.Schedule, category.title, Modifier.size(20.dp))
-                    else Text(category.emoji.first(), fontSize = 20.sp)
+                    when (tab.id) {
+                        "recent" -> Icon(Icons.Outlined.Schedule, tab.title, Modifier.size(20.dp))
+                        "animated" -> Icon(Icons.Outlined.AutoAwesome, tab.title, Modifier.size(20.dp))
+                        else -> Text(tab.picks.first().glyph, fontSize = 20.sp)
+                    }
                 }
             }
         }
         LazyVerticalGrid(GridCells.Adaptive(44.dp), state = grid, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)) {
-            state.emoji.forEach { category ->
-                item(key = "h-${category.id}", span = { GridItemSpan(maxLineSpan) }) {
-                    Text(category.title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp, top = 8.dp, bottom = 4.dp))
+            tabs.forEach { tab ->
+                item(key = "h-${tab.id}", span = { GridItemSpan(maxLineSpan) }) {
+                    Text(tab.title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp, top = 8.dp, bottom = 4.dp))
                 }
-                items(category.emoji, key = { "${category.id}:$it" }) { emoji ->
-                    Box(Modifier.aspectRatio(1f).clip(RoundedCornerShape(10.dp)).clickable { onEmoji(emoji) }, contentAlignment = Alignment.Center) {
-                        Text(emoji, fontSize = 26.sp)
+                items(tab.picks, key = { it.key }) { pick ->
+                    Box(
+                        Modifier.aspectRatio(1f).clip(RoundedCornerShape(10.dp)).clickable {
+                            val animated = pick.animated
+                            if (animated != null) onAnimoji(animated) else onEmoji(pick.glyph)
+                        },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        // В сетке картинка: десятки Lottie сразу тормозили бы панель. Анимация — в сообщении.
+                        val icon = pick.animated?.iconUrl
+                        if (!icon.isNullOrBlank()) AsyncImage(icon, pick.glyph, Modifier.size(34.dp), contentScale = ContentScale.Fit)
+                        else Text(pick.glyph, fontSize = 26.sp)
                     }
                 }
             }

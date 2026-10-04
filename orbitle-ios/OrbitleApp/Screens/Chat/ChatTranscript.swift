@@ -22,6 +22,8 @@ struct ChatTranscript: View {
     var bottomControlsTop: CGFloat = 0
     /// Где на экране лежит фон с обоями: низ ленты тает в ту же картинку.
     var wallpaperFrame: CGRect = .zero
+    /// Эмодзи двойного нажатия. `nil` — быстрая реакция выключена.
+    var quickReaction: String? = nil
     /// Низ ленты виден (пока виден, новые сообщения прокручивают ленту сами), число новых
     /// на кнопке «вниз» и прыжок к последнему сообщению.
     @State private var bottom = TranscriptBottomState()
@@ -267,7 +269,8 @@ struct ChatTranscript: View {
             savesToFiles: viewModel.canSave(message, to: .files),
             roundPlayback: round,
             transcript: message.content.voices.first.map { viewModel.transcriptPhase(for: $0) } ?? .collapsed,
-            canTranscribe: viewModel.canTranscribe(message)
+            canTranscribe: viewModel.canTranscribe(message),
+            quickReaction: quickReaction
         )
     }
 
@@ -328,6 +331,8 @@ struct TranscriptBubble: View, Equatable {
         /// Расшифровка голосового: «→T», загрузка или раскрытый текст.
         var transcript: TranscriptPhase
         var canTranscribe: Bool
+        /// Эмодзи двойного нажатия. В сравнении снимка, иначе смена реакции не перерисует пузырь.
+        var quickReaction: String?
     }
 
     let state: Snapshot
@@ -397,6 +402,10 @@ struct TranscriptBubble: View, Equatable {
             onForward: { viewModel.requestForward(message) },
             onDelete: { viewModel.requestDelete(message) },
             onEdit: state.canEdit ? { viewModel.beginEdit(message) } : nil,
+            onPin: message.status == .sent && Int64(message.id) != nil && message.content.pin == nil
+                ? { Task { await viewModel.pin(message) } }
+                : nil,
+            onVote: { answerId in Task { await viewModel.vote(message, answerId: answerId) } },
             allowsReply: state.canWrite,
             allowsReactions: state.reacts,
             quickReactions: state.reacts ? state.quickReactions : ReactionPalette.fallback,
@@ -413,7 +422,10 @@ struct TranscriptBubble: View, Equatable {
             onTranscribe: state.canTranscribe ? {
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { viewModel.toggleTranscript(message) }
             } : nil,
-            onSeekVoice: { viewModel.seekVoice(message, to: $0) }
+            onSeekVoice: { viewModel.seekVoice(message, to: $0) },
+            onDoubleTap: state.reacts ? state.quickReaction.map { emoji in
+                { Task { await viewModel.toggleReaction(messageId: message.id, emoji: emoji) } }
+            } : nil
         )
     }
 

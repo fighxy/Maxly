@@ -182,15 +182,24 @@ struct ContactsView: View {
 /// В приватном режиме вместо имени «Контакт», аватар — однотонный круг.
 struct ContactRowView: View {
     let row: ContactRow
+    @Environment(\.privateMode) private var privateMode
 
     var body: some View {
         HStack(spacing: 12) {
             AvatarView(title: row.title, id: row.id, url: row.avatarURL, size: OrbitleTheme.smallAvatar, isOnline: row.isOnline)
             VStack(alignment: .leading, spacing: 2) {
-                PrivateText(row.title, placeholder: PrivateModeMask.contactTitle)
-                    .font(.body)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    PrivateText(row.title, placeholder: PrivateModeMask.contactTitle)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    if row.isOfficial, !privateMode.isMasked {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.caption)
+                            .foregroundStyle(Color.orbitleAccent)
+                            .accessibilityLabel("Официальный аккаунт")
+                    }
+                }
                 Text(row.status)
                     .font(.subheadline)
                     .foregroundStyle(row.isOnline ? AnyShapeStyle(Color.orbitleAccent) : AnyShapeStyle(.secondary))
@@ -208,7 +217,6 @@ struct AddContactSheet: View {
     @Bindable var viewModel: ContactsViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var firstName = ""
-    @State private var lastName = ""
     @State private var phone = ""
     @State private var isSaving = false
 
@@ -216,10 +224,10 @@ struct AddContactSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Имя", text: $firstName)
+                    TextField("Имя в контактах", text: $firstName)
                         .textContentType(.givenName)
-                    TextField("Фамилия (необязательно)", text: $lastName)
-                        .textContentType(.familyName)
+                } footer: {
+                    Text("Можно оставить пустым")
                 }
                 Section {
                     TextField("Номер телефона", text: $phone)
@@ -244,12 +252,12 @@ struct AddContactSheet: View {
                     Button("Готово") {
                         Task {
                             isSaving = true
-                            let added = await viewModel.addContact(phone: phone, firstName: firstName, lastName: lastName)
+                            let added = await viewModel.addContact(phone: phone, firstName: firstName, lastName: "")
                             isSaving = false
                             if added { dismiss() }
                         }
                     }
-                    .disabled(isSaving || firstName.trimmingCharacters(in: .whitespaces).isEmpty || phone.filter(\.isNumber).count < 7)
+                    .disabled(isSaving || phone.filter(\.isNumber).count < 7)
                 }
             }
         }

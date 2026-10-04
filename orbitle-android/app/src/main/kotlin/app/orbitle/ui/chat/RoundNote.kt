@@ -49,7 +49,7 @@ import kotlinx.coroutines.delay
 /** Видеосообщение-кружок: обложка, касание играет его прямо в ленте со звуком. */
 @kotlin.OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun RoundNote(message: Message, video: VideoContent, onLongPress: () -> Unit, modifier: Modifier = Modifier) {
+fun RoundNote(message: Message, video: VideoContent, onLongPress: () -> Unit, onDoubleTap: () -> Unit = {}, modifier: Modifier = Modifier) {
     val media = LocalBubbleMedia.current
     val round = media.media.value.round?.takeIf { it.videoId == video.id }
     val size = 220.dp
@@ -58,7 +58,7 @@ fun RoundNote(message: Message, video: VideoContent, onLongPress: () -> Unit, mo
             .size(size)
             .clip(CircleShape)
             .background(Color.Black.copy(alpha = 0.3f))
-            .combinedClickable(onLongClick = onLongPress) { media.onVisual(message, app.orbitle.domain.ChatAttachment.Video(video)) }
+            .combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { media.onVisual(message, app.orbitle.domain.ChatAttachment.Video(video)) }
             .semantics { contentDescription = if (round != null) "Видеосообщение, остановить" else "Видеосообщение, воспроизвести" },
         contentAlignment = Alignment.Center,
     ) {

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.Contacts
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Edit
@@ -85,6 +86,7 @@ fun SettingsScreen(
     onSecurity: () -> Unit = {},
     onStorage: () -> Unit = {},
     onFolders: () -> Unit = {},
+    onMessages: () -> Unit = {},
     onDigitalId: () -> Unit = {},
     onSferum: () -> Unit = {},
     /** Ссылка на свой профиль для QR и приглашения; `null` — сервер её ещё не дал. */
@@ -119,6 +121,7 @@ fun SettingsScreen(
             SettingsItem(Icons.Outlined.Devices, "Устройства", onClick = onDevices)
             SettingsItem(Icons.Outlined.Storage, "Данные и память", onClick = onStorage)
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            SettingsItem(Icons.AutoMirrored.Outlined.Chat, "Сообщения", onClick = onMessages)
             SettingsItem(Icons.Outlined.BookmarkBorder, "Избранное", onClick = onSaved)
             SettingsItem(Icons.Outlined.Contacts, "Контакты", onClick = onContacts)
             SettingsItem(Icons.Outlined.Folder, "Папки", onClick = onFolders)

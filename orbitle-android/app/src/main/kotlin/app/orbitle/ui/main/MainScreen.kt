@@ -70,9 +70,11 @@ import app.orbitle.presentation.settings.StorageViewModel
 import app.orbitle.ui.settings.ProfileEditScreen
 import app.orbitle.presentation.chatlist.ChatListFormatter
 import app.orbitle.presentation.chatlist.ChatListViewModel
+import app.orbitle.presentation.chatlist.NewChatModel
 import app.orbitle.ui.chatlist.ChatListScreen
 import app.orbitle.ui.chatlist.Placeholder
 import app.orbitle.ui.settings.AboutScreen
+import app.orbitle.ui.settings.MessagesScreen
 import app.orbitle.ui.settings.SettingsScreen
 import app.orbitle.domain.Account
 
@@ -102,7 +104,8 @@ fun MainScreen(
     val accountModel = viewModel { AccountSettingsViewModel(container.account) }
     val securityModel = viewModel { SecurityViewModel(container.account) }
     val accountState by accountModel.state.collectAsStateWithLifecycle()
-    val contactsModel = viewModel { ContactsViewModel(container.contacts, { container.messages.currentUserId }) }
+    val contactsModel = viewModel { ContactsViewModel(container.contacts, { container.messages.currentUserId }, chats = container.chats) }
+    val newChat = viewModel(key = "new-chat") { NewChatModel(container.contacts, container.chats) { container.messages.currentUserId } }
     val privatePrefs by container.privateMode.state.collectAsStateWithLifecycle()
     val privateDisplay = app.orbitle.data.PrivateModeSettings.display(privatePrefs, canBlur = android.os.Build.VERSION.SDK_INT >= 31)
     val showsBar = Tab.entries.any { it.route == route } || route == null
@@ -151,11 +154,13 @@ fun MainScreen(
                     onOpenMessage = { openChat(it.chatId) },
                     privateMode = privatePrefs,
                     onTogglePrivateMode = container.privateMode::toggle,
+                    newChat = newChat,
+                    onOpenCreated = { id, title -> openChat(id, title) },
                 )
             }
             composable(Tab.CALLS.route) { CallsScreen(callsModel, onOpenChat = { openChat(it) }) }
             composable(Tab.CONTACTS.route) {
-                ContactsScreen(contactsModel, onOpen = { row -> contactsModel.chatId(row.id)?.let { openChat(it, row.title) } })
+                ContactsScreen(contactsModel, onOpen = { row -> contactsModel.prepare(row.id, row.title)?.let { openChat(it, row.title) } })
             }
             composable(Tab.SETTINGS.route) {
                 SettingsScreen(
@@ -173,7 +178,15 @@ fun MainScreen(
                     onSferum = { nav.navigate("mini-app/${MiniApp.Kind.SFERUM.wire}") },
                     onStorage = { nav.navigate("storage") },
                     onFolders = { nav.navigate("folders") },
+                    onMessages = { nav.navigate("messages") },
                     profileLink = app.orbitle.presentation.settings.ProfileLink.link(accountState.settings.inviteLink, account?.link),
+                )
+            }
+            composable("messages") {
+                MessagesScreen(
+                    accountModel,
+                    loadCatalog = { container.messages.reactionCatalog() },
+                    onBack = { nav.popBackStack() },
                 )
             }
             composable("profile-edit") { ProfileEditScreen(accountModel, onBack = { nav.popBackStack() }, onLogout = onLogout) }
@@ -223,6 +236,7 @@ fun MainScreen(
                         stickerRepository = container.stickers, stickerRecents = container.stickerRecents, drafts = container.drafts,
                         emojiSupported = EmojiSupport::canDraw, comments = container.comments,
                         mediaSaver = container.mediaSaver,
+                        chats = container.chats,
                     ) }
                 ChatScreen(
                     model,
@@ -231,6 +245,7 @@ fun MainScreen(
                     mediaUserAgent = container.videoSourceUserAgent(),
                     forwardTargets = { chatList.forwardTargets(excluding = chatId) },
                     onDisablePrivateMode = { container.privateMode.setEnabled(false) },
+                    quickReaction = accountState.settings.quickReaction.takeIf { accountState.settings.quickReactionEnabled },
                 )
             }
             composable(

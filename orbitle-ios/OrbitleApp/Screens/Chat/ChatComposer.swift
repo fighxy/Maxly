@@ -49,6 +49,20 @@ struct ChatComposer: View {
                     .frame(maxWidth: .infinity)
                     .transition(.orbitleBar(edge: .bottom, reduceMotion: reduceMotion))
             }
+            if !viewModel.mentionHints.isEmpty {
+                hintRow(viewModel.mentionHints.map(\.name)) { name in
+                    if let member = viewModel.mentionHints.first(where: { $0.name == name }) {
+                        viewModel.insertMention(member)
+                    }
+                }
+            }
+            if !viewModel.commandHints.isEmpty {
+                hintRow(viewModel.commandHints.map(\.name)) { name in
+                    if let command = viewModel.commandHints.first(where: { $0.name == name }) {
+                        viewModel.insertCommand(command)
+                    }
+                }
+            }
             if let notice = viewModel.notice {
                 Label(notice, systemImage: "checkmark.circle.fill")
                     .font(.footnote.weight(.medium))
@@ -139,6 +153,20 @@ struct ChatComposer: View {
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: recording.isActive)
         // Скрепка прячется при правке и возвращается после неё.
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.editTarget == nil)
+    }
+
+    private func hintRow(_ titles: [String], onPick: @escaping (String) -> Void) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(titles, id: \.self) { title in
+                    Button(title) { onPick(title) }
+                        .font(.subheadline)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .orbitleGlassCapsule()
+                }
+            }
+        }
     }
 
     /// Смайлик в поле ввода открывает панель эмодзи и стикеров вместо клавиатуры, на открытой

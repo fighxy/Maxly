@@ -64,6 +64,13 @@ public protocol MessageRepository: Sendable {
     func cancelUpload(messageId: String) async
     /// Ход загрузок: локальный id сообщения → доля 0…1. Сразу при подписке и после каждого шага.
     func uploadProgress() -> AsyncStream<[String: Double]>
+    /// Закрепить сообщение. `messageId` `0` снимает закреп.
+    func pin(chatId: String, messageId: String) async throws(OrbitleError)
+    func schedule(chatId: String, text: String, sendAt: Date) async throws(OrbitleError)
+    func scheduled(chatId: String) async throws(OrbitleError) -> [FoundMessage]
+    func sendPoll(chatId: String, title: String, answers: [String]) async throws(OrbitleError)
+    func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws(OrbitleError)
+    func searchInChat(chatId: String, query: String) async throws(OrbitleError) -> [FoundMessage]
 }
 
 extension MessageRepository {
@@ -81,6 +88,13 @@ extension MessageRepository {
     public func send(text: String, chatId: String, replyTo: String?, formatting: [TextSpan]) async throws(OrbitleError) {
         try await send(text: text, chatId: chatId, replyTo: replyTo)
     }
+
+    public func pin(chatId: String, messageId: String) async throws(OrbitleError) { throw .invalidRequest }
+    public func schedule(chatId: String, text: String, sendAt: Date) async throws(OrbitleError) { throw .invalidRequest }
+    public func scheduled(chatId: String) async throws(OrbitleError) -> [FoundMessage] { throw .invalidRequest }
+    public func sendPoll(chatId: String, title: String, answers: [String]) async throws(OrbitleError) { throw .invalidRequest }
+    public func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws(OrbitleError) { throw .invalidRequest }
+    public func searchInChat(chatId: String, query: String) async throws(OrbitleError) -> [FoundMessage] { throw .invalidRequest }
 
     public func sharedHistory(chatId: String, limit: Int) async -> [Message] { [] }
 

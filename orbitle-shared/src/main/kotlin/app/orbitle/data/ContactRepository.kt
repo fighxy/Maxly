@@ -2,6 +2,8 @@ package app.orbitle.data
 
 import app.orbitle.domain.Contact
 import com.max.core.api.MaxUser
+import com.max.core.api.UserName
+import com.max.core.protocol.Opcode
 import com.max.core.state.MaxState
 import com.max.shared.MaxClient
 import kotlinx.coroutines.flow.Flow
@@ -12,30 +14,103 @@ import kotlinx.coroutines.flow.map
 interface ContactRepository {
     val contacts: Flow<List<Contact>>
     suspend fun sync()
+
+    /**
+     * Человек по номеру (`CONTACT_INFO_BY_PHONE` 46, телефон `+` и цифры).
+     * `null` — не найден. В контакты сам по себе не добавляет.
+     */
+    suspend fun findByPhone(phone: String): Contact? = null
+
+    /** Уже известный пользователь в контакты (`CONTACT_UPDATE` 34, `action: ADD`). */
+    suspend fun add(userId: String): Contact? = null
+
+    /**
+     * То же, но с именем, если оно непустое. Пустое имя — это [add] без `firstName`.
+     */
+    suspend fun add(userId: String, firstName: String): Contact? = add(userId)
+
+    companion object {
+        /** Короче форма на iOS не отправляет запрос. */
+        const val MIN_PHONE_DIGITS = 7
+    }
 }
 
 class CoreContactRepository(private val client: MaxClient) : ContactRepository {
     override val contacts: Flow<List<Contact>> = client.store.state
-        .map { state -> state.contactIds.mapNotNull { id -> state.users[id]?.let { contact(it, state) } } }
+        .map { state ->
+            state.contactIds.mapNotNull { id ->
+                val user = state.users[id] ?: return@mapNotNull null
+                // Komet не показывает удалённый аккаунт (`accountStatus != 0`). Пустого поля нет — человек жив.
+                if (!isListed(user)) return@mapNotNull null
+                contact(user, state)
+            }
+        }
         .distinctUntilChanged()
 
     override suspend fun sync() {
+        // Ядро шлёт opcode 8 `{contactsSync: 0}` и добавляет ответ к уже известным id.
+        // Komet тоже дописывает, а не заменяет список целиком.
         MaxCoreGateway.call { client.syncContacts() }
     }
 
+    override suspend fun findByPhone(phone: String): Contact? {
+        val digits = phone.filter { it.isDigit() }
+        if (digits.length < ContactRepository.MIN_PHONE_DIGITS) return null
+        val user = MaxCoreGateway.call { client.api.users.findByPhone("+$digits") }
+        client.store.putUsers(listOf(user))
+        return contact(user, client.store.state.value)
+    }
+
+    override suspend fun add(userId: String): Contact? = add(userId, "")
+
+    override suspend fun add(userId: String, firstName: String): Contact? {
+        val id = userId.toLongOrNull() ?: return null
+        val name = firstName.trim()
+        val user = if (name.isEmpty()) {
+            MaxCoreGateway.call { client.api.users.addContact(id) }
+        } else {
+            val packet = MaxCoreGateway.call {
+                client.session.request(Opcode.CONTACT_UPDATE, LockPayloads.addContact(id, name))
+            }
+            MaxUser.from((packet.payload as? Map<*, *>)?.get("contact")) ?: return null
+        }
+        client.store.putContacts(listOf(user))
+        return contact(user, client.store.state.value)
+    }
+
     companion object {
+        /** Удалённый аккаунт в список не входит. Нет `accountStatus` — аккаунт жив. */
+        fun isListed(user: MaxUser): Boolean = (user.accountStatus ?: 0) == 0
+
+        /**
+         * Имя для списка, как в Komet: запись `CUSTOM`, иначе `ONEME`, иначе первая.
+         * Берутся `firstName` и `lastName`. Если оба пусты, остаётся поле `name`.
+         */
+        fun visibleName(names: List<UserName>): Pair<String, String> {
+            val chosen = names.firstOrNull { it.type == "CUSTOM" }
+                ?: names.firstOrNull { it.type == "ONEME" }
+                ?: names.firstOrNull()
+                ?: return "" to ""
+            val first = chosen.firstName?.trim().orEmpty()
+            val last = chosen.lastName?.trim().orEmpty()
+            if (first.isNotEmpty() || last.isNotEmpty()) return first to last
+            return chosen.name?.trim().orEmpty() to ""
+        }
+
         fun contact(user: MaxUser, state: MaxState): Contact {
-            val name = user.names.firstOrNull()
-            val first = name?.firstName?.takeIf { it.isNotBlank() } ?: name?.name.orEmpty()
+            val (first, last) = visibleName(user.names)
             val presence = state.presence[user.id]
             return Contact(
                 id = user.id.toString(),
                 firstName = first,
-                lastName = name?.lastName.orEmpty(),
+                lastName = last,
                 phone = user.phone?.toString().orEmpty(),
                 avatarUrl = user.baseUrl?.takeIf { it.isNotBlank() },
                 isOnline = presence?.status == 1,
                 lastSeenMs = presence?.seen?.let { if (it < 100_000_000_000L) it * 1000 else it } ?: 0L,
+                isBot = "BOT" in user.options,
+                isOfficial = "OFFICIAL" in user.options,
+                isServiceAccount = "SERVICE_ACCOUNT" in user.options,
             )
         }
     }

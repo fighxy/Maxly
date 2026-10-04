@@ -107,6 +107,8 @@ public final class ChatListViewModel {
     public var editSelection: Set<String> = []
     /// Чат, удаление которого ждёт подтверждения.
     public private(set) var deletionCandidate: ChatListItem?
+    /// Чат, очистка переписки которого ждёт подтверждения.
+    public private(set) var clearCandidate: ChatListItem?
 
     /// Локальные папки по типам, когда серверных нет. Выключены: полоса папок видна,
     /// только если у пользователя есть папки.
@@ -489,12 +491,54 @@ public final class ChatListViewModel {
         deletionCandidate = nil
     }
 
-    /// Удалить для всех — только личные чаты и свои группы; экран предлагает это в личных.
+    /// Удалить чат на сервере: `forEveryone` — у всех, иначе только у себя.
     public func confirmDelete(forEveryone: Bool) async {
         guard let candidate = deletionCandidate else { return }
         deletionCandidate = nil
         do {
             try await repository.delete(chatId: candidate.id, forEveryone: forEveryone)
+        } catch {
+            show(error)
+        }
+    }
+
+    public func requestClear(chatId: String) {
+        guard capabilities.contains(.delete) else { return }
+        clearCandidate = items.first { $0.id == chatId }
+            ?? chats.first { $0.id == chatId }.map { formatter.item(for: $0, now: now()) }
+    }
+
+    public func cancelClear() {
+        clearCandidate = nil
+    }
+
+    /// Очистка из профиля: кандидат диалога не нужен.
+    public func confirmClear(chatId: String, forEveryone: Bool) async {
+        guard capabilities.contains(.delete) else { return }
+        do {
+            try await repository.clearHistory(chatId: chatId, forEveryone: forEveryone)
+        } catch {
+            show(error)
+        }
+    }
+
+    /// Удаление из профиля. `true` — сервер принял, экран чата можно закрыть.
+    public func deleteNow(chatId: String, forEveryone: Bool) async -> Bool {
+        guard capabilities.contains(.delete) else { return false }
+        do {
+            try await repository.delete(chatId: chatId, forEveryone: forEveryone)
+            return true
+        } catch {
+            show(error)
+            return false
+        }
+    }
+
+    public func confirmClear(forEveryone: Bool) async {
+        guard let candidate = clearCandidate else { return }
+        clearCandidate = nil
+        do {
+            try await repository.clearHistory(chatId: candidate.id, forEveryone: forEveryone)
         } catch {
             show(error)
         }

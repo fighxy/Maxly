@@ -1,14 +1,19 @@
 package app.orbitle.data
 
+import app.orbitle.domain.AnimatedEmoji
 import app.orbitle.domain.Sticker
 import app.orbitle.domain.StickerCatalog
 import app.orbitle.domain.StickerSet
 import com.max.shared.MaxClient
+import kotlinx.coroutines.CancellationException
 
 /** Каталог стикеров сервера. */
 interface StickerRepository {
     suspend fun catalog(): StickerCatalog
     suspend fun stickers(ids: List<String>): List<Sticker>
+
+    /** Анимодзи сервера, тот же каталог, что у реакций. Пустой список — раздел не показывается. */
+    suspend fun animatedEmoji(): List<AnimatedEmoji> = emptyList()
 }
 
 /** Недавние эмодзи и стикеры панели: хранятся на устройстве. */
@@ -39,6 +44,16 @@ class CoreStickerRepository(private val client: MaxClient) : StickerRepository {
             }
         }
         return ids.mapNotNull(cache::get)
+    }
+
+    override suspend fun animatedEmoji(): List<AnimatedEmoji> = try {
+        MaxCoreGateway.call { client.reactionCatalog() }
+            .filter { !it.lottieUrl.isNullOrBlank() || !it.iconUrl.isNullOrBlank() }
+            .map { AnimatedEmoji(it.id.toString(), it.emoji, it.iconUrl, it.lottieUrl) }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        emptyList()
     }
 
     private companion object {

@@ -46,6 +46,9 @@ object R {
         const val chats_verified = 41
         const val chats_draft = 42
         const val chats_close_search = 43
+        const val chats_search_recent = 58
+        const val chats_search_clear = 59
+        const val chats_search_remove_recent = 60
         const val calls_title = 44
         const val contacts_title = 45
         const val soon = 46
@@ -119,6 +122,9 @@ internal val STRING_TABLE: Map<Int, String> = mapOf(
     R.string.chats_verified to "Подтверждённый",
     R.string.chats_draft to "Черновик:",
     R.string.chats_close_search to "Закрыть поиск",
+    R.string.chats_search_recent to "Недавние",
+    R.string.chats_search_clear to "Очистить",
+    R.string.chats_search_remove_recent to "Убрать",
     R.string.calls_title to "Звонки",
     R.string.contacts_title to "Контакты",
     R.string.soon to "Скоро здесь появится",

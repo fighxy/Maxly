@@ -2,6 +2,7 @@ package app.orbitle.data
 
 import app.orbitle.domain.AuthPhase
 import app.orbitle.domain.AuthService
+import app.orbitle.domain.isFreshLogin
 import app.orbitle.domain.ConnectionState
 import app.orbitle.domain.OrbitleError
 import kotlinx.coroutines.CoroutineScope
@@ -31,6 +32,8 @@ class SessionManager(
     private val onSignedIn: suspend (userId: String) -> Unit = {},
     /** Выход или смена аккаунта: репозитории стирают кэш. */
     private val onSignedOut: suspend () -> Unit = {},
+    /** Вход с шага кода, пароля или регистрации, а не восстановление сохранённого сеанса. */
+    private val onFreshSession: () -> Unit = {},
 ) : AuthService {
 
     private val _phase = MutableStateFlow<AuthPhase>(AuthPhase.Restoring)
@@ -227,6 +230,7 @@ class SessionManager(
         if (epoch != logouts) return
         val previous = userIds.lastUserId
         val id = userId.ifEmpty { previous.orEmpty() }
+        val fresh = _phase.value.isFreshLogin()
         if (previous != null && id.isNotEmpty() && previous != id) {
             onSignedOut()
             if (epoch != logouts) return
@@ -235,6 +239,7 @@ class SessionManager(
         forgetLoginAttempt()
         _phase.value = AuthPhase.SignedIn(id)
         runCatching { onSignedIn(id) }
+        if (fresh) runCatching { onFreshSession() }
     }
 
     private fun expire() {

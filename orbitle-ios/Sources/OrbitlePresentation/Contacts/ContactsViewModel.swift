@@ -9,13 +9,15 @@ public struct ContactRow: Identifiable, Hashable, Sendable {
     public let status: String
     public let isOnline: Bool
     public let avatarURL: URL?
+    public let isOfficial: Bool
 
-    public init(id: String, title: String, status: String, isOnline: Bool, avatarURL: URL?) {
+    public init(id: String, title: String, status: String, isOnline: Bool, avatarURL: URL?, isOfficial: Bool = false) {
         self.id = id
         self.title = title
         self.status = status
         self.isOnline = isOnline
         self.avatarURL = avatarURL
+        self.isOfficial = isOfficial
     }
 }
 
@@ -146,6 +148,9 @@ public final class ContactsViewModel {
         do {
             _ = try await repository.addContact(phone: phone, firstName: firstName, lastName: lastName)
             errorMessage = nil
+            // Поток списка уже закончился: переподписка показывает человека, которого только что записали.
+            deactivate()
+            activate()
             return true
         } catch {
             errorMessage = error.userMessage
@@ -181,13 +186,24 @@ public final class ContactsViewModel {
     }
 
     private func row(for contact: Contact, now: Date) -> ContactRow {
-        let status = formatter.status(contact.presence, now: now)
+        let seen = formatter.status(contact.presence, now: now)
+        let status: String
+        if contact.presence == .online {
+            status = seen
+        } else if contact.isServiceAccount {
+            status = "Служебный аккаунт"
+        } else if contact.isBot {
+            status = "Бот"
+        } else {
+            status = seen
+        }
         return ContactRow(
             id: contact.id,
             title: contact.displayName,
             status: status,
             isOnline: contact.presence == .online,
-            avatarURL: contact.avatarURL
+            avatarURL: contact.avatarURL,
+            isOfficial: contact.isOfficial
         )
     }
 

@@ -104,6 +104,7 @@ struct MainTabView: View {
         .task {
             let calls = container.callsViewModel()
             calls.activate()
+            container.accountSettingsModel().watchSettings()
             if router.tab == .calls { await calls.appeared() }
         }
         .onChange(of: router.tab) { _, tab in
@@ -190,20 +191,26 @@ struct MainTabView: View {
         }
     }
 
+    /// Группа и канал уже в списке. Личный диалог ещё запоминается, чтобы шапка знала имя.
+    private func openCreated(_ opened: NewChatOpened) {
+        if let draft = opened.draft { container.openDialog(draft) }
+        router.chatId = opened.id
+    }
+
     @ViewBuilder
     private var chats: some View {
         if sizeClass == .compact {
             // iPhone: обычный стек. Чат прячет панель вкладок сам, и система анимирует её
             // вместе с переходом, в том числе при свайпе назад.
             NavigationStack(path: chatPath) {
-                ChatListView(viewModel: list, selection: $router.chatId)
+                ChatListView(viewModel: list, selection: $router.chatId, newChat: container.newChatModel(), onOpened: openCreated)
                     .navigationDestination(for: String.self) { id in
                         chatScreen(id)
                     }
             }
         } else {
             NavigationSplitView {
-                ChatListView(viewModel: list, selection: $router.chatId)
+                ChatListView(viewModel: list, selection: $router.chatId, newChat: container.newChatModel(), onOpened: openCreated)
             } detail: {
                 if let id = router.chatId {
                     // Свой стек у колонки: из чата открывается профиль.
@@ -237,15 +244,23 @@ struct MainTabView: View {
             // Свой экран на каждый чат: иначе при смене выбора SwiftUI переиспользует
             // прежний ChatView, его `.task` не перезапускается, и модель нового чата
             // так и не подписывается на сообщения.
+            let settings = container.accountSettingsModel().settings
             ChatView(
                 viewModel: model,
                 title: container.chatTitle(id: id),
                 commentsEnabled: container.commentsEnabled(id: id),
                 chatType: container.chatType(id: id),
+                quickReaction: settings.quickReactionEnabled ? settings.quickReaction : nil,
                 forwardTargets: { container.forwardTargets(excluding: id) },
                 canWrite: container.canWrite(id: id),
                 isMuted: container.isMuted(id: id),
                 onToggleMute: { Task { await container.toggleMute(id: id) } },
+                onEraseChat: { clear, everyone in
+                    Task {
+                        let gone = await container.eraseChat(id: id, clearHistory: clear, forEveryone: everyone)
+                        if gone { router.chatId = nil }
+                    }
+                },
                 contactList: { container.attachmentContacts() },
                 stickerPanel: container.stickerPanelModel(),
                 live: { container.headerLive(id: id) }

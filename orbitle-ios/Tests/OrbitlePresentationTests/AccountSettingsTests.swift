@@ -54,6 +54,14 @@ final class FakeAccountRepository: AccountRepository, @unchecked Sendable {
     func setInactiveTTL(_ ttl: InactiveTTL) async throws(OrbitleError) -> AccountSettings {
         try check(); settingsValue.inactiveTTL = ttl; return settingsValue
     }
+    var quickReactions: [String] = []
+    func setQuickReaction(_ emoji: String) async throws(OrbitleError) -> AccountSettings {
+        try check()
+        quickReactions.append(emoji)
+        settingsValue.quickReaction = emoji
+        settingsValue.quickReactionEnabled = true
+        return settingsValue
+    }
     func sessions() async throws(OrbitleError) -> [DeviceSession] { try check(); return sessionsValue }
     func closeOtherSessions() async throws(OrbitleError) {
         try check()

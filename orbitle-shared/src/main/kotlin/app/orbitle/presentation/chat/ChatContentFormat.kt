@@ -65,6 +65,87 @@ object ChatContentFormat {
         val fraction = tenths % 10
         return if (fraction == 0) "$whole ${units[unit]}" else "$whole,$fraction ${units[unit]}"
     }
+
+    /**
+     * Сообщение из одних эмодзи (от одного до трёх, пробелы не в счёт). `null` — обычный текст.
+     * Символ со своим видом эмодзи, либо последовательность (флаг, тон кожи, ZWJ, `FE0F`).
+     * Цифра и `#` одним скаляром сюда не попадают.
+     */
+    fun bigEmoji(text: String, limit: Int = 3): List<String>? {
+        val found = ArrayList<String>(limit)
+        var index = 0
+        while (index < text.length) {
+            val cp = text.codePointAt(index)
+            if (Character.isWhitespace(cp)) {
+                index += Character.charCount(cp)
+                continue
+            }
+            val end = emojiEnd(text, index)
+            if (end <= index || found.size >= limit) return null
+            found += text.substring(index, end)
+            index = end
+        }
+        return found.takeIf { it.isNotEmpty() }
+    }
+
+    /** Размер крупных эмодзи: одно — крупнее всего. */
+    fun bigEmojiSize(count: Int): Int = when (count) {
+        1 -> 64
+        2 -> 52
+        else -> 44
+    }
+
+    private fun emojiEnd(text: String, start: Int): Int {
+        val first = text.codePointAt(start)
+        var index = start + Character.charCount(first)
+        if (isRegional(first)) {
+            if (index < text.length && isRegional(text.codePointAt(index))) {
+                index += Character.charCount(text.codePointAt(index))
+            }
+            return index
+        }
+        if (isKeycapBase(first)) {
+            val after = variation(text, index)
+            if (after < text.length && text.codePointAt(after) == KEYCAP) return after + Character.charCount(KEYCAP)
+            return start
+        }
+        if (!isEmojiPresentation(first)) return start
+        index = skin(text, index)
+        index = variation(text, index)
+        while (index < text.length && text.codePointAt(index) == ZWJ) {
+            val next = index + 1
+            if (next >= text.length || !isEmojiPresentation(text.codePointAt(next))) break
+            index = next + Character.charCount(text.codePointAt(next))
+            index = skin(text, index)
+            index = variation(text, index)
+        }
+        return index
+    }
+
+    private fun skin(text: String, index: Int): Int =
+        if (index < text.length && text.codePointAt(index) in 0x1F3FB..0x1F3FF) index + Character.charCount(text.codePointAt(index)) else index
+
+    private fun variation(text: String, index: Int): Int =
+        if (index < text.length && text.codePointAt(index) == FE0F) index + 1 else index
+
+    private fun isKeycapBase(cp: Int) = cp in 0x30..0x39 || cp == '#'.code || cp == '*'.code
+
+    private fun isRegional(cp: Int) = cp in 0x1F1E6..0x1F1FF
+
+    private fun isEmojiPresentation(cp: Int): Boolean {
+        if (cp in 0x1F300..0x1FAFF || isRegional(cp)) return true
+        if (cp in 0x2600..0x27BF) return true
+        if (cp == 0x231A || cp == 0x231B || cp == 0x2328 || cp == 0x23CF) return true
+        if (cp in 0x23E9..0x23F3 || cp in 0x23F8..0x23FA) return true
+        if (cp == 0x24C2 || cp in 0x25AA..0x25AB || cp == 0x25B6 || cp == 0x25C0 || cp in 0x25FB..0x25FE) return true
+        if (cp == 0x2934 || cp == 0x2935 || cp in 0x2B05..0x2B07 || cp == 0x2B1B || cp == 0x2B1C || cp == 0x2B50 || cp == 0x2B55) return true
+        if (cp == 0x3030 || cp == 0x303D || cp == 0x3297 || cp == 0x3299) return true
+        return false
+    }
+
+    private const val FE0F = 0xFE0F
+    private const val ZWJ = 0x200D
+    private const val KEYCAP = 0x20E3
 }
 
 /** Столбики дорожки голосового по ширине пузыря: остаток делится между зазорами. */

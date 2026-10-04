@@ -3,6 +3,7 @@ package app.orbitle.presentation.chat
 import app.orbitle.presentation.common.PresenceText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDateTime
@@ -19,6 +20,20 @@ class ChatContentFormatTest {
         assertEquals(listOf(0.12, 1.0, 0.2), bars)
         val stretched = ChatContentFormat.waveBars(listOf(0, 100), count = 5)
         assertEquals(listOf(0.12, 0.25, 0.5, 0.75, 1.0), stretched)
+    }
+
+    @Test
+    fun bigEmojiIsOneToThreeSymbols() {
+        assertEquals(listOf("🔥"), ChatContentFormat.bigEmoji("🔥"))
+        assertEquals(listOf("👍🏽", "❤️"), ChatContentFormat.bigEmoji(" 👍🏽 ❤️ "))
+        assertEquals(listOf("🇷🇺"), ChatContentFormat.bigEmoji("🇷🇺"))
+        assertNull(ChatContentFormat.bigEmoji("🔥🔥🔥🔥"))
+        assertNull(ChatContentFormat.bigEmoji("ok 🔥"))
+        assertNull(ChatContentFormat.bigEmoji("1"))
+        assertNull(ChatContentFormat.bigEmoji(""))
+        assertEquals(64, ChatContentFormat.bigEmojiSize(1))
+        assertEquals(52, ChatContentFormat.bigEmojiSize(2))
+        assertEquals(44, ChatContentFormat.bigEmojiSize(3))
     }
 
     @Test

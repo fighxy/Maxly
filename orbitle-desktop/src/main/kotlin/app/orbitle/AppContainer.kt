@@ -39,6 +39,8 @@ import app.orbitle.presentation.chat.DraftStore
 import app.orbitle.presentation.chat.MessageFiles
 import app.orbitle.presentation.chat.VoicePlayer
 import app.orbitle.presentation.chatlist.ChatLocalMarks
+import app.orbitle.presentation.chatlist.PreferenceRecentSearches
+import kotlinx.coroutines.flow.MutableStateFlow
 import com.max.shared.MaxClient
 import com.max.shared.MaxClientConfig
 import kotlinx.coroutines.CoroutineScope
@@ -141,6 +143,15 @@ class AppContainer {
             set(value) { prefs.edit().putStringSet(key("hidden"), value).apply() }
     }
 
+    val recentSearches = PreferenceRecentSearches(preferenceStore)
+
+    /** Панель после входа по коду. Восстановление сеанса её не поднимает. */
+    val freshSessionNotice = MutableStateFlow(false)
+
+    fun dismissFreshSessionNotice() {
+        freshSessionNotice.value = false
+    }
+
     private val userIds = object : UserIdStore {
         override var lastUserId: String?
             get() = prefs.getString(KEY_LAST_USER, null)
@@ -160,7 +171,10 @@ class AppContainer {
         onSignedOut = {
             chats.clear()
             calls.clear()
+            recentSearches.clear()
+            freshSessionNotice.value = false
         },
+        onFreshSession = { freshSessionNotice.value = true },
     )
 
     private companion object {

@@ -711,6 +711,59 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         await outgoingHandler?(.deleted(chatId: chatId, ids: localIds + serverIds))
     }
 
+    /// Локальная лента чата после очистки переписки. Сервер уже ответил в репозитории чатов.
+    public func pin(chatId: String, messageId: String) async throws(OrbitleError) {
+        if case .failure(let error) = await api.pinMessage(chatId: chatId, messageId: messageId) {
+            throw error.orbitleError
+        }
+    }
+
+    public func schedule(chatId: String, text: String, sendAt: Date) async throws(OrbitleError) {
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { throw .invalidRequest }
+        if case .failure(let error) = await api.scheduleMessage(chatId: chatId, text: body, sendAtMs: sendAt.unixMillis) {
+            throw error.orbitleError
+        }
+    }
+
+    public func scheduled(chatId: String) async throws(OrbitleError) -> [FoundMessage] {
+        switch await api.scheduledMessages(chatId: chatId) {
+        case .success(let hits): return hits
+        case .failure(let error): throw error.orbitleError
+        }
+    }
+
+    public func sendPoll(chatId: String, title: String, answers: [String]) async throws(OrbitleError) {
+        if case .failure(let error) = await api.sendPoll(chatId: chatId, title: title, answers: answers) {
+            throw error.orbitleError
+        }
+    }
+
+    public func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws(OrbitleError) {
+        if case .failure(let error) = await api.votePoll(chatId: chatId, messageId: messageId, pollId: pollId, answerId: answerId) {
+            throw error.orbitleError
+        }
+    }
+
+    public func searchInChat(chatId: String, query: String) async throws(OrbitleError) -> [FoundMessage] {
+        switch await api.searchInChat(chatId: chatId, query: query) {
+        case .success(let hits): return hits.filter { !$0.messageId.isEmpty }
+        case .failure(let error): throw error.orbitleError
+        }
+    }
+
+    public func dropLocalHistory(chatId: String) async {
+        let id = chatId
+        do {
+            try modelContext.delete(model: SDMessage.self, where: #Predicate { $0.chatId == id })
+            try modelContext.save()
+            windows[chatId] = 0
+        } catch {
+            Log.warning(.messages, "Очистка ленты не сохранилась: \(error)")
+        }
+        notify(chatId: chatId)
+    }
+
     /// Правка текста: сначала сервер, затем база (текст, пометка «изменено», разметка сервера).
     public func edit(messageId: String, chatId: String, text: String) async throws(OrbitleError) {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -105,7 +105,8 @@ public actor OutboxQueue {
                 let replyTo = quoted.flatMap { Int64($0) == nil ? nil : $0 }
                 let result = await api.sendMessage(
                     chatId: record.chatId, text: record.text, clientId: record.id, replyTo: replyTo,
-                    animoji: CoreAnimojiMark.marks(content.formatting)
+                    animoji: CoreAnimojiMark.marks(content.formatting),
+                    mentions: CoreMentionMark.marks(content.formatting)
                 )
                 switch result {
                 case .success(let sent):

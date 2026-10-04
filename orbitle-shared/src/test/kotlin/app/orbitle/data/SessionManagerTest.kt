@@ -61,6 +61,7 @@ class SessionManagerTest {
     }
     private var signedIn = mutableListOf<String>()
     private var cleared = 0
+    private var fresh = 0
 
     private fun TestScope.session() = SessionManager(
         core,
@@ -68,6 +69,7 @@ class SessionManagerTest {
         ids,
         onSignedIn = { signedIn += it },
         onSignedOut = { cleared += 1 },
+        onFreshSession = { fresh += 1 },
     )
 
     private suspend inline fun expectError(expected: OrbitleError, block: () -> Unit) {
@@ -107,6 +109,40 @@ class SessionManagerTest {
         s.restoreSession()
         assertEquals(AuthPhase.SignedIn("7"), s.phase.value)
         assertEquals(ConnectionState.OFFLINE, s.connection.value)
+    }
+
+    @Test
+    fun freshNoticeFollowsCodePasswordAndRegistrationOnly() = runTest(UnconfinedTestDispatcher()) {
+        core.stored = true
+        core.startPhase = CorePhase.READY
+        core.userId = "100"
+        val restored = session()
+        restored.restoreSession()
+        restored.observe(CorePhase.READY)
+        assertEquals(AuthPhase.SignedIn("100"), restored.phase.value)
+        assertEquals(0, fresh)
+
+        restored.logout()
+        restored.requestCode("+79991234567")
+        restored.verifyCode("123456")
+        assertEquals(1, fresh)
+
+        restored.logout()
+        core.verifyResult = CoreAuthStep.Password("track", null)
+        restored.requestCode("+79991234567")
+        restored.verifyCode("123456")
+        assertEquals(AuthPhase.Password(null), restored.phase.value)
+        assertEquals(1, fresh)
+        restored.submitPassword("right")
+        assertEquals(2, fresh)
+
+        restored.logout()
+        core.verifyResult = CoreAuthStep.Register("reg")
+        restored.requestCode("+79991234567")
+        restored.verifyCode("123456")
+        assertEquals(2, fresh)
+        restored.register("Иван", "")
+        assertEquals(3, fresh)
     }
 
     @Test

@@ -129,7 +129,7 @@ struct ChatTranscriptFormatTests {
         calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute)) ?? .distantPast
     }
 
-    @Test("Один автор подряд слипается в пределах 10 минут и одного дня")
+    @Test("Один автор подряд слипается в пределах 15 минут и одного дня")
     func grouping() {
         let now = date(5, 12)
         let joined = ChatContentFormat.group(

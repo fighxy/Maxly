@@ -14,6 +14,8 @@ public struct MessageContent: Hashable, Sendable, Codable {
     public var forward: MessageForward?
     /// Текст сообщения меняли после отправки.
     public var edited: Bool?
+    /// Служебное закрепление. Пустой `messageId` — закреп сняли.
+    public var pin: PinNotice?
     /// Своё сообщение с вложениями, которые ещё не загружены: что и откуда отправлять.
     /// Есть, пока сообщение не принято сервером; по нему работает повтор после сбоя.
     public var drafts: [AttachmentDraft]?
@@ -27,7 +29,8 @@ public struct MessageContent: Hashable, Sendable, Codable {
         formatting: [TextSpan]? = nil,
         forward: MessageForward? = nil,
         edited: Bool? = nil,
-        drafts: [AttachmentDraft]? = nil
+        drafts: [AttachmentDraft]? = nil,
+        pin: PinNotice? = nil
     ) {
         self.reply = reply
         self.attachments = attachments
@@ -38,13 +41,14 @@ public struct MessageContent: Hashable, Sendable, Codable {
         self.forward = forward
         self.edited = edited == true ? true : nil
         self.drafts = drafts?.isEmpty == true ? nil : drafts
+        self.pin = pin
     }
 
     public static let empty = MessageContent()
 
     public var isEmpty: Bool {
         reply == nil && attachments.isEmpty && reactions.isEmpty && comments == nil && (threadOf?.isEmpty != false)
-            && (formatting?.isEmpty != false) && forward == nil && edited != true && (drafts?.isEmpty != false)
+            && (formatting?.isEmpty != false) && forward == nil && edited != true && (drafts?.isEmpty != false) && pin == nil
     }
 
     /// Вложения ещё загружаются или ждут повтора.
@@ -82,6 +86,10 @@ public struct MessageContent: Hashable, Sendable, Codable {
         attachments.lazy.compactMap(\.call).first
     }
 
+    public var poll: PollContent? {
+        attachments.lazy.compactMap(\.poll).first
+    }
+
     /// Вид первого вложения для строки списка чатов.
     public var previewMedia: MessageMediaKind? {
         switch attachments.first {
@@ -92,6 +100,7 @@ public struct MessageContent: Hashable, Sendable, Codable {
         case .contact: .contact
         case .sticker: .sticker
         case .call(let call): call.isGroup ? .groupCall : .call
+        case .poll: .poll
         case nil: nil
         }
     }
@@ -193,6 +202,8 @@ public enum ChatAttachment: Hashable, Sendable, Codable {
     case sticker(StickerContent)
     /// Звонок: что было и чем закончилось.
     case call(CallContent)
+    /// Опрос. Голос уходит по `pollId` и `answerId`.
+    case poll(PollContent)
 
     public var id: String {
         switch self {
@@ -203,6 +214,7 @@ public enum ChatAttachment: Hashable, Sendable, Codable {
         case .contact(let item): item.id
         case .sticker(let item): item.id
         case .call(let item): item.id
+        case .poll(let item): item.id
         }
     }
 
@@ -245,6 +257,11 @@ public enum ChatAttachment: Hashable, Sendable, Codable {
         return nil
     }
 
+    public var poll: PollContent? {
+        if case .poll(let item) = self { return item }
+        return nil
+    }
+
     public func withLocalPath(_ path: String, id: String) -> ChatAttachment {
         switch self {
         case .photo(var item):
@@ -263,9 +280,47 @@ public enum ChatAttachment: Hashable, Sendable, Codable {
             guard item.id == id else { return self }
             item.localPath = path
             return .file(item)
-        case .contact, .sticker, .call:
+        case .contact, .sticker, .call, .poll:
             return self
         }
+    }
+}
+
+/// Опрос в сообщении. `id` — `pollId`, по нему уходит голос.
+public struct PollContent: Hashable, Sendable, Codable {
+    public var id: String
+    public var title: String
+    public var answers: [PollAnswer]
+    public var total: Int
+
+    public init(id: String, title: String, answers: [PollAnswer], total: Int = 0) {
+        self.id = id
+        self.title = title
+        self.answers = answers
+        self.total = total
+    }
+}
+
+public struct PollAnswer: Hashable, Sendable, Codable {
+    public var id: String
+    public var text: String
+    public var votes: Int
+
+    public init(id: String, text: String, votes: Int = 0) {
+        self.id = id
+        self.text = text
+        self.votes = votes
+    }
+}
+
+/// Служебное закрепление. Пустой `messageId` значит, что закреп сняли.
+public struct PinNotice: Hashable, Sendable, Codable {
+    public var messageId: String?
+    public var preview: String
+
+    public init(messageId: String?, preview: String) {
+        self.messageId = messageId
+        self.preview = preview
     }
 }
 

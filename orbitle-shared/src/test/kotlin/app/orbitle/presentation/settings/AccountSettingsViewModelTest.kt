@@ -198,6 +198,27 @@ class AccountSettingsViewModelTest {
     }
 
     @Test
+    fun `quick reaction is the account emoji`() {
+        val missing = CoreAccountRepository.settingsOf(AccountConfig(user = emptyMap()))
+        assertEquals("👍", missing.quickReaction)
+        assertTrue(missing.quickReactionEnabled)
+        val set = CoreAccountRepository.settingsOf(
+            AccountConfig(user = mapOf("DOUBLE_TAP_REACTION_VALUE" to "🔥", "DOUBLE_TAP_REACTION_DISABLED" to true)),
+        )
+        assertEquals("🔥", set.quickReaction)
+        assertFalse(set.quickReactionEnabled)
+        val nested = CoreAccountRepository.settingsOf(
+            AccountConfig(user = mapOf("DOUBLE_TAP_REACTION_VALUE" to mapOf("id" to "❤️"))),
+        )
+        assertEquals("❤️", nested.quickReaction)
+        assertEquals("👍", CoreAccountRepository.settingsOf(AccountConfig(user = mapOf("DOUBLE_TAP_REACTION_VALUE" to "   "))).quickReaction)
+        assertEquals(
+            linkedMapOf("DOUBLE_TAP_REACTION_VALUE" to "🔥", "DOUBLE_TAP_REACTION_DISABLED" to false),
+            CoreAccountRepository.valuesOf(PrivacyChange.QuickReaction("🔥")),
+        )
+    }
+
+    @Test
     fun `delete keyword ignores case and surrounding spaces`() {
         assertTrue(AccountSettingsViewModel.isDeleteKeyword("УДАЛИТЬ"))
         assertTrue(AccountSettingsViewModel.isDeleteKeyword("  удалить "))

@@ -13,8 +13,12 @@ import app.orbitle.domain.ConnectionState
 import app.orbitle.domain.ServerFolder
 import app.orbitle.presentation.chatlist.ChatListContent
 import app.orbitle.presentation.chatlist.ChatListFormatter
+import app.orbitle.data.PreferenceStore
 import app.orbitle.presentation.chatlist.ChatListViewModel
 import app.orbitle.presentation.chatlist.ChatLocalMarks
+import app.orbitle.presentation.chatlist.PreferenceRecentSearches
+import app.orbitle.presentation.chatlist.RecentSearchList
+import app.orbitle.presentation.chatlist.RecentSearchStore
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
@@ -420,5 +424,97 @@ class ChatListViewModelTest {
             chat("d").copy(isArchived = true), chat("e", type = ChatType.CHANNEL).copy(canWrite = false),
         )
         assertEquals(listOf("b", "a"), vm.forwardTargets(excluding = "c").map { it.id })
+    }
+
+    @Test
+    fun emptySearchShowsRecentChatsThatStillExist() {
+        val store = FakeRecents(listOf("b", "gone", "a"))
+        val model = listWith(store)
+        repo.chats.value = listOf(chat("a"), chat("b"))
+        model.setSearchActive(true)
+        assertEquals(listOf("b", "a"), model.state.value.recent.map { it.id })
+        model.setSearchQuery("чат")
+        assertTrue(model.state.value.recent.isEmpty())
+        model.setSearchQuery("  ")
+        model.selectSearchResult("a")
+        assertEquals(listOf("a", "b"), model.state.value.recent.map { it.id })
+        assertEquals(listOf("a", "b", "gone"), store.saved)
+        model.selectSearchResult("a")
+        assertEquals(listOf("a", "b", "gone"), store.saved)
+        model.removeRecent("gone")
+        assertEquals(listOf("a", "b"), store.saved)
+        model.setSearchActive(false)
+        assertTrue(model.state.value.recent.isEmpty())
+        model.setSearchActive(true)
+        assertEquals(listOf("a", "b"), model.state.value.recent.map { it.id })
+    }
+
+    @Test
+    fun openingOutsideSearchDoesNotRememberTheChat() {
+        val store = FakeRecents()
+        val model = listWith(store)
+        repo.chats.value = listOf(chat("a"))
+        model.opened("a")
+        assertTrue(store.saved.isEmpty())
+    }
+
+    @Test
+    fun recentSearchKeepsTwentyAndReloadDropsClearedIds() {
+        val store = FakeRecents()
+        val model = listWith(store)
+        repeat(21) { model.selectSearchResult("c$it") }
+        assertEquals(20, store.saved.size)
+        assertEquals("c20", store.saved.first())
+        assertFalse(store.saved.contains("c0"))
+        store.clear()
+        model.reloadLocal()
+        model.setSearchActive(true)
+        assertTrue(model.state.value.recent.isEmpty())
+        assertTrue(store.saved.isEmpty())
+    }
+
+    @Test
+    fun preferenceRecentSearchesRoundTrip() {
+        val prefs = MemPrefs()
+        val store = PreferenceRecentSearches(prefs)
+        store.add(" a ")
+        store.add("b")
+        store.add("a")
+        assertEquals(listOf("a", "b"), store.recent())
+        assertEquals(listOf("a", "b"), RecentSearchList.decode(prefs.map[PreferenceRecentSearches.KEY]))
+        store.remove("b")
+        assertEquals(listOf("a"), PreferenceRecentSearches(prefs).recent())
+        store.clear()
+        assertTrue(store.recent().isEmpty())
+    }
+
+    private fun listWith(store: RecentSearchStore) = ChatListViewModel(
+        repo, connection, ChatListFormatter(ZoneOffset.UTC), now = { now }, local = marks, recents = store,
+    )
+}
+
+private class FakeRecents(start: List<String> = emptyList()) : RecentSearchStore {
+    val saved = start.toMutableList()
+    override fun recent(): List<String> = saved.toList()
+    override fun add(chatId: String) {
+        val next = RecentSearchList.add(saved, chatId)
+        saved.clear()
+        saved.addAll(next)
+    }
+    override fun remove(chatId: String) {
+        val next = RecentSearchList.remove(saved, chatId)
+        saved.clear()
+        saved.addAll(next)
+    }
+    override fun clear() {
+        saved.clear()
+    }
+}
+
+private class MemPrefs : PreferenceStore {
+    val map = HashMap<String, String>()
+    override fun get(key: String): String? = map[key]
+    override fun put(key: String, value: String) {
+        map[key] = value
     }
 }

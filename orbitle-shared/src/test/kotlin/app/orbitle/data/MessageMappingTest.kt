@@ -158,4 +158,58 @@ class MessageMappingTest {
         assertEquals("Групповой звонок", MessageMapping.previewOf(listOf(MessageMapping.attachment(mapOf("_type" to "CALL", "joinLink" to "https://j"))!!)))
         assertEquals("", MessageMapping.previewOf(emptyList()))
     }
+
+    @Test
+    fun pollNeedsTwoAnswersAndAPollId() {
+        val parsed = MessageMapping.poll(
+            mapOf(
+                "pollId" to 4L,
+                "title" to "  ",
+                "answers" to listOf(
+                    mapOf("answerId" to 1, "text" to "Да"),
+                    mapOf("answerId" to 2, "text" to "Нет"),
+                ),
+                "state" to mapOf(
+                    "total" to 3,
+                    "result" to listOf(
+                        mapOf("answerId" to 1, "voteCount" to 2),
+                        mapOf("answerId" to 2, "voteCount" to 1),
+                    ),
+                ),
+            ),
+        )!!
+        assertEquals("4", parsed.id)
+        assertEquals("Опрос", parsed.title)
+        assertEquals(2, parsed.answers[0].votes)
+        assertEquals(3, parsed.total)
+        assertNull(MessageMapping.poll(mapOf("pollId" to 1L, "answers" to listOf(mapOf("answerId" to 1, "text" to "Один")))))
+        val shown = MessageMapping.message(
+            message(mapOf("attaches" to listOf(mapOf(
+                "_type" to "POLL",
+                "pollId" to 4L,
+                "title" to "Куда",
+                "answers" to listOf(mapOf("answerId" to 1, "text" to "Да"), mapOf("answerId" to 2, "text" to "Нет")),
+            )))),
+            10,
+            state,
+        )
+        assertEquals("Опрос", shown.replySnippet)
+        assertEquals("Куда", shown.content.poll!!.title)
+    }
+
+    @Test
+    fun pinControlReadsThePinnedText() {
+        val pin = MessageMapping.pinNotice(
+            listOf(mapOf("_type" to "CONTROL", "event" to "pin", "pinnedMessage" to mapOf("id" to 9L, "text" to "важное"))),
+        )
+        assertEquals("9", pin!!.messageId)
+        assertEquals("важное", pin.preview)
+        val blank = MessageMapping.pinNotice(
+            listOf(mapOf("_type" to "CONTROL", "event" to "pin", "pinnedMessage" to mapOf("id" to 9L, "text" to " "))),
+        )
+        assertEquals("Сообщение", blank!!.preview)
+        val unpin = MessageMapping.pinNotice(listOf(mapOf("_type" to "CONTROL", "event" to "unpin")))
+        assertNull(unpin!!.messageId)
+        assertNull(MessageMapping.pinNotice(listOf(mapOf("_type" to "CONTROL", "event" to "new"))))
+    }
 }

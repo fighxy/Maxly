@@ -2,17 +2,21 @@ package app.orbitle.ui.contacts
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -152,7 +156,18 @@ private fun ContactItem(row: ContactRow, onClick: () -> Unit) {
             Avatar(if (hidden) app.orbitle.presentation.settings.PrivateModeMask.avatar(row.avatar) else row.avatar, 44.dp, online = row.isOnline && !private, modifier = Modifier.privateBlur(privacy, 8.dp))
         },
         headlineContent = {
-            Text(if (hidden) app.orbitle.presentation.settings.PrivateModeMask.CONTACT_TITLE else row.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.privateBlur(privacy, 7.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (hidden) app.orbitle.presentation.settings.PrivateModeMask.CONTACT_TITLE else row.title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false).privateBlur(privacy, 7.dp),
+                )
+                if (row.isOfficial && !hidden) {
+                    Spacer(Modifier.width(4.dp))
+                    Icon(Icons.Filled.Verified, "Официальный аккаунт", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                }
+            }
         },
         supportingContent = {
             Text(row.status, color = if (row.isOnline) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)

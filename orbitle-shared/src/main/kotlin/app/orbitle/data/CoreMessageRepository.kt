@@ -11,6 +11,7 @@ import com.max.core.media.OutgoingMedia
 import app.orbitle.domain.MessageContent
 import app.orbitle.domain.MessageReply
 import app.orbitle.domain.MessageStatus
+import app.orbitle.domain.TextSpan
 import com.max.core.api.Transcription
 import com.max.core.events.MaxEvent
 import com.max.core.protocol.Opcode
@@ -102,7 +103,12 @@ class CoreMessageRepository(
         runCatching { MaxCoreGateway.call { client.loadUsers(unknown.take(100)) } }
     }
 
-    override suspend fun send(chatId: String, text: String, replyTo: String?) {
+    override suspend fun send(chatId: String, text: String, replyTo: String?) = enqueueText(chatId, text, replyTo, emptyList())
+
+    override suspend fun sendFormatted(chatId: String, text: String, replyTo: String?, marks: List<TextSpan>) =
+        enqueueText(chatId, text, replyTo, marks.filter { it.kind == TextSpan.Kind.ANIMOJI || it.kind == TextSpan.Kind.MENTION })
+
+    private suspend fun enqueueText(chatId: String, text: String, replyTo: String?, marks: List<TextSpan>) {
         val local = Message(
             id = "local-${localIds.incrementAndGet()}",
             chatId = chatId,
@@ -110,7 +116,7 @@ class CoreMessageRepository(
             text = text,
             timeMs = clock(),
             status = MessageStatus.SENDING,
-            content = MessageContent(reply = replyTo?.let { replyPreview(chatId, it) }),
+            content = MessageContent(reply = replyTo?.let { replyPreview(chatId, it) }, formatting = marks),
         )
         put(chatId, local)
         deliver(chatId, local, replyTo)
@@ -214,7 +220,9 @@ class CoreMessageRepository(
                 if (recording != null) {
                     MaxCoreGateway.call { uploadVoice(chatId, recording, replyTo, progress) }
                 } else if (media == null) {
-                    MaxCoreGateway.call { client.sendText(chatId.toLong(), local.text, replyTo?.toLongOrNull()) }
+                    val elements = animojiElements(local.text, local.content.formatting) +
+                        LockPayloads.mentionElements(local.text, local.content.formatting)
+                    MaxCoreGateway.call { client.sendText(chatId.toLong(), local.text, replyTo?.toLongOrNull(), elements) }
                 } else {
                     val outgoing = media.map { OutgoingMedia(it.path, coreKind(it.kind), it.name) }
                     val work = uploadScope.async {
@@ -274,6 +282,63 @@ class CoreMessageRepository(
         if (list.isEmpty()) all - chatId else all + (chatId to list)
     }
 
+    override suspend fun pin(chatId: String, messageId: String) {
+        val chat = chatId.toLongOrNull() ?: return
+        val message = messageId.toLongOrNull() ?: return
+        MaxCoreGateway.call { client.api.messages.pinMessage(chat, message) }
+    }
+
+    override suspend fun schedule(chatId: String, text: String, sendAt: Long) {
+        val chat = chatId.toLongOrNull() ?: return
+        MaxCoreGateway.call { client.api.messages.scheduleMessage(chat, text, sendAt) }
+    }
+
+    override suspend fun scheduled(chatId: String): List<app.orbitle.domain.FoundMessage> {
+        val chat = chatId.toLongOrNull() ?: return emptyList()
+        val page = MaxCoreGateway.call {
+            client.api.messages.getChatHistory(chat, itemType = com.max.core.api.HistoryItemType.DELAYED)
+        }
+        val me = client.store.state.value.me
+        return page.messages.map { message ->
+            app.orbitle.domain.FoundMessage(
+                chatId = chatId,
+                messageId = message.id.toString(),
+                senderName = null,
+                isOutgoing = message.sender != null && message.sender == me,
+                text = message.text.trim(),
+                timeMs = message.time,
+            )
+        }
+    }
+
+    override suspend fun sendPoll(chatId: String, title: String, answers: List<String>) {
+        val chat = chatId.toLongOrNull() ?: return
+        val options = answers.map { com.max.core.api.PollAnswer(it) }
+        val sent = MaxCoreGateway.call {
+            client.api.messages.sendPoll(chat, com.max.core.media.OutgoingAttachment.Poll(title, options))
+        }
+        client.store.putSentMessage(chat, sent)
+    }
+
+    override suspend fun votePoll(chatId: String, messageId: String, pollId: String, answerId: String) {
+        val chat = chatId.toLongOrNull() ?: return
+        val message = messageId.toLongOrNull() ?: return
+        val poll = pollId.toLongOrNull() ?: return
+        val answer = answerId.toLongOrNull() ?: return
+        MaxCoreGateway.call { client.api.messages.votePoll(chat, message, poll, listOf(answer)) }
+    }
+
+    override suspend fun searchInChat(chatId: String, query: String): List<app.orbitle.domain.FoundMessage> {
+        val chat = chatId.toLongOrNull() ?: return emptyList()
+        val term = query.trim()
+        if (term.isEmpty()) return emptyList()
+        val packet = MaxCoreGateway.call {
+            client.session.request(Opcode.MSG_SEARCH, LockPayloads.inChatSearch(chat, term))
+        }
+        val me = client.store.state.value.me
+        return LockPayloads.foundMessages(chat, (packet.payload as? Map<*, *>)?.get("result"), me)
+    }
+
     override suspend fun edit(chatId: String, messageId: String, text: String) {
         val edited = MaxCoreGateway.call { client.api.messages.editMessage(chatId.toLong(), messageId.toLong(), text) }
         // Своя правка сервером обратно не присылается.
@@ -296,8 +361,32 @@ class CoreMessageRepository(
         client.store.apply(MaxEvent.MessageRead(id, me, state.mark, false, 0, null))
     }
 
+    /** Сообщения, чья реакция ещё ждёт сервер: сверка 180 их не перебивает. */
+    private val pendingReactions = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     override suspend fun react(chatId: String, messageId: String, emoji: String?) {
-        MaxCoreGateway.call { client.setReaction(chatId.toLong(), messageId.toLong(), emoji) }
+        val key = "$chatId:$messageId"
+        pendingReactions += key
+        try {
+            MaxCoreGateway.call { client.setReaction(chatId.toLong(), messageId.toLong(), emoji) }
+        } finally {
+            pendingReactions -= key
+        }
+    }
+
+    override suspend fun syncReactions(chatId: String, messageIds: List<String>) {
+        val chat = chatId.toLongOrNull() ?: return
+        val ids = messageIds.mapNotNull { it.toLongOrNull() }.distinct()
+        for (chunk in ids.chunked(REACTIONS)) {
+            // Пустой ответ и запись без счётчиков не значат «реакций нет»: ядро иначе стёрло бы их.
+            val found = MaxCoreGateway.call { client.api.messages.getReactions(chat, chunk) } ?: continue
+            for ((key, info) in found) {
+                val id = key.toLongOrNull() ?: continue
+                if (info.counters.none { it.count > 0 }) continue
+                if ("$chatId:$id" in pendingReactions) continue
+                client.store.putReactions(chat, id, info)
+            }
+        }
     }
 
     override suspend fun reactionUsers(chatId: String, messageId: String): List<app.orbitle.domain.ReactionUser> {
@@ -348,7 +437,22 @@ class CoreMessageRepository(
     /** User-Agent сессии: адреса видео и файлов CDN выдаёт под Android-клиента. */
     val mediaUserAgent: String get() = client.config.userAgent.httpUserAgent
 
+    /** Отметки `ANIMOJI`: `{type, from, length, entityId, attributes.animojiLottieUrl}`, смещения UTF-16. */
+    private fun animojiElements(text: String, spans: List<TextSpan>): List<Map<String, Any?>> = spans.mapNotNull { span ->
+        if (span.kind != TextSpan.Kind.ANIMOJI) return@mapNotNull null
+        val id = span.entityId?.toLongOrNull() ?: return@mapNotNull null
+        if (span.from < 0 || span.length <= 0 || span.from + span.length > text.length) return@mapNotNull null
+        linkedMapOf<String, Any?>(
+            "type" to "ANIMOJI",
+            "from" to span.from,
+            "length" to span.length,
+            "entityId" to id,
+            "attributes" to linkedMapOf("animojiLottieUrl" to span.url.orEmpty()),
+        )
+    }
+
     private companion object {
         const val PAGE = 40
+        const val REACTIONS = 100
     }
 }

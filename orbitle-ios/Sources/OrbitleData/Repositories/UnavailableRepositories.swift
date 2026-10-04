@@ -44,6 +44,7 @@ public struct UnavailableAccountRepository: AccountRepository {
     public func setOnlineHidden(_ hidden: Bool) async throws(OrbitleError) -> AccountSettings { throw .invalidRequest }
     public func setSafeMode(_ enabled: Bool) async throws(OrbitleError) -> AccountSettings { throw .invalidRequest }
     public func setInactiveTTL(_ ttl: InactiveTTL) async throws(OrbitleError) -> AccountSettings { throw .invalidRequest }
+    public func setQuickReaction(_ emoji: String) async throws(OrbitleError) -> AccountSettings { throw .invalidRequest }
     public func sessions() async throws(OrbitleError) -> [DeviceSession] { throw .invalidRequest }
     public func closeOtherSessions() async throws(OrbitleError) { throw .invalidRequest }
     public func approveQrLogin(_ link: String) async throws(OrbitleError) { throw .invalidRequest }

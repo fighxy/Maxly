@@ -78,6 +78,12 @@ extension MaxIosCore {
         }
     }
 
+    func setQuickReaction(_ emoji: String) async throws -> AccountSettings {
+        try await call("setQuickReaction") { done in
+            self.client.setQuickReaction(emoji: emoji) { done(Self.settingsResult($0, $1, $2)) }
+        }
+    }
+
     func loadSessions() async throws -> [DeviceSession] {
         try await call("loadSessions") { done in
             self.client.loadSessions { sessions, kind, key in
@@ -130,6 +136,30 @@ extension MaxIosCore {
                 } else {
                     done(.success(contacts.map(Self.contact)))
                 }
+            }
+        }
+    }
+
+    func enablePassword(password: String, hint: String) async throws {
+        let _: Void = try await call("enablePassword") { done in
+            self.client.enablePassword(password: password, hint: hint) { kind, key in
+                if let kind { done(.failure(CoreFailure(kind: kind, key: key))) } else { done(.success(())) }
+            }
+        }
+    }
+
+    func changePassword(oldPassword: String, newPassword: String) async throws {
+        let _: Void = try await call("changePassword") { done in
+            self.client.changePassword(oldPassword: oldPassword, newPassword: newPassword) { kind, key in
+                if let kind { done(.failure(CoreFailure(kind: kind, key: key))) } else { done(.success(())) }
+            }
+        }
+    }
+
+    func disablePassword(password: String) async throws {
+        let _: Void = try await call("disablePassword") { done in
+            self.client.disablePassword(password: password) { kind, key in
+                if let kind { done(.failure(CoreFailure(kind: kind, key: key))) } else { done(.success(())) }
             }
         }
     }
@@ -273,7 +303,9 @@ extension MaxIosCore {
             inactiveTTL: InactiveTTL(rawValue: value.inactiveTtl) ?? .sixMonths,
             inviteLink: value.inviteLink.isEmpty ? nil : URL(string: value.inviteLink),
             sferumBotId: value.sferumBotId,
-            digitalIdBotId: value.digitalIdBotId
+            digitalIdBotId: value.digitalIdBotId,
+            quickReaction: value.quickReaction.isEmpty ? AccountSettings.defaultQuickReaction : value.quickReaction,
+            quickReactionEnabled: !value.quickReactionDisabled
         )
     }
 

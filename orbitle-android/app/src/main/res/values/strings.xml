@@ -49,6 +49,9 @@
     <string name="chats_verified">Подтверждённый</string>
     <string name="chats_draft">Черновик:</string>
     <string name="chats_close_search">Закрыть поиск</string>
+    <string name="chats_search_recent">Недавние</string>
+    <string name="chats_search_clear">Очистить</string>
+    <string name="chats_search_remove_recent">Убрать</string>
 
     <!-- Заглушки вкладок -->
     <string name="calls_title">Звонки</string>

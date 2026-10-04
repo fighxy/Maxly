@@ -8,12 +8,14 @@ import OrbitleDomain
 public actor CoreContactRepository: ContactRepository {
     private let core: any MaxCore
     private var cached: [Contact]?
+    /// Добавлены локально и ещё не пришли в ответе `loadContacts`.
+    private var pendingAdds: [String: Contact] = [:]
 
     public init(core: any MaxCore) {
         self.core = core
     }
 
-    public nonisolated var capabilities: ContactCapabilities { [.list, .presence] }
+    public nonisolated var capabilities: ContactCapabilities { [.list, .presence, .add] }
 
     public nonisolated func contacts() -> AsyncStream<[Contact]> {
         AsyncStream { continuation in
@@ -24,15 +26,92 @@ public actor CoreContactRepository: ContactRepository {
 
     public func reset() {
         cached = nil
+        pendingAdds = [:]
+    }
+
+    /// Короче семи цифр запрос не уходит. Нет человека — `nil`, а не ошибка сети.
+    public func findByPhone(_ phone: String) async throws(OrbitleError) -> Contact? {
+        let digits = phone.filter(\.isNumber)
+        guard digits.count >= 7 else { throw .invalidRequest }
+        do {
+            let found = try await core.findByPhone(phone: "+\(digits)")
+            guard !found.id.isEmpty else { return nil }
+            return CoreMapping.contact(found)
+        } catch let failure as CoreFailure where Self.isMissingPerson(failure) {
+            return nil
+        } catch let error as OrbitleError {
+            throw error
+        } catch {
+            throw CoreMapping.apiError(error).orbitleError
+        }
+    }
+
+    /// Фамилия в проверенное тело не входит: уходит только непустое имя.
+    public func addContact(phone: String, firstName: String, lastName: String) async throws(OrbitleError) -> Contact {
+        _ = lastName
+        guard let person = try await findByPhone(phone) else {
+            throw .rejected("Человек с таким номером не найден")
+        }
+        return try await addFoundContact(userId: person.id, firstName: firstName)
+    }
+
+    public func addFoundContact(userId: String, firstName: String) async throws(OrbitleError) -> Contact {
+        let name = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            let saved = try await core.addContact(userId: userId, firstName: name)
+            guard !saved.id.isEmpty else { throw OrbitleError.invalidRequest }
+            let contact = CoreMapping.contact(saved)
+            remember(contact)
+            return contact
+        } catch let error as OrbitleError {
+            throw error
+        } catch {
+            throw CoreMapping.apiError(error).orbitleError
+        }
+    }
+
+    /// Сервер не нашёл человека или ответ без контакта.
+    static func isMissingPerson(_ failure: CoreFailure) -> Bool {
+        if failure.kind == "NOT_FOUND" || failure.kind == "MALFORMED_REPLY" { return true }
+        let key = failure.key?.lowercased() ?? ""
+        return key.contains("not.found") || key.contains("not_found")
+    }
+
+    private func remember(_ contact: Contact) {
+        pendingAdds[contact.id] = contact
+        var list = cached ?? []
+        list.removeAll { $0.id == contact.id }
+        list.append(contact)
+        cached = list
+    }
+
+    /// Серверный список плюс локальные добавления, которых в нём ещё нет.
+    /// Удалённый аккаунт (`accountStatus != 0`) в список не входит.
+    private func listed(_ contacts: [CoreContact]) -> [Contact] {
+        let server = contacts.compactMap { core -> Contact? in
+            guard (core.accountStatus ?? 0) == 0 else { return nil }
+            return CoreMapping.contact(core)
+        }
+        var merged = server
+        let ids = Set(server.map(\.id))
+        var stillPending: [String: Contact] = [:]
+        for (id, contact) in pendingAdds {
+            if ids.contains(id) { continue }
+            stillPending[id] = contact
+            merged.append(contact)
+        }
+        pendingAdds = stillPending
+        return merged
     }
 
     /// Запросить у сервера свежий список (`CONTACT_UPDATE` с `contactsSync`) и запомнить его.
     /// Следующая подписка получит уже его. Если сервер отказал, остаётся прежний список.
     public func sync() async throws(OrbitleError) {
         do {
-            let list = try await core.syncContacts().map { CoreMapping.contact($0) }
-            Log.info(.contacts, "Синхронизация контактов: \(list.count)")
-            if !list.isEmpty { cached = list }
+            let raw = try await core.syncContacts()
+            Log.info(.contacts, "Синхронизация контактов: \(raw.count)")
+            guard !raw.isEmpty else { return }
+            cached = listed(raw)
         } catch {
             Log.warning(.contacts, "Синхронизация контактов не удалась: \(error)")
             throw CoreMapping.apiError(error).orbitleError
@@ -42,7 +121,7 @@ public actor CoreContactRepository: ContactRepository {
     private func feed(_ continuation: AsyncStream<[Contact]>.Continuation) async {
         if let cached { continuation.yield(cached) }
         do {
-            let list = try await core.loadContacts().map { CoreMapping.contact($0) }
+            let list = listed(try await core.loadContacts())
             Log.info(.contacts, "Контакты с сервера: \(list.count)")
             cached = list
             continuation.yield(list)

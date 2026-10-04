@@ -3,11 +3,13 @@ package app.orbitle.ui.settings
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Message
 import android.view.HapticFeedbackConstants
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -38,14 +40,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import java.io.File
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import app.orbitle.domain.MiniApp
@@ -150,6 +155,27 @@ private fun MiniAppWeb(
         webView?.evaluateJavascript(bridge.deliverCall(reply.event, reply.json), null)
     }
     fun handle(view: WebView, name: String, json: String?) {
+        // Ответ 1×1 и isStateStable прячет страницу: мини-приложение считает вьюпорт готовым и рисует в точку.
+        if (name == "WebAppGetViewportSize" && (view.width <= 1 || view.height <= 1)) {
+            view.addOnLayoutChangeListener(object : View.OnLayoutChangeListener {
+                override fun onLayoutChange(
+                    v: View,
+                    left: Int,
+                    top: Int,
+                    right: Int,
+                    bottom: Int,
+                    oldLeft: Int,
+                    oldTop: Int,
+                    oldRight: Int,
+                    oldBottom: Int,
+                ) {
+                    if (right - left <= 1 || bottom - top <= 1) return
+                    v.removeOnLayoutChangeListener(this)
+                    handle(view, name, json)
+                }
+            })
+            return
+        }
         val width = view.width.coerceAtLeast(1)
         val height = view.height.coerceAtLeast(1)
         for (action in bridge.handle(name, json, width, height)) {
@@ -178,15 +204,33 @@ private fun MiniAppWeb(
         }
         return false
     }
+    val currentUrl = rememberUpdatedState(app.url)
     AndroidView(
-        modifier = modifier,
+        modifier = modifier.graphicsLayer { clip = true },
         factory = { ctx ->
             WebView(ctx).apply {
+                setBackgroundColor(Color.WHITE)
+                // Без своего слоя WebView в Compose часто остаётся чёрной поверхностью.
+                setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                )
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
+                settings.useWideViewPort = true
+                settings.loadWithOverviewMode = true
                 settings.mediaPlaybackRequiresUserGesture = false
                 settings.setSupportMultipleWindows(true)
                 settings.javaScriptCanOpenWindowsAutomatically = true
+                // Тёмная тема приложения затемняет и без того тёмную страницу до чёрного поля.
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+                    WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, false)
+                }
+                if (Build.VERSION.SDK_INT < 33 && WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
+                    @Suppress("DEPRECATION")
+                    WebSettingsCompat.setForceDark(settings, WebSettingsCompat.FORCE_DARK_OFF)
+                }
                 val cookies = CookieManager.getInstance()
                 cookies.setAcceptCookie(true)
                 cookies.setAcceptThirdPartyCookies(this, true)
@@ -231,8 +275,14 @@ private fun MiniAppWeb(
                         return true
                     }
                 }
-                tag = app.url
-                loadUrl(app.url)
+                // Адрес до раскладки грузит страницу в поверхность 0×0, и она остаётся чёрной.
+                addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+                    val target = currentUrl.value
+                    if (v.width > 1 && v.height > 1 && v.tag != target) {
+                        v.tag = target
+                        (v as WebView).loadUrl(target)
+                    }
+                }
                 webView = this
                 page.pressBack = { deliver(bridge.backPressed) }
             }
@@ -240,7 +290,7 @@ private fun MiniAppWeb(
         update = { view ->
             webView = view
             page.pressBack = { deliver(bridge.backPressed) }
-            if (view.tag != app.url) {
+            if (view.tag != app.url && view.width > 1 && view.height > 1) {
                 view.tag = app.url
                 view.loadUrl(app.url)
             }

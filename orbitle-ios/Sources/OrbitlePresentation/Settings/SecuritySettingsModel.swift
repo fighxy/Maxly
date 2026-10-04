@@ -18,9 +18,17 @@ public enum Loadable<Value: Sendable & Equatable>: Sendable, Equatable {
 @MainActor
 @Observable
 public final class SecuritySettingsModel {
+    public enum PasswordForm: Equatable, Sendable {
+        case none, enable, change, disable
+    }
+
     public private(set) var twoFactor: Loadable<TwoFactorStatus> = .loading
     public private(set) var blocked: Loadable<[BlockedUser]> = .loading
     public var errorMessage: String?
+    public private(set) var passwordForm: PasswordForm = .none
+    public private(set) var passwordWorking = false
+    public var passwordError: String?
+    public private(set) var passwordNotice: String?
 
     @ObservationIgnored private let repository: any AccountRepository
 
@@ -64,6 +72,72 @@ public final class SecuritySettingsModel {
     /// После смены почты: новый статус без повторной загрузки.
     public func apply(_ status: TwoFactorStatus) {
         twoFactor = .loaded(status)
+    }
+
+    public func openPasswordForm(_ form: PasswordForm) {
+        passwordForm = form
+        passwordError = nil
+        passwordNotice = nil
+    }
+
+    public func closePasswordForm() {
+        guard !passwordWorking else { return }
+        passwordForm = .none
+        passwordError = nil
+    }
+
+    public func enablePassword(_ password: String, hint: String) async {
+        guard !passwordWorking else { return }
+        guard !password.isEmpty else {
+            passwordError = "Введите пароль"
+            return
+        }
+        await changePassword(notice: "Пароль включён") {
+            try await repository.enablePassword(password: password, hint: hint)
+        }
+    }
+
+    public func changePassword(oldPassword: String, newPassword: String) async {
+        guard !passwordWorking else { return }
+        if oldPassword.isEmpty || newPassword.isEmpty {
+            passwordError = "Введите оба пароля"
+            return
+        }
+        if oldPassword == newPassword {
+            passwordError = "Новый пароль совпадает со старым"
+            return
+        }
+        await changePassword(notice: "Пароль изменён") {
+            try await repository.changePassword(oldPassword: oldPassword, newPassword: newPassword)
+        }
+    }
+
+    public func disablePassword(_ password: String) async {
+        guard !passwordWorking else { return }
+        guard !password.isEmpty else {
+            passwordError = "Введите пароль"
+            return
+        }
+        await changePassword(notice: "Пароль выключен") {
+            try await repository.disablePassword(password: password)
+        }
+    }
+
+    private func changePassword(notice: String, work: () async throws(OrbitleError) -> Void) async {
+        passwordWorking = true
+        passwordError = nil
+        passwordNotice = nil
+        do {
+            try await work()
+            if let status = try? await repository.twoFactorStatus() {
+                twoFactor = .loaded(status)
+            }
+            passwordForm = .none
+            passwordNotice = notice
+        } catch {
+            passwordError = error.userMessage
+        }
+        passwordWorking = false
     }
 
     /// Строка «Почта для восстановления»: скрытая почта или `nil`, если её нет.

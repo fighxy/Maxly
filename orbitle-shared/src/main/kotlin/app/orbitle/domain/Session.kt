@@ -14,6 +14,12 @@ sealed interface AuthPhase {
     data object Expired : AuthPhase
 }
 
+/** Вход по коду, паролю или регистрации. Следующий успешный вход — новый сеанс, не восстановление. */
+fun AuthPhase.isFreshLogin(): Boolean = when (this) {
+    is AuthPhase.CodeSent, is AuthPhase.Password, AuthPhase.Registration -> true
+    AuthPhase.Restoring, AuthPhase.SignedOut, is AuthPhase.SignedIn, AuthPhase.Expired -> false
+}
+
 /** Соединение с сервером для баннера «Подключение…». */
 enum class ConnectionState { CONNECTING, ONLINE, OFFLINE }
 

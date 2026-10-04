@@ -41,6 +41,7 @@ data class Message(
             }
             content.call?.let { return if (it.isGroup) "Групповой звонок" else "Звонок" }
             content.sticker?.let { return "Стикер" }
+            content.poll?.let { return "Опрос" }
             return "Сообщение"
         }
 
@@ -64,12 +65,15 @@ data class MessageContent(
     val formatting: List<TextSpan> = emptyList(),
     val forward: MessageForward? = null,
     val edited: Boolean = false,
+    /** Закрепление из служебного `CONTROL` `pin` / `unpin`. */
+    val pin: PinNotice? = null,
 ) {
     val visuals: List<ChatAttachment> get() = attachments.filter { it is ChatAttachment.Photo || it is ChatAttachment.Video }
     val voices: List<VoiceContent> get() = attachments.filterIsInstance<ChatAttachment.Voice>().map { it.voice }
     val files: List<FileContent> get() = attachments.filterIsInstance<ChatAttachment.File>().map { it.file }
     val sticker: StickerContent? get() = attachments.filterIsInstance<ChatAttachment.Sticker>().firstOrNull()?.sticker
     val call: CallContent? get() = attachments.filterIsInstance<ChatAttachment.Call>().firstOrNull()?.call
+    val poll: PollContent? get() = attachments.filterIsInstance<ChatAttachment.Poll>().firstOrNull()?.poll
 
     companion object {
         val empty = MessageContent()
@@ -109,7 +113,21 @@ sealed interface ChatAttachment {
     data class Contact(val contact: ContactContent) : ChatAttachment { override val id get() = contact.id }
     data class Sticker(val sticker: StickerContent) : ChatAttachment { override val id get() = sticker.id }
     data class Call(val call: CallContent) : ChatAttachment { override val id get() = call.id }
+    data class Poll(val poll: PollContent) : ChatAttachment { override val id get() = poll.id }
 }
+
+/** Опрос в сообщении. [id] — `pollId`, по нему уходит голос. */
+data class PollContent(
+    val id: String,
+    val title: String,
+    val answers: List<PollAnswer>,
+    val total: Int = 0,
+)
+
+data class PollAnswer(val id: String, val text: String, val votes: Int = 0)
+
+/** Служебное закрепление: пустой [messageId] — закреп сняли. */
+data class PinNotice(val messageId: String?, val preview: String)
 
 data class PhotoContent(val id: String, val url: String?, val width: Int? = null, val height: Int? = null, val preview: ByteArray? = null) {
     override fun equals(other: Any?) = other is PhotoContent && other.id == id && other.url == url && other.width == width && other.height == height

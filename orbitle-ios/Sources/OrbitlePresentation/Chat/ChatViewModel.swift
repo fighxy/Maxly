@@ -17,8 +17,11 @@ public final class ChatViewModel {
             if ids != oldIds { transcriptVersion &+= 1 }
             rows = TranscriptLayout.rows(messages, currentUserId: currentUserId)
             settleTranscripts()
+            applyPinState()
         }
     }
+    /// Закреп, который видит шапка чата. `nil` — закрепа нет.
+    public private(set) var pinned: (id: String, text: String)?
     /// Голосовые (id вложения), чья расшифровка идёт: текст ещё не пришёл.
     public private(set) var transcribing: Set<String> = []
     /// Голосовые, у которых расшифровка раскрыта.
@@ -40,11 +43,23 @@ public final class ChatViewModel {
     /// Текст в поле ввода. Сохраняется черновиком с короткой задержкой и при уходе с экрана.
     public var draft = "" {
         didSet {
+            if draft.isEmpty {
+                mentionDraft.clear()
+            } else {
+                mentionDraft.retainPresent(draft)
+            }
             // Текст правки не черновик: его не сохраняем.
             guard draft != oldValue, !isRestoringDraft, editTarget == nil else { return }
             scheduleDraftSave()
+            refreshComposerHints()
         }
     }
+    /// Подсказки `@` над полем ввода.
+    public private(set) var mentionHints: [ChatMemberRef] = []
+    /// Подсказки `/` для бота.
+    public private(set) var commandHints: [BotCommandRef] = []
+    public private(set) var searchHits: [FoundMessage] = []
+    public private(set) var searchBusy = false
     public private(set) var error: OrbitleError?
     public private(set) var stickToBottom = true
     /// Цитата над полем ввода.
@@ -106,6 +121,17 @@ public final class ChatViewModel {
     @ObservationIgnored private var resolvedVideos: [String: URL] = [:]
     @ObservationIgnored private var mediaTask: Task<Void, Never>?
     @ObservationIgnored private let voice: (any VoicePlaying)?
+    @ObservationIgnored private let chats: (any ChatRepository)?
+    @ObservationIgnored private var mentionDraft = MentionDraft()
+    @ObservationIgnored private var memberRows: [ChatMemberRef] = []
+    @ObservationIgnored private var commandRows: [BotCommandRef] = []
+    @ObservationIgnored private var membersAsked = false
+    @ObservationIgnored private var commandsAsked = false
+    @ObservationIgnored private var pinOverride: PinNotice?
+    @ObservationIgnored private var pinBaselineId: String?
+    /// Собеседник личного чата: команды бота и сигнал звонка.
+    @ObservationIgnored public var peerId: String?
+    @ObservationIgnored public var peerIsBot = false
     @ObservationIgnored private let draftDelay: Duration
     @ObservationIgnored private var watch: Task<Void, Never>?
     @ObservationIgnored private var draftSave: Task<Void, Never>?
@@ -135,7 +161,8 @@ public final class ChatViewModel {
         comments: (any CommentsRepository)? = nil,
         voice: (any VoicePlaying)? = nil,
         gallery: (any GallerySaving)? = nil,
-        isNewDialog: Bool = false
+        isNewDialog: Bool = false,
+        chats: (any ChatRepository)? = nil
     ) {
         self.isNewDialog = isNewDialog
         self.chatId = chatId
@@ -148,6 +175,7 @@ public final class ChatViewModel {
         self.comments = comments
         self.voice = voice
         self.gallery = gallery
+        self.chats = chats
     }
 
     public var errorMessage: String? { error?.userMessage }
@@ -349,9 +377,11 @@ public final class ChatViewModel {
         }
         let reply = replyTarget
         let animoji = animojiDraft
-        let spans = animoji.spans(in: text)
+        let mentions = mentionDraft
+        let spans = animoji.spans(in: text) + mentions.spans(in: text)
         draft = ""
         animojiDraft.clear()
+        mentionDraft.clear()
         replyTarget = nil
         stickToBottom = true
         do {
@@ -360,6 +390,7 @@ public final class ChatViewModel {
         } catch {
             draft = text
             animojiDraft = animoji
+            mentionDraft = mentions
             replyTarget = reply
             show(error)
         }
@@ -1113,6 +1144,8 @@ public final class ChatViewModel {
             throw .rejected("Стикер нельзя сохранить файлом")
         case .call:
             throw .rejected("Звонок нельзя сохранить файлом")
+        case .poll:
+            throw .rejected("Опрос нельзя сохранить файлом")
         }
     }
 
@@ -1218,5 +1251,195 @@ public final class ChatViewModel {
 
     private func show(_ failure: OrbitleError) {
         if failure != .cancelled { error = failure }
+    }
+
+    /// Собеседник личного чата. Нужен командам бота и звонку.
+    public func notePeer(_ id: String?, isBot: Bool) {
+        let trimmed = id?.trimmingCharacters(in: .whitespacesAndNewlines)
+        peerId = (trimmed?.isEmpty == false) ? trimmed : nil
+        peerIsBot = isBot
+    }
+
+    public func insertMention(_ member: ChatMemberRef) {
+        guard let at = draft.range(of: "@", options: .backwards) else { return }
+        let token = "@\(member.name)"
+        let prefix = String(draft[..<at.lowerBound])
+        mentionDraft.insert(text: token, userId: member.id)
+        draft = prefix + token + " "
+        mentionHints = []
+    }
+
+    public func insertCommand(_ command: BotCommandRef) {
+        let raw = command.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = raw.hasPrefix("/") ? String(raw.dropFirst()) : raw
+        guard !name.isEmpty else { return }
+        draft = "/" + name + " "
+        commandHints = []
+    }
+
+    public func pin(_ message: Message) async {
+        guard message.status == .sent, Int64(message.id) != nil, message.content.pin == nil else { return }
+        pinBaselineId = messages.reversed().first { $0.content.pin != nil }?.id
+        do {
+            try await repository.pin(chatId: chatId, messageId: message.id)
+            let preview = message.replySnippet.trimmingCharacters(in: .whitespacesAndNewlines)
+            pinOverride = PinNotice(messageId: message.id, preview: preview.isEmpty ? "Сообщение" : preview)
+            applyPinState()
+            showNotice("Сообщение закреплено")
+        } catch {
+            show(error)
+        }
+    }
+
+    public func unpin() async {
+        pinBaselineId = messages.reversed().first { $0.content.pin != nil }?.id
+        do {
+            try await repository.pin(chatId: chatId, messageId: "0")
+            pinOverride = PinNotice(messageId: nil, preview: "")
+            applyPinState()
+            showNotice("Закреп снят")
+        } catch {
+            show(error)
+        }
+    }
+
+    public func vote(_ message: Message, answerId: String) async {
+        guard let poll = message.content.poll, let serverId = message.serverId ?? (Int64(message.id) != nil ? message.id : nil) else { return }
+        do {
+            try await repository.votePoll(chatId: chatId, messageId: serverId, pollId: poll.id, answerId: answerId)
+            error = nil
+        } catch {
+            show(error)
+        }
+    }
+
+    public func sendPoll(title: String, answers: [String]) async {
+        let options = answers.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        guard options.count >= 2 else {
+            show(.rejected("Нужно хотя бы два ответа"))
+            return
+        }
+        do {
+            try await repository.sendPoll(chatId: chatId, title: title, answers: options)
+            showNotice("Опрос отправлен")
+        } catch {
+            show(error)
+        }
+    }
+
+    public func schedule(text: String, at date: Date) async {
+        do {
+            try await repository.schedule(chatId: chatId, text: text, sendAt: date)
+            draft = ""
+            showNotice("Сообщение запланировано")
+        } catch {
+            show(error)
+        }
+    }
+
+    public func searchInChat(_ query: String) async {
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty else {
+            searchHits = []
+            return
+        }
+        searchBusy = true
+        defer { searchBusy = false }
+        do {
+            searchHits = try await repository.searchInChat(chatId: chatId, query: term)
+            error = nil
+        } catch {
+            searchHits = []
+            show(error)
+        }
+    }
+
+    public func signalCall(video: Bool) async {
+        guard let peerId else { return }
+        do {
+            let conversation = try await chats?.signalCall(calleeId: peerId, isVideo: video)
+            if conversation == nil {
+                showNotice("Сервер не принял звонок")
+            } else {
+                showNotice("Сервер принял звонок. Звук и видео этот клиент не передаёт.")
+            }
+        } catch {
+            show(error)
+        }
+    }
+
+    private func applyPinState() {
+        let latestId = messages.reversed().first { $0.content.pin != nil }?.id
+        if pinOverride != nil, latestId != pinBaselineId {
+            pinOverride = nil
+            pinBaselineId = nil
+        }
+        if let override = pinOverride {
+            if let id = override.messageId, !id.isEmpty {
+                pinned = (id, override.preview.isEmpty ? "Сообщение" : override.preview)
+            } else {
+                pinned = nil
+            }
+            return
+        }
+        pinned = Self.pinnedNotice(in: messages)
+    }
+
+    static func pinnedNotice(in messages: [Message]) -> (id: String, text: String)? {
+        for message in messages.reversed() {
+            guard let pin = message.content.pin else { continue }
+            guard let id = pin.messageId, !id.isEmpty else { return nil }
+            return (id, pin.preview.isEmpty ? "Сообщение" : pin.preview)
+        }
+        return nil
+    }
+
+    private func refreshComposerHints() {
+        let mention = Self.query(in: draft, marker: "@")
+        let command = Self.query(in: draft, marker: "/")
+        if mention != nil, !membersAsked, let chats {
+            membersAsked = true
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    memberRows = try await chats.members(chatId: chatId)
+                } catch {
+                    membersAsked = false
+                }
+                publishHints()
+            }
+        }
+        if command != nil, peerIsBot, let peerId, !commandsAsked, let chats {
+            commandsAsked = true
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    commandRows = try await chats.botCommands(botId: peerId)
+                } catch {
+                    commandsAsked = false
+                }
+                publishHints()
+            }
+        }
+        publishHints()
+    }
+
+    private func publishHints() {
+        let mention = Self.query(in: draft, marker: "@")
+        let command = Self.query(in: draft, marker: "/")
+        mentionHints = mention.map { needle in
+            memberRows.filter { $0.name.localizedCaseInsensitiveContains(needle) }.prefix(8).map { $0 }
+        } ?? []
+        commandHints = (command == nil || !peerIsBot) ? [] : commandRows.filter {
+            let name = $0.name.hasPrefix("/") ? String($0.name.dropFirst()) : $0.name
+            return name.localizedCaseInsensitiveContains(command ?? "")
+        }.prefix(8).map { $0 }
+    }
+
+    private static func query(in text: String, marker: Character) -> String? {
+        guard let at = text.lastIndex(of: marker) else { return nil }
+        let tail = text[text.index(after: at)...]
+        if tail.contains(where: \.isWhitespace) { return nil }
+        return String(tail)
     }
 }

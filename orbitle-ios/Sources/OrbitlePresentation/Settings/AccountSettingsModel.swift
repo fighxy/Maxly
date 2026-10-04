@@ -28,16 +28,20 @@ public final class AccountSettingsModel {
     }
 
     public func activate() async {
-        if watch == nil {
-            let stream = repository.settings()
-            watch = Task { [weak self] in
-                for await value in stream {
-                    guard let self else { return }
-                    self.settings = value
-                }
+        watchSettings()
+        await reloadProfile()
+    }
+
+    /// Подписка на конфиг без загрузки профиля. Чат читает быструю реакцию до открытия настроек.
+    public func watchSettings() {
+        guard watch == nil else { return }
+        let stream = repository.settings()
+        watch = Task { [weak self] in
+            for await value in stream {
+                guard let self else { return }
+                self.settings = value
             }
         }
-        await reloadProfile()
     }
 
     public func deactivate() {
@@ -142,6 +146,23 @@ public final class AccountSettingsModel {
 
     public func setInactiveTTL(_ ttl: InactiveTTL) async {
         await change(\.inactiveTTL, to: ttl) { try await $0.setInactiveTTL(ttl) }
+    }
+
+    /// Выбор эмодзи включает быструю реакцию. Пустую строку сервер не получает.
+    public func setQuickReaction(_ emoji: String) async {
+        let clean = emoji.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, clean.count <= 32 else { return }
+        let before = settings
+        guard before.quickReaction != clean || !before.quickReactionEnabled else { return }
+        settings.quickReaction = clean
+        settings.quickReactionEnabled = true
+        do {
+            settings = try await repository.setQuickReaction(clean)
+        } catch {
+            settings.quickReaction = before.quickReaction
+            settings.quickReactionEnabled = before.quickReactionEnabled
+            errorMessage = "Не удалось сохранить настройку. \((error as? OrbitleError ?? .unknown).message)"
+        }
     }
 
     private func change<Value: Equatable>(

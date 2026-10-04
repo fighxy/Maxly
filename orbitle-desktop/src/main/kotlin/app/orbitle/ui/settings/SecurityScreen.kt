@@ -49,7 +49,7 @@ import app.orbitle.presentation.settings.RecoveryEmailViewModel
 import app.orbitle.presentation.settings.SecurityViewModel
 import kotlinx.coroutines.delay
 
-/** «Безопасность»: статус пароля и почта восстановления. Пароль включить здесь пока нельзя. */
+/** «Безопасность»: облачный пароль и почта восстановления. Семейная защита здесь не включается. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SecurityScreen(model: SecurityViewModel, onBack: () -> Unit, onChangeEmail: () -> Unit) {
@@ -97,7 +97,7 @@ fun SecurityScreen(model: SecurityViewModel, onBack: () -> Unit, onChangeEmail: 
             }
             val footer = when {
                 state.failure != null -> state.failure
-                status != null && !status.isEnabled -> "Пароль защищает вход с нового устройства. Включить его можно будет здесь — скоро."
+                status != null && !status.isEnabled -> "Пароль защищает вход с нового устройства."
                 status != null -> "Почта нужна, чтобы восстановить доступ, если вы забудете пароль."
                 else -> null
             }
@@ -108,6 +108,26 @@ fun SecurityScreen(model: SecurityViewModel, onBack: () -> Unit, onChangeEmail: 
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+            if (status != null && state.form == SecurityViewModel.PasswordForm.NONE) {
+                if (!status.isEnabled) {
+                    TextButton(onClick = { model.openForm(SecurityViewModel.PasswordForm.ENABLE) }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                        Text("Включить пароль")
+                    }
+                } else {
+                    TextButton(onClick = { model.openForm(SecurityViewModel.PasswordForm.CHANGE) }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                        Text("Сменить пароль")
+                    }
+                    TextButton(onClick = { model.openForm(SecurityViewModel.PasswordForm.DISABLE) }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                        Text("Выключить пароль")
+                    }
+                }
+            }
+            state.notice?.let {
+                Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.primary)
+            }
+            if (state.form != SecurityViewModel.PasswordForm.NONE) {
+                PasswordEditor(state.form, state.working, state.formError, model)
             }
             if (state.failure != null) {
                 TextButton(onClick = { model.load() }, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Повторить") }
@@ -122,6 +142,69 @@ fun SecurityScreen(model: SecurityViewModel, onBack: () -> Unit, onChangeEmail: 
             )
         }
     }
+}
+
+@Composable
+private fun PasswordEditor(
+    form: SecurityViewModel.PasswordForm,
+    working: Boolean,
+    error: String?,
+    model: SecurityViewModel,
+) {
+    var first by rememberSaveable(form) { mutableStateOf("") }
+    var second by rememberSaveable(form) { mutableStateOf("") }
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        when (form) {
+            SecurityViewModel.PasswordForm.NONE -> Unit
+            SecurityViewModel.PasswordForm.ENABLE -> {
+                SecretField(first, { first = it }, "Пароль")
+                OutlinedTextField(
+                    value = second,
+                    onValueChange = { second = it },
+                    label = { Text("Подсказка") },
+                    supportingText = { Text("Можно не заполнять. Почта задаётся отдельно.") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                )
+                Button(onClick = { model.enablePassword(first, second) }, enabled = !working, modifier = Modifier.padding(top = 8.dp)) {
+                    Text("Включить")
+                }
+            }
+            SecurityViewModel.PasswordForm.CHANGE -> {
+                SecretField(first, { first = it }, "Текущий пароль")
+                SecretField(second, { second = it }, "Новый пароль")
+                Button(onClick = { model.changePassword(first, second) }, enabled = !working, modifier = Modifier.padding(top = 8.dp)) {
+                    Text("Сменить")
+                }
+            }
+            SecurityViewModel.PasswordForm.DISABLE -> {
+                SecretField(first, { first = it }, "Пароль")
+                Button(onClick = { model.disablePassword(first) }, enabled = !working, modifier = Modifier.padding(top = 8.dp)) {
+                    Text("Выключить")
+                }
+            }
+        }
+        if (working) {
+            CircularProgressIndicator(Modifier.padding(top = 8.dp).size(18.dp), strokeWidth = 2.dp)
+        }
+        error?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
+        }
+        TextButton(onClick = model::closeForm, enabled = !working) { Text("Отмена") }
+    }
+}
+
+@Composable
+private fun SecretField(value: String, onValue: (String) -> Unit, label: String) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValue,
+        label = { Text(label) },
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+    )
 }
 
 /** Смена почты: пароль, адрес, код из письма. По «Готово» на последнем шаге вызывается [onDone]. */
