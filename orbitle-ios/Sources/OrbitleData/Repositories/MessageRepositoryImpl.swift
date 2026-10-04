@@ -45,6 +45,11 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// Последний запрос реакции по локальному id сообщения. Ответы на прежние запросы
     /// игнорируются, пуши не перебивают ожидающее нажатие.
     private var pendingReactions: [String: Int] = [:]
+    /// Серверные id, для которых `MSG_GET_REACTIONS` уже спрашивали в этом сеансе.
+    /// История канала не несёт реакций, и без этого каждый опрос спрашивал бы страницу заново.
+    private var reactionsAsked: Set<String> = []
+    /// До этого времени опрос чата не повторяет реакции после ошибки сервера.
+    private var reactionsRetryAt: [String: Date] = [:]
     private var reactionRequest = 0
     /// Каталог реакций сервера, после первой удачной загрузки.
     private var catalog: [String]?
@@ -464,7 +469,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         let requestedAt = Date.now
         switch await api.fetchMessages(chatId: chatId, before: nil, limit: Self.pageSize) {
         case .success(let fetched):
-            let records = await withReactions(fetched, chatId: chatId)
+            let records = await withReactions(fetched, chatId: chatId, again: true)
             guard started == generation else { return }
             do {
                 try upsert(records)
@@ -494,15 +499,23 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// (`MSG_GET_REACTIONS`) до записи, и пузырь сразу ложится с реакциями —
     /// а не вырастает через мгновение после показа. Не ответил сервер — записи как были:
     /// реакции догонит `syncReactions`.
-    func withReactions(_ records: [MessageRecord], chatId: String) async -> [MessageRecord] {
+    /// `again` — сверка после фона: те же id спрашиваются ещё раз. Обычный опрос истории
+    /// повторно их не трогает, а после ошибки сервера ждёт 30 секунд.
+    func withReactions(_ records: [MessageRecord], chatId: String, again: Bool = false) async -> [MessageRecord] {
+        if !again, let until = reactionsRetryAt[chatId], Date() < until { return records }
         let missing = records.compactMap { record -> String? in
             let id = record.serverId ?? record.id
             guard !record.reactionsKnown, Int64(id) != nil else { return nil }
+            guard again || !reactionsAsked.contains(id) else { return nil }
             return id
         }
-        guard !missing.isEmpty, case .success(let reactions) = await api.fetchReactions(chatId: chatId, messageIds: missing) else {
+        guard !missing.isEmpty else { return records }
+        guard case .success(let reactions) = await api.fetchReactions(chatId: chatId, messageIds: missing) else {
+            reactionsRetryAt[chatId] = Date().addingTimeInterval(30)
             return records
         }
+        reactionsRetryAt[chatId] = nil
+        reactionsAsked.formUnion(missing)
         return records.map { record in
             guard !record.reactionsKnown,
                   let update = reactions[record.serverId ?? record.id],
@@ -583,22 +596,22 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
 
     /// Реакции постов канала: история канала отдаёт посты без `reactionInfo`, поэтому они
     /// спрашиваются `MSG_GET_REACTIONS` для показанных сообщений.
-    public func syncReactions(chatId: String, messageIds: [String]) async {
+    public func syncReactions(chatId: String, messageIds: [String]) async -> Bool {
         let started = generation
         let rows = (try? messages(serverIds: messageIds)) ?? [:]
         let serverIds = messageIds.filter { id in
             Int64(id) != nil && rows[id]?.status == .sent
         }
-        guard !serverIds.isEmpty else { return }
-        await applyFetchedReactions(chatId: chatId, serverIds: serverIds, started: started)
+        guard !serverIds.isEmpty else { return true }
+        return await applyFetchedReactions(chatId: chatId, serverIds: serverIds, started: started)
     }
 
     /// Один `MSG_GET_REACTIONS` и запись ответа. Берутся только сообщения с реакциями:
     /// пропуск или пустая запись не значат «реакций нет».
-    private func applyFetchedReactions(chatId: String, serverIds: [String], started: Int) async {
+    private func applyFetchedReactions(chatId: String, serverIds: [String], started: Int) async -> Bool {
         switch await api.fetchReactions(chatId: chatId, messageIds: serverIds) {
         case .success(let reactions):
-            guard started == generation else { return }
+            guard started == generation else { return true }
             Log.info(.messages, "Реакции: запрошено \(serverIds.count), в ответе \(reactions.count)")
             var changed = false
             // Строки перечитываются одной выборкой: пока шёл запрос, база могла измениться.
@@ -613,11 +626,13 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
                 message.contentJSON = MessageContentCodec.encode(content)
                 changed = true
             }
-            guard changed else { return }
+            guard changed else { return true }
             try? modelContext.save()
             notify(chatId: chatId)
+            return true
         case .failure(let error):
             Log.info(.messages, "Реакции чата не обновлены: \(error)")
+            return false
         }
     }
 
@@ -1067,6 +1082,8 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// Стирает сообщения в контексте этого актора. Выход зовёт это до удаления чатов.
     public func removeAll() throws(OrbitleError) {
         generation += 1
+        reactionsAsked.removeAll()
+        reactionsRetryAt.removeAll()
         for (id, task) in uploads {
             cancelledUploads.insert(id)
             task.cancel()

@@ -28,6 +28,9 @@ struct ChatView: View {
     var makeProfile: (() -> ChatProfileViewModel?)?
     /// Очистка переписки или удаление чата из профиля. Первый флаг — очистка, второй — у всех.
     var onEraseChat: ((Bool, Bool) -> Void)? = nil
+    /// Пометка «непрочитано» с сообщения, отправленного в эту дату. Экран закрывает тот, кто
+    /// открыл чат, когда сервер принял пометку.
+    var onMarkUnread: ((Date) -> Void)? = nil
     /// Эмодзи двойного нажатия. `nil` — сервер выключил быструю реакцию.
     var quickReaction: String? = nil
     @State private var profile: ChatProfileViewModel?
@@ -329,18 +332,16 @@ struct ChatView: View {
             }
         }
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: recording.isVideo)
-        .task {
-            viewModel.activate()
+        .modifier(ChatHistoryLifecycle(model: viewModel, requestsComments: wantsCommentCounts))
+        .onAppear {
             recording.onStart = { [viewModel] in viewModel.stopVoice() }
             recording.onRecorded = { [viewModel] draft in
                 Task { await viewModel.sendAttachments([draft], caption: "") }
             }
-            await viewModel.loadLatest()
         }
         .onDisappear {
             panelShown = false
             recording.cancel()
-            viewModel.deactivate()
             reveal.hideAll()
         }
         // Режим выключили или сменили вид — открытые пузыри снова закрыты при следующем включении.
@@ -379,20 +380,10 @@ struct ChatView: View {
         .onChange(of: viewModel.forwardCandidate?.id) { _, id in
             if id != nil { forwardList = forwardTargets() }
         }
-        .task(id: viewModel.messages.count) {
-            guard !viewModel.messages.isEmpty else { return }
-            // Реакции показанных сообщений: история канала их не несёт, а в пушах нет своей
-            // реакции, поставленной с другого устройства. Пауза — лента догружается пачками.
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            viewModel.requestReactions(for: viewModel.messages)
-        }
-        .task(id: wantsCommentCounts ? viewModel.messages.count : -1) {
-            guard wantsCommentCounts, !viewModel.messages.isEmpty else { return }
-            // Пауза: лента догружается пачками, счётчики уходят одним запросом.
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            viewModel.requestCommentCounts(for: viewModel.messages)
+        .onChange(of: viewModel.unreadMarkCandidate?.id) { _, id in
+            guard id != nil, let message = viewModel.unreadMarkCandidate else { return }
+            viewModel.unreadMarkCandidate = nil
+            onMarkUnread?(message.timestamp)
         }
         // Выбрали сообщение для ответа — клавиатура сразу открывается.
         .onChange(of: viewModel.replyTarget?.id) { _, id in

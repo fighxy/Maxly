@@ -12,6 +12,7 @@ import app.orbitle.domain.ChatType
 import app.orbitle.domain.Message
 import app.orbitle.domain.MessageContent
 import app.orbitle.domain.MessageReaction
+import app.orbitle.data.CoreFailure
 import app.orbitle.domain.MessageStatus
 import app.orbitle.domain.OrbitleError
 import app.orbitle.domain.TextSpan
@@ -72,6 +73,15 @@ class FakeMessages : MessageRepository {
     }
     override suspend fun markRead(chatId: String, messageId: String) {
         reads += messageId
+    }
+    val unreadMarks = mutableListOf<Long>()
+    var unreadFailure: Exception? = null
+    var unreadGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+    override suspend fun markUnread(chatId: String, fromMs: Long): Int {
+        unreadMarks += fromMs
+        unreadGate?.await()
+        unreadFailure?.let { throw it }
+        return 2
     }
     override suspend fun react(chatId: String, messageId: String, emoji: String?) {
         reactions += messageId to emoji
@@ -264,14 +274,19 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun failedReactionSyncRetriesOnNextHistory() {
+    fun failedReactionSyncWaitsBeforeRetry() {
+        var clock = now
         repo.syncFailure = IllegalStateException("сеть")
-        val model = vm()
+        val model = ChatViewModel("10", repo, ChatFormatter(ZoneOffset.UTC), now = { clock })
         repo.list.value = listOf(msg("15"))
         assertEquals(listOf(listOf("15")), repo.synced)
         repo.syncFailure = null
+        // Сразу после ошибки обновления ленты не повторяют запрос: иначе шквал и too.many.requests.
         repo.list.value = listOf(msg("15"), msg("16"))
-        assertEquals(listOf(listOf("15"), listOf("15", "16")), repo.synced)
+        assertEquals(listOf(listOf("15")), repo.synced)
+        clock += ChatViewModel.RETRY_AFTER_ERROR_MS
+        repo.list.value = listOf(msg("15"), msg("16"), msg("17"))
+        assertEquals(listOf(listOf("15"), listOf("15", "16", "17")), repo.synced)
         assertTrue(model.state.value.items.isNotEmpty())
     }
 
@@ -386,6 +401,41 @@ class ChatViewModelTest {
         assertEquals(count, repo.reads.size)
         model.setActive(true)
         assertEquals("5", repo.reads.last())
+    }
+
+    @Test
+    fun markUnreadSendsTheMessageTimeAndLeaves() {
+        val model = vm()
+        repo.headerInfo.value = ChatHeaderInfo(chat())
+        repo.list.value = listOf(msg("1", at = now - 60_000), msg("2"))
+        val reads = repo.reads.size
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        repo.unreadGate = gate
+        var left = 0
+        model.markUnread(repo.list.value[0]) { left++ }
+        // Пока сервер отвечает, новое сообщение не отмечает чат прочитанным.
+        repo.list.value = repo.list.value + msg("3")
+        assertEquals(reads, repo.reads.size)
+        gate.complete(Unit)
+        assertEquals(listOf(now - 60_000), repo.unreadMarks)
+        assertEquals(1, left)
+        // Чат открыли снова — он читается как обычно.
+        model.setActive(false)
+        model.setActive(true)
+        assertEquals("3", repo.reads.last())
+    }
+
+    @Test
+    fun markUnreadFailureStaysInTheChat() {
+        val model = vm()
+        repo.unreadFailure = CoreFailure("NETWORK", null)
+        var left = 0
+        model.markUnread(msg("1")) { left++ }
+        assertEquals(0, left)
+        assertEquals("Нет соединения с сервером", model.messages.value)
+        assertTrue(model.canMarkUnread(msg("1")))
+        assertFalse(model.canMarkUnread(msg("2", service = true)))
+        assertFalse(model.canMarkUnread(msg("local-3", status = MessageStatus.SENDING)))
     }
 
     @Test

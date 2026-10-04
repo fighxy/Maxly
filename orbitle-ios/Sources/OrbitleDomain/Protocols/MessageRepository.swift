@@ -31,7 +31,7 @@ public protocol MessageRepository: Sendable {
     func refreshReactions(chatId: String) async
     /// Реакции этих сообщений отдельным запросом: в истории канала их нет, своя реакция
     /// с другого устройства в пушах не видна.
-    func syncReactions(chatId: String, messageIds: [String]) async
+    func syncReactions(chatId: String, messageIds: [String]) async -> Bool
     /// Кто поставил реакции на сообщение.
     func reactionUsers(messageId: String) async throws(OrbitleError) -> [ReactionUser]
     /// Эмодзи, которые сервер предлагает для реакций, в его порядке. Пусто, если каталог
@@ -102,7 +102,7 @@ extension MessageRepository {
         nil
     }
 
-    public func syncReactions(chatId: String, messageIds: [String]) async {}
+    public func syncReactions(chatId: String, messageIds: [String]) async -> Bool { true }
 
     public func reactionUsers(messageId: String) async throws(OrbitleError) -> [ReactionUser] {
         throw .invalidRequest

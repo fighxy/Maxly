@@ -78,6 +78,13 @@ interface MessageRepository {
     /** Отметить прочитанным всё до [messageId] включительно. */
     suspend fun markRead(chatId: String, messageId: String)
 
+    /**
+     * Чат снова непрочитан начиная с сообщения, отправленного в [fromMs]: сервер ставит отметку
+     * прочтения перед ним. Видно и на других устройствах. Возвращает новое число непрочитанных.
+     */
+    suspend fun markUnread(chatId: String, fromMs: Long): Int =
+        throw app.orbitle.domain.OrbitleError.Rejected("Пометка непрочитанным недоступна")
+
     /** Поставить реакцию или снять свою (`null`). */
     suspend fun react(chatId: String, messageId: String, emoji: String?)
 

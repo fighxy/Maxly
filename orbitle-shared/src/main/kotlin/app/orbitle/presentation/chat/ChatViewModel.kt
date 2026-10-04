@@ -178,6 +178,8 @@ class ChatViewModel(
     private var latestLoaded = false
     private var markedReadId: String? = null
     private var active = true
+    /** Чат только что помечен непрочитанным и закрывается: прочтение не отправляется. */
+    private var markingUnread = false
     private var draftBeforeEdit = ""
     private var builtFor: ChatType? = null
     private var builtComments: Boolean? = null
@@ -186,6 +188,10 @@ class ChatViewModel(
     private val askedCounts = HashSet<String>()
     /** Сообщения, для которых уже спрашивали реакции (`MSG_GET_REACTIONS`). */
     private val askedReactions = HashSet<String>()
+    /** После ошибки реакции и счётчики не спрашиваются до этого времени: иначе каждое обновление ленты
+     *  повторяло бы запрос, и сервер отвечал бы too.many.requests всему, включая комментарии. */
+    private var reactionsRetryAt = 0L
+    private var countsRetryAt = 0L
     /** Анимодзи, вставленные в поле из панели. */
     private val animojiDraft = AnimojiDraft()
     private val mentionDraft = MentionDraft()
@@ -260,7 +266,10 @@ class ChatViewModel(
     /** Экран виден: можно отмечать прочитанным. */
     fun setActive(value: Boolean) {
         active = value
-        if (value) markRead()
+        if (value) {
+            markingUnread = false
+            markRead()
+        }
     }
 
     fun setDraft(text: String) {
@@ -339,6 +348,11 @@ class ChatViewModel(
     }
 
     fun removeAttachment(item: OutgoingFile) = _state.update { it.copy(attachments = it.attachments.filterNot { a -> a.path == item.path }) }
+
+    /** Сохраняет позицию вложения и подпись при выходе из редактора. */
+    fun replaceAttachment(original: OutgoingFile, edited: OutgoingFile) = _state.update {
+        it.copy(attachments = it.attachments.map { item -> if (item.path == original.path) edited else item })
+    }
 
     fun send() {
         val text = _state.value.draft.trim()
@@ -523,7 +537,9 @@ class ChatViewModel(
      * и следующий приход истории спрашивает снова.
      */
     private fun requestReactions() {
-        val ids = history.filter { isServer(it) && !it.isService && it.id !in askedReactions }.map { it.id }
+        if (now() < reactionsRetryAt) return
+        // Самые новые первыми и не больше одной пачки за раз: остальные спросит следующее обновление.
+        val ids = history.filter { isServer(it) && !it.isService && it.id !in askedReactions }.map { it.id }.takeLast(REACTIONS_BATCH)
         if (ids.isEmpty()) return
         askedReactions += ids
         viewModelScope.launch {
@@ -533,6 +549,7 @@ class ChatViewModel(
                 throw e
             } catch (_: Exception) {
                 askedReactions -= ids.toSet()
+                reactionsRetryAt = now() + RETRY_AFTER_ERROR_MS
             }
         }
     }
@@ -569,7 +586,7 @@ class ChatViewModel(
 
     /** Прочитать всё до последнего чужого сообщения, пока экран виден. */
     private fun markRead() {
-        if (!active) return
+        if (!active || markingUnread) return
         val last = history.lastOrNull { isServer(it) } ?: return
         val unread = header?.chat?.unreadCount ?: 0
         if (last.id == markedReadId) return
@@ -827,6 +844,31 @@ class ChatViewModel(
         }
     }
 
+    /** Пометить непрочитанным можно любое сообщение с сервера, кроме служебного. */
+    fun canMarkUnread(message: Message): Boolean = isServer(message) && !message.isService
+
+    /**
+     * Чат снова непрочитан начиная с [message]. После успеха [onLeft] закрывает экран: открытый чат
+     * тут же отметился бы прочитанным. Если чат откроют снова, он прочитается как обычно.
+     */
+    fun markUnread(message: Message, onLeft: () -> Unit) {
+        if (!canMarkUnread(message) || markingUnread) return
+        markingUnread = true
+        viewModelScope.launch {
+            try {
+                repository.markUnread(chatId, message.timeMs)
+                markedReadId = null
+                onLeft()
+            } catch (e: CancellationException) {
+                markingUnread = false
+                throw e
+            } catch (e: Exception) {
+                markingUnread = false
+                show(e)
+            }
+        }
+    }
+
     /** Удалить чат целиком. После успеха [onLeft] закрывает экран. */
     fun deleteChat(forEveryone: Boolean, onLeft: () -> Unit) {
         val source = chats ?: return
@@ -962,7 +1004,7 @@ class ChatViewModel(
     /** Спросить счётчики у постов, которых ещё не спрашивали (пачками по 50). */
     private fun requestCommentCounts() {
         val source = comments ?: return
-        if (builtFor != ChatType.CHANNEL || builtComments == false) return
+        if (builtFor != ChatType.CHANNEL || builtComments == false || now() < countsRetryAt) return
         val ids = history.filter { isServer(it) && !it.isService && it.id !in askedCounts }.map { it.id }
         if (ids.isEmpty()) return
         askedCounts += ids
@@ -973,9 +1015,11 @@ class ChatViewModel(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
-                    // Спросить ещё раз, когда лента обновится: иначе плашка так и не появится.
-                    askedCounts -= chunk.toSet()
-                    continue
+                    // Спросить ещё раз позже, когда лента обновится: иначе плашка так и не появится.
+                    // Остальные пачки тоже ждут: сервер, скорее всего, ответит им той же ошибкой.
+                    askedCounts -= ids.toSet() - commentCounts.keys
+                    countsRetryAt = now() + RETRY_AFTER_ERROR_MS
+                    break
                 }
                 if (counts.isEmpty()) continue
                 commentCounts.putAll(counts)
@@ -1015,6 +1059,10 @@ class ChatViewModel(
     }
 
     companion object {
+        /** Сообщений в одном запросе реакций. */
+        const val REACTIONS_BATCH = 100
+        /** Пауза перед повтором реакций и счётчиков после ошибки сервера. */
+        const val RETRY_AFTER_ERROR_MS = 30_000L
         const val REACTION_FAILURE = "Не удалось поставить реакцию"
     }
 }

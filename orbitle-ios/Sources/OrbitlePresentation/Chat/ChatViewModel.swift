@@ -80,6 +80,8 @@ public final class ChatViewModel {
     public var deletionCandidate: Message?
     /// Сообщение, для которого открыт выбор чата пересылки.
     public var forwardCandidate: Message?
+    /// Сообщение, с которого чат помечают непрочитанным: экран забирает его и закрывается.
+    public var unreadMarkCandidate: Message?
     /// Короткое уведомление над полем ввода («Переслано»). Само пропадает.
     public private(set) var notice: String?
     /// Просмотр фото и видео.
@@ -117,6 +119,9 @@ public final class ChatViewModel {
     @ObservationIgnored private var askedCounts: Set<String> = []
     /// Посты, чьи реакции уже спрошены отдельным запросом.
     @ObservationIgnored private var askedReactions: Set<String> = []
+    /// После ошибки реакции и счётчики не спрашиваются до этого времени.
+    @ObservationIgnored private var reactionsRetryAt = Date.distantPast
+    @ObservationIgnored private var countsRetryAt = Date.distantPast
     /// Прямые адреса видео, полученные у сервера за время жизни экрана.
     @ObservationIgnored private var resolvedVideos: [String: URL] = [:]
     @ObservationIgnored private var mediaTask: Task<Void, Never>?
@@ -201,6 +206,10 @@ public final class ChatViewModel {
     /// Кэш и серверная сверка при каждом открытии не являются live-вставками.
     public private(set) var isRestoringHistory = false
     @ObservationIgnored private var watchGeneration = 0
+    @ObservationIgnored private var loadGeneration = 0
+    public private(set) var isLoadingLatest = false
+    public private(set) var isLoadingOlder = false
+    public private(set) var historyError: OrbitleError?
 
     /// Пустое «Избранное»: вместо ленты плашка о том, что это за чат.
     public var showsSavedPlaceholder: Bool {
@@ -239,7 +248,7 @@ public final class ChatViewModel {
         }
     }
 
-    private func startMessagesWatch(finishesRestoration: Bool = false) {
+    private func startMessagesWatch(finishesRestoration: Bool = false, loaded: Bool = false) {
         watch?.cancel()
         watchGeneration &+= 1
         let generation = watchGeneration
@@ -248,9 +257,10 @@ public final class ChatViewModel {
             var first = true
             for await page in stream {
                 guard let self, !Task.isCancelled, self.watchGeneration == generation else { return }
-                self.messages = page
+                if self.messages != page { self.messages = page }
                 if first, finishesRestoration {
                     self.messagesChange = .reload
+                    if loaded { self.latestLoaded = true }
                     self.isRestoringHistory = false
                 }
                 first = false
@@ -259,6 +269,9 @@ public final class ChatViewModel {
     }
 
     public func deactivate() {
+        loadGeneration &+= 1
+        isLoadingLatest = false
+        isLoadingOlder = false
         watchGeneration &+= 1
         isRestoringHistory = false
         watch?.cancel()
@@ -308,22 +321,47 @@ public final class ChatViewModel {
     }
 
     public func loadLatest() async {
+        guard !isLoadingLatest, !Task.isCancelled else { return }
+        loadGeneration &+= 1
+        let generation = loadGeneration
+        isLoadingLatest = true
+        isLoadingOlder = false
+        historyError = nil
         isRestoringHistory = true
-        defer {
-            // Новый stream даёт авторитетный снимок после сверки, без гонки с очередью
-            // старого подписчика. Первый снимок завершает восстановление без анимаций.
-            if watch != nil { startMessagesWatch(finishesRestoration: true) }
-            else { isRestoringHistory = false }
-        }
+        var loaded = false
         do {
             try await repository.fetchLatest(chatId: chatId)
-            latestLoaded = true
+            guard generation == loadGeneration, !Task.isCancelled else {
+                finishCancelledLoad(generation)
+                return
+            }
+            loaded = true
             error = nil
         } catch {
+            guard generation == loadGeneration, !Task.isCancelled else {
+                finishCancelledLoad(generation)
+                return
+            }
             // Истории нового диалога на сервере может не быть: это не ошибка для экрана.
-            if isNewDialog, messages.isEmpty, error != .networkUnavailable { return }
-            show(error)
+            if !(isNewDialog && messages.isEmpty && error != .networkUnavailable) {
+                if error != .cancelled { historyError = error }
+                show(error)
+            }
         }
+        isLoadingLatest = false
+        // Завершение сверки относится только к текущему открытию экрана.
+        // Пустое состояние публикуется вместе со снимком, а не до него.
+        if watch != nil { startMessagesWatch(finishesRestoration: true, loaded: loaded) }
+        else {
+            if loaded { latestLoaded = true }
+            isRestoringHistory = false
+        }
+    }
+
+    private func finishCancelledLoad(_ generation: Int) {
+        guard generation == loadGeneration else { return }
+        isLoadingLatest = false
+        isRestoringHistory = false
     }
 
     /// Вложения из листа: делятся на сообщения (`AttachmentBatchPlanner`), цитата уходит
@@ -359,10 +397,15 @@ public final class ChatViewModel {
     }
 
     public func loadOlder() async {
+        guard !isLoadingOlder, !isRestoringHistory, !Task.isCancelled else { return }
+        isLoadingOlder = true
+        let generation = loadGeneration
+        defer { if generation == loadGeneration { isLoadingOlder = false } }
         stickToBottom = false
         do {
             try await repository.loadOlder(chatId: chatId)
         } catch {
+            guard generation == loadGeneration, !Task.isCancelled else { return }
             if isNewDialog, messages.isEmpty, error != .networkUnavailable { return }
             show(error)
         }
@@ -534,15 +577,22 @@ public final class ChatViewModel {
     /// их нет, а своя реакция с другого устройства видна только в нём. Каждое сообщение
     /// спрашивается один раз за открытие; своё переключение реакции не перезаписывается.
     public func requestReactions(for posts: [Message]) {
-        let ids = posts.compactMap { post -> String? in
+        guard Date() >= reactionsRetryAt else { return }
+        // Самые новые и не больше одной пачки: остальное спросит следующее обновление ленты.
+        let ids = Array(posts.compactMap { post -> String? in
             guard post.status == .sent, let id = post.serverId, Int64(id) != nil, !askedReactions.contains(id) else { return nil }
             return id
-        }
+        }.suffix(Self.reactionBatch))
         guard !ids.isEmpty else { return }
         askedReactions.formUnion(ids)
         let chatId = chatId
         let repository = repository
-        Task { await repository.syncReactions(chatId: chatId, messageIds: ids) }
+        Task { [weak self] in
+            let ok = await repository.syncReactions(chatId: chatId, messageIds: ids)
+            guard let self, !ok else { return }
+            self.askedReactions.subtract(ids)
+            self.reactionsRetryAt = Date().addingTimeInterval(Self.retryAfterError)
+        }
     }
 
     private func loadReactionCatalog() {
@@ -562,6 +612,10 @@ public final class ChatViewModel {
     }
 
     static let reactionFailure = "Не удалось обновить реакцию"
+    /// Сообщений в одном запросе реакций.
+    static let reactionBatch = 100
+    /// Пауза перед повтором реакций и счётчиков после ошибки сервера.
+    static let retryAfterError: TimeInterval = 30
 
     /// Прокрутить к цитате, если она уже в загруженном окне.
     public func focusReply(_ messageId: String) {
@@ -616,7 +670,7 @@ public final class ChatViewModel {
 
     /// Спросить счётчики комментариев у постов, которых ещё не спрашивали (пачками по 50).
     public func requestCommentCounts(for posts: [Message]) {
-        guard let comments else { return }
+        guard let comments, Date() >= countsRetryAt else { return }
         let ids = posts.compactMap { post -> String? in
             let id = post.serverId ?? post.id
             guard Int64(id) != nil, !askedCounts.contains(id) else { return nil }
@@ -628,10 +682,18 @@ public final class ChatViewModel {
         Task { [weak self] in
             for start in stride(from: 0, to: ids.count, by: 50) {
                 let chunk = Array(ids[start..<min(start + 50, ids.count)])
-                guard let counts = try? await comments.counts(chatId: chatId, postIds: chunk) else { continue }
-                guard let self else { return }
-                self.commentCounts.merge(counts) { _, new in new }
-                await self.repository.noteCommentCounts(chatId: chatId, counts: counts)
+                do {
+                    let counts = try await comments.counts(chatId: chatId, postIds: chunk)
+                    guard let self else { return }
+                    self.commentCounts.merge(counts) { _, new in new }
+                    await self.repository.noteCommentCounts(chatId: chatId, counts: counts)
+                } catch {
+                    // Остальные пачки не уходят: сервер, скорее всего, ответит им too.many.requests.
+                    guard let self else { return }
+                    self.askedCounts.subtract(ids[start...])
+                    self.countsRetryAt = Date().addingTimeInterval(Self.retryAfterError)
+                    return
+                }
             }
         }
     }
@@ -1218,6 +1280,20 @@ public final class ChatViewModel {
 
     public func requestForward(_ message: Message) {
         forwardCandidate = message
+    }
+
+    // MARK: Непрочитанное
+
+    /// Пометить непрочитанным можно сообщение, принятое сервером, кроме служебного о закрепе.
+    public func canMarkUnread(_ message: Message) -> Bool {
+        message.status == .sent && Int64(message.serverId ?? message.id) != nil && message.content.pin == nil
+    }
+
+    /// Чат помечают непрочитанным с этого сообщения. Экран передаёт пометку списку чатов и
+    /// закрывается: открытый чат тут же отметился бы прочитанным.
+    public func requestMarkUnread(_ message: Message) {
+        guard canMarkUnread(message) else { return }
+        unreadMarkCandidate = message
     }
 
     public func forward(to targetChatId: String) async {
