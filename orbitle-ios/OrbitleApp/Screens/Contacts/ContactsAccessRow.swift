@@ -1,6 +1,5 @@
 import SwiftUI
 import Contacts
-import ContactsUI
 import UIKit
 import OrbitleDomain
 
@@ -10,9 +9,11 @@ import OrbitleDomain
 /// дать доступ только к выбранным контактам. Строка над списком объясняет текущий выбор и
 /// ведёт в настройки. Адресная книга не уходит на сервер: схема синхронизации контактов Max
 /// ещё не известна, поэтому разрешение пока только готовит устройство к ней.
+///
+/// Выбор контактов при частичном доступе — тоже в настройках. Системный `contactAccessPicker`
+/// на iOS 27 у переподписанной сборки открывался пустым чёрным листом.
 struct ContactsAccessRow: View {
     let status: CNAuthorizationStatus
-    let onPickMore: () -> Void
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -23,9 +24,9 @@ struct ContactsAccessRow: View {
             row(
                 systemImage: "person.crop.circle.badge.checkmark",
                 title: "Доступ к части контактов",
-                detail: "Orbitle видит только выбранные вами контакты телефона.",
-                action: "Выбрать ещё",
-                perform: onPickMore
+                detail: "Orbitle видит только выбранные вами контакты телефона. Изменить выбор можно в настройках: Orbitle → Контакты.",
+                action: "Выбрать в настройках",
+                perform: openSettings
             )
         case .denied:
             row(
@@ -65,15 +66,14 @@ struct ContactsAccessRow: View {
 
 extension View {
     /// Спрашивает доступ к контактам при первом показе экрана и следит за ним: `status`
-    /// обновляется после ответа, после возврата из настроек и после выбора контактов.
-    func contactsAccess(status: Binding<CNAuthorizationStatus>, isPickingMore: Binding<Bool>) -> some View {
-        modifier(ContactsAccessRequest(status: status, isPicking: isPickingMore))
+    /// обновляется после ответа и после возврата из настроек.
+    func contactsAccess(status: Binding<CNAuthorizationStatus>) -> some View {
+        modifier(ContactsAccessRequest(status: status))
     }
 }
 
 private struct ContactsAccessRequest: ViewModifier {
     @Binding var status: CNAuthorizationStatus
-    @Binding var isPicking: Bool
     @Environment(\.scenePhase) private var scenePhase
 
     func body(content: Content) -> some View {
@@ -83,7 +83,6 @@ private struct ContactsAccessRequest: ViewModifier {
                 // Вернулись из настроек: выбор мог измениться.
                 if phase == .active { refresh() }
             }
-            .modifier(LimitedPicker(isPresented: $isPicking, onDone: refresh))
     }
 
     private func requestIfNeeded() async {
@@ -128,20 +127,6 @@ private enum Access: CustomStringConvertible {
         case .full: "полный"
         case .limited: "частичный"
         case .denied: "запрещён"
-        }
-    }
-}
-
-/// Системный выбор дополнительных контактов при частичном доступе (iOS 18).
-private struct LimitedPicker: ViewModifier {
-    @Binding var isPresented: Bool
-    let onDone: () -> Void
-
-    func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            content.contactAccessPicker(isPresented: $isPresented) { _ in onDone() }
-        } else {
-            content
         }
     }
 }

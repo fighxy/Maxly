@@ -17,7 +17,6 @@ struct ContactsView: View {
     @State private var isAdding = false
     @State private var showsAddUnavailable = false
     @State private var contactsAccess = CNContactStore.authorizationStatus(for: .contacts)
-    @State private var isPickingContacts = false
     @State private var profileDialog: DialogDraft?
     @Environment(\.privateMode) private var privateMode
 
@@ -33,7 +32,7 @@ struct ContactsView: View {
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
                     .id(Self.searchRowId)
                 if !viewModel.isFiltering {
-                    ContactsAccessRow(status: contactsAccess) { isPickingContacts = true }
+                    ContactsAccessRow(status: contactsAccess)
                 }
                 content
             }
@@ -73,7 +72,7 @@ struct ContactsView: View {
             }
         }
         .task { viewModel.activate() }
-        .contactsAccess(status: $contactsAccess, isPickingMore: $isPickingContacts)
+        .contactsAccess(status: $contactsAccess)
         .navigationDestination(item: $profileDialog) { dialog in
             ProfileDestination(make: { makeProfile?(dialog) }) {
                 profileDialog = nil
