@@ -495,23 +495,43 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    /// Чтения, которые ждут паузы после `too.many.requests` (`ServerRateLimit`). Отправка,
+    /// отметки, вход и действия пользователя с немедленным ответом сюда не входят.
+    private static let pacedCalls: Set<String> = [
+        "loadHistory", "loadComments", "loadCommentCounts", "loadSharedMedia", "loadProfile",
+        "loadChat", "loadChats", "loadReactions", "loadCallHistory", "loadAnimojis",
+    ]
+
     /// Вызов ядра с колбэком. Неудача пишется в журнал видом ошибки и ключом сервера.
+    /// Во время паузы сервера чтения из `pacedCalls` сразу получают тот же отказ.
     func call<T: Sendable>(_ name: String, _ start: @escaping (@escaping (Result<T, Error>) -> Void) -> Void) async throws -> T {
-        try await withCheckedThrowingContinuation { continuation in
-            let gate = ResumeGate()
-            start { result in
-                gate.run {
-                    if case .failure(let error) = result {
-                        if let failure = error as? CoreFailure {
-                            let level: Log.Level = failure.kind == "CANCELLED" ? .debug : .warning
-                            Log.write(level, .core, "\(name): \(failure.kind)\(failure.key.map { " (\($0))" } ?? "")")
-                        } else {
-                            Log.warning(.core, "\(name): \(error)")
+        let paced = Self.pacedCalls.contains(name)
+        if paced, let left = await ServerRateLimit.shared.remaining() {
+            Log.debug(.core, "\(name): пауза после too.many.requests, ещё \(Int(left.rounded(.up))) с")
+            throw CoreFailure(kind: "SERVER", key: ServerRateLimit.key)
+        }
+        do {
+            let value: T = try await withCheckedThrowingContinuation { continuation in
+                let gate = ResumeGate()
+                start { result in
+                    gate.run {
+                        if case .failure(let error) = result {
+                            if let failure = error as? CoreFailure {
+                                let level: Log.Level = failure.kind == "CANCELLED" ? .debug : .warning
+                                Log.write(level, .core, "\(name): \(failure.kind)\(failure.key.map { " (\($0))" } ?? "")")
+                            } else {
+                                Log.warning(.core, "\(name): \(error)")
+                            }
                         }
+                        continuation.resume(with: result)
                     }
-                    continuation.resume(with: result)
                 }
             }
+            if paced { await ServerRateLimit.shared.noteSuccess() }
+            return value
+        } catch let failure as CoreFailure where ServerRateLimit.isLimit(failure.key) {
+            await ServerRateLimit.shared.noteLimited()
+            throw failure
         }
     }
 

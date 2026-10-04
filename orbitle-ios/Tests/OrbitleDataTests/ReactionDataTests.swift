@@ -428,7 +428,7 @@ private enum DeviceHistory {
 struct ReactionDeviceHistoryTests {
     private func stack(core: FakeMaxCore) async throws -> MessageRepositoryImpl {
         let stack = try SwiftDataStack(inMemory: true)
-        return MessageRepositoryImpl.make(stack: stack, api: MaxAPIClient(core: core))
+        return MessageRepositoryImpl(modelContainer: stack.container, api: MaxAPIClient(core: core), latestReuse: 0)
     }
 
     private func reactions(_ repository: MessageRepositoryImpl, chatId: String, id: String) async throws -> [MessageReaction] {

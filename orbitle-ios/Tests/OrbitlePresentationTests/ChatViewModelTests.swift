@@ -62,6 +62,17 @@ struct ChatViewModelTests {
         #expect(existing.emptyHint == nil)
     }
 
+    @Test("too.many.requests: без красной строки, пустой экран объясняет паузу")
+    func rateLimitOnEmptyScreen() async {
+        let repository = FakeMessageRepository()
+        await repository.set(latestError: .server(code: OrbitleError.rateLimitCode))
+        let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
+        await model.loadLatest()
+        #expect(model.error == nil)
+        #expect(model.historyError?.userMessage == "Сервер просит подождать: слишком много запросов")
+        model.deactivate()
+    }
+
     @Test("Ошибка отправки возвращает и черновик, и цитату")
     func sendRestoresReply() async {
         let repository = FakeMessageRepository()

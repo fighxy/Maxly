@@ -28,6 +28,7 @@ extension OrbitleError: LocalizedError {
         switch self {
         case .networkUnavailable: "Нет соединения с сервером"
         case .authExpired: "Сессия истекла, войдите снова"
+        case .server(let code) where code == Self.rateLimitCode: "Сервер просит подождать: слишком много запросов"
         case .server(let code): "Ошибка сервера (\(code)). Попробуйте позже"
         case .invalidRequest: "Сервер отклонил запрос"
         case .rejected(let message): message
@@ -43,6 +44,14 @@ extension OrbitleError {
     /// Текст для экрана. `nil` у отмены: её пользователю не показывают.
     public var userMessage: String? {
         self == .cancelled ? nil : errorDescription
+    }
+
+    /// Код ответа сервера, когда клиент спрашивает слишком часто.
+    public static let rateLimitCode = "too.many.requests"
+
+    /// Сервер ответил «слишком много запросов»: повтор пройдёт сам после паузы.
+    public var isRateLimit: Bool {
+        self == .server(code: Self.rateLimitCode)
     }
 
     /// Повтор того же действия позже может пройти без участия пользователя.

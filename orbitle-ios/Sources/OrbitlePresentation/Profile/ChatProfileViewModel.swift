@@ -61,7 +61,22 @@ public final class ChatProfileViewModel {
     /// Карточка для шапки: загруженная или то, что известно заранее.
     public var shown: ChatProfile { profile ?? placeholder }
 
+    /// Когда карточка в последний раз пришла с сервера.
+    @ObservationIgnored private var loadedAt: Date?
+    @ObservationIgnored private var isFetching = false
+
+    /// Карточка с сервера, если прошлая старше `maxAge` секунд. Шапка чата и профиль
+    /// открываются по очереди и не спрашивают сервер дважды подряд: на частые запросы он
+    /// отвечает `too.many.requests`.
+    public func loadIfStale(maxAge: TimeInterval = 60) async {
+        if profile != nil, let loadedAt, now().timeIntervalSince(loadedAt) < maxAge { return }
+        guard !isFetching else { return }
+        await load()
+    }
+
     public func load() async {
+        isFetching = true
+        defer { isFetching = false }
         // Сначала карточка с устройства: профиль и статус видны сразу, сервер потом обновит.
         if profile == nil, let cached = await repository.cachedProfile(chatId: chatId) {
             profile = cached
@@ -70,6 +85,7 @@ public final class ChatProfileViewModel {
         if profile == nil { state = .loading }
         do {
             profile = try await repository.profile(chatId: chatId)
+            loadedAt = now()
             state = .loaded
         } catch {
             guard error != .cancelled else { return }
@@ -204,19 +220,29 @@ public final class ChatProfileViewModel {
     /// Все общие медиа чата с сервера, страница за страницей, пока сервер присылает новое.
     /// `window` — окно чата: его последнее серверное сообщение служит якорем первой страницы.
     /// Отмена задачи (профиль закрыт) сохраняет место: следующий вызов продолжит с него.
+    ///
+    /// Между страницами `pause`: обход идёт в фоне, а на очередь запросов без паузы сервер
+    /// отвечает `too.many.requests` и заодно перестаёт отдавать историю открытого чата.
     public func loadRemoteShared(
         window: [Message],
+        pause: Duration = .milliseconds(400),
         fetch: (SharedMediaRequest) async -> [Message]?
     ) async {
         guard !isLoadingRemoteShared, let latest = SharedMediaPager.anchor(in: window) else { return }
         isLoadingRemoteShared = true
         defer { isLoadingRemoteShared = false }
         pager.retryFailed()
+        var first = true
         while !Task.isCancelled {
             let round = pager.round(latest: latest)
             if round.isEmpty { break }
             var changed = false
             for request in round {
+                if !first {
+                    try? await Task.sleep(for: pause)
+                    if Task.isCancelled { break }
+                }
+                first = false
                 let page = await fetch(request)
                 // Ответ отменённой задачи не значит, что у вкладки всё: её продолжит следующий вызов.
                 if Task.isCancelled { break }

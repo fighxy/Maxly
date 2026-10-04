@@ -55,7 +55,11 @@ actor FakeMaxAPI: MaxAPI {
 
     func setHistoryError(_ error: MaxAPIError?) { historyError = error }
 
+    /// Сколько раз спрашивали историю.
+    private(set) var historyFetches = 0
+
     func fetchMessages(chatId: String, before: Date?, limit: Int) async -> Result<[MessageRecord], MaxAPIError> {
+        historyFetches += 1
         if let fetchGate { await fetchGate.wait() }
         if let historyError { return .failure(historyError) }
         let older = history
@@ -315,9 +319,10 @@ actor FakeMaxAPI: MaxAPI {
 }
 
 /// Репозиторий сообщений на базе в памяти с подключённой очередью без реальных задержек.
-func makeMessageStack(api: FakeMaxAPI) async throws -> (MessageRepositoryImpl, OutboxQueue) {
+/// `latestReuse` по умолчанию 0: тесты сверки спрашивают историю несколько раз подряд.
+func makeMessageStack(api: FakeMaxAPI, latestReuse: TimeInterval = 0) async throws -> (MessageRepositoryImpl, OutboxQueue) {
     let stack = try SwiftDataStack(inMemory: true)
-    let repository = MessageRepositoryImpl.make(stack: stack, api: api)
+    let repository = MessageRepositoryImpl(modelContainer: stack.container, api: api, latestReuse: latestReuse)
     let outbox = OutboxQueue(api: api, sleep: { _ in })
     await repository.attach(outbox: outbox)
     return (repository, outbox)

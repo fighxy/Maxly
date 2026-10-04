@@ -207,6 +207,7 @@ public final class ChatViewModel {
     public private(set) var isRestoringHistory = false
     @ObservationIgnored private var watchGeneration = 0
     @ObservationIgnored private var loadGeneration = 0
+    @ObservationIgnored private var latestRetry: Task<Void, Never>?
     public private(set) var isLoadingLatest = false
     public private(set) var isLoadingOlder = false
     public private(set) var historyError: OrbitleError?
@@ -269,6 +270,8 @@ public final class ChatViewModel {
     }
 
     public func deactivate() {
+        latestRetry?.cancel()
+        latestRetry = nil
         loadGeneration &+= 1
         isLoadingLatest = false
         isLoadingOlder = false
@@ -342,8 +345,13 @@ public final class ChatViewModel {
                 finishCancelledLoad(generation)
                 return
             }
-            // Истории нового диалога на сервере может не быть: это не ошибка для экрана.
-            if !(isNewDialog && messages.isEmpty && error != .networkUnavailable) {
+            if error.isRateLimit {
+                // Сервер просит подождать. Красной строки над полем нет: лента из кэша
+                // остаётся, пустой экран объясняет паузу, сверка повторится сама.
+                historyError = error
+                scheduleLatestRetry()
+            } else if !(isNewDialog && messages.isEmpty && error != .networkUnavailable) {
+                // Истории нового диалога на сервере может не быть: это не ошибка для экрана.
                 if error != .cancelled { historyError = error }
                 show(error)
             }
@@ -355,6 +363,25 @@ public final class ChatViewModel {
         else {
             if loaded { latestLoaded = true }
             isRestoringHistory = false
+        }
+    }
+
+    /// Повтор сверки после `too.many.requests`. Без перезагрузки ленты: новые сообщения
+    /// приходят в подписку как обычные вставки, прокрутка не сбивается.
+    private func scheduleLatestRetry() {
+        latestRetry?.cancel()
+        latestRetry = Task { [weak self] in
+            try? await Task.sleep(for: Self.rateLimitRetry)
+            guard !Task.isCancelled, let self, self.watch != nil else { return }
+            do {
+                try await self.repository.fetchLatest(chatId: self.chatId)
+                guard !Task.isCancelled else { return }
+                self.latestLoaded = true
+                if self.historyError?.isRateLimit == true { self.historyError = nil }
+            } catch {
+                guard !Task.isCancelled, error.isRateLimit else { return }
+                self.scheduleLatestRetry()
+            }
         }
     }
 
@@ -406,6 +433,8 @@ public final class ChatViewModel {
             try await repository.loadOlder(chatId: chatId)
         } catch {
             guard generation == loadGeneration, !Task.isCancelled else { return }
+            // Пауза сервера: старые сообщения догрузятся при следующей прокрутке вверх.
+            if error.isRateLimit { return }
             if isNewDialog, messages.isEmpty, error != .networkUnavailable { return }
             show(error)
         }
@@ -616,6 +645,8 @@ public final class ChatViewModel {
     static let reactionBatch = 100
     /// Пауза перед повтором реакций и счётчиков после ошибки сервера.
     static let retryAfterError: TimeInterval = 30
+    /// Через сколько повторить сверку ленты после `too.many.requests`.
+    static let rateLimitRetry: Duration = .seconds(20)
 
     /// Прокрутить к цитате, если она уже в загруженном окне.
     public func focusReply(_ messageId: String) {

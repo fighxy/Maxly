@@ -199,7 +199,8 @@ struct ChatView: View {
         .task {
             // Шапка: статус и аватар из карточки чата, она же открывается профилем.
             if profile == nil { profile = makeProfile?() }
-            await profile?.load()
+            // Возврат из профиля тоже запускает эту задачу: свежую карточку не перезапрашиваем.
+            await profile?.loadIfStale()
             viewModel.notePeer(profile?.shown.peerId, isBot: profile?.shown.kind == .bot)
             // Общие медиа из кэша — заранее, чтобы профиль открылся с ними. Пауза: сначала лента.
             try? await Task.sleep(for: .seconds(1))

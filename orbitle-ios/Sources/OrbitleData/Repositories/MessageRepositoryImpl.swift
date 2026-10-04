@@ -72,6 +72,12 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     static let echoHold: Duration = .seconds(8)
     /// Сколько последних сообщений сверяет `refreshReactions`: столько принимает один запрос.
     static let reactionsPage = 100
+    /// Когда последняя страница чата в последний раз пришла с сервера.
+    private var latestFetchedAt: [String: Date] = [:]
+    /// Сколько секунд свежая страница считается актуальной. Возврат из профиля, опрос и
+    /// повторное открытие чата в это окно сервер не спрашивают: на частые `CHAT_HISTORY`
+    /// он отвечает `too.many.requests`. Новые сообщения в это время приходят пушами.
+    private let latestReuse: TimeInterval
 
     /// Что случилось со своим сообщением.
     public enum OutgoingChange: Sendable, Equatable {
@@ -86,11 +92,13 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         case deleted(chatId: String, ids: [String])
     }
 
-    public init(modelContainer: ModelContainer, api: any MaxAPI) {
+    /// `latestReuse` — сколько секунд последняя страница чата не перезапрашивается.
+    public init(modelContainer: ModelContainer, api: any MaxAPI, latestReuse: TimeInterval = 10) {
         let context = ModelContext(modelContainer)
         self.modelExecutor = DefaultSerialModelExecutor(modelContext: context)
         self.modelContainer = modelContainer
         self.api = api
+        self.latestReuse = latestReuse
     }
 
     public static func make(stack: SwiftDataStack, api: any MaxAPI) -> MessageRepositoryImpl {
@@ -464,6 +472,8 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// сообщения с реакциями: пропуск или пустая запись не значат «реакций нет» (сервер мог
     /// не узнать id), а стирать чужие реакции по такому ответу нельзя.
     public func refreshReactions(chatId: String) async {
+        // Страница только что пришла (открытие чата, опрос): пуши за эти секунды не потерялись.
+        if let at = latestFetchedAt[chatId], Date().timeIntervalSince(at) < latestReuse { return }
         let started = generation
         var covered = Set<String>()
         let requestedAt = Date.now
@@ -473,6 +483,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             guard started == generation else { return }
             do {
                 try upsert(records)
+                latestFetchedAt[chatId] = Date()
                 // Пустую историю при возврате из фона за «чат пуст» не считаем.
                 let gone = records.isEmpty ? [] : pruneMissing(chatId: chatId, page: records, requestedAt: requestedAt)
                 if !gone.isEmpty { await outgoingHandler?(.deleted(chatId: chatId, ids: gone)) }
@@ -773,6 +784,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             try modelContext.deleteInstances(model: SDMessage.self, where: #Predicate { $0.chatId == id })
             try modelContext.save()
             windows[chatId] = 0
+            latestFetchedAt[chatId] = nil
         } catch {
             Log.warning(.messages, "Очистка ленты не сохранилась: \(error)")
         }
@@ -891,8 +903,10 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         }
     }
 
-    /// Самые свежие сообщения чата с сервера (для периодического опроса).
+    /// Самые свежие сообщения чата с сервера (открытие чата и периодический опрос).
+    /// Страница, пришедшая меньше `latestReuse` секунд назад, повторно не спрашивается.
     public func fetchLatest(chatId: String) async throws(OrbitleError) {
+        if let at = latestFetchedAt[chatId], Date().timeIntervalSince(at) < latestReuse { return }
         let started = generation
         let requestedAt = Date.now
         switch await api.fetchMessages(chatId: chatId, before: nil, limit: Self.pageSize) {
@@ -900,6 +914,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             let records = await withReactions(fetched, chatId: chatId)
             try ensureCurrent(started)
             try upsert(records)
+            latestFetchedAt[chatId] = Date()
             let gone = pruneMissing(chatId: chatId, page: records, requestedAt: requestedAt)
             if !gone.isEmpty { await outgoingHandler?(.deleted(chatId: chatId, ids: gone)) }
         case .failure(let error):
@@ -1084,6 +1099,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         generation += 1
         reactionsAsked.removeAll()
         reactionsRetryAt.removeAll()
+        latestFetchedAt.removeAll()
         for (id, task) in uploads {
             cancelledUploads.insert(id)
             task.cancel()

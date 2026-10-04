@@ -40,6 +40,20 @@ struct ChatOpeningTests {
         model.deactivate()
     }
 
+    @Test("too.many.requests при ленте из кэша не показывается ошибкой")
+    func rateLimitKeepsCacheQuiet() async throws {
+        let api = FakeMaxAPI()
+        let (repository, _) = try await makeMessageStack(api: api)
+        try await repository.upsert([message("1")])
+        await api.setHistoryError(.server(code: OrbitleError.rateLimitCode))
+        let model = ChatViewModel(chatId: "c1", currentUserId: "me", messages: repository)
+        model.activate()
+        await model.loadLatest()
+        #expect(await openingEventually { !model.isRestoringHistory && model.messages.count == 1 })
+        #expect(model.error == nil)
+        model.deactivate()
+    }
+
     @Test("Ответ прошлого открытия не завершает новую загрузку")
     func previousOpeningCannotFinishNewSession() async throws {
         let api = FakeMaxAPI()

@@ -88,7 +88,7 @@ struct ChatProfileView: View {
                  ? "Все сообщения в этом чате будут удалены без возможности восстановления."
                  : "Чат будет удалён вместе со всей перепиской.")
         }
-        .task { await viewModel.load() }
+        .task { await viewModel.loadIfStale() }
         .refreshable { await viewModel.load() }
         .task(id: sharedVersion) {
             guard let chat = context?.chat else { return }
