@@ -106,6 +106,17 @@ public final class SwiftDataStack: Sendable {
     }
 }
 
+extension ModelContext {
+    /// Пакетный `delete(model:where:)` падает, если у сообщения есть связь с чатом:
+    /// Core Data не обнуляет обратную связь и сохранение отвечает ошибкой хранилища.
+    /// По одному связь снимается обычным правилом.
+    func deleteInstances<T: PersistentModel>(model _: T.Type, where predicate: Predicate<T>? = nil) throws {
+        for object in try fetch(FetchDescriptor<T>(predicate: predicate)) {
+            delete(object)
+        }
+    }
+}
+
 private extension Bundle {
     @objc func orbitle_object(forInfoDictionaryKey key: String) -> Any? {
         let value = orbitle_object(forInfoDictionaryKey: key)

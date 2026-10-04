@@ -30,11 +30,11 @@ public actor CoreContactRepository: ContactRepository {
     }
 
     /// Короче семи цифр запрос не уходит. Нет человека — `nil`, а не ошибка сети.
+    /// Одиннадцать цифр с восьмёрки — российский набор, на сервер уходит `+7`.
     public func findByPhone(_ phone: String) async throws(OrbitleError) -> Contact? {
-        let digits = phone.filter(\.isNumber)
-        guard digits.count >= 7 else { throw .invalidRequest }
+        guard let payload = Self.queryPhone(phone) else { throw .invalidRequest }
         do {
-            let found = try await core.findByPhone(phone: "+\(digits)")
+            let found = try await core.findByPhone(phone: payload)
             guard !found.id.isEmpty else { return nil }
             return CoreMapping.contact(found)
         } catch let failure as CoreFailure where Self.isMissingPerson(failure) {
@@ -68,6 +68,16 @@ public actor CoreContactRepository: ContactRepository {
         } catch {
             throw CoreMapping.apiError(error).orbitleError
         }
+    }
+
+    /// `+` и цифры. Восемь в начале одиннадцати цифр заменяется на код `7`.
+    static func queryPhone(_ raw: String) -> String? {
+        let digits = raw.filter(\.isNumber)
+        guard digits.count >= 7 else { return nil }
+        if digits.count == 11, digits.first == "8" {
+            return "+7\(digits.dropFirst())"
+        }
+        return "+\(digits)"
     }
 
     /// Сервер не нашёл человека или ответ без контакта.

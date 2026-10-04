@@ -238,7 +238,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     public func delete(chatId: String) throws(OrbitleError) {
         do {
             let id = chatId
-            try modelContext.delete(model: SDMessage.self, where: #Predicate { $0.chatId == id })
+            try modelContext.deleteInstances(model: SDMessage.self, where: #Predicate { $0.chatId == id })
             try modelContext.delete(model: SDChat.self, where: #Predicate { $0.id == id })
             try modelContext.save()
         } catch {
@@ -405,7 +405,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     private func wipeMessages(chatId: String) throws(OrbitleError) {
         do {
             let id = chatId
-            try modelContext.delete(model: SDMessage.self, where: #Predicate { $0.chatId == id })
+            try modelContext.deleteInstances(model: SDMessage.self, where: #Predicate { $0.chatId == id })
             if let chat = try chat(id: chatId) {
                 chat.lastMessageId = nil
                 chat.preview = nil

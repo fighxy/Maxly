@@ -755,7 +755,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     public func dropLocalHistory(chatId: String) async {
         let id = chatId
         do {
-            try modelContext.delete(model: SDMessage.self, where: #Predicate { $0.chatId == id })
+            try modelContext.deleteInstances(model: SDMessage.self, where: #Predicate { $0.chatId == id })
             try modelContext.save()
             windows[chatId] = 0
         } catch {
@@ -1072,7 +1072,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             task.cancel()
         }
         do {
-            try modelContext.delete(model: SDMessage.self)
+            try modelContext.deleteInstances(model: SDMessage.self)
             try modelContext.save()
         } catch {
             throw .storageError
