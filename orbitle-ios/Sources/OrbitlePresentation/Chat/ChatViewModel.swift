@@ -378,10 +378,11 @@ public final class ChatViewModel {
                 guard !Task.isCancelled else { return }
                 self.latestLoaded = true
                 if self.historyError?.isRateLimit == true { self.historyError = nil }
-            } catch {
+            } catch let error as OrbitleError {
+                // В замыкании задачи тип ошибки не выводится из `fetchLatest`: приводим явно.
                 guard !Task.isCancelled, error.isRateLimit else { return }
                 self.scheduleLatestRetry()
-            }
+            } catch {}
         }
     }
 
