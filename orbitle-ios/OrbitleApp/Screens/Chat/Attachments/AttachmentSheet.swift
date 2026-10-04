@@ -257,6 +257,7 @@ struct AttachmentSheet: View {
                         .foregroundStyle(.white)
                 }
                 .clipped()
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!ChatCameraPicker.isAvailable)
@@ -531,6 +532,10 @@ private struct AssetCell: View {
                 // Миниатюра проявляется, а не выскакивает.
                 .animation(OrbitleMotion.fade, value: image != nil)
                 .clipped()
+                // `clipped` режет только картинку, а не касания: вертикальное фото (scaledToFill)
+                // выходило за ячейку и ловило нажатия соседей — выбиралась не та фотография,
+                // а карандаш редактирования у нижнего края перекрывала ячейка ниже.
+                .contentShape(Rectangle())
                 .overlay {
                     if number != nil {
                         Color.black.opacity(0.2)
