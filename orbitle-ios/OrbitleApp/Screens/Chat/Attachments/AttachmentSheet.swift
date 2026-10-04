@@ -20,6 +20,11 @@ struct AttachmentSheet: View {
     @State private var importerShown = false
     @State private var preparing = false
     @State private var failure: String?
+    @State private var editingPhoto: EditablePhoto?
+    @State private var editedPhotos: [String: AttachmentDraft] = [:]
+    @State private var photoOriginals: [String: AttachmentDraft] = [:]
+    @State private var photoHistories: [String: PhotoEditHistory] = [:]
+    @State private var pendingShot: ChatCameraPicker.Shot?
     @FocusState private var captionFocused: Bool
     @Namespace private var tabHighlight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -40,6 +45,7 @@ struct AttachmentSheet: View {
             }
         }
         .animation(OrbitleMotion.fade, value: preparing)
+        .disabled(preparing)
         .task { await library.prepare() }
         .task(id: contactList == nil) {
             guard let contactList else { return }
@@ -57,15 +63,24 @@ struct AttachmentSheet: View {
         .fileImporter(isPresented: $importerShown, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             importFiles(result)
         }
-        .fullScreenCover(isPresented: $cameraShown) {
+        .fullScreenCover(isPresented: $cameraShown, onDismiss: {
+            if let shot = pendingShot { pendingShot = nil; sendShot(shot) }
+        }) {
             ChatCameraPicker(
                 onShot: { shot in
+                    pendingShot = shot
                     cameraShown = false
-                    sendShot(shot)
                 },
                 onCancel: { cameraShown = false }
             )
             .ignoresSafeArea()
+        }
+        .fullScreenCover(item: $editingPhoto) { photo in
+            PhotoEditor(draft: photo.draft, initialHistory: photoHistories[photo.id] ?? PhotoEditHistory(), onSave: { edited, history in
+                editingPhoto = nil
+                if photo.fromCamera { onSend([edited], "") }
+                else { editedPhotos[photo.id] = edited; photoHistories[photo.id] = history }
+            }, onClose: { editingPhoto = nil })
         }
         .alert("Не получилось", isPresented: failureShown, presenting: failure) { _ in
             Button("OK", role: .cancel) { failure = nil }
@@ -97,7 +112,7 @@ struct AttachmentSheet: View {
                 .accessibilityLabel("Закрыть")
                 Spacer()
                 if model.hasSelection {
-                    Button("Сбросить") { model.clearSelection() }
+                    Button("Сбросить") { model.clearSelection(); editedPhotos = [:];photoHistories = [:];photoOriginals = [:] }
                         .font(.subheadline)
                         .transition(.opacity)
                 }
@@ -156,9 +171,19 @@ struct AttachmentSheet: View {
                             AssetCell(
                                 asset: asset,
                                 number: model.number(of: asset.localIdentifier),
+                                editedPath: editedPhotos[asset.localIdentifier]?.path,
                                 manager: ManagerRef(manager: library.images)
                             ) {
                                 model.toggle(asset.localIdentifier)
+                            }
+                            .overlay(alignment: .bottomTrailing) {
+                                if asset.mediaType == .image {
+                                    Button { editAsset(asset) } label: {
+                                        Image(systemName: "pencil").font(.system(size: 14, weight: .semibold))
+                                            .foregroundStyle(.white).frame(width: 32, height: 32)
+                                            .background(.black.opacity(0.55), in: Circle())
+                                    }.buttonStyle(.plain).padding(6).accessibilityLabel("Редактировать фото")
+                                }
                             }
                         }
                     }
@@ -406,13 +431,16 @@ struct AttachmentSheet: View {
             var drafts: [AttachmentDraft] = []
             do {
                 for ref in assets {
-                    drafts.append(try await MediaExporter.draft(for: ref))
+                    if let edited = editedPhotos[ref.asset.localIdentifier] { drafts.append(edited) }
+                    else { drafts.append(try await MediaExporter.draft(for: ref)) }
                 }
             } catch {
                 failure = error.localizedDescription
                 return
             }
             model.clearSelection()
+            editedPhotos = [:]
+            photoHistories = [:];photoOriginals = [:]
             onSend(drafts, caption)
         }
     }
@@ -424,13 +452,33 @@ struct AttachmentSheet: View {
             do {
                 let draft: AttachmentDraft
                 switch shot {
-                case .photo(let image): draft = try MediaExporter.draft(camera: image)
+                case .photo(let image):
+                    draft = try MediaExporter.draft(camera: image)
+                    editingPhoto = EditablePhoto(id: UUID().uuidString, draft: draft, fromCamera: true)
+                    return
                 case .video(let url): draft = try await MediaExporter.draft(cameraVideo: url)
                 }
                 onSend([draft], "")
             } catch {
                 failure = error.localizedDescription
             }
+        }
+    }
+
+    private func editAsset(_ asset: PHAsset) {
+        guard !preparing else { return }
+        if model.number(of: asset.localIdentifier) == nil { model.toggle(asset.localIdentifier) }
+        guard model.number(of: asset.localIdentifier) != nil else { return }
+        preparing = true
+        captionFocused = false
+        Task {
+            defer { preparing = false }
+            do {
+                let draft: AttachmentDraft
+                if let original = photoOriginals[asset.localIdentifier] { draft = original }
+                else { draft = try await MediaExporter.draft(for: AssetRef(asset: asset));photoOriginals[asset.localIdentifier] = draft }
+                editingPhoto = EditablePhoto(id: asset.localIdentifier, draft: draft, fromCamera: false)
+            } catch { failure = error.localizedDescription }
         }
     }
 
@@ -450,10 +498,17 @@ struct AttachmentSheet: View {
     }
 }
 
+private struct EditablePhoto: Identifiable {
+    let id: String
+    let draft: AttachmentDraft
+    let fromCamera: Bool
+}
+
 /// Ячейка галереи: превью, длительность видео и кружок с номером выбора.
 private struct AssetCell: View {
     let asset: PHAsset
     let number: Int?
+    let editedPath: String?
     let manager: ManagerRef
     let onTap: () -> Void
 
@@ -496,7 +551,11 @@ private struct AssetCell: View {
         .buttonStyle(.plain)
         .accessibilityLabel(asset.mediaType == .video ? "Видео" : "Фото")
         .accessibilityValue(number.map { "Выбрано, \($0)" } ?? "")
-        .task(id: asset.localIdentifier) {
+        .task(id: editedPath ?? asset.localIdentifier) {
+            if let editedPath {
+                image = UIImage(contentsOfFile: editedPath)
+                return
+            }
             let side = 140 * scale
             image = await PhotoLibrary.thumbnail(AssetRef(asset: asset), size: CGSize(width: side, height: side), manager: manager)
         }

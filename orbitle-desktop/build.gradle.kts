@@ -82,6 +82,7 @@ kotlin {
                     coreDir.resolve("shared/src/jvmMain/kotlin"),
                     // Общий с Android код (domain, data, presentation). Его тесты — в jvmTest ниже и в сборке orbitle-android.
                     layout.projectDirectory.dir("../orbitle-shared/src/main/kotlin"),
+                    layout.projectDirectory.dir("../orbitle-compose/src/main/kotlin"),
                     layout.projectDirectory.dir("src/main/kotlin"),
                 ),
             )

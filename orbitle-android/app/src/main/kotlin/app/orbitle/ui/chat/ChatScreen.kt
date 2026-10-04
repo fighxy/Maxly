@@ -209,6 +209,8 @@ fun ChatScreen(
         )
     }
     var attaching by remember { mutableStateOf(false) }
+    var editingPhoto by remember(model) { mutableStateOf<OutgoingFile?>(null) }
+    val photoSessions = remember(model) { mutableMapOf<String,app.orbitle.ui.photo.PhotoEditorSession>() }
     val recorderScope = rememberCoroutineScope()
     val voiceRecorder = remember { app.orbitle.media.AndroidVoiceRecorder(context.applicationContext, recorderScope) }
     val importScope = rememberCoroutineScope()
@@ -402,6 +404,7 @@ fun ChatScreen(
                     onCancelEdit = model::cancelEdit,
                     onAttach = { attaching = true },
                     onRemoveAttachment = model::removeAttachment,
+                    onEditPhoto = { editingPhoto = it },
                     panel = model.stickers,
                     onSticker = model::sendSticker,
                     onAnimoji = model::noteAnimoji,
@@ -441,6 +444,16 @@ fun ChatScreen(
             )
         }
     } }
+
+    editingPhoto?.let { original ->
+        app.orbitle.ui.photo.PhotoEditor(
+            file = original,
+            load = app.orbitle.media.AndroidPhotoEditor::load,
+            onClose = { editingPhoto = null },
+            session = photoSessions[original.path],
+            onSave = { edited, session -> photoSessions.remove(original.path);photoSessions[edited.path]=session;model.replaceAttachment(original, edited); editingPhoto = null },
+        )
+    }
 
     if (attaching) {
         AttachSheet(
@@ -690,6 +703,7 @@ private fun Composer(
     onCancelEdit: () -> Unit,
     onAttach: () -> Unit,
     onRemoveAttachment: (OutgoingFile) -> Unit,
+    onEditPhoto: (OutgoingFile) -> Unit,
     panel: StickerPanel? = null,
     onSticker: (Sticker) -> Unit = {},
     onAnimoji: (AnimatedEmoji) -> Unit = {},
@@ -727,7 +741,7 @@ private fun Composer(
                 }
             }
             if (state.attachments.isNotEmpty()) {
-                AttachmentStrip(state.attachments, onRemoveAttachment)
+                AttachmentStrip(state.attachments, onRemoveAttachment, onEditPhoto)
             }
             if (editing != null || reply != null) {
                 Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -862,7 +876,7 @@ private fun Composer(
 
 /** Выбранные вложения над полем ввода, у каждого — крестик. */
 @Composable
-private fun AttachmentStrip(items: List<OutgoingFile>, onRemove: (OutgoingFile) -> Unit) {
+private fun AttachmentStrip(items: List<OutgoingFile>, onRemove: (OutgoingFile) -> Unit, onEditPhoto: (OutgoingFile) -> Unit) {
     LazyRow(
         Modifier.fillMaxWidth().padding(top = 8.dp),
         contentPadding = PaddingValues(horizontal = 12.dp),
@@ -871,7 +885,7 @@ private fun AttachmentStrip(items: List<OutgoingFile>, onRemove: (OutgoingFile) 
         items(items, key = { it.path }) { item ->
             Box(Modifier.size(72.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
                 when (item.kind) {
-                    OutgoingFile.Kind.PHOTO -> AsyncImage(File(item.path), item.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    OutgoingFile.Kind.PHOTO -> AsyncImage(File(item.path), "Редактировать фото: ${item.name}", Modifier.fillMaxSize().clickable { onEditPhoto(item) }, contentScale = ContentScale.Crop)
                     OutgoingFile.Kind.VIDEO -> Icon(Icons.Filled.Videocam, item.name, Modifier.align(Alignment.Center), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutgoingFile.Kind.FILE -> Column(Modifier.align(Alignment.Center).padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Outlined.InsertDriveFile, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -882,6 +896,11 @@ private fun AttachmentStrip(items: List<OutgoingFile>, onRemove: (OutgoingFile) 
                     Modifier.align(Alignment.TopEnd).padding(3.dp).size(22.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)).clickable { onRemove(item) },
                     contentAlignment = Alignment.Center,
                 ) { Icon(Icons.Filled.Close, "Убрать", tint = Color.White, modifier = Modifier.size(14.dp)) }
+                if (item.kind == OutgoingFile.Kind.PHOTO) {
+                    Box(Modifier.align(Alignment.BottomStart).padding(3.dp).size(24.dp).clip(CircleShape).background(Color.Black.copy(alpha = .55f)).clickable { onEditPhoto(item) }, contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.Edit, "Редактировать фото", tint = Color.White, modifier = Modifier.size(14.dp))
+                    }
+                }
             }
         }
     }
