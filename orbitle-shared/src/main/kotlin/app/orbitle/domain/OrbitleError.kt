@@ -8,8 +8,10 @@ sealed class OrbitleError(message: String) : Exception(message) {
     data object NetworkUnavailable : OrbitleError("Нет соединения с сервером")
     /** Сессия истекла, нужно войти заново. */
     data object AuthExpired : OrbitleError("Сессия истекла, войдите снова")
-    /** Сервер вернул ошибку. */
-    data class Server(val code: String) : OrbitleError("Ошибка сервера ($code). Попробуйте позже")
+    /** Сервер вернул ошибку. На частые запросы он отвечает [RATE_LIMIT_CODE]: текст тогда просит подождать. */
+    data class Server(val code: String) : OrbitleError(
+        if (code == RATE_LIMIT_CODE) "Сервер просит подождать: слишком много запросов" else "Ошибка сервера ($code). Попробуйте позже",
+    )
     /** Запрос отклонён как неверный. */
     data object InvalidRequest : OrbitleError("Сервер отклонил запрос")
     /** Пользовательский ввод отклонён. Текст можно показать как есть. */
@@ -26,7 +28,13 @@ sealed class OrbitleError(message: String) : Exception(message) {
     /** Повтор того же действия позже может пройти без участия пользователя. */
     val isTransient: Boolean get() = this is NetworkUnavailable || this is Server || this is SyncFailed
 
+    /** Сервер ответил «слишком много запросов»: повтор пройдёт сам после паузы. */
+    val isRateLimit: Boolean get() = this is Server && code == RATE_LIMIT_CODE
+
     companion object {
+        /** Код ответа сервера, когда клиент спрашивает слишком часто. */
+        const val RATE_LIMIT_CODE = "too.many.requests"
+
         /** Код устарел, и сервис входа уже выслал новый. */
         val codeRenewed = Rejected("Код устарел — выслали новый")
     }

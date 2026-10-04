@@ -33,7 +33,16 @@ import java.util.concurrent.atomic.AtomicLong
 class CoreMessageRepository(
     private val client: MaxClient,
     private val clock: () -> Long = System::currentTimeMillis,
+    /**
+     * Сколько миллисекунд последняя страница чата не перезапрашивается: повторное открытие чата
+     * в это окно берёт стор. На частые `CHAT_HISTORY` сервер отвечает `too.many.requests`,
+     * а новые сообщения в это время всё равно приходят пушами.
+     */
+    private val latestReuseMs: Long = 10_000,
 ) : MessageRepository {
+
+    /** Когда последняя страница чата в последний раз пришла с сервера. */
+    private val latestAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     /** Свои сообщения, которых ещё нет на сервере: id чата → сообщения. */
     private val pending = MutableStateFlow<Map<String, List<Message>>>(emptyMap())
@@ -80,8 +89,15 @@ class CoreMessageRepository(
     }
 
     override suspend fun loadLatest(chatId: String) {
+        val at = latestAt[chatId]
+        if (at != null && clock() - at < latestReuseMs) return
+        refreshLatest(chatId)
+    }
+
+    override suspend fun refreshLatest(chatId: String) {
         val id = chatId.toLong()
-        MaxCoreGateway.call { client.loadHistory(id, from = null, backward = PAGE) }
+        MaxCoreGateway.read { client.loadHistory(id, from = null, backward = PAGE) }
+        latestAt[chatId] = clock()
         resolveSenders(id)
     }
 
@@ -89,7 +105,7 @@ class CoreMessageRepository(
         val id = chatId.toLong()
         val oldest = client.store.state.value.messagesOf(id).minByOrNull { it.time } ?: return false
         val before = client.store.state.value.messagesOf(id).size
-        val page = MaxCoreGateway.call { client.loadHistory(id, from = oldest.time, backward = PAGE) }
+        val page = MaxCoreGateway.read { client.loadHistory(id, from = oldest.time, backward = PAGE) }
         resolveSenders(id)
         val grown = client.store.state.value.messagesOf(id).size > before
         return grown && page.messages.any { it.id != oldest.id }
@@ -100,7 +116,7 @@ class CoreMessageRepository(
         val state = client.store.state.value
         val unknown = state.messagesOf(chatId).mapNotNull { it.sender }.distinct().filter { it !in state.users }
         if (unknown.isEmpty()) return
-        runCatching { MaxCoreGateway.call { client.loadUsers(unknown.take(100)) } }
+        runCatching { MaxCoreGateway.read { client.loadUsers(unknown.take(100)) } }
     }
 
     override suspend fun send(chatId: String, text: String, replyTo: String?) = enqueueText(chatId, text, replyTo, emptyList())
@@ -383,7 +399,7 @@ class CoreMessageRepository(
         val ids = messageIds.mapNotNull { it.toLongOrNull() }.distinct()
         for (chunk in ids.chunked(REACTIONS)) {
             // Пустой ответ и запись без счётчиков не значат «реакций нет»: ядро иначе стёрло бы их.
-            val found = MaxCoreGateway.call { client.api.messages.getReactions(chat, chunk) } ?: continue
+            val found = MaxCoreGateway.read { client.api.messages.getReactions(chat, chunk) } ?: continue
             for ((key, info) in found) {
                 val id = key.toLongOrNull() ?: continue
                 if (info.counters.none { it.count > 0 }) continue

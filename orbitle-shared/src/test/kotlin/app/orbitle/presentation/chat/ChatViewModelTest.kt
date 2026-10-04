@@ -45,9 +45,14 @@ class FakeMessages : MessageRepository {
 
     override fun messages(chatId: String) = list
     override fun header(chatId: String) = headerInfo.map { it }
-    override suspend fun loadLatest(chatId: String) = Unit
+    var latestFailure: Exception? = null
+    var olderFailure: Exception? = null
+    override suspend fun loadLatest(chatId: String) {
+        latestFailure?.let { throw it }
+    }
     override suspend fun loadOlder(chatId: String): Boolean {
         olderCalls++
+        olderFailure?.let { throw it }
         return hasOlder
     }
     override suspend fun send(chatId: String, text: String, replyTo: String?) {
@@ -140,6 +145,48 @@ class ChatViewModelTest {
 
     private fun chat(type: ChatType = ChatType.PRIVATE, unread: Int = 0) =
         Chat(id = "10", title = "Анна", type = type, updatedAtMs = now, unreadCount = unread, isOnline = true)
+
+    @Test
+    fun rateLimitKeepsStoredFeedQuiet() {
+        repo.list.value = listOf(msg("1"))
+        repo.latestFailure = OrbitleError.Server(OrbitleError.RATE_LIMIT_CODE)
+        val model = vm()
+        assertNull(model.messages.value)
+        assertFalse(model.state.value.isLoading)
+    }
+
+    @Test
+    fun rateLimitOnEmptyChatAsksToWait() {
+        repo.latestFailure = OrbitleError.Server(OrbitleError.RATE_LIMIT_CODE)
+        val model = vm()
+        assertEquals("Сервер просит подождать: слишком много запросов", model.messages.value)
+    }
+
+    @Test
+    fun olderPagePausesAfterFailure() {
+        repo.list.value = listOf(msg("1"), msg("2"))
+        repo.olderFailure = OrbitleError.Server(OrbitleError.RATE_LIMIT_CODE)
+        val model = vm()
+        model.loadOlder()
+        assertEquals(1, repo.olderCalls)
+        // Пауза сервера: без снекбара, и следующая прокрутка вверх не повторяет запрос сразу.
+        assertNull(model.messages.value)
+        model.loadOlder()
+        assertEquals(1, repo.olderCalls)
+    }
+
+    @Test
+    fun composerOnlyWhereYouCanWrite() {
+        // Чата нет в сторе (канал из поиска): поле ввода не показывается.
+        assertFalse(vm().state.value.canWrite)
+        repo.headerInfo.value = ChatHeaderInfo(chat())
+        assertTrue(vm().state.value.canWrite)
+        repo.headerInfo.value = ChatHeaderInfo(chat(ChatType.CHANNEL).copy(canWrite = false))
+        assertFalse(vm().state.value.canWrite)
+        // «Избранное» пишется всегда, даже пока его строки нет в сторе.
+        repo.headerInfo.value = null
+        assertTrue(vm(chatId = Chat.SAVED_MESSAGES_ID).state.value.canWrite)
+    }
 
     @Test
     fun itemsNewestFirstWithDaySeparators() {

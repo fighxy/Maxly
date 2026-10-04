@@ -15,6 +15,7 @@ import app.orbitle.presentation.chat.VoicePlayer
 import app.orbitle.presentation.chatlist.ChatAvatar
 import app.orbitle.presentation.common.PresenceText
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -55,6 +56,11 @@ class ProfileViewModel(
     files: MessageFiles? = null,
     private val now: () -> Long = System::currentTimeMillis,
     private val presence: PresenceText = PresenceText(),
+    /**
+     * Пауза между страницами общих медиа (`CHAT_MEDIA`), мс. Без неё профиль слал запросы всех
+     * вкладок разом, и сервер отвечал `too.many.requests` заодно и истории открытого чата.
+     */
+    private val sharedPauseMs: Long = 400,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(build(profiles.cached(chatId) ?: ChatProfile(ChatProfile.Kind.USER, chatId, title.orEmpty()), loading = true))
@@ -72,6 +78,8 @@ class ProfileViewModel(
     private val loadingTabs = mutableSetOf<SharedMediaTab>()
     private var remoteStarted = false
     private var tabChosen = false
+    /** Когда ушёл последний запрос общих медиа. */
+    private var lastSharedAt = Long.MIN_VALUE
 
     init {
         viewModelScope.launch {
@@ -91,7 +99,8 @@ class ProfileViewModel(
                 rebuildShared()
                 if (!remoteStarted && window.any { m -> m.id.toLongOrNull() != null }) {
                     remoteStarted = true
-                    SharedMediaTab.entries.forEach(::loadMore)
+                    // Первые страницы вкладок по очереди, с паузой между ними.
+                    viewModelScope.launch { SharedMediaTab.entries.forEach { fetchPage(it) } }
                 }
             }
         }
@@ -106,26 +115,34 @@ class ProfileViewModel(
     /** Следующая страница вкладки с сервера: от самого старого уже полученного сообщения. */
     fun loadMore(tab: SharedMediaTab = _state.value.tab) {
         if (tab in finished || tab in loadingTabs) return
+        viewModelScope.launch { fetchPage(tab) }
+    }
+
+    private suspend fun fetchPage(tab: SharedMediaTab) {
+        if (tab in finished || tab in loadingTabs) return
         val anchor = cursors[tab] ?: window.lastOrNull { it.status == MessageStatus.SENT && it.id.toLongOrNull() != null }?.id ?: return
         loadingTabs += tab
         _state.update { it.copy(loadingShared = true) }
-        viewModelScope.launch {
-            try {
-                val page = profiles.sharedPage(chatId, tab, anchor)
-                val fresh = page.filter { it.id !in remote && window.none { w -> w.id == it.id } }
-                page.forEach { remote[it.id] = it }
-                val oldest = page.minByOrNull { it.timeMs }?.id
-                if (fresh.isEmpty() || oldest == null || oldest == anchor) finished += tab else cursors[tab] = oldest
-                rebuildShared()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                // Общие медиа с сервера — дополнение: окно чата уже показано.
-                finished += tab
-            } finally {
-                loadingTabs -= tab
-                _state.update { it.copy(loadingShared = loadingTabs.isNotEmpty()) }
+        try {
+            if (lastSharedAt != Long.MIN_VALUE) {
+                val wait = lastSharedAt + sharedPauseMs - now()
+                if (wait > 0) delay(wait)
             }
+            lastSharedAt = now()
+            val page = profiles.sharedPage(chatId, tab, anchor)
+            val fresh = page.filter { it.id !in remote && window.none { w -> w.id == it.id } }
+            page.forEach { remote[it.id] = it }
+            val oldest = page.minByOrNull { it.timeMs }?.id
+            if (fresh.isEmpty() || oldest == null || oldest == anchor) finished += tab else cursors[tab] = oldest
+            rebuildShared()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Общие медиа с сервера — дополнение: окно чата уже показано.
+            finished += tab
+        } finally {
+            loadingTabs -= tab
+            _state.update { it.copy(loadingShared = loadingTabs.isNotEmpty()) }
         }
     }
 

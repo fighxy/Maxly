@@ -40,7 +40,7 @@ class CoreProfileRepository(private val client: MaxClient) : ProfileRepository {
         val state = client.store.state.value
         val stored = state.chats[id]
         val chat = if (stored == null || stored.type != "DIALOG") {
-            runCatching { MaxCoreGateway.call { client.api.chats.getChat(id) } }.getOrNull() ?: stored
+            runCatching { MaxCoreGateway.read { client.api.chats.getChat(id) } }.getOrNull() ?: stored
         } else {
             stored
         }
@@ -48,10 +48,10 @@ class CoreProfileRepository(private val client: MaxClient) : ProfileRepository {
         val me = client.store.state.value.me
         val peer = chat?.let { ChatMapping.dialogPeer(it, me) } ?: me?.let { id xor it }
         if (peer == null || peer == me || peer == 0L) return ChatProfile(ChatProfile.Kind.SAVED, chatId)
-        val user = MaxCoreGateway.call { client.loadUsers(listOf(peer)) }.firstOrNull { it.id == peer }
+        val user = MaxCoreGateway.read { client.loadUsers(listOf(peer)) }.firstOrNull { it.id == peer }
             ?: client.store.state.value.users[peer]
             ?: throw app.orbitle.domain.OrbitleError.Rejected("Пользователь не найден")
-        val bot = if ("BOT" !in user.options) null else runCatching { MaxCoreGateway.call { client.api.bots.getBotInfo(peer) } }.getOrNull()
+        val bot = if ("BOT" !in user.options) null else runCatching { MaxCoreGateway.read { client.api.bots.getBotInfo(peer) } }.getOrNull()
         return userProfile(chatId, bot?.contact ?: user, bot?.commands?.map { ChatProfile.BotCommand(it.name, it.description) }, displayFrom = user)
     }
 
@@ -96,7 +96,7 @@ class CoreProfileRepository(private val client: MaxClient) : ProfileRepository {
 
     override suspend fun sharedPage(chatId: String, tab: SharedMediaTab, beforeMessageId: String): List<Message> {
         val id = chatId.toLong()
-        val page = MaxCoreGateway.call { client.api.messages.getChatMedia(id, beforeMessageId.toLong(), tab.attachTypes, forward = 0, backward = PAGE) }
+        val page = MaxCoreGateway.read { client.api.messages.getChatMedia(id, beforeMessageId.toLong(), tab.attachTypes, forward = 0, backward = PAGE) }
         val state = client.store.state.value
         return page.messages.map { MessageMapping.message(it, id, state) }.sortedByDescending { it.timeMs }
     }

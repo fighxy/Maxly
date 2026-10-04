@@ -24,13 +24,13 @@ interface CommentsRepository {
 class CoreCommentsRepository(private val client: MaxClient) : CommentsRepository {
     override suspend fun comments(chatId: String, postId: String, beforeMs: Long?, limit: Int): List<Message> {
         val chat = chatId.toLong()
-        val page = MaxCoreGateway.call {
+        val page = MaxCoreGateway.read {
             client.api.messages.getCommentHistory(chat, postId.toLong(), from = beforeMs ?: -1, backward = limit.coerceIn(1, 100))
         }
         val known = client.store.state.value.users
         val missing = page.mapNotNull { it.sender }.filter { it != 0L && it !in known }.distinct()
         // Без имён список всё равно показывается: такие авторы выйдут без подписи.
-        if (missing.isNotEmpty()) runCatching { missing.chunked(100).forEach { MaxCoreGateway.call { client.loadUsers(it) } } }
+        if (missing.isNotEmpty()) runCatching { missing.chunked(100).forEach { MaxCoreGateway.read { client.loadUsers(it) } } }
         val state = client.store.state.value
         return page.filter { beforeMs == null || it.time < beforeMs }
             .sortedBy { it.time }
@@ -46,7 +46,7 @@ class CoreCommentsRepository(private val client: MaxClient) : CommentsRepository
     override suspend fun counts(chatId: String, postIds: List<String>): Map<String, Int> {
         val ids = postIds.mapNotNull { it.toLongOrNull() }.distinct()
         if (ids.isEmpty()) return emptyMap()
-        return MaxCoreGateway.call { client.api.messages.getCommentsInfo(chatId.toLong(), ids) }
+        return MaxCoreGateway.read { client.api.messages.getCommentsInfo(chatId.toLong(), ids) }
             .associate { it.postId.toString() to maxOf(0, it.totalCount ?: 0) }
     }
 

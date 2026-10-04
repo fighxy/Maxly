@@ -30,8 +30,11 @@ interface MessageRepository {
     /** Шапка чата; `null`, пока чат не известен. */
     fun header(chatId: String): Flow<ChatHeaderInfo?>
 
-    /** Свежая страница истории. */
+    /** Свежая страница истории. Реализация может взять недавно полученную, не спрашивая сервер. */
     suspend fun loadLatest(chatId: String)
+
+    /** Свежая страница истории в обход окна [loadLatest]: после своего действия (голос в опросе). */
+    suspend fun refreshLatest(chatId: String) = loadLatest(chatId)
 
     /** Страница старше самого раннего сообщения. `false` — история кончилась. */
     suspend fun loadOlder(chatId: String): Boolean

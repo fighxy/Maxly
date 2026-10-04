@@ -47,7 +47,8 @@ class ProfileViewModelTest {
     private val repo = FakeMessages()
     private val profiles = FakeProfiles()
     private val now = 1_790_683_200_000L
-    private fun vm(title: String? = "Анна") = ProfileViewModel("10", title, profiles, repo, now = { now }, presence = PresenceText(ZoneOffset.UTC))
+    private fun vm(title: String? = "Анна", pauseMs: Long = 0) =
+        ProfileViewModel("10", title, profiles, repo, now = { now }, presence = PresenceText(ZoneOffset.UTC), sharedPauseMs = pauseMs)
 
     private fun msg(id: String, at: Long, text: String = "", vararg attachments: ChatAttachment, spans: List<TextSpan> = emptyList()) =
         Message(id, "10", "2", text, at, content = MessageContent(attachments = attachments.toList(), formatting = spans), authorName = "Анна")
@@ -121,6 +122,19 @@ class ProfileViewModelTest {
         val count = profiles.requests.size
         model.loadMore(SharedMediaTab.MEDIA)
         assertEquals(count, profiles.requests.size)
+    }
+
+    @Test
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun sharedPagesGoOneByOneWithPause() {
+        repo.list.value = listOf(msg("1", 1_000, "", ChatAttachment.Photo(PhotoContent("p1", "u1"))))
+        vm(pauseMs = 400)
+        // Сначала только первая вкладка: остальные ждут паузу, а не уходят разом.
+        assertEquals(listOf(SharedMediaTab.MEDIA), profiles.requests.map { it.first })
+        main.dispatcher.scheduler.advanceTimeBy(401)
+        assertEquals(listOf(SharedMediaTab.MEDIA, SharedMediaTab.FILES), profiles.requests.map { it.first })
+        main.dispatcher.scheduler.advanceUntilIdle()
+        assertEquals(SharedMediaTab.entries.toList(), profiles.requests.map { it.first })
     }
 
     @Test

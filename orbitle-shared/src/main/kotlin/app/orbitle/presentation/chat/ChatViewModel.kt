@@ -238,7 +238,14 @@ class ChatViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                show(e)
+                if (app.orbitle.data.CoreErrors.map(e).isRateLimit) {
+                    // Сервер просит подождать. Лента из стора остаётся без снекбара,
+                    // сверка повторится сама после паузы.
+                    if (history.isEmpty()) show(e)
+                    scheduleLatestRetry()
+                } else {
+                    show(e)
+                }
             }
             latestLoaded = true
             _state.update { it.copy(isLoading = false) }
@@ -246,9 +253,31 @@ class ChatViewModel(
         }
     }
 
+    private var latestRetry: kotlinx.coroutines.Job? = null
+
+    /** Повтор свежей страницы после `too.many.requests`, тихо: ошибки уже показаны или не нужны. */
+    private fun scheduleLatestRetry() {
+        latestRetry?.cancel()
+        latestRetry = viewModelScope.launch {
+            delay(RATE_LIMIT_RETRY_MS)
+            try {
+                repository.loadLatest(chatId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (app.orbitle.data.CoreErrors.map(e).isRateLimit) scheduleLatestRetry()
+            }
+        }
+    }
+
+    /** До этого времени старые страницы не спрашиваются: прокрутка у верха после ошибки
+     *  иначе повторяла бы запрос на каждое изменение ленты. */
+    private var olderRetryAt = 0L
+
     fun loadOlder() {
         val current = _state.value
         if (current.isLoadingOlder || !current.hasOlder || !latestLoaded || history.isEmpty()) return
+        if (now() < olderRetryAt) return
         _state.update { it.copy(isLoadingOlder = true) }
         viewModelScope.launch {
             val more = try {
@@ -256,7 +285,10 @@ class ChatViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                show(e)
+                val limited = app.orbitle.data.CoreErrors.map(e).isRateLimit
+                olderRetryAt = now() + if (limited) RATE_LIMIT_RETRY_MS else OLDER_RETRY_MS
+                // Пауза сервера: старые сообщения догрузятся при следующей прокрутке вверх.
+                if (!limited) show(e)
                 true
             }
             _state.update { it.copy(isLoadingOlder = false, hasOlder = more) }
@@ -614,7 +646,9 @@ class ChatViewModel(
             val placeholder = title?.let {
                 ChatHeaderUi(it, "", false, ChatAvatar(ChatAvatar.Kind.Initials(ChatAvatar.initials(it)), ChatAvatar.colorIndex(chatId)))
             }
-            _state.update { it.copy(header = placeholder) }
+            // Чата нет в сторе: канал или группа из поиска, по ссылке из поста. Писать туда нельзя,
+            // пока не подписался; новый диалог из контактов встаёт в стор заготовкой и сюда не попадает.
+            _state.update { it.copy(header = placeholder, canWrite = chatId == Chat.SAVED_MESSAGES_ID) }
             return
         }
         val chat = info.chat
@@ -762,7 +796,7 @@ class ChatViewModel(
         viewModelScope.launch {
             try {
                 repository.votePoll(chatId, message.id, poll.id, answerId)
-                repository.loadLatest(chatId)
+                repository.refreshLatest(chatId)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1063,6 +1097,10 @@ class ChatViewModel(
         const val REACTIONS_BATCH = 100
         /** Пауза перед повтором реакций и счётчиков после ошибки сервера. */
         const val RETRY_AFTER_ERROR_MS = 30_000L
+        /** Через сколько повторить свежую страницу после `too.many.requests`. */
+        const val RATE_LIMIT_RETRY_MS = 20_000L
+        /** Пауза перед следующей старой страницей после ошибки. */
+        const val OLDER_RETRY_MS = 5_000L
         const val REACTION_FAILURE = "Не удалось поставить реакцию"
     }
 }

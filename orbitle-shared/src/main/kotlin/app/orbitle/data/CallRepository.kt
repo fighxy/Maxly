@@ -23,9 +23,9 @@ class CoreCallRepository(private val client: MaxClient) : CallRepository {
 
     override suspend fun refresh() {
         val me = client.store.state.value.me
-        val entries = MaxCoreGateway.call { client.api.calls.history() }
+        val entries = MaxCoreGateway.read { client.api.calls.history() }
         val unknown = entries.mapNotNull { it.peerId(me) }.distinct().filter { it !in client.store.state.value.users }
-        if (unknown.isNotEmpty()) runCatching { MaxCoreGateway.call { client.loadUsers(unknown.take(100)) } }
+        if (unknown.isNotEmpty()) runCatching { MaxCoreGateway.read { client.loadUsers(unknown.take(100)) } }
         val state = client.store.state.value
         _calls.value = entries.map { record(it, me, state) }
     }

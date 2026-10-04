@@ -63,7 +63,7 @@ class CoreChatRepository(
     override suspend fun refresh() {
         if (refreshLock.isLocked) return
         refreshLock.withLock {
-            MaxCoreGateway.call {
+            MaxCoreGateway.read {
                 if (client.store.state.value.chats.isEmpty()) client.loadAllChats() else client.loadChats()
             }
             runCatching { MaxCoreGateway.call { client.loadFolders() } }

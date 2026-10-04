@@ -57,15 +57,32 @@ class MaxCoreGateway(private val client: MaxClient) : CoreGateway {
             is ClientState.Failed -> CorePhase.FAILED
         }
 
-        /** Вызов ядра с переводом исключения в [CoreFailure]. Отмена проходит как есть. */
+        /**
+         * Вызов ядра с переводом исключения в [CoreFailure]. Отмена проходит как есть.
+         * Отказ `too.many.requests` включает паузу [ServerRateLimit] для чтений [read].
+         */
         suspend fun <T> call(block: suspend () -> T): T = try {
             block()
         } catch (e: CancellationException) {
             throw e
         } catch (e: CoreFailure) {
+            // Уже переведена вложенным вызовом (и пауза уже учтена) или это отказ паузы.
             throw e
         } catch (e: Throwable) {
-            throw failureOf(e)
+            val failure = failureOf(e)
+            if (ServerRateLimit.isLimit(failure.key)) ServerRateLimit.shared.noteLimited()
+            throw failure
+        }
+
+        /**
+         * Фоновое чтение (история, комментарии, общие медиа, карточки, реакции, звонки): во время
+         * паузы после `too.many.requests` сразу получает тот же отказ, не дёргая сервер.
+         */
+        suspend fun <T> read(limit: ServerRateLimit = ServerRateLimit.shared, block: suspend () -> T): T {
+            if (limit.remainingMs() != null) throw CoreFailure("SERVER", ServerRateLimit.KEY, "пауза после too.many.requests")
+            val value = call(block)
+            limit.noteSuccess()
+            return value
         }
 
         fun failureOf(e: Throwable): CoreFailure {
