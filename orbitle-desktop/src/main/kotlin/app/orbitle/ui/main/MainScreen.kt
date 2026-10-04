@@ -297,6 +297,7 @@ private fun SettingsPane(
     onOpenMiniApp: (MiniApp.Kind) -> Unit,
 ) {
     val securityModel = viewModel { SecurityViewModel(container.account) }
+    val limits by container.accountLimits.state.collectAsStateWithLifecycle()
     when (page) {
         SettingsPage.Home -> SettingsScreen(
             account,
@@ -315,6 +316,7 @@ private fun SettingsPane(
             onFolders = { onOpen(SettingsPage.Folders) },
             onMessages = { onOpen(SettingsPage.Messages) },
             profileLink = profileLink,
+            accountLimits = limits,
         )
         SettingsPage.Messages -> MessagesScreen(
             accountModel,

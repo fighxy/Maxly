@@ -1,5 +1,6 @@
 package app.orbitle.data
 
+import app.orbitle.domain.AccountLimits
 import app.orbitle.domain.AuthPhase
 import app.orbitle.domain.ConnectionState
 import app.orbitle.domain.OrbitleError
@@ -61,7 +62,8 @@ class SessionManagerTest {
     }
     private var signedIn = mutableListOf<String>()
     private var cleared = 0
-    private var fresh = 0
+    private val freshEntries = mutableListOf<AccountLimits.Entry>()
+    private val fresh get() = freshEntries.size
 
     private fun TestScope.session() = SessionManager(
         core,
@@ -69,7 +71,7 @@ class SessionManagerTest {
         ids,
         onSignedIn = { signedIn += it },
         onSignedOut = { cleared += 1 },
-        onFreshSession = { fresh += 1 },
+        onFreshSession = { freshEntries += it },
     )
 
     private suspend inline fun expectError(expected: OrbitleError, block: () -> Unit) {
@@ -143,6 +145,10 @@ class SessionManagerTest {
         assertEquals(2, fresh)
         restored.register("Иван", "")
         assertEquals(3, fresh)
+        assertEquals(
+            listOf(AccountLimits.Entry.LOGIN, AccountLimits.Entry.LOGIN, AccountLimits.Entry.REGISTRATION),
+            freshEntries,
+        )
     }
 
     @Test

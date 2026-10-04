@@ -38,7 +38,8 @@ import app.orbitle.platform.AppPaths
 import app.orbitle.presentation.auth.AuthViewModel
 import app.orbitle.presentation.chatlist.ChatListViewModel
 import app.orbitle.ui.auth.AuthScreen
-import app.orbitle.ui.auth.NewSessionNotice
+import app.orbitle.presentation.settings.AccountLimitsText
+import app.orbitle.ui.auth.AccountLimitsNotice
 import app.orbitle.ui.components.ChatBackdrop
 import app.orbitle.ui.components.LocalChatBackdrop
 import app.orbitle.ui.main.MainScreen
@@ -142,9 +143,12 @@ private fun Root(container: AppContainer) {
             AuthScreen(auth)
         }
     }
-    val showFresh by container.freshSessionNotice.collectAsStateWithLifecycle()
-    if (showFresh && phase is AuthPhase.SignedIn) {
-        NewSessionNotice(onDismiss = container::dismissFreshSessionNotice)
+    // Панель ограничений после входа: один раз, и после перезапуска тоже, если её не успели увидеть.
+    val limits by container.accountLimits.state.collectAsStateWithLifecycle()
+    val now = System.currentTimeMillis()
+    val notice = limits?.takeIf { phase is AuthPhase.SignedIn && it.needsNotice(now) }
+    if (notice != null) {
+        AccountLimitsNotice(AccountLimitsText().content(notice, now), onDismiss = container.accountLimits::markShown)
     }
 }
 

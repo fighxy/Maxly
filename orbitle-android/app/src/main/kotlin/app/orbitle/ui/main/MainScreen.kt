@@ -163,6 +163,7 @@ fun MainScreen(
                 ContactsScreen(contactsModel, onOpen = { row -> contactsModel.prepare(row.id, row.title)?.let { openChat(it, row.title) } })
             }
             composable(Tab.SETTINGS.route) {
+                val limits by container.accountLimits.state.collectAsStateWithLifecycle()
                 SettingsScreen(
                     account,
                     onAbout = { nav.navigate("about") },
@@ -180,6 +181,7 @@ fun MainScreen(
                     onFolders = { nav.navigate("folders") },
                     onMessages = { nav.navigate("messages") },
                     profileLink = app.orbitle.presentation.settings.ProfileLink.link(accountState.settings.inviteLink, account?.link),
+                    accountLimits = limits,
                 )
             }
             composable("messages") {

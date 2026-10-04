@@ -19,6 +19,7 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.outlined.Notifications
@@ -70,6 +71,9 @@ import androidx.compose.ui.unit.dp
 import app.orbitle.BuildConfig
 import app.orbitle.R
 import app.orbitle.domain.Account
+import app.orbitle.domain.AccountLimits
+import app.orbitle.presentation.settings.AccountLimitsText
+import app.orbitle.ui.auth.AccountLimitsNotice
 import app.orbitle.presentation.auth.PhoneNumber
 
 /** Шапка профиля и пункты настроек. */
@@ -93,9 +97,14 @@ fun SettingsScreen(
     onSferum: () -> Unit = {},
     /** Ссылка на свой профиль для QR и приглашения; `null` — сервер её ещё не дал. */
     profileLink: String? = null,
+    /** Отметка нового сеанса: пока ограничения входа действуют, вверху видна строка о них. */
+    accountLimits: AccountLimits? = null,
 ) {
     var confirm by rememberSaveable { mutableStateOf(false) }
     var sheet by rememberSaveable { mutableStateOf<String?>(null) }
+    val limitsText = remember { AccountLimitsText() }
+    val now = System.currentTimeMillis()
+    val limitsRow = limitsText.row(accountLimits, now)
     Scaffold(
         topBar = {
             TopAppBar(
@@ -112,6 +121,9 @@ fun SettingsScreen(
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())) {
             ProfileHeader(account, onEditProfile)
+            if (limitsRow != null) {
+                SettingsItem(Icons.Outlined.Timer, limitsRow.title, subtitle = limitsRow.subtitle) { sheet = "limits" }
+            }
             SettingsItem(Icons.Outlined.Edit, "Изменить профиль", onClick = onEditProfile)
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
             SettingsItem(Icons.Outlined.Badge, "Цифровой ID", onClick = onDigitalId)
@@ -140,6 +152,9 @@ fun SettingsScreen(
             )
             SettingsItem(Icons.AutoMirrored.Filled.Logout, stringResource(R.string.settings_logout), destructive = true) { confirm = true }
         }
+    }
+    if (sheet == "limits" && accountLimits != null) {
+        AccountLimitsNotice(limitsText.content(accountLimits, now)) { sheet = null }
     }
     if (profileLink != null) {
         when (sheet) {

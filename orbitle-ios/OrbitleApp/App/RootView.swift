@@ -72,8 +72,14 @@ struct RootView: View {
             MainTabView(container: container, router: router, list: list)
                 // Другой аккаунт — новые модели экранов, и их `.task` должны запуститься заново.
                 .id(container.currentUserId)
-                .sheet(isPresented: $container.showsNewSessionNotice) {
-                    NewSessionNoticeSheet()
+                // Ограничения после входа: один раз, и после перезапуска тоже, если панель не успели увидеть.
+                .sheet(isPresented: Binding(
+                    get: { container.accountLimits.pendingNotice(now: Date()) != nil },
+                    set: { if !$0 { container.accountLimits.markShown() } }
+                )) {
+                    if let limits = container.accountLimits.limits {
+                        AccountLimitsSheet(content: AccountLimitsText().content(limits, now: Date()))
+                    }
                 }
         }
     }
@@ -262,6 +268,11 @@ struct MainTabView: View {
                     Task {
                         let gone = await container.eraseChat(id: id, clearHistory: clear, forEveryone: everyone)
                         if gone { router.chatId = nil }
+                    }
+                },
+                onMarkUnread: { date in
+                    Task {
+                        if await container.markUnread(id: id, from: date), router.chatId == id { router.chatId = nil }
                     }
                 },
                 quickReaction: settings.quickReactionEnabled ? settings.quickReaction : nil

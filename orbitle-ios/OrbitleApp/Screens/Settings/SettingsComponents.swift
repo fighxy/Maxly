@@ -10,18 +10,27 @@ struct SettingsRowLabel: View {
     let systemImage: String
     let tint: Color
     var badge: String?
+    var subtitle: String?
 
-    init(_ title: String, systemImage: String, tint: Color, badge: String? = nil) {
+    init(_ title: String, systemImage: String, tint: Color, badge: String? = nil, subtitle: String? = nil) {
         self.title = title
         self.systemImage = systemImage
         self.tint = tint
         self.badge = badge
+        self.subtitle = subtitle
     }
 
     var body: some View {
         Label {
             HStack {
-                Text(title)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 if let badge {
                     Spacer()
                     Text(badge)

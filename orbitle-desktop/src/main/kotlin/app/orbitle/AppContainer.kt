@@ -40,7 +40,6 @@ import app.orbitle.presentation.chat.MessageFiles
 import app.orbitle.presentation.chat.VoicePlayer
 import app.orbitle.presentation.chatlist.ChatLocalMarks
 import app.orbitle.presentation.chatlist.PreferenceRecentSearches
-import kotlinx.coroutines.flow.MutableStateFlow
 import com.max.shared.MaxClient
 import com.max.shared.MaxClientConfig
 import kotlinx.coroutines.CoroutineScope
@@ -145,12 +144,8 @@ class AppContainer {
 
     val recentSearches = PreferenceRecentSearches(preferenceStore)
 
-    /** Панель после входа по коду. Восстановление сеанса её не поднимает. */
-    val freshSessionNotice = MutableStateFlow(false)
-
-    fun dismissFreshSessionNotice() {
-        freshSessionNotice.value = false
-    }
+    /** Ограничения нового сеанса: отметка входа для панели на главном экране и строки в настройках. */
+    val accountLimits = app.orbitle.data.AccountLimitsStore(preferenceStore)
 
     private val userIds = object : UserIdStore {
         override var lastUserId: String?
@@ -172,9 +167,9 @@ class AppContainer {
             chats.clear()
             calls.clear()
             recentSearches.clear()
-            freshSessionNotice.value = false
+            accountLimits.clear()
         },
-        onFreshSession = { freshSessionNotice.value = true },
+        onFreshSession = { accountLimits.grant(it) },
     )
 
     private companion object {

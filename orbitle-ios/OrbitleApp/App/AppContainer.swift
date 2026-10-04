@@ -17,8 +17,6 @@ final class AppContainer {
 
     private(set) var boot: Boot = .loading
     private(set) var phase: AuthPhase = .restoring
-    /// Только что вошли по коду (не восстановили сессию): экран показывает ограничения нового сеанса.
-    var showsNewSessionNotice = false
 
     // Зависимости и кэш моделей экранов не наблюдаются: модели создаются лениво прямо
     // во время отрисовки `RootView`, и запись в наблюдаемое свойство там заставила бы
@@ -71,6 +69,8 @@ final class AppContainer {
     let appearance: AppearanceSettings
     /// Приватный режим: тоже настройка устройства, выход из аккаунта её не сбрасывает.
     let privateMode: PrivateModeSettings
+    /// Ограничения нового сеанса: панель после входа и строка в настройках. Выход стирает отметку.
+    let accountLimits: AccountLimitsSettings
 
     static let loggingKey = "orbitle.debug.logging"
 
@@ -97,6 +97,7 @@ final class AppContainer {
         crashDumps = dumps
         appearance = AppearanceSettings(store: UserDefaultsAppearanceStore())
         privateMode = PrivateModeSettings(store: UserDefaultsPrivateModeStore())
+        accountLimits = AccountLimitsSettings(store: UserDefaultsAccountLimitsStore())
         UserDefaults.standard.removeObject(forKey: Self.retiredLocalFiltersKey)
         logs = directory.map { FileLogStore(directory: $0, enabled: enabled) }
         if let logs { Log.sink = logs.sink }
@@ -200,10 +201,13 @@ final class AppContainer {
                     switch next {
                     case .signedOut, .expired:
                         self.dropScreenModels()
+                        // Отметка относилась к прежнему сеансу. Истёкший токен её не стирает:
+                        // следующий вход по коду всё равно заменит её новой.
+                        if next == .signedOut { self.accountLimits.clear() }
                     case .signedIn(let id):
-                        if Self.isLoginStep(previous) {
-                            Log.info(.auth, "Новый сеанс на этом устройстве")
-                            self.showsNewSessionNotice = true
+                        // Вход с шага кода, пароля или имени, а не восстановление: ограничения нового сеанса.
+                        if let entry = previous.freshEntry {
+                            self.accountLimits.grant(entry)
                         }
                         // Кэш показывался под запомненным id, а ядро вошло другим аккаунтом
                         // (или вход после истёкшей сессии): модели чатов помнят прежнего автора.
@@ -325,6 +329,11 @@ final class AppContainer {
         return await listModel?.deleteNow(chatId: id, forEveryone: forEveryone) ?? false
     }
 
+    /// Пометка «непрочитано» с сообщения. `true` — сервер принял её, чат можно закрывать.
+    func markUnread(id: String, from date: Date) async -> Bool {
+        await listModel?.markUnread(chatId: id, from: date) ?? false
+    }
+
     /// Чаты для выбора при пересылке.
     /// Контакты для вкладки «Контакт» в листе вложений.
     func attachmentContacts() -> AsyncStream<[Contact]> {
@@ -404,14 +413,6 @@ final class AppContainer {
         let model = CallsViewModel(calls: calls, marks: marks)
         callsModel = model
         return model
-    }
-
-    /// Шаг входа по коду: из него `signedIn` значит новый сеанс, а не восстановление.
-    static func isLoginStep(_ phase: AuthPhase) -> Bool {
-        switch phase {
-        case .codeSent, .password, .registration: true
-        case .restoring, .signedOut, .signedIn, .expired: false
-        }
     }
 
     /// Фаза для журнала: без номера и прочих личных данных.

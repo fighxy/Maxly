@@ -24,12 +24,14 @@ struct SettingsView: View {
         case profileQR
         case invite
         case miniApp(MiniApp.Kind)
+        case accountLimits
 
         var id: String {
             switch self {
             case .profileQR: "qr"
             case .invite: "invite"
             case .miniApp(let kind): "app.\(kind.rawValue)"
+            case .accountLimits: "limits"
             }
         }
     }
@@ -40,6 +42,19 @@ struct SettingsView: View {
                 header
             }
             .listRowBackground(Color.clear)
+
+            // Пока ограничения нового сеанса действуют, о них напоминает строка под шапкой.
+            if let row = AccountLimitsText().row(container.accountLimits.limits, now: Date()) {
+                Section {
+                    Button {
+                        sheet = .accountLimits
+                    } label: {
+                        SettingsRowLabel(row.title, systemImage: "timer", tint: .orange, subtitle: row.subtitle)
+                            .contentShape(Rectangle())
+                    }
+                    .foregroundStyle(.primary)
+                }
+            }
 
             Section {
                 SettingsButtonRow(title: "Цифровой ID", systemImage: "person.text.rectangle.fill", tint: .blue) {
@@ -165,6 +180,10 @@ struct SettingsView: View {
                 )
             case .miniApp(let kind):
                 MiniAppSheet(model: container.miniAppModel(kind))
+            case .accountLimits:
+                if let limits = container.accountLimits.limits {
+                    AccountLimitsSheet(content: AccountLimitsText().content(limits, now: Date()))
+                }
             }
         }
         .fullScreenCover(isPresented: $showsViewer) {

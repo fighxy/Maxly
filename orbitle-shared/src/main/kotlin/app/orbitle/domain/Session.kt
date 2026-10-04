@@ -14,10 +14,14 @@ sealed interface AuthPhase {
     data object Expired : AuthPhase
 }
 
-/** Вход по коду, паролю или регистрации. Следующий успешный вход — новый сеанс, не восстановление. */
-fun AuthPhase.isFreshLogin(): Boolean = when (this) {
-    is AuthPhase.CodeSent, is AuthPhase.Password, AuthPhase.Registration -> true
-    AuthPhase.Restoring, AuthPhase.SignedOut, is AuthPhase.SignedIn, AuthPhase.Expired -> false
+/**
+ * Как начнётся сеанс, если следующий шаг — успешный вход: после кода или пароля это вход,
+ * после имени — регистрация. `null` — восстановление сохранённого сеанса, а не новый сеанс.
+ */
+fun AuthPhase.freshEntry(): AccountLimits.Entry? = when (this) {
+    is AuthPhase.CodeSent, is AuthPhase.Password -> AccountLimits.Entry.LOGIN
+    AuthPhase.Registration -> AccountLimits.Entry.REGISTRATION
+    AuthPhase.Restoring, AuthPhase.SignedOut, is AuthPhase.SignedIn, AuthPhase.Expired -> null
 }
 
 /** Соединение с сервером для баннера «Подключение…». */

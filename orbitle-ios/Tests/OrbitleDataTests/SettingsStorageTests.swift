@@ -186,3 +186,37 @@ struct CrashDumpStoreTests {
         #expect(dumps.list().count == 1)
     }
 }
+
+@Suite("Отметка нового сеанса на устройстве")
+struct AccountLimitsStoreTests {
+    @Test("Без записи — отметки нет, запись читается новым хранилищем, пустая отметка стирает ключи")
+    @MainActor
+    func roundTrip() throws {
+        let suite = "orbitle.tests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = UserDefaultsAccountLimitsStore(defaults: defaults)
+        #expect(store.load() == nil)
+        let limits = AccountLimits(entry: .login, grantedAt: Date(timeIntervalSince1970: 1_790_000_000), isShown: true)
+        store.save(limits)
+        #expect(defaults.string(forKey: UserDefaultsAccountLimitsStore.entryKey) == "login")
+        #expect(UserDefaultsAccountLimitsStore(defaults: defaults).load() == limits)
+        store.save(nil)
+        #expect(UserDefaultsAccountLimitsStore(defaults: defaults).load() == nil)
+        #expect(defaults.object(forKey: UserDefaultsAccountLimitsStore.grantedAtKey) == nil)
+    }
+
+    @Test("Незнакомый способ входа или запись без времени — отметки нет")
+    @MainActor
+    func unknownValues() throws {
+        let suite = "orbitle.tests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("guest", forKey: UserDefaultsAccountLimitsStore.entryKey)
+        defaults.set(1_790_000_000.0, forKey: UserDefaultsAccountLimitsStore.grantedAtKey)
+        #expect(UserDefaultsAccountLimitsStore(defaults: defaults).load() == nil)
+        defaults.set("registration", forKey: UserDefaultsAccountLimitsStore.entryKey)
+        defaults.removeObject(forKey: UserDefaultsAccountLimitsStore.grantedAtKey)
+        #expect(UserDefaultsAccountLimitsStore(defaults: defaults).load() == nil)
+    }
+}
