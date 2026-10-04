@@ -402,10 +402,6 @@ struct TranscriptBubble: View, Equatable {
             onForward: { viewModel.requestForward(message) },
             onDelete: { viewModel.requestDelete(message) },
             onEdit: state.canEdit ? { viewModel.beginEdit(message) } : nil,
-            onPin: message.status == .sent && Int64(message.id) != nil && message.content.pin == nil
-                ? { Task { await viewModel.pin(message) } }
-                : nil,
-            onVote: { answerId in Task { await viewModel.vote(message, answerId: answerId) } },
             allowsReply: state.canWrite,
             allowsReactions: state.reacts,
             quickReactions: state.reacts ? state.quickReactions : ReactionPalette.fallback,
@@ -425,7 +421,11 @@ struct TranscriptBubble: View, Equatable {
             onSeekVoice: { viewModel.seekVoice(message, to: $0) },
             onDoubleTap: state.reacts ? state.quickReaction.map { emoji in
                 { Task { await viewModel.toggleReaction(messageId: message.id, emoji: emoji) } }
-            } : nil
+            } : nil,
+            onPin: message.status == .sent && Int64(message.id) != nil && message.content.pin == nil
+                ? { Task { await viewModel.pin(message) } }
+                : nil,
+            onVote: { answerId in Task { await viewModel.vote(message, answerId: answerId) } }
         )
     }
 

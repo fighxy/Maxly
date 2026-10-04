@@ -250,23 +250,22 @@ struct MainTabView: View {
                 title: container.chatTitle(id: id),
                 commentsEnabled: container.commentsEnabled(id: id),
                 chatType: container.chatType(id: id),
-                quickReaction: settings.quickReactionEnabled ? settings.quickReaction : nil,
                 forwardTargets: { container.forwardTargets(excluding: id) },
                 canWrite: container.canWrite(id: id),
                 isMuted: container.isMuted(id: id),
                 onToggleMute: { Task { await container.toggleMute(id: id) } },
+                contactList: { container.attachmentContacts() },
+                stickerPanel: container.stickerPanelModel(),
+                live: { container.headerLive(id: id) },
+                makeProfile: { container.profileViewModel(chatId: id) },
                 onEraseChat: { clear, everyone in
                     Task {
                         let gone = await container.eraseChat(id: id, clearHistory: clear, forEveryone: everyone)
                         if gone { router.chatId = nil }
                     }
                 },
-                contactList: { container.attachmentContacts() },
-                stickerPanel: container.stickerPanelModel(),
-                live: { container.headerLive(id: id) }
-            ) {
-                container.profileViewModel(chatId: id)
-            }
+                quickReaction: settings.quickReactionEnabled ? settings.quickReaction : nil
+            )
             .id(id)
         }
     }

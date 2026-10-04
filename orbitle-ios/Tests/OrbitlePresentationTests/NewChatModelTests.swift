@@ -89,7 +89,7 @@ private final class NewChatChats: ChatRepository, @unchecked Sendable {
 @Suite("Новое сообщение")
 @MainActor
 struct NewChatModelTests {
-    func make(_ contacts: [Contact] = [Contact(id: "3", firstName: "Анна", phone: "+79990000003")]) -> (NewChatModel, NewChatContacts, NewChatChats) {
+    private func make(_ contacts: [Contact] = [Contact(id: "3", firstName: "Анна", phone: "+79990000003")]) -> (NewChatModel, NewChatContacts, NewChatChats) {
         let people = NewChatContacts(contacts)
         let chats = NewChatChats()
         let model = NewChatModel(contacts: people, chats: chats, currentUserId: "1")
@@ -147,7 +147,8 @@ struct NewChatModelTests {
         model.consumeOpened()
         model.addFound()
         _ = await eventually { model.notice == "Добавлен в контакты" }
-        #expect(people.adds == [("8", "  Иван  ")])
+        #expect(people.adds.map(\.0) == ["8"])
+        #expect(people.adds.map(\.1) == ["  Иван  "])
         #expect(model.found?.added == true)
     }
 
@@ -170,7 +171,8 @@ struct NewChatModelTests {
         model.toggleMember("4")
         model.createGroup()
         _ = await eventually { model.opened?.id == "50" }
-        #expect(chats.groups == [("Друзья", ["3"])])
+        #expect(chats.groups.map(\.0) == ["Друзья"])
+        #expect(chats.groups.map(\.1) == [["3"]])
         #expect(model.opened?.draft == nil)
 
         model.consumeOpened()

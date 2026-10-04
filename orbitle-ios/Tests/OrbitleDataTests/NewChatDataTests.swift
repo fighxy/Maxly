@@ -52,7 +52,8 @@ struct NewChatDataTests {
         #expect(saved.id == "20")
         #expect(saved.firstName == "Иван")
         #expect(saved.lastName.isEmpty)
-        #expect(await core.contactAdds == [("20", "Иван")])
+        #expect(await core.contactAdds.map(\.id) == ["20"])
+        #expect(await core.contactAdds.map(\.firstName) == ["Иван"])
 
         let blank = try await repository.addFoundContact(userId: "20", firstName: "  ")
         #expect(blank.firstName.isEmpty)
@@ -73,7 +74,8 @@ struct NewChatDataTests {
         let when = Date(timeIntervalSince1970: 20)
         await api.setCreatedGroup(ChatRecord(id: "50", title: "Друзья", type: .group, updatedAt: when))
         #expect(try await chats.createGroup(title: "Друзья", memberIds: ["3"]) == "50")
-        #expect(await api.groupCalls == [("Друзья", ["3"])])
+        #expect(await api.groupCalls.map(\.0) == ["Друзья"])
+        #expect(await api.groupCalls.map(\.1) == [["3"]])
 
         await api.setCreatedChannel(nil)
         #expect(try await chats.createChannel(title: "Пусто") == nil)

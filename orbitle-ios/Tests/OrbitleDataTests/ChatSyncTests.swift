@@ -222,7 +222,9 @@ struct ChatSyncTests {
 
         try await parts.chats.clearHistory(chatId: "c1", forEveryone: false)
         let clears = await parts.api.historyClears
-        #expect(clears == [("c1", 100_000, false)])
+        #expect(clears.map(\.0) == ["c1"])
+        #expect(clears.map(\.1) == [Int64(100_000)])
+        #expect(clears.map(\.2) == [false])
         let kept = try #require(await row(parts.chats))
         #expect(kept.preview == nil)
         #expect(kept.lastMessageId == nil)
@@ -231,7 +233,9 @@ struct ChatSyncTests {
 
         try await parts.chats.delete(chatId: "c1", forEveryone: true)
         let deletes = await parts.api.chatDeletes
-        #expect(deletes == [("c1", 100_000, true)])
+        #expect(deletes.map(\.0) == ["c1"])
+        #expect(deletes.map(\.1) == [Int64(100_000)])
+        #expect(deletes.map(\.2) == [true])
         #expect(await row(parts.chats) == nil)
     }
 }
