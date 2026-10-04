@@ -235,11 +235,17 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
 
     /// Удаляет чат вместе с сообщениями. Сообщения без связи с чатом (записанные раньше
     /// самого чата) каскад не видит, поэтому они удаляются по `chatId` явно.
+    ///
+    /// Строка чата удаляется объектом, а не пакетным `delete(model:where:)`: пакетное удаление
+    /// в контексте, где только что удалены его сообщения, на iOS 27 роняло процесс внутри
+    /// SwiftData (сбой по сигналу 5 после «Удалить чат»).
     public func delete(chatId: String) throws(OrbitleError) {
         do {
             let id = chatId
             try modelContext.deleteInstances(model: SDMessage.self, where: #Predicate { $0.chatId == id })
-            try modelContext.delete(model: SDChat.self, where: #Predicate { $0.id == id })
+            if let chat = try chat(id: chatId) {
+                modelContext.delete(chat)
+            }
             try modelContext.save()
         } catch {
             throw .storageError
@@ -256,7 +262,9 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         typingUntil.removeAll()
         publishTyping()
         do {
-            try modelContext.delete(model: SDChat.self)
+            // По одному, как в `delete(chatId:)`: пакетное удаление по живому контексту
+            // небезопасно. Сообщения к этому времени уже стёрты, каскаду почти нечего делать.
+            try modelContext.deleteInstances(model: SDChat.self)
             try modelContext.save()
         } catch {
             throw .storageError
