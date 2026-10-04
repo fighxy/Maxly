@@ -64,6 +64,8 @@ public struct MessageBubble: View {
     private let onDoubleTap: (() -> Void)?
     /// Закрепить сообщение. `nil` — пункта нет.
     private let onPin: (() -> Void)?
+    /// Пометить чат непрочитанным с этого сообщения. `nil` — пункта нет.
+    private let onMarkUnread: (() -> Void)?
     /// Голос в опросе: id ответа.
     private let onVote: ((String) -> Void)?
 
@@ -121,6 +123,7 @@ public struct MessageBubble: View {
         onSeekVoice: ((Double) -> Void)? = nil,
         onDoubleTap: (() -> Void)? = nil,
         onPin: (() -> Void)? = nil,
+        onMarkUnread: (() -> Void)? = nil,
         onVote: ((String) -> Void)? = nil
     ) {
         self.message = message
@@ -161,6 +164,7 @@ public struct MessageBubble: View {
         self.roundPlayer = roundPlayer
         self.onDoubleTap = onDoubleTap
         self.onPin = onPin
+        self.onMarkUnread = onMarkUnread
         self.onVote = onVote
     }
 
@@ -226,6 +230,9 @@ public struct MessageBubble: View {
             }
             if let onPin, message.status == .sent {
                 Button("Закрепить", systemImage: "pin", action: onPin)
+            }
+            if let onMarkUnread {
+                Button("Пометить непрочитанным", systemImage: "envelope.badge", action: onMarkUnread)
             }
             if let onDelete {
                 Divider()

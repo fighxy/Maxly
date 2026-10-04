@@ -53,6 +53,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.MarkChatUnread
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -455,6 +456,7 @@ fun ChatScreen(
             onForward = { forwarding = message },
             onReactionUsers = { reactionUsers = model.reactionUsers(message) },
             onSave = { target -> requestSave(message, target) },
+            onMarkUnread = { model.markUnread(message, onBack) },
         )
     }
     reactionUsers?.let { users ->
@@ -911,6 +913,8 @@ private fun MessageActions(
     onForward: () -> Unit,
     onReactionUsers: () -> Unit,
     onSave: (SaveTarget) -> Unit,
+    /** Пометить чат непрочитанным с этого сообщения и закрыть его. */
+    onMarkUnread: () -> Unit,
 ) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val clipboard = LocalClipboardManager.current
@@ -1022,6 +1026,14 @@ private fun MessageActions(
                 leadingContent = { Icon(Icons.Filled.PushPin, null) },
                 colors = colors,
                 modifier = Modifier.clickable { model.pin(message); onDismiss() },
+            )
+        }
+        if (model.canMarkUnread(message)) {
+            ListItem(
+                headlineContent = { Text("Пометить непрочитанным") },
+                leadingContent = { Icon(Icons.Outlined.MarkChatUnread, null) },
+                colors = colors,
+                modifier = Modifier.clickable { onDismiss(); onMarkUnread() },
             )
         }
         if (model.canEdit(message)) {

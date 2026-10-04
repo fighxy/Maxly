@@ -393,6 +393,29 @@ public final class ChatListViewModel {
         await markRead(chatId)
     }
 
+    /// Пометка «непрочитано» с сообщения: чат снова непрочитан на сервере начиная с `date`.
+    /// Открытый чат перестаёт считаться открытым до запроса, иначе ответ тут же отметил бы его
+    /// прочитанным. `true` — сервер принял пометку, экран чата можно закрывать; при ошибке чат
+    /// снова считается открытым.
+    public func markUnread(chatId: String, from date: Date) async -> Bool {
+        let wasOpen = openChatId == chatId
+        if wasOpen {
+            openChatId = nil
+            rebuildItems()
+        }
+        do {
+            try await repository.markUnread(chatId: chatId, from: date)
+            return true
+        } catch {
+            if wasOpen, openChatId == nil {
+                openChatId = chatId
+                rebuildItems()
+            }
+            show(error)
+            return false
+        }
+    }
+
     /// Свайп «Прочитано / Непрочитано».
     public func toggleRead(chatId: String) async {
         guard let chat = chats.first(where: { $0.id == chatId }) else { return }

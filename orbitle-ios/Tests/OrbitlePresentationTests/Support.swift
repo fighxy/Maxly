@@ -204,6 +204,10 @@ actor FakeChatRepository: ChatRepository {
         try await record("\(unread ? "unread" : "read-mark") \(chatId)")
     }
 
+    func markUnread(chatId: String, from date: Date) async throws(OrbitleError) {
+        try await record("unread-from \(chatId) \(Int(date.timeIntervalSince1970))")
+    }
+
     func setMuted(_ muted: Bool, chatId: String) async throws(OrbitleError) {
         try await record("\(muted ? "mute" : "unmute") \(chatId)")
     }

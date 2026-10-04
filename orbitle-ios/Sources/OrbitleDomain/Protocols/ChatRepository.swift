@@ -102,6 +102,9 @@ public protocol ChatRepository: Sendable {
     func reorderPinned(_ chatIds: [String]) async throws(OrbitleError)
     /// Ручная пометка «непрочитано». Снимается при открытии чата.
     func setMarkedUnread(_ unread: Bool, chatId: String) async throws(OrbitleError)
+    /// Чат снова непрочитан на сервере начиная с сообщения, отправленного в `date`: сервер
+    /// ставит отметку прочтения перед ним, пометку видят и другие устройства.
+    func markUnread(chatId: String, from date: Date) async throws(OrbitleError)
     func setMuted(_ muted: Bool, chatId: String) async throws(OrbitleError)
     func setArchived(_ archived: Bool, chatId: String) async throws(OrbitleError)
     func delete(chatId: String, forEveryone: Bool) async throws(OrbitleError)
@@ -140,6 +143,7 @@ public extension ChatRepository {
     func setPinned(_ pinned: Bool, chatId: String) async throws(OrbitleError) { throw .invalidRequest }
     func reorderPinned(_ chatIds: [String]) async throws(OrbitleError) { throw .invalidRequest }
     func setMarkedUnread(_ unread: Bool, chatId: String) async throws(OrbitleError) { throw .invalidRequest }
+    func markUnread(chatId: String, from date: Date) async throws(OrbitleError) { throw .invalidRequest }
     func setMuted(_ muted: Bool, chatId: String) async throws(OrbitleError) { throw .invalidRequest }
     func setArchived(_ archived: Bool, chatId: String) async throws(OrbitleError) { throw .invalidRequest }
     func delete(chatId: String, forEveryone: Bool) async throws(OrbitleError) { throw .invalidRequest }

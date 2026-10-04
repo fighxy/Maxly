@@ -25,6 +25,7 @@ actor FakeMaxCore: MaxCore {
     var callLog: [CoreCall] = []
     var directoryError: CoreFailure?
     private(set) var marked: [String] = []
+    private(set) var unreadMarks: [Int64] = []
     private(set) var mediaCalls: [(items: [CoreOutgoingMedia], caption: String, replyTo: String)] = []
     private(set) var contactCalls: [(contactId: String, replyTo: String)] = []
     private(set) var didLogout = false
@@ -257,6 +258,11 @@ actor FakeMaxCore: MaxCore {
 
     func markRead(chatId: String, messageId: String) async throws {
         marked.append(messageId)
+    }
+
+    func markUnread(chatId: String, mark: Int64) async throws -> Int {
+        unreadMarks.append(mark)
+        return 4
     }
 
     func sendMedia(chatId: String, items: [CoreOutgoingMedia], caption: String, replyTo: String,
@@ -571,6 +577,10 @@ struct MaxAPIClientTests {
         let marked = await client.markRead(chatId: "1", messageId: "55")
         #expect(isSuccess(marked))
         #expect(await core.marked == ["55"])
+
+        // Пометка «непрочитано» уходит с временем сообщения в миллисекундах.
+        #expect(await client.markUnread(chatId: "1", from: Date(unixMillis: 1_700_000_000_123)) == .success(4))
+        #expect(await core.unreadMarks == [1_700_000_000_123])
 
         await core.failSend()
         #expect(await client.sendMessage(chatId: "1", text: "x", clientId: "local") == .failure(.offline))

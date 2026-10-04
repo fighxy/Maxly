@@ -412,6 +412,9 @@ public protocol MaxCore: Sendable {
     /// Число комментариев под постами канала: id поста → число. Посты без ответа сервера пропущены.
     func loadCommentCounts(chatId: String, postIds: [String]) async throws -> [String: Int]
     func markRead(chatId: String, messageId: String) async throws
+    /// Чат снова непрочитан начиная с сообщения, отправленного в `mark` (мс). Ответ — число
+    /// непрочитанных на сервере.
+    func markUnread(chatId: String, mark: Int64) async throws -> Int
     /// Поставить свою реакцию `emoji` или снять её (пустая строка). Непустой `postId` —
     /// комментарий этого поста. Ответ — реакции сервера (`reactionsJSON`) или пустая строка.
     func setReaction(chatId: String, messageId: String, postId: String, emoji: String) async throws -> String
@@ -557,6 +560,9 @@ public extension MaxCore {
     }
     func setPinnedChats(_ chatIds: [String]) async throws -> [String] {
         throw CoreFailure(kind: "UNKNOWN", key: nil)
+    }
+    func markUnread(chatId: String, mark: Int64) async throws -> Int {
+        throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
     }
     func mediaLink(chatId: String, messageId: String, kind: String, attachmentId: String) async throws -> String {
         throw CoreFailure(kind: "NOT_FOUND", key: nil)

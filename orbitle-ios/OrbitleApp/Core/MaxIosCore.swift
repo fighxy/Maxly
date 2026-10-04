@@ -299,6 +299,18 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func markUnread(chatId: String, mark: Int64) async throws -> Int {
+        try await call("markUnread") { done in
+            self.client.markUnread(chatId: chatId, mark: mark) { unread, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(Int(unread.int32Value)))
+                }
+            }
+        }
+    }
+
     func loadContacts() async throws -> [CoreContact] {
         try await call("loadContacts") { done in
             self.client.loadContacts { contacts, kind, key in

@@ -77,6 +77,8 @@ public protocol MaxAPI: Sendable {
     func forwardMessage(toChatId: String, fromChatId: String, messageId: String) async -> Result<MessageRecord, MaxAPIError>
     /// `messageId` nil значит, что локально нечего отмечать: сервер не вызывается.
     func markRead(chatId: String, messageId: String?) async -> Result<Void, MaxAPIError>
+    /// Чат непрочитан начиная с сообщения в `date`. Ответ — число непрочитанных на сервере.
+    func markUnread(chatId: String, from date: Date) async -> Result<Int, MaxAPIError>
     /// Закреплённые чаты целиком, сверху вниз. Ответ — список, который подтвердил сервер.
     func setPinnedChats(_ chatIds: [String]) async -> Result<[String], MaxAPIError>
     /// Выключить уведомления чата насовсем или включить обратно.
@@ -131,6 +133,7 @@ public extension MaxAPI {
     }
     /// Источник без серверных закреплённых: запрос отклоняется.
     func setPinnedChats(_ chatIds: [String]) async -> Result<[String], MaxAPIError> { .failure(.invalidResponse) }
+    func markUnread(chatId: String, from date: Date) async -> Result<Int, MaxAPIError> { .failure(.invalidResponse) }
     func setChatMuted(chatId: String, muted: Bool) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
     /// Источник без серверных папок.
     func folderUpdates() -> AsyncStream<[ChatFolder]> { AsyncStream { $0.yield([]); $0.finish() } }
@@ -371,6 +374,12 @@ public final class MaxAPIClient: MaxAPI, Sendable {
         guard let messageId, !messageId.isEmpty else { return .success(()) }
         return await catching {
             try await core.markRead(chatId: chatId, messageId: messageId)
+        }
+    }
+
+    public func markUnread(chatId: String, from date: Date) async -> Result<Int, MaxAPIError> {
+        await catching {
+            try await core.markUnread(chatId: chatId, mark: date.unixMillis)
         }
     }
 

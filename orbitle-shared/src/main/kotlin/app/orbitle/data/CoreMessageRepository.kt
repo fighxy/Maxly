@@ -361,6 +361,10 @@ class CoreMessageRepository(
         client.store.apply(MaxEvent.MessageRead(id, me, state.mark, false, 0, null))
     }
 
+    /** Стор ядро обновляет само: отметка прочтения и счётчик сервера. */
+    override suspend fun markUnread(chatId: String, fromMs: Long): Int =
+        MaxCoreGateway.call { client.markUnread(chatId.toLong(), fromMs) }
+
     /** Сообщения, чья реакция ещё ждёт сервер: сверка 180 их не перебивает. */
     private val pendingReactions = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 

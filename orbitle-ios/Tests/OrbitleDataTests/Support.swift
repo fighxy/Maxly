@@ -128,6 +128,17 @@ actor FakeMaxAPI: MaxAPI {
         return .success(())
     }
 
+    private(set) var markUnreadCalls: [String] = []
+    /// Ответ сервера на пометку «непрочитано»: число непрочитанных или ошибка.
+    var unreadReply: Result<Int, MaxAPIError> = .success(2)
+
+    func set(unreadReply: Result<Int, MaxAPIError>) { self.unreadReply = unreadReply }
+
+    func markUnread(chatId: String, from date: Date) async -> Result<Int, MaxAPIError> {
+        markUnreadCalls.append(chatId)
+        return unreadReply
+    }
+
     /// Списки закреплённых, ушедшие на сервер, по порядку.
     private(set) var pinCalls: [[String]] = []
     /// Ошибка следующих запросов закреплённых. `nil`: сервер подтверждает присланный список.

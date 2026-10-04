@@ -28,6 +28,8 @@ struct ChatTranscript: View {
     /// на кнопке «вниз» и прыжок к последнему сообщению.
     @State private var bottom = TranscriptBottomState()
     @State private var isOpening = true
+    @State private var position: String?
+    @State private var olderAnchor: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.chatWallpaper) private var wallpaper
 
@@ -36,9 +38,8 @@ struct ChatTranscript: View {
     static let feedInset: CGFloat = 8
     /// Сколько последних сообщений прогревают кэш картинок при открытии и новых сообщениях.
     static let prefetchCount = 40
-    /// На iOS 18 открытие и сверку держит низом сама прокрутка (`defaultScrollAnchor` для
-    /// `.sizeChanges`). Ручной `scrollTo` к низу ленивой ленты до того, как строки измерены,
-    /// иногда оставлял пустой экран, пока ленту не тронешь. На iOS 17 — как раньше.
+    /// iOS 17 требует ручного следования за новыми сообщениями; iOS 18 удерживает
+    /// низ через sizeChanges. Первое открытие на обеих версиях использует id сообщения.
     private static var scrollsToBottomByHand: Bool {
         if #available(iOS 18.0, *) { false } else { true }
     }
@@ -76,14 +77,14 @@ struct ChatTranscript: View {
                         bottom.atBottom && !viewModel.isRestoringHistory ? OrbitleMotion.transcript(viewModel.messagesChange, reduceMotion: reduceMotion) : nil,
                         value: viewModel.transcriptVersion
                     )
-                    // Реакция или правка меняет размер пузыря: соседи раздвигаются плавно.
-                    .animation(
-                        viewModel.messagesChange == .none && !viewModel.isRestoringHistory && bottom.atBottom ? OrbitleMotion.quick(reduceMotion: reduceMotion) : nil,
-                        value: viewModel.contentVersion
-                    )
+                    // Серверное обогащение (реакции/счётчики) не запускает анимацию
+                    // всей ленты. Действия пользователя анимируются у своего пузыря.
                 }
                 // Чат открывается сразу внизу, а не сверху до загрузки истории.
                 .defaultScrollAnchor(.bottom)
+                // Адресуем реальное сообщение: пустая метка за ещё не измеренными
+                // высокими постами не является надёжной целью первого позиционирования.
+                .scrollPosition(id: $position, anchor: .bottom)
                 .coordinateSpace(name: "transcript-viewport")
                 .modifier(TranscriptBottomTracking(bottom: $bottom, viewportHeight: geo.size.height))
                 // Клавиатура уходит, когда ленту тянут вниз вслед за пальцем или просто касаются
@@ -92,13 +93,15 @@ struct ChatTranscript: View {
                 // Касание ленты прячет клавиатуру. Без клавиатуры жест выключен, чтобы лента
                 // не ждала его при каждом касании.
                 .simultaneousGesture(TapGesture().onEnded { focus.wrappedValue = false }, including: focus.wrappedValue ? .all : .subviews)
-                .onChange(of: viewModel.transcriptVersion) { _, _ in follow(proxy) }
+                .onChange(of: viewModel.transcriptVersion, initial: true) { _, _ in follow(proxy) }
                 .onChange(of: viewModel.isRestoringHistory) { _, restoring in
                     guard !restoring else { return }
                     let opening = isOpening
                     isOpening = false
-                    guard Self.scrollsToBottomByHand, opening || bottom.atBottom else { return }
-                    jumpToBottom(proxy)
+                    guard opening || bottom.atBottom else { return }
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) { position = viewModel.messages.last?.id }
                 }
                 .chatSystemEdgeEffectHidden()
                 // Лёгкий переход в фон под нижними кнопками. Раньше кнопки «вниз»: она рисуется поверх.
@@ -109,6 +112,20 @@ struct ChatTranscript: View {
                             .padding(.horizontal, OrbitleTheme.pad + 8)
                             .padding(.bottom, 24)
                             .transition(.opacity)
+                    }
+                }
+                .overlay {
+                    if viewModel.messages.isEmpty && viewModel.isRestoringHistory {
+                        ProgressView("Загрузка сообщений…")
+                            .padding(16)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    } else if viewModel.messages.isEmpty, let error = viewModel.historyError {
+                        VStack(spacing: 12) {
+                            Text(error.userMessage).multilineTextAlignment(.center)
+                            Button("Повторить") { Task { await viewModel.loadLatest() } }
+                        }
+                        .padding(16)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
                     }
                 }
                 .animation(OrbitleMotion.fade, value: viewModel.showsSavedPlaceholder)
@@ -154,18 +171,19 @@ struct ChatTranscript: View {
             }
             .padding(.horizontal, 24)
             .padding(.top, 80)
-        } else if !viewModel.showsSavedPlaceholder {
+        } else if viewModel.latestLoaded && viewModel.messages.isEmpty && !viewModel.isRestoringHistory && viewModel.historyError == nil && !viewModel.showsSavedPlaceholder {
+            Text("Здесь пока нет сообщений")
+                .foregroundStyle(.secondary)
+                .padding(24)
+        } else if !viewModel.messages.isEmpty {
             Button("Раньше") {
                 // Старое ложится сверху: верхнее сообщение остаётся на месте.
-                let first = viewModel.messages.first?.id
+                olderAnchor = viewModel.messages.first?.id
                 Task {
                     await viewModel.loadOlder()
-                    guard let first else { return }
-                    var transaction = Transaction()
-                    transaction.disablesAnimations = true
-                    withTransaction(transaction) { proxy.scrollTo(first, anchor: .top) }
                 }
             }
+            .disabled(viewModel.isLoadingOlder || viewModel.isRestoringHistory)
             .font(.footnote)
             .padding(.top, 8)
         }
@@ -193,14 +211,35 @@ struct ChatTranscript: View {
     private func follow(_ proxy: ScrollViewProxy) {
         guard !viewModel.messages.isEmpty else { return }
         let change = viewModel.messagesChange
+        if case .prepended = change, let anchor = olderAnchor {
+            olderAnchor = nil
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { proxy.scrollTo(anchor, anchor: .top) }
+            return
+        }
+        if isOpening {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { position = viewModel.messages.last?.id }
+            if !viewModel.isRestoringHistory { isOpening = false }
+            return
+        }
         if viewModel.isRestoringHistory || change == .reload || change == .initial {
             // Первое открытие — сразу к последнему. Вернулись в чат (из профиля собеседника),
             // читая историю, — место в ленте не теряется.
-            if Self.scrollsToBottomByHand, isOpening || bottom.atBottom { jumpToBottom(proxy) }
+            if bottom.atBottom {
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { position = viewModel.messages.last?.id }
+            }
             return
         }
         guard case .appended(let count) = change, count > 0 else { return }
         let added = viewModel.messages.suffix(count)
+        // iOS 18 удерживает низ в той же layout-транзакции. Второй scrollTo с
+        // анимацией конкурировал с sizeChanges и сдвигал пузыри повторно.
+        if bottom.atBottom && !Self.scrollsToBottomByHand { return }
         if bottom.atBottom || added.contains(where: viewModel.isOutgoing) {
             withAnimation(OrbitleMotion.standard(reduceMotion: reduceMotion)) {
                 proxy.scrollTo(Self.bottomId, anchor: .bottom)
@@ -425,6 +464,7 @@ struct TranscriptBubble: View, Equatable {
             onPin: message.status == .sent && Int64(message.id) != nil && message.content.pin == nil
                 ? { Task { await viewModel.pin(message) } }
                 : nil,
+            onMarkUnread: viewModel.canMarkUnread(message) ? { viewModel.requestMarkUnread(message) } : nil,
             onVote: { answerId in Task { await viewModel.vote(message, answerId: answerId) } }
         )
     }

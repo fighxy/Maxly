@@ -274,6 +274,26 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         }
     }
 
+    /// Чат непрочитан на сервере начиная с сообщения в `date`. Счётчик в базе — ответ сервера,
+    /// но не меньше одного: как у пуша «непрочитано» с другого устройства.
+    public func markUnread(chatId: String, from date: Date) async throws(OrbitleError) {
+        let started = generation
+        let unread: Int
+        switch await api.markUnread(chatId: chatId, from: date) {
+        case .success(let count): unread = count
+        case .failure(let error): throw error.orbitleError
+        }
+        try ensureCurrent(started)
+        do {
+            guard let chat = try chat(id: chatId) else { return }
+            chat.unreadCount = max(unread, 1)
+            try modelContext.save()
+        } catch {
+            throw .storageError
+        }
+        notify()
+    }
+
     /// Сдвигает строку чата, когда пришло или ушло сообщение. `false`, если чата ещё нет в базе.
     ///
     /// Превью и время меняются, только если сообщение не старше строки: запоздавший пуш

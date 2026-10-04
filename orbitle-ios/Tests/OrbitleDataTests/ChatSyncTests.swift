@@ -200,6 +200,27 @@ struct ChatSyncTests {
         #expect(await parts.api.markReadCalls == ["c1"])
     }
 
+    @Test("Пометка «непрочитано»: счётчик сервера, но не меньше одного; ошибка не трогает строку")
+    func markUnread() async throws {
+        let parts = try await makeSync()
+        try await parts.chats.upsert([makeChat()])
+        try await parts.chats.markAsRead(chatId: "c1")
+        try await parts.chats.markUnread(chatId: "c1", from: Date(timeIntervalSince1970: 50))
+        #expect(await row(parts.chats)?.unreadCount == 2)
+
+        await parts.api.set(unreadReply: .success(0))
+        try await parts.chats.markUnread(chatId: "c1", from: Date(timeIntervalSince1970: 60))
+        #expect(await row(parts.chats)?.unreadCount == 1)
+
+        try await parts.chats.markAsRead(chatId: "c1")
+        await parts.api.set(unreadReply: .failure(.offline))
+        await #expect(throws: OrbitleError.self) {
+            try await parts.chats.markUnread(chatId: "c1", from: Date(timeIntervalSince1970: 70))
+        }
+        #expect(await row(parts.chats)?.unreadCount == 0)
+        #expect(await parts.api.markUnreadCalls == ["c1", "c1", "c1"])
+    }
+
     @Test("Удаление чата забирает и сообщения, записанные раньше чата")
     func deleteChatWithOrphans() async throws {
         let parts = try await makeSync()
