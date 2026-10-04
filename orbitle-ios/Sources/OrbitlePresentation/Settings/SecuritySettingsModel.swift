@@ -123,7 +123,7 @@ public final class SecuritySettingsModel {
         }
     }
 
-    private func changePassword(notice: String, work: () async throws(OrbitleError) -> Void) async {
+    private func changePassword(notice: String, work: () async throws -> Void) async {
         passwordWorking = true
         passwordError = nil
         passwordNotice = nil
@@ -135,7 +135,7 @@ public final class SecuritySettingsModel {
             passwordForm = .none
             passwordNotice = notice
         } catch {
-            passwordError = error.userMessage
+            passwordError = (error as? OrbitleError ?? .unknown).userMessage
         }
         passwordWorking = false
     }
