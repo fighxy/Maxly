@@ -307,8 +307,10 @@ final class AppContainer {
 
     /// Комментарии есть у постов канала.
     /// Можно ли писать в чат. Если сервер не сказал: в канал — нет, в остальные — да.
-    func canWrite(id: String) -> Bool {
-        guard let chat = listModel?.chat(id: id) else { return true }
+    /// Новый диалог из контактов — да. `nil` — чата нет в списке (канал из поиска, группа
+    /// по ссылке): экран чата решает по карточке, а не открывает поле ввода наугад.
+    func canWrite(id: String) -> Bool? {
+        guard let chat = listModel?.chat(id: id) else { return dialogDrafts[id] == nil ? nil : true }
         return chat.canWrite ?? (chat.type != .channel)
     }
 

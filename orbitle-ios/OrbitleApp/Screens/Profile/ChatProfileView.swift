@@ -14,6 +14,13 @@ struct ChatProfileContext {
     var onShowMessage: (Message) -> Void
     /// Очистить переписку или удалить чат. `true` в первом аргументе — очистка, во втором — у всех.
     var onEraseChat: ((Bool, Bool) -> Void)? = nil
+    /// Поиск по чату. Профиль закрывается, поиск открывается на экране чата.
+    var onSearch: (() -> Void)? = nil
+    /// Опрос и отложенная отправка. `nil` — в этот чат писать нельзя.
+    var onPoll: (() -> Void)? = nil
+    var onSchedule: (() -> Void)? = nil
+    /// Звонок собеседнику личного чата, `true` — видео. `nil` — звонить некому.
+    var onCall: ((Bool) -> Void)? = nil
 }
 
 /// Профиль собеседника, бота, группы или канала: крупный аватар и имя,
@@ -217,7 +224,11 @@ struct ChatProfileView: View {
     @ViewBuilder
     private var actions: some View {
         let list = actionList
-        if !list.isEmpty || viewModel.shareURL != nil {
+        let more = moreItems
+        // Плиток не больше пяти: при звонках «Поделиться» уходит в «Ещё».
+        let shareTile = viewModel.shareURL != nil && list.count < 4
+        let shareInMenu = viewModel.shareURL != nil && !shareTile
+        if !list.isEmpty || viewModel.shareURL != nil || !more.isEmpty {
             HStack(spacing: 8) {
                 ForEach(list) { action in
                     Button(action: action.run) {
@@ -225,15 +236,20 @@ struct ChatProfileView: View {
                     }
                     .buttonStyle(ActionTileStyle())
                 }
-                if let url = viewModel.shareURL {
+                if shareTile, let url = viewModel.shareURL {
                     ShareLink(item: url) {
                         ActionTile(title: "Поделиться", systemImage: "square.and.arrow.up")
                     }
                     .buttonStyle(ActionTileStyle())
                 }
-                if !moreItems.isEmpty {
+                if !more.isEmpty || shareInMenu {
                     Menu {
-                        ForEach(moreItems, id: \.title) { item in
+                        if shareInMenu, let url = viewModel.shareURL {
+                            ShareLink(item: url) {
+                                Label("Поделиться", systemImage: "square.and.arrow.up")
+                            }
+                        }
+                        ForEach(more) { item in
                             Button(item.title, systemImage: item.systemImage, action: item.run)
                         }
                     } label: {
@@ -251,6 +267,10 @@ struct ChatProfileView: View {
         if viewModel.canWrite, let onWrite {
             list.append(Action(id: "write", title: "Написать", systemImage: "bubble.left.fill", run: onWrite))
         }
+        if let call = context?.onCall {
+            list.append(Action(id: "call", title: "Звонок", systemImage: "phone.fill") { call(false) })
+            list.append(Action(id: "video", title: "Видео", systemImage: "video.fill") { call(true) })
+        }
         if viewModel.shown.kind != .saved, let toggle = context?.onToggleMute {
             let muted = context?.isMuted == true
             list.append(Action(
@@ -260,11 +280,20 @@ struct ChatProfileView: View {
                 run: toggle
             ))
         }
+        if let search = context?.onSearch {
+            list.append(Action(id: "search", title: "Поиск", systemImage: "magnifyingglass", run: search))
+        }
         return list
     }
 
     private var moreItems: [Action] {
         var items: [Action] = []
+        if let poll = context?.onPoll {
+            items.append(Action(id: "poll", title: "Опрос", systemImage: "chart.bar", run: poll))
+        }
+        if let schedule = context?.onSchedule {
+            items.append(Action(id: "schedule", title: "Отправить позже", systemImage: "clock", run: schedule))
+        }
         if let url = viewModel.shareURL {
             items.append(Action(id: "link", title: "Скопировать ссылку", systemImage: "link") {
                 copy(url.absoluteString, message: "Ссылка скопирована")

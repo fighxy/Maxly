@@ -14,6 +14,8 @@ struct ChatComposer: View {
     /// Панель эмодзи и стикеров на месте клавиатуры.
     @Binding var panelShown: Bool
     let canWrite: Bool
+    /// Плашка вместо поля ввода. Нет, пока не ясно, можно ли писать (чат вне списка ждёт карточку).
+    var showsReadOnlyBar = true
     let chatType: ChatType
     let isMuted: Bool
     let onToggleMute: (() -> Void)?
@@ -79,7 +81,7 @@ struct ChatComposer: View {
             }
             if canWrite {
                 input
-            } else {
+            } else if showsReadOnlyBar {
                 readOnlyBar
             }
         }

@@ -15,7 +15,8 @@ struct ChatView: View {
     /// Чаты для пересылки (без текущего).
     var forwardTargets: () -> [ChatListItem] = { [] }
     /// Можно ли писать. Нет — вместо поля ввода плашка (в канале — уведомления).
-    var canWrite = true
+    /// `nil` — чата нет в списке (открыт из поиска или по ссылке): решает карточка чата.
+    var canWrite: Bool? = true
     var isMuted = false
     var onToggleMute: (() -> Void)?
     /// Контакты для вкладки «Контакт» листа вложений. `nil` — вкладка пустая.
@@ -66,9 +67,9 @@ struct ChatView: View {
     var body: some View {
         ChatTranscript(
             viewModel: viewModel,
-            chatType: chatType,
+            chatType: kind,
             commentsEnabled: commentsEnabled,
-            canWrite: canWrite,
+            canWrite: writable,
             reveal: reveal,
             focus: $composerFocused,
             bottomControlsTop: bottomControlsTop,
@@ -100,12 +101,14 @@ struct ChatView: View {
                     focus: $composerFocused,
                     attachmentsShown: $attachmentsShown,
                     panelShown: $panelShown,
-                    canWrite: canWrite,
-                    chatType: chatType,
+                    canWrite: writable,
+                    showsReadOnlyBar: canWrite != nil || profile?.profile != nil,
+                    chatType: kind,
                     isMuted: isMuted,
-                    onToggleMute: onToggleMute
+                    // Звук чата вне списка не переключить: его нет среди чатов аккаунта.
+                    onToggleMute: canWrite == nil ? nil : onToggleMute
                 )
-                if panelShown, canWrite, let stickerPanel {
+                if panelShown, writable, let stickerPanel {
                     StickerPanel(
                         model: stickerPanel,
                         height: keyboardHeight,
@@ -151,22 +154,8 @@ struct ChatView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(shownTitle), открыть профиль")
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button("Поиск", systemImage: "magnifyingglass") { searchShown = true }
-                    if canWrite {
-                        Button("Опрос", systemImage: "chart.bar") { pollShown = true }
-                        Button("Отправить позже", systemImage: "clock") { scheduleShown = true }
-                    }
-                    if chatType == .private, viewModel.peerId != nil {
-                        Button("Аудиозвонок", systemImage: "phone") { Task { await viewModel.signalCall(video: false) } }
-                        Button("Видеозвонок", systemImage: "video") { Task { await viewModel.signalCall(video: true) } }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-                .accessibilityLabel("Действия чата")
-            }
+            // Поиск, опрос, отложенная отправка и звонки — в профиле чата: справа в шапке
+            // только аватар.
             if let profile {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: openProfile) {
@@ -183,13 +172,7 @@ struct ChatView: View {
             if let profile {
                 ChatProfileView(
                     viewModel: profile,
-                    context: ChatProfileContext(
-                        chat: viewModel,
-                        isMuted: isMuted,
-                        onToggleMute: onToggleMute,
-                        onShowMessage: { showInChat($0) },
-                        onEraseChat: onEraseChat
-                    ),
+                    context: profileContext(for: profile),
                     live: live()
                 )
                 // Профиль открывают осознанно, и приватный режим его не прячет.
@@ -361,7 +344,7 @@ struct ChatView: View {
                 }
             } else {
                 if viewModel.canDeleteForEveryone(message) {
-                    Button(chatType == .private ? "Удалить у меня и у собеседника" : "Удалить у всех", role: .destructive) {
+                    Button(kind == .private ? "Удалить у меня и у собеседника" : "Удалить у всех", role: .destructive) {
                         Task { await viewModel.confirmDelete(message, forEveryone: true) }
                     }
                 }
@@ -411,6 +394,61 @@ struct ChatView: View {
         profileShown = true
     }
 
+    /// Тип чата для ленты и поля ввода: из списка, а для чата вне списка — из карточки.
+    private var kind: ChatType {
+        guard canWrite == nil, let card = profile?.profile else { return chatType }
+        switch card.kind {
+        case .channel: return .channel
+        case .group: return .group
+        case .user, .bot, .saved: return .private
+        }
+    }
+
+    /// Поле ввода только там, где можно писать. Чат вне списка (канал из поиска, группа по
+    /// ссылке до вступления) — только личный диалог, бот или «Избранное», и только когда
+    /// карточка уже пришла: иначе поле мелькнуло бы и пропало.
+    private var writable: Bool {
+        if let canWrite { return canWrite }
+        switch profile?.profile?.kind {
+        case .user?, .bot?, .saved?: return true
+        case .group?, .channel?, nil: return false
+        }
+    }
+
+    /// Профиль, открытый из чата: звук, общие медиа и действия, которые раньше были в меню шапки.
+    private func profileContext(for card: ChatProfileViewModel) -> ChatProfileContext {
+        // Чат вне списка (канал из поиска) не удалить и не заглушить: его нет среди чатов аккаунта.
+        let listed = canWrite != nil
+        var context = ChatProfileContext(
+            chat: viewModel,
+            isMuted: isMuted,
+            onToggleMute: listed ? onToggleMute : nil,
+            onShowMessage: { showInChat($0) },
+            onEraseChat: listed ? onEraseChat : nil
+        )
+        context.onSearch = { closeProfile { searchShown = true } }
+        if writable {
+            context.onPoll = { closeProfile { pollShown = true } }
+            context.onSchedule = { closeProfile { scheduleShown = true } }
+        }
+        if kind == .private, viewModel.peerId != nil, card.shown.kind == .user {
+            let chat = viewModel
+            context.onCall = { video in
+                Task { await chat.signalCall(video: video) }
+            }
+        }
+        return context
+    }
+
+    /// Действие из профиля, которое живёт на экране чата: профиль уезжает, потом оно открывается.
+    private func closeProfile(then action: @escaping () -> Void) {
+        profileShown = false
+        Task {
+            try? await Task.sleep(for: .milliseconds(350))
+            action()
+        }
+    }
+
     /// «Показать в чате» из общих медиа: профиль закрывается, сообщение подсвечивается.
     private func showInChat(_ message: Message) {
         profileShown = false
@@ -427,7 +465,7 @@ struct ChatView: View {
     }
 
     private var maskedTitle: String {
-        PrivateModeMask.chatTitle(type: chatType, isSavedMessages: viewModel.isSavedMessages)
+        PrivateModeMask.chatTitle(type: kind, isSavedMessages: viewModel.isSavedMessages)
     }
 
     /// Верх ленты в приватном режиме: стеклянная капсула «Отключить приватный режим»
@@ -507,6 +545,6 @@ struct ChatView: View {
 
     /// В канале с комментариями счётчики постов спрашиваются у сервера, когда лента меняется.
     private var wantsCommentCounts: Bool {
-        chatType == .channel && commentsEnabled != false
+        kind == .channel && commentsEnabled != false
     }
 }
