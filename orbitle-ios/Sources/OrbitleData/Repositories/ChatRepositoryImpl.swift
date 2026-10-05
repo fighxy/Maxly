@@ -83,10 +83,28 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         switch await api.fetchChats() {
         case .success(let records):
             try ensureCurrent(started)
-            try upsert(records)
+            try upsert(records.filter(\.isActive))
+            for record in records where !record.isActive {
+                await dropInactive(chatId: record.id)
+            }
         case .failure(let error):
             throw error.orbitleError
         }
+    }
+
+    /// Чат, в котором аккаунт больше не участвует (вышел, чат закрыт): уходит из списка вместе
+    /// с историей, как в Komet. Сервер не даёт из такого чата выйти или удалить его, а историю
+    /// отдаёт отказом `too.many.requests`.
+    public func dropInactive(chatId: String) async {
+        guard (try? chats(ids: [chatId]))?[chatId] != nil else { return }
+        do {
+            try delete(chatId: chatId)
+        } catch {
+            Log.info(.chats, "Неактивный чат \(chatId) не убран: \(error)")
+            return
+        }
+        Log.info(.chats, "Неактивный чат \(chatId) убран из списка")
+        await historyDropped?(chatId)
     }
 
     /// Один чат с сервера (`CHAT_INFO`).

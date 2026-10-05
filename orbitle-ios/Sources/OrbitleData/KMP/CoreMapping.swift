@@ -47,7 +47,7 @@ enum CoreMapping {
     }
 
     static func chat(_ chat: CoreChat) -> ChatRecord {
-        ChatRecord(
+        var record = ChatRecord(
             id: chat.id,
             title: chat.title,
             type: ChatType.fromCore(chat.type),
@@ -67,6 +67,8 @@ enum CoreMapping {
             lastForwarded: chat.lastForwarded,
             peerReadMark: chat.peerReadMs
         )
+        record.isActive = chat.active
+        return record
     }
 
     static func contact(_ contact: CoreContact, now: Date = Date()) -> Contact {

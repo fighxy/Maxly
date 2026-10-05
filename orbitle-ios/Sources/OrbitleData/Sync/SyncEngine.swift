@@ -237,6 +237,8 @@ public actor SyncEngine {
             if !update.mineKnown, event.chatId == focused {
                 scheduleOwnReactionCheck(chatId: event.chatId, messageId: event.messageId)
             }
+        case .chatGone:
+            await chats.dropInactive(chatId: event.chatId)
         case .transcription:
             guard !event.messageId.isEmpty, event.unread == 1 else { return }
             await messages.applyTranscription(chatId: event.chatId, messageId: event.messageId, text: event.text)

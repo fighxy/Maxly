@@ -112,13 +112,16 @@ public struct CoreChat: Sendable, Equatable {
     public var lastForwarded: Bool
     /// Отметка прочтения других участников, мс: свои сообщения до неё прочитаны. `0` — неизвестно.
     public var peerReadMs: Int64
+    /// Аккаунт участвует в чате (`status` пуст или `ACTIVE`). Покинутые и закрытые — `false`.
+    public var active: Bool
 
     public init(
         id: String, title: String, type: String, lastMessageId: String, lastText: String, updatedAtMs: Int64, unread: Int,
         avatarURL: String = "", lastAuthorId: String = "", lastMedia: String = "", lastThumbURL: String = "", comments: Int = -1,
         canWrite: Int = -1, muted: Int = -1, lastAuthorName: String = "", lastFromMe: Int = -1, lastForwarded: Bool = false,
-        peerReadMs: Int64 = 0
+        peerReadMs: Int64 = 0, active: Bool = true
     ) {
+        self.active = active
         self.id = id
         self.title = title
         self.type = type
@@ -347,6 +350,8 @@ public struct CoreEvent: Sendable, Equatable {
         /// Сервер расшифровал голосовое `messageId`: текст в `text`, статус в `unread`
         /// (`1` готово, `0` ещё идёт).
         case transcription
+        /// Аккаунт больше не участвует в чате `chatId` (вышел, чат закрыт): чат уходит из списка.
+        case chatGone
     }
 
     public var kind: Kind

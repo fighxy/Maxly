@@ -120,6 +120,16 @@ class ChatMappingTest {
     }
 
     @Test
+    fun chatsTheAccountLeftStayOutOfTheList() {
+        val live = CoreChat.from(mapOf("id" to 30L, "type" to "CHANNEL", "title" to "Живой", "status" to "ACTIVE"))!!
+        val left = CoreChat.from(mapOf("id" to 31L, "type" to "CHANNEL", "title" to "Покинутый", "status" to "LEFT"))!!
+        val closed = CoreChat.from(mapOf("id" to 32L, "type" to "CHAT", "title" to "Закрытый", "status" to "CLOSED"))!!
+        val unknown = CoreChat.from(mapOf("id" to 33L, "type" to "CHAT", "title" to "Без статуса"))!!
+        val s = MaxState(me = me, chats = listOf(live, left, closed, unknown).associateBy { it.id })
+        assertEquals(setOf("30", "33"), ChatMapping.chats(s, null, 0).map { it.id }.toSet())
+    }
+
+    @Test
     fun pinsAndMute() {
         val a = dialog(id = 10)
         val config = AccountConfig().withChatMute(10, -1)
