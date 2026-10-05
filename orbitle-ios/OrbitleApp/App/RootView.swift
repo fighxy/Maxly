@@ -130,6 +130,8 @@ struct MainTabView: View {
                 Task {
                     if visible { await calls.appeared() } else { await calls.refresh() }
                 }
+                // Пуши, пока приложение спало, могли потеряться: одна сверка вместо опроса по таймеру.
+                Task { await container.appBecameActive() }
             case .background:
                 calls.disappeared()
                 container.trimStorage()

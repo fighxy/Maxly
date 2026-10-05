@@ -3,8 +3,12 @@ import OrbitleDomain
 
 /// Синхронизация с сервером (architecture.md, «Синхронизация с сервером»).
 ///
-/// Когда соединение ядра онлайн, движок отправляет очередь и опрашивает открытый чат.
-/// Пуши пишутся в базу сразу. Опрос остаётся запасным путём, если пуш потерялся.
+/// Новое приходит пушами, они пишутся в базу сразу. С сервером движок сверяется только тогда,
+/// когда пуши могли потеряться: после подключения (вход, переподключение) и при возврате
+/// приложения на экран (`appBecameActive`) — список чатов и история открытого чата. Между ними
+/// раз в `pollInterval` (5 минут) сверяется только список чатов. Раньше список и история
+/// открытого чата спрашивались каждые 30 секунд, и сервер отвечал `too.many.requests` на все
+/// чтения сеанса, в том числе на комментарии.
 /// Состояние сети передаёт `SessionManager` по фазе ядра.
 public actor SyncEngine {
     private let outbox: OutboxQueue
@@ -28,12 +32,16 @@ public actor SyncEngine {
     private var isOnline = false
     private var watchedChats: Set<String> = []
     private var focused: String?
+    /// Когда была последняя полная сверка (список и история открытого чата).
+    private var lastFullSync: ContinuousClock.Instant?
+    /// Возврат на экран чаще этого не сверяет историю заново.
+    static let foregroundSyncGap: Duration = .seconds(60)
 
     public init(
         outbox: OutboxQueue,
         chats: ChatRepositoryImpl,
         messages: MessageRepositoryImpl,
-        pollInterval: Duration = .seconds(30)
+        pollInterval: Duration = .seconds(300)
     ) {
         self.outbox = outbox
         self.chats = chats
@@ -46,7 +54,15 @@ public actor SyncEngine {
     /// Чаты, история которых сейчас опрашивается.
     public var watched: Set<String> { watchedChats }
 
-    /// Сеть появилась: отправить очередь и включить опрос.
+    /// Приложение вернулось на экран: пуши, пока оно спало, могли потеряться. Полная сверка,
+    /// если сеть есть и прошлая была больше минуты назад.
+    public func appBecameActive() async {
+        guard isOnline, pollTask != nil else { return }
+        if let lastFullSync, lastFullSync.duration(to: .now) < Self.foregroundSyncGap { return }
+        await pollOnce()
+    }
+
+    /// Сеть появилась: отправить очередь, сверить список и открытый чат и включить редкий опрос списка.
     public func networkBecameAvailable() async {
         Log.info(.sync, "Сеть есть: отправка очереди и опрос")
         isOnline = true
@@ -266,13 +282,16 @@ public actor SyncEngine {
     }
 
     /// Один цикл опроса. Ошибки не прерывают синхронизацию, следующий цикл повторит запрос.
-    public func pollOnce() async {
+    /// `history` — сверить и историю открытого чата (после подключения и возврата на экран);
+    /// периодический цикл спрашивает только список чатов.
+    public func pollOnce(history: Bool = true) async {
+        if history { lastFullSync = ContinuousClock.Instant.now }
         do {
             try await chats.refresh()
         } catch {
             if error != .cancelled { Log.warning(.sync, "Опрос списка чатов: \(error)") }
         }
-        for chatId in watchedChats {
+        for chatId in watchedChats where history {
             do {
                 try await messages.fetchLatest(chatId: chatId)
             } catch {
@@ -313,10 +332,13 @@ public actor SyncEngine {
     }
 
     /// Задача вне этого актора: `networkLost` ждёт её завершения и не должен занимать актор.
+    /// Первый цикл после подключения полный, следующие — только список чатов.
     private nonisolated func makePollTask(interval: Duration) -> Task<Void, Never> {
         Task { [weak self] in
+            var full = true
             while !Task.isCancelled {
-                await self?.pollOnce()
+                await self?.pollOnce(history: full)
+                full = false
                 try? await Task.sleep(for: interval)
             }
         }

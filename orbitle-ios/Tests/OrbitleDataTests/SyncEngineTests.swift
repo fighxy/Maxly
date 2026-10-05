@@ -38,6 +38,35 @@ struct SyncNetworkTests {
         await sync.networkLost()
         #expect(await sync.isPolling == false)
     }
+
+    @Test("Периодический цикл сверяет только список, полный — ещё и историю открытого чата")
+    func periodicPollSkipsHistory() async throws {
+        let api = FakeMaxAPI()
+        let (messages, outbox) = try await makeMessageStack(api: api)
+        let chats = ChatRepositoryImpl.make(stack: try SwiftDataStack(inMemory: true), api: api)
+        let sync = SyncEngine(outbox: outbox, chats: chats, messages: messages, pollInterval: .seconds(3600))
+        await sync.focus("c1")
+        await sync.pollOnce(history: false)
+        #expect(await api.historyFetches == 0)
+        await sync.pollOnce()
+        #expect(await api.historyFetches == 1)
+    }
+
+    @Test("Возврат на экран сверяет историю только онлайн и не сразу после прошлой сверки")
+    func foregroundSyncIsGated() async throws {
+        let api = FakeMaxAPI()
+        let (messages, outbox) = try await makeMessageStack(api: api)
+        let chats = ChatRepositoryImpl.make(stack: try SwiftDataStack(inMemory: true), api: api)
+        let sync = SyncEngine(outbox: outbox, chats: chats, messages: messages, pollInterval: .seconds(3600))
+        await sync.focus("c1")
+        await sync.appBecameActive()
+        #expect(await api.historyFetches == 0)
+        await sync.networkBecameAvailable()
+        #expect(await eventually { await api.historyFetches == 1 })
+        await sync.appBecameActive()
+        #expect(await api.historyFetches == 1)
+        await sync.networkLost()
+    }
 }
 
 @Suite("Синхронизация: пуши")

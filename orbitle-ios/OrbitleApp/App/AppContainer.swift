@@ -529,6 +529,11 @@ final class AppContainer {
         await listModel?.open(chatId: chatId)
     }
 
+    /// Приложение вернулось на экран: сверка с сервером того, что могло прийти без пушей.
+    func appBecameActive() async {
+        await sync?.appBecameActive()
+    }
+
     func logout() async {
         let userId = currentUserId
         await session?.logout()
