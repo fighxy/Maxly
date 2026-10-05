@@ -68,6 +68,8 @@ struct ChatView: View {
     /// Приватный режим: пузыри закрыты заглушкой или размытием, касание открывает на время.
     @Environment(\.privateMode) private var privateMode
     @Environment(PrivateModeSettings.self) private var privateModeSettings: PrivateModeSettings?
+    /// Истории собеседника: кольцо на аватаре шапки, касание открывает их.
+    @Environment(StoriesViewModel.self) private var stories: StoriesViewModel?
     @State private var reveal = PrivateModeReveal()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -167,7 +169,13 @@ struct ChatView: View {
             // только аватар.
             if let profile {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: openProfile) {
+                    Button {
+                        if let owner = storyOwner, stories?.ring(of: owner) != nil {
+                            stories?.open(owner)
+                        } else {
+                            openProfile()
+                        }
+                    } label: {
                         ChatHeaderAvatar(viewModel: profile, size: 36)
                     }
                     .buttonStyle(.plain)
@@ -406,6 +414,12 @@ struct ChatView: View {
 
     private var headerStatus: ChatHeaderStatus {
         profile?.headerStatus(live()) ?? .none
+    }
+
+    /// Собеседник личного чата — владелец колец историй. В приватном режиме колец нет.
+    private var storyOwner: String? {
+        guard !privateMode.isMasked, let card = profile?.shown, card.kind == .user else { return nil }
+        return card.peerId
     }
 
     private func openProfile() {

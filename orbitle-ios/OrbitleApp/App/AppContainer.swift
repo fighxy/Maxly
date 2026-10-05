@@ -30,6 +30,9 @@ final class AppContainer {
     @ObservationIgnored private var storageScreenModel: StorageSettingsModel?
     @ObservationIgnored private var mediaLinks: CoreMediaLinkResolver?
     @ObservationIgnored private var commentsRepository: CoreCommentsRepository?
+    /// Истории: одна модель на список, шапку чата и профиль.
+    @ObservationIgnored private var storiesRepository: CoreStoriesRepository?
+    @ObservationIgnored private var storiesModel: StoriesViewModel?
     @ObservationIgnored private let voicePlayer = SystemVoicePlayer()
     @ObservationIgnored private var sync: SyncEngine?
     private let recentSearches = RecentSearchesStore()
@@ -193,6 +196,7 @@ final class AppContainer {
             self.media = media
             self.mediaLinks = CoreMediaLinkResolver(core: core)
             self.commentsRepository = CoreCommentsRepository(core: core)
+            self.storiesRepository = CoreStoriesRepository(core: core)
             self.sync = sync
             boot = .ready
             phaseTask = Task {
@@ -233,6 +237,15 @@ final class AppContainer {
         if let authModel { return authModel }
         let model = AuthViewModel(auth: session)
         authModel = model
+        return model
+    }
+
+    /// Лента историй, кольца и просмотр. `nil`, пока зависимости не собраны.
+    func storiesViewModel() -> StoriesViewModel? {
+        guard let storiesRepository else { return nil }
+        if let storiesModel { return storiesModel }
+        let model = StoriesViewModel(repository: storiesRepository)
+        storiesModel = model
         return model
     }
 
@@ -574,6 +587,8 @@ final class AppContainer {
     /// Модели экранов прежнего аккаунта не должны пережить выход.
     private func dropScreenModels() {
         dialogDrafts.removeAll()
+        storiesModel?.stop()
+        storiesModel = nil
         let contacts = coreContacts
         let calls = coreCalls
         let actions = profileActions as? CoreProfileActions

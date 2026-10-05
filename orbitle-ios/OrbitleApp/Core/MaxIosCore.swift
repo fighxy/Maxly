@@ -545,10 +545,11 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     /// продлевает паузу для фоновых чтений.
     private static let pacedCalls: Set<String> = [
         "loadHistory", "loadCommentCounts", "loadSharedMedia", "loadProfile",
-        "loadChat", "loadChats", "loadReactions", "loadCallHistory", "loadAnimojis",
+        "loadChat", "loadChats", "loadReactions", "loadCallHistory", "loadAnimojis", "loadStoriesFeed",
     ]
-    /// Чтения, отказ которым включает паузу, хотя сами они её не ждут.
-    private static let limitAwareCalls: Set<String> = pacedCalls.union(["loadComments", "loadOpenedHistory"])
+    /// Чтения, отказ которым включает паузу, хотя сами они её не ждут. Истории владельца открыл
+    /// пользователь, как и комментарии.
+    private static let limitAwareCalls: Set<String> = pacedCalls.union(["loadComments", "loadOpenedHistory", "loadOwnerStories"])
 
     /// Вызов ядра с колбэком. Неудача пишется в журнал видом ошибки и ключом сервера.
     /// Во время паузы сервера чтения из `pacedCalls` сразу получают тот же отказ.

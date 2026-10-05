@@ -13,12 +13,17 @@ import OrbitlePresentation
 /// настоящая, но заголовок, автор, текст, миниатюра и аватар размыты.
 public struct ChatRow: View {
     private let original: ChatListItem
+    /// Кольцо историй собеседника; касание аватара открывает истории (`onStoryTap`).
+    private let storyRing: StoryRing?
+    private let onStoryTap: (() -> Void)?
     @ScaledMetric(relativeTo: .body) private var avatarSize = OrbitleTheme.avatar
     @Environment(\.privateMode) private var privateMode
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(item: ChatListItem) {
+    public init(item: ChatListItem, storyRing: StoryRing? = nil, onStoryTap: (() -> Void)? = nil) {
         self.original = item
+        self.storyRing = storyRing
+        self.onStoryTap = onStoryTap
     }
 
     /// Что рисуется: при заглушках — строка без имён и текста.
@@ -33,7 +38,7 @@ public struct ChatRow: View {
 
     public var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            ChatAvatarView(avatar: item.avatar, size: min(avatarSize, 76), isOnline: item.isOnline)
+            avatarView
             VStack(alignment: .leading, spacing: 2) {
                 titleLine
                 HStack(alignment: .top, spacing: 6) {
@@ -50,6 +55,21 @@ public struct ChatRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spokenLabel)
         .accessibilityAddTraits(.isButton)
+    }
+
+    /// Аватар; с историями — в кольце, и касание по нему открывает истории, а не чат.
+    /// Заглушки приватного режима колец не показывают.
+    @ViewBuilder
+    private var avatarView: some View {
+        let ring = privateMode == .placeholder ? nil : storyRing
+        let avatar = StoryRingAvatar(avatar: item.avatar, ring: ring, size: min(avatarSize, 76), isOnline: item.isOnline)
+        if ring != nil, let onStoryTap {
+            Button(action: onStoryTap) { avatar }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Истории")
+        } else {
+            avatar
+        }
     }
 
     // MARK: Первая строка

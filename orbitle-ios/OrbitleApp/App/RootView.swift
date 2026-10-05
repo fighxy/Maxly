@@ -92,6 +92,8 @@ struct MainTabView: View {
     @Bindable var list: ChatListViewModel
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.horizontalSizeClass) private var sizeClass
+    /// Новая история: системный выбор фото или видео (`StoriesHost`).
+    @State private var pickingStory = false
 
     var body: some View {
         TabView(selection: $router.tab) {
@@ -106,6 +108,11 @@ struct MainTabView: View {
         // Приватный режим: вид для строк и пузырей, а сама настройка — для кнопок-переключателей.
         .environment(\.privateMode, container.privateMode.display)
         .environment(container.privateMode)
+        // Истории: кольца в списке, шапке чата и профиле, просмотр и публикация.
+        .modifier(StoriesHost(stories: container.storiesViewModel(), picking: $pickingStory, afterStart: {
+            let account = container.accountSettingsModel()
+            if account.profile == nil { await account.reloadProfile() }
+        }))
         // Бейдж «Звонков» нужен и до первого открытия вкладки.
         .task {
             let calls = container.callsViewModel()
@@ -199,6 +206,13 @@ struct MainTabView: View {
         }
     }
 
+    /// Свой аватар для плитки «Ваша история».
+    private var selfAvatar: ChatAvatar {
+        let profile = container.accountSettingsModel().profile
+        let name = [profile?.firstName ?? "", profile?.lastName ?? ""].filter { !$0.isEmpty }.joined(separator: " ")
+        return StoryText.avatar(id: profile?.id ?? container.currentUserId, name: name, url: profile?.avatarURL)
+    }
+
     /// Группа и канал уже в списке. Личный диалог ещё запоминается, чтобы шапка знала имя.
     private func openCreated(_ opened: NewChatOpened) {
         if let draft = opened.draft { container.openDialog(draft) }
@@ -211,14 +225,20 @@ struct MainTabView: View {
             // iPhone: обычный стек. Чат прячет панель вкладок сам, и система анимирует её
             // вместе с переходом, в том числе при свайпе назад.
             NavigationStack(path: chatPath) {
-                ChatListView(viewModel: list, selection: $router.chatId, newChat: container.newChatModel(), onOpened: openCreated)
+                ChatListView(
+                    viewModel: list, selection: $router.chatId, newChat: container.newChatModel(), onOpened: openCreated,
+                    selfAvatar: selfAvatar, onAddStory: { pickingStory = true }
+                )
                     .navigationDestination(for: String.self) { id in
                         chatScreen(id)
                     }
             }
         } else {
             NavigationSplitView {
-                ChatListView(viewModel: list, selection: $router.chatId, newChat: container.newChatModel(), onOpened: openCreated)
+                ChatListView(
+                    viewModel: list, selection: $router.chatId, newChat: container.newChatModel(), onOpened: openCreated,
+                    selfAvatar: selfAvatar, onAddStory: { pickingStory = true }
+                )
             } detail: {
                 if let id = router.chatId {
                     // Свой стек у колонки: из чата открывается профиль.
