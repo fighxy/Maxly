@@ -208,6 +208,12 @@ extension MaxIosCore {
         }
     }
 
+    func launchBotApp(botId: String, chatId: String, startParam: String) async throws -> MiniApp {
+        try await call("launchBotApp") { done in
+            self.client.launchBotApp(botId: botId, chatId: chatId, startParam: startParam) { done(Self.miniAppResult($0, $1, $2)) }
+        }
+    }
+
     func miniAppCallback(url: String) async throws -> MiniApp {
         try await call("miniAppCallback") { done in
             self.client.miniAppCallback(url: url) { done(Self.miniAppResult($0, $1, $2)) }

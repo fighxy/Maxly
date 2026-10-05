@@ -82,6 +82,10 @@ interface AccountRepository {
      * (`EXTERNAL_CALLBACK` 105, затем новый запуск 160).
      */
     suspend fun miniAppCallback(url: String): MiniApp
+
+    /** Мини-приложение бота (`WEB_APP_INIT_DATA` 160): «Открыть приложение» в чате, кнопка `OPEN_APP`. */
+    suspend fun launchBotApp(botId: String, chatId: String?, startParam: String?): MiniApp =
+        throw app.orbitle.domain.OrbitleError.InvalidRequest
 }
 
 class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
@@ -185,6 +189,11 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
         }
         val botId = (client.accountConfig.value ?: AccountConfig()).entryAppBotId(entry)
         miniAppOf(botId, client.api.bots.getWebAppInitData(botId), client.device.deviceId)
+    }
+
+    override suspend fun launchBotApp(botId: String, chatId: String?, startParam: String?): MiniApp = MaxCoreGateway.call {
+        val bot = botId.toLong()
+        miniAppOf(bot, client.api.bots.getWebAppInitData(bot, chatId?.toLongOrNull(), startParam?.takeIf { it.isNotBlank() }), client.device.deviceId)
     }
 
     override suspend fun miniAppCallback(url: String): MiniApp = MaxCoreGateway.call {

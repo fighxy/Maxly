@@ -392,6 +392,16 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         }
     }
 
+    public func pressButton(chatId: String, messageId: String, callbackId: String, payload: String?) async throws(OrbitleError) -> BotButtonAnswer {
+        switch await api.pressButton(chatId: chatId, messageId: messageId, callbackId: callbackId, payload: payload) {
+        case .success(let answer):
+            let text = answer.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return BotButtonAnswer(text: text.isEmpty ? nil : text, url: answer.url.isEmpty ? nil : URL(string: answer.url))
+        case .failure(let error):
+            throw error.orbitleError
+        }
+    }
+
     public func joinByLink(_ link: String) async throws(OrbitleError) -> String? {
         try await storeCreated(await api.joinByLink(link))
     }

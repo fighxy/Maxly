@@ -79,7 +79,8 @@ class CoreMessageRepository(
             val seen = peer?.let { state.presence[it]?.seen }?.let { if (it < 100_000_000_000L) it * 1000 else it } ?: 0L
             val typing = state.typingUsers(id, now).filter { it != state.me }
                 .map { state.users[it]?.displayName?.takeIf(String::isNotBlank) ?: "Кто-то" }
-            ChatHeaderInfo(chat, participants(raw.raw), seen, typing)
+            val bot = peer?.let { state.users[it] }?.takeIf { "BOT" in it.options && com.max.core.api.hasWebApp(it.options) }
+            ChatHeaderInfo(chat, participants(raw.raw), seen, typing, botAppId = bot?.id?.toString())
         }.distinctUntilChanged()
     }
 

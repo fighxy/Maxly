@@ -15,11 +15,22 @@ public final class ChatViewModel {
             messagesChange = isRestoringHistory ? .reload : CollectionChange.between(oldIds, ids)
             if !isRestoringHistory, Self.contentChanged(from: oldValue, to: messages) { contentVersion &+= 1 }
             if ids != oldIds { transcriptVersion &+= 1 }
-            rows = TranscriptLayout.rows(messages, currentUserId: currentUserId)
+            placeUnreadAnchor()
+            rows = TranscriptLayout.rows(messages, currentUserId: currentUserId, unreadAnchorId: unreadAnchorId)
             settleTranscripts()
             applyPinState()
         }
     }
+    /// Сообщение, над которым стоит «Непрочитанные сообщения». Ставится один раз при открытии
+    /// чата и не двигается, пока чат открыт; своё отправленное сообщение его убирает.
+    public private(set) var unreadAnchorId: String? {
+        didSet {
+            guard unreadAnchorId != oldValue else { return }
+            rows = TranscriptLayout.rows(messages, currentUserId: currentUserId, unreadAnchorId: unreadAnchorId)
+        }
+    }
+    /// Сколько непрочитанных было при открытии и ещё ждут места в ленте.
+    @ObservationIgnored private var pendingUnread = 0
     /// Закреп, который видит шапка чата. `nil` — закрепа нет.
     public private(set) var pinned: (id: String, text: String)?
     /// Голосовые (id вложения), чья расшифровка идёт: текст ещё не пришёл.
@@ -202,7 +213,15 @@ public final class ChatViewModel {
     }
 
     /// Свежая история загружена хотя бы раз: пустая лента — действительно пустой чат.
-    public private(set) var latestLoaded = false
+    public private(set) var latestLoaded = false {
+        didSet { if latestLoaded, !oldValue { placeUnreadAnchor() } }
+    }
+    /// Адрес, который экран должен открыть: ответ бота на кнопку или кнопка-ссылка.
+    public var openURLRequest: URL?
+    /// Мини-приложение бота, которое экран должен открыть листом.
+    public var botAppRequest: BotAppRequest?
+    /// Подпись кнопки бота, нажатие которой ждёт ответа сервера.
+    public private(set) var pressingButton: String?
     /// Кэш и серверная сверка при каждом открытии не являются live-вставками.
     public private(set) var isRestoringHistory = false
     @ObservationIgnored private var watchGeneration = 0
@@ -219,6 +238,58 @@ public final class ChatViewModel {
 
     public var canSend: Bool {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Чат открыт с `count` непрочитанными (до отметки прочтения): над первым из них встанет
+    /// разделитель, лента откроется на нём.
+    public func noteUnreadOnOpen(_ count: Int) {
+        pendingUnread = max(count, 0)
+        unreadAnchorId = nil
+        placeUnreadAnchor()
+    }
+
+    private func placeUnreadAnchor() {
+        guard pendingUnread > 0, unreadAnchorId == nil else { return }
+        guard let anchor = TranscriptLayout.unreadAnchor(messages, unread: pendingUnread, currentUserId: currentUserId, complete: latestLoaded) else { return }
+        pendingUnread = 0
+        unreadAnchorId = anchor
+    }
+
+    /// Нажатие inline-кнопки бота `CALLBACK` или `OPEN_APP`. Ссылку и копирование экран делает
+    /// сам. Ответ сервера с текстом — уведомление над полем, с адресом — `openURLRequest`.
+    public func press(_ button: InlineButton, in message: Message) async {
+        switch button.action {
+        case .callback:
+            guard let chats, let callbackId = message.content.keyboard?.callbackId, !callbackId.isEmpty,
+                  let serverId = message.serverId ?? (Int64(message.id) != nil ? message.id : nil) else {
+                showNotice("Кнопка не поддерживается")
+                return
+            }
+            pressingButton = button.text
+            defer { pressingButton = nil }
+            do {
+                let answer = try await chats.pressButton(chatId: chatId, messageId: serverId, callbackId: callbackId, payload: button.payload)
+                if let url = answer.url { openURLRequest = url }
+                if let text = answer.text { showNotice(text) }
+            } catch {
+                show(error)
+            }
+        case .openApp(let botId, let startParam):
+            guard let bot = botId ?? (peerIsBot ? peerId : nil) else {
+                showNotice("Не удалось открыть приложение")
+                return
+            }
+            botAppRequest = BotAppRequest(botId: bot, chatId: chatId, startParam: startParam, title: button.text)
+        case .link(let url):
+            openURLRequest = url
+        case .copy:
+            break
+        }
+    }
+
+    /// «Открыть приложение» в чате с ботом.
+    public func openBotApp(botId: String, title: String) {
+        botAppRequest = BotAppRequest(botId: botId, chatId: chatId, startParam: nil, title: title)
     }
 
     public func isOutgoing(_ message: Message) -> Bool {
@@ -453,6 +524,9 @@ public final class ChatViewModel {
         let mentions = mentionDraft
         let spans = animoji.spans(in: text) + mentions.spans(in: text)
         draft = ""
+        // Ответил — значит, прочитал: разделитель непрочитанных больше не нужен.
+        pendingUnread = 0
+        unreadAnchorId = nil
         animojiDraft.clear()
         mentionDraft.clear()
         replyTarget = nil
@@ -1340,6 +1414,11 @@ public final class ChatViewModel {
         }
     }
 
+    /// Короткое уведомление над полем ввода от экрана («Скопировано»).
+    public func announce(_ text: String) {
+        showNotice(text)
+    }
+
     private func showNotice(_ text: String) {
         notice = text
         Task { [weak self] in
@@ -1549,5 +1628,22 @@ public final class ChatViewModel {
         let tail = text[text.index(after: at)...]
         if tail.contains(where: \.isWhitespace) { return nil }
         return String(tail)
+    }
+}
+
+/// Запуск мини-приложения бота из чата: кнопка «Открыть приложение» или inline-кнопка `OPEN_APP`.
+public struct BotAppRequest: Identifiable, Equatable, Sendable {
+    public let botId: String
+    public let chatId: String
+    public let startParam: String?
+    public let title: String
+
+    public var id: String { "\(botId):\(startParam ?? "")" }
+
+    public init(botId: String, chatId: String, startParam: String?, title: String) {
+        self.botId = botId
+        self.chatId = chatId
+        self.startParam = startParam
+        self.title = title
     }
 }

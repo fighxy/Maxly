@@ -15,12 +15,14 @@ public struct TranscriptRow: Identifiable, Equatable, Sendable {
     /// Аватар автора у последнего пузыря подряд (в группах).
     public var showsAuthorAvatar: Bool
     public var isOutgoing: Bool
+    /// Над сообщением «Непрочитанные сообщения»: первое непрочитанное при открытии чата.
+    public var startsUnread: Bool = false
 
     public var id: String { message.id }
 }
 
 public enum TranscriptLayout {
-    public static func rows(_ messages: [Message], currentUserId: String, now: Date = Date()) -> [TranscriptRow] {
+    public static func rows(_ messages: [Message], currentUserId: String, unreadAnchorId: String? = nil, now: Date = Date()) -> [TranscriptRow] {
         messages.indices.map { index in
             let message = messages[index]
             let previous = index > 0 ? messages[index - 1] : nil
@@ -47,8 +49,24 @@ public enum TranscriptLayout {
                     authorId: message.authorId,
                     nextAuthorId: next?.authorId
                 ),
-                isOutgoing: outgoing
+                isOutgoing: outgoing,
+                startsUnread: unreadAnchorId != nil && message.id == unreadAnchorId
             )
         }
+    }
+
+    /// Первое непрочитанное из `unread` последних чужих сообщений (служебные и свои не
+    /// считаются, как и в счётчике сервера). Если ленты не хватает, а она уже сверена с
+    /// сервером (`complete`), — самое старое чужое сообщение ленты; иначе `nil`, ждём историю.
+    public static func unreadAnchor(_ messages: [Message], unread: Int, currentUserId: String, complete: Bool) -> String? {
+        guard unread > 0 else { return nil }
+        var seen = 0
+        var oldest: String?
+        for message in messages.reversed() where message.authorId != currentUserId && message.content.pin == nil {
+            seen += 1
+            oldest = message.id
+            if seen == unread { return message.id }
+        }
+        return complete ? oldest : nil
     }
 }

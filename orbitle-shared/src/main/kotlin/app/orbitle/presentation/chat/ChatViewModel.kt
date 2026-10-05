@@ -44,6 +44,11 @@ sealed interface ChatItem {
 
     data class Day(override val key: String, val label: String) : ChatItem
 
+    /** «Непрочитанные сообщения» над первым непрочитанным при открытии чата. */
+    data object Unread : ChatItem {
+        override val key: String get() = "unread"
+    }
+
     data class Service(override val key: String, val text: String) : ChatItem
 
     data class Bubble(
@@ -86,6 +91,8 @@ data class ChatUiState(
     val replyTo: Message? = null,
     val editing: Message? = null,
     val canWrite: Boolean = true,
+    /** Бот с мини-приложением: над полем ввода «Открыть приложение». */
+    val botAppId: String? = null,
     val isLoading: Boolean = true,
     val isLoadingOlder: Boolean = false,
     val hasOlder: Boolean = true,
@@ -177,6 +184,10 @@ class ChatViewModel(
     private var history: List<Message> = emptyList()
     private var header: ChatHeaderInfo? = null
     private var latestLoaded = false
+    /** Над этим сообщением «Непрочитанные сообщения»: ставится один раз при открытии. */
+    private var unreadAnchorId: String? = null
+    /** Непрочитанные при открытии, ещё не нашедшие места в ленте; `-1` — шапки ещё не было. */
+    private var pendingUnread = -1
     private var markedReadId: String? = null
     private var active = true
     /** Чат только что помечен непрочитанным и закрывается: прочтение не отправляется. */
@@ -401,6 +412,7 @@ class ChatViewModel(
         if (attachments.isNotEmpty() && _state.value.editing == null) {
             animojiDraft.clear()
             mentionDraft.clear()
+            dropUnreadSeparator()
             sendAttachments(attachments, text)
             return
         }
@@ -409,6 +421,7 @@ class ChatViewModel(
         animojiDraft.clear()
         mentionDraft.clear()
         _state.value.editing?.let { saveEdit(it, text); return }
+        dropUnreadSeparator()
         val reply = _state.value.replyTo
         _state.update { it.copy(draft = "", replyTo = null) }
         drafts?.put(chatId, "")
@@ -623,6 +636,73 @@ class ChatViewModel(
         _messages.value = text
     }
 
+    private val _openUrl = MutableStateFlow<String?>(null)
+    /** Адрес, который экран должен открыть: ответ бота на кнопку или кнопка-ссылка. */
+    val openUrl: StateFlow<String?> = _openUrl.asStateFlow()
+
+    private val _botApp = MutableStateFlow<BotAppRequest?>(null)
+    /** Мини-приложение бота, которое экран должен открыть. */
+    val botApp: StateFlow<BotAppRequest?> = _botApp.asStateFlow()
+
+    fun consumeOpenUrl() {
+        _openUrl.value = null
+    }
+
+    fun consumeBotApp() {
+        _botApp.value = null
+    }
+
+    /** «Открыть приложение» в чате с ботом. */
+    fun openBotApp() {
+        val bot = _state.value.botAppId ?: return
+        _botApp.value = BotAppRequest(bot, chatId, null, _state.value.header?.title ?: "Приложение")
+    }
+
+    /**
+     * Нажатие inline-кнопки бота. Ссылка — открыть, копирование экран делает сам, `OPEN_APP` —
+     * мини-приложение, остальное уходит боту (опкод 118): текст ответа — снекбар, адрес — открыть.
+     */
+    fun pressButton(message: Message, button: app.orbitle.domain.InlineButton) {
+        when (val action = button.action) {
+            is app.orbitle.domain.InlineButton.Action.Link -> _openUrl.value = action.url
+            is app.orbitle.domain.InlineButton.Action.Copy -> Unit
+            is app.orbitle.domain.InlineButton.Action.OpenApp -> {
+                val bot = action.botId ?: _state.value.botAppId ?: header?.chat?.takeIf { it.isBot }?.let { peerOf(it) }
+                if (bot == null) {
+                    _messages.value = "Не удалось открыть приложение"
+                    return
+                }
+                _botApp.value = BotAppRequest(bot, chatId, action.startParam, button.text)
+            }
+            app.orbitle.domain.InlineButton.Action.Callback -> {
+                val callbackId = message.content.keyboard?.callbackId
+                val repo = chats
+                if (callbackId.isNullOrEmpty() || repo == null || !isServer(message)) {
+                    _messages.value = "Кнопка не поддерживается"
+                    return
+                }
+                viewModelScope.launch {
+                    try {
+                        val answer = repo.pressButton(chatId, message.id, callbackId, button.payload)
+                        answer.url?.let { _openUrl.value = it }
+                        answer.text?.let { _messages.value = it }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        show(e)
+                    }
+                }
+            }
+        }
+    }
+
+    /** Собеседник диалога: id чата диалога — это id пользователей через xor. */
+    private fun peerOf(chat: Chat): String? {
+        val me = repository.currentUserId?.toLongOrNull() ?: return null
+        val id = chat.id.toLongOrNull() ?: return null
+        return (id xor me).takeIf { it != 0L && it != me }?.toString()
+    }
+
     private fun isServer(message: Message) = message.status == MessageStatus.SENT && message.id.toLongOrNull() != null
 
     /** Прочитать всё до последнего чужого сообщения, пока экран виден. */
@@ -663,10 +743,16 @@ class ChatViewModel(
         val chat = info.chat
         val title = ChatListFormatter().title(chat)
         val (subtitle, accent) = formatter.subtitle(info, now())
+        // Непрочитанные при открытии — из первой шапки, до отметки прочтения.
+        if (pendingUnread < 0) {
+            pendingUnread = chat.unreadCount
+            placeUnreadAnchor()
+        }
         _state.update {
             it.copy(
                 header = ChatHeaderUi(title, subtitle, accent, ChatListFormatter().avatar(chat, title), chat.isVerified, chat.type, chat.isSavedMessages),
                 canWrite = chat.canWrite != false,
+                botAppId = info.botAppId,
             )
         }
         if (chat.unreadCount > 0) {
@@ -679,13 +765,38 @@ class ChatViewModel(
 
     private fun commentsFlag(): Boolean? = header?.chat?.commentsEnabled ?: knownComments
 
+    /** Ответил — значит, прочитал: разделитель непрочитанных больше не нужен. */
+    private fun dropUnreadSeparator() {
+        pendingUnread = 0
+        if (unreadAnchorId == null) return
+        unreadAnchorId = null
+        rebuild()
+    }
+
+    private fun placeUnreadAnchor() {
+        if (pendingUnread <= 0 || unreadAnchorId != null) return
+        val anchor = unreadAnchor(history, pendingUnread, ::isOutgoing, complete = latestLoaded) ?: return
+        pendingUnread = 0
+        unreadAnchorId = anchor
+        rebuild()
+    }
+
     private fun rebuild() {
         val nowMs = now()
         builtFor = header?.chat?.type
         builtComments = commentsFlag()
         val isGroup = builtFor == ChatType.GROUP
         requestCommentCounts()
-        val result = feedItems(history, formatter, nowMs, isGroup, ::isOutgoing, ::commentsFooter, savedMessages = chatId == Chat.SAVED_MESSAGES_ID)
+        if (pendingUnread > 0 && unreadAnchorId == null) {
+            unreadAnchor(history, pendingUnread, ::isOutgoing, complete = latestLoaded)?.let {
+                pendingUnread = 0
+                unreadAnchorId = it
+            }
+        }
+        val result = feedItems(
+            history, formatter, nowMs, isGroup, ::isOutgoing, ::commentsFooter,
+            savedMessages = chatId == Chat.SAVED_MESSAGES_ID, unreadAnchorId = unreadAnchorId,
+        )
         // Скрытое приветствие «Избранного» не считается: без других сообщений видна подсказка.
         val empty = latestLoaded && result.isEmpty()
         val hint = when {
@@ -1167,6 +1278,8 @@ internal fun feedItems(
     isOutgoing: (Message) -> Boolean,
     comments: (Message) -> Int? = { null },
     savedMessages: Boolean = false,
+    /** Над этим сообщением встаёт «Непрочитанные сообщения». */
+    unreadAnchorId: String? = null,
 ): List<ChatItem> {
     val result = ArrayList<ChatItem>(history.size + 8)
     // Строится от старых к новым, потом разворачивается.
@@ -1184,6 +1297,10 @@ internal fun feedItems(
             result += ChatItem.Service(message.id, message.text)
             previous = null
             continue
+        }
+        if (unreadAnchorId != null && message.id == unreadAnchorId) {
+            result += ChatItem.Unread
+            previous = null
         }
         val next = ordered.getOrNull(index + 1)
         val sameAsPrevious = previous != null && messagesAttach(
@@ -1241,3 +1358,24 @@ object ReactionPalette {
         return row
     }
 }
+
+/**
+ * Первое непрочитанное из [unread] последних чужих сообщений (служебные и свои не считаются,
+ * как в счётчике сервера). Если ленты не хватает, а она уже сверена с сервером ([complete]), —
+ * самое старое чужое сообщение ленты; иначе `null`: ждём историю.
+ */
+internal fun unreadAnchor(history: List<Message>, unread: Int, isOutgoing: (Message) -> Boolean, complete: Boolean): String? {
+    if (unread <= 0) return null
+    var seen = 0
+    var oldest: String? = null
+    for (message in history.asReversed()) {
+        if (isOutgoing(message) || message.isService) continue
+        seen++
+        oldest = message.id
+        if (seen == unread) return message.id
+    }
+    return if (complete) oldest else null
+}
+
+/** Запуск мини-приложения бота из чата: кнопка «Открыть приложение» или inline-кнопка `OPEN_APP`. */
+data class BotAppRequest(val botId: String, val chatId: String, val startParam: String?, val title: String)

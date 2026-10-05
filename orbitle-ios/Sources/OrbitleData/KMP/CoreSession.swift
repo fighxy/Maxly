@@ -203,12 +203,14 @@ public struct CoreProfile: Sendable, Equatable {
     public var official: Bool
     public var isPublic: Bool
     public var commands: [Command]
+    /// Бот с мини-приложением (кнопка «Открыть приложение»).
+    public var hasWebApp: Bool
 
     public init(
         kind: String, chatId: String, peerId: String = "", title: String = "", avatarURL: String = "",
         description: String = "", link: String = "", phone: String = "", participants: Int = 0,
         lastSeenMs: Int64 = 0, online: Bool = false, official: Bool = false, isPublic: Bool = false,
-        commands: [Command] = []
+        commands: [Command] = [], hasWebApp: Bool = false
     ) {
         self.kind = kind
         self.chatId = chatId
@@ -224,6 +226,18 @@ public struct CoreProfile: Sendable, Equatable {
         self.official = official
         self.isPublic = isPublic
         self.commands = commands
+        self.hasWebApp = hasWebApp
+    }
+}
+
+/// Ответ на нажатие inline-кнопки бота: пустые строки — сервер их не прислал.
+public struct CoreButtonAnswer: Sendable, Equatable {
+    public var text: String
+    public var url: String
+
+    public init(text: String = "", url: String = "") {
+        self.text = text
+        self.url = url
     }
 }
 
@@ -531,6 +545,10 @@ public protocol MaxCore: Sendable {
     func searchInChat(chatId: String, query: String) async throws -> [CoreFoundMessage]
     func chatMembers(chatId: String) async throws -> [CoreChatMember]
     func botCommands(botId: String) async throws -> [CoreBotCommand]
+    /// Нажатие inline-кнопки `CALLBACK` (`MSG_SEND_CALLBACK` 118). Пустой `payload` не уходит.
+    func pressButton(chatId: String, messageId: String, callbackId: String, payload: String) async throws -> CoreButtonAnswer
+    /// Мини-приложение бота (`WEB_APP_INIT_DATA` 160). Пустые `chatId` и `startParam` не уходят.
+    func launchBotApp(botId: String, chatId: String, startParam: String) async throws -> MiniApp
     /// Сигнал звонка. `nil` — сервер не вернул адрес.
     func signalCall(calleeId: String, isVideo: Bool) async throws -> CoreCallSignal?
     func enablePassword(password: String, hint: String) async throws
@@ -663,6 +681,8 @@ public extension MaxCore {
     func searchInChat(chatId: String, query: String) async throws -> [CoreFoundMessage] { throw unsupported }
     func chatMembers(chatId: String) async throws -> [CoreChatMember] { throw unsupported }
     func botCommands(botId: String) async throws -> [CoreBotCommand] { throw unsupported }
+    func pressButton(chatId: String, messageId: String, callbackId: String, payload: String) async throws -> CoreButtonAnswer { throw unsupported }
+    func launchBotApp(botId: String, chatId: String, startParam: String) async throws -> MiniApp { throw unsupported }
     func signalCall(calleeId: String, isVideo: Bool) async throws -> CoreCallSignal? { throw unsupported }
     func enablePassword(password: String, hint: String) async throws { throw unsupported }
     func changePassword(oldPassword: String, newPassword: String) async throws { throw unsupported }

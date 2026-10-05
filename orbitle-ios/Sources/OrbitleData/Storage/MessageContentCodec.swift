@@ -47,8 +47,64 @@ enum MessageContentCodec {
             formatting: elements,
             forward: forwarded?.info,
             edited: (object["edited"] as? Bool) == true,
-            pin: pinNotice(object["attaches"])
+            pin: pinNotice(object["attaches"]),
+            linkPreview: linkPreview(object["attaches"]),
+            keyboard: keyboard(object["attaches"])
         )
+    }
+
+    /// Вложение `SHARE`: `{url, host?, title?, description?, image?: PHOTO}` (схема Komet).
+    static func linkPreview(_ value: Any?) -> LinkPreview? {
+        guard let list = value as? [Any] else { return nil }
+        for case let map as [String: Any] in list {
+            let type = ((map["_type"] as? String) ?? (map["type"] as? String))?.uppercased()
+            guard type == "SHARE" else { continue }
+            let image = map["image"] as? [String: Any]
+            let text: (String) -> String? = { key in
+                (map[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            }
+            guard let address = text("url") else { continue }
+            return LinkPreview(
+                url: address,
+                host: text("host"),
+                title: text("title"),
+                summary: text("description"),
+                imageURL: image.flatMap { url($0["baseUrl"]) ?? url($0["url"]) },
+                imageWidth: image.flatMap { integer($0["width"]) },
+                imageHeight: image.flatMap { integer($0["height"]) }
+            )
+        }
+        return nil
+    }
+
+    /// Вложение `INLINE_KEYBOARD`: `{callbackId, keyboard: {buttons: [[{type, text, url?, webApp?,
+    /// contactId?, payload?}]]}}` (схема Komet). Кнопки без подписи и пустые ряды отбрасываются.
+    static func keyboard(_ value: Any?) -> InlineKeyboard? {
+        guard let list = value as? [Any] else { return nil }
+        for case let map as [String: Any] in list {
+            let type = ((map["_type"] as? String) ?? (map["type"] as? String))?.uppercased()
+            guard type == "INLINE_KEYBOARD" else { continue }
+            let buttons = (map["keyboard"] as? [String: Any])?["buttons"] as? [Any] ?? []
+            let rows: [[InlineButton]] = buttons.compactMap { row in
+                let items = (row as? [Any] ?? []).compactMap { item -> InlineButton? in
+                    guard let b = item as? [String: Any] else { return nil }
+                    let title = (b["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    guard !title.isEmpty else { return nil }
+                    return InlineButton(
+                        type: (b["type"] as? String) ?? "",
+                        text: title,
+                        url: (b["url"] as? String)?.nilIfEmpty,
+                        webApp: (b["webApp"] as? String)?.nilIfEmpty,
+                        contactId: stringId(b["contactId"]),
+                        payload: (b["payload"] as? String) ?? stringId(b["payload"])
+                    )
+                }
+                return items.isEmpty ? nil : items
+            }
+            guard !rows.isEmpty else { continue }
+            return InlineKeyboard(callbackId: stringId(map["callbackId"]), rows: rows)
+        }
+        return nil
     }
 
     /// Ссылка `FORWARD`: автор (имя подставляет ядро) и текст оригинала.
@@ -394,4 +450,8 @@ enum MessageContentCodec {
         }
         return UUID().uuidString
     }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

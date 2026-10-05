@@ -1,5 +1,11 @@
 package app.orbitle.ui.chat
 
+import app.orbitle.presentation.chat.BotAppRequest
+import app.orbitle.domain.InlineButton
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
 import app.orbitle.presentation.chat.SaveTarget
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Download
@@ -169,6 +175,8 @@ fun ChatScreen(
     /** Действие, выбранное в профиле этого чата: экран открывает его, когда профиль закрылся. */
     requestedAction: ChatAction? = null,
     onActionHandled: () -> Unit = {},
+    /** Мини-приложение бота поверх чата: кнопка «Открыть приложение» и inline-кнопки `OPEN_APP`. */
+    botApp: @Composable (request: BotAppRequest, onClose: () -> Unit) -> Unit = { _, onClose -> onClose() },
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val privacy = app.orbitle.ui.components.LocalPrivateMode.current
@@ -249,6 +257,24 @@ fun ChatScreen(
         if (!FileOpener.open(context, file)) model.notify("Нет приложения, чтобы открыть этот файл")
     }
     val notice by model.messages.collectAsStateWithLifecycle()
+    val openUrl by model.openUrl.collectAsStateWithLifecycle()
+    val botAppRequest by model.botApp.collectAsStateWithLifecycle()
+    val uriHandler = LocalUriHandler.current
+    val buttonClipboard = LocalClipboardManager.current
+    LaunchedEffect(openUrl) {
+        val url = openUrl ?: return@LaunchedEffect
+        model.consumeOpenUrl()
+        if (runCatching { uriHandler.openUri(url) }.isFailure) model.notify("Не удалось открыть ссылку")
+    }
+    val pressButton: (Message, InlineButton) -> Unit = { message, button ->
+        when (val action = button.action) {
+            is InlineButton.Action.Copy -> {
+                buttonClipboard.setText(AnnotatedString(action.text))
+                model.notify("Скопировано")
+            }
+            else -> model.pressButton(message, button)
+        }
+    }
     val snackbar = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -320,6 +346,18 @@ fun ChatScreen(
             listState.animateScrollToItem(0)
         }
     }
+    // Чат с непрочитанными открывается на разделителе: он у верха, ниже — новые сообщения.
+    val density = LocalDensity.current
+    var unreadShown by remember(model) { mutableStateOf(false) }
+    val unreadIndex = state.items.indexOfFirst { it is ChatItem.Unread }
+    LaunchedEffect(unreadIndex) {
+        if (unreadIndex < 0 || unreadShown) return@LaunchedEffect
+        unreadShown = true
+        listState.scrollToItem(unreadIndex)
+        val viewport = listState.layoutInfo.viewportSize.height
+        val gap = with(density) { 96.dp.toPx() }
+        if (viewport > gap) listState.scrollBy(-(viewport - gap))
+    }
     val awayFromBottom by remember {
         derivedStateOf {
             val info = listState.layoutInfo
@@ -359,6 +397,7 @@ fun ChatScreen(
                         when (item) {
                             is ChatItem.Day -> DayChip(item.label)
                             is ChatItem.Service -> ServiceChip(item.text)
+                            ChatItem.Unread -> UnreadDivider()
                             is ChatItem.Bubble -> if (privacy != app.orbitle.domain.PrivateModeDisplay.VISIBLE && item.key !in revealed) {
                                 PrivateBubble(item, privacy) { reveal(item.key) }
                             } else BubbleRow(
@@ -380,6 +419,7 @@ fun ChatScreen(
                                 onComments = model::openComments,
                                 onVote = model::vote,
                                 onDoubleTap = { message -> quickReaction?.let { model.toggleReaction(message, it) } },
+                                onButton = pressButton,
                             )
                         }
                     }
@@ -410,6 +450,12 @@ fun ChatScreen(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     ) { Icon(Icons.Filled.KeyboardArrowDown, "Вниз") }
                 }
+            }
+            if (state.botAppId != null) {
+                FilledTonalButton(
+                    onClick = model::openBotApp,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                ) { Text("Открыть приложение") }
             }
             if (state.canWrite) {
                 Composer(
@@ -458,6 +504,12 @@ fun ChatScreen(
                 quickReactions = state.reactionCatalog,
                 onClose = model::closeComments,
             )
+        }
+        botAppRequest?.let { request ->
+            BackHandler { model.consumeBotApp() }
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+                botApp(request, model::consumeBotApp)
+            }
         }
     } }
 

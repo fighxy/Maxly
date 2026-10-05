@@ -68,6 +68,8 @@ public struct MessageBubble: View {
     private let onMarkUnread: (() -> Void)?
     /// Голос в опросе: id ответа.
     private let onVote: ((String) -> Void)?
+    /// Нажатие inline-кнопки бота. `nil` — кнопки видны, но не нажимаются.
+    private let onButton: ((InlineButton) -> Void)?
 
     /// Сдвиг пузыря при свайпе «ответить».
     @State private var swipe: CGFloat = 0
@@ -124,7 +126,8 @@ public struct MessageBubble: View {
         onDoubleTap: (() -> Void)? = nil,
         onPin: (() -> Void)? = nil,
         onMarkUnread: (() -> Void)? = nil,
-        onVote: ((String) -> Void)? = nil
+        onVote: ((String) -> Void)? = nil,
+        onButton: ((InlineButton) -> Void)? = nil
     ) {
         self.message = message
         self.isOutgoing = isOutgoing
@@ -166,6 +169,7 @@ public struct MessageBubble: View {
         self.onPin = onPin
         self.onMarkUnread = onMarkUnread
         self.onVote = onVote
+        self.onButton = onButton
     }
 
     public var body: some View {
@@ -192,6 +196,10 @@ public struct MessageBubble: View {
                         interactive: allowsReactions,
                         onToggle: onReact
                     )
+                }
+                if let keyboard = message.content.keyboard {
+                    InlineKeyboardView(keyboard: keyboard) { button in onButton?(button) }
+                        .disabled(onButton == nil)
                 }
             }
             .frame(maxWidth: bubbleWidth, alignment: isOutgoing ? .trailing : .leading)
@@ -526,9 +534,15 @@ public struct MessageBubble: View {
             }
             if hasText {
                 textBody
-            } else if visuals.isEmpty, message.content.voices.isEmpty, message.content.calls.isEmpty, message.content.poll == nil, !reactionsInside {
+            }
+            if let preview = message.content.linkPreview {
+                LinkPreviewCard(preview: preview, outgoing: isOutgoing, textColor: textColor)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 8)
+            }
+            if !hasText, visuals.isEmpty, message.content.voices.isEmpty, message.content.calls.isEmpty, message.content.poll == nil, !reactionsInside {
                 // Пустое сообщение, только файл или контакт: время отдельной строкой.
-                if message.content.files.isEmpty, message.content.contacts.isEmpty {
+                if message.content.files.isEmpty, message.content.contacts.isEmpty, message.content.linkPreview == nil {
                     Text(message.text.isEmpty ? " " : message.text)
                         .padding(.horizontal, 12)
                         .padding(.top, 7)

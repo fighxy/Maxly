@@ -19,6 +19,8 @@ struct ChatComposer: View {
     let chatType: ChatType
     let isMuted: Bool
     let onToggleMute: (() -> Void)?
+    /// «Открыть приложение» бота с мини-приложением. `nil` — кнопки нет.
+    var onOpenApp: (() -> Void)? = nil
     /// Отступ поля ввода от краёв.
     static let inset: CGFloat = 12
     @Environment(\.privateMode) private var privateMode
@@ -78,6 +80,17 @@ struct ChatComposer: View {
                 editBar(target)
             } else if let reply = viewModel.replyTarget {
                 replyBar(reply)
+            }
+            if let onOpenApp {
+                Button(action: onOpenApp) {
+                    Label("Открыть приложение", systemImage: "square.grid.2x2.fill")
+                        .font(.body.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.orbitleAccent)
+                .orbitleGlassCapsule()
             }
             if canWrite {
                 input

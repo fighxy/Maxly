@@ -94,6 +94,16 @@ interface ChatRepository {
     /** Команды бота (`BOT_INFO` 145). */
     suspend fun botCommands(botId: String): List<BotCommandRow> = emptyList()
 
+    /**
+     * Нажатие inline-кнопки `CALLBACK` бота (`MSG_SEND_CALLBACK` 118). Сам ответ бота обычно
+     * приходит сообщением; здесь — короткий текст или адрес, если сервер их прислал.
+     */
+    suspend fun pressButton(chatId: String, messageId: String, callbackId: String, payload: String?): ButtonAnswer =
+        throw app.orbitle.domain.OrbitleError.Rejected("Кнопка не поддерживается")
+
     /** Забыть всё про аккаунт (выход). */
     fun clear()
 }
+
+/** Ответ сервера на нажатие кнопки бота: уведомление и/или адрес для открытия. */
+data class ButtonAnswer(val text: String? = null, val url: String? = null)

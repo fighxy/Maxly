@@ -134,6 +134,7 @@ fun CommentsScreen(
                         when (item) {
                             is ChatItem.Day -> DayLabel(item.label)
                             is ChatItem.Service -> DayLabel(item.text)
+                            ChatItem.Unread -> UnreadDivider()
                             is ChatItem.Bubble -> BubbleRow(
                                 item = item,
                                 onLongPress = { actionsFor = it },

@@ -610,7 +610,8 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             online: profile.online,
             official: profile.official,
             isPublic: profile.isPublic,
-            commands: profile.commands.map { CoreProfile.Command(name: $0.name, description: $0.description_) }
+            commands: profile.commands.map { CoreProfile.Command(name: $0.name, description: $0.description_) },
+            hasWebApp: profile.hasWebApp
         )
     }
 

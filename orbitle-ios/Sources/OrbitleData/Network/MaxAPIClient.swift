@@ -123,6 +123,7 @@ public protocol MaxAPI: Sendable {
     func searchInChat(chatId: String, query: String) async -> Result<[FoundMessage], MaxAPIError>
     func chatMembers(chatId: String) async -> Result<[CoreChatMember], MaxAPIError>
     func botCommands(botId: String) async -> Result<[CoreBotCommand], MaxAPIError>
+    func pressButton(chatId: String, messageId: String, callbackId: String, payload: String?) async -> Result<CoreButtonAnswer, MaxAPIError>
     func signalCall(calleeId: String, isVideo: Bool) async -> Result<CoreCallSignal?, MaxAPIError>
 }
 
@@ -196,6 +197,9 @@ public extension MaxAPI {
     func searchInChat(chatId: String, query: String) async -> Result<[FoundMessage], MaxAPIError> { .failure(.invalidResponse) }
     func chatMembers(chatId: String) async -> Result<[CoreChatMember], MaxAPIError> { .failure(.invalidResponse) }
     func botCommands(botId: String) async -> Result<[CoreBotCommand], MaxAPIError> { .failure(.invalidResponse) }
+    func pressButton(chatId: String, messageId: String, callbackId: String, payload: String?) async -> Result<CoreButtonAnswer, MaxAPIError> {
+        .failure(.invalidResponse)
+    }
     func signalCall(calleeId: String, isVideo: Bool) async -> Result<CoreCallSignal?, MaxAPIError> { .failure(.invalidResponse) }
 }
 
@@ -326,6 +330,10 @@ public final class MaxAPIClient: MaxAPI, Sendable {
 
     public func signalCall(calleeId: String, isVideo: Bool) async -> Result<CoreCallSignal?, MaxAPIError> {
         await catching { try await core.signalCall(calleeId: calleeId, isVideo: isVideo) }
+    }
+
+    public func pressButton(chatId: String, messageId: String, callbackId: String, payload: String?) async -> Result<CoreButtonAnswer, MaxAPIError> {
+        await catching { try await core.pressButton(chatId: chatId, messageId: messageId, callbackId: callbackId, payload: payload ?? "") }
     }
 
     public func editMessage(chatId: String, messageId: String, text: String) async -> Result<MessageRecord, MaxAPIError> {

@@ -288,6 +288,14 @@ private fun ChatPane(
                 quickReaction = quickReaction,
                 requestedAction = chatAction?.takeIf { it.first == chatId }?.second,
                 onActionHandled = { chatAction = null },
+                botApp = { request, onClose ->
+                    val app = viewModel(key = "bot-app-${request.botId}-${request.startParam}-${request.title}") {
+                        MiniAppViewModel(null, container.account, request.title) {
+                            container.account.launchBotApp(request.botId, request.chatId, request.startParam)
+                        }
+                    }
+                    MiniAppScreen(app, onClose)
+                },
             )
         }
     }
