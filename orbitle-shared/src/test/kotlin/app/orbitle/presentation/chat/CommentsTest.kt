@@ -318,4 +318,20 @@ class CommentsTest {
         assertNull(vm.state.value.items.filterIsInstance<ChatItem.Bubble>().single().comments)
         assertTrue(repo.asked.isEmpty())
     }
+
+    @Test
+    fun listedChannelWithoutOptionsTakesTheFlagFromItsCard() {
+        val messages = FakeMessages()
+        // Строка списка без опций, а в полной карточке комментарии включены.
+        messages.headerInfo.value = ChatHeaderInfo(Chat("10", "Канал", ChatType.CHANNEL, updatedAtMs = 0))
+        messages.list.value = listOf(Message("5", "10", "0", "пост", 1_000L))
+        val card = app.orbitle.domain.ChatProfile(app.orbitle.domain.ChatProfile.Kind.CHANNEL, "10", "Канал", commentsEnabled = true)
+        val profiles = object : app.orbitle.data.ProfileRepository {
+            override fun cached(chatId: String) = null
+            override suspend fun profile(chatId: String) = card
+            override suspend fun sharedPage(chatId: String, tab: app.orbitle.domain.SharedMediaTab, beforeMessageId: String) = emptyList<Message>()
+        }
+        val vm = ChatViewModel("10", messages, ChatFormatter(ZoneOffset.UTC), now = { 10_000L }, comments = repo, profiles = profiles)
+        assertEquals(0, vm.state.value.items.filterIsInstance<ChatItem.Bubble>().single().comments)
+    }
 }
