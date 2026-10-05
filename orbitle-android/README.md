@@ -76,7 +76,7 @@ Android. Сеть, протокол, вход и хранение сессии �
 | `domain` | модели UI (`Chat`, `ChatFolder`, `Message` с вложениями, `AuthPhase`, `OrbitleError`) — как `OrbitleDomain` в iOS |
 | `data` | мост к ядру: `MaxCoreGateway` (вызовы `MaxClient`, ошибки ядра → `CoreFailure`), `SessionManager` (шаги входа, попытки, выход), `ChatMapping` и `MessageMapping` (чаты и сообщения стора → модели, разбор вложений, цитат, пересылок и реакций), репозитории над `MaxClient.store` |
 | `presentation` | логика экранов без Android UI: `AuthViewModel`, `PhoneNumber`, `PhoneCountry`, `ChatListFormatter`, `ChatListViewModel`, `ChatViewModel`, `CallBubbleText`, `ChatContentFormat`, `WaveformLayout` — перенесены из `OrbitlePresentation` iOS-клиента вместе с тестами |
-| `ui` | Compose-экраны и тема Material 3 (акцент `#5C6BF5`, тёмный фон `#0C0E14`, палитра аватаров как в iOS) |
+| `ui` | Compose-экраны и тема Material 3 (подсветка кнопок и надписей: графит `#212327` в светлой теме, серебро `#CCD0D6` в тёмной; свои пузыри `#5C6BF5`; тёмный фон `#0C0E14`; палитра аватаров как в iOS) |
 
 Логика `presentation` и `data` проверяется JVM-тестами (`app/src/test`), без эмулятора.
 

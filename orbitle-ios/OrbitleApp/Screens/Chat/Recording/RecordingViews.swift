@@ -15,7 +15,7 @@ struct RecordButton: View {
             if session.phase == .locked || session.phase == .finishing {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.orbitleOnAccent)
                     .frame(width: 44, height: 44)
                     .background(Color.orbitleAccent, in: Circle())
             } else {
@@ -68,7 +68,7 @@ struct RecordButton: View {
                 .frame(width: 84, height: 84)
             Image(systemName: session.mode == .voice ? "mic.fill" : "video.fill")
                 .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.orbitleOnAccent)
         }
         .offset(x: session.dragX, y: session.dragY)
     }

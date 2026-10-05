@@ -275,6 +275,7 @@ struct AttachmentSheet: View {
                 .multilineTextAlignment(.center)
             Button("Выбрать файл") { importerShown = true }
                 .buttonStyle(.borderedProminent)
+                .foregroundStyle(Color.orbitleOnAccent)
                 .tint(Color.orbitleAccent)
         }
         .padding(32)
@@ -573,7 +574,7 @@ private struct AssetCell: View {
                     .transition(.orbitlePop(reduceMotion: reduceMotion))
                 Text("\(number)")
                     .font(.system(size: 13, weight: .bold).monospacedDigit())
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.orbitleOnAccent)
                     .contentTransition(.numericText(value: Double(number)))
             } else {
                 Circle().fill(.black.opacity(0.15))

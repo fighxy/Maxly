@@ -231,12 +231,12 @@ public extension View {
     func orbitleProminentButtonStyle() -> some View {
         #if compiler(>=6.2)
         if #available(iOS 26.0, macOS 26.0, *) {
-            buttonStyle(.glassProminent)
+            buttonStyle(.glassProminent).foregroundStyle(Color.orbitleOnAccent)
         } else {
-            buttonStyle(.borderedProminent)
+            buttonStyle(.borderedProminent).foregroundStyle(Color.orbitleOnAccent)
         }
         #else
-        buttonStyle(.borderedProminent)
+        buttonStyle(.borderedProminent).foregroundStyle(Color.orbitleOnAccent)
         #endif
     }
 }

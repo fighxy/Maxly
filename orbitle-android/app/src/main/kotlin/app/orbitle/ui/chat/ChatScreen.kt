@@ -155,7 +155,6 @@ import app.orbitle.ui.components.Avatar
 import app.orbitle.ui.components.ChatWallpaperBackground
 import app.orbitle.ui.components.edgeFade
 import app.orbitle.ui.components.LocalChatBackdrop
-import app.orbitle.ui.theme.OrbitleAccent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -937,14 +936,14 @@ private fun Composer(
                     Modifier
                         .size(44.dp)
                         .clip(CircleShape)
-                        .background(if (enabled) OrbitleAccent else MaterialTheme.colorScheme.surfaceContainerHighest)
+                        .background(if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest)
                         .clickable(enabled = enabled, onClick = onSend),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         if (state.editing != null) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
                         contentDescription = "Отправить",
-                        tint = if (enabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = if (enabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -1367,7 +1366,7 @@ private fun MicButton(voice: VoiceRecordingUi) {
             Modifier
                 .size(if (recording && !voice.locked) 52.dp else 44.dp)
                 .clip(CircleShape)
-                .background(if (recording) OrbitleAccent else MaterialTheme.colorScheme.surfaceContainerHighest)
+                .background(if (recording) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest)
                 .then(voice.gesture)
                 .semantics { contentDescription = if (voice.locked) "Отправить голосовое" else "Голосовое: удерживайте, чтобы записать" },
             contentAlignment = Alignment.Center,
@@ -1375,7 +1374,7 @@ private fun MicButton(voice: VoiceRecordingUi) {
             Icon(
                 if (voice.locked) Icons.AutoMirrored.Filled.Send else Icons.Filled.Mic,
                 null,
-                tint = if (recording) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = if (recording) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

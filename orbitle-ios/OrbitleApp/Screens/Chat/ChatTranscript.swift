@@ -526,7 +526,7 @@ private struct ScrollDownButton: View {
                     if unseen > 0 {
                         Text(unseen > 99 ? "99+" : "\(unseen)")
                             .font(.caption2.weight(.bold).monospacedDigit())
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Color.orbitleOnAccent)
                             .padding(.horizontal, 5)
                             .frame(minWidth: 20, minHeight: 20)
                             .background(Color.orbitleAccent, in: Capsule())
@@ -546,7 +546,7 @@ private struct SavedMessagesPlaceholder: View {
         VStack(spacing: 10) {
             Image(systemName: "bookmark.fill")
                 .font(.system(size: 30, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.orbitleOnAccent)
                 .frame(width: 64, height: 64)
                 .background(Color.orbitleAccent, in: Circle())
             Text("Это избранное")

@@ -744,11 +744,11 @@ public struct MessageBubble: View {
                 ZStack {
                     Circle().fill(isOutgoing ? Color.white.opacity(0.22) : Color.orbitleAccent)
                     if loading {
-                        ProgressView().tint(.white)
+                        ProgressView().tint(isOutgoing ? Color.white : Color.orbitleOnAccent)
                     } else if downloaded {
                         Text(Self.fileBadge(file.name))
                             .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(isOutgoing ? Color.white : Color.orbitleOnAccent)
                             .lineLimit(1)
                             .minimumScaleFactor(0.6)
                             .padding(4)

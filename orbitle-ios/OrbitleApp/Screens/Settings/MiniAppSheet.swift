@@ -61,6 +61,7 @@ struct MiniAppSheet: View {
             } actions: {
                 Button("Повторить") { Task { await model.launch() } }
                     .buttonStyle(.borderedProminent)
+                    .foregroundStyle(Color.orbitleOnAccent)
             }
         case .ready(let app):
             MiniAppWebView(app: app, model: model, controller: controller) { dismiss() }

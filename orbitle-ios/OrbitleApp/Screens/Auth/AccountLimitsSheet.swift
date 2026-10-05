@@ -19,7 +19,7 @@ struct AccountLimitsSheet: View {
                         .overlay(alignment: .bottomTrailing) {
                             Image(systemName: content.entry == .login ? "lock.fill" : "hourglass")
                                 .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(Color.orbitleOnAccent)
                                 .frame(width: 28, height: 28)
                                 .background(Circle().fill(Color.orbitleAccent))
                                 .overlay(Circle().strokeBorder(Color.orbitleBackground, lineWidth: 2.5))
