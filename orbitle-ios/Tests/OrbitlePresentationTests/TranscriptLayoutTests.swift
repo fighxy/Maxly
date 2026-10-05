@@ -47,4 +47,49 @@ struct TranscriptLayoutTests {
         #expect(model.transcriptVersion == version + 1)
         model.deactivate()
     }
+
+    @Test("Пауза разрывает серию вместе с именем и аватаром")
+    func timeBoundary() {
+        let messages = [
+            message("1", author: "bob", name: "Боб", at: 43_200),
+            message("2", author: "bob", name: "Боб", at: 45_000),
+        ]
+        let rows = TranscriptLayout.rows(messages, currentUserId: "me")
+        #expect(rows.allSatisfy { $0.group == .single && $0.showsAuthorName && $0.showsAuthorAvatar })
+    }
+
+    @Test("Новый день разрывает серию одного автора даже без длинной паузы")
+    func dayBoundary() {
+        let midnight = Calendar.current.startOfDay(for: Date())
+        let messages = [
+            message("1", author: "bob", name: "Боб", at: midnight.addingTimeInterval(-10).timeIntervalSince1970),
+            message("2", author: "bob", name: "Боб", at: midnight.addingTimeInterval(10).timeIntervalSince1970),
+        ]
+        let rows = TranscriptLayout.rows(messages, currentUserId: "me")
+        #expect(rows.allSatisfy { $0.dayTitle != nil && $0.group == .single && $0.showsAuthorName && $0.showsAuthorAvatar })
+    }
+
+    @Test("Непрочитанные разрывают склейку с обеих сторон разделителя")
+    func unreadBoundary() {
+        let messages = (1...3).map { message("\($0)", author: "bob", name: "Боб", at: Double($0)) }
+        let rows = TranscriptLayout.rows(messages, currentUserId: "me", unreadAnchorId: "2")
+        #expect(rows[0].group == .single)
+        #expect(rows[0].showsAuthorAvatar)
+        #expect(rows[1].startsUnread && rows[1].showsAuthorName)
+        #expect(!rows[1].group.joinsPrevious && rows[1].group.joinsNext)
+        #expect(rows[2].group.joinsPrevious && rows[2].showsAuthorAvatar)
+    }
+
+    @Test("Закрепление — служебная строка между двумя самостоятельными группами")
+    func serviceBoundary() {
+        var service = message("2", author: "bob", name: "Боб", at: 2)
+        service.content.pin = PinNotice(messageId: "1", preview: "Текст")
+        let rows = TranscriptLayout.rows([
+            message("1", author: "bob", name: "Боб", at: 1), service,
+            message("3", author: "bob", name: "Боб", at: 3),
+        ], currentUserId: "me")
+        #expect(rows.allSatisfy { $0.group == .single })
+        #expect(rows.map(\.showsAuthorName) == [true, false, true])
+        #expect(rows.map(\.showsAuthorAvatar) == [true, false, true])
+    }
 }

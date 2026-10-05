@@ -29,28 +29,27 @@ public enum TranscriptLayout {
             let next = index + 1 < messages.count ? messages[index + 1] : nil
             let outgoing = !currentUserId.isEmpty && message.authorId == currentUserId
             let startsDay = ChatContentFormat.startsDay(message.timestamp, after: previous?.timestamp)
+            let startsUnread = unreadAnchorId != nil && message.id == unreadAnchorId
+            let service = message.content.pin != nil
+            // Разделитель и служебная строка разрывают серию с обеих сторон.
+            // Имя, аватар и углы используют одни и те же границы, включая паузу по времени.
+            let previousInGroup = !service && !startsUnread && previous?.content.pin == nil ? previous : nil
+            let nextInGroup = !service && next?.content.pin == nil && next?.id != unreadAnchorId ? next : nil
+            let group = ChatContentFormat.group(
+                authorId: message.authorId,
+                date: message.timestamp,
+                previous: previousInGroup.map { (authorId: $0.authorId, date: $0.timestamp) },
+                next: nextInGroup.map { (authorId: $0.authorId, date: $0.timestamp) }
+            )
             return TranscriptRow(
                 message: message,
                 dayTitle: startsDay ? ChatContentFormat.dayTitle(message.timestamp, now: now) : nil,
-                group: ChatContentFormat.group(
-                    authorId: message.authorId,
-                    date: message.timestamp,
-                    previous: previous.map { (authorId: $0.authorId, date: $0.timestamp) },
-                    next: next.map { (authorId: $0.authorId, date: $0.timestamp) }
-                ),
-                showsAuthorName: ChatContentFormat.showsAuthorName(
-                    outgoing: outgoing,
-                    authorName: message.authorName,
-                    authorId: message.authorId,
-                    previousAuthorId: previous?.authorId
-                ),
-                showsAuthorAvatar: ChatContentFormat.showsAuthorAvatar(
-                    outgoing: outgoing,
-                    authorId: message.authorId,
-                    nextAuthorId: next?.authorId
-                ),
+                group: group,
+                showsAuthorName: !service && !outgoing && !group.joinsPrevious
+                    && !message.authorName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                showsAuthorAvatar: !service && !outgoing && !group.joinsNext,
                 isOutgoing: outgoing,
-                startsUnread: unreadAnchorId != nil && message.id == unreadAnchorId
+                startsUnread: startsUnread
             )
         }
     }

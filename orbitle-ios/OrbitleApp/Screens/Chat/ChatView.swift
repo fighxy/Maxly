@@ -401,6 +401,9 @@ struct ChatView: View {
         .onChange(of: viewModel.replyTarget?.id) { _, id in
             if id != nil { composerFocused = true }
         }
+        .onChange(of: viewModel.editTarget?.id) { _, id in
+            if id != nil { composerFocused = true }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
                 viewModel.flushDraft()

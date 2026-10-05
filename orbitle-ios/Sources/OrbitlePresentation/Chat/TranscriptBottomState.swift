@@ -70,6 +70,13 @@ public struct TranscriptBottomState: Equatable, Sendable {
         jump = nil
     }
 
+    /// Ответ, поиск или непрочитанные открывают историю без жеста пальцем.
+    /// Отключаем удержание низа до прокрутки, иначе рост содержимого вернёт к последнему.
+    public mutating func beginReadingHistory() {
+        jump = nil
+        atBottom = false
+    }
+
     /// Касание кнопки «вниз». Возвращает id прыжка для `finishJump`.
     public mutating func beginJump() -> Int {
         jumps += 1
