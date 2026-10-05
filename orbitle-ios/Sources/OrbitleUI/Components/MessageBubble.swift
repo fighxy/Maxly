@@ -335,7 +335,7 @@ public struct MessageBubble: View {
         return Button(action: onComments) {
             VStack(spacing: 0) {
                 Rectangle()
-                    .fill((isOutgoing ? Color.white : Color.primary).opacity(0.12))
+                    .fill((isOutgoing ? Color.orbitleOutgoingText : Color.primary).opacity(0.12))
                     .frame(height: 0.5)
                 HStack(spacing: 8) {
                     Image(systemName: "bubble.left.and.bubble.right.fill")
@@ -348,7 +348,7 @@ public struct MessageBubble: View {
                         .font(.system(size: 13, weight: .semibold))
                         .opacity(0.6)
                 }
-                .foregroundStyle(isOutgoing ? Color.white : Color.orbitleAccent)
+                .foregroundStyle(isOutgoing ? Color.orbitleOutgoingAccent : Color.orbitleAccent)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
             }
@@ -463,19 +463,20 @@ public struct MessageBubble: View {
     private var shape: UnevenRoundedRectangle {
         let big = Self.radius
         let small = Self.joined
-        // Верх всегда крупный. Нижний угол со стороны автора меньше только у последнего в серии.
-        let bottomAuthor = group.joinsNext ? big : small
+        // Сторона автора сужается на стыках; свободный край завершает серию.
+        let topAuthor = group.joinsPrevious ? small : big
+        let bottomAuthor: CGFloat = group.joinsNext ? small : 10
         if isOutgoing {
             return UnevenRoundedRectangle(
                 topLeadingRadius: big,
                 bottomLeadingRadius: big,
                 bottomTrailingRadius: bottomAuthor,
-                topTrailingRadius: big,
+                topTrailingRadius: topAuthor,
                 style: .continuous
             )
         }
         return UnevenRoundedRectangle(
-            topLeadingRadius: big,
+            topLeadingRadius: topAuthor,
             bottomLeadingRadius: bottomAuthor,
             bottomTrailingRadius: big,
             topTrailingRadius: big,
@@ -739,20 +740,20 @@ public struct MessageBubble: View {
         return Button { onFile(file.id) } label: {
             HStack(alignment: .center, spacing: 10) {
                 ZStack {
-                    Circle().fill(isOutgoing ? Color.white.opacity(0.22) : Color.orbitleAccent)
+                    Circle().fill(isOutgoing ? Color.orbitleOutgoingAccent.opacity(0.15) : Color.orbitleAccent)
                     if loading {
-                        ProgressView().tint(isOutgoing ? Color.white : Color.orbitleOnAccent)
+                        ProgressView().tint(isOutgoing ? Color.orbitleOutgoingAccent : Color.orbitleOnAccent)
                     } else if downloaded {
                         Text(Self.fileBadge(file.name))
                             .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundStyle(isOutgoing ? Color.white : Color.orbitleOnAccent)
+                            .foregroundStyle(isOutgoing ? Color.orbitleOutgoingAccent : Color.orbitleOnAccent)
                             .lineLimit(1)
                             .minimumScaleFactor(0.6)
                             .padding(4)
                     } else {
                         Image(systemName: "arrow.down")
                             .font(.system(size: 17, weight: .bold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(isOutgoing ? Color.orbitleOutgoingAccent : Color.orbitleOnAccent)
                     }
                 }
                 .frame(width: 44, height: 44)
@@ -787,10 +788,10 @@ public struct MessageBubble: View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Переслано от")
                 .font(.caption)
-                .foregroundStyle(isOutgoing ? Color.white.opacity(0.8) : Color.orbitleAccent.opacity(0.8))
+                .foregroundStyle(isOutgoing ? Color.orbitleOutgoingAccent : Color.orbitleAccent)
             Text(forward.authorName)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(isOutgoing ? Color.white : Color.orbitleAccent)
+                .foregroundStyle(isOutgoing ? Color.orbitleOutgoingAccent : Color.orbitleAccent)
                 .lineLimit(1)
         }
         .accessibilityElement(children: .combine)
@@ -806,7 +807,7 @@ public struct MessageBubble: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(reply.authorName)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(isOutgoing ? Color.white : quoteTint)
+                    .foregroundStyle(quoteTint)
                     .lineLimit(1)
                 Text(reply.preview)
                     .font(.subheadline)
@@ -864,11 +865,11 @@ public struct MessageBubble: View {
     }
 
     private var textColor: Color {
-        isOutgoing ? .white : .primary
+        isOutgoing ? .orbitleOutgoingText : .primary
     }
 
     private var metaColor: Color {
-        isOutgoing ? Color.white.opacity(0.75) : Color.secondary
+        isOutgoing ? Color.orbitleOutgoingSecondary : Color.secondary
     }
 
     private var authorColor: Color {
@@ -876,7 +877,7 @@ public struct MessageBubble: View {
     }
 
     private var quoteTint: Color {
-        isOutgoing ? Color.white : Color.orbitleAccent
+        isOutgoing ? Color.orbitleOutgoingAccent : Color.orbitleAccent
     }
 
     private var showsComments: Bool {
@@ -934,7 +935,7 @@ private struct PollChoices: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(poll.title)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(outgoing ? Color.white : Color.primary)
+                .foregroundStyle(outgoing ? Color.orbitleOutgoingText : Color.primary)
             ForEach(poll.answers, id: \.id) { answer in
                 Button {
                     onVote?(answer.id)
@@ -942,23 +943,23 @@ private struct PollChoices: View {
                     HStack {
                         Text(answer.text)
                             .font(.subheadline)
-                            .foregroundStyle(outgoing ? Color.white : Color.primary)
+                            .foregroundStyle(outgoing ? Color.orbitleOutgoingText : Color.primary)
                             .multilineTextAlignment(.leading)
                         Spacer(minLength: 8)
                         Text("\(answer.votes)")
                             .font(.caption.monospacedDigit())
-                            .foregroundStyle(outgoing ? Color.white.opacity(0.8) : Color.secondary)
+                            .foregroundStyle(outgoing ? Color.orbitleOutgoingSecondary : Color.secondary)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
-                    .background((outgoing ? Color.white : Color.primary).opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background((outgoing ? Color.orbitleOutgoingText : Color.primary).opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .disabled(onVote == nil)
             }
             Text(poll.total == 1 ? "1 голос" : "\(poll.total) голосов")
                 .font(.caption)
-                .foregroundStyle(outgoing ? Color.white.opacity(0.75) : Color.secondary)
+                .foregroundStyle(outgoing ? Color.orbitleOutgoingSecondary : Color.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)

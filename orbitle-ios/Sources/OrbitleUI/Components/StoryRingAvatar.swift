@@ -10,17 +10,19 @@ public struct StoryRingAvatar: View {
     private let size: CGFloat
     private let isOnline: Bool
     private let progress: Double?
+    private let reservesRingSpace: Bool
 
-    public init(avatar: ChatAvatar, ring: StoryRing?, size: CGFloat = OrbitleTheme.avatar, isOnline: Bool = false, progress: Double? = nil) {
+    public init(avatar: ChatAvatar, ring: StoryRing?, size: CGFloat = OrbitleTheme.avatar, isOnline: Bool = false, progress: Double? = nil, reservesRingSpace: Bool = false) {
         self.avatar = avatar
         self.ring = ring
         self.size = size
         self.isOnline = isOnline
         self.progress = progress
+        self.reservesRingSpace = reservesRingSpace
     }
 
     public var body: some View {
-        if ring == nil && progress == nil {
+        if ring == nil && progress == nil && !reservesRingSpace {
             ChatAvatarView(avatar: avatar, size: size, isOnline: isOnline)
         } else {
             let stroke = min(max(size * 0.045, 2), 3.5)

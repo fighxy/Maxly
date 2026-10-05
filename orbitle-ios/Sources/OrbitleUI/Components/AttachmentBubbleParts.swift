@@ -51,11 +51,11 @@ struct ContactCardRow: View {
                 Text(contact.name.isEmpty ? "Контакт" : contact.name)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
-                    .foregroundStyle(outgoing ? Color.white : Color.primary)
+                    .foregroundStyle(outgoing ? Color.orbitleOutgoingText : Color.primary)
                 if !contact.phone.isEmpty {
                     Text(contact.phone)
                         .font(.caption)
-                        .foregroundStyle(outgoing ? Color.white.opacity(0.75) : Color.secondary)
+                        .foregroundStyle(outgoing ? Color.orbitleOutgoingSecondary : Color.secondary)
                 }
             }
             Spacer(minLength: 0)
@@ -80,13 +80,13 @@ struct ContactCardRow: View {
     private var initials: some View {
         let letters = contact.name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined()
         return ZStack {
-            Circle().fill(outgoing ? Color.white.opacity(0.22) : Color.orbitleAccent)
+            Circle().fill(outgoing ? Color.orbitleOutgoingAccent.opacity(0.15) : Color.orbitleAccent)
             if letters.isEmpty {
-                Image(systemName: "person.fill").foregroundStyle(outgoing ? Color.white : Color.orbitleOnAccent)
+                Image(systemName: "person.fill").foregroundStyle(outgoing ? Color.orbitleOutgoingText : Color.orbitleOnAccent)
             } else {
                 Text(letters.uppercased())
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(outgoing ? Color.white : Color.orbitleOnAccent)
+                    .foregroundStyle(outgoing ? Color.orbitleOutgoingText : Color.orbitleOnAccent)
             }
         }
     }
