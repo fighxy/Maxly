@@ -8,17 +8,24 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-/** Фирменный акцент Orbitle (как `orbitleAccent` в iOS-версии). */
-val OrbitleAccent = Color(0xFF5C6BF5)
+/** Пузырь своих сообщений (как `orbitleOutgoing` в iOS-версии). */
+val OrbitleOutgoing = Color(0xFF5C6BF5)
+
+/**
+ * Подсветка системных кнопок и надписей (`primary`): глубокий графит в светлой теме, серебро
+ * в тёмной — как `orbitleAccent` в iOS-версии.
+ */
+val OrbitleGraphite = Color(0xFF212327)
+val OrbitleSilver = Color(0xFFCCD0D6)
 
 private val LightColors = lightColorScheme(
-    primary = OrbitleAccent,
+    primary = OrbitleGraphite,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFDEE0FF),
-    onPrimaryContainer = Color(0xFF0E1A7A),
-    secondary = Color(0xFF5B5D72),
-    secondaryContainer = Color(0xFFE0E0F9),
-    onSecondaryContainer = Color(0xFF181A2C),
+    primaryContainer = Color(0xFFE3E4E7),
+    onPrimaryContainer = Color(0xFF17181B),
+    secondary = Color(0xFF5D5F65),
+    secondaryContainer = Color(0xFFE3E4E7),
+    onSecondaryContainer = Color(0xFF17181B),
     tertiary = Color(0xFF2EA66B),
     background = Color(0xFFFBF8FF),
     surface = Color(0xFFFBF8FF),
@@ -31,13 +38,13 @@ private val LightColors = lightColorScheme(
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFFBAC3FF),
-    onPrimary = Color(0xFF1B2A97),
-    primaryContainer = Color(0xFF3A48C9),
-    onPrimaryContainer = Color(0xFFDEE0FF),
-    secondary = Color(0xFFC4C5DD),
-    secondaryContainer = Color(0xFF434659),
-    onSecondaryContainer = Color(0xFFE0E0F9),
+    primary = OrbitleSilver,
+    onPrimary = Color(0xFF15171A),
+    primaryContainer = Color(0xFF3A3D43),
+    onPrimaryContainer = Color(0xFFE4E6EA),
+    secondary = Color(0xFFC3C6CC),
+    secondaryContainer = Color(0xFF3A3D43),
+    onSecondaryContainer = Color(0xFFE4E6EA),
     tertiary = Color(0xFF6FDBA0),
     background = Color(0xFF0C0E14),
     surface = Color(0xFF0C0E14),

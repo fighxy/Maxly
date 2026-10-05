@@ -82,11 +82,11 @@ struct ContactCardRow: View {
         return ZStack {
             Circle().fill(outgoing ? Color.white.opacity(0.22) : Color.orbitleAccent)
             if letters.isEmpty {
-                Image(systemName: "person.fill").foregroundStyle(.white)
+                Image(systemName: "person.fill").foregroundStyle(outgoing ? Color.white : Color.orbitleOnAccent)
             } else {
                 Text(letters.uppercased())
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(outgoing ? Color.white : Color.orbitleOnAccent)
             }
         }
     }

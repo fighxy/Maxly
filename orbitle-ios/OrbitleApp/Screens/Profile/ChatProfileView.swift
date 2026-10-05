@@ -521,6 +521,7 @@ struct ChatProfileView: View {
                 Text(row.value)
                     .font(.body)
                     .foregroundStyle(isLink(row) ? AnyShapeStyle(Color.orbitleAccent) : AnyShapeStyle(.primary))
+                    .underline(row.action.map { if case .open = $0 { true } else { false } } ?? false)
                     .lineLimit(row.isMultiline ? nil : 1)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: row.isMultiline)
@@ -664,11 +665,11 @@ struct ChatProfileView: View {
                             .fill(Color.orbitleAccent)
                             .overlay {
                                 if chat.loadingMediaId == item.file.id {
-                                    ProgressView().tint(.white)
+                                    ProgressView().tint(Color.orbitleOnAccent)
                                 } else {
                                     Text(item.ext)
                                         .font(.system(size: 12, weight: .bold))
-                                        .foregroundStyle(.white)
+                                        .foregroundStyle(Color.orbitleOnAccent)
                                 }
                             }
                     } title: {
@@ -734,11 +735,11 @@ struct ChatProfileView: View {
                             .overlay {
                                 switch phase {
                                 case .downloading:
-                                    ProgressView().tint(.white)
+                                    ProgressView().tint(Color.orbitleOnAccent)
                                 case .playing:
-                                    Image(systemName: "pause.fill").foregroundStyle(.white)
+                                    Image(systemName: "pause.fill").foregroundStyle(Color.orbitleOnAccent)
                                 case .idle, .paused, .failed:
-                                    Image(systemName: "play.fill").foregroundStyle(.white).offset(x: 1)
+                                    Image(systemName: "play.fill").foregroundStyle(Color.orbitleOnAccent).offset(x: 1)
                                 }
                             }
                     } title: {

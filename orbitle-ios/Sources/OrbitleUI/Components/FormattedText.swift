@@ -28,7 +28,8 @@ enum FormattedText {
                 let target = span.url.flatMap(URL.init(string:)) ?? URL(string: substring(block.text, span.from, span.length))
                 if let target, target.scheme != nil { result[range].link = target }
                 result[range].foregroundColor = linkColor
-                result[range].underlineStyle = outgoing ? .single : nil
+                // Ссылки подчёркнуты везде: акцент близок к цвету текста, по одному цвету их не видно.
+                result[range].underlineStyle = .single
             case .mention:
                 result[range].foregroundColor = linkColor
                 result[range].inlinePresentationIntent = merged(result[range].inlinePresentationIntent, .stronglyEmphasized)
@@ -38,7 +39,7 @@ enum FormattedText {
                 break
             }
         }
-        detectLinks(in: &result, text: block.text, color: linkColor, underline: outgoing)
+        detectLinks(in: &result, text: block.text, color: linkColor, underline: true)
         return result
     }
 

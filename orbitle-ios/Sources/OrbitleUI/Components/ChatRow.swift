@@ -217,7 +217,7 @@ public struct UnreadBadge: View {
                 Text(text)
                     .font(.footnote.weight(.semibold))
                     .monospacedDigit()
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.orbitleOnAccent)
                     .padding(.horizontal, 6)
                     .frame(minWidth: height, minHeight: height)
                     .background(muted ? Color.orbitleMutedBadge : Color.orbitleAccent, in: Capsule())

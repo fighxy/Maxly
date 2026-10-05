@@ -57,7 +57,7 @@ import app.orbitle.ui.components.ChatBackdrop
 import app.orbitle.ui.components.ChatWallpaperBackground
 import app.orbitle.ui.components.LocalChatBackdrop
 import app.orbitle.ui.components.resource
-import app.orbitle.ui.theme.OrbitleAccent
+import app.orbitle.ui.theme.OrbitleOutgoing
 
 /** «Оформление»: образец переписки, размер текста, тема и обои чата. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -133,7 +133,7 @@ private fun Preview(backdrop: ChatBackdrop) {
                 Text("Доброе утро! Как тебе новые обои?", Modifier.padding(horizontal = 12.dp, vertical = 8.dp), fontSize = 16.sp)
             }
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-                Surface(shape = RoundedCornerShape(18.dp, 18.dp, 6.dp, 18.dp), color = OrbitleAccent, contentColor = Color.White) {
+                Surface(shape = RoundedCornerShape(18.dp, 18.dp, 6.dp, 18.dp), color = OrbitleOutgoing, contentColor = Color.White) {
                     Text("Очень уютно 🍂", Modifier.padding(horizontal = 12.dp, vertical = 8.dp), fontSize = 16.sp)
                 }
             }
@@ -149,7 +149,7 @@ private fun WallpaperTile(choice: ChatWallpaper, dark: Boolean, selected: Boolea
             Modifier
                 .size(84.dp, 120.dp)
                 .clip(shape)
-                .border(if (selected) BorderStroke(3.dp, OrbitleAccent) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), shape)
+                .border(if (selected) BorderStroke(3.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), shape)
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
@@ -160,8 +160,8 @@ private fun WallpaperTile(choice: ChatWallpaper, dark: Boolean, selected: Boolea
                 Image(painterResource(image.resource(thumb = true)), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             }
             if (selected) {
-                Box(Modifier.size(28.dp).clip(RoundedCornerShape(14.dp)).background(OrbitleAccent), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Box(Modifier.size(28.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(18.dp))
                 }
             }
         }

@@ -1,7 +1,24 @@
 import SwiftUI
 
 public extension Color {
-    static let orbitleAccent = Color(red: 0.36, green: 0.42, blue: 0.96)
+    #if os(iOS)
+    /// Подсветка системных кнопок и надписей: серебро в тёмной теме, глубокий графит
+    /// (почти чёрный) в светлой. Пузырь своих сообщений — отдельный цвет, `orbitleOutgoing`.
+    static let orbitleAccent = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.80, green: 0.82, blue: 0.85, alpha: 1)
+            : UIColor(red: 0.13, green: 0.14, blue: 0.16, alpha: 1)
+    })
+    /// Значки и текст на заливке `orbitleAccent`: графит на серебре, белый на графите.
+    static let orbitleOnAccent = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.08, green: 0.09, blue: 0.10, alpha: 1)
+            : UIColor.white
+    })
+    #else
+    static let orbitleAccent = Color(red: 0.13, green: 0.14, blue: 0.16)
+    static let orbitleOnAccent = Color.white
+    #endif
     static let orbitleOutgoing = Color(red: 0.36, green: 0.42, blue: 0.96)
     /// Синий круг «Избранного» и архива.
     static let orbitleSpecialAvatar = Color(red: 0.30, green: 0.62, blue: 0.98)

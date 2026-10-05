@@ -214,7 +214,7 @@ struct VoiceMessageView: View {
                 Circle().fill(outgoing ? Color.white : Color.orbitleAccent)
                 symbol
                     .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(outgoing ? Color.orbitleOutgoing : Color.white)
+                    .foregroundStyle(outgoing ? Color.orbitleOutgoing : Color.orbitleOnAccent)
             }
             .frame(width: Self.playSize, height: Self.playSize)
         }

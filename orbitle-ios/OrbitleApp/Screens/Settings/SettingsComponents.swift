@@ -171,6 +171,7 @@ struct LinkQRSheet: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
+                    .foregroundStyle(Color.orbitleOnAccent)
                     if let qr {
                         let image = Image(uiImage: qr)
                         ShareLink(item: image, preview: SharePreview(title, image: image)) {

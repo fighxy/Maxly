@@ -924,13 +924,13 @@ private fun Trailing(item: ChatListItem) {
         item.hasMention -> Box(
             Modifier.size(22.dp).clip(CircleShape).background(if (item.badgeMuted) muted else MaterialTheme.colorScheme.primary),
             contentAlignment = Alignment.Center,
-        ) { Text("@", color = Color.White, style = MaterialTheme.typography.labelMedium) }
+        ) { Text("@", color = if (item.badgeMuted) Color.White else MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelMedium) }
         badge is ChatBadge.Count -> Box(
             Modifier.defaultMinSize(minWidth = 22.dp, minHeight = 22.dp).clip(CircleShape)
                 .background(if (item.badgeMuted) muted else MaterialTheme.colorScheme.primary)
                 .padding(horizontal = 6.dp),
             contentAlignment = Alignment.Center,
-        ) { Text(badge.text, color = Color.White, style = MaterialTheme.typography.labelMedium) }
+        ) { Text(badge.text, color = if (item.badgeMuted) Color.White else MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelMedium) }
         item.badge == ChatBadge.Dot -> Box(
             Modifier.size(12.dp).clip(CircleShape).background(if (item.badgeMuted) muted else MaterialTheme.colorScheme.primary),
         )

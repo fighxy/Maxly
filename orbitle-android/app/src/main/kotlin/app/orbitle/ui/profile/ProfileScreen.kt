@@ -218,6 +218,7 @@ fun ProfileScreen(
                                     row.value,
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = if (row.action is InfoRow.Action.Open || row.action is InfoRow.Action.Call) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                    textDecoration = if (row.action is InfoRow.Action.Open) androidx.compose.ui.text.style.TextDecoration.Underline else null,
                                     maxLines = if (row.multiline) Int.MAX_VALUE else 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -292,8 +293,8 @@ fun ProfileScreen(
                         ListRow(
                             leading = {
                                 Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
-                                    if (progress != null) CircularProgressIndicator(progress = { progress }, Modifier.size(32.dp), color = Color.White, strokeWidth = 2.dp)
-                                    else Text(file.ext.ifEmpty { "FILE" }, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    if (progress != null) CircularProgressIndicator(progress = { progress }, Modifier.size(32.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                                    else Text(file.ext.ifEmpty { "FILE" }, color = MaterialTheme.colorScheme.onPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
                             },
                             title = file.file.name,
@@ -318,7 +319,7 @@ fun ProfileScreen(
                         ListRow(
                             leading = {
                                 Box(Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
-                                    Icon(if (playing?.isPlaying == true) Icons.Filled.Pause else Icons.Filled.PlayArrow, null, tint = Color.White)
+                                    Icon(if (playing?.isPlaying == true) Icons.Filled.Pause else Icons.Filled.PlayArrow, null, tint = MaterialTheme.colorScheme.onPrimary)
                                 }
                             },
                             title = voice.author,

@@ -113,7 +113,7 @@ import app.orbitle.presentation.chat.WaveformLayout
 import app.orbitle.presentation.chatlist.ChatListFormatter
 import app.orbitle.ui.components.Avatar
 import app.orbitle.ui.theme.AvatarPalette
-import app.orbitle.ui.theme.OrbitleAccent
+import app.orbitle.ui.theme.OrbitleOutgoing
 import coil3.compose.AsyncImage
 
 private val MissedRed = Color(0xFFE5484D)
@@ -126,7 +126,7 @@ fun bubbleColors(outgoing: Boolean): BubbleColors {
     val scheme = MaterialTheme.colorScheme
     return if (outgoing) {
         // Свой пузырь в обеих темах — фирменный акцент с белым текстом.
-        BubbleColors(OrbitleAccent, Color.White, Color.White.copy(alpha = 0.72f), Color.White)
+        BubbleColors(OrbitleOutgoing, Color.White, Color.White.copy(alpha = 0.72f), Color.White)
     } else {
         // На обоях в светлой теме чужой пузырь белый, чтобы читался на светлом узоре.
         val backdrop = app.orbitle.ui.components.LocalChatBackdrop.current
@@ -828,7 +828,7 @@ private fun Reactions(reactions: List<MessageReaction>, colors: BubbleColors, ou
             }
             val foreground = when {
                 reaction.mine && outgoing -> colors.container
-                reaction.mine -> Color.White
+                reaction.mine -> MaterialTheme.colorScheme.onPrimary
                 else -> colors.content
             }
             Row(
