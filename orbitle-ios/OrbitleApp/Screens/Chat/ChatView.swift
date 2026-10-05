@@ -73,7 +73,14 @@ struct ChatView: View {
     @State private var reveal = PrivateModeReveal()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    // Тело собрано из слоёв: одна длинная цепочка модификаторов не укладывается
+    // в лимит проверки типов компилятора. Порядок модификаторов прежний.
     var body: some View {
+        chatEvents
+    }
+
+    /// Лента с обоями, верхними плашками, полем ввода и панелью стикеров.
+    private var transcriptLayer: some View {
         ChatTranscript(
             viewModel: viewModel,
             chatType: kind,
@@ -92,47 +99,10 @@ struct ChatView: View {
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { wallpaperFrame = $0 }
                 .ignoresSafeArea()
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            VStack(spacing: 0) {
-                if privateMode.isMasked { privateModeBanner }
-                if let pinned = viewModel.pinned {
-                    pinBanner(id: pinned.id, text: pinned.text)
-                }
-            }
-        }
+        .safeAreaInset(edge: .top, spacing: 0) { topBanners }
         // Режим включают и выключают и с другого экрана: капсула всё равно выезжает плавно.
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: privateMode)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
-                ChatComposer(
-                    viewModel: viewModel,
-                    recording: recording,
-                    focus: $composerFocused,
-                    attachmentsShown: $attachmentsShown,
-                    panelShown: $panelShown,
-                    canWrite: writable,
-                    showsReadOnlyBar: canWrite != nil || profile?.profile != nil,
-                    chatType: kind,
-                    isMuted: isMuted,
-                    // Звук чата вне списка не переключить: его нет среди чатов аккаунта.
-                    onToggleMute: canWrite == nil ? nil : onToggleMute,
-                    onOpenApp: openAppAction,
-                    join: joinAction
-                )
-                if panelShown, writable, let stickerPanel {
-                    StickerPanel(
-                        model: stickerPanel,
-                        height: keyboardHeight,
-                        onEmoji: { viewModel.insertEmoji($0.emoji, animated: $0.animated) },
-                        onBackspace: { viewModel.deleteBackward() },
-                        onSticker: { sticker in Task { await viewModel.sendSticker(sticker) } }
-                    )
-                    .transition(.move(edge: .bottom))
-                }
-            }
-            // Верх поля ввода — от него лента тает в фон к низу экрана (`ChatBottomBlur`).
-            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { bottomControlsTop = $0 }
-        }
+        .safeAreaInset(edge: .bottom, spacing: 0) { bottomControls }
         .onChange(of: composerFocused) { _, focused in
             // Клавиатура вернулась — панель уходит под неё без анимации: место то же.
             if focused, panelShown { panelShown = false }
@@ -146,276 +116,374 @@ struct ChatView: View {
             // Плавающая и внешняя клавиатуры низкие: панель остаётся обычной высоты.
             if height > 200 { keyboardHeight = height }
         }
-        // Видимость tab bar управляется стабильным MainTabView.
-        // Системный заголовок (и подпись кнопки «назад» следующего экрана) размыть нельзя:
-        // в приватном режиме там всегда общее «Личный чат» / «Групповой чат».
-        .navigationTitle(shownTitle)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Button(action: openProfile) {
-                    ChatHeaderTitle(
-                        title: headerTitle,
-                        maskedTitle: maskedTitle,
-                        status: privateMode.isMasked ? .none : headerStatus,
-                        isVerified: live().isVerified || profile?.isOfficial == true,
-                        isMuted: isMuted
-                    )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("\(shownTitle), открыть профиль")
-            }
-            // Поиск, опрос, отложенная отправка и звонки — в профиле чата: справа в шапке
-            // только аватар.
-            // Слот существует с первого кадра: загрузка профиля не перестраивает toolbar.
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    if let owner = storyOwner, stories?.ring(of: owner) != nil {
-                        stories?.open(owner)
-                    } else {
-                        openProfile()
-                    }
-                } label: {
-                    headerAvatar
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Профиль")
-                .transaction { $0.animation = nil }
+    }
+
+    private var topBanners: some View {
+        VStack(spacing: 0) {
+            if privateMode.isMasked { privateModeBanner }
+            if let pinned = viewModel.pinned {
+                pinBanner(id: pinned.id, text: pinned.text)
             }
         }
-        // Единая спокойная подложка шапки, без отдельной капсулы вокруг названия.
-        .toolbarBackground(.regularMaterial, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
-        .navigationDestination(isPresented: $profileShown) {
-            if let profile {
-                ChatProfileView(
-                    viewModel: profile,
-                    context: profileContext(for: profile),
-                    live: live()
-                )
-                // Профиль открывают осознанно, и приватный режим его не прячет.
-                .environment(\.privateMode, .visible)
-            }
-        }
-        .task {
-            // Шапка: статус и аватар из карточки чата, она же открывается профилем.
-            if profile == nil { profile = makeProfile?() }
-            // Возврат из профиля тоже запускает эту задачу: свежую карточку не перезапрашиваем.
-            await profile?.loadIfStale()
-            viewModel.notePeer(profile?.shown.peerId, isBot: profile?.shown.kind == .bot)
-            // Общие медиа из кэша — заранее, чтобы профиль открылся с ними. Пауза: сначала лента.
-            try? await Task.sleep(for: .seconds(1))
-            guard !Task.isCancelled, let card = profile else { return }
-            await card.updateShared(viewModel.messages, currentUserId: viewModel.currentUserId) {
-                await viewModel.sharedHistory()
-            }
-        }
-        .sheet(item: $viewModel.openedComments, onDismiss: { viewModel.closeComments() }) { post in
-            if let model = viewModel.commentsModel(for: post) {
-                CommentsView(model: model) { viewModel.closeComments() }
-                    .presentationDragIndicator(.visible)
-                    // В листе комментариев обоев нет: пузыри обычные.
-                    .environment(\.chatWallpaper, .plain)
-            }
-        }
-        .sheet(item: $viewModel.reactionPickerTarget) { message in
-            ReactionPicker(
-                catalog: viewModel.reactionCatalog,
-                mine: message.content.reactions.mine,
-                onPick: { emoji in Task { await viewModel.pickReaction(emoji) } },
-                onClose: { viewModel.reactionPickerTarget = nil }
+    }
+
+    private var bottomControls: some View {
+        VStack(spacing: 0) {
+            ChatComposer(
+                viewModel: viewModel,
+                recording: recording,
+                focus: $composerFocused,
+                attachmentsShown: $attachmentsShown,
+                panelShown: $panelShown,
+                canWrite: writable,
+                showsReadOnlyBar: canWrite != nil || profile?.profile != nil,
+                chatType: kind,
+                isMuted: isMuted,
+                // Звук чата вне списка не переключить: его нет среди чатов аккаунта.
+                onToggleMute: canWrite == nil ? nil : onToggleMute,
+                onOpenApp: openAppAction,
+                join: joinAction
             )
+            if panelShown, writable, let stickerPanel {
+                StickerPanel(
+                    model: stickerPanel,
+                    height: keyboardHeight,
+                    onEmoji: { viewModel.insertEmoji($0.emoji, animated: $0.animated) },
+                    onBackspace: { viewModel.deleteBackward() },
+                    onSticker: { sticker in Task { await viewModel.sendSticker(sticker) } }
+                )
+                .transition(.move(edge: .bottom))
+            }
+        }
+        // Верх поля ввода — от него лента тает в фон к низу экрана (`ChatBottomBlur`).
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { bottomControlsTop = $0 }
+    }
+
+    /// Шапка, переход в профиль и загрузка карточки чата.
+    private var navigationLayer: some View {
+        transcriptLayer
+            // Видимость tab bar управляется стабильным MainTabView.
+            // Системный заголовок (и подпись кнопки «назад» следующего экрана) размыть нельзя:
+            // в приватном режиме там всегда общее «Личный чат» / «Групповой чат».
+            .navigationTitle(shownTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { headerToolbar }
+            // Единая спокойная подложка шапки, без отдельной капсулы вокруг названия.
+            .toolbarBackground(.regularMaterial, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .navigationDestination(isPresented: $profileShown) { profileDestination }
+            .task {
+                // Шапка: статус и аватар из карточки чата, она же открывается профилем.
+                if profile == nil { profile = makeProfile?() }
+                // Возврат из профиля тоже запускает эту задачу: свежую карточку не перезапрашиваем.
+                await profile?.loadIfStale()
+                viewModel.notePeer(profile?.shown.peerId, isBot: profile?.shown.kind == .bot)
+                // Общие медиа из кэша — заранее, чтобы профиль открылся с ними. Пауза: сначала лента.
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled, let card = profile else { return }
+                await card.updateShared(viewModel.messages, currentUserId: viewModel.currentUserId) {
+                    await viewModel.sharedHistory()
+                }
+            }
+    }
+
+    @ToolbarContentBuilder
+    private var headerToolbar: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            Button(action: openProfile) {
+                ChatHeaderTitle(
+                    title: headerTitle,
+                    maskedTitle: maskedTitle,
+                    status: privateMode.isMasked ? .none : headerStatus,
+                    isVerified: live().isVerified || profile?.isOfficial == true,
+                    isMuted: isMuted
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(shownTitle), открыть профиль")
+        }
+        // Поиск, опрос, отложенная отправка и звонки — в профиле чата: справа в шапке
+        // только аватар.
+        // Слот существует с первого кадра: загрузка профиля не перестраивает toolbar.
+        ToolbarItem(placement: .topBarTrailing) {
+            Button(action: openAvatar) {
+                headerAvatar
+                    .frame(width: 44, height: 44)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Профиль")
+            .transaction { $0.animation = nil }
+        }
+    }
+
+    /// Касание аватара в шапке: истории собеседника, если есть, иначе профиль.
+    private func openAvatar() {
+        if let owner = storyOwner, stories?.ring(of: owner) != nil {
+            stories?.open(owner)
+        } else {
+            openProfile()
+        }
+    }
+
+    @ViewBuilder
+    private var profileDestination: some View {
+        if let profile {
+            ChatProfileView(
+                viewModel: profile,
+                context: profileContext(for: profile),
+                live: live()
+            )
+            // Профиль открывают осознанно, и приватный режим его не прячет.
             .environment(\.privateMode, .visible)
         }
-        .sheet(isPresented: $searchShown) {
-            NavigationStack {
-                List(viewModel.searchHits, id: \.messageId) { hit in
-                    Button {
-                        searchShown = false
-                        viewModel.focusReply(hit.messageId)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(hit.text.isEmpty ? "Сообщение" : hit.text).lineLimit(2)
-                            if let date = hit.date {
-                                Text(ChatContentFormat.time(date)).font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-                .navigationTitle("Поиск")
-                .navigationBarTitleDisplayMode(.inline)
-                .searchable(text: $searchQuery, prompt: "В этом чате")
-                .onSubmit(of: .search) { Task { await viewModel.searchInChat(searchQuery) } }
-                .overlay { if viewModel.searchBusy { ProgressView() } }
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { searchShown = false } }
+    }
+
+    /// Листы: комментарии, реакции, поиск, опрос, отложенная отправка, мини-приложение, вложения.
+    private var sheetsLayer: some View {
+        navigationLayer
+            .sheet(item: $viewModel.openedComments, onDismiss: { viewModel.closeComments() }) { post in
+                if let model = viewModel.commentsModel(for: post) {
+                    CommentsView(model: model) { viewModel.closeComments() }
+                        .presentationDragIndicator(.visible)
+                        // В листе комментариев обоев нет: пузыри обычные.
+                        .environment(\.chatWallpaper, .plain)
                 }
             }
-        }
-        .sheet(isPresented: $pollShown) {
-            NavigationStack {
-                Form {
-                    TextField("Вопрос", text: $pollTitle)
-                    TextField("Ответ 1", text: $pollFirst)
-                    TextField("Ответ 2", text: $pollSecond)
-                }
-                .navigationTitle("Опрос")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Отмена") { pollShown = false } }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Отправить") {
-                            pollShown = false
-                            Task { await viewModel.sendPoll(title: pollTitle, answers: [pollFirst, pollSecond]) }
-                        }
-                        .disabled(pollFirst.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            || pollSecond.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
+            .sheet(item: $viewModel.reactionPickerTarget) { message in
+                ReactionPicker(
+                    catalog: viewModel.reactionCatalog,
+                    mine: message.content.reactions.mine,
+                    onPick: { emoji in Task { await viewModel.pickReaction(emoji) } },
+                    onClose: { viewModel.reactionPickerTarget = nil }
+                )
+                .environment(\.privateMode, .visible)
+            }
+            .sheet(isPresented: $searchShown) { searchSheet }
+            .sheet(isPresented: $pollShown) { pollSheet }
+            .sheet(isPresented: $scheduleShown) { scheduleSheet }
+            .sheet(item: $viewModel.botAppRequest) { request in
+                if let makeBotApp {
+                    MiniAppSheet(model: makeBotApp(request))
+                        .environment(\.privateMode, .visible)
                 }
             }
-        }
-        .sheet(isPresented: $scheduleShown) {
-            NavigationStack {
-                Form {
-                    DatePicker("Когда", selection: $scheduleDate, in: Date()..., displayedComponents: [.date, .hourAndMinute])
-                }
-                .navigationTitle("Отправить позже")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Отмена") { scheduleShown = false } }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Запланировать") {
-                            scheduleShown = false
-                            Task { await viewModel.schedule(text: viewModel.draft, at: scheduleDate) }
-                        }
-                        .disabled(viewModel.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                }
+            .onChange(of: viewModel.openURLRequest) { _, url in
+                guard let url else { return }
+                viewModel.openURLRequest = nil
+                openURL(url)
             }
-        }
-        .sheet(item: $viewModel.botAppRequest) { request in
-            if let makeBotApp {
-                MiniAppSheet(model: makeBotApp(request))
+            .sheet(isPresented: $attachmentsShown) { attachmentSheet }
+            .sheet(item: $viewModel.reactionUsers) { model in
+                // Открывается из открытого пузыря — значит, смотреть его хотят.
+                ReactionUsersView(model: model) { viewModel.reactionUsers = nil }
                     .environment(\.privateMode, .visible)
             }
-        }
-        .onChange(of: viewModel.openURLRequest) { _, url in
-            guard let url else { return }
-            viewModel.openURLRequest = nil
-            openURL(url)
-        }
-        .sheet(isPresented: $attachmentsShown) {
-            AttachmentSheet(
-                contactList: contactList,
-                onSend: { drafts, caption in
-                    attachmentsShown = false
-                    Task { await viewModel.sendAttachments(drafts, caption: caption) }
-                },
-                onClose: { attachmentsShown = false }
-            )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-            // Лист вложений — своя галерея и контакты, выбор идёт осознанно.
-            .environment(\.privateMode, .visible)
-        }
-        .sheet(item: $viewModel.reactionUsers) { model in
-            // Открывается из открытого пузыря — значит, смотреть его хотят.
-            ReactionUsersView(model: model) { viewModel.reactionUsers = nil }
-                .environment(\.privateMode, .visible)
-        }
-        .fullScreenCover(item: profileShown ? .constant(nil) : $viewModel.viewer) { request in
-            MediaViewer(
-                request: request,
-                download: { await viewModel.downloadVideo($0) },
-                notice: viewModel.notice,
-                isSaving: viewModel.isSaving,
-                onSave: { viewModel.saveViewerSlide($0, to: $1) }
-            ) { viewModel.viewer = nil }
-                .fileExportSheet(viewModel, fromViewer: true)
-                .environment(\.privateMode, .visible)
-        }
-        .fileExportSheet(viewModel, fromViewer: false)
-        .fullScreenCover(item: profileShown ? .constant(nil) : $viewModel.openedFile) { file in
-            FileQuickLook(url: file.url, title: file.name) { viewModel.openedFile = nil }
-                .environment(\.privateMode, .visible)
-        }
-        .overlay {
-            if recording.isVideo {
-                VideoNoteOverlay(session: recording)
-            }
-        }
-        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: recording.isVideo)
-        .modifier(ChatHistoryLifecycle(model: viewModel, requestsComments: wantsCommentCounts))
-        .onAppear {
-            recording.onStart = { [viewModel] in viewModel.stopVoice() }
-            recording.onRecorded = { [viewModel] draft in
-                Task { await viewModel.sendAttachments([draft], caption: "") }
-            }
-        }
-        .onDisappear {
-            panelShown = false
-            recording.cancel()
-            reveal.hideAll()
-        }
-        // Режим выключили или сменили вид — открытые пузыри снова закрыты при следующем включении.
-        .onChange(of: privateMode) { _, _ in reveal.hideAll() }
-        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.notice)
-        // Окно по центру: на iOS 26 confirmationDialog всплывает облаком от вида, к которому
-        // привязан, — у шапки, далеко от выбранного сообщения.
-        .alert(
-            "Удалить сообщение?",
-            isPresented: deletionShown,
-            presenting: viewModel.deletionCandidate
-        ) { message in
-            if viewModel.deletesWithoutChoice {
-                Button("Удалить", role: .destructive) {
-                    Task { await viewModel.confirmDelete(message, forEveryone: viewModel.deletesEverywhere(message)) }
-                }
-            } else {
-                if viewModel.canDeleteForEveryone(message) {
-                    Button(kind == .private ? "Удалить у меня и у собеседника" : "Удалить у всех", role: .destructive) {
-                        Task { await viewModel.confirmDelete(message, forEveryone: true) }
+    }
+
+    private var searchSheet: some View {
+        NavigationStack {
+            List(viewModel.searchHits, id: \.messageId) { hit in
+                Button {
+                    searchShown = false
+                    viewModel.focusReply(hit.messageId)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(hit.text.isEmpty ? "Сообщение" : hit.text).lineLimit(2)
+                        if let date = hit.date {
+                            Text(ChatContentFormat.time(date)).font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
-                Button("Удалить у меня", role: .destructive) {
-                    Task { await viewModel.confirmDelete(message, forEveryone: false) }
+            }
+            .navigationTitle("Поиск")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $searchQuery, prompt: "В этом чате")
+            .onSubmit(of: .search) { Task { await viewModel.searchInChat(searchQuery) } }
+            .overlay { if viewModel.searchBusy { ProgressView() } }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { searchShown = false } }
+            }
+        }
+    }
+
+    private var pollSheet: some View {
+        NavigationStack {
+            Form {
+                TextField("Вопрос", text: $pollTitle)
+                TextField("Ответ 1", text: $pollFirst)
+                TextField("Ответ 2", text: $pollSecond)
+            }
+            .navigationTitle("Опрос")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Отмена") { pollShown = false } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Отправить") {
+                        pollShown = false
+                        Task { await viewModel.sendPoll(title: pollTitle, answers: [pollFirst, pollSecond]) }
+                    }
+                    .disabled(!pollReady)
                 }
             }
-            Button("Отмена", role: .cancel) { viewModel.deletionCandidate = nil }
         }
-        .sheet(isPresented: forwardShown) {
-            ForwardPickerView(
-                targets: forwardList,
-                onPick: { id in Task { await viewModel.forward(to: id) } },
-                onCancel: { viewModel.forwardCandidate = nil }
-            )
+    }
+
+    /// Опрос уходит, когда заполнены оба ответа.
+    private var pollReady: Bool {
+        let first = pollFirst.trimmingCharacters(in: .whitespacesAndNewlines)
+        let second = pollSecond.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !first.isEmpty && !second.isEmpty
+    }
+
+    private var scheduleSheet: some View {
+        NavigationStack {
+            Form {
+                DatePicker("Когда", selection: $scheduleDate, in: Date()..., displayedComponents: [.date, .hourAndMinute])
+            }
+            .navigationTitle("Отправить позже")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Отмена") { scheduleShown = false } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Запланировать") {
+                        scheduleShown = false
+                        Task { await viewModel.schedule(text: viewModel.draft, at: scheduleDate) }
+                    }
+                    .disabled(viewModel.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
         }
-        .onChange(of: viewModel.forwardCandidate?.id) { _, id in
-            if id != nil { forwardList = forwardTargets() }
-        }
-        .onChange(of: viewModel.unreadMarkCandidate?.id) { _, id in
-            guard id != nil, let message = viewModel.unreadMarkCandidate else { return }
-            viewModel.unreadMarkCandidate = nil
-            onMarkUnread?(message.timestamp)
-        }
-        // Выбрали сообщение для ответа — клавиатура сразу открывается.
-        .onChange(of: viewModel.replyTarget?.id) { _, id in
-            if id != nil { composerFocused = true }
-        }
-        .onChange(of: viewModel.editTarget?.id) { _, id in
-            if id != nil { composerFocused = true }
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase != .active {
-                viewModel.flushDraft()
-                // Свернули приложение — открытые сообщения снова закрыты.
+    }
+
+    private var attachmentSheet: some View {
+        AttachmentSheet(
+            contactList: contactList,
+            onSend: { drafts, caption in
+                attachmentsShown = false
+                Task { await viewModel.sendAttachments(drafts, caption: caption) }
+            },
+            onClose: { attachmentsShown = false }
+        )
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        // Лист вложений — своя галерея и контакты, выбор идёт осознанно.
+        .environment(\.privateMode, .visible)
+    }
+
+    /// Полноэкранный просмотр медиа и файлов, видеосообщение и жизненный цикл экрана.
+    private var coversLayer: some View {
+        sheetsLayer
+            .fullScreenCover(item: unlessProfileShown($viewModel.viewer)) { request in
+                MediaViewer(
+                    request: request,
+                    download: { await viewModel.downloadVideo($0) },
+                    notice: viewModel.notice,
+                    isSaving: viewModel.isSaving,
+                    onSave: { viewModel.saveViewerSlide($0, to: $1) }
+                ) { viewModel.viewer = nil }
+                    .fileExportSheet(viewModel, fromViewer: true)
+                    .environment(\.privateMode, .visible)
+            }
+            .fileExportSheet(viewModel, fromViewer: false)
+            .fullScreenCover(item: unlessProfileShown($viewModel.openedFile)) { file in
+                FileQuickLook(url: file.url, title: file.name) { viewModel.openedFile = nil }
+                    .environment(\.privateMode, .visible)
+            }
+            .overlay {
+                if recording.isVideo {
+                    VideoNoteOverlay(session: recording)
+                }
+            }
+            .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: recording.isVideo)
+            .modifier(ChatHistoryLifecycle(model: viewModel, requestsComments: wantsCommentCounts))
+    }
+
+    /// Пока открыт профиль, просмотр из ленты не показывается: его показывает профиль.
+    private func unlessProfileShown<Item>(_ item: Binding<Item?>) -> Binding<Item?> {
+        profileShown ? .constant(nil) : item
+    }
+
+    private var lifecycleLayer: some View {
+        coversLayer
+            .onAppear {
+                recording.onStart = { [viewModel] in viewModel.stopVoice() }
+                recording.onRecorded = { [viewModel] draft in
+                    Task { await viewModel.sendAttachments([draft], caption: "") }
+                }
+            }
+            .onDisappear {
+                panelShown = false
+                recording.cancel()
                 reveal.hideAll()
             }
-            // Пуши реакций, пока приложение было в фоне, могли потеряться: сверить с сервером.
-            if phase == .active { Task { await viewModel.refreshReactions() } }
+            // Режим выключили или сменили вид — открытые пузыри снова закрыты при следующем включении.
+            .onChange(of: privateMode) { _, _ in reveal.hideAll() }
+            .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.notice)
+    }
+
+    /// Удаление и пересылка сообщения, ответ, правка, пометка «непрочитано» и фаза приложения.
+    private var chatEvents: some View {
+        lifecycleLayer
+            // Окно по центру: на iOS 26 confirmationDialog всплывает облаком от вида, к которому
+            // привязан, — у шапки, далеко от выбранного сообщения.
+            .alert(
+                "Удалить сообщение?",
+                isPresented: deletionShown,
+                presenting: viewModel.deletionCandidate
+            ) { message in
+                deletionActions(message)
+            }
+            .sheet(isPresented: forwardShown) {
+                ForwardPickerView(
+                    targets: forwardList,
+                    onPick: { id in Task { await viewModel.forward(to: id) } },
+                    onCancel: { viewModel.forwardCandidate = nil }
+                )
+            }
+            .onChange(of: viewModel.forwardCandidate?.id) { _, id in
+                if id != nil { forwardList = forwardTargets() }
+            }
+            .onChange(of: viewModel.unreadMarkCandidate?.id) { _, id in
+                guard id != nil, let message = viewModel.unreadMarkCandidate else { return }
+                viewModel.unreadMarkCandidate = nil
+                onMarkUnread?(message.timestamp)
+            }
+            // Выбрали сообщение для ответа — клавиатура сразу открывается.
+            .onChange(of: viewModel.replyTarget?.id) { _, id in
+                if id != nil { composerFocused = true }
+            }
+            .onChange(of: viewModel.editTarget?.id) { _, id in
+                if id != nil { composerFocused = true }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase != .active {
+                    viewModel.flushDraft()
+                    // Свернули приложение — открытые сообщения снова закрыты.
+                    reveal.hideAll()
+                }
+                // Пуши реакций, пока приложение было в фоне, могли потеряться: сверить с сервером.
+                if phase == .active { Task { await viewModel.refreshReactions() } }
+            }
+    }
+
+    @ViewBuilder
+    private func deletionActions(_ message: Message) -> some View {
+        if viewModel.deletesWithoutChoice {
+            Button("Удалить", role: .destructive) {
+                Task { await viewModel.confirmDelete(message, forEveryone: viewModel.deletesEverywhere(message)) }
+            }
+        } else {
+            if viewModel.canDeleteForEveryone(message) {
+                Button(kind == .private ? "Удалить у меня и у собеседника" : "Удалить у всех", role: .destructive) {
+                    Task { await viewModel.confirmDelete(message, forEveryone: true) }
+                }
+            }
+            Button("Удалить у меня", role: .destructive) {
+                Task { await viewModel.confirmDelete(message, forEveryone: false) }
+            }
         }
+        Button("Отмена", role: .cancel) { viewModel.deletionCandidate = nil }
     }
 
     private var headerStatus: ChatHeaderStatus {
