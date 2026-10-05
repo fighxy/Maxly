@@ -34,6 +34,8 @@ struct UnreadSeparatorTests {
     @Test("Кнопка OPEN_APP без бота и параметра; CLIPBOARD копирует payload")
     func buttonActions() {
         #expect(InlineButton(type: "open_app", text: "App").action == .openApp(botId: nil, startParam: nil))
+        let scoped = InlineButton(type: "OPEN_APP", text: "App", webApp: "https://max.ru/bot?startapp=x&chat_id=-42", contactId: "9")
+        #expect(scoped.action == .openApp(botId: "9", startParam: "x", chatId: "-42"))
         #expect(InlineButton(type: "CLIPBOARD", text: "Код", payload: "1234").action == .copy("1234"))
         #expect(InlineButton(type: "REQUEST_CONTACT", text: "?").action == .callback)
     }

@@ -118,8 +118,11 @@ data class InlineButton(
         /** Нажатие уходит боту (опкод 118). */
         data object Callback : Action
         data class Link(val url: String) : Action
-        /** Мини-приложение бота: [botId], если кнопка его назвала, и параметр запуска. */
-        data class OpenApp(val botId: String?, val startParam: String?) : Action
+        /**
+         * Мини-приложение бота: [botId], если кнопка его назвала, параметр запуска и [chatId]
+         * из ссылки `webApp` (`chat_id`), если она его задаёт; иначе — чат сообщения.
+         */
+        data class OpenApp(val botId: String?, val startParam: String?, val chatId: String? = null) : Action
         data class Copy(val text: String) : Action
     }
 
@@ -129,10 +132,10 @@ data class InlineButton(
             "LINK" -> url?.takeIf { it.isNotBlank() }?.let { Action.Link(it) } ?: Action.Callback
             "OPEN_APP" -> {
                 val query = webApp?.let { runCatching { java.net.URI(it).rawQuery }.getOrNull() }.orEmpty()
-                val fromLink = query.split('&').map { it.split('=', limit = 2) }
-                    .firstOrNull { it.size == 2 && (it[0] == "startapp" || it[0] == "startApp") }
-                    ?.get(1)?.let { java.net.URLDecoder.decode(it, "UTF-8") }
-                Action.OpenApp(contactId, payload ?: fromLink)
+                val params = query.split('&').map { it.split('=', limit = 2) }.filter { it.size == 2 }
+                fun param(vararg names: String) = params.firstOrNull { it[0] in names }?.get(1)
+                    ?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+                Action.OpenApp(contactId, payload ?: param("startapp", "startApp"), param("chat_id")?.takeIf { it.toLongOrNull() != null })
             }
             "CLIPBOARD" -> Action.Copy(payload.orEmpty())
             else -> Action.Callback
