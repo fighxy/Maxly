@@ -473,6 +473,9 @@ class ChatViewModelTest {
         val model = vm()
         repo.headerInfo.value = ChatHeaderInfo(chat(unread = 1))
         repo.list.value = listOf(msg("1"), msg("2"))
+        // Чат с непрочитанными читается тем, что видно: пока экран молчит, отметки нет.
+        assertTrue(repo.reads.isEmpty())
+        model.onVisible("2", atBottom = true)
         assertEquals("2", repo.reads.last())
         val count = repo.reads.size
         repo.list.value = repo.list.value + msg("local-3", author = "1", status = MessageStatus.SENDING)

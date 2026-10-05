@@ -68,6 +68,8 @@ sealed interface ChatItem {
         val comments: Int? = null,
         /** Предыдущее сообщение того же автора в пределах 15 минут. Углы сверху не меняет. */
         val joinsPrevious: Boolean = false,
+        /** День сообщения («Сегодня», «12 марта»): плавающая дата над лентой при прокрутке. */
+        val day: String = "",
     ) : ChatItem {
         override val key: String get() = message.id
     }
@@ -100,10 +102,20 @@ data class ChatUiState(
     val isLoading: Boolean = true,
     val isLoadingOlder: Boolean = false,
     val hasOlder: Boolean = true,
+    /** Лента в окне перехода: ниже есть ещё не загруженные сообщения, до свежих. */
+    val hasNewer: Boolean = false,
+    val isLoadingNewer: Boolean = false,
+    /** Переход к далёкому сообщению: его окно грузится. */
+    val isJumping: Boolean = false,
+    /** Кнопка «вниз» сначала вернёт к сообщению, с которого перешли. */
+    val canReturn: Boolean = false,
+    /** Куда прокрутить ленту; экран выполняет и снимает ([ChatViewModel.consumeScroll]). */
+    val scroll: ScrollRequest? = null,
     /** Пустой загруженный чат: подсказка вместо ленты. */
     val emptyHint: String? = null,
     val quickReactions: List<String> = ReactionPalette.FALLBACK,
     val reactionCatalog: List<String> = emptyList(),
+    /** Чужих сообщений ниже экрана: число на кнопке «вниз». */
     val unreadBelow: Int = 0,
     /** Выбранные вложения: уйдут одним сообщением с текстом поля как подписью. */
     val attachments: List<OutgoingFile> = emptyList(),
@@ -188,8 +200,30 @@ class ChatViewModel(
     val stickers: StickerPanel? = stickerRecents?.let { StickerPanel(stickerRepository, it, viewModelScope, emojiSupported) }
 
     private var history: List<Message> = emptyList()
+    /** Что из [history] видит лента: живая лента или окно перехода ([jumpTime]). */
+    private var visible: List<Message> = emptyList()
     private var header: ChatHeaderInfo? = null
     private var latestLoaded = false
+    /** Непрерывные куски истории чата: переживают экран. */
+    private val ranges = HistoryRanges.of(chatId)
+    /** Окно перехода: момент сообщения, к которому перешли; `null` — живая лента. */
+    private var jumpTime: Long? = null
+    /** Откуда переходили (ответ → оригинал): кнопка «вниз» возвращает туда по очереди. */
+    private val returnStack = ArrayDeque<String>()
+    private var scrollToken = 0
+    /**
+     * Лента у низа и следует за новыми: читается всё. Пока экран не сообщил, где лента, чат с
+     * непрочитанными не следует (откроется на первом непрочитанном).
+     */
+    private var following = true
+    /** Самое новое сообщение, которое было на экране (мс): до него чат прочитан. */
+    private var seenMs = 0L
+    /** Своя отметка прочтения из шапки при открытии. */
+    private var readMarkMs = 0L
+    /** Окно вокруг первого непрочитанного уже спрашивали. */
+    private var unreadFetched = false
+    /** Прежнее место в ленте уже проверяли. */
+    private var placeChecked = false
     /**
      * Свежая страница не пришла, а ленты нет: вместо «Здесь пока нет сообщений» — почему пусто.
      * Снимается удачной загрузкой.
@@ -265,7 +299,7 @@ class ChatViewModel(
     fun loadLatest() {
         viewModelScope.launch {
             try {
-                repository.openLatest(chatId)
+                repository.openLatestPage(chatId)?.let(ranges::addLatest)
                 latestLoaded = true
                 latestFailure = null
             } catch (e: CancellationException) {
@@ -327,10 +361,15 @@ class ChatViewModel(
         val current = _state.value
         if (current.isLoadingOlder || !current.hasOlder || !latestLoaded || history.isEmpty()) return
         if (now() < olderRetryAt) return
+        val oldest = visible.firstOrNull { it.status == MessageStatus.SENT } ?: history.firstOrNull() ?: return
         _state.update { it.copy(isLoadingOlder = true) }
         viewModelScope.launch {
             val more = try {
-                repository.loadOlder(chatId)
+                val span = repository.olderPage(chatId, oldest.timeMs)
+                if (span != null && span.count > 0) ranges.add(span.oldestMs, oldest.timeMs)
+                if (span?.reachedOldest == true) ranges.markBeginning(if (span.count > 0) span.oldestMs else oldest.timeMs)
+                rebuild()
+                span?.reachedOldest != true
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -342,6 +381,187 @@ class ChatViewModel(
             }
             _state.update { it.copy(isLoadingOlder = false, hasOlder = more) }
         }
+    }
+
+    /** Окно перехода дошло до низа экрана: следующая страница к свежим. */
+    fun loadNewer() {
+        val target = jumpTime ?: return
+        if (_state.value.isLoadingNewer) return
+        val newest = visible.lastOrNull { it.status == MessageStatus.SENT } ?: return
+        _state.update { it.copy(isLoadingNewer = true) }
+        viewModelScope.launch {
+            try {
+                val span = repository.newerPage(chatId, newest.timeMs)
+                if (span != null) ranges.add(newest.timeMs, if (span.reachedNewest) Long.MAX_VALUE else span.newestMs)
+                // Окно догнало живую ленту: дальше это просто лента.
+                if (span == null || ranges.around(target) == ranges.live()) jumpTime = null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (!app.orbitle.data.CoreErrors.map(e).isRateLimit) show(e)
+            }
+            _state.update { it.copy(isLoadingNewer = false) }
+            rebuild()
+        }
+    }
+
+    /**
+     * Переход к сообщению (цитата ответа, закреп, поиск): посередине экрана с подсветкой. Не в
+     * ленте — грузится окно вокруг него. [from] — сообщение, с которого перешли: кнопка «вниз»
+     * вернёт к нему.
+     */
+    fun jumpTo(messageId: String, from: String? = null) {
+        if (from != null && from != messageId && returnStack.lastOrNull() != from) returnStack.addLast(from)
+        if (visible.any { it.id == messageId }) {
+            following = false
+            requestScroll(ScrollRequest.Target.Message(messageId, highlight = true))
+            return
+        }
+        viewModelScope.launch {
+            _state.update { it.copy(isJumping = true) }
+            try {
+                val time = history.firstOrNull { it.id == messageId }?.timeMs
+                    ?: repository.findMessage(chatId, messageId)?.timeMs
+                if (time == null) {
+                    _messages.value = "Сообщение не найдено"
+                    if (from != null) returnStack.remove(from)
+                    return@launch
+                }
+                if (history.none { it.id == messageId } || ranges.around(time) == null) {
+                    val span = repository.pageAround(chatId, time)
+                    if (span == null) {
+                        _messages.value = "Сообщение не загрузилось"
+                        if (from != null) returnStack.remove(from)
+                        return@launch
+                    }
+                    addAround(span)
+                }
+                jumpTime = if (ranges.live()?.contains(time) == true) null else time
+                following = false
+                rebuild()
+                requestScroll(ScrollRequest.Target.Message(messageId, highlight = true))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (from != null) returnStack.remove(from)
+                show(e)
+            } finally {
+                _state.update { it.copy(isJumping = false) }
+            }
+        }
+    }
+
+    /** Кнопка «вниз»: сначала назад к сообщению, с которого переходили, потом к свежим. */
+    fun scrollDown() {
+        while (returnStack.isNotEmpty()) {
+            val back = returnStack.removeLast()
+            if (history.any { it.id == back }) {
+                val time = history.first { it.id == back }.timeMs
+                if (visible.none { it.id == back }) {
+                    jumpTime = if (ranges.live()?.contains(time) != false) null else time
+                    rebuild()
+                }
+                publishReturn()
+                requestScroll(ScrollRequest.Target.Message(back, highlight = false))
+                return
+            }
+        }
+        if (jumpTime != null) {
+            jumpTime = null
+            rebuild()
+        }
+        following = true
+        publishReturn()
+        requestScroll(ScrollRequest.Target.Bottom)
+        markRead()
+    }
+
+    /**
+     * Что на экране: [newestKey] — самая новая видимая строка, [atBottom] — лента у низа и
+     * следует за новыми. Чат читается до самого нового увиденного сообщения, как в Telegram.
+     */
+    fun onVisible(newestKey: String?, atBottom: Boolean) {
+        following = atBottom && jumpTime == null
+        val seen = newestKey?.let { key -> visible.firstOrNull { it.id == key }?.timeMs }
+        if (seen != null && seen > seenMs) seenMs = seen
+        if (following) visible.lastOrNull()?.timeMs?.let { if (it > seenMs) seenMs = it }
+        publishUnreadBelow()
+        markRead()
+    }
+
+    /** Экран уходит: где была лента ([place]); у низа — `null`, чат откроется на свежих. */
+    fun savePlace(place: ScrollPlace?) {
+        ScrollMemory.put(chatId, if (jumpTime == null) place else null)
+    }
+
+    /** Экран выполнил запрос прокрутки [token]. */
+    fun consumeScroll(token: Int) {
+        if (_state.value.scroll?.token == token) _state.update { it.copy(scroll = null) }
+    }
+
+    private fun requestScroll(target: ScrollRequest.Target) {
+        scrollToken++
+        _state.update { it.copy(scroll = ScrollRequest(target, scrollToken)) }
+    }
+
+    private fun publishReturn() {
+        _state.update { it.copy(canReturn = returnStack.isNotEmpty(), hasNewer = jumpTime != null) }
+    }
+
+    private fun publishUnreadBelow() {
+        val below = when {
+            following -> 0
+            // Экран ещё не сообщил, что видно: счётчик сервера.
+            seenMs == 0L -> header?.chat?.unreadCount ?: 0
+            else -> {
+                val loaded = history.count { it.timeMs > seenMs && isServer(it) && !isOutgoing(it) && !it.isService }
+                // В окне перехода ниже есть и не загруженные: счётчик сервера, он падает по мере прочтения.
+                if (jumpTime != null) maxOf(loaded, header?.chat?.unreadCount ?: 0) else loaded
+            }
+        }
+        if (below != _state.value.unreadBelow) _state.update { it.copy(unreadBelow = below) }
+    }
+
+    private fun addAround(span: app.orbitle.data.HistorySpan) {
+        ranges.add(span.oldestMs, if (span.reachedNewest) Long.MAX_VALUE else span.newestMs)
+        if (span.reachedOldest) ranges.markBeginning(span.oldestMs)
+    }
+
+    /**
+     * Первое непрочитанное раньше загруженного: окно вокруг своей отметки прочтения, лента
+     * откроется на нём и дальше догрузится к свежим.
+     */
+    private fun fetchUnread() {
+        if (unreadFetched) return
+        unreadFetched = true
+        viewModelScope.launch {
+            try {
+                val span = repository.pageAround(chatId, readMarkMs)
+                if (span != null) {
+                    addAround(span)
+                    jumpTime = if (ranges.live()?.contains(readMarkMs) == true) null else readMarkMs
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Без окна разделитель встанет у самого старого из загруженных.
+            }
+            // Больше не ищем: лучшее, что есть, — самое старое загруженное чужое.
+            rebuild(unreadSettled = true)
+        }
+    }
+
+    /** Своё сообщение уходит: лента возвращается к свежим и встаёт вниз. */
+    private fun toLatest() {
+        returnStack.clear()
+        placeChecked = true
+        if (jumpTime != null) {
+            jumpTime = null
+            rebuild()
+        }
+        following = true
+        publishReturn()
+        requestScroll(ScrollRequest.Target.Bottom)
     }
 
     /** Экран виден: можно отмечать прочитанным. */
@@ -438,6 +658,7 @@ class ChatViewModel(
     fun send() {
         val text = _state.value.draft.trim()
         val attachments = _state.value.attachments
+        if (_state.value.editing == null && (text.isNotEmpty() || attachments.isNotEmpty())) toLatest()
         if (attachments.isNotEmpty() && _state.value.editing == null) {
             animojiDraft.clear()
             mentionDraft.clear()
@@ -737,7 +958,9 @@ class ChatViewModel(
     /** Прочитать всё до последнего чужого сообщения, пока экран виден. */
     private fun markRead() {
         if (!active || markingUnread) return
-        val last = history.lastOrNull { isServer(it) } ?: return
+        val last = (if (following) history.lastOrNull { isServer(it) } else visible.lastOrNull { isServer(it) && it.timeMs <= seenMs }) ?: return
+        val markedTime = markedReadId?.let { id -> history.firstOrNull { it.id == id }?.timeMs } ?: 0L
+        if (last.timeMs < markedTime) return
         val unread = header?.chat?.unreadCount ?: 0
         if (last.id == markedReadId) return
         if (isOutgoing(last) && unread == 0) {
@@ -845,6 +1068,9 @@ class ChatViewModel(
         // Непрочитанные при открытии — из первой шапки, до отметки прочтения.
         if (pendingUnread < 0) {
             pendingUnread = chat.unreadCount
+            readMarkMs = info.readMarkMs
+            // Чат с непрочитанными откроется на первом из них: читать будем то, что увидят.
+            if (pendingUnread > 0) following = false
             placeUnreadAnchor()
         }
         _state.update {
@@ -902,26 +1128,26 @@ class ChatViewModel(
 
     private fun placeUnreadAnchor() {
         if (pendingUnread <= 0 || unreadAnchorId != null) return
-        val anchor = unreadAnchor(history, pendingUnread, ::isOutgoing, complete = latestLoaded) ?: return
-        pendingUnread = 0
-        unreadAnchorId = anchor
         rebuild()
     }
 
-    private fun rebuild() {
+    private fun rebuild(unreadSettled: Boolean = false) {
         val nowMs = now()
         builtFor = header?.chat?.type
         builtComments = commentsFlag()
         val isGroup = builtFor == ChatType.GROUP
+        visible = TimelineFilter.visible(history, ranges, jumpTime)
         requestCommentCounts()
-        if (pendingUnread > 0 && unreadAnchorId == null) {
-            unreadAnchor(history, pendingUnread, ::isOutgoing, complete = latestLoaded)?.let {
-                pendingUnread = 0
-                unreadAnchorId = it
+        if (pendingUnread > 0 && unreadAnchorId == null) placeUnread(unreadSettled)
+        if (!placeChecked && pendingUnread == 0 && unreadAnchorId == null && visible.isNotEmpty() && latestLoaded) {
+            placeChecked = true
+            ScrollMemory.get(chatId)?.takeIf { place -> visible.any { it.id == place.key } }?.let {
+                following = false
+                requestScroll(ScrollRequest.Target.Place(it))
             }
         }
         val result = feedItems(
-            history, formatter, nowMs, isGroup, ::isOutgoing, ::commentsFooter,
+            visible, formatter, nowMs, isGroup, ::isOutgoing, ::commentsFooter,
             savedMessages = chatId == Chat.SAVED_MESSAGES_ID, unreadAnchorId = unreadAnchorId,
         )
         // Скрытое приветствие «Избранного» не считается: без других сообщений видна подсказка.
@@ -934,6 +1160,7 @@ class ChatViewModel(
             else -> "Здесь пока нет сообщений"
         }
         val pinned = pinnedNow()
+        val range = if (jumpTime != null) jumpTime?.let(ranges::around) else ranges.live()
         _state.update {
             it.copy(
                 items = result,
@@ -941,8 +1168,38 @@ class ChatViewModel(
                 isLoading = !latestLoaded && history.isEmpty(),
                 pinnedMessageId = pinned?.first,
                 pinnedText = pinned?.second,
+                hasNewer = jumpTime != null,
+                canReturn = returnStack.isNotEmpty(),
+                hasOlder = if (range != null && ranges.startsAtBeginning(range)) false else it.hasOlder,
             )
         }
+        publishUnreadBelow()
+    }
+
+    /**
+     * Где встаёт «Непрочитанные сообщения»: над первым чужим новее своей отметки прочтения.
+     * Найдено — лента откроется на нём. Раньше загруженного — окно вокруг отметки
+     * ([fetchUnread]); после него ([settled]) — у самого старого загруженного чужого.
+     */
+    private fun placeUnread(settled: Boolean) {
+        val source = visible
+        if (source.isEmpty()) return
+        val window = jumpTime?.let(ranges::around) ?: ranges.live()
+        val fromBeginning = window?.let(ranges::startsAtBeginning) == true
+        val covered = readMarkMs > 0 && (fromBeginning || source.any { it.timeMs <= readMarkMs && it.status == MessageStatus.SENT })
+        val anchor = when {
+            covered -> firstUnread(source, readMarkMs, pendingUnread, ::isOutgoing, complete = true)
+            readMarkMs > 0 && !settled -> {
+                if (latestLoaded) fetchUnread()
+                return
+            }
+            else -> unreadAnchor(source, pendingUnread, ::isOutgoing, complete = latestLoaded || settled)
+        } ?: return
+        pendingUnread = 0
+        unreadAnchorId = anchor
+        following = false
+        placeChecked = true
+        requestScroll(ScrollRequest.Target.Unread(anchor))
     }
 
     /** Последнее служебное pin/unpin в истории: id сообщения и само уведомление. */
@@ -1435,11 +1692,13 @@ internal fun feedItems(
     // Строится от старых к новым, потом разворачивается.
     var previous: Message? = null
     var previousDay: String? = null
+    var dayLabel = ""
     val ordered = if (savedMessages) history.filterNot { SavedMessagesWelcome.isKey(it.text) } else history
     for ((index, message) in ordered.withIndex()) {
         val day = formatter.dayKey(message.timeMs)
         if (day != previousDay) {
-            result += ChatItem.Day("day-$day", formatter.dayLabel(message.timeMs, nowMs))
+            dayLabel = formatter.dayLabel(message.timeMs, nowMs)
+            result += ChatItem.Day("day-$day", dayLabel)
             previousDay = day
             previous = null
         }
@@ -1480,6 +1739,7 @@ internal fun feedItems(
             isGroupChat = isGroup && !outgoing,
             comments = comments(message),
             joinsPrevious = sameAsPrevious,
+            day = dayLabel,
         )
         previous = message
     }
