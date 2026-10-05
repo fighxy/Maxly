@@ -221,7 +221,7 @@ fun ChatToolsSheet(
 enum class ChatErase { DELETE, CLEAR }
 
 /** Действие с чатом, выбранное в его профиле: поиск, «О чате», звонок, очистка, удаление. */
-enum class ChatAction { SEARCH, TOOLS, CALL, CLEAR_HISTORY, DELETE_CHAT, LEAVE }
+enum class ChatAction { SEARCH, TOOLS, CALL, CLEAR_HISTORY, DELETE_CHAT, LEAVE, JOIN }
 
 @Composable
 fun EraseChatDialog(

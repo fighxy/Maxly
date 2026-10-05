@@ -31,6 +31,8 @@ struct ChatView: View {
     var onEraseChat: ((Bool, Bool) -> Void)? = nil
     /// Выйти из группы или отписаться от канала из профиля.
     var onLeave: (() -> Void)? = nil
+    /// Открыть другой чат из профиля (общий чат собеседника).
+    var onOpenChat: ((String) -> Void)? = nil
     /// Пометка «непрочитано» с сообщения, отправленного в эту дату. Экран закрывает тот, кто
     /// открыл чат, когда сервер принял пометку.
     var onMarkUnread: ((Date) -> Void)? = nil
@@ -482,6 +484,15 @@ struct ChatView: View {
         )
         if listed, card.shown.kind == .channel || card.shown.kind == .group {
             context.onLeave = onLeave
+        }
+        if let join = joinAction {
+            context.join = (label: join.label, run: join.action)
+        }
+        if let onOpenChat {
+            context.onOpenChat = { id in
+                profileShown = false
+                onOpenChat(id)
+            }
         }
         context.onSearch = { closeProfile { searchShown = true } }
         if writable {

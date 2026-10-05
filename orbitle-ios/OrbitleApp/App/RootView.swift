@@ -277,6 +277,9 @@ struct MainTabView: View {
                         if await container.leaveChat(id: id), router.chatId == id { router.chatId = nil }
                     }
                 },
+                onOpenChat: { other in
+                    if other != id { router.chatId = other }
+                },
                 onMarkUnread: { date in
                     Task {
                         if await container.markUnread(id: id, from: date), router.chatId == id { router.chatId = nil }

@@ -1,5 +1,8 @@
 package app.orbitle.ui.profile
 
+import androidx.compose.material.icons.outlined.AddCircle
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -94,6 +97,8 @@ class ProfileChatActions(
     val onDeleteChat: () -> Unit,
     /** Выйти из группы или отписаться от канала. `null` — не участник (открыт из поиска). */
     val onLeave: (() -> Unit)? = null,
+    /** «Подписаться» или «Вступить» у канала или группы вне списка (открыты из поиска). */
+    val onJoin: (() -> Unit)? = null,
 )
 
 /** Профиль: шапка, сведения, команды бота и общие медиа по вкладкам. */
@@ -114,6 +119,20 @@ fun ProfileScreen(
     val snackbar = remember { SnackbarHostState() }
     val clipboard = LocalClipboardManager.current
     val list = rememberLazyListState()
+    var confirmingBlock by remember { mutableStateOf(false) }
+    if (confirmingBlock) {
+        AlertDialog(
+            onDismissRequest = { confirmingBlock = false },
+            title = { Text("Заблокировать ${state.title}?") },
+            text = { Text("Пользователь не сможет писать вам и звонить. Разблокировать можно здесь же или в «Конфиденциальности».") },
+            confirmButton = {
+                TextButton(onClick = { confirmingBlock = false; model.toggleBlocked() }) {
+                    Text("Заблокировать", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmingBlock = false }) { Text("Отмена") } },
+        )
+    }
 
     LaunchedEffect(notice) {
         val text = notice ?: return@LaunchedEffect
@@ -162,6 +181,12 @@ fun ProfileScreen(
                 val canCall = chatActions != null && state.profile.kind == ChatProfile.Kind.USER
                 if (canWrite || share != null || chatActions != null) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        val join = chatActions?.onJoin?.takeIf { state.profile.link != null }
+                        if (join != null && state.profile.kind == ChatProfile.Kind.CHANNEL) {
+                            ActionButton("Подписаться", { Icon(Icons.Outlined.AddCircle, null) }, Modifier.weight(1f)) { join() }
+                        } else if (join != null && state.profile.kind == ChatProfile.Kind.GROUP) {
+                            ActionButton("Вступить", { Icon(Icons.Outlined.AddCircle, null) }, Modifier.weight(1f)) { join() }
+                        }
                         if (canWrite) ActionButton("Написать", { Icon(Icons.AutoMirrored.Outlined.Chat, null) }, Modifier.weight(1f)) { onWrite?.invoke() }
                         if (canCall) ActionButton("Звонок", { Icon(Icons.Outlined.Phone, null) }, Modifier.weight(1f)) { chatActions?.onCall?.invoke() }
                         if (chatActions != null) ActionButton("Поиск", { Icon(Icons.Outlined.Search, null) }, Modifier.weight(1f)) { chatActions.onSearch() }
@@ -210,6 +235,20 @@ fun ProfileScreen(
                                 }
                             }
                         }
+                    }
+                }
+            }
+            state.blocked?.let { blocked ->
+                item(key = "block") {
+                    Card {
+                        Text(
+                            if (blocked) "Разблокировать" else "Заблокировать",
+                            Modifier.fillMaxWidth()
+                                .clickable(enabled = !state.blocking) { if (blocked) model.toggleBlocked() else confirmingBlock = true }
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            color = if (blocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
                     }
                 }
             }

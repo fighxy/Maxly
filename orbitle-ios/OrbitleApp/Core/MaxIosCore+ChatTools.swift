@@ -92,7 +92,9 @@ extension MaxIosCore {
                 if let kind {
                     done(.failure(CoreFailure(kind: kind, key: key)))
                 } else {
-                    done(.success(members.map { CoreChatMember(id: $0.id, name: $0.name) }))
+                    done(.success(members.map {
+                        CoreChatMember(id: $0.id, name: $0.name, avatarURL: $0.avatarUrl.isEmpty ? nil : URL(string: $0.avatarUrl))
+                    }))
                 }
             }
         }

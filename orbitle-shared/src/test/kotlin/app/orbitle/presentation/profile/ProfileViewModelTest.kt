@@ -168,3 +168,54 @@ class ProfileViewModelTest {
         assertEquals("", SharedMedia.extension("a.verylongext"))
     }
 }
+
+/** Чёрный список для профиля: остальное не используется. */
+private class BlockAccount : app.orbitle.data.AccountRepository {
+    override val account = kotlinx.coroutines.flow.MutableStateFlow<app.orbitle.domain.Account?>(null)
+    override val settings = kotlinx.coroutines.flow.MutableStateFlow(app.orbitle.domain.AccountSettings())
+    val blocked = mutableSetOf<String>()
+
+    override suspend fun reload() = Unit
+    override suspend fun updateProfile(firstName: String, lastName: String, about: String) = Unit
+    override suspend fun uploadAvatar(jpeg: ByteArray) = Unit
+    override suspend fun removeAvatar() = Unit
+    override suspend fun requestDeletion(): Long? = null
+    override suspend fun change(change: app.orbitle.domain.PrivacyChange) = settings.value
+    override suspend fun blockedUsers() = blocked.map { app.orbitle.domain.BlockedUser(it, "Кто-то", null, null) }
+    override suspend fun unblock(userId: String) { blocked -= userId }
+    override suspend fun block(userId: String) { blocked += userId }
+    override suspend fun twoFactorStatus() = app.orbitle.domain.TwoFactorStatus(false)
+    override suspend fun startEmailChange(password: String) = "track"
+    override suspend fun sendEmailCode(trackId: String, email: String) = 60
+    override suspend fun confirmEmail(trackId: String, code: String) = app.orbitle.domain.TwoFactorStatus(true)
+    override suspend fun launchMiniApp(kind: app.orbitle.domain.MiniApp.Kind): app.orbitle.domain.MiniApp = throw app.orbitle.domain.OrbitleError.InvalidRequest
+    override suspend fun miniAppCallback(url: String): app.orbitle.domain.MiniApp = throw app.orbitle.domain.OrbitleError.InvalidRequest
+}
+
+class ProfileBlockingTest {
+    @get:Rule val main = MainDispatcherRule()
+
+    @Test
+    fun blockAndUnblockThePerson() {
+        val profiles = FakeProfiles()
+        profiles.fresh = ChatProfile(ChatProfile.Kind.USER, "10", "Анна", peerId = "7")
+        val account = BlockAccount()
+        val model = ProfileViewModel("10", "Анна", profiles, FakeMessages(), account = account)
+        assertEquals(false, model.state.value.blocked)
+        model.toggleBlocked()
+        assertEquals(true, model.state.value.blocked)
+        assertEquals(setOf("7"), account.blocked)
+        assertEquals("Пользователь заблокирован", model.notice.value)
+        model.toggleBlocked()
+        assertEquals(false, model.state.value.blocked)
+        assertTrue(account.blocked.isEmpty())
+    }
+
+    @Test
+    fun noBlockingForChannels() {
+        val profiles = FakeProfiles()
+        profiles.fresh = ChatProfile(ChatProfile.Kind.CHANNEL, "-10", "Новости")
+        val model = ProfileViewModel("-10", "Новости", profiles, FakeMessages(), account = BlockAccount())
+        assertNull(model.state.value.blocked)
+    }
+}

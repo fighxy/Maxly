@@ -279,7 +279,7 @@ fun MainScreen(
                 val fromChat = entry.arguments?.getBoolean("fromChat") == true
                 val title = entry.arguments?.getString("title")
                 val model = viewModel(key = "profile-$chatId") {
-                    ProfileViewModel(chatId, title, container.profiles, container.messages, container.voicePlayer, container.files)
+                    ProfileViewModel(chatId, title, container.profiles, container.messages, container.voicePlayer, container.files, account = container.account)
                 }
                 ProfileScreen(
                     model,
@@ -319,4 +319,5 @@ internal fun profileChatActions(listed: Boolean = true, request: (ChatAction) ->
     onClearHistory = { request(ChatAction.CLEAR_HISTORY) },
     onDeleteChat = { request(ChatAction.DELETE_CHAT) },
     onLeave = if (listed) ({ request(ChatAction.LEAVE) }) else null,
+    onJoin = if (listed) null else ({ request(ChatAction.JOIN) }),
 )
