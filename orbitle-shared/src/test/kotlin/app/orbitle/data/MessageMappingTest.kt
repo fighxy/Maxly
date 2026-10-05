@@ -212,4 +212,17 @@ class MessageMappingTest {
         assertNull(unpin!!.messageId)
         assertNull(MessageMapping.pinNotice(listOf(mapOf("_type" to "CONTROL", "event" to "new"))))
     }
+
+    @Test
+    fun commentsAreNotChannelPosts() {
+        assertFalse(MessageMapping.isComment(message(emptyMap(), text = "пост")))
+        val push = MaxMessage.from(mapOf("chatId" to 10L, "postId" to "55", "message" to mapOf("id" to 78L, "time" to 2_000L, "type" to "USER", "text" to "к")))!!
+        assertTrue(MessageMapping.isComment(push))
+        val inner = MaxMessage.from(mapOf("chatId" to 10L, "message" to mapOf("id" to 79L, "time" to 2_000L, "type" to "USER", "postId" to 55L)))!!
+        assertTrue(MessageMapping.isComment(inner))
+        val reply = message(mapOf("link" to mapOf("type" to "REPLY", "messageId" to 78L, "postId" to 55L)))
+        assertTrue(MessageMapping.isComment(reply))
+        assertFalse(MessageMapping.isComment(message(mapOf("link" to mapOf("type" to "REPLY", "messageId" to 70L)))))
+    }
 }
+

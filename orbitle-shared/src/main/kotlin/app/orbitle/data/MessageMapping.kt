@@ -28,6 +28,18 @@ import java.util.Base64
  */
 object MessageMapping {
 
+    /**
+     * Комментарий под постом канала. Сервер присылает его обычным новым сообщением канала,
+     * только с `postId` в конверте, в самом сообщении или в его ссылке-ответе. В ленту канала
+     * такие сообщения не попадают: их показывает обсуждение поста.
+     */
+    fun isComment(message: MaxMessage): Boolean {
+        val raw = message.raw
+        if (raw["postId"] != null) return true
+        if ((raw["message"] as? Map<*, *>)?.get("postId") != null) return true
+        return message.link?.get("postId") != null
+    }
+
     fun message(message: MaxMessage, fallbackChatId: Long, state: MaxState, peerRead: Long = 0): Message {
         val sender = message.sender
         val user = sender?.let { state.users[it] }

@@ -2,6 +2,7 @@ package app.orbitle.presentation.chat
 
 import app.orbitle.data.CommentsRepository
 import app.orbitle.data.CoreErrors
+import app.orbitle.data.ServerRateLimit
 import app.orbitle.domain.Message
 import app.orbitle.domain.MessageContent
 import app.orbitle.domain.MessageReaction
@@ -9,6 +10,8 @@ import app.orbitle.domain.MessageStatus
 import app.orbitle.domain.OrbitleError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,6 +52,10 @@ class CommentsModel(
     private val formatter: ChatFormatter = ChatFormatter(),
     private val now: () -> Long = System::currentTimeMillis,
     pageSize: Int = 30,
+    /** Число комментариев поста по ответу сервера, если оно уже есть. */
+    private val knownCount: () -> Int? = { null },
+    /** Сколько ждать после `too.many.requests`: остаток общей паузы чтений или запасное значение. */
+    private val rateLimitWaitMs: () -> Long = { ServerRateLimit.shared.remainingMs() ?: RATE_LIMIT_WAIT_MS },
 ) {
     private val pageSize = maxOf(1, pageSize)
     private val _state = MutableStateFlow(CommentsState())
@@ -58,6 +65,10 @@ class CommentsModel(
     /** Последний запрос реакции по id комментария: поздние ответы на прежние не применяются. */
     private val pendingReactions = HashMap<String, Long>()
     private var reactionRequest = 0L
+    /** Идущая загрузка первой страницы: повторный вызов не шлёт второй запрос. */
+    private var firstPage: Job? = null
+    /** До этого времени более ранние страницы не спрашиваются (после отказа сервера). */
+    private var olderRetryAt = 0L
 
     val postId: String get() = post.id
 
@@ -89,20 +100,35 @@ class CommentsModel(
     }
 
     fun reload() {
+        if (firstPage?.isActive == true) return
         if (_state.value.comments.isEmpty()) _state.update { it.copy(phase = CommentsState.Phase.Loading) }
-        scope.launch {
-            try {
-                val page = repository.comments(chatId, postId, null, pageSize)
-                loaded = true
-                _state.update { current ->
-                    val pending = current.comments.filter { it.status != MessageStatus.SENT }
-                    current.copy(comments = merged(page, pending), hasMore = page.size >= pageSize, phase = CommentsState.Phase.Loaded)
+        firstPage = scope.launch {
+            var waits = 0
+            while (true) {
+                try {
+                    val expected = knownCount() ?: post.content.comments
+                    val page = repository.firstComments(chatId, postId, post.timeMs, expected, pageSize)
+                    loaded = true
+                    _state.update { current ->
+                        val pending = current.comments.filter { it.status != MessageStatus.SENT }
+                        current.copy(comments = merged(page, pending), hasMore = page.size >= pageSize, phase = CommentsState.Phase.Loaded)
+                    }
+                    return@launch
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    val error = CoreErrors.map(e)
+                    // Сервер просит подождать: ждём паузу и спрашиваем снова, без ошибки на экране.
+                    // Повторов немного, чтобы закрытый сервером канал не опрашивался бесконечно.
+                    if (error.isRateLimit && waits < RATE_LIMIT_RETRIES) {
+                        waits += 1
+                        delay(maxOf(MIN_WAIT_MS, rateLimitWaitMs()))
+                        continue
+                    }
+                    val text = error.userMessage ?: "Не удалось загрузить комментарии"
+                    _state.update { if (it.comments.isEmpty()) it.copy(phase = CommentsState.Phase.Failed(text)) else it.copy(error = text) }
+                    return@launch
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                val text = CoreErrors.map(e).userMessage ?: "Не удалось загрузить комментарии"
-                _state.update { if (it.comments.isEmpty()) it.copy(phase = CommentsState.Phase.Failed(text)) else it.copy(error = text) }
             }
         }
     }
@@ -112,6 +138,7 @@ class CommentsModel(
         val current = _state.value
         val oldest = current.comments.firstOrNull { it.status == MessageStatus.SENT } ?: return
         if (!loaded || !current.hasMore || current.isLoadingOlder) return
+        if (now() < olderRetryAt) return
         _state.update { it.copy(isLoadingOlder = true) }
         scope.launch {
             try {
@@ -120,7 +147,10 @@ class CommentsModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.update { it.copy(isLoadingOlder = false, error = CoreErrors.map(e).userMessage) }
+                val error = CoreErrors.map(e)
+                // Пауза сервера: следующая прокрутка вверх после неё догрузит страницу, снекбара нет.
+                olderRetryAt = now() + if (error.isRateLimit) maxOf(MIN_WAIT_MS, rateLimitWaitMs()) else MIN_WAIT_MS
+                _state.update { it.copy(isLoadingOlder = false, error = if (error.isRateLimit) null else error.userMessage) }
             }
         }
     }
@@ -212,6 +242,13 @@ class CommentsModel(
     }
 
     companion object {
+        /** Сколько раз подряд первая страница ждёт паузу сервера, прежде чем показать ошибку. */
+        const val RATE_LIMIT_RETRIES = 3
+        /** Пауза, если общая пауза чтений уже кончилась, а сервер всё ещё отказывает. */
+        const val RATE_LIMIT_WAIT_MS = 15_000L
+        /** Не чаще одного повтора за это время. */
+        const val MIN_WAIT_MS = 2_000L
+
         /** Слияние страниц по id: серверная версия важнее, порядок — по времени. */
         fun merged(incoming: List<Message>, existing: List<Message>): List<Message> {
             val byId = LinkedHashMap<String, Message>()

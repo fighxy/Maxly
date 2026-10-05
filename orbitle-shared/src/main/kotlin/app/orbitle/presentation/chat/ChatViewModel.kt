@@ -30,6 +30,7 @@ import app.orbitle.presentation.stickers.StickerPanel
 import app.orbitle.presentation.chatlist.ChatAvatar
 import app.orbitle.presentation.chatlist.ChatListFormatter
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -192,6 +193,14 @@ class ChatViewModel(
      *  повторяло бы запрос, и сервер отвечал бы too.many.requests всему, включая комментарии. */
     private var reactionsRetryAt = 0L
     private var countsRetryAt = 0L
+    /** Идущий запрос счётчиков: следующий уходит только после него. */
+    private var countsJob: Job? = null
+    /** Отложенный повтор счётчиков после отказа: один на чат. */
+    private var countsRetry: Job? = null
+    /** Отказов подряд при запросе счётчиков: после [COUNTS_RETRIES] сами больше не повторяем. */
+    private var countsFailures = 0
+    /** Последний известный флаг комментариев канала: неполная карточка чата без `options` его не сбрасывает. */
+    private var knownComments: Boolean? = null
     /** Анимодзи, вставленные в поле из панели. */
     private val animojiDraft = AnimojiDraft()
     private val mentionDraft = MentionDraft()
@@ -664,13 +673,16 @@ class ChatViewModel(
             markedReadId = null
             markRead()
         }
-        if (chat.type != builtFor || chat.commentsEnabled != builtComments) rebuild()
+        chat.commentsEnabled?.let { knownComments = it }
+        if (chat.type != builtFor || commentsFlag() != builtComments) rebuild()
     }
+
+    private fun commentsFlag(): Boolean? = header?.chat?.commentsEnabled ?: knownComments
 
     private fun rebuild() {
         val nowMs = now()
         builtFor = header?.chat?.type
-        builtComments = header?.chat?.commentsEnabled
+        builtComments = commentsFlag()
         val isGroup = builtFor == ChatType.GROUP
         requestCommentCounts()
         val result = feedItems(history, formatter, nowMs, isGroup, ::isOutgoing, ::commentsFooter, savedMessages = chatId == Chat.SAVED_MESSAGES_ID)
@@ -1035,37 +1047,68 @@ class ChatViewModel(
         }
     }
 
-    /** Спросить счётчики у постов, которых ещё не спрашивали (пачками по 50). */
+    /**
+     * Спросить счётчики у постов, которых ещё не спрашивали: сначала самые новые (их видно первыми),
+     * пачками по [COUNTS_BATCH] с паузой между пачками. Одновременно идёт один запрос; посты,
+     * пришедшие за это время, спрашиваются следом. Отказ сервера откладывает повтор: после
+     * `too.many.requests` — на остаток общей паузы чтений, иначе на [RETRY_AFTER_ERROR_MS].
+     */
     private fun requestCommentCounts() {
         val source = comments ?: return
         if (builtFor != ChatType.CHANNEL || builtComments == false || now() < countsRetryAt) return
-        val ids = history.filter { isServer(it) && !it.isService && it.id !in askedCounts }.map { it.id }
+        if (countsJob?.isActive == true) return
+        val ids = history.asReversed().filter { isServer(it) && !it.isService && it.id !in askedCounts }.map { it.id }
         if (ids.isEmpty()) return
         askedCounts += ids
-        viewModelScope.launch {
-            for (chunk in ids.chunked(50)) {
+        countsJob = viewModelScope.launch {
+            val chunks = ids.chunked(COUNTS_BATCH)
+            for ((index, chunk) in chunks.withIndex()) {
+                if (index > 0) delay(COUNTS_PACE_MS)
                 val counts = try {
                     source.counts(chatId, chunk)
                 } catch (e: CancellationException) {
                     throw e
-                } catch (_: Exception) {
-                    // Спросить ещё раз позже, когда лента обновится: иначе плашка так и не появится.
-                    // Остальные пачки тоже ждут: сервер, скорее всего, ответит им той же ошибкой.
-                    askedCounts -= ids.toSet() - commentCounts.keys
-                    countsRetryAt = now() + RETRY_AFTER_ERROR_MS
-                    break
+                } catch (e: Exception) {
+                    // Эта и следующие пачки спросятся при повторе; остальные пачки сейчас не уходят:
+                    // сервер, скорее всего, ответит им той же ошибкой.
+                    askedCounts -= chunks.drop(index).flatten().toSet()
+                    countsFailed(e)
+                    return@launch
                 }
+                countsFailures = 0
                 if (counts.isEmpty()) continue
                 commentCounts.putAll(counts)
                 rebuild()
             }
+            countsJob = null
+            requestCommentCounts()
         }
     }
+
+    private fun countsFailed(error: Exception) {
+        countsJob = null
+        countsFailures += 1
+        val wait = if (app.orbitle.data.CoreErrors.map(error).isRateLimit) {
+            maxOf(RATE_LIMIT_RETRY_MS, app.orbitle.data.ServerRateLimit.shared.remainingMs() ?: 0L)
+        } else {
+            RETRY_AFTER_ERROR_MS
+        }
+        countsRetryAt = now() + wait
+        if (countsFailures > COUNTS_RETRIES) return
+        countsRetry?.cancel()
+        countsRetry = viewModelScope.launch {
+            delay(wait)
+            requestCommentCounts()
+        }
+    }
+
+    /** Обсуждение поста можно открыть из меню сообщения: та же проверка, что у плашки под постом. */
+    fun canOpenComments(message: Message): Boolean = commentsFooter(message) != null
 
     fun openComments(post: Message) {
         val source = comments ?: return
         if (_comments.value?.post?.id == post.id) return
-        val model = CommentsModel(chatId, post, repository.currentUserId.orEmpty(), source, viewModelScope, formatter, now)
+        val model = CommentsModel(chatId, post, repository.currentUserId.orEmpty(), source, viewModelScope, formatter, now, knownCount = { commentCounts[post.id] })
         _comments.value = model
         model.load()
     }
@@ -1097,6 +1140,12 @@ class ChatViewModel(
         const val REACTIONS_BATCH = 100
         /** Пауза перед повтором реакций и счётчиков после ошибки сервера. */
         const val RETRY_AFTER_ERROR_MS = 30_000L
+        /** Постов в одном запросе счётчиков комментариев. */
+        const val COUNTS_BATCH = 50
+        /** Пауза между пачками счётчиков. */
+        const val COUNTS_PACE_MS = 400L
+        /** Сколько раз подряд счётчики повторяются сами; дальше — только при обновлении ленты. */
+        const val COUNTS_RETRIES = 4
         /** Через сколько повторить свежую страницу после `too.many.requests`. */
         const val RATE_LIMIT_RETRY_MS = 20_000L
         /** Пауза перед следующей старой страницей после ошибки. */

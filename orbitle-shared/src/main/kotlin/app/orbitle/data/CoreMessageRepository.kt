@@ -58,7 +58,7 @@ class CoreMessageRepository(
                 chat?.let { ChatMapping.peerReadMark(it, state.me) } ?: 0L,
                 state.readMarks[id].orEmpty().filterKeys { it != state.me }.values.maxOrNull() ?: 0L,
             )
-            val stored = state.messagesOf(id).map { MessageMapping.message(it, id, state, peerRead) }
+            val stored = state.messagesOf(id).filterNot(MessageMapping::isComment).map { MessageMapping.message(it, id, state, peerRead) }
             stored + queued[chatId].orEmpty()
         }.distinctUntilChanged()
     }
