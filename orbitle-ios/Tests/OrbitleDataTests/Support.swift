@@ -293,6 +293,18 @@ actor FakeMaxAPI: MaxAPI {
         return chatDeleteResult
     }
 
+    private(set) var chatLeaves: [String] = []
+    var chatLeaveResult: Result<Void, MaxAPIError> = .success(())
+
+    func leaveChat(chatId: String) async -> Result<Void, MaxAPIError> {
+        chatLeaves.append(chatId)
+        return chatLeaveResult
+    }
+
+    func set(chatLeaveResult: Result<Void, MaxAPIError>) {
+        self.chatLeaveResult = chatLeaveResult
+    }
+
     func clearHistory(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async -> Result<Void, MaxAPIError> {
         historyClears.append((chatId, lastEventTimeMs, forEveryone))
         return historyClearResult

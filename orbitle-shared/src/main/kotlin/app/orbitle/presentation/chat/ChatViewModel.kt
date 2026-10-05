@@ -1117,6 +1117,21 @@ class ChatViewModel(
         }
     }
 
+    /** Выйти из группы или отписаться от канала. [onLeft] — сервер принял, экран закрывается. */
+    fun leave(onLeft: () -> Unit) {
+        val source = chats ?: return
+        viewModelScope.launch {
+            try {
+                source.leaveChat(chatId)
+                onLeft()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                show(e)
+            }
+        }
+    }
+
     /** Очистить переписку. Чат остаётся открытым. */
     fun clearHistory(forEveryone: Boolean) {
         val source = chats ?: return

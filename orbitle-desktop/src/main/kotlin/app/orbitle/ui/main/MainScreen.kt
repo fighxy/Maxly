@@ -262,7 +262,7 @@ private fun ChatPane(
                 onBack = onCloseProfile,
                 onWrite = null,
                 mediaUserAgent = container.videoSourceUserAgent(),
-                chatActions = profileChatActions { action ->
+                chatActions = profileChatActions(listed = chatList.isListed(chatId)) { action ->
                     chatAction = chatId to action
                     onCloseProfile()
                 },
@@ -303,12 +303,13 @@ private fun ChatPane(
 }
 
 /** Действия профиля, открытого из чата: каждое закрывает профиль и открывается в чате. */
-private fun profileChatActions(request: (ChatAction) -> Unit) = ProfileChatActions(
+private fun profileChatActions(listed: Boolean = true, request: (ChatAction) -> Unit) = ProfileChatActions(
     onSearch = { request(ChatAction.SEARCH) },
     onTools = { request(ChatAction.TOOLS) },
     onCall = { request(ChatAction.CALL) },
     onClearHistory = { request(ChatAction.CLEAR_HISTORY) },
     onDeleteChat = { request(ChatAction.DELETE_CHAT) },
+    onLeave = if (listed) ({ request(ChatAction.LEAVE) }) else null,
 )
 
 @Composable

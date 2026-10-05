@@ -265,6 +265,7 @@ fun ChatScreen(
     var makingPoll by remember { mutableStateOf(false) }
     var scheduling by remember { mutableStateOf(false) }
     var confirmingCall by remember { mutableStateOf(false) }
+    var leaving by remember { mutableStateOf(false) }
     val scrollToMessage: (String) -> Unit = { id ->
         val index = state.items.indexOfFirst { it.key == id }
         if (index >= 0) scope.launch {
@@ -306,6 +307,7 @@ fun ChatScreen(
             ChatAction.CALL -> confirmingCall = true
             ChatAction.CLEAR_HISTORY -> eraseChat = ChatErase.CLEAR
             ChatAction.DELETE_CHAT -> eraseChat = ChatErase.DELETE
+            ChatAction.LEAVE -> leaving = true
         }
         onActionHandled()
     }
@@ -590,6 +592,20 @@ fun ChatScreen(
             onDeleteChat = { toolsOpen = false; eraseChat = ChatErase.DELETE },
             onClearHistory = { toolsOpen = false; eraseChat = ChatErase.CLEAR },
             onDismiss = { toolsOpen = false },
+        )
+    }
+    if (leaving) {
+        val channel = state.header?.type == app.orbitle.domain.ChatType.CHANNEL
+        AlertDialog(
+            onDismissRequest = { leaving = false },
+            title = { Text(if (channel) "Отписаться от канала?" else "Покинуть группу?") },
+            text = { Text(if (channel) "Канал пропадёт из списка чатов. Подписаться снова можно через поиск." else "Группа пропадёт из списка чатов. Вернуться можно по ссылке-приглашению.") },
+            confirmButton = {
+                TextButton(onClick = { leaving = false; model.leave(onBack) }) {
+                    Text(if (channel) "Отписаться" else "Покинуть", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { leaving = false }) { Text("Отмена") } },
         )
     }
     eraseChat?.let { kind ->

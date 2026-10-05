@@ -101,6 +101,10 @@ interface ChatRepository {
     suspend fun pressButton(chatId: String, messageId: String, callbackId: String, payload: String?): ButtonAnswer =
         throw app.orbitle.domain.OrbitleError.Rejected("Кнопка не поддерживается")
 
+    /** Выйти из группы или отписаться от канала (`CHAT_LEAVE` 58): чат уходит из списка. */
+    suspend fun leaveChat(chatId: String): Unit =
+        throw app.orbitle.domain.OrbitleError.Rejected("Выйти из чата нельзя")
+
     /** Забыть всё про аккаунт (выход). */
     fun clear()
 }

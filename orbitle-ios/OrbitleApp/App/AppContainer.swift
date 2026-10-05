@@ -331,6 +331,11 @@ final class AppContainer {
         return await listModel?.deleteNow(chatId: id, forEveryone: forEveryone) ?? false
     }
 
+    /// Выйти из группы или отписаться от канала. `true` — чата больше нет, экран можно закрыть.
+    func leaveChat(id: String) async -> Bool {
+        await listModel?.leave(chatId: id) ?? false
+    }
+
     /// Пометка «непрочитано» с сообщения. `true` — сервер принял её, чат можно закрывать.
     func markUnread(id: String, from date: Date) async -> Bool {
         await listModel?.markUnread(chatId: id, from: date) ?? false

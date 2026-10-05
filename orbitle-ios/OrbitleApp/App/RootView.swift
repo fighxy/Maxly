@@ -272,6 +272,11 @@ struct MainTabView: View {
                         if gone { router.chatId = nil }
                     }
                 },
+                onLeave: {
+                    Task {
+                        if await container.leaveChat(id: id), router.chatId == id { router.chatId = nil }
+                    }
+                },
                 onMarkUnread: { date in
                     Task {
                         if await container.markUnread(id: id, from: date), router.chatId == id { router.chatId = nil }

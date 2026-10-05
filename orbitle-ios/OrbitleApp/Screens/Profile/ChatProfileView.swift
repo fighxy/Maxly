@@ -14,6 +14,8 @@ struct ChatProfileContext {
     var onShowMessage: (Message) -> Void
     /// Очистить переписку или удалить чат. `true` в первом аргументе — очистка, во втором — у всех.
     var onEraseChat: ((Bool, Bool) -> Void)? = nil
+    /// Выйти из группы или отписаться от канала. `nil` — не участник или это не группа и не канал.
+    var onLeave: (() -> Void)? = nil
     /// Поиск по чату. Профиль закрывается, поиск открывается на экране чата.
     var onSearch: (() -> Void)? = nil
     /// Опрос и отложенная отправка. `nil` — в этот чат писать нельзя.
@@ -43,6 +45,8 @@ struct ChatProfileView: View {
     @State private var avatarViewer: MediaViewerRequest?
     /// Подтверждение очистки или удаления.
     @State private var erase: EraseAsk?
+    /// Подтверждение выхода из группы или отписки от канала.
+    @State private var leaving = false
     @Namespace private var tabs
 
     private static let avatarSize: CGFloat = 100
@@ -94,6 +98,16 @@ struct ChatProfileView: View {
             Text(erase == .clear
                  ? "Все сообщения в этом чате будут удалены без возможности восстановления."
                  : "Чат будет удалён вместе со всей перепиской.")
+        }
+        .confirmationDialog(leaveTitle, isPresented: $leaving, titleVisibility: .visible) {
+            Button(isChannel ? "Отписаться" : "Покинуть группу", role: .destructive) {
+                context?.onLeave?()
+            }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text(isChannel
+                 ? "Канал пропадёт из списка чатов. Подписаться снова можно через поиск."
+                 : "Группа пропадёт из списка чатов. Вернуться можно по ссылке-приглашению.")
         }
         .task { await viewModel.loadIfStale() }
         .refreshable { await viewModel.load() }
@@ -283,6 +297,10 @@ struct ChatProfileView: View {
         if let search = context?.onSearch {
             list.append(Action(id: "search", title: "Поиск", systemImage: "magnifyingglass", run: search))
         }
+        // Отписка от канала на виду: плиткой, а не в «Ещё».
+        if context?.onLeave != nil, isChannel {
+            list.append(Action(id: "leave", title: "Отписаться", systemImage: "rectangle.portrait.and.arrow.right") { leaving = true })
+        }
         return list
     }
 
@@ -304,6 +322,9 @@ struct ChatProfileView: View {
                 copy(phone.value, message: "Номер скопирован")
             })
         }
+        if context?.onLeave != nil, !isChannel {
+            items.append(Action(id: "leave", title: "Покинуть группу", systemImage: "rectangle.portrait.and.arrow.right") { leaving = true })
+        }
         if context?.onEraseChat != nil {
             items.append(Action(id: "clear", title: "Очистить историю", systemImage: "eraser") { erase = .clear })
             items.append(Action(id: "delete", title: "Удалить чат", systemImage: "trash") { erase = .delete })
@@ -312,6 +333,12 @@ struct ChatProfileView: View {
     }
 
     private enum EraseAsk: Equatable { case clear, delete }
+
+    private var isChannel: Bool { viewModel.shown.kind == .channel }
+
+    private var leaveTitle: String {
+        isChannel ? "Отписаться от канала?" : "Покинуть группу?"
+    }
 
     private var eraseShown: Binding<Bool> {
         Binding(get: { erase != nil }, set: { if !$0 { erase = nil } })

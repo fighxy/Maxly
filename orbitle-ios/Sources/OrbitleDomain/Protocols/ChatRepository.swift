@@ -108,6 +108,8 @@ public protocol ChatRepository: Sendable {
     func setMuted(_ muted: Bool, chatId: String) async throws(OrbitleError)
     func setArchived(_ archived: Bool, chatId: String) async throws(OrbitleError)
     func delete(chatId: String, forEveryone: Bool) async throws(OrbitleError)
+    /// Выйти из группы или отписаться от канала: чат и его история уходят с устройства.
+    func leave(chatId: String) async throws(OrbitleError)
     /// Очистить переписку (`CHAT_CLEAR` 54). Чат остаётся, сообщения пропадают.
     func clearHistory(chatId: String, forEveryone: Bool) async throws(OrbitleError)
     /// Следующая страница списка. `false`, если страниц больше нет.
@@ -161,6 +163,7 @@ public extension ChatRepository {
     func setMuted(_ muted: Bool, chatId: String) async throws(OrbitleError) { throw .invalidRequest }
     func setArchived(_ archived: Bool, chatId: String) async throws(OrbitleError) { throw .invalidRequest }
     func delete(chatId: String, forEveryone: Bool) async throws(OrbitleError) { throw .invalidRequest }
+    func leave(chatId: String) async throws(OrbitleError) { throw .invalidRequest }
     func clearHistory(chatId: String, forEveryone: Bool) async throws(OrbitleError) { throw .invalidRequest }
     func loadMoreChats() async throws(OrbitleError) -> Bool { false }
     func search(query: String) async throws(OrbitleError) -> [ChatSearchResult] { [] }
