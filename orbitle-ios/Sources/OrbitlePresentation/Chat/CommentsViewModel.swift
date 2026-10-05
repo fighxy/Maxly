@@ -36,6 +36,8 @@ public final class CommentsViewModel {
 
     @ObservationIgnored private let repository: any CommentsRepository
     @ObservationIgnored private let pageSize: Int
+    /// Через сколько повторить первую страницу, если сервер ответил `too.many.requests`.
+    @ObservationIgnored private let rateLimitRetry: Duration
     @ObservationIgnored private var loaded = false
     /// Последний запрос реакции по id комментария: поздние ответы на прежние не применяются.
     @ObservationIgnored private var pendingReactions: [String: Int] = [:]
@@ -47,7 +49,8 @@ public final class CommentsViewModel {
         currentUserId: String,
         comments: any CommentsRepository,
         pageSize: Int = 30,
-        reactionCatalog: [String] = []
+        reactionCatalog: [String] = [],
+        rateLimitRetry: Duration = .seconds(15)
     ) {
         self.chatId = chatId
         self.post = post
@@ -55,6 +58,7 @@ public final class CommentsViewModel {
         self.repository = comments
         self.pageSize = max(1, pageSize)
         self.reactionCatalog = reactionCatalog
+        self.rateLimitRetry = rateLimitRetry
     }
 
     /// Серверный id поста: комментарии привязаны к нему.
@@ -90,6 +94,12 @@ public final class CommentsViewModel {
     /// Свежая последняя страница: при открытии, по «Повторить» и по жесту обновления.
     public func reload() async {
         if comments.isEmpty { state = .loading }
+        await fetchLatest(retryOnLimit: true)
+    }
+
+    /// Последняя страница. На `too.many.requests` окно не сдаётся сразу: оно ждёт паузу сервера,
+    /// показывая загрузку, и спрашивает ещё раз. Второй отказ уже показывается с «Повторить».
+    private func fetchLatest(retryOnLimit: Bool) async {
         do {
             let page = try await repository.comments(chatId: chatId, postId: postId, before: nil, limit: pageSize)
             let pending = comments.filter { $0.status != .sent }
@@ -100,6 +110,12 @@ public final class CommentsViewModel {
             state = .loaded
         } catch {
             guard error != .cancelled else { return }
+            if retryOnLimit, error.isRateLimit {
+                try? await Task.sleep(for: rateLimitRetry)
+                guard !Task.isCancelled else { return }
+                await fetchLatest(retryOnLimit: false)
+                return
+            }
             if comments.isEmpty {
                 state = .failed(error.userMessage ?? "Не удалось загрузить комментарии")
             } else {

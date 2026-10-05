@@ -497,15 +497,23 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
 
     /// Чтения, которые ждут паузы после `too.many.requests` (`ServerRateLimit`). Отправка,
     /// отметки, вход и действия пользователя с немедленным ответом сюда не входят.
+    ///
+    /// Комментарии тоже не входят: их открыл пользователь, и фоновый отказ (опрос, общие медиа)
+    /// не должен сразу показывать ему ошибку. Ядро пускает их раньше фоновых чтений, а отказ
+    /// самого сервера окно комментариев повторяет один раз после паузы. Отказ им всё равно
+    /// продлевает паузу для фоновых чтений.
     private static let pacedCalls: Set<String> = [
-        "loadHistory", "loadComments", "loadCommentCounts", "loadSharedMedia", "loadProfile",
+        "loadHistory", "loadCommentCounts", "loadSharedMedia", "loadProfile",
         "loadChat", "loadChats", "loadReactions", "loadCallHistory", "loadAnimojis",
     ]
+    /// Чтения, отказ которым включает паузу, хотя сами они её не ждут.
+    private static let limitAwareCalls: Set<String> = pacedCalls.union(["loadComments"])
 
     /// Вызов ядра с колбэком. Неудача пишется в журнал видом ошибки и ключом сервера.
     /// Во время паузы сервера чтения из `pacedCalls` сразу получают тот же отказ.
     func call<T: Sendable>(_ name: String, _ start: @escaping (@escaping (Result<T, Error>) -> Void) -> Void) async throws -> T {
         let paced = Self.pacedCalls.contains(name)
+        let limitAware = Self.limitAwareCalls.contains(name)
         if paced, let left = await ServerRateLimit.shared.remaining() {
             Log.debug(.core, "\(name): пауза после too.many.requests, ещё \(Int(left.rounded(.up))) с")
             throw CoreFailure(kind: "SERVER", key: ServerRateLimit.key)
@@ -527,10 +535,10 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
                     }
                 }
             }
-            if paced { await ServerRateLimit.shared.noteSuccess() }
+            if limitAware { await ServerRateLimit.shared.noteSuccess() }
             return value
         } catch let failure as CoreFailure where ServerRateLimit.isLimit(failure.key) {
-            await ServerRateLimit.shared.noteLimited()
+            if limitAware { await ServerRateLimit.shared.noteLimited() }
             throw failure
         }
     }

@@ -62,26 +62,26 @@ struct ServerRateLimitTests {
         #expect(await limit.remaining() == nil)
 
         await limit.noteLimited()
-        #expect(await limit.remaining() == 15)
-        clock.now += 15
+        #expect(await limit.remaining() == 10)
+        clock.now += 10
         #expect(await limit.remaining() == nil)
 
         await limit.noteLimited()
-        #expect(await limit.remaining() == 30)
-        clock.now += 30
+        #expect(await limit.remaining() == 20)
+        clock.now += 20
         await limit.noteLimited()
-        #expect(await limit.remaining() == 60)
-        clock.now += 60
+        #expect(await limit.remaining() == 40)
+        clock.now += 40
         await limit.noteLimited()
         await limit.noteLimited()
         clock.now += 1
-        // Потолок — две минуты от последнего отказа.
-        #expect(await limit.remaining() == 119)
+        // Потолок — минута от последнего отказа.
+        #expect(await limit.remaining() == 59)
 
-        clock.now += 119
+        clock.now += 59
         await limit.noteSuccess()
         await limit.noteLimited()
-        #expect(await limit.remaining() == 15)
+        #expect(await limit.remaining() == 10)
     }
 
     @Test("Ключ ошибки сервера совпадает с доменным")

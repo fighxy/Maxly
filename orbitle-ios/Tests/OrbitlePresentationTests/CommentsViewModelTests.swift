@@ -6,15 +6,19 @@ import OrbitleDomain
 private actor FakeComments: CommentsRepository {
     private var stored: [Message]
     private var sendError: OrbitleError?
+    /// Отказы на загрузку по порядку, затем обычные ответы.
+    private var loadErrors: [OrbitleError]
     private(set) var requests: [Date?] = []
 
-    init(_ stored: [Message], sendError: OrbitleError? = nil) {
+    init(_ stored: [Message], sendError: OrbitleError? = nil, loadErrors: [OrbitleError] = []) {
         self.stored = stored
         self.sendError = sendError
+        self.loadErrors = loadErrors
     }
 
     func comments(chatId: String, postId: String, before: Date?, limit: Int) async throws(OrbitleError) -> [Message] {
         requests.append(before)
+        if !loadErrors.isEmpty { throw loadErrors.removeFirst() }
         let older = stored
             .filter { message in before.map { message.timestamp < $0 } ?? true }
             .sorted { $0.timestamp < $1.timestamp }
@@ -59,6 +63,29 @@ struct CommentsViewModelTests {
         #expect(!model.hasMore)
         await model.load()
         #expect(await repository.requests.count == 2)
+    }
+
+    @Test("Сервер просит подождать: окно само повторяет загрузку один раз")
+    func retriesOnceAfterRateLimit() async {
+        let limit = OrbitleError.server(code: OrbitleError.rateLimitCode)
+        let repository = FakeComments([comment(0)], loadErrors: [limit])
+        let model = CommentsViewModel(chatId: "c", post: post, currentUserId: "me", comments: repository, rateLimitRetry: .zero)
+        await model.load()
+        #expect(model.state == .loaded)
+        #expect(model.comments.map(\.id) == ["k0"])
+        #expect(await repository.requests.count == 2)
+
+        let twice = FakeComments([comment(0)], loadErrors: [limit, limit])
+        let failing = CommentsViewModel(chatId: "c", post: post, currentUserId: "me", comments: twice, rateLimitRetry: .zero)
+        await failing.load()
+        #expect(failing.state == .failed(limit.userMessage ?? ""))
+        #expect(await twice.requests.count == 2)
+
+        // Другие ошибки не повторяются сами.
+        let offline = FakeComments([], loadErrors: [.networkUnavailable])
+        let once = CommentsViewModel(chatId: "c", post: post, currentUserId: "me", comments: offline, rateLimitRetry: .zero)
+        await once.load()
+        #expect(await offline.requests.count == 1)
     }
 
     @Test("Пустое обсуждение предлагает написать первый комментарий")
