@@ -387,6 +387,18 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func leaveChat(chatId: String) async throws {
+        let _: Void = try await call("leaveChat") { done in
+            self.client.leaveChat(chatId: chatId) { kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(()))
+                }
+            }
+        }
+    }
+
     func clearHistory(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async throws {
         let _: Void = try await call("clearHistory") { done in
             self.client.clearHistory(chatId: chatId, lastEventTimeMs: lastEventTimeMs, forAll: forEveryone) { kind, key in

@@ -532,6 +532,8 @@ public protocol MaxCore: Sendable {
     func joinByLink(_ link: String) async throws -> CoreChat
     /// Удалить чат (`CHAT_DELETE` 52).
     func deleteChat(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async throws
+    /// Выйти из группы или отписаться от канала (`CHAT_LEAVE` 58).
+    func leaveChat(chatId: String) async throws
     /// Очистить переписку (`CHAT_CLEAR` 54).
     func clearHistory(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async throws
     /// Текст с анимодзи и упоминаниями. Смещения UTF-16 по `text`.
@@ -668,6 +670,7 @@ public extension MaxCore {
     func createChannel(title: String) async throws -> CoreChat? { throw unsupported }
     func joinByLink(_ link: String) async throws -> CoreChat { throw unsupported }
     func deleteChat(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async throws { throw unsupported }
+    func leaveChat(chatId: String) async throws { throw unsupported }
     func clearHistory(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async throws { throw unsupported }
     func sendRichText(chatId: String, text: String, replyTo: String, animoji: [CoreAnimojiMark], mentions: [CoreMentionMark]) async throws -> CoreMessage {
         if mentions.isEmpty { return try await sendText(chatId: chatId, text: text, replyTo: replyTo, animoji: animoji) }

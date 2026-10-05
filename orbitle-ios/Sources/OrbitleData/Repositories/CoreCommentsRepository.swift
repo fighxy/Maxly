@@ -13,9 +13,10 @@ public struct CoreCommentsRepository: CommentsRepository {
     public func comments(chatId: String, postId: String, before: Date?, limit: Int) async throws(OrbitleError) -> [Message] {
         do {
             let page = try await core.loadComments(chatId: chatId, postId: postId, beforeMs: before?.unixMillis ?? 0, limit: limit)
+            Log.info(.messages, "Комментарии поста \(postId) в чате \(chatId): \(page.count)\(before == nil ? "" : ", страница раньше")")
             return page.map { Self.comment($0, postId: postId) }
         } catch {
-            Log.warning(.messages, "Комментарии поста \(postId) не загрузились: \(error)")
+            Log.warning(.messages, "Комментарии поста \(postId) в чате \(chatId) не загрузились: \(error)")
             throw CoreMapping.apiError(error).orbitleError
         }
     }

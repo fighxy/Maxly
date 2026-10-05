@@ -557,6 +557,17 @@ public final class ChatListViewModel {
         }
     }
 
+    /// Выйти из группы или отписаться от канала. `true` — сервер принял, экран чата можно закрыть.
+    public func leave(chatId: String) async -> Bool {
+        do {
+            try await repository.leave(chatId: chatId)
+            return true
+        } catch {
+            show(error)
+            return false
+        }
+    }
+
     public func confirmClear(forEveryone: Bool) async {
         guard let candidate = clearCandidate else { return }
         clearCandidate = nil

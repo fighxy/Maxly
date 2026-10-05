@@ -223,6 +223,12 @@ class CoreChatRepository(
         return chat.id.toString()
     }
 
+    override suspend fun leaveChat(chatId: String) {
+        val id = chatId.toLongOrNull() ?: return
+        MaxCoreGateway.call { client.api.chats.leaveChat(id) }
+        client.store.removeChat(id)
+    }
+
     override suspend fun deleteChat(chatId: String, forEveryone: Boolean) {
         val id = chatId.toLongOrNull() ?: return
         val stored = client.store.state.value.chats[id]

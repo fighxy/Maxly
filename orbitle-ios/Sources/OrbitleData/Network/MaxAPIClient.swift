@@ -113,6 +113,8 @@ public protocol MaxAPI: Sendable {
     func joinByLink(_ link: String) async -> Result<ChatRecord?, MaxAPIError>
     /// Удалить чат (`CHAT_DELETE` 52). `lastEventTimeMs` — время последнего события чата.
     func deleteChat(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async -> Result<Void, MaxAPIError>
+    /// Выйти из группы или отписаться от канала (`CHAT_LEAVE` 58).
+    func leaveChat(chatId: String) async -> Result<Void, MaxAPIError>
     /// Очистить переписку (`CHAT_CLEAR` 54). Те же три поля, что у удаления чата.
     func clearHistory(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async -> Result<Void, MaxAPIError>
     func pinMessage(chatId: String, messageId: String) async -> Result<Void, MaxAPIError>
@@ -170,6 +172,7 @@ public extension MaxAPI {
     func deleteChat(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async -> Result<Void, MaxAPIError> {
         .failure(.invalidResponse)
     }
+    func leaveChat(chatId: String) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
     func clearHistory(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async -> Result<Void, MaxAPIError> {
         .failure(.invalidResponse)
     }
@@ -488,6 +491,12 @@ public final class MaxAPIClient: MaxAPI, Sendable {
     public func deleteChat(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async -> Result<Void, MaxAPIError> {
         await catching {
             try await core.deleteChat(chatId: chatId, lastEventTimeMs: lastEventTimeMs, forEveryone: forEveryone)
+        }
+    }
+
+    public func leaveChat(chatId: String) async -> Result<Void, MaxAPIError> {
+        await catching {
+            try await core.leaveChat(chatId: chatId)
         }
     }
 

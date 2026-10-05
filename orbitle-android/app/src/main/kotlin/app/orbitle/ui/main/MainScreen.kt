@@ -287,7 +287,7 @@ fun MainScreen(
                     // Из чата профиль закрывается назад, «Написать» нужна только снаружи.
                     onWrite = if (fromChat) null else ({ openChat(chatId, title) }),
                     mediaUserAgent = container.videoSourceUserAgent(),
-                    chatActions = if (fromChat) profileChatActions { action ->
+                    chatActions = if (fromChat) profileChatActions(listed = chatList.isListed(chatId)) { action ->
                         chatAction = chatId to action
                         nav.popBackStack()
                     } else null,
@@ -312,10 +312,11 @@ private fun Soon(title: Int) {
 }
 
 /** Действия профиля, открытого из чата: каждое закрывает профиль и открывается в чате. */
-internal fun profileChatActions(request: (ChatAction) -> Unit) = ProfileChatActions(
+internal fun profileChatActions(listed: Boolean = true, request: (ChatAction) -> Unit) = ProfileChatActions(
     onSearch = { request(ChatAction.SEARCH) },
     onTools = { request(ChatAction.TOOLS) },
     onCall = { request(ChatAction.CALL) },
     onClearHistory = { request(ChatAction.CLEAR_HISTORY) },
     onDeleteChat = { request(ChatAction.DELETE_CHAT) },
+    onLeave = if (listed) ({ request(ChatAction.LEAVE) }) else null,
 )

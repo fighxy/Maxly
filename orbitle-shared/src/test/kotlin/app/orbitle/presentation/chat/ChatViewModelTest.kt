@@ -702,6 +702,21 @@ class ChatViewModelTest {
     }
 
     @Test
+    fun leavingAChannelClosesTheScreenOnlyAfterTheServerAgrees() {
+        val chats = FakeChats()
+        val model = vm(chats = chats)
+        var closed = 0
+        chats.leaveFails = true
+        model.leave { closed++ }
+        assertEquals(0, closed)
+        assertTrue(model.messages.value != null)
+        chats.leaveFails = false
+        model.leave { closed++ }
+        assertEquals(1, closed)
+        assertEquals(listOf("10", "10"), chats.left)
+    }
+
+    @Test
     fun openAppButtonOfABotHeader() {
         repo.headerInfo.value = ChatHeaderInfo(chat(), botAppId = "77")
         val model = vm()
@@ -723,6 +738,12 @@ private class FakeChats : ChatRepository {
     var answer = ButtonAnswer(null, null)
     val pressed = mutableListOf<String>()
     val joined = mutableListOf<String>()
+    val left = mutableListOf<String>()
+    var leaveFails = false
+    override suspend fun leaveChat(chatId: String) {
+        left += chatId
+        if (leaveFails) throw OrbitleError.Rejected("нельзя")
+    }
     override suspend fun joinByLink(link: String): String? {
         joined += link
         return "10"

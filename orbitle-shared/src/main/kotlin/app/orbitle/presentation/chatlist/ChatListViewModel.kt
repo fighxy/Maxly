@@ -476,6 +476,9 @@ class ChatListViewModel(
             .map { formatter.item(it, at, showDraft = false) }
     }
 
+    /** Чат есть в списке аккаунта: участник группы или подписчик канала. */
+    fun isListed(chatId: String): Boolean = ordered().any { it.id == chatId }
+
     /** Чаты для папки: всё, кроме архива, в порядке списка. */
     fun folderCandidates(): List<ChatListItem> {
         val at = now()

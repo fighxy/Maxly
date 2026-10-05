@@ -233,6 +233,26 @@ struct ChatSyncTests {
         #expect(await row(parts.chats) == nil)
     }
 
+    @Test("Отписка от канала уходит на сервер и убирает чат с историей; отказ оставляет его")
+    func leaveChannel() async throws {
+        let parts = try await makeSync()
+        try await parts.chats.upsert([makeChat()])
+        try await parts.messages.upsert([
+            MessageRecord(id: "m1", serverId: "m1", chatId: "c1", authorId: "bob", text: "Пост", timestamp: .init(timeIntervalSince1970: 2), status: .sent),
+        ])
+        await parts.api.set(chatLeaveResult: .failure(.offline))
+        await #expect(throws: OrbitleError.self) {
+            try await parts.chats.leave(chatId: "c1")
+        }
+        #expect(await row(parts.chats) != nil)
+
+        await parts.api.set(chatLeaveResult: .success(()))
+        try await parts.chats.leave(chatId: "c1")
+        #expect(await parts.api.chatLeaves == ["c1", "c1"])
+        #expect(await row(parts.chats) == nil)
+        #expect(try await parts.messages.page(chatId: "c1", before: nil).isEmpty)
+    }
+
     @Test("Удаление чата и очистка истории уходят на сервер и правят локальную строку")
     func deleteAndClearReachTheServer() async throws {
         let parts = try await makeSync()

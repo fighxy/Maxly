@@ -418,6 +418,16 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         await historyDropped?(chatId)
     }
 
+    public func leave(chatId: String) async throws(OrbitleError) {
+        let started = generation
+        if case .failure(let error) = await api.leaveChat(chatId: chatId) {
+            throw error.orbitleError
+        }
+        try ensureCurrent(started)
+        try delete(chatId: chatId)
+        await historyDropped?(chatId)
+    }
+
     public func clearHistory(chatId: String, forEveryone: Bool) async throws(OrbitleError) {
         let started = generation
         let time = try eventTimeMs(chatId)

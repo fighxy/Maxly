@@ -29,6 +29,8 @@ struct ChatView: View {
     var makeProfile: (() -> ChatProfileViewModel?)?
     /// Очистка переписки или удаление чата из профиля. Первый флаг — очистка, второй — у всех.
     var onEraseChat: ((Bool, Bool) -> Void)? = nil
+    /// Выйти из группы или отписаться от канала из профиля.
+    var onLeave: (() -> Void)? = nil
     /// Пометка «непрочитано» с сообщения, отправленного в эту дату. Экран закрывает тот, кто
     /// открыл чат, когда сервер принял пометку.
     var onMarkUnread: ((Date) -> Void)? = nil
@@ -472,6 +474,9 @@ struct ChatView: View {
             onShowMessage: { showInChat($0) },
             onEraseChat: listed ? onEraseChat : nil
         )
+        if listed, card.shown.kind == .channel || card.shown.kind == .group {
+            context.onLeave = onLeave
+        }
         context.onSearch = { closeProfile { searchShown = true } }
         if writable {
             context.onPoll = { closeProfile { pollShown = true } }

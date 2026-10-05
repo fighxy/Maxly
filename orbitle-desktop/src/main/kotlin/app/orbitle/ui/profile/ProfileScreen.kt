@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Chat
+import androidx.compose.material.icons.automirrored.outlined.ExitToApp
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Verified
@@ -91,6 +92,8 @@ class ProfileChatActions(
     val onCall: () -> Unit,
     val onClearHistory: () -> Unit,
     val onDeleteChat: () -> Unit,
+    /** Выйти из группы или отписаться от канала. `null` — не участник (открыт из поиска). */
+    val onLeave: (() -> Unit)? = null,
 )
 
 /** Профиль: шапка, сведения, команды бота и общие медиа по вкладкам. */
@@ -166,7 +169,12 @@ fun ProfileScreen(
                             DesktopActions.copy(share)
                             model.notify("Ссылка скопирована")
                         }
-                        if (chatActions != null) MoreChatActions(chatActions, Modifier.weight(1f))
+                        // Отписка от канала на виду, плиткой; выход из группы — в «Ещё».
+                        val leave = chatActions?.onLeave
+                        if (leave != null && state.profile.kind == ChatProfile.Kind.CHANNEL) {
+                            ActionButton("Отписаться", { Icon(Icons.AutoMirrored.Outlined.ExitToApp, null) }, Modifier.weight(1f)) { leave() }
+                        }
+                        if (chatActions != null) MoreChatActions(chatActions, Modifier.weight(1f), leavesGroup = state.profile.kind == ChatProfile.Kind.GROUP)
                     }
                 }
             }
@@ -327,12 +335,16 @@ private fun ActionButton(label: String, icon: @Composable () -> Unit, modifier: 
 
 /** Плитка «Ещё»: участники и жалоба, очистка истории, удаление чата. */
 @Composable
-private fun MoreChatActions(actions: ProfileChatActions, modifier: Modifier) {
+private fun MoreChatActions(actions: ProfileChatActions, modifier: Modifier, leavesGroup: Boolean = false) {
     var open by remember { mutableStateOf(false) }
     Box(modifier) {
         ActionButton("Ещё", { Icon(Icons.Outlined.MoreVert, null) }, Modifier.fillMaxWidth()) { open = true }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DropdownMenuItem(text = { Text("Участники и жалоба") }, onClick = { open = false; actions.onTools() })
+            val leave = actions.onLeave
+            if (leavesGroup && leave != null) {
+                DropdownMenuItem(text = { Text("Покинуть группу") }, onClick = { open = false; leave() })
+            }
             DropdownMenuItem(text = { Text("Очистить историю") }, onClick = { open = false; actions.onClearHistory() })
             DropdownMenuItem(
                 text = { Text("Удалить чат", color = MaterialTheme.colorScheme.error) },
