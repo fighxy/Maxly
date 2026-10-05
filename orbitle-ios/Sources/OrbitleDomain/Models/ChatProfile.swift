@@ -41,6 +41,9 @@ public struct ChatProfile: Hashable, Sendable, Codable {
     public var webApp: Bool?
 
     public var hasWebApp: Bool { webApp == true }
+    /// Родные комментарии канала (опция `COMMENTS`). `nil` — карточка не сказала. Когда они
+    /// выключены, обсуждение часто ведёт бот: кнопкой мини-приложения под постом.
+    public var commentsEnabled: Bool?
 
     public init(
         kind: Kind,
@@ -56,7 +59,8 @@ public struct ChatProfile: Hashable, Sendable, Codable {
         isOfficial: Bool = false,
         isPublic: Bool = false,
         commands: [BotCommand] = [],
-        hasWebApp: Bool = false
+        hasWebApp: Bool = false,
+        commentsEnabled: Bool? = nil
     ) {
         self.kind = kind
         self.chatId = chatId
@@ -72,6 +76,7 @@ public struct ChatProfile: Hashable, Sendable, Codable {
         self.isPublic = isPublic
         self.commands = commands
         self.webApp = hasWebApp ? true : nil
+        self.commentsEnabled = commentsEnabled
     }
 
     /// Публичная ссылка Max: полная как есть, короткое имя — `https://max.ru/<имя>`.

@@ -682,7 +682,7 @@ class ChatViewModelTest {
     @Test
     fun channelOutsideTheListShowsItsCardAndJoins() {
         val chats = FakeChats()
-        val card = app.orbitle.domain.ChatProfile(app.orbitle.domain.ChatProfile.Kind.CHANNEL, "10", title = "Новости", link = "https://max.ru/news", participants = 117_844)
+        val card = app.orbitle.domain.ChatProfile(app.orbitle.domain.ChatProfile.Kind.CHANNEL, "10", title = "Новости", link = "https://max.ru/news", participants = 117_844, commentsEnabled = false)
         val profiles = object : app.orbitle.data.ProfileRepository {
             override fun cached(chatId: String) = null
             override suspend fun profile(chatId: String) = card
