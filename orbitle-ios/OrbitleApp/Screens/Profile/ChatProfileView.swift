@@ -843,7 +843,7 @@ struct ChatHeaderAvatar: View {
 
     var body: some View {
         if viewModel.shown.kind == .saved {
-            ChatAvatarView(avatar: ChatAvatar(kind: .savedMessages, colorIndex: 0), size: reservesRingSpace ? size - min(max(size * 0.045, 2), 3.5) * 4 : size)
+            ChatAvatarView(avatar: ChatAvatar(kind: .savedMessages, colorIndex: 0), size: savedSize)
                 .frame(width: size, height: size)
         } else {
             let initials = ChatAvatar.initials(for: viewModel.title)
@@ -853,6 +853,13 @@ struct ChatHeaderAvatar: View {
             StoryRingAvatar(avatar: ChatAvatar(kind: kind, colorIndex: ChatAvatar.colorIndex(for: id)), ring: ring, size: size, isOnline: isOnline, reservesRingSpace: reservesRingSpace)
                 .accessibilityLabel(privateMode.isMasked ? "" : viewModel.title)
         }
+    }
+
+    /// Закладка «Избранного» с местом под кольцо — того же размера, что фото внутри кольца.
+    private var savedSize: CGFloat {
+        guard reservesRingSpace else { return size }
+        let stroke: CGFloat = min(max(size * 0.045, 2), 3.5)
+        return size - stroke * 4
     }
 }
 
