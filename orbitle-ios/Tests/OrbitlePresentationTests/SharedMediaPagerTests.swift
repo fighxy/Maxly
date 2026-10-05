@@ -81,6 +81,23 @@ struct SharedMediaPagerTests {
         #expect(!pager.round(latest: "100").contains { $0.tab == .media })
     }
 
+    @Test("Без прокрутки обход ограничен несколькими страницами на вкладку")
+    func defaultLimit() {
+        var pager = SharedMediaPager(pageSize: 1)
+        var asked = 0
+        var next = 1000
+        while true {
+            let round = pager.round(latest: "100000")
+            if round.isEmpty { break }
+            for request in round {
+                asked += 1
+                next -= 1
+                pager.receive([photo(String(next), TimeInterval(next))], for: request)
+            }
+        }
+        #expect(asked == SharedMediaTab.allCases.count * 5)
+    }
+
     @Test("Ошибка останавливает вкладку до повтора, повтор идёт с того же места")
     func retry() {
         var pager = SharedMediaPager(pageSize: 1)

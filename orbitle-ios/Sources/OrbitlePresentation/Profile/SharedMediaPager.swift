@@ -32,6 +32,10 @@ public struct SharedMediaRequest: Hashable, Sendable {
 /// первые страницы всех вкладок пришли сразу. Вкладка заканчивается, когда страница не
 /// принесла ничего нового или набрано `maxPages` страниц. Ошибка останавливает вкладку до
 /// следующего открытия профиля (``retryFailed()``).
+///
+/// `maxPages` по умолчанию небольшой: обход идёт сам, без прокрутки, и каждая страница —
+/// отдельный `CHAT_MEDIA`. Сорок страниц на четыре вкладки давали до 160 запросов за одно
+/// открытие профиля и съедали лимит сервера (`too.many.requests`) у истории и комментариев.
 public struct SharedMediaPager: Sendable {
     struct Cursor: Sendable {
         var anchor: String?
@@ -49,7 +53,7 @@ public struct SharedMediaPager: Sendable {
     public private(set) var messages: [String: Message] = [:]
     private var cursors: [SharedMediaTab: Cursor] = [:]
 
-    public init(pageSize: Int = 50, maxPages: Int = 40) {
+    public init(pageSize: Int = 50, maxPages: Int = 5) {
         self.pageSize = pageSize
         self.maxPages = maxPages
     }
