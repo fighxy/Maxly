@@ -139,10 +139,4 @@ extension MaxIosCore {
             media: media
         )
     }
-
-    /// Адрес с схемой; пустая строка или мусор — `nil`.
-    private static func webURL(_ raw: String) -> URL? {
-        guard !raw.isEmpty, let url = URL(string: raw), url.scheme != nil else { return nil }
-        return url
-    }
 }
