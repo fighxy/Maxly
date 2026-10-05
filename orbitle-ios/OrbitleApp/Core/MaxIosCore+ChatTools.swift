@@ -110,6 +110,18 @@ extension MaxIosCore {
         }
     }
 
+    func pressButton(chatId: String, messageId: String, callbackId: String, payload: String) async throws -> CoreButtonAnswer {
+        try await call("pressButton") { done in
+            self.client.pressButton(chatId: chatId, messageId: messageId, callbackId: callbackId, payload: payload) { answer, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(CoreButtonAnswer(text: answer?.text ?? "", url: answer?.url ?? "")))
+                }
+            }
+        }
+    }
+
     func signalCall(calleeId: String, isVideo: Bool) async throws -> CoreCallSignal? {
         try await call("signalCall") { done in
             self.client.signalCall(calleeId: calleeId, isVideo: isVideo) { signal, kind, key in

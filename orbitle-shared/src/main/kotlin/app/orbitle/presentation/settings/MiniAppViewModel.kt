@@ -18,8 +18,13 @@ import kotlinx.coroutines.launch
  * Каждое открытие — новый экземпляр и новый запуск.
  */
 class MiniAppViewModel(
-    val kind: MiniApp.Kind,
+    /** Приложение настроек; `null` у приложения бота. */
+    val kind: MiniApp.Kind?,
     private val repository: AccountRepository,
+    /** Заголовок приложения бота. */
+    private val botTitle: String? = null,
+    /** Запуск приложения бота (кнопка «Открыть приложение», inline-кнопка `OPEN_APP`). */
+    private val start: (suspend () -> MiniApp)? = null,
 ) : ViewModel() {
 
     sealed interface Phase {
@@ -37,11 +42,13 @@ class MiniAppViewModel(
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
 
-    val title: String get() = kind.title
+    val title: String get() = botTitle ?: kind?.title ?: "Приложение"
 
     private var ticket = 0
 
-    fun launch() = work { repository.launchMiniApp(kind) }
+    fun launch() = work {
+        start?.invoke() ?: repository.launchMiniApp(kind ?: throw OrbitleError.InvalidRequest)
+    }
 
     /** Возврат с внешнего шага: сервер даёт новый запуск, лист открывает его. */
     fun handleCallback(url: String) = work { repository.miniAppCallback(url) }

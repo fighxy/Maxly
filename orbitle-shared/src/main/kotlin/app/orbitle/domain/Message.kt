@@ -67,6 +67,10 @@ data class MessageContent(
     val edited: Boolean = false,
     /** Закрепление из служебного `CONTROL` `pin` / `unpin`. */
     val pin: PinNotice? = null,
+    /** Превью ссылки из текста (вложение `SHARE`). */
+    val linkPreview: LinkPreview? = null,
+    /** Inline-кнопки бота под сообщением (вложение `INLINE_KEYBOARD`). */
+    val keyboard: InlineKeyboard? = null,
 ) {
     val visuals: List<ChatAttachment> get() = attachments.filter { it is ChatAttachment.Photo || it is ChatAttachment.Video }
     val voices: List<VoiceContent> get() = attachments.filterIsInstance<ChatAttachment.Voice>().map { it.voice }
@@ -78,6 +82,72 @@ data class MessageContent(
     companion object {
         val empty = MessageContent()
     }
+}
+
+/** Превью ссылки (`SHARE`): адрес, сайт, заголовок, описание и картинка, как их собрал сервер. */
+data class LinkPreview(
+    val url: String,
+    val host: String? = null,
+    val title: String? = null,
+    val summary: String? = null,
+    val imageUrl: String? = null,
+    val imageWidth: Int? = null,
+    val imageHeight: Int? = null,
+) {
+    /** Сайт для подписи: `host` сервера или хост адреса без `www.`. */
+    val site: String?
+        get() {
+            val raw = host ?: runCatching { java.net.URI(url).host }.getOrNull() ?: return null
+            return raw.removePrefix("www.").takeIf { it.isNotEmpty() }
+        }
+}
+
+/** Inline-клавиатура бота: ряды кнопок и `callbackId` для нажатий `CALLBACK` (опкод 118). */
+data class InlineKeyboard(val callbackId: String?, val rows: List<List<InlineButton>>)
+
+/** Кнопка бота. [type] — как прислал сервер, заглавными: `CALLBACK`, `LINK`, `OPEN_APP`, `CLIPBOARD`… */
+data class InlineButton(
+    val type: String,
+    val text: String,
+    val url: String? = null,
+    val webApp: String? = null,
+    val contactId: String? = null,
+    val payload: String? = null,
+) {
+    sealed interface Action {
+        /** Нажатие уходит боту (опкод 118). */
+        data object Callback : Action
+        data class Link(val url: String) : Action
+        /** Мини-приложение бота: [botId], если кнопка его назвала, и параметр запуска. */
+        data class OpenApp(val botId: String?, val startParam: String?) : Action
+        data class Copy(val text: String) : Action
+    }
+
+    /** Что делает нажатие. Неизвестные типы уходят боту, как в других клиентах Max. */
+    val action: Action
+        get() = when (type.uppercase()) {
+            "LINK" -> url?.takeIf { it.isNotBlank() }?.let { Action.Link(it) } ?: Action.Callback
+            "OPEN_APP" -> {
+                val query = webApp?.let { runCatching { java.net.URI(it).rawQuery }.getOrNull() }.orEmpty()
+                val fromLink = query.split('&').map { it.split('=', limit = 2) }
+                    .firstOrNull { it.size == 2 && (it[0] == "startapp" || it[0] == "startApp") }
+                    ?.get(1)?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+                Action.OpenApp(contactId, payload ?: fromLink)
+            }
+            "CLIPBOARD" -> Action.Copy(payload.orEmpty())
+            else -> Action.Callback
+        }
+
+    /** Значок-подсказка справа: ссылка, приложение, копирование. */
+    val hint: Hint?
+        get() = when (action) {
+            is Action.Link -> Hint.LINK
+            is Action.OpenApp -> Hint.APP
+            is Action.Copy -> Hint.COPY
+            Action.Callback -> null
+        }
+
+    enum class Hint { LINK, APP, COPY }
 }
 
 /** Отрезок разметки текста (смещения UTF-16, как у сервера). */

@@ -320,7 +320,8 @@ public struct MiniAppBridge: Sendable {
     }
 }
 
-/// Лист мини-приложения: запуск, перезапуск после внешнего шага.
+/// Лист мини-приложения: запуск, перезапуск после внешнего шага. Приложение из настроек
+/// (Цифровой ID, Сферум) или бота: кнопка «Открыть приложение» в чате, inline-кнопка `OPEN_APP`.
 @MainActor
 @Observable
 public final class MiniAppModel {
@@ -330,25 +331,36 @@ public final class MiniAppModel {
         case failed(String)
     }
 
-    public let kind: MiniApp.Kind
+    /// Приложение настроек; `nil` у приложения бота.
+    public let kind: MiniApp.Kind?
+    public let title: String
     public private(set) var state: State = .loading
     public var closingNeedsConfirmation = false
     public var showsBackButton = false
 
     @ObservationIgnored private let repository: any AccountRepository
+    @ObservationIgnored private let start: () async throws(OrbitleError) -> MiniApp
 
     public init(kind: MiniApp.Kind, repository: any AccountRepository) {
         self.kind = kind
+        self.title = kind.title
         self.repository = repository
+        self.start = { () async throws(OrbitleError) -> MiniApp in try await repository.launchMiniApp(kind) }
     }
 
-    public var title: String { kind.title }
+    /// Мини-приложение бота: `start` спрашивает у сервера адрес запуска (`WEB_APP_INIT_DATA`).
+    public init(title: String, repository: any AccountRepository, start: @escaping () async throws(OrbitleError) -> MiniApp) {
+        self.kind = nil
+        self.title = title
+        self.repository = repository
+        self.start = start
+    }
 
     public func launch() async {
         state = .loading
         do {
-            let app = try await repository.launchMiniApp(kind)
-            Log.info(.settings, "Мини-приложение \(kind.rawValue): бот \(app.botId)")
+            let app = try await start()
+            Log.info(.settings, "Мини-приложение \(kind?.rawValue ?? title): бот \(app.botId)")
             state = .ready(app)
         } catch {
             state = .failed(error.message)
@@ -360,7 +372,7 @@ public final class MiniAppModel {
         state = .loading
         do {
             state = .ready(try await repository.miniAppCallback(url: url))
-            Log.info(.settings, "Мини-приложение \(kind.rawValue): возврат с внешнего шага")
+            Log.info(.settings, "Мини-приложение \(kind?.rawValue ?? title): возврат с внешнего шага")
         } catch {
             state = .failed(error.message)
         }

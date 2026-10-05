@@ -134,6 +134,20 @@ public protocol ChatRepository: Sendable {
     func botCommands(botId: String) async throws(OrbitleError) -> [BotCommandRef]
     /// Сигнал личного звонка. `nil` — сервер не вернул адрес. Звук и видео не открываются.
     func signalCall(calleeId: String, isVideo: Bool) async throws(OrbitleError) -> String?
+    /// Нажатие inline-кнопки `CALLBACK` бота (опкод 118). Сам ответ бота обычно приходит
+    /// сообщением; здесь — короткий текст или адрес, если сервер их прислал.
+    func pressButton(chatId: String, messageId: String, callbackId: String, payload: String?) async throws(OrbitleError) -> BotButtonAnswer
+}
+
+/// Ответ сервера на нажатие кнопки бота: уведомление и/или адрес для открытия.
+public struct BotButtonAnswer: Sendable, Equatable {
+    public var text: String?
+    public var url: URL?
+
+    public init(text: String? = nil, url: URL? = nil) {
+        self.text = text
+        self.url = url
+    }
 }
 
 /// Без поддержки источника необязательные действия недоступны: набор пуст,
@@ -160,6 +174,9 @@ public extension ChatRepository {
     func members(chatId: String) async throws(OrbitleError) -> [ChatMemberRef] { throw .invalidRequest }
     func botCommands(botId: String) async throws(OrbitleError) -> [BotCommandRef] { throw .invalidRequest }
     func signalCall(calleeId: String, isVideo: Bool) async throws(OrbitleError) -> String? { throw .invalidRequest }
+    func pressButton(chatId: String, messageId: String, callbackId: String, payload: String?) async throws(OrbitleError) -> BotButtonAnswer {
+        throw .invalidRequest
+    }
 }
 
 /// Черновики полей ввода. Хранятся только на устройстве.

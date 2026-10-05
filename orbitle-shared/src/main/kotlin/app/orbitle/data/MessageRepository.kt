@@ -17,6 +17,8 @@ data class ChatHeaderInfo(
     val lastSeenMs: Long = 0,
     /** Кто печатает прямо сейчас (имена). */
     val typing: List<String> = emptyList(),
+    /** Бот с мини-приложением: его id для кнопки «Открыть приложение», иначе `null`. */
+    val botAppId: String? = null,
 )
 
 /** История одного чата и действия над сообщениями. */

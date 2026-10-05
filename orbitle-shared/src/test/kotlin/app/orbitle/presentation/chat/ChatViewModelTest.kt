@@ -17,6 +17,9 @@ import app.orbitle.domain.MessageStatus
 import app.orbitle.domain.OrbitleError
 import app.orbitle.domain.TextSpan
 import app.orbitle.domain.ServerFolder
+import app.orbitle.domain.InlineButton
+import app.orbitle.domain.InlineKeyboard
+import app.orbitle.data.ButtonAnswer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -625,6 +628,65 @@ class ChatViewModelTest {
         assertEquals(2, chats.calls)
         assertEquals("Анна", model.state.value.hints.mentions.single().name)
     }
+
+    @Test
+    fun unreadSeparatorStandsAboveTheFirstUnreadAndGoesAwayAfterSending() {
+        repo.list.value = listOf(msg("1", at = now - 4_000), msg("2", at = now - 3_000), msg("3", author = "1", at = now - 2_000), msg("4", at = now - 1_000))
+        repo.headerInfo.value = ChatHeaderInfo(chat(unread = 2))
+        val model = vm()
+        val items = model.state.value.items
+        val divider = items.indexOfFirst { it is ChatItem.Unread }
+        // Лента перевёрнута: под разделителем (индекс −1) — второе с конца чужое, «2».
+        assertEquals("2", items[divider - 1].key)
+        assertEquals(1, items.count { it is ChatItem.Unread })
+        model.setDraft("ответ")
+        model.send()
+        assertTrue(model.state.value.items.none { it is ChatItem.Unread })
+    }
+
+    @Test
+    fun noSeparatorWithoutUnread() {
+        repo.list.value = listOf(msg("1"), msg("2"))
+        repo.headerInfo.value = ChatHeaderInfo(chat(unread = 0))
+        assertTrue(vm().state.value.items.none { it is ChatItem.Unread })
+    }
+
+    @Test
+    fun callbackButtonGoesToTheBotAndShowsTheAnswer() {
+        val chats = FakeChats()
+        chats.answer = ButtonAnswer("Принято", "https://bot.example/next")
+        val keyboard = InlineKeyboard("cb", listOf(listOf(InlineButton("CALLBACK", "Да", payload = "yes"))))
+        val message = msg("5", content = MessageContent(keyboard = keyboard))
+        repo.list.value = listOf(message)
+        val model = vm(chats = chats)
+        model.pressButton(message, keyboard.rows[0][0])
+        assertEquals(listOf("10/5/cb/yes"), chats.pressed)
+        assertEquals("Принято", model.messages.value)
+        assertEquals("https://bot.example/next", model.openUrl.value)
+    }
+
+    @Test
+    fun linkAndAppButtonsAreHandledByTheScreen() {
+        val chats = FakeChats()
+        val message = msg("5")
+        val model = vm(chats = chats)
+        model.pressButton(message, InlineButton("LINK", "Сайт", url = "https://a.b"))
+        assertEquals("https://a.b", model.openUrl.value)
+        model.pressButton(message, InlineButton("OPEN_APP", "Игра", webApp = "https://max.ru/bot?startapp=lvl%201", contactId = "99"))
+        assertEquals(BotAppRequest("99", "10", "lvl 1", "Игра"), model.botApp.value)
+        assertTrue(chats.pressed.isEmpty())
+        model.consumeBotApp()
+        assertNull(model.botApp.value)
+    }
+
+    @Test
+    fun openAppButtonOfABotHeader() {
+        repo.headerInfo.value = ChatHeaderInfo(chat(), botAppId = "77")
+        val model = vm()
+        assertEquals("77", model.state.value.botAppId)
+        model.openBotApp()
+        assertEquals(BotAppRequest("77", "10", null, "Анна"), model.botApp.value)
+    }
 }
 
 private class FakeChats : ChatRepository {
@@ -636,6 +698,12 @@ private class FakeChats : ChatRepository {
     override fun clear() = Unit
     var failures = 0
     var calls = 0
+    var answer = ButtonAnswer(null, null)
+    val pressed = mutableListOf<String>()
+    override suspend fun pressButton(chatId: String, messageId: String, callbackId: String, payload: String?): ButtonAnswer {
+        pressed += "$chatId/$messageId/$callbackId/$payload"
+        return answer
+    }
     override suspend fun members(chatId: String): List<ChatMemberRow> {
         calls++
         if (failures > 0) {

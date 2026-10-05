@@ -36,6 +36,11 @@ public struct ChatProfile: Hashable, Sendable, Codable {
     public var isOfficial: Bool
     public var isPublic: Bool
     public var commands: [BotCommand]
+    /// Бот с мини-приложением: в чате кнопка «Открыть приложение». Необязательное поле:
+    /// в карточках, сохранённых раньше, его нет.
+    public var webApp: Bool?
+
+    public var hasWebApp: Bool { webApp == true }
 
     public init(
         kind: Kind,
@@ -50,7 +55,8 @@ public struct ChatProfile: Hashable, Sendable, Codable {
         presence: Contact.Presence = .unknown,
         isOfficial: Bool = false,
         isPublic: Bool = false,
-        commands: [BotCommand] = []
+        commands: [BotCommand] = [],
+        hasWebApp: Bool = false
     ) {
         self.kind = kind
         self.chatId = chatId
@@ -65,6 +71,7 @@ public struct ChatProfile: Hashable, Sendable, Codable {
         self.isOfficial = isOfficial
         self.isPublic = isPublic
         self.commands = commands
+        self.webApp = hasWebApp ? true : nil
     }
 
     /// Публичная ссылка Max: полная как есть, короткое имя — `https://max.ru/<имя>`.

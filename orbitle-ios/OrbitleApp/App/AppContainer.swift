@@ -525,8 +525,20 @@ final class AppContainer {
     /// Открытый чат: опрос его истории и отметка прочтения, в том числе для сообщений,
     /// пришедших, пока он на экране (это делает `ChatListViewModel`).
     func focus(chatId: String?) async {
+        // Непрочитанные до отметки прочтения: над первым из них лента ставит разделитель.
+        if let chatId, let model = chatViewModel(id: chatId) {
+            model.noteUnreadOnOpen(listModel?.chat(id: chatId)?.unreadCount ?? 0)
+        }
         await sync?.focus(chatId)
         await listModel?.open(chatId: chatId)
+    }
+
+    /// Мини-приложение бота из чата: запуск по `WEB_APP_INIT_DATA` с ботом, чатом и параметром.
+    func botAppModel(_ request: BotAppRequest) -> MiniAppModel {
+        let accounts = accounts
+        return MiniAppModel(title: request.title, repository: accounts) { () async throws(OrbitleError) -> MiniApp in
+            try await accounts.launchBotApp(botId: request.botId, chatId: request.chatId, startParam: request.startParam)
+        }
     }
 
     /// Приложение вернулось на экран: сверка с сервером того, что могло прийти без пушей.

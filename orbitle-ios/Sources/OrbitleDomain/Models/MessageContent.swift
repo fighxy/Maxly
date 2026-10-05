@@ -19,6 +19,10 @@ public struct MessageContent: Hashable, Sendable, Codable {
     /// Своё сообщение с вложениями, которые ещё не загружены: что и откуда отправлять.
     /// Есть, пока сообщение не принято сервером; по нему работает повтор после сбоя.
     public var drafts: [AttachmentDraft]?
+    /// Превью ссылки из текста (вложение `SHARE`).
+    public var linkPreview: LinkPreview?
+    /// Inline-кнопки бота под сообщением (вложение `INLINE_KEYBOARD`).
+    public var keyboard: InlineKeyboard?
 
     public init(
         reply: MessageReply? = nil,
@@ -30,7 +34,9 @@ public struct MessageContent: Hashable, Sendable, Codable {
         forward: MessageForward? = nil,
         edited: Bool? = nil,
         drafts: [AttachmentDraft]? = nil,
-        pin: PinNotice? = nil
+        pin: PinNotice? = nil,
+        linkPreview: LinkPreview? = nil,
+        keyboard: InlineKeyboard? = nil
     ) {
         self.reply = reply
         self.attachments = attachments
@@ -42,6 +48,8 @@ public struct MessageContent: Hashable, Sendable, Codable {
         self.edited = edited == true ? true : nil
         self.drafts = drafts?.isEmpty == true ? nil : drafts
         self.pin = pin
+        self.linkPreview = linkPreview
+        self.keyboard = keyboard?.rows.isEmpty == true ? nil : keyboard
     }
 
     public static let empty = MessageContent()
@@ -49,6 +57,7 @@ public struct MessageContent: Hashable, Sendable, Codable {
     public var isEmpty: Bool {
         reply == nil && attachments.isEmpty && reactions.isEmpty && comments == nil && (threadOf?.isEmpty != false)
             && (formatting?.isEmpty != false) && forward == nil && edited != true && (drafts?.isEmpty != false) && pin == nil
+            && linkPreview == nil && keyboard == nil
     }
 
     /// Вложения ещё загружаются или ждут повтора.
@@ -159,6 +168,94 @@ public struct TextSpan: Hashable, Sendable, Codable {
 }
 
 /// Пересланное сообщение: автор оригинала и его текст (у пересылки свой текст пустой).
+/// Превью ссылки (`SHARE`): адрес, сайт, заголовок, описание и картинка, как их собрал сервер.
+public struct LinkPreview: Hashable, Sendable, Codable {
+    public var url: String
+    public var host: String?
+    public var title: String?
+    public var summary: String?
+    public var imageURL: URL?
+    public var imageWidth: Int?
+    public var imageHeight: Int?
+
+    public init(url: String, host: String? = nil, title: String? = nil, summary: String? = nil,
+                imageURL: URL? = nil, imageWidth: Int? = nil, imageHeight: Int? = nil) {
+        self.url = url
+        self.host = host
+        self.title = title
+        self.summary = summary
+        self.imageURL = imageURL
+        self.imageWidth = imageWidth
+        self.imageHeight = imageHeight
+    }
+
+    /// Сайт для подписи: `host` сервера или хост адреса без `www.`.
+    public var site: String? {
+        let raw = host ?? URL(string: url)?.host
+        guard let raw, !raw.isEmpty else { return nil }
+        return raw.hasPrefix("www.") ? String(raw.dropFirst(4)) : raw
+    }
+}
+
+/// Inline-клавиатура бота: ряды кнопок и `callbackId` для нажатий `CALLBACK` (опкод 118).
+public struct InlineKeyboard: Hashable, Sendable, Codable {
+    public var callbackId: String?
+    public var rows: [[InlineButton]]
+
+    public init(callbackId: String?, rows: [[InlineButton]]) {
+        self.callbackId = callbackId
+        self.rows = rows
+    }
+}
+
+/// Кнопка бота. `type` — как прислал сервер: `CALLBACK`, `LINK`, `OPEN_APP`, `CLIPBOARD`…
+public struct InlineButton: Hashable, Sendable, Codable {
+    public enum Action: Equatable, Sendable {
+        /// Нажатие уходит боту (опкод 118).
+        case callback
+        /// Открыть адрес.
+        case link(URL)
+        /// Мини-приложение бота: `botId` (если кнопка его назвала) и параметр запуска.
+        case openApp(botId: String?, startParam: String?)
+        /// Скопировать текст.
+        case copy(String)
+    }
+
+    public var type: String
+    public var text: String
+    public var url: String?
+    public var webApp: String?
+    public var contactId: String?
+    public var payload: String?
+
+    public init(type: String, text: String, url: String? = nil, webApp: String? = nil, contactId: String? = nil, payload: String? = nil) {
+        self.type = type.uppercased()
+        self.text = text
+        self.url = url
+        self.webApp = webApp
+        self.contactId = contactId
+        self.payload = payload
+    }
+
+    /// Что делает нажатие. Неизвестные типы уходят боту, как в других клиентах Max.
+    public var action: Action {
+        switch type {
+        case "LINK":
+            if let url, let link = URL(string: url) { return .link(link) }
+            return .callback
+        case "OPEN_APP":
+            let deeplink = webApp.flatMap { URLComponents(string: $0) }
+            let query = deeplink?.queryItems ?? []
+            let start = payload ?? query.first { $0.name == "startapp" || $0.name == "startApp" }?.value
+            return .openApp(botId: contactId, startParam: start)
+        case "CLIPBOARD":
+            return .copy(payload ?? "")
+        default:
+            return .callback
+        }
+    }
+}
+
 public struct MessageForward: Hashable, Sendable, Codable {
     public var authorName: String
     public var text: String

@@ -277,7 +277,8 @@ struct MainTabView: View {
                         if await container.markUnread(id: id, from: date), router.chatId == id { router.chatId = nil }
                     }
                 },
-                quickReaction: settings.quickReactionEnabled ? settings.quickReaction : nil
+                quickReaction: settings.quickReactionEnabled ? settings.quickReaction : nil,
+                makeBotApp: { container.botAppModel($0) }
             )
             .id(id)
         }

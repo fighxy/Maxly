@@ -43,9 +43,13 @@ public protocol AccountRepository: Sendable {
     func launchMiniApp(_ kind: MiniApp.Kind) async throws(OrbitleError) -> MiniApp
     /// Возврат внешнего шага мини-приложения на адрес `url` (`externalCallback=1`).
     func miniAppCallback(url: URL) async throws(OrbitleError) -> MiniApp
+    /// Мини-приложение бота (`WEB_APP_INIT_DATA` 160): кнопка «Открыть приложение» в чате
+    /// или inline-кнопка `OPEN_APP`.
+    func launchBotApp(botId: String, chatId: String?, startParam: String?) async throws(OrbitleError) -> MiniApp
 }
 
 public extension AccountRepository {
+    func launchBotApp(botId: String, chatId: String?, startParam: String?) async throws(OrbitleError) -> MiniApp { throw .invalidRequest }
     func enablePassword(password: String, hint: String) async throws(OrbitleError) { throw .invalidRequest }
     func changePassword(oldPassword: String, newPassword: String) async throws(OrbitleError) { throw .invalidRequest }
     func disablePassword(password: String) async throws(OrbitleError) { throw .invalidRequest }

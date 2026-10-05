@@ -1,5 +1,8 @@
 package app.orbitle.data
 
+import app.orbitle.domain.InlineButton
+import app.orbitle.domain.InlineKeyboard
+import app.orbitle.domain.LinkPreview
 import app.orbitle.domain.CallContent
 import app.orbitle.domain.ChatAttachment
 import app.orbitle.domain.ContactContent
@@ -100,7 +103,60 @@ object MessageMapping {
             forward = forwarded?.first,
             edited = message.status == "EDITED",
             pin = pinNotice(message.attaches),
+            linkPreview = linkPreview(message.attaches),
+            keyboard = keyboard(message.attaches),
         )
+    }
+
+    /** Вложение `SHARE`: `{url, host?, title?, description?, image?: PHOTO}` (схема Komet). */
+    fun linkPreview(attaches: List<*>?): LinkPreview? {
+        for (item in attaches.orEmpty()) {
+            val map = item as? Map<*, *> ?: continue
+            if (((map["_type"] ?: map["type"]) as? String)?.uppercase() != "SHARE") continue
+            fun text(key: String) = (map[key] as? String)?.trim()?.takeIf { it.isNotEmpty() }
+            val url = text("url") ?: continue
+            val image = map["image"] as? Map<*, *>
+            return LinkPreview(
+                url = url,
+                host = text("host"),
+                title = text("title"),
+                summary = text("description"),
+                imageUrl = image?.let { (it["baseUrl"] as? String ?: it["url"] as? String)?.takeIf(String::isNotBlank) },
+                imageWidth = image?.let { ChatMapping.longOf(it["width"])?.toInt() },
+                imageHeight = image?.let { ChatMapping.longOf(it["height"])?.toInt() },
+            )
+        }
+        return null
+    }
+
+    /**
+     * Вложение `INLINE_KEYBOARD`: `{callbackId, keyboard: {buttons: [[{type, text, url?, webApp?,
+     * contactId?, payload?}]]}}` (схема Komet). Кнопки без подписи и пустые ряды отбрасываются.
+     */
+    fun keyboard(attaches: List<*>?): InlineKeyboard? {
+        for (item in attaches.orEmpty()) {
+            val map = item as? Map<*, *> ?: continue
+            if (((map["_type"] ?: map["type"]) as? String)?.uppercase() != "INLINE_KEYBOARD") continue
+            val buttons = (map["keyboard"] as? Map<*, *>)?.get("buttons") as? List<*> ?: emptyList<Any?>()
+            val rows = buttons.mapNotNull { row ->
+                (row as? List<*>).orEmpty().mapNotNull { raw ->
+                    val b = raw as? Map<*, *> ?: return@mapNotNull null
+                    val text = (b["text"] as? String)?.trim().orEmpty()
+                    if (text.isEmpty()) return@mapNotNull null
+                    InlineButton(
+                        type = (b["type"] as? String).orEmpty().uppercase(),
+                        text = text,
+                        url = (b["url"] as? String)?.takeIf { it.isNotBlank() },
+                        webApp = (b["webApp"] as? String)?.takeIf { it.isNotBlank() },
+                        contactId = stringId(b["contactId"]),
+                        payload = b["payload"]?.toString(),
+                    )
+                }.takeIf { it.isNotEmpty() }
+            }
+            if (rows.isEmpty()) continue
+            return InlineKeyboard(stringId(map["callbackId"]), rows)
+        }
+        return null
     }
 
     /** `CONTROL` `pin` / `unpin`. Текст берётся из `pinnedMessage.text`. */

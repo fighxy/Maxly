@@ -139,6 +139,10 @@ public struct CoreAccountRepository: AccountRepository {
         try await run { try await core.miniAppCallback(url: url.absoluteString) }
     }
 
+    public func launchBotApp(botId: String, chatId: String?, startParam: String?) async throws(OrbitleError) -> MiniApp {
+        try await run { try await core.launchBotApp(botId: botId, chatId: chatId ?? "", startParam: startParam ?? "") }
+    }
+
     private func run<T: Sendable>(_ body: () async throws -> T) async throws(OrbitleError) -> T {
         do {
             return try await body()

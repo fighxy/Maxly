@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import OrbitleDomain
 import OrbitlePresentation
 import OrbitleUI
@@ -101,7 +102,9 @@ struct ChatTranscript: View {
                     guard opening || bottom.atBottom else { return }
                     var transaction = Transaction()
                     transaction.disablesAnimations = true
-                    withTransaction(transaction) { position = viewModel.messages.last?.id }
+                    withTransaction(transaction) {
+                        if opening { openAtStart(proxy) } else { position = viewModel.messages.last?.id }
+                    }
                 }
                 .chatSystemEdgeEffectHidden()
                 // Лёгкий переход в фон под нижними кнопками. Раньше кнопки «вниз»: она рисуется поверх.
@@ -208,6 +211,15 @@ struct ChatTranscript: View {
 
     /// Лента поменяла состав: новое внизу — к нему (своё всегда, чужое — если читатель внизу),
     /// иначе счётчик на кнопке «вниз». История, удаление и перестановка ленту не двигают.
+    /// Первое положение ленты: разделитель непрочитанных у верха экрана, иначе последнее сообщение.
+    private func openAtStart(_ proxy: ScrollViewProxy) {
+        if let anchor = viewModel.unreadAnchorId {
+            proxy.scrollTo(anchor, anchor: UnitPoint(x: 0.5, y: 0.12))
+        } else {
+            position = viewModel.messages.last?.id
+        }
+    }
+
     private func follow(_ proxy: ScrollViewProxy) {
         guard !viewModel.messages.isEmpty else { return }
         let change = viewModel.messagesChange
@@ -221,7 +233,7 @@ struct ChatTranscript: View {
         if isOpening {
             var transaction = Transaction()
             transaction.disablesAnimations = true
-            withTransaction(transaction) { position = viewModel.messages.last?.id }
+            withTransaction(transaction) { openAtStart(proxy) }
             if !viewModel.isRestoringHistory { isOpening = false }
             return
         }
@@ -391,6 +403,10 @@ struct TranscriptBubble: View, Equatable {
                 DaySeparator(day)
                     .transition(.opacity)
             }
+            if state.row.startsUnread {
+                UnreadSeparator()
+                    .transition(.opacity)
+            }
             PrivateBubbleGate(
                 isRevealed: state.isRevealed,
                 accessibilityText: PrivateModeMask.messageText(for: message, outgoing: state.row.isOutgoing),
@@ -465,8 +481,22 @@ struct TranscriptBubble: View, Equatable {
                 ? { Task { await viewModel.pin(message) } }
                 : nil,
             onMarkUnread: viewModel.canMarkUnread(message) ? { viewModel.requestMarkUnread(message) } : nil,
-            onVote: { answerId in Task { await viewModel.vote(message, answerId: answerId) } }
+            onVote: { answerId in Task { await viewModel.vote(message, answerId: answerId) } },
+            onButton: { button in press(button) }
         )
+    }
+
+    /// Кнопка бота: ссылка и копирование — здесь, нажатие боту и приложение — в модели.
+    private func press(_ button: InlineButton) {
+        let viewModel = viewModel
+        let message = message
+        if case .copy(let text) = button.action {
+            guard !text.isEmpty else { return }
+            UIPasteboard.general.string = text
+            viewModel.announce("Скопировано")
+            return
+        }
+        Task { await viewModel.press(button, in: message) }
     }
 
     /// Плеер, если в этом сообщении играет кружок.

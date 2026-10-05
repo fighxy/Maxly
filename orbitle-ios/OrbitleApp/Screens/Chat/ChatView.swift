@@ -34,6 +34,9 @@ struct ChatView: View {
     var onMarkUnread: ((Date) -> Void)? = nil
     /// Эмодзи двойного нажатия. `nil` — сервер выключил быструю реакцию.
     var quickReaction: String? = nil
+    /// Мини-приложение бота: кнопка «Открыть приложение» и inline-кнопки `OPEN_APP`.
+    var makeBotApp: ((BotAppRequest) -> MiniAppModel)? = nil
+    @Environment(\.openURL) private var openURL
     @State private var profile: ChatProfileViewModel?
     @State private var profileShown = false
     @State private var forwardList: [ChatListItem] = []
@@ -106,7 +109,8 @@ struct ChatView: View {
                     chatType: kind,
                     isMuted: isMuted,
                     // Звук чата вне списка не переключить: его нет среди чатов аккаунта.
-                    onToggleMute: canWrite == nil ? nil : onToggleMute
+                    onToggleMute: canWrite == nil ? nil : onToggleMute,
+                    onOpenApp: openAppAction
                 )
                 if panelShown, writable, let stickerPanel {
                     StickerPanel(
@@ -275,6 +279,17 @@ struct ChatView: View {
                 }
             }
         }
+        .sheet(item: $viewModel.botAppRequest) { request in
+            if let makeBotApp {
+                MiniAppSheet(model: makeBotApp(request))
+                    .environment(\.privateMode, .visible)
+            }
+        }
+        .onChange(of: viewModel.openURLRequest) { _, url in
+            guard let url else { return }
+            viewModel.openURLRequest = nil
+            openURL(url)
+        }
         .sheet(isPresented: $attachmentsShown) {
             AttachmentSheet(
                 contactList: contactList,
@@ -392,6 +407,14 @@ struct ChatView: View {
         guard profile != nil else { return }
         composerFocused = false
         profileShown = true
+    }
+
+    /// Бот с мини-приложением: над полем ввода «Открыть приложение».
+    private var openAppAction: (() -> Void)? {
+        guard makeBotApp != nil, let card = profile?.profile, card.kind == .bot, card.hasWebApp,
+              let botId = card.peerId else { return nil }
+        let appTitle = card.title.isEmpty ? title : card.title
+        return { [viewModel] in viewModel.openBotApp(botId: botId, title: appTitle) }
     }
 
     /// Тип чата для ленты и поля ввода: из списка, а для чата вне списка — из карточки.

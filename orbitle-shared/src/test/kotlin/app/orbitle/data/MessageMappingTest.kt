@@ -224,5 +224,40 @@ class MessageMappingTest {
         assertTrue(MessageMapping.isComment(reply))
         assertFalse(MessageMapping.isComment(message(mapOf("link" to mapOf("type" to "REPLY", "messageId" to 70L)))))
     }
-}
 
+    @Test
+    fun sharePreviewFromAttaches() {
+        val share = mapOf(
+            "_type" to "SHARE", "shareId" to 5L, "url" to "https://www.example.org/a", "title" to " Статья ",
+            "description" to "Коротко", "image" to mapOf("_type" to "PHOTO", "baseUrl" to "https://img/1", "width" to 640, "height" to 320),
+        )
+        val preview = MessageMapping.message(message(mapOf("attaches" to listOf(share)), text = "https://www.example.org/a"), 10, state).content.linkPreview!!
+        assertEquals("https://www.example.org/a", preview.url)
+        assertEquals("Статья", preview.title)
+        assertEquals("Коротко", preview.summary)
+        assertEquals("https://img/1", preview.imageUrl)
+        assertEquals(640, preview.imageWidth)
+        assertEquals("example.org", preview.site)
+        assertNull(MessageMapping.linkPreview(listOf(mapOf("_type" to "SHARE", "title" to "без адреса"))))
+    }
+
+    @Test
+    fun inlineKeyboardFromAttaches() {
+        val keyboard = mapOf(
+            "_type" to "INLINE_KEYBOARD", "callbackId" to "cb-1",
+            "keyboard" to mapOf("buttons" to listOf(
+                listOf(mapOf("type" to "callback", "text" to "Да", "payload" to "yes"), mapOf("type" to "LINK", "text" to "Сайт", "url" to "https://a.b")),
+                listOf(mapOf("type" to "CALLBACK", "text" to " ")),
+                listOf(mapOf("type" to "OPEN_APP", "text" to "Игра", "contactId" to 99L)),
+            )),
+        )
+        val result = MessageMapping.message(message(mapOf("attaches" to listOf(keyboard))), 10, state).content.keyboard!!
+        assertEquals("cb-1", result.callbackId)
+        assertEquals(2, result.rows.size)
+        assertEquals("CALLBACK", result.rows[0][0].type)
+        assertEquals("yes", result.rows[0][0].payload)
+        assertEquals("https://a.b", result.rows[0][1].url)
+        assertEquals("99", result.rows[1][0].contactId)
+        assertNull(MessageMapping.keyboard(listOf(mapOf("_type" to "INLINE_KEYBOARD", "keyboard" to mapOf("buttons" to emptyList<Any>())))))
+    }
+}

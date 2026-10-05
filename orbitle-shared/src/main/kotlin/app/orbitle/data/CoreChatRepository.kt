@@ -271,6 +271,11 @@ class CoreChatRepository(
         return info.commands.map { BotCommandRow(it.name, it.description.orEmpty()) }
     }
 
+    override suspend fun pressButton(chatId: String, messageId: String, callbackId: String, payload: String?): ButtonAnswer {
+        val answer = MaxCoreGateway.call { client.api.bots.pressButton(chatId.toLong(), messageId.toLong(), callbackId, payload) }
+        return ButtonAnswer(answer.text, answer.url)
+    }
+
     override fun clear() {
         loaded.value = false
         usersRequested = mutableSetOf()

@@ -149,6 +149,8 @@ fun BubbleRow(
     onComments: ((Message) -> Unit)? = null,
     onVote: (Message, String) -> Unit = { _, _ -> },
     onDoubleTap: (Message) -> Unit = {},
+    /** Нажатие inline-кнопки бота. `null` — кнопки видны, но не нажимаются. */
+    onButton: ((Message, app.orbitle.domain.InlineButton) -> Unit)? = null,
 ) {
     val message = item.message
     val maxWidth = (LocalConfiguration.current.screenWidthDp * 0.8f).dp
@@ -279,13 +281,18 @@ fun BubbleRow(
             }
             return@Row
         }
-        Surface(
-            shape = shape,
-            color = colors.container,
-            contentColor = colors.content,
-            modifier = Modifier.widthIn(max = maxWidth).clip(shape).then(press),
-        ) {
-            BubbleContent(item, colors, maxWidth, shape, onReaction, onReplyClick, onComments, onLongPress = { onLongPress(message) }, onVote = onVote, onDoubleTap = { onDoubleTap(message) })
+        Column(horizontalAlignment = if (item.outgoing) Alignment.End else Alignment.Start, modifier = Modifier.widthIn(max = maxWidth)) {
+            Surface(
+                shape = shape,
+                color = colors.container,
+                contentColor = colors.content,
+                modifier = Modifier.widthIn(max = maxWidth).clip(shape).then(press),
+            ) {
+                BubbleContent(item, colors, maxWidth, shape, onReaction, onReplyClick, onComments, onLongPress = { onLongPress(message) }, onVote = onVote, onDoubleTap = { onDoubleTap(message) })
+            }
+            message.content.keyboard?.let { keyboard ->
+                InlineKeyboardView(keyboard, enabled = onButton != null) { onButton?.invoke(message, it) }
+            }
         }
     }
     }
@@ -393,6 +400,7 @@ private fun BubbleContent(
         } else {
             TimeRow(item, colors.secondary, Modifier.align(Alignment.End).padding(start = 12.dp, end = 10.dp, bottom = 6.dp, top = 2.dp))
         }
+        content.linkPreview?.let { LinkPreviewCard(it, colors) }
         Reactions(content.reactions, colors, item.outgoing, Modifier.padding(start = 8.dp, end = 8.dp, bottom = 6.dp)) { onReaction(message, it) }
         val count = item.comments
         if (count != null && onComments != null) CommentsFooter(count, colors) { onComments(message) }
