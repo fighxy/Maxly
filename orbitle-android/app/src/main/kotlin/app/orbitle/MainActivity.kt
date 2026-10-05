@@ -79,7 +79,12 @@ private fun Root(container: AppContainer) {
         is AuthPhase.SignedIn -> {
             val chats = viewModel { ChatListViewModel(container.chats, container.session.connection, local = container.chatMarks, recents = container.recentSearches) }
             val account by container.account.account.collectAsStateWithLifecycle(initialValue = null)
-            MainScreen(container, chats, account, onLogout = { scope.launch { container.session.logout() } })
+            MainScreen(container, chats, account, onLogout = {
+                // Места в лентах и куски истории — прежнего аккаунта.
+                app.orbitle.presentation.chat.HistoryRanges.clear()
+                app.orbitle.presentation.chat.ScrollMemory.clear()
+                scope.launch { container.session.logout() }
+            })
         }
         else -> {
             val auth = viewModel { AuthViewModel(container.session) }

@@ -19,7 +19,26 @@ data class ChatHeaderInfo(
     val typing: List<String> = emptyList(),
     /** Бот с мини-приложением: его id для кнопки «Открыть приложение», иначе `null`. */
     val botAppId: String? = null,
+    /** Своя отметка прочтения (мс, `participants[свой id]`): первое непрочитанное — новее неё. `0` — неизвестна. */
+    val readMarkMs: Long = 0,
 )
+
+/**
+ * Страница истории: время самого старого и самого нового пришедшего сообщения (мс) и сколько их.
+ * [reachedOldest] — раньше сообщений нет, [reachedNewest] — страница дошла до свежих.
+ */
+data class HistorySpan(
+    val oldestMs: Long,
+    val newestMs: Long,
+    val count: Int,
+    val reachedOldest: Boolean = false,
+    val reachedNewest: Boolean = false,
+) {
+    companion object {
+        /** Пустая страница назад: история кончилась. */
+        val START = HistorySpan(0, 0, 0, reachedOldest = true)
+    }
+}
 
 /** История одного чата и действия над сообщениями. */
 interface MessageRepository {
@@ -47,6 +66,27 @@ interface MessageRepository {
 
     /** Страница старше самого раннего сообщения. `false` — история кончилась. */
     suspend fun loadOlder(chatId: String): Boolean
+
+    /**
+     * [openLatest] с границами страницы. `null` — реализация границ не знает: лента показывает
+     * всё, что есть (так устроены подмены в тестах).
+     */
+    suspend fun openLatestPage(chatId: String): HistorySpan? {
+        openLatest(chatId)
+        return null
+    }
+
+    /** Страница старше [beforeMs]. `null` — границы неизвестны. */
+    suspend fun olderPage(chatId: String, beforeMs: Long): HistorySpan? = if (loadOlder(chatId)) null else HistorySpan.START
+
+    /** Страница новее [afterMs]: окно перехода растёт к свежим. `null` — не умеет. */
+    suspend fun newerPage(chatId: String, afterMs: Long): HistorySpan? = null
+
+    /** Страница вокруг момента [timeMs]: переход к далёкому сообщению. `null` — не умеет. */
+    suspend fun pageAround(chatId: String, timeMs: Long): HistorySpan? = null
+
+    /** Сообщение по id, если его нет в ленте (нужно время для [pageAround]). */
+    suspend fun findMessage(chatId: String, messageId: String): Message? = null
 
     /** Отправка текста. Сообщение сразу встаёт в ленту, при ошибке остаётся с пометкой. */
     suspend fun send(chatId: String, text: String, replyTo: String?)

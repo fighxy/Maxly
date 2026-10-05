@@ -80,7 +80,8 @@ class CoreMessageRepository(
             val typing = state.typingUsers(id, now).filter { it != state.me }
                 .map { state.users[it]?.displayName?.takeIf(String::isNotBlank) ?: "Кто-то" }
             val bot = peer?.let { state.users[it] }?.takeIf { "BOT" in it.options && com.max.core.api.hasWebApp(it.options) }
-            ChatHeaderInfo(chat, participants(raw.raw), seen, typing, botAppId = bot?.id?.toString())
+            val mark = state.me?.let { me -> (raw.raw["participants"] as? Map<*, *>)?.entries?.firstOrNull { ChatMapping.longOf(it.key) == me }?.value }
+            ChatHeaderInfo(chat, participants(raw.raw), seen, typing, botAppId = bot?.id?.toString(), readMarkMs = ChatMapping.longOf(mark) ?: 0L)
         }.distinctUntilChanged()
     }
 
@@ -103,12 +104,73 @@ class CoreMessageRepository(
     }
 
     override suspend fun openLatest(chatId: String) {
+        openLatestPage(chatId)
+    }
+
+    /** Границы последней свежей страницы: повторное открытие в окне [latestReuseMs] берёт их. */
+    private val latestSpans = java.util.concurrent.ConcurrentHashMap<String, HistorySpan>()
+
+    override suspend fun openLatestPage(chatId: String): HistorySpan? {
         val at = latestAt[chatId]
-        if (at != null && clock() - at < latestReuseMs) return
+        if (at != null && clock() - at < latestReuseMs) return latestSpans[chatId]
         val id = chatId.toLong()
-        MaxCoreGateway.readNow { client.loadHistory(id, from = null, backward = PAGE) }
+        val page = MaxCoreGateway.readNow { client.loadHistory(id, from = null, backward = PAGE) }
         latestAt[chatId] = clock()
         resolveSenders(id)
+        val span = span(page.messages, reachedOldest = page.messages.size < PAGE / 2, reachedNewest = true)
+        if (span != null) latestSpans[chatId] = span else latestSpans.remove(chatId)
+        return span
+    }
+
+    override suspend fun olderPage(chatId: String, beforeMs: Long): HistorySpan? {
+        val id = chatId.toLong()
+        val page = MaxCoreGateway.read { client.loadHistory(id, from = beforeMs, backward = PAGE) }
+        resolveSenders(id)
+        val older = page.messages.filter { it.time < beforeMs }
+        return span(older, reachedOldest = older.isEmpty()) ?: HistorySpan.START
+    }
+
+    override suspend fun newerPage(chatId: String, afterMs: Long): HistorySpan? {
+        val id = chatId.toLong()
+        val page = MaxCoreGateway.read {
+            client.api.messages.getChatHistory(id, from = afterMs, forward = PAGE, backward = 0).also { client.store.putHistory(id, it) }
+        }
+        resolveSenders(id)
+        val newer = page.messages.filter { it.time > afterMs }
+        return span(newer, reachedNewest = newer.isEmpty() || reachesNewest(id, newer)) ?: HistorySpan(afterMs, afterMs, 0, reachedNewest = true)
+    }
+
+    override suspend fun pageAround(chatId: String, timeMs: Long): HistorySpan? {
+        val id = chatId.toLong()
+        // Чуть больше вперёд: переход показывает цель у верха, ниже — что было после неё.
+        val page = MaxCoreGateway.readNow {
+            client.api.messages.getChatHistory(id, from = timeMs, forward = AROUND_FORWARD, backward = AROUND_BACKWARD).also { client.store.putHistory(id, it) }
+        }
+        resolveSenders(id)
+        val older = page.messages.count { it.time < timeMs }
+        return span(page.messages, reachedOldest = older == 0, reachedNewest = reachesNewest(id, page.messages))
+    }
+
+    override suspend fun findMessage(chatId: String, messageId: String): Message? {
+        val id = chatId.toLongOrNull() ?: return null
+        val mid = messageId.toLongOrNull() ?: return null
+        val state = client.store.state.value
+        state.messagesOf(id).firstOrNull { it.id == mid }?.let { return MessageMapping.message(it, id, state) }
+        val found = MaxCoreGateway.readNow { client.api.messages.getMessages(id, listOf(mid)) }.firstOrNull() ?: return null
+        return MessageMapping.message(found, id, client.store.state.value)
+    }
+
+    /** Страница дошла до последнего сообщения чата, которое знает список. */
+    private fun reachesNewest(chatId: Long, page: List<com.max.core.api.MaxMessage>): Boolean {
+        val newest = page.maxOfOrNull { it.time } ?: return false
+        val chat = client.store.state.value.chats[chatId] ?: return false
+        val last = chat.lastMessage?.time ?: chat.lastEventTime
+        return last in 1..newest
+    }
+
+    private fun span(page: List<com.max.core.api.MaxMessage>, reachedOldest: Boolean = false, reachedNewest: Boolean = false): HistorySpan? {
+        if (page.isEmpty()) return null
+        return HistorySpan(page.minOf { it.time }, page.maxOf { it.time }, page.size, reachedOldest, reachedNewest)
     }
 
     override suspend fun loadOlder(chatId: String): Boolean {
@@ -483,6 +545,9 @@ class CoreMessageRepository(
 
     private companion object {
         const val PAGE = 40
+        /** Окно перехода к далёкому сообщению: столько до него и после. */
+        const val AROUND_BACKWARD = 15
+        const val AROUND_FORWARD = 30
         const val REACTIONS = 100
     }
 }
