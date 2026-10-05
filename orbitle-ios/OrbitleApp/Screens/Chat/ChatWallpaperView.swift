@@ -44,7 +44,7 @@ struct ChatWallpaperBackground: View {
                 .clipped()
                 .accessibilityHidden(true)
         } else {
-            Color.orbitleBackground
+            Color.orbitleChatBackground
         }
     }
 }

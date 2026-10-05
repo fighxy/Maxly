@@ -61,12 +61,12 @@ struct ReactionChips: View {
 
 extension ReactionChips {
     fileprivate func foreground(_ reaction: MessageReaction) -> Color {
-        if onOutgoing { return reaction.mine ? Color.orbitleOutgoing : Color.white }
+        if onOutgoing { return reaction.mine ? Color.orbitleOnOutgoingAccent : Color.orbitleOutgoingAccent }
         return reaction.mine ? Color.orbitleOnAccent : Color.primary
     }
 
     fileprivate func background(_ reaction: MessageReaction) -> Color {
-        if onOutgoing { return reaction.mine ? Color.white : Color.white.opacity(0.22) }
+        if onOutgoing { return reaction.mine ? Color.orbitleOutgoingAccent : Color.orbitleOutgoingAccent.opacity(0.12) }
         return reaction.mine ? Color.orbitleAccent : Color.secondary.opacity(0.15)
     }
 }

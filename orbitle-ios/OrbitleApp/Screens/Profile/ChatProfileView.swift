@@ -836,19 +836,21 @@ struct ChatHeaderAvatar: View {
     let viewModel: ChatProfileViewModel
     let size: CGFloat
     var isOnline = false
+    var reservesRingSpace = false
     /// Собеседник с историями — аватар в кольце. Заглушки приватного режима колец не показывают.
     @Environment(StoriesViewModel.self) private var stories: StoriesViewModel?
     @Environment(\.privateMode) private var privateMode
 
     var body: some View {
         if viewModel.shown.kind == .saved {
-            ChatAvatarView(avatar: ChatAvatar(kind: .savedMessages, colorIndex: 0), size: size)
+            ChatAvatarView(avatar: ChatAvatar(kind: .savedMessages, colorIndex: 0), size: reservesRingSpace ? size - min(max(size * 0.045, 2), 3.5) * 4 : size)
+                .frame(width: size, height: size)
         } else {
             let initials = ChatAvatar.initials(for: viewModel.title)
             let kind: ChatAvatar.Kind = viewModel.shown.avatarURL.map { .photo($0, initials: initials) } ?? .initials(initials)
             let id = viewModel.shown.peerId ?? viewModel.chatId
             let ring = viewModel.shown.kind == .user && privateMode != .placeholder ? stories?.ring(of: viewModel.shown.peerId) : nil
-            StoryRingAvatar(avatar: ChatAvatar(kind: kind, colorIndex: ChatAvatar.colorIndex(for: id)), ring: ring, size: size, isOnline: isOnline)
+            StoryRingAvatar(avatar: ChatAvatar(kind: kind, colorIndex: ChatAvatar.colorIndex(for: id)), ring: ring, size: size, isOnline: isOnline, reservesRingSpace: reservesRingSpace)
                 .accessibilityLabel(privateMode.isMasked ? "" : viewModel.title)
         }
     }

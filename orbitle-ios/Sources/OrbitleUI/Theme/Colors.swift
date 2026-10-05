@@ -1,51 +1,60 @@
 import SwiftUI
 
 public extension Color {
-    #if os(iOS)
-    /// Подсветка системных кнопок и надписей: серебро в тёмной теме, глубокий графит
-    /// (почти чёрный) в светлой. Пузырь своих сообщений — отдельный цвет, `orbitleOutgoing`.
-    static let orbitleAccent = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.80, green: 0.82, blue: 0.85, alpha: 1)
-            : UIColor(red: 0.13, green: 0.14, blue: 0.16, alpha: 1)
-    })
-    /// Значки и текст на заливке `orbitleAccent`: графит на серебре, белый на графите.
-    static let orbitleOnAccent = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.08, green: 0.09, blue: 0.10, alpha: 1)
-            : UIColor.white
-    })
-    #else
-    static let orbitleAccent = Color(red: 0.13, green: 0.14, blue: 0.16)
-    static let orbitleOnAccent = Color.white
-    #endif
-    static let orbitleOutgoing = Color(red: 0.36, green: 0.42, blue: 0.96)
+    /// Синий акцент действий и контрастный текст на его заливке.
+    static let orbitleAccent = adaptive(light: 0x0070E0, dark: 0x64B5F6)
+    static let orbitleOnAccent = adaptive(light: 0xFFFFFF, dark: 0x102030)
+
+    /// Спокойные поверхности чата: серо-голубой фон ленты, белые входящие и светло-зелёные
+    /// исходящие (в тёмной теме — тёмные и приглушённые синие); текст и контролы имеют свои токены.
+    static let orbitleChatBackground = adaptive(light: 0xE9EEF2, dark: 0x101A24)
+    static let orbitleOutgoing = adaptive(light: 0xE1FFC7, dark: 0x2B5278)
+    static let orbitleOutgoingText = adaptive(light: 0x15251A, dark: 0xFFFFFF)
+    static let orbitleOutgoingSecondary = adaptive(light: 0x48643F, dark: 0xC0D4E5)
+    static let orbitleOutgoingAccent = adaptive(light: 0x356B37, dark: 0xC0E1FF)
+    static let orbitleOnOutgoingAccent = adaptive(light: 0xFFFFFF, dark: 0x18344D)
     /// Синий круг «Избранного» и архива.
     static let orbitleSpecialAvatar = Color(red: 0.30, green: 0.62, blue: 0.98)
     static let orbitleOnline = Color(red: 0.20, green: 0.78, blue: 0.35)
     /// Серый бейдж чата без звука.
     static let orbitleMutedBadge = Color.gray.opacity(0.55)
     #if os(iOS)
-    static let orbitleIncoming = Color(uiColor: .secondarySystemBackground)
-    /// Входящий пузырь поверх обоев: в светлой теме белый — серый сливается со светлыми
-    /// обоями, — в тёмной обычный.
-    static let orbitleIncomingOnWallpaper = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor.secondarySystemBackground.resolvedColor(with: traits)
-            : UIColor.systemBackground.resolvedColor(with: traits)
-    })
+    static let orbitleIncoming = adaptive(light: 0xFFFFFF, dark: 0x182533)
+    static let orbitleIncomingOnWallpaper = orbitleIncoming
     /// Подложка плоского поля поиска.
     static let orbitleField = Color(uiColor: .tertiarySystemFill)
     /// Чуть серый фон закреплённых строк.
     static let orbitlePinnedBackground = Color(uiColor: .secondarySystemBackground)
     static let orbitleBackground = Color(uiColor: .systemBackground)
     #else
-    static let orbitleIncoming = Color(red: 0.93, green: 0.93, blue: 0.95)
-    static let orbitleIncomingOnWallpaper = Color.white
+    static let orbitleIncoming = adaptive(light: 0xFFFFFF, dark: 0x182533)
+    static let orbitleIncomingOnWallpaper = orbitleIncoming
     static let orbitleField = Color.gray.opacity(0.12)
     static let orbitlePinnedBackground = Color.gray.opacity(0.08)
     static let orbitleBackground = Color.white
     #endif
+
+    private static func adaptive(light: UInt32, dark: UInt32) -> Color {
+        func components(_ value: UInt32) -> (CGFloat, CGFloat, CGFloat) {
+            (CGFloat((value >> 16) & 0xFF) / 255,
+             CGFloat((value >> 8) & 0xFF) / 255,
+             CGFloat(value & 0xFF) / 255)
+        }
+        let day = components(light)
+        let night = components(dark)
+        #if os(iOS)
+        return Color(uiColor: UIColor { traits in
+            let rgb = traits.userInterfaceStyle == .dark ? night : day
+            return UIColor(red: rgb.0, green: rgb.1, blue: rgb.2, alpha: 1)
+        })
+        #else
+        return Color(nsColor: NSColor(name: nil) { appearance in
+            let rgb = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? night : day
+            return NSColor(srgbRed: rgb.0, green: rgb.1, blue: rgb.2, alpha: 1)
+        })
+        #endif
+    }
+
 }
 
 /// Градиенты аватаров без фото. Номер цвета даёт `ChatAvatar.colorIndex(for:)`.

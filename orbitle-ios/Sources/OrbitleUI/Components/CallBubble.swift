@@ -3,8 +3,8 @@ import OrbitleDomain
 import OrbitlePresentation
 
 /// Звонок в пузыре: круг со значком, заголовок и длительность, время сообщения справа.
-/// Пропущенный входящий выделен красным, как во вкладке «Звонки». В своём (синем) пузыре
-/// всё белое.
+/// Пропущенный входящий выделен красным, как во вкладке «Звонки». Исходящие используют
+/// контрастные цвета текущей темы.
 struct CallBubble: View {
     let call: CallContent
     let outgoing: Bool
@@ -45,21 +45,21 @@ struct CallBubble: View {
     private var alert: Bool { CallBubbleText.isAlert(call, outgoing: outgoing) }
 
     private var titleColor: Color {
-        if outgoing { return .white }
+        if outgoing { return .orbitleOutgoingText }
         return alert ? .red : .primary
     }
 
     private var iconColor: Color {
-        if outgoing { return .white }
+        if outgoing { return .orbitleOutgoingAccent }
         return alert ? .red : Color.orbitleAccent
     }
 
     private var iconBackground: Color {
-        if outgoing { return Color.white.opacity(0.22) }
+        if outgoing { return Color.orbitleOutgoingAccent.opacity(0.15) }
         return (alert ? Color.red : Color.orbitleAccent).opacity(0.14)
     }
 
     private var secondary: Color {
-        outgoing ? Color.white.opacity(0.75) : Color.secondary
+        outgoing ? Color.orbitleOutgoingSecondary : Color.secondary
     }
 }

@@ -167,24 +167,27 @@ struct ChatView: View {
             }
             // Поиск, опрос, отложенная отправка и звонки — в профиле чата: справа в шапке
             // только аватар.
-            if let profile {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        if let owner = storyOwner, stories?.ring(of: owner) != nil {
-                            stories?.open(owner)
-                        } else {
-                            openProfile()
-                        }
-                    } label: {
-                        ChatHeaderAvatar(viewModel: profile, size: 36)
+            // Слот существует с первого кадра: загрузка профиля не перестраивает toolbar.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    if let owner = storyOwner, stories?.ring(of: owner) != nil {
+                        stories?.open(owner)
+                    } else {
+                        openProfile()
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Профиль")
+                } label: {
+                    headerAvatar
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Профиль")
+                .transaction { $0.animation = nil }
             }
         }
-        // Своя размытая полоса вместо системной подложки: лента уходит под шапку.
-        .chatHeaderBlur()
+        // Единая спокойная подложка шапки, без отдельной капсулы вокруг названия.
+        .toolbarBackground(.regularMaterial, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .navigationDestination(isPresented: $profileShown) {
             if let profile {
                 ChatProfileView(
@@ -417,6 +420,22 @@ struct ChatView: View {
 
     private var headerStatus: ChatHeaderStatus {
         profile?.headerStatus(live()) ?? .none
+    }
+
+    @ViewBuilder
+    private var headerAvatar: some View {
+        if let profile {
+            ChatHeaderAvatar(viewModel: profile, size: 44, reservesRingSpace: true)
+        } else if viewModel.isSavedMessages {
+            ChatAvatarView(avatar: ChatAvatar(kind: .savedMessages, colorIndex: 0), size: 36)
+                .frame(width: 44, height: 44)
+        } else {
+            StoryRingAvatar(
+                avatar: ChatAvatar(kind: .initials(ChatAvatar.initials(for: headerTitle)),
+                                   colorIndex: ChatAvatar.colorIndex(for: viewModel.peerId ?? viewModel.chatId)),
+                ring: nil, size: 44, reservesRingSpace: true
+            )
+        }
     }
 
     /// Собеседник личного чата — владелец колец историй. В приватном режиме колец нет.

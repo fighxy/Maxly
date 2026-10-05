@@ -61,6 +61,7 @@ struct CommentsView: View {
                     }
                 }
             }
+            .background(Color.orbitleChatBackground.ignoresSafeArea())
             .safeAreaInset(edge: .bottom, spacing: 0) { composer }
             .navigationTitle(model.title)
             .navigationBarTitleDisplayMode(.inline)
