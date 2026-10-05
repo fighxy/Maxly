@@ -266,4 +266,8 @@ public struct CoreChatProfileRepository: ChatProfileRepository {
     public func cachedProfile(chatId: String) async -> ChatProfile? {
         await cache?.profile(chatId: chatId)
     }
+
+    public func recentProfile(chatId: String, maxAge: TimeInterval) async -> ChatProfile? {
+        await cache?.fresh(chatId: chatId, maxAge: maxAge)
+    }
 }

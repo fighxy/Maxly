@@ -143,6 +143,27 @@ struct SharedMediaRemoteTests {
         #expect(model.shared.media.map(\.attachmentId) == ["plocal-1", "p40"])
     }
 
+    @Test("Отказ сервера останавливает весь обход, следующее открытие продолжает")
+    func failureStopsWalk() async {
+        let model = model()
+        let window = [photo("100", 100)]
+        await model.updateShared(window, currentUserId: "me")
+        var asked = 0
+        await model.loadRemoteShared(window: window, pause: .zero) { _ in
+            asked += 1
+            return nil
+        }
+        #expect(asked == 1)
+        #expect(!model.isLoadingRemoteShared)
+
+        asked = 0
+        await model.loadRemoteShared(window: window, pause: .zero) { _ in
+            asked += 1
+            return []
+        }
+        #expect(asked == SharedMediaTab.allCases.count)
+    }
+
     @Test("Без серверного сообщения в окне обход не начинается")
     func noAnchor() async {
         let model = model()

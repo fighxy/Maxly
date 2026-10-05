@@ -81,8 +81,11 @@ public protocol ChatProfileRepository: Sendable {
     func profile(chatId: String) async throws(OrbitleError) -> ChatProfile
     /// Карточка из кэша устройства: профиль виден сразу, даже без сети.
     func cachedProfile(chatId: String) async -> ChatProfile?
+    /// Карточка, пришедшая с сервера меньше `maxAge` секунд назад. `nil` — пора спросить сервер.
+    func recentProfile(chatId: String, maxAge: TimeInterval) async -> ChatProfile?
 }
 
 public extension ChatProfileRepository {
     func cachedProfile(chatId: String) async -> ChatProfile? { nil }
+    func recentProfile(chatId: String, maxAge: TimeInterval) async -> ChatProfile? { nil }
 }

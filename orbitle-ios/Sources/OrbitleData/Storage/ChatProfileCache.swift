@@ -6,6 +6,8 @@ import OrbitleDomain
 public actor ChatProfileCache {
     private let directory: URL
     private var memory: [String: ChatProfile] = [:]
+    /// Карточки, пришедшие с сервера в этом запуске, и когда. Из них отвечают без запроса.
+    private var recent: [String: (profile: ChatProfile, at: Date)] = [:]
 
     public init(directory: URL) {
         self.directory = directory
@@ -26,7 +28,14 @@ public actor ChatProfileCache {
         return profile
     }
 
-    public func save(_ profile: ChatProfile) {
+    /// Карточка с сервера моложе `maxAge` секунд, как она пришла. `nil` — пора спросить сервер.
+    public func fresh(chatId: String, maxAge: TimeInterval, now: Date = Date()) -> ChatProfile? {
+        guard let entry = recent[chatId], now.timeIntervalSince(entry.at) < maxAge else { return nil }
+        return entry.profile
+    }
+
+    public func save(_ profile: ChatProfile, at date: Date = Date()) {
+        recent[profile.chatId] = (profile: profile, at: date)
         memory[profile.chatId] = Self.restored(profile)
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -38,6 +47,7 @@ public actor ChatProfileCache {
 
     public func removeAll() {
         memory = [:]
+        recent = [:]
         try? FileManager.default.removeItem(at: directory)
     }
 

@@ -68,9 +68,18 @@ public final class ChatProfileViewModel {
     /// Карточка с сервера, если прошлая старше `maxAge` секунд. Шапка чата и профиль
     /// открываются по очереди и не спрашивают сервер дважды подряд: на частые запросы он
     /// отвечает `too.many.requests`.
+    ///
+    /// Шапка и профиль создаются заново при каждом входе в чат, поэтому свежесть смотрится
+    /// и по карточке, недавно пришедшей в репозиторий (`recentProfile`), а не только по своей.
     public func loadIfStale(maxAge: TimeInterval = 60) async {
         if profile != nil, let loadedAt, now().timeIntervalSince(loadedAt) < maxAge { return }
         guard !isFetching else { return }
+        if let recent = await repository.recentProfile(chatId: chatId, maxAge: maxAge) {
+            profile = recent
+            loadedAt = now()
+            state = .loaded
+            return
+        }
         await load()
     }
 
@@ -223,9 +232,11 @@ public final class ChatProfileViewModel {
     ///
     /// Между страницами `pause`: обход идёт в фоне, а на очередь запросов без паузы сервер
     /// отвечает `too.many.requests` и заодно перестаёт отдавать историю открытого чата.
+    /// Первая же неудачная страница останавливает весь обход, а не только свою вкладку:
+    /// остальные вкладки получили бы тот же отказ. Следующее открытие профиля продолжит.
     public func loadRemoteShared(
         window: [Message],
-        pause: Duration = .milliseconds(400),
+        pause: Duration = .seconds(1),
         fetch: (SharedMediaRequest) async -> [Message]?
     ) async {
         guard !isLoadingRemoteShared, let latest = SharedMediaPager.anchor(in: window) else { return }
@@ -233,7 +244,8 @@ public final class ChatProfileViewModel {
         defer { isLoadingRemoteShared = false }
         pager.retryFailed()
         var first = true
-        while !Task.isCancelled {
+        var failed = false
+        while !Task.isCancelled, !failed {
             let round = pager.round(latest: latest)
             if round.isEmpty { break }
             var changed = false
@@ -247,6 +259,10 @@ public final class ChatProfileViewModel {
                 // Ответ отменённой задачи не значит, что у вкладки всё: её продолжит следующий вызов.
                 if Task.isCancelled { break }
                 if pager.receive(page, for: request) { changed = true }
+                if page == nil {
+                    failed = true
+                    break
+                }
             }
             if changed { rebuildShared() }
         }
