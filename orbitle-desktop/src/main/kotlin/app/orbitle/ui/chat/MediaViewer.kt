@@ -23,6 +23,11 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.runtime.collectAsState
+import app.orbitle.ui.media.VideoControls
+import app.orbitle.ui.media.VideoFrame
+import app.orbitle.ui.media.rememberVideoPlayer
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -178,28 +183,46 @@ private fun ZoomablePhoto(url: String?, onTap: () -> Unit) {
     }
 }
 
-/** Видео открывается системным проигрывателем. Пока ссылка готовится, видна обложка. */
+/**
+ * Видео играет здесь же, встроенным проигрывателем: касание — пауза, внизу перемотка и время.
+ * Играет только видимая страница. Без ffmpeg ролик открывается системным проигрывателем.
+ */
 @Composable
 private fun VideoPage(video: VideoContent, url: String?, userAgent: String, active: Boolean) {
+    val player = rememberVideoPlayer()
+    val state by player.state.collectAsState()
     var opening by remember { mutableStateOf(false) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    LaunchedEffect(url) { if (url != null) player.open(url, userAgent, autoplay = active) }
+    LaunchedEffect(active) { if (!active) player.pause() }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        AsyncImage(video.posterUrl, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-        if (url == null || opening) {
-            CircularProgressIndicator(color = Color.White)
-        } else if (active) {
-            IconButton(onClick = {
+        if (state.frame == null) AsyncImage(video.posterUrl, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+        VideoFrame(
+            state,
+            Modifier.fillMaxSize().pointerInput(player) { detectTapGestures(onTap = { player.toggle() }) },
+        )
+        when {
+            state.failed -> IconButton(onClick = {
+                val link = url ?: return@IconButton
                 opening = true
                 scope.launch {
-                    runCatching {
-                        val file = DesktopVideo.materialize(url, userAgent)
-                        DesktopVideo.play(file)
-                    }
+                    runCatching { DesktopVideo.play(DesktopVideo.materialize(link, userAgent)) }
                     opening = false
                 }
             }) {
-                Icon(Icons.Filled.PlayArrow, "Открыть видео", tint = Color.White, modifier = Modifier.size(72.dp))
+                if (opening) CircularProgressIndicator(color = Color.White)
+                else Icon(Icons.Filled.PlayArrow, "Открыть видео в системном проигрывателе", tint = Color.White, modifier = Modifier.size(72.dp))
             }
+            url == null || (state.isBuffering && state.frame == null) -> CircularProgressIndicator(color = Color.White)
+            !state.isPlaying && !state.isBuffering -> Icon(
+                if (state.ended) Icons.Filled.Replay else Icons.Filled.PlayArrow,
+                null,
+                tint = Color.White.copy(alpha = 0.85f),
+                modifier = Modifier.size(72.dp).background(Color.Black.copy(alpha = 0.35f), androidx.compose.foundation.shape.CircleShape).padding(8.dp),
+            )
+        }
+        if (!state.failed && url != null) {
+            VideoControls(player, state, Modifier.align(Alignment.BottomCenter))
         }
     }
 }

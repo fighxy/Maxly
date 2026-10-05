@@ -16,7 +16,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,13 +31,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.orbitle.domain.Message
-import app.orbitle.media.DesktopVideo
+import androidx.compose.runtime.collectAsState
+import app.orbitle.ui.media.VideoFrame
+import app.orbitle.ui.media.rememberVideoPlayer
 import app.orbitle.domain.VideoContent
 import app.orbitle.presentation.chat.CallBubbleText
 import coil3.compose.AsyncImage
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
 
 /** Видеосообщение-кружок: обложка, касание играет его прямо в ленте со звуком. */
 @kotlin.OptIn(ExperimentalFoundationApi::class)
@@ -79,38 +77,26 @@ fun RoundNote(message: Message, video: VideoContent, onLongPress: () -> Unit, on
     }
 }
 
-/** Кружок на компьютере играет звук через ffplay, картинка остаётся обложкой. */
+/**
+ * Кружок играет прямо в ленте встроенным проигрывателем: картинка в круге, звук, кольцо
+ * прогресса по краю. Доиграв или не открывшись, возвращает пузырь к обложке.
+ */
 @Composable
 private fun RoundPlayer(url: String, userAgent: String, onEnded: () -> Unit) {
-    var process by remember { mutableStateOf<Process?>(null) }
-    DisposableEffect(url) { onDispose { process?.destroy() } }
-    LaunchedEffect(url) {
-        val file = withContext(Dispatchers.IO) { runCatching { DesktopVideo.materialize(url, userAgent) }.getOrNull() }
-        if (file == null) {
-            onEnded()
-            return@LaunchedEffect
-        }
-        val started = withContext(Dispatchers.IO) {
-            runCatching {
-                ProcessBuilder("ffplay", "-autoexit", "-nodisp", "-loglevel", "quiet", file.absolutePath)
-                    .redirectError(ProcessBuilder.Redirect.DISCARD)
-                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                    .start()
-            }.getOrNull()
-        }
-        if (started == null) {
-            DesktopVideo.play(file)
-            onEnded()
-            return@LaunchedEffect
-        }
-        process = started
-        withContext(Dispatchers.IO) { started.waitFor() }
-        if (isActive) onEnded()
+    val player = rememberVideoPlayer()
+    val state by player.state.collectAsState()
+    LaunchedEffect(url) { player.open(url, userAgent) }
+    LaunchedEffect(state.ended, state.failed) { if (state.ended || state.failed) onEnded() }
+    VideoFrame(state, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+    if (state.frame == null) {
+        CircularProgressIndicator(color = Color.White)
+    } else {
+        CircularProgressIndicator(
+            progress = { state.progress },
+            modifier = Modifier.fillMaxSize().padding(3.dp),
+            color = MaterialTheme.colorScheme.primary,
+            strokeWidth = 4.dp,
+            trackColor = Color.Transparent,
+        )
     }
-    CircularProgressIndicator(
-        modifier = Modifier.fillMaxSize().padding(3.dp),
-        color = MaterialTheme.colorScheme.primary,
-        strokeWidth = 4.dp,
-        trackColor = Color.Transparent,
-    )
 }

@@ -79,7 +79,9 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.runtime.rememberCoroutineScope
 import app.orbitle.domain.OutgoingStory
-import app.orbitle.media.DesktopVideo
+import androidx.compose.runtime.collectAsState
+import app.orbitle.ui.media.VideoFrame
+import app.orbitle.ui.media.rememberVideoPlayer
 import app.orbitle.platform.BackHandler
 import kotlinx.coroutines.launch
 import app.orbitle.domain.StoryAudience
@@ -230,8 +232,7 @@ private fun Tile(title: String, dim: Boolean, onClick: () -> Unit, avatar: @Comp
 /**
  * Просмотр историй на весь экран. Касание слева (треть ширины) — назад, справа — вперёд,
  * удержание — пауза, свайп вниз или Escape — закрыть, вбок — к соседнему владельцу. Видео
- * встроенного проигрывателя на десктопе нет: история показывает обложку столько, сколько длится
- * ролик, а сам ролик открывается системным проигрывателем.
+ * играет встроенный проигрыватель (ffmpeg); без ffmpeg история показывает обложку 5 секунд.
  */
 @Composable
 fun StoryViewer(
@@ -259,19 +260,27 @@ fun StoryViewer(
         val story = viewer.story
         val media = story?.media
         var ready by remember(viewer.epoch) { mutableStateOf(false) }
-        var opening by remember(viewer.epoch) { mutableStateOf(false) }
-        val scope = rememberCoroutineScope()
+        val player = rememberVideoPlayer()
+        val video by player.state.collectAsState()
         val timer = remember { Animatable(0f) }
         var timerEpoch by remember { mutableIntStateOf(-1) }
-        val holding = pressed || dragging || confirmDelete || viewer.isDeleting || opening
-        val length = if (media?.isVideo == true) (media.durationMs?.toInt() ?: PHOTO_MS).coerceIn(1_000, 60_000) else PHOTO_MS
-        LaunchedEffect(viewer.epoch, ready, holding, media) {
+        val holding = pressed || dragging || confirmDelete || viewer.isDeleting
+        // Фото, а также видео, которое не открылось (нет ffmpeg): идёт таймер по обложке.
+        val asPhoto = media != null && (!media.isVideo || video.failed)
+        LaunchedEffect(viewer.epoch, media) {
+            if (media?.isVideo == true) player.open(media.url, userAgent) else player.release()
+        }
+        LaunchedEffect(holding) {
+            if (holding) player.pause() else if (media?.isVideo == true && !video.ended) player.play()
+        }
+        LaunchedEffect(video.ended) { if (video.ended && media?.isVideo == true) next() }
+        LaunchedEffect(viewer.epoch, ready, holding, asPhoto) {
             if (timerEpoch != viewer.epoch) {
                 timer.snapTo(0f)
                 timerEpoch = viewer.epoch
             }
-            if (media == null || !ready || holding) return@LaunchedEffect
-            val left = ((1f - timer.value) * length).toInt().coerceAtLeast(1)
+            if (!asPhoto || !ready || holding) return@LaunchedEffect
+            val left = ((1f - timer.value) * PHOTO_MS).toInt().coerceAtLeast(1)
             timer.animateTo(1f, tween(left, easing = LinearEasing))
             next()
         }
@@ -335,20 +344,9 @@ fun StoryViewer(
                         onError = { ready = true },
                         modifier = Modifier.fillMaxSize(),
                     )
-                    if (media.isVideo) {
-                        IconButton(
-                            onClick = {
-                                opening = true
-                                scope.launch {
-                                    runCatching { DesktopVideo.play(DesktopVideo.materialize(media.url, userAgent)) }
-                                    opening = false
-                                }
-                            },
-                            modifier = Modifier.align(Alignment.Center).size(96.dp),
-                        ) {
-                            if (opening) CircularProgressIndicator(color = Color.White)
-                            else Icon(Icons.Filled.PlayArrow, "Открыть видео", tint = Color.White, modifier = Modifier.size(72.dp))
-                        }
+                    if (media.isVideo && !video.failed) {
+                        VideoFrame(video, Modifier.fillMaxSize())
+                        if (video.frame == null) CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
                     }
                 }
             }
@@ -364,7 +362,8 @@ fun StoryViewer(
                         val fill = when {
                             i < viewer.storyIndex -> 1f
                             i > viewer.storyIndex -> 0f
-                            else -> timer.value
+                            asPhoto -> timer.value
+                            else -> video.progress
                         }
                         Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.35f))) {
                             Box(Modifier.fillMaxHeight().fillMaxWidth(fill).background(Color.White))
@@ -417,10 +416,18 @@ fun StoryComposer(story: OutgoingStory, userAgent: String, onPublish: (StoryAudi
         BackHandler(onBack = onCancel)
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             if (story.isVideo) {
-                Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Outlined.Movie, null, tint = Color.White, modifier = Modifier.size(72.dp))
-                    Spacer(Modifier.height(8.dp))
-                    Text(File(story.path).name, color = Color.White.copy(alpha = 0.8f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // Предпросмотр по кругу без звука; без ffmpeg — значок и имя файла.
+                val preview = rememberVideoPlayer()
+                val state by preview.state.collectAsState()
+                LaunchedEffect(story.path) { preview.open(story.path, userAgent, muted = true, loop = true) }
+                if (state.failed) {
+                    Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Outlined.Movie, null, tint = Color.White, modifier = Modifier.size(72.dp))
+                        Spacer(Modifier.height(8.dp))
+                        Text(File(story.path).name, color = Color.White.copy(alpha = 0.8f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                } else {
+                    VideoFrame(state, Modifier.fillMaxSize())
                 }
             } else {
                 AsyncImage(File(story.path), "Новая история", Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
