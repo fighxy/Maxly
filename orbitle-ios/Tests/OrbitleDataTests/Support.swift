@@ -33,6 +33,15 @@ actor FakeMaxAPI: MaxAPI {
         return .success(chats)
     }
 
+    /// Ответ списка — весь список аккаунта (первый после входа).
+    var chatListComplete = false
+    func setChatListComplete(_ complete: Bool) { chatListComplete = complete }
+
+    func fetchChatList() async -> Result<ChatListPage, MaxAPIError> {
+        if let fetchGate { await fetchGate.wait() }
+        return .success(ChatListPage(records: chats, complete: chatListComplete))
+    }
+
     /// Ошибка `CHAT_INFO`, например нет сети.
     var chatError: MaxAPIError?
     private(set) var chatRequests: [String] = []

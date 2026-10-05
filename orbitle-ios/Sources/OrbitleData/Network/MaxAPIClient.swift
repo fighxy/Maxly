@@ -55,6 +55,8 @@ public struct SentMessage: Sendable, Hashable {
 /// подставлять фейковую реализацию.
 public protocol MaxAPI: Sendable {
     func fetchChats() async -> Result<[ChatRecord], MaxAPIError>
+    /// Список чатов и признак, что он полный (весь список аккаунта, первый после входа).
+    func fetchChatList() async -> Result<ChatListPage, MaxAPIError>
     /// Один чат. Ошибка, если сервер его не вернул.
     func fetchChat(id: String) async -> Result<ChatRecord, MaxAPIError>
     /// Сообщения чата строго старше `before` (самые новые, если `nil`), не больше `limit`.
@@ -131,7 +133,23 @@ public protocol MaxAPI: Sendable {
     func signalCall(calleeId: String, isVideo: Bool) async -> Result<CoreCallSignal?, MaxAPIError>
 }
 
+/// Ответ списка чатов. `complete` — это весь список аккаунта: чатов, которых в нём нет,
+/// аккаунт больше не видит (покинул на другом устройстве).
+public struct ChatListPage: Sendable {
+    public var records: [ChatRecord]
+    public var complete: Bool
+
+    public init(records: [ChatRecord], complete: Bool) {
+        self.records = records
+        self.complete = complete
+    }
+}
+
 public extension MaxAPI {
+    func fetchChatList() async -> Result<ChatListPage, MaxAPIError> {
+        await fetchChats().map { ChatListPage(records: $0, complete: false) }
+    }
+
     func fetchOpenedMessages(chatId: String, limit: Int) async -> Result<[MessageRecord], MaxAPIError> {
         await fetchMessages(chatId: chatId, before: nil, limit: limit)
     }
@@ -217,6 +235,19 @@ public final class MaxAPIClient: MaxAPI, Sendable {
 
     public init(core: any MaxCore) {
         self.core = core
+    }
+
+    public func fetchChatList() async -> Result<ChatListPage, MaxAPIError> {
+        await catching {
+            let list = try await core.loadChatList()
+            // Строки списка полные: пустое последнее сообщение значит «сообщений нет».
+            let records = list.chats.map { chat in
+                var record = CoreMapping.chat(chat)
+                record.lastKnown = true
+                return record
+            }
+            return ChatListPage(records: records, complete: list.complete)
+        }
     }
 
     public func fetchChats() async -> Result<[ChatRecord], MaxAPIError> {

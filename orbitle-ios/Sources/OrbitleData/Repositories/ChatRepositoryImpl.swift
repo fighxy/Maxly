@@ -29,6 +29,9 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     private var generation = 0
     /// Диалоги, открытые из контактов, которых ещё нет в базе: id чата → черновик.
     private var pendingDialogs: [String: DialogDraft] = [:]
+    /// Когда чат последний раз записан в базу: сверка полного списка не трогает чаты, записанные
+    /// уже после запроса (только что созданный, пришедший пушем).
+    private var lastWrites: [String: Date] = [:]
 
     /// Закреплённые чаты сервера сверху вниз, как их прислало ядро (`nil`, пока неизвестны).
     /// В списке могут быть чаты, которых ещё нет в базе: строка получит место, когда появится.
@@ -80,16 +83,41 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// Обновление с сервера. Кэш уже показан, здесь только фоновая догрузка.
     public func refresh() async throws(OrbitleError) {
         let started = generation
-        switch await api.fetchChats() {
-        case .success(let records):
+        let requestedAt = Date()
+        switch await api.fetchChatList() {
+        case .success(let page):
             try ensureCurrent(started)
-            try upsert(records.filter(\.isActive))
-            for record in records where !record.isActive {
+            try upsert(page.records.filter(\.isActive))
+            for record in page.records where !record.isActive {
                 await dropInactive(chatId: record.id)
+            }
+            if page.complete {
+                await dropMissing(keeping: Set(page.records.map(\.id)), requestedAt: requestedAt)
             }
         case .failure(let error):
             throw error.orbitleError
         }
+    }
+
+    /// Сверка с полным списком сервера: чаты, которых в нём нет, аккаунт покинул или удалил на
+    /// другом устройстве (пуша об этом может не быть). Они уходят вместе с историей.
+    /// Не трогаются «Избранное» и чаты, записанные уже после запроса.
+    private func dropMissing(keeping ids: Set<String>, requestedAt: Date) async {
+        guard let rows = try? modelContext.fetch(FetchDescriptor<SDChat>()) else { return }
+        let stale = rows.map(\.id).filter { id in
+            !ids.contains(id) && id != Chat.savedMessagesId && (lastWrites[id].map { $0 < requestedAt } ?? true)
+        }
+        guard !stale.isEmpty else { return }
+        for id in stale {
+            do {
+                try delete(chatId: id)
+            } catch {
+                Log.info(.chats, "Чат \(id), которого нет на сервере, не убран: \(error)")
+                continue
+            }
+            await historyDropped?(id)
+        }
+        Log.info(.chats, "Убрано чатов, которых нет в списке сервера: \(stale.count)")
     }
 
     /// Чат, в котором аккаунт больше не участвует (вышел, чат закрыт): уходит из списка вместе
@@ -144,7 +172,9 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             // Одна выборка на весь пакет, а не по запросу на каждую запись.
             var existing = try chats(ids: records.map(\.id))
             defer { reportPeerRead(raised) }
+            let now = Date()
             for record in records {
+                lastWrites[record.id] = now
                 if record.peerReadMark > 0, let chat = existing[record.id], record.peerReadMark > chat.peerReadMark {
                     chat.peerReadMark = record.peerReadMark
                     raised.append((record.id, record.peerReadMark))

@@ -415,6 +415,9 @@ public protocol MaxCore: Sendable {
     func register(token: String, firstName: String, lastName: String) async throws -> CoreAuthStep
     func logout() async throws
     func loadChats() async throws -> [CoreChat]
+    /// Как `loadChats`, плюс `complete`: ответ — весь список аккаунта с сервера (первый после
+    /// входа). Тогда чаты, которых в нём нет, аккаунт покинул.
+    func loadChatList() async throws -> (chats: [CoreChat], complete: Bool)
     func loadChat(id: String) async throws -> CoreChat
     func loadHistory(chatId: String, beforeMs: Int64, limit: Int) async throws -> [CoreMessage]
     /// Самая свежая страница чата, который пользователь только что открыл. Не ждёт паузы после
@@ -577,6 +580,9 @@ public protocol MaxCore: Sendable {
 }
 
 public extension MaxCore {
+    func loadChatList() async throws -> (chats: [CoreChat], complete: Bool) {
+        (try await loadChats(), false)
+    }
     func loadOpenedHistory(chatId: String, limit: Int) async throws -> [CoreMessage] {
         try await loadHistory(chatId: chatId, beforeMs: 0, limit: limit)
     }
