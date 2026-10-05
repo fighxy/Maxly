@@ -159,10 +159,28 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun rateLimitOnEmptyChatAsksToWait() {
+    fun rateLimitOnEmptyChatExplainsThePauseAndRetries() {
         repo.latestFailure = OrbitleError.Server(OrbitleError.RATE_LIMIT_CODE)
         val model = vm()
-        assertEquals("Сервер просит подождать: слишком много запросов", model.messages.value)
+        // Не «Здесь пока нет сообщений»: история просто не пришла. Снекбара нет — он закрыл бы низ.
+        assertEquals(ChatViewModel.RATE_LIMIT_HINT, model.state.value.emptyHint)
+        assertNull(model.messages.value)
+        repo.latestFailure = null
+        repo.list.value = listOf(msg("1"))
+        main.dispatcher.scheduler.advanceTimeBy(ChatViewModel.RATE_LIMIT_RETRY_MS + 1)
+        main.dispatcher.scheduler.runCurrent()
+        assertNull(model.state.value.emptyHint)
+        assertEquals(1, model.state.value.items.count { it is ChatItem.Bubble })
+    }
+
+    @Test
+    fun emptyChatAfterRetrySaysSo() {
+        repo.latestFailure = OrbitleError.Server(OrbitleError.RATE_LIMIT_CODE)
+        val model = vm()
+        repo.latestFailure = null
+        main.dispatcher.scheduler.advanceTimeBy(ChatViewModel.RATE_LIMIT_RETRY_MS + 1)
+        main.dispatcher.scheduler.runCurrent()
+        assertEquals("Здесь пока нет сообщений", model.state.value.emptyHint)
     }
 
     @Test

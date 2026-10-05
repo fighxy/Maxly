@@ -188,6 +188,11 @@ class ChatViewModel(
     private var history: List<Message> = emptyList()
     private var header: ChatHeaderInfo? = null
     private var latestLoaded = false
+    /**
+     * Свежая страница не пришла, а ленты нет: вместо «Здесь пока нет сообщений» — почему пусто.
+     * Снимается удачной загрузкой.
+     */
+    private var latestFailure: String? = null
     /** Над этим сообщением «Непрочитанные сообщения»: ставится один раз при открытии. */
     private var unreadAnchorId: String? = null
     /** Непрочитанные при открытии, ещё не нашедшие места в ленте; `-1` — шапки ещё не было. */
@@ -259,19 +264,21 @@ class ChatViewModel(
         viewModelScope.launch {
             try {
                 repository.loadLatest(chatId)
+                latestLoaded = true
+                latestFailure = null
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 if (app.orbitle.data.CoreErrors.map(e).isRateLimit) {
-                    // Сервер просит подождать. Лента из стора остаётся без снекбара,
-                    // сверка повторится сама после паузы.
-                    if (history.isEmpty()) show(e)
+                    // Сервер просит подождать. Лента из стора остаётся, пустой экран объясняет
+                    // паузу; сверка повторится сама. Снекбар не нужен: он закрыл бы низ экрана.
+                    latestFailure = RATE_LIMIT_HINT
                     scheduleLatestRetry()
                 } else {
+                    latestFailure = (e as? OrbitleError)?.userMessage ?: "Не удалось загрузить сообщения"
                     show(e)
                 }
             }
-            latestLoaded = true
             _state.update { it.copy(isLoading = false) }
             rebuild()
         }
@@ -286,6 +293,9 @@ class ChatViewModel(
             delay(RATE_LIMIT_RETRY_MS)
             try {
                 repository.loadLatest(chatId)
+                latestLoaded = true
+                latestFailure = null
+                rebuild()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -873,9 +883,11 @@ class ChatViewModel(
             savedMessages = chatId == Chat.SAVED_MESSAGES_ID, unreadAnchorId = unreadAnchorId,
         )
         // Скрытое приветствие «Избранного» не считается: без других сообщений видна подсказка.
-        val empty = latestLoaded && result.isEmpty()
+        val failure = latestFailure
+        val empty = (latestLoaded || failure != null) && result.isEmpty()
         val hint = when {
             !empty -> null
+            failure != null -> failure
             chatId == Chat.SAVED_MESSAGES_ID -> "Пересылайте сюда сообщения, сохраняйте заметки и файлы — их видите только вы."
             else -> "Здесь пока нет сообщений"
         }
@@ -1349,6 +1361,8 @@ class ChatViewModel(
         const val COUNTS_RETRIES = 4
         /** Через сколько повторить свежую страницу после `too.many.requests`. */
         const val RATE_LIMIT_RETRY_MS = 20_000L
+        /** Пустой экран, пока сервер просит подождать: лента загрузится сама. */
+        const val RATE_LIMIT_HINT = "Сервер просит подождать. Сообщения загрузятся сами через несколько секунд"
         /** Пауза перед следующей старой страницей после ошибки. */
         const val OLDER_RETRY_MS = 5_000L
         const val REACTION_FAILURE = "Не удалось поставить реакцию"
