@@ -93,6 +93,8 @@ data class ChatUiState(
     val canWrite: Boolean = true,
     /** Бот с мини-приложением: над полем ввода «Открыть приложение». */
     val botAppId: String? = null,
+    /** Канал или группа вне списка: «Подписаться» или «Вступить» вместо плашки. */
+    val join: JoinUi? = null,
     val isLoading: Boolean = true,
     val isLoadingOlder: Boolean = false,
     val hasOlder: Boolean = true,
@@ -157,6 +159,8 @@ class ChatViewModel(
     private val comments: CommentsRepository? = null,
     mediaSaver: MediaSaver? = null,
     private val chats: ChatRepository? = null,
+    /** Карточка канала или группы, которых нет в сторе (открыты из поиска): шапка и «Подписаться». */
+    private val profiles: app.orbitle.data.ProfileRepository? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatUiState())
@@ -728,9 +732,78 @@ class ChatViewModel(
         }
     }
 
+    /** Карточка чата, которого нет в сторе: канал или группа из поиска. */
+    private var outsider: app.orbitle.domain.ChatProfile? = null
+    private var outsiderAsked = false
+    private var joining = false
+
+    /** Чата нет в сторе: спросить карточку один раз, чтобы показать название и «Подписаться». */
+    private fun askOutsider() {
+        val repo = profiles ?: return
+        if (outsiderAsked || chatId == Chat.SAVED_MESSAGES_ID) return
+        outsiderAsked = true
+        viewModelScope.launch {
+            try {
+                val card = repo.profile(chatId)
+                if (card.kind == app.orbitle.domain.ChatProfile.Kind.CHANNEL || card.kind == app.orbitle.domain.ChatProfile.Kind.GROUP) {
+                    outsider = card
+                    rebuildHeader()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Без карточки остаётся название из поиска.
+            }
+        }
+    }
+
+    /**
+     * «Подписаться» в канале или «Вступить» в группе вне списка: вступление по публичной ссылке
+     * (`CHAT_JOIN`). Чат встаёт в стор, и шапка с полем ввода переходят на него сами.
+     */
+    fun join() {
+        val link = outsider?.link ?: return
+        val repo = chats ?: return
+        if (joining) return
+        joining = true
+        rebuildHeader()
+        viewModelScope.launch {
+            try {
+                repo.joinByLink(link)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                show(e)
+            } finally {
+                joining = false
+                rebuildHeader()
+            }
+        }
+    }
+
     private fun rebuildHeader() {
-        val info = header
+        val stored = header
+        val card = outsider
+        // Чата нет в сторе, но карточка пришла: шапка из неё, писать нельзя до вступления.
+        val info = stored ?: card?.let {
+            ChatHeaderInfo(
+                Chat(
+                    id = chatId,
+                    title = it.title.ifBlank { fallbackTitle.orEmpty() },
+                    type = if (it.kind == app.orbitle.domain.ChatProfile.Kind.CHANNEL) ChatType.CHANNEL else ChatType.GROUP,
+                    updatedAtMs = 0,
+                    avatarUrl = it.avatarUrl,
+                    isVerified = it.isOfficial,
+                    canWrite = false,
+                ),
+                participants = it.participants,
+            )
+        }
+        val join = if (stored == null && card != null && card.link != null) {
+            JoinUi(if (card.kind == app.orbitle.domain.ChatProfile.Kind.CHANNEL) "Подписаться" else "Вступить", joining)
+        } else null
         if (info == null) {
+            askOutsider()
             val title = fallbackTitle?.takeIf { it.isNotBlank() }
             val placeholder = title?.let {
                 ChatHeaderUi(it, "", false, ChatAvatar(ChatAvatar.Kind.Initials(ChatAvatar.initials(it)), ChatAvatar.colorIndex(chatId)))
@@ -753,6 +826,7 @@ class ChatViewModel(
                 header = ChatHeaderUi(title, subtitle, accent, ChatListFormatter().avatar(chat, title), chat.isVerified, chat.type, chat.isSavedMessages),
                 canWrite = chat.canWrite != false,
                 botAppId = info.botAppId,
+                join = join,
             )
         }
         if (chat.unreadCount > 0) {
@@ -1376,6 +1450,9 @@ internal fun unreadAnchor(history: List<Message>, unread: Int, isOutgoing: (Mess
     }
     return if (complete) oldest else null
 }
+
+/** Кнопка вступления в канал или группу вне списка; [busy] — запрос ушёл. */
+data class JoinUi(val label: String, val busy: Boolean)
 
 /** Запуск мини-приложения бота из чата: кнопка «Открыть приложение» или inline-кнопка `OPEN_APP`. */
 data class BotAppRequest(val botId: String, val chatId: String, val startParam: String?, val title: String)

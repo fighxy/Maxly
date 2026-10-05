@@ -292,6 +292,26 @@ public final class ChatViewModel {
         botAppRequest = BotAppRequest(botId: botId, chatId: chatId, startParam: nil, title: title)
     }
 
+    /// Идёт вступление в канал или группу: кнопка показывает индикатор и не нажимается.
+    public private(set) var joining = false
+
+    /// «Подписаться» в канале или «Вступить» в группе вне списка (открыты из поиска): вступление
+    /// по публичной ссылке (`CHAT_JOIN`). Чат попадает в список, и экран сам переходит к нему.
+    /// `true` — сервер принял.
+    @discardableResult
+    public func join(link: String) async -> Bool {
+        guard let chats, !joining else { return false }
+        joining = true
+        defer { joining = false }
+        do {
+            _ = try await chats.joinByLink(link)
+            return true
+        } catch {
+            show(error)
+            return false
+        }
+    }
+
     public func isOutgoing(_ message: Message) -> Bool {
         !currentUserId.isEmpty && message.authorId == currentUserId
     }

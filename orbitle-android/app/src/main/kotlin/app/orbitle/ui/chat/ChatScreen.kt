@@ -1,5 +1,6 @@
 package app.orbitle.ui.chat
 
+import androidx.compose.material3.Button
 import app.orbitle.presentation.chat.BotAppRequest
 import app.orbitle.domain.InlineButton
 import androidx.compose.material3.FilledTonalButton
@@ -477,6 +478,18 @@ fun ChatScreen(
                     onMention = model::insertMention,
                     onCommand = model::insertCommand,
                 )
+            } else if (state.join != null) {
+                val join = state.join!!
+                // Канал или группа вне списка (из поиска): вступление вместо плашки.
+                Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
+                    Button(
+                        onClick = model::join,
+                        enabled = !join.busy,
+                        modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
+                    ) {
+                        if (join.busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text(join.label)
+                    }
+                }
             } else {
                 Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
                     Text(

@@ -21,6 +21,14 @@ struct ChatComposer: View {
     let onToggleMute: (() -> Void)?
     /// «Открыть приложение» бота с мини-приложением. `nil` — кнопки нет.
     var onOpenApp: (() -> Void)? = nil
+    /// «Подписаться» или «Вступить» вместо плашки у канала или группы вне списка.
+    var join: Join? = nil
+
+    struct Join {
+        let label: String
+        let busy: Bool
+        let action: () -> Void
+    }
     /// Отступ поля ввода от краёв.
     static let inset: CGFloat = 12
     @Environment(\.privateMode) private var privateMode
@@ -231,10 +239,27 @@ struct ChatComposer: View {
         .accessibilityLabel(viewModel.editTarget == nil ? "Отправить" : "Сохранить правку")
     }
 
-    /// Писать нельзя: в канале — кнопка уведомлений, в остальных — пояснение.
+    /// Писать нельзя: вне списка — «Подписаться» или «Вступить», в канале — кнопка уведомлений,
+    /// в остальных — пояснение.
     @ViewBuilder
     private var readOnlyBar: some View {
-        if chatType == .channel, let onToggleMute {
+        if let join {
+            Button(action: join.action) {
+                ZStack {
+                    Text(join.label)
+                        .font(.body.weight(.semibold))
+                        .opacity(join.busy ? 0 : 1)
+                    if join.busy { ProgressView() }
+                }
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.orbitleAccent)
+            .orbitleGlassCapsule()
+            .disabled(join.busy)
+            .accessibilityLabel(join.label)
+        } else if chatType == .channel, let onToggleMute {
             Button(action: onToggleMute) {
                 Text(isMuted ? "Включить уведомления" : "Выключить уведомления")
                     .font(.body.weight(.medium))
