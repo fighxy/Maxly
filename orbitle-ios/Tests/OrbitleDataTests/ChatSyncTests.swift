@@ -233,6 +233,26 @@ struct ChatSyncTests {
         #expect(await row(parts.chats) == nil)
     }
 
+    @Test("Полный список сервера убирает чаты, которых в нём нет; неполный — нет; «Избранное» остаётся")
+    func completeListDropsChatsLeftElsewhere() async throws {
+        let parts = try await makeSync()
+        try await parts.chats.upsert([makeChat(id: "keep"), makeChat(id: "left"), makeChat(id: Chat.savedMessagesId)])
+        try await parts.messages.upsert([
+            MessageRecord(id: "m1", serverId: "m1", chatId: "left", authorId: "bob", text: "Пост", timestamp: .init(timeIntervalSince1970: 2), status: .sent),
+        ])
+        await parts.api.setChats([makeChat(id: "keep")])
+
+        try await parts.chats.refresh()
+        #expect(await row(parts.chats, "left") != nil)
+
+        await parts.api.setChatListComplete(true)
+        try await parts.chats.refresh()
+        #expect(await row(parts.chats, "keep") != nil)
+        #expect(await row(parts.chats, "left") == nil)
+        #expect(await row(parts.chats, Chat.savedMessagesId) != nil)
+        #expect(try await parts.messages.page(chatId: "left", before: nil).isEmpty)
+    }
+
     @Test("Неактивный чат (вышел, закрыт) уходит из списка: при обновлении и по пушу")
     func inactiveChatsLeaveTheList() async throws {
         let parts = try await makeSync()

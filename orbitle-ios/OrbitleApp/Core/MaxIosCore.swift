@@ -105,6 +105,20 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func loadChatList() async throws -> (chats: [CoreChat], complete: Bool) {
+        try await call("loadChats") { done in
+            self.client.loadChatList { list, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else if let list {
+                    done(.success((list.chats.map(Self.chat), list.complete)))
+                } else {
+                    done(.failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)))
+                }
+            }
+        }
+    }
+
     func loadChat(id: String) async throws -> CoreChat {
         try await call("loadChat") { done in
             self.client.loadChat(chatId: id) { chat, kind, key in
