@@ -215,8 +215,9 @@ public struct InlineButton: Hashable, Sendable, Codable {
         case callback
         /// Открыть адрес.
         case link(URL)
-        /// Мини-приложение бота: `botId` (если кнопка его назвала) и параметр запуска.
-        case openApp(botId: String?, startParam: String?)
+        /// Мини-приложение бота: `botId` (если кнопка его назвала), параметр запуска и `chatId`
+        /// из ссылки `webApp`, если она его задаёт.
+        case openApp(botId: String?, startParam: String?, chatId: String? = nil)
         /// Скопировать текст.
         case copy(String)
     }
@@ -247,7 +248,9 @@ public struct InlineButton: Hashable, Sendable, Codable {
             let deeplink = webApp.flatMap { URLComponents(string: $0) }
             let query = deeplink?.queryItems ?? []
             let start = payload ?? query.first { $0.name == "startapp" || $0.name == "startApp" }?.value
-            return .openApp(botId: contactId, startParam: start)
+            // `chat_id` ссылки — чат, для которого запускается приложение; иначе чат сообщения.
+            let chat = query.first { $0.name == "chat_id" }?.value.flatMap { Int64($0) != nil ? $0 : nil }
+            return .openApp(botId: contactId, startParam: start, chatId: chat)
         case "CLIPBOARD":
             return .copy(payload ?? "")
         default:

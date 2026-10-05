@@ -274,12 +274,12 @@ public final class ChatViewModel {
             } catch {
                 show(error)
             }
-        case .openApp(let botId, let startParam):
+        case .openApp(let botId, let startParam, let appChat):
             guard let bot = botId ?? (peerIsBot ? peerId : nil) else {
                 showNotice("Не удалось открыть приложение")
                 return
             }
-            botAppRequest = BotAppRequest(botId: bot, chatId: chatId, startParam: startParam, title: button.text)
+            botAppRequest = BotAppRequest(botId: bot, chatId: appChat ?? chatId, startParam: startParam, title: button.text)
         case .link(let url):
             openURLRequest = url
         case .copy:

@@ -676,7 +676,7 @@ class ChatViewModel(
                     _messages.value = "Не удалось открыть приложение"
                     return
                 }
-                _botApp.value = BotAppRequest(bot, chatId, action.startParam, button.text)
+                _botApp.value = BotAppRequest(bot, action.chatId ?: chatId, action.startParam, button.text)
             }
             app.orbitle.domain.InlineButton.Action.Callback -> {
                 val callbackId = message.content.keyboard?.callbackId
@@ -1237,15 +1237,15 @@ class ChatViewModel(
 
     // Комментарии
 
-    /** Плашка под постом канала: только при включённых комментариях (или если сервер прислал счётчик). */
+    /**
+     * Плашка под постом канала — только когда у канала включены родные комментарии (опция
+     * `COMMENTS: true`, как в Komet). Без опции комментариев нет: обсуждение такого канала, если
+     * оно есть, ведёт бот кнопкой под постом, а запросы счётчиков сервер отклоняет.
+     */
     private fun commentsFooter(message: Message): Int? {
         if (comments == null || builtFor != ChatType.CHANNEL || !isServer(message) || message.isService) return null
-        val known = commentCounts[message.id]
-        return when (builtComments) {
-            false -> null
-            true -> known ?: message.content.comments ?: 0
-            null -> known ?: message.content.comments
-        }
+        if (builtComments != true) return null
+        return commentCounts[message.id] ?: message.content.comments ?: 0
     }
 
     /**
@@ -1256,7 +1256,7 @@ class ChatViewModel(
      */
     private fun requestCommentCounts() {
         val source = comments ?: return
-        if (builtFor != ChatType.CHANNEL || builtComments == false || now() < countsRetryAt) return
+        if (builtFor != ChatType.CHANNEL || builtComments != true || now() < countsRetryAt) return
         if (countsJob?.isActive == true) return
         val ids = history.asReversed().filter { isServer(it) && !it.isService && it.id !in askedCounts }.map { it.id }
         if (ids.isEmpty()) return

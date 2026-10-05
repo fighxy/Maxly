@@ -259,12 +259,12 @@ class CommentsTest {
         val messages = FakeMessages()
         repo.countsFailure = rateLimited
         repo.countsReply = mapOf("5" to 2)
-        messages.headerInfo.value = ChatHeaderInfo(Chat("10", "Канал", ChatType.CHANNEL, updatedAtMs = 0))
+        messages.headerInfo.value = ChatHeaderInfo(Chat("10", "Канал", ChatType.CHANNEL, updatedAtMs = 0, commentsEnabled = true))
         messages.list.value = listOf(Message("5", "10", "0", "пост", 1_000L))
         val vm = ChatViewModel("10", messages, ChatFormatter(ZoneOffset.UTC), now = { clock }, comments = repo)
         assertEquals(1, repo.asked.size)
-        // Флаг комментариев неизвестен и счётчика нет: плашки пока нет.
-        assertNull(vm.state.value.items.filterIsInstance<ChatItem.Bubble>().single().comments)
+        // Счётчика ещё нет: плашка «Комментировать» без числа.
+        assertEquals(0, vm.state.value.items.filterIsInstance<ChatItem.Bubble>().single().comments)
         // Обновление ленты во время паузы не повторяет запрос.
         messages.list.value = messages.list.value + Message("6", "10", "0", "пост 2", 2_000L)
         assertEquals(1, repo.asked.size)
@@ -275,8 +275,8 @@ class CommentsTest {
         main.dispatcher.scheduler.runCurrent()
         assertEquals(listOf("6", "5"), repo.asked.last())
         val bubbles = vm.state.value.items.filterIsInstance<ChatItem.Bubble>().associate { it.message.id to it.comments }
-        // Счётчик пришёл только у первого поста; у второго сервер об обсуждении не сообщил.
-        assertEquals(mapOf("5" to 2, "6" to null), bubbles)
+        // Счётчик пришёл только у первого поста; у второго плашка без числа.
+        assertEquals(mapOf("5" to 2, "6" to 0), bubbles)
     }
 
     @Test
@@ -306,5 +306,16 @@ class CommentsTest {
         messages.list.value = messages.list.value + Message("6", "10", "0", "пост 2", 2_000L)
         val bubbles = vm.state.value.items.filterIsInstance<ChatItem.Bubble>().associate { it.message.id to it.comments }
         assertEquals(mapOf("5" to 0, "6" to 0), bubbles)
+    }
+
+    @Test
+    fun noCommentsWithoutTheChannelOption() {
+        val messages = FakeMessages()
+        // Опции COMMENTS нет: родных комментариев нет, даже если у поста пришёл счётчик.
+        messages.headerInfo.value = ChatHeaderInfo(Chat("10", "Канал", ChatType.CHANNEL, updatedAtMs = 0))
+        messages.list.value = listOf(Message("5", "10", "0", "пост", 1_000L, content = MessageContent(comments = 4)))
+        val vm = ChatViewModel("10", messages, ChatFormatter(ZoneOffset.UTC), now = { 10_000L }, comments = repo)
+        assertNull(vm.state.value.items.filterIsInstance<ChatItem.Bubble>().single().comments)
+        assertTrue(repo.asked.isEmpty())
     }
 }

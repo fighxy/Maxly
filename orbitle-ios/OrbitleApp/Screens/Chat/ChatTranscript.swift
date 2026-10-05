@@ -325,14 +325,11 @@ struct ChatTranscript: View {
         )
     }
 
-    /// Кнопка комментариев — только под постами канала с включёнными комментариями.
+    /// Кнопка комментариев — только под постами канала с включёнными родными комментариями
+    /// (опция `COMMENTS: true`, как в Komet). Без опции их нет: обсуждение такого канала, если
+    /// оно есть, ведёт бот кнопкой под постом.
     private func allowsComments(_ message: Message) -> Bool {
-        guard chatType == .channel else { return false }
-        switch commentsEnabled {
-        case true?: return true
-        case false?: return false
-        case nil: return message.content.comments != nil || viewModel.commentCounts[message.serverId ?? message.id] != nil
-        }
+        chatType == .channel && commentsEnabled == true
     }
 
     /// Адреса фото, обложек видео и аватаров авторов: только сетевые, без повторов.

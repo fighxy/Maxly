@@ -674,6 +674,8 @@ class ChatViewModelTest {
         assertEquals("https://a.b", model.openUrl.value)
         model.pressButton(message, InlineButton("OPEN_APP", "Игра", webApp = "https://max.ru/bot?startapp=lvl%201", contactId = "99"))
         assertEquals(BotAppRequest("99", "10", "lvl 1", "Игра"), model.botApp.value)
+        model.pressButton(message, InlineButton("OPEN_APP", "Чат", webApp = "https://max.ru/bot?startapp=x&chat_id=-42", contactId = "99"))
+        assertEquals(BotAppRequest("99", "-42", "x", "Чат"), model.botApp.value)
         assertTrue(chats.pressed.isEmpty())
         model.consumeBotApp()
         assertNull(model.botApp.value)

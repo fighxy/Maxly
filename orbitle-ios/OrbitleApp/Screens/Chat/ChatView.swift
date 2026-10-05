@@ -613,6 +613,6 @@ struct ChatView: View {
 
     /// В канале с комментариями счётчики постов спрашиваются у сервера, когда лента меняется.
     private var wantsCommentCounts: Bool {
-        kind == .channel && comments != false
+        kind == .channel && comments == true
     }
 }
