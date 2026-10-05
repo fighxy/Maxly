@@ -43,6 +43,8 @@ interface AccountRepository {
 
     suspend fun blockedUsers(): List<BlockedUser>
     suspend fun unblock(userId: String)
+    /** Заблокировать пользователя (`CONTACT_UPDATE` 34 `BLOCK`). */
+    suspend fun block(userId: String): Unit = throw OrbitleError.Rejected("Заблокировать нельзя")
 
     /** Пароль для входа и почта восстановления (`AUTH_2FA_DETAILS` 104). */
     suspend fun twoFactorStatus(): TwoFactorStatus
@@ -145,6 +147,11 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
     override suspend fun unblock(userId: String) {
         val id = userId.toLongOrNull() ?: return
         MaxCoreGateway.call { client.api.users.setBlocked(id, false) }
+    }
+
+    override suspend fun block(userId: String) {
+        val id = userId.toLongOrNull() ?: return
+        MaxCoreGateway.call { client.api.users.setBlocked(id, true) }
     }
 
     override suspend fun twoFactorStatus(): TwoFactorStatus = MaxCoreGateway.call {

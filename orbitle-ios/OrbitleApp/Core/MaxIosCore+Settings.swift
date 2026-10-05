@@ -128,6 +128,56 @@ extension MaxIosCore {
         }
     }
 
+    func blockUser(_ userId: String) async throws {
+        let _: Void = try await call("blockUser") { done in
+            self.client.blockUser(userId: userId) { done(Self.voidResult($0, $1)) }
+        }
+    }
+
+    func commonChats(userId: String) async throws -> [CommonChat] {
+        try await call("commonChats") { done in
+            self.client.commonChats(userId: userId) { chats, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(chats.map {
+                        CommonChat(
+                            id: $0.id,
+                            title: $0.title,
+                            isChannel: $0.type == "CHANNEL",
+                            avatarURL: $0.iconUrl.isEmpty ? nil : URL(string: $0.iconUrl),
+                            participants: Int($0.participants)
+                        )
+                    }))
+                }
+            }
+        }
+    }
+
+    func complaintReasons(typeId: Int) async throws -> [ComplaintReason] {
+        try await call("complaintReasons") { done in
+            self.client.complaintReasons(typeId: Int32(typeId)) { reasons, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(reasons.map { ComplaintReason(id: Int($0.id), title: $0.title) }))
+                }
+            }
+        }
+    }
+
+    func sendComplaint(reasonId: Int, typeId: Int, ids: [String]) async throws -> Bool {
+        try await call("sendComplaint") { done in
+            self.client.sendComplaint(reasonId: Int32(reasonId), typeId: Int32(typeId), ids: ids) { result, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(result == "ok"))
+                }
+            }
+        }
+    }
+
     func syncContacts() async throws -> [CoreContact] {
         try await call("syncContacts") { done in
             self.client.syncContacts { contacts, kind, key in

@@ -333,6 +333,7 @@ fun ChatScreen(
             ChatAction.CLEAR_HISTORY -> eraseChat = ChatErase.CLEAR
             ChatAction.DELETE_CHAT -> eraseChat = ChatErase.DELETE
             ChatAction.LEAVE -> leaving = true
+            ChatAction.JOIN -> model.join()
         }
         onActionHandled()
     }

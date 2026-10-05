@@ -16,6 +16,10 @@ struct ChatProfileContext {
     var onEraseChat: ((Bool, Bool) -> Void)? = nil
     /// Выйти из группы или отписаться от канала. `nil` — не участник или это не группа и не канал.
     var onLeave: (() -> Void)? = nil
+    /// «Подписаться» или «Вступить» у канала или группы вне списка (открыты из поиска).
+    var join: (label: String, run: () -> Void)? = nil
+    /// Открыть другой чат (общий чат собеседника).
+    var onOpenChat: ((String) -> Void)? = nil
     /// Поиск по чату. Профиль закрывается, поиск открывается на экране чата.
     var onSearch: (() -> Void)? = nil
     /// Опрос и отложенная отправка. `nil` — в этот чат писать нельзя.
@@ -47,6 +51,10 @@ struct ChatProfileView: View {
     @State private var erase: EraseAsk?
     /// Подтверждение выхода из группы или отписки от канала.
     @State private var leaving = false
+    /// Подтверждение блокировки собеседника.
+    @State private var blocking = false
+    /// Лист причин жалобы.
+    @State private var reporting = false
     @Namespace private var tabs
 
     private static let avatarSize: CGFloat = 100
@@ -58,6 +66,8 @@ struct ChatProfileView: View {
                 header
                 actions
                 content
+                membersSection
+                commonChatsSection
                 sharedMedia
             }
             .padding(.bottom, 32)
@@ -109,7 +119,22 @@ struct ChatProfileView: View {
                  ? "Канал пропадёт из списка чатов. Подписаться снова можно через поиск."
                  : "Группа пропадёт из списка чатов. Вернуться можно по ссылке-приглашению.")
         }
-        .task { await viewModel.loadIfStale() }
+        .confirmationDialog("Заблокировать \(viewModel.title)?", isPresented: $blocking, titleVisibility: .visible) {
+            Button("Заблокировать", role: .destructive) { Task { await viewModel.toggleBlocked() } }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("Пользователь не сможет писать вам и звонить. Разблокировать можно здесь же или в «Конфиденциальности».")
+        }
+        .confirmationDialog("Причина жалобы", isPresented: $reporting, titleVisibility: .visible) {
+            ForEach(viewModel.complaintReasons) { reason in
+                Button(reason.title) { Task { await viewModel.complain(reasonId: reason.id) } }
+            }
+            Button("Отмена", role: .cancel) {}
+        }
+        .task {
+            await viewModel.loadIfStale()
+            await viewModel.loadExtras()
+        }
         .refreshable { await viewModel.load() }
         .task(id: sharedVersion) {
             guard let chat = context?.chat else { return }
@@ -125,6 +150,7 @@ struct ChatProfileView: View {
         }
         .overlay(alignment: .bottom) { toast }
         .animation(.snappy, value: copied)
+        .animation(.snappy, value: viewModel.actionNotice)
         .animation(.snappy, value: context?.chat.notice)
         .modifier(ProfileChatCovers(chat: context?.chat))
         .fullScreenCover(item: $avatarViewer) { request in
@@ -278,6 +304,9 @@ struct ChatProfileView: View {
 
     private var actionList: [Action] {
         var list: [Action] = []
+        if let join = context?.join {
+            list.append(Action(id: "join", title: join.label, systemImage: "plus.circle.fill", run: join.run))
+        }
         if viewModel.canWrite, let onWrite {
             list.append(Action(id: "write", title: "Написать", systemImage: "bubble.left.fill", run: onWrite))
         }
@@ -320,6 +349,16 @@ struct ChatProfileView: View {
         if let phone = viewModel.infoRows.first(where: { $0.id == "phone" }) {
             items.append(Action(id: "phone", title: "Скопировать номер", systemImage: "phone") {
                 copy(phone.value, message: "Номер скопирован")
+            })
+        }
+        if viewModel.complaintTarget != nil {
+            items.append(Action(id: "report", title: "Пожаловаться", systemImage: "exclamationmark.bubble") {
+                Task { if await viewModel.loadComplaintReasons() { reporting = true } }
+            })
+        }
+        if viewModel.canBlock, let blocked = viewModel.isBlocked {
+            items.append(Action(id: "block", title: blocked ? "Разблокировать" : "Заблокировать", systemImage: blocked ? "lock.open" : "hand.raised") {
+                if blocked { Task { await viewModel.toggleBlocked() } } else { blocking = true }
             })
         }
         if context?.onLeave != nil, !isChannel {
@@ -387,6 +426,78 @@ struct ChatProfileView: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: Участники и общие чаты
+
+    /// Участники группы: первые 50 с аватарами.
+    @ViewBuilder
+    private var membersSection: some View {
+        let members = viewModel.members
+        if !members.isEmpty {
+            section(title: "УЧАСТНИКИ") {
+                ForEach(Array(members.prefix(50).enumerated()), id: \.element.id) { index, member in
+                    if index > 0 { Divider().padding(.leading, 64) }
+                    HStack(spacing: 12) {
+                        AvatarView(title: member.name, id: member.id, url: member.avatarURL, size: 36)
+                        Text(member.name)
+                            .font(.body)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .accessibilityElement(children: .combine)
+                }
+            }
+        }
+    }
+
+    /// Общие чаты с собеседником. Нажатие открывает чат.
+    @ViewBuilder
+    private var commonChatsSection: some View {
+        let chats = viewModel.commonChats
+        if !chats.isEmpty {
+            section(title: "ОБЩИЕ ЧАТЫ") {
+                ForEach(Array(chats.enumerated()), id: \.element.id) { index, chat in
+                    if index > 0 { Divider().padding(.leading, 64) }
+                    Button {
+                        context?.onOpenChat?(chat.id)
+                    } label: {
+                        HStack(spacing: 12) {
+                            AvatarView(title: chat.title, id: chat.id, url: chat.avatarURL, size: 36)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(chat.title)
+                                    .font(.body)
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                if chat.participants > 0 {
+                                    Text(ChatProfileViewModel.membersText(chat.participants, channel: chat.isChannel))
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(RowStyle())
+                    .disabled(context?.onOpenChat == nil)
+                }
+            }
+        }
+    }
+
+    private func section<Rows: View>(title: String, @ViewBuilder _ rows: () -> Rows) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, OrbitleTheme.pad + 16)
+            card(rows)
         }
     }
 
@@ -655,7 +766,7 @@ struct ChatProfileView: View {
 
     @ViewBuilder
     private var toast: some View {
-        if let text = copied ?? context?.chat.notice {
+        if let text = copied ?? viewModel.actionNotice ?? context?.chat.notice {
             Text(text)
                 .font(.footnote.weight(.semibold))
                 .padding(.horizontal, 16)

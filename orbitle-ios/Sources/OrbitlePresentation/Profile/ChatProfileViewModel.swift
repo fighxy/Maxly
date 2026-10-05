@@ -36,6 +36,8 @@ public final class ChatProfileViewModel {
     public private(set) var profile: ChatProfile?
 
     @ObservationIgnored private let repository: any ChatProfileRepository
+    /// Участники, общие чаты, жалоба и блокировка. `nil` — профиль без этих действий.
+    @ObservationIgnored private let actions: (any ProfileActionsRepository)?
     @ObservationIgnored private let formatter: ContactsFormatter
     @ObservationIgnored private let now: () -> Date
 
@@ -46,11 +48,13 @@ public final class ChatProfileViewModel {
         avatarURL: URL? = nil,
         kind: ChatProfile.Kind? = nil,
         repository: any ChatProfileRepository,
+        actions: (any ProfileActionsRepository)? = nil,
         formatter: ContactsFormatter = ContactsFormatter(),
         now: @escaping () -> Date = { Date() }
     ) {
         self.chatId = chatId
         self.repository = repository
+        self.actions = actions
         self.formatter = formatter
         self.now = now
         placeholder = ChatProfile(kind: kind ?? .user, chatId: chatId, title: title, avatarURL: avatarURL)
@@ -319,6 +323,114 @@ public final class ChatProfileViewModel {
         case 1: return one
         case 2...4: return few
         default: return many
+        }
+    }
+
+    // MARK: Участники, общие чаты, жалоба, блокировка
+
+    /// Участники группы (первая страница сервера). Пусто, пока не загружены или это не группа.
+    public private(set) var members: [ProfileMember] = []
+    /// Общие чаты с собеседником.
+    public private(set) var commonChats: [CommonChat] = []
+    /// В чёрном списке ли собеседник. `nil` — неизвестно (ещё не спросили или это не человек).
+    public private(set) var isBlocked: Bool?
+    /// Причины жалобы: лист открывается, когда они пришли.
+    public private(set) var complaintReasons: [ComplaintReason] = []
+    /// Идёт блокировка или отправка жалобы: кнопки не нажимаются.
+    public private(set) var isActing = false
+    /// Короткое уведомление: «Жалоба отправлена», «Заблокирован», ошибка.
+    public private(set) var actionNotice: String?
+    @ObservationIgnored private var extrasLoaded = false
+
+    /// Собеседник-человек: его можно заблокировать и на него можно пожаловаться.
+    private var personId: String? {
+        guard shown.kind == .user || shown.kind == .bot else { return nil }
+        return shown.peerId
+    }
+
+    /// На кого жалоба из этого профиля: человек или канал. У групп и ботов — нет.
+    public var complaintTarget: ComplaintTarget? {
+        switch shown.kind {
+        case .user: shown.peerId.map(ComplaintTarget.user)
+        case .channel: .channel(chatId)
+        case .group, .bot, .saved: nil
+        }
+    }
+
+    public var canBlock: Bool { actions != nil && personId != nil }
+
+    /// «12 участников», «1 200 подписчиков» — подпись общего чата.
+    public static func membersText(_ count: Int, channel: Bool) -> String {
+        channel
+            ? "\(grouped(count)) \(plural(count, "подписчик", "подписчика", "подписчиков"))"
+            : "\(grouped(count)) \(plural(count, "участник", "участника", "участников"))"
+    }
+
+    /// Участники группы, общие чаты с человеком и его место в чёрном списке. Один раз на профиль,
+    /// после того как пришла карточка (без неё неизвестны вид и собеседник).
+    public func loadExtras() async {
+        guard let actions, !extrasLoaded, profile != nil else { return }
+        extrasLoaded = true
+        switch shown.kind {
+        case .group:
+            if let rows = try? await actions.members(chatId: chatId) { members = rows }
+        case .user, .bot:
+            guard let person = personId else { return }
+            if shown.kind == .user, let chats = try? await actions.commonChats(userId: person) { commonChats = chats }
+            if let blocked = try? await actions.isBlocked(userId: person) { isBlocked = blocked }
+        case .channel, .saved:
+            break
+        }
+    }
+
+    /// Заблокировать или разблокировать собеседника.
+    public func toggleBlocked() async {
+        guard let actions, let person = personId, !isActing else { return }
+        let block = isBlocked != true
+        isActing = true
+        defer { isActing = false }
+        do {
+            try await actions.setBlocked(userId: person, blocked: block)
+            isBlocked = block
+            announce(block ? "Пользователь заблокирован" : "Пользователь разблокирован")
+        } catch {
+            announce(error.userMessage ?? (block ? "Не удалось заблокировать" : "Не удалось разблокировать"))
+        }
+    }
+
+    /// Причины жалобы с сервера. `false` — их нет или сервер отказал (уведомление показано).
+    public func loadComplaintReasons() async -> Bool {
+        guard let actions, let target = complaintTarget, !isActing else { return false }
+        isActing = true
+        defer { isActing = false }
+        do {
+            complaintReasons = try await actions.complaintReasons(for: target)
+            if complaintReasons.isEmpty { announce("Сервер не прислал причины жалобы") }
+            return !complaintReasons.isEmpty
+        } catch {
+            announce(error.userMessage ?? "Не удалось загрузить причины жалобы")
+            return false
+        }
+    }
+
+    public func complain(reasonId: Int) async {
+        guard let actions, let target = complaintTarget, !isActing else { return }
+        isActing = true
+        defer { isActing = false }
+        do {
+            let accepted = try await actions.complain(about: target, reasonId: reasonId)
+            announce(accepted ? "Жалоба отправлена" : "Сервер не принял жалобу")
+        } catch {
+            announce(error.userMessage ?? "Не удалось отправить жалобу")
+        }
+    }
+
+    private func announce(_ text: String) {
+        actionNotice = text
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard let self, self.actionNotice == text else { return }
+            self.actionNotice = nil
         }
     }
 }

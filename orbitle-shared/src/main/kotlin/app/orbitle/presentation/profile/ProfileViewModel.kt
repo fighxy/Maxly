@@ -44,6 +44,10 @@ data class ProfileUiState(
     val shared: SharedMedia = SharedMedia(),
     val tab: SharedMediaTab = SharedMediaTab.MEDIA,
     val loadingShared: Boolean = false,
+    /** Собеседник в чёрном списке. `null` — неизвестно или это не человек и не бот. */
+    val blocked: Boolean? = null,
+    /** Идёт блокировка или разблокировка. */
+    val blocking: Boolean = false,
 )
 
 /** Профиль собеседника, бота, группы или канала с общими медиа. */
@@ -61,6 +65,8 @@ class ProfileViewModel(
      * вкладок разом, и сервер отвечал `too.many.requests` заодно и истории открытого чата.
      */
     private val sharedPauseMs: Long = 400,
+    /** Чёрный список: «Заблокировать» и «Разблокировать» собеседника. `null` — без них. */
+    private val account: app.orbitle.data.AccountRepository? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(build(profiles.cached(chatId) ?: ChatProfile(ChatProfile.Kind.USER, chatId, title.orEmpty()), loading = true))
@@ -85,7 +91,8 @@ class ProfileViewModel(
         viewModelScope.launch {
             try {
                 val fresh = profiles.profile(chatId)
-                _state.update { current -> build(fresh, loading = false).copy(shared = current.shared, tab = current.tab) }
+                _state.update { current -> build(fresh, loading = false).copy(shared = current.shared, tab = current.tab, blocked = current.blocked) }
+                askBlocked(fresh)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -102,6 +109,45 @@ class ProfileViewModel(
                     // Первые страницы вкладок по очереди, с паузой между ними.
                     viewModelScope.launch { SharedMediaTab.entries.forEach { fetchPage(it) } }
                 }
+            }
+        }
+    }
+
+    /** Место собеседника в чёрном списке: список спрашивается один раз на профиль. */
+    private fun askBlocked(card: ChatProfile) {
+        val repo = account ?: return
+        val peer = card.peerId ?: return
+        if (card.kind != ChatProfile.Kind.USER && card.kind != ChatProfile.Kind.BOT) return
+        viewModelScope.launch {
+            try {
+                val blocked = repo.blockedUsers().any { it.id == peer }
+                _state.update { it.copy(blocked = blocked) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Без списка пункта нет: неизвестно, блокировать или разблокировать.
+            }
+        }
+    }
+
+    /** Заблокировать или разблокировать собеседника. */
+    fun toggleBlocked() {
+        val repo = account ?: return
+        val current = _state.value
+        val peer = current.profile.peerId ?: return
+        if (current.blocking) return
+        val block = current.blocked != true
+        _state.update { it.copy(blocking = true) }
+        viewModelScope.launch {
+            try {
+                if (block) repo.block(peer) else repo.unblock(peer)
+                _state.update { it.copy(blocked = block, blocking = false) }
+                notify(if (block) "Пользователь заблокирован" else "Пользователь разблокирован")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(blocking = false) }
+                show(e)
             }
         }
     }

@@ -49,6 +49,7 @@ final class AppContainer {
     @ObservationIgnored private var coreContacts: CoreContactRepository?
     @ObservationIgnored private var coreCalls: CoreCallHistoryRepository?
     @ObservationIgnored private var profiles: (any ChatProfileRepository)?
+    @ObservationIgnored private var profileActions: (any ProfileActionsRepository)?
     /// Стикеры и анимодзи (docs/stickers.md); панель одна на все чаты: каталог грузится раз.
     @ObservationIgnored private var stickerRepository: CoreStickerRepository?
     @ObservationIgnored private let recentStickers = UserDefaultsRecentStickers()
@@ -182,6 +183,7 @@ final class AppContainer {
             self.contacts = coreContacts
             self.calls = coreCalls
             self.profiles = CoreChatProfileRepository(core: core, cache: self.profileCache)
+            self.profileActions = CoreProfileActions(core: core)
             self.stickerRepository = CoreStickerRepository(core: core)
             self.accounts = CoreAccountRepository(core: core)
             self.folderRepository = CoreFolderRepository(core: core)
@@ -269,7 +271,8 @@ final class AppContainer {
             title: chatTitle(id: chatId),
             avatarURL: chat?.avatarURL ?? dialogDrafts[chatId]?.avatarURL,
             kind: kind,
-            repository: profiles
+            repository: profiles,
+            actions: profileActions
         )
     }
 
@@ -301,7 +304,8 @@ final class AppContainer {
             title: dialog.title,
             avatarURL: dialog.avatarURL,
             kind: .user,
-            repository: profiles
+            repository: profiles,
+            actions: profileActions
         )
     }
 
@@ -572,9 +576,11 @@ final class AppContainer {
         dialogDrafts.removeAll()
         let contacts = coreContacts
         let calls = coreCalls
+        let actions = profileActions as? CoreProfileActions
         Task {
             await contacts?.reset()
             await calls?.reset()
+            await actions?.reset()
         }
         voicePlayer.stop()
         chatModels.values.forEach { $0.deactivate() }

@@ -499,6 +499,13 @@ public protocol MaxCore: Sendable {
     func approveQrLogin(_ link: String) async throws
     func loadBlockedUsers() async throws -> [BlockedUser]
     func unblockUser(_ userId: String) async throws
+    func blockUser(_ userId: String) async throws
+    /// Общие чаты с пользователем (`CHAT_SEARCH_COMMON_PARTICIPANTS` 198).
+    func commonChats(userId: String) async throws -> [CommonChat]
+    /// Причины жалобы для типа (`COMPLAIN_REASONS_GET` 162): `2` — канал, `6` — человек.
+    func complaintReasons(typeId: Int) async throws -> [ComplaintReason]
+    /// Жалоба (`COMPLAIN` 161). `true` — сервер принял.
+    func sendComplaint(reasonId: Int, typeId: Int, ids: [String]) async throws -> Bool
     func syncContacts() async throws -> [CoreContact]
     func loadTwoFactor() async throws -> TwoFactorStatus
     func startEmailChange(password: String) async throws -> String
@@ -645,6 +652,10 @@ public extension MaxCore {
     func approveQrLogin(_ link: String) async throws { throw unsupported }
     func loadBlockedUsers() async throws -> [BlockedUser] { throw unsupported }
     func unblockUser(_ userId: String) async throws { throw unsupported }
+    func blockUser(_ userId: String) async throws { throw unsupported }
+    func commonChats(userId: String) async throws -> [CommonChat] { throw unsupported }
+    func complaintReasons(typeId: Int) async throws -> [ComplaintReason] { throw unsupported }
+    func sendComplaint(reasonId: Int, typeId: Int, ids: [String]) async throws -> Bool { throw unsupported }
     func syncContacts() async throws -> [CoreContact] { throw unsupported }
     func loadTwoFactor() async throws -> TwoFactorStatus { throw unsupported }
     func startEmailChange(password: String) async throws -> String { throw unsupported }
@@ -753,10 +764,12 @@ public struct CoreMentionMark: Sendable, Equatable {
 public struct CoreChatMember: Sendable, Equatable {
     public var id: String
     public var name: String
+    public var avatarURL: URL?
 
-    public init(id: String, name: String) {
+    public init(id: String, name: String, avatarURL: URL? = nil) {
         self.id = id
         self.name = name
+        self.avatarURL = avatarURL
     }
 }
 
