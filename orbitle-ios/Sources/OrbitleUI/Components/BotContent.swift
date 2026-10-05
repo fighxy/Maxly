@@ -83,7 +83,7 @@ struct LinkPreviewCard: View {
     }
 }
 
-/// Inline-кнопки бота под пузырём: ряды стеклянных кнопок во всю ширину пузыря. Значок справа
+/// Inline-кнопки бота под пузырём: ряды кнопок цвета пузыря во всю его ширину. Значок справа
 /// подсказывает, что будет: ссылка, приложение или копирование.
 struct InlineKeyboardView: View {
     let keyboard: InlineKeyboard
@@ -108,10 +108,11 @@ struct InlineKeyboardView: View {
                                 }
                             }
                             .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, minHeight: 36)
+                            .frame(maxWidth: .infinity, minHeight: 40)
                             .padding(.horizontal, 8)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            // Цвет входящего пузыря: на обоях кнопка читается так же, как пост над ней.
+                            .background(Color.orbitleIncomingOnWallpaper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     }
