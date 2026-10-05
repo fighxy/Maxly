@@ -70,6 +70,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Forward
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.outlined.Comment
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -1011,6 +1012,14 @@ private fun MessageActions(
                 leadingContent = { Icon(Icons.AutoMirrored.Filled.Reply, null) },
                 colors = colors,
                 modifier = Modifier.clickable { model.beginReply(message); onDismiss() },
+            )
+        }
+        if (model.canOpenComments(message)) {
+            ListItem(
+                headlineContent = { Text("Комментарии") },
+                leadingContent = { Icon(Icons.AutoMirrored.Outlined.Comment, null) },
+                colors = colors,
+                modifier = Modifier.clickable { onDismiss(); model.openComments(message) },
             )
         }
         if (message.displayText.isNotBlank()) {
