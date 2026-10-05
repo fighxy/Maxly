@@ -17,6 +17,9 @@ public protocol MessageRepository: Sendable {
     func loadMore(chatId: String, before: Date?) async throws(OrbitleError) -> [Message]
     /// Самые свежие сообщения с сервера.
     func fetchLatest(chatId: String) async throws(OrbitleError)
+    /// Свежая страница, когда пользователь открыл чат: в отличие от фоновых чтений, не ждёт
+    /// паузы после `too.many.requests` — без неё экран чата пуст.
+    func openLatest(chatId: String) async throws(OrbitleError)
     /// Оптимистичная отправка со статусом `sending`. `replyTo` — локальный или серверный id цитаты.
     func send(text: String, chatId: String, replyTo: String?) async throws(OrbitleError)
     /// Текст с разметкой, которую ставит само поле ввода (анимодзи из панели эмодзи).
@@ -74,6 +77,10 @@ public protocol MessageRepository: Sendable {
 }
 
 extension MessageRepository {
+    public func openLatest(chatId: String) async throws(OrbitleError) {
+        try await fetchLatest(chatId: chatId)
+    }
+
     /// Отправка без цитаты.
     public func send(text: String, chatId: String) async throws(OrbitleError) {
         try await send(text: text, chatId: chatId, replyTo: nil)

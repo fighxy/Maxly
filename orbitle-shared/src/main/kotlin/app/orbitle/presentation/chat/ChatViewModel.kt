@@ -263,7 +263,7 @@ class ChatViewModel(
     fun loadLatest() {
         viewModelScope.launch {
             try {
-                repository.loadLatest(chatId)
+                repository.openLatest(chatId)
                 latestLoaded = true
                 latestFailure = null
             } catch (e: CancellationException) {

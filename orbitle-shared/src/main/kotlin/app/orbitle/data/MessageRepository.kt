@@ -38,6 +38,13 @@ interface MessageRepository {
     /** Свежая страница истории в обход окна [loadLatest]: после своего действия (голос в опросе). */
     suspend fun refreshLatest(chatId: String) = loadLatest(chatId)
 
+    /**
+     * Свежая страница, когда пользователь открыл чат. В отличие от фоновых чтений, она не ждёт
+     * паузы после `too.many.requests`: один запрос на открытие сервер выдерживает, а без него
+     * экран пуст.
+     */
+    suspend fun openLatest(chatId: String) = loadLatest(chatId)
+
     /** Страница старше самого раннего сообщения. `false` — история кончилась. */
     suspend fun loadOlder(chatId: String): Boolean
 

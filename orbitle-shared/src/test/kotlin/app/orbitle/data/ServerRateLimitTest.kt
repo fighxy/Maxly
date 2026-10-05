@@ -57,6 +57,19 @@ class ServerRateLimitTest {
     }
 
     @Test
+    fun openedChatReadGoesDuringThePauseAndResetsStrikes() = runBlocking {
+        limit.noteLimited()
+        limit.noteLimited()
+        var asked = false
+        assertEquals(5, MaxCoreGateway.readNow(limit) { asked = true; 5 })
+        assertTrue(asked)
+        // Удачное чтение сбросило счёт отказов: следующий отказ — снова короткая пауза.
+        now += 120_000
+        limit.noteLimited()
+        assertEquals(15_000L, limit.remainingMs())
+    }
+
+    @Test
     fun rateLimitTextAsksToWait() {
         val error = OrbitleError.Server("too.many.requests")
         assertTrue(error.isRateLimit)

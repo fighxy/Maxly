@@ -424,7 +424,8 @@ public final class ChatViewModel {
         isRestoringHistory = true
         var loaded = false
         do {
-            try await repository.fetchLatest(chatId: chatId)
+            // Открытие чата: страница уходит и во время паузы чтений. Тихий повтор ниже её ждёт.
+            try await repository.openLatest(chatId: chatId)
             guard generation == loadGeneration, !Task.isCancelled else {
                 finishCancelledLoad(generation)
                 return

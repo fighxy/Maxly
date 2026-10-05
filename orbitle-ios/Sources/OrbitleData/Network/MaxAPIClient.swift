@@ -59,6 +59,8 @@ public protocol MaxAPI: Sendable {
     func fetchChat(id: String) async -> Result<ChatRecord, MaxAPIError>
     /// Сообщения чата строго старше `before` (самые новые, если `nil`), не больше `limit`.
     func fetchMessages(chatId: String, before: Date?, limit: Int) async -> Result<[MessageRecord], MaxAPIError>
+    /// Свежая страница открытого пользователем чата: уходит и во время паузы чтений.
+    func fetchOpenedMessages(chatId: String, limit: Int) async -> Result<[MessageRecord], MaxAPIError>
     /// Сообщения с вложениями `types` вокруг `anchorId`: до `forward` новее, до `backward` старше.
     func fetchSharedMedia(chatId: String, types: [SharedAttachType], anchorId: String, forward: Int, backward: Int) async -> Result<[MessageRecord], MaxAPIError>
     /// `clientId` это локальный id. Ядро само ставит числовой `cid` в пакет, локальный id на сервер не уходит.
@@ -130,6 +132,9 @@ public protocol MaxAPI: Sendable {
 }
 
 public extension MaxAPI {
+    func fetchOpenedMessages(chatId: String, limit: Int) async -> Result<[MessageRecord], MaxAPIError> {
+        await fetchMessages(chatId: chatId, before: nil, limit: limit)
+    }
     /// Источник без серверных общих медиа: профиль обходится историей из кэша.
     func fetchSharedMedia(chatId: String, types: [SharedAttachType], anchorId: String, forward: Int, backward: Int) async -> Result<[MessageRecord], MaxAPIError> {
         .failure(.invalidResponse)
@@ -234,6 +239,13 @@ public final class MaxAPIClient: MaxAPI, Sendable {
     public func fetchMessages(chatId: String, before: Date?, limit: Int) async -> Result<[MessageRecord], MaxAPIError> {
         await catching {
             let page = try await core.loadHistory(chatId: chatId, beforeMs: before?.unixMillis ?? 0, limit: limit)
+            return page.map(CoreMapping.message)
+        }
+    }
+
+    public func fetchOpenedMessages(chatId: String, limit: Int) async -> Result<[MessageRecord], MaxAPIError> {
+        await catching {
+            let page = try await core.loadOpenedHistory(chatId: chatId, limit: limit)
             return page.map(CoreMapping.message)
         }
     }

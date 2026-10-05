@@ -43,7 +43,15 @@ import kotlinx.coroutines.SupervisorJob
 class AppContainer(context: Context) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    val client: MaxClient = MaxClient(MaxClientConfig(namespace = CORE_NAMESPACE, messageLimit = MESSAGE_LIMIT))
+    /**
+     * Без догрузки дыр истории после переподключения (`fillGapsOnReconnect`), как на iOS: ядро
+     * листало историю всех чатов подряд, до 16 страниц на чат, и сервер отвечал
+     * `too.many.requests` — заодно и на историю открытого чата. Открытый чат сам берёт свежую
+     * страницу, старое догружается прокруткой.
+     */
+    val client: MaxClient = MaxClient(
+        MaxClientConfig(namespace = CORE_NAMESPACE, messageLimit = MESSAGE_LIMIT, fillGapsOnReconnect = false),
+    )
 
     val chats: ChatRepository = CoreChatRepository(client)
 

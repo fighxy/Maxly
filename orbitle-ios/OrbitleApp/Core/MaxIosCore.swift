@@ -131,6 +131,18 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func loadOpenedHistory(chatId: String, limit: Int) async throws -> [CoreMessage] {
+        try await call("loadOpenedHistory") { done in
+            self.client.loadHistory(chatId: chatId, beforeMs: 0, limit: Int32(limit)) { messages, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(messages.map(Self.message)))
+                }
+            }
+        }
+    }
+
     func searchPublic(query: String, from: Int, count: Int) async throws -> [CoreSearchChat] {
         try await call("searchPublic") { done in
             self.client.searchPublic(query: query, from: Int32(from), count: Int32(count)) { chats, kind, key in
@@ -510,6 +522,9 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     /// Чтения, которые ждут паузы после `too.many.requests` (`ServerRateLimit`). Отправка,
     /// отметки, вход и действия пользователя с немедленным ответом сюда не входят.
     ///
+    /// История только что открытого чата (`loadOpenedHistory`) тоже не входит: без неё экран чата
+    /// пуст, а один запрос на открытие сервер выдерживает.
+    ///
     /// Комментарии тоже не входят: их открыл пользователь, и фоновый отказ (опрос, общие медиа)
     /// не должен сразу показывать ему ошибку. Ядро пускает их раньше фоновых чтений, а отказ
     /// самого сервера окно комментариев повторяет один раз после паузы. Отказ им всё равно
@@ -519,7 +534,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         "loadChat", "loadChats", "loadReactions", "loadCallHistory", "loadAnimojis",
     ]
     /// Чтения, отказ которым включает паузу, хотя сами они её не ждут.
-    private static let limitAwareCalls: Set<String> = pacedCalls.union(["loadComments"])
+    private static let limitAwareCalls: Set<String> = pacedCalls.union(["loadComments", "loadOpenedHistory"])
 
     /// Вызов ядра с колбэком. Неудача пишется в журнал видом ошибки и ключом сервера.
     /// Во время паузы сервера чтения из `pacedCalls` сразу получают тот же отказ.

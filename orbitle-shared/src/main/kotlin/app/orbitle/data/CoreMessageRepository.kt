@@ -102,6 +102,15 @@ class CoreMessageRepository(
         resolveSenders(id)
     }
 
+    override suspend fun openLatest(chatId: String) {
+        val at = latestAt[chatId]
+        if (at != null && clock() - at < latestReuseMs) return
+        val id = chatId.toLong()
+        MaxCoreGateway.readNow { client.loadHistory(id, from = null, backward = PAGE) }
+        latestAt[chatId] = clock()
+        resolveSenders(id)
+    }
+
     override suspend fun loadOlder(chatId: String): Boolean {
         val id = chatId.toLong()
         val oldest = client.store.state.value.messagesOf(id).minByOrNull { it.time } ?: return false

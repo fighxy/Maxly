@@ -412,6 +412,9 @@ public protocol MaxCore: Sendable {
     func loadChats() async throws -> [CoreChat]
     func loadChat(id: String) async throws -> CoreChat
     func loadHistory(chatId: String, beforeMs: Int64, limit: Int) async throws -> [CoreMessage]
+    /// Самая свежая страница чата, который пользователь только что открыл. Не ждёт паузы после
+    /// `too.many.requests` (её ждут фоновые чтения), но отказ сервера её продлевает.
+    func loadOpenedHistory(chatId: String, limit: Int) async throws -> [CoreMessage]
     /// Сообщения с вложениями `attachTypes` вокруг `anchorId` с сервера (`CHAT_MEDIA`).
     func loadSharedMedia(chatId: String, anchorId: String, attachTypes: [String], forward: Int, backward: Int) async throws -> [CoreMessage]
     func sendText(chatId: String, text: String) async throws -> CoreMessage
@@ -569,6 +572,9 @@ public protocol MaxCore: Sendable {
 }
 
 public extension MaxCore {
+    func loadOpenedHistory(chatId: String, limit: Int) async throws -> [CoreMessage] {
+        try await loadHistory(chatId: chatId, beforeMs: 0, limit: limit)
+    }
     func sendSticker(chatId: String, stickerId: String, replyTo: String) async throws -> CoreMessage {
         throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
     }
