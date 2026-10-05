@@ -85,6 +85,17 @@ class MaxCoreGateway(private val client: MaxClient) : CoreGateway {
             return value
         }
 
+        /**
+         * Чтение, которого ждёт пользователь (история только что открытого чата): уходит и во
+         * время паузы. Отказ сервера, как у [read], продлевает паузу для фоновых чтений, удача —
+         * сбрасывает счёт отказов.
+         */
+        suspend fun <T> readNow(limit: ServerRateLimit = ServerRateLimit.shared, block: suspend () -> T): T {
+            val value = call(block)
+            limit.noteSuccess()
+            return value
+        }
+
         fun failureOf(e: Throwable): CoreFailure {
             val error = e.toMaxError()
             return CoreFailure(error.kind.name, error.errorKey, error.message)

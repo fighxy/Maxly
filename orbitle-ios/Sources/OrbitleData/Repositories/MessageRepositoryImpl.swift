@@ -906,10 +906,22 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// Самые свежие сообщения чата с сервера (открытие чата и периодический опрос).
     /// Страница, пришедшая меньше `latestReuse` секунд назад, повторно не спрашивается.
     public func fetchLatest(chatId: String) async throws(OrbitleError) {
+        try await latest(chatId: chatId, opened: false)
+    }
+
+    public func openLatest(chatId: String) async throws(OrbitleError) {
+        try await latest(chatId: chatId, opened: true)
+    }
+
+    /// `opened` — пользователь только что открыл чат: страница уходит и во время паузы чтений.
+    private func latest(chatId: String, opened: Bool) async throws(OrbitleError) {
         if let at = latestFetchedAt[chatId], Date().timeIntervalSince(at) < latestReuse { return }
         let started = generation
         let requestedAt = Date.now
-        switch await api.fetchMessages(chatId: chatId, before: nil, limit: Self.pageSize) {
+        let result = opened
+            ? await api.fetchOpenedMessages(chatId: chatId, limit: Self.pageSize)
+            : await api.fetchMessages(chatId: chatId, before: nil, limit: Self.pageSize)
+        switch result {
         case .success(let fetched):
             let records = await withReactions(fetched, chatId: chatId)
             try ensureCurrent(started)
