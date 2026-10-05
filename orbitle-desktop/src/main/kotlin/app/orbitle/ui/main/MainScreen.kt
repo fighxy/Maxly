@@ -31,6 +31,24 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import app.orbitle.domain.OutgoingFile
+import app.orbitle.domain.OutgoingStory
+import app.orbitle.media.AttachmentImporter
+import app.orbitle.platform.DesktopActions
+import app.orbitle.presentation.stories.StoriesViewModel
+import app.orbitle.presentation.stories.StoryText
+import app.orbitle.ui.stories.LocalStoryRings
+import app.orbitle.ui.stories.StoriesStrip
+import app.orbitle.ui.stories.StoryComposer
+import app.orbitle.ui.stories.StoryRings
+import app.orbitle.ui.stories.StoryViewer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -117,6 +135,29 @@ fun MainScreen(
     val newChat = viewModel(key = "new-chat") { NewChatModel(container.contacts, container.chats) { container.messages.currentUserId } }
     val privatePrefs by container.privateMode.state.collectAsStateWithLifecycle()
     val privateDisplay = PrivateModeSettings.display(privatePrefs, canBlur = true)
+    // Истории: одна модель на список, шапку чата и профиль.
+    val storiesModel = viewModel { StoriesViewModel(container.stories, container.session.connection) }
+    val stories by storiesModel.state.collectAsStateWithLifecycle()
+    var composingStory by remember { mutableStateOf<OutgoingStory?>(null) }
+    val storyScope = rememberCoroutineScope()
+    val storySnack = remember { SnackbarHostState() }
+    val addStory: () -> Unit = {
+        storyScope.launch {
+            val file = withContext(Dispatchers.IO) { DesktopActions.pickMedia() } ?: return@launch
+            val picked = AttachmentImporter.import(listOf(file)).firstOrNull()
+            composingStory = when (picked?.kind) {
+                OutgoingFile.Kind.PHOTO -> OutgoingStory(picked.path, isVideo = false)
+                OutgoingFile.Kind.VIDEO -> OutgoingStory(picked.path, isVideo = true)
+                else -> null
+            }
+            if (composingStory == null) storySnack.showSnackbar("Не удалось открыть файл")
+        }
+    }
+    LaunchedEffect(stories.message) {
+        val text = stories.message ?: return@LaunchedEffect
+        storiesModel.consumeMessage()
+        storySnack.showSnackbar(text)
+    }
     fun openChat(id: String, title: String? = null) {
         chatId = id
         chatTitle = title
@@ -135,7 +176,11 @@ fun MainScreen(
         chatId = null
         chatTitle = null
     }
-    CompositionLocalProvider(LocalPrivateMode provides privateDisplay) {
+    CompositionLocalProvider(
+        LocalPrivateMode provides privateDisplay,
+        LocalStoryRings provides StoryRings(stories, storiesModel::open, storiesModel::loadRing),
+    ) {
+        Box(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             NavigationRail {
                 Tab.entries.forEach { item ->
@@ -167,6 +212,15 @@ fun MainScreen(
                             onTogglePrivateMode = container.privateMode::toggle,
                             newChat = newChat,
                             onOpenCreated = { id, title -> openChat(id, title) },
+                            storiesHeader = {
+                                StoriesStrip(
+                                    stories,
+                                    self = StoryText.avatar(account?.id ?: container.messages.currentUserId.orEmpty(), account?.displayName.orEmpty(), account?.avatarUrl),
+                                    onOpen = storiesModel::open,
+                                    onAdd = addStory,
+                                )
+                            },
+                            onPullRefresh = storiesModel::refresh,
                         )
                     }
                     VerticalDivider()
@@ -227,6 +281,31 @@ fun MainScreen(
                     )
                 }
             }
+        }
+        SnackbarHost(storySnack, Modifier.align(Alignment.BottomCenter))
+        }
+        stories.viewer?.let { viewer ->
+            StoryViewer(
+                viewer,
+                userAgent = container.videoSourceUserAgent(),
+                onNext = storiesModel::next,
+                onPrevious = storiesModel::previous,
+                onNextOwner = storiesModel::nextOwner,
+                onPreviousOwner = storiesModel::previousOwner,
+                onClose = storiesModel::close,
+                onDelete = storiesModel::deleteCurrent,
+            )
+        }
+        composingStory?.let { story ->
+            StoryComposer(
+                story,
+                userAgent = container.videoSourceUserAgent(),
+                onPublish = { audience ->
+                    composingStory = null
+                    storiesModel.publish(story, audience)
+                },
+                onCancel = { composingStory = null },
+            )
         }
     }
 }

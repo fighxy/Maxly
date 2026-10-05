@@ -78,6 +78,8 @@ data class ChatListItem(
     val accessibilityLabel: String,
     /** Есть что читать: счётчик или ручная пометка. */
     val isUnread: Boolean = false,
+    /** Собеседник личного чата: по нему находится кольцо историй. */
+    val peerId: String? = null,
 ) {
     enum class PreviewStyle { MESSAGE, DRAFT, TYPING, EMPTY }
 
@@ -154,6 +156,7 @@ class ChatListFormatter(private val zone: ZoneId = ZoneId.systemDefault()) {
             isForwarded = style == ChatListItem.PreviewStyle.MESSAGE && chat.lastMessage?.isForwarded == true,
             accessibilityLabel = "",
             isUnread = chat.isUnread,
+            peerId = chat.peerId.takeIf { chat.type == ChatType.PRIVATE && !chat.isSavedMessages && it != "0" },
         )
         return item.copy(accessibilityLabel = spoken(item, chat))
     }

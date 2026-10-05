@@ -92,6 +92,15 @@ object DesktopActions {
         return if (imageOnly) files.take(1) else files
     }
 
+    /** Одно фото или видео: новая история. `null` — ничего не выбрали. */
+    fun pickMedia(): File? {
+        val dialog = FileDialog(null as Frame?, "Фото или видео для истории", FileDialog.LOAD)
+        dialog.isMultipleMode = false
+        dialog.setFilenameFilter { _, name -> name.substringAfterLast('.').lowercase() in IMAGE_EXT + VIDEO_EXT }
+        dialog.isVisible = true
+        return dialog.files?.firstOrNull { it.isFile }
+    }
+
     private fun playExternal(file: File) {
         runCatching {
             ProcessBuilder("ffplay", "-autoexit", "-loglevel", "quiet", file.absolutePath)
@@ -101,6 +110,7 @@ object DesktopActions {
     }
 
     private val IMAGE_EXT = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp")
+    private val VIDEO_EXT = setOf("mp4", "m4v", "mov", "webm")
 }
 
 /**

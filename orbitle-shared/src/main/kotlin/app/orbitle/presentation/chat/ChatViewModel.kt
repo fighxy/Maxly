@@ -82,6 +82,8 @@ data class ChatHeaderUi(
     /** Для общего заголовка приватного режима. */
     val type: app.orbitle.domain.ChatType = app.orbitle.domain.ChatType.PRIVATE,
     val isSavedMessages: Boolean = false,
+    /** Собеседник личного чата: владелец кольца историй на аватаре. */
+    val peerId: String? = null,
 )
 
 data class ChatUiState(
@@ -847,7 +849,10 @@ class ChatViewModel(
         }
         _state.update {
             it.copy(
-                header = ChatHeaderUi(title, subtitle, accent, ChatListFormatter().avatar(chat, title), chat.isVerified, chat.type, chat.isSavedMessages),
+                header = ChatHeaderUi(
+                    title, subtitle, accent, ChatListFormatter().avatar(chat, title), chat.isVerified, chat.type, chat.isSavedMessages,
+                    peerId = chat.peerId.takeIf { chat.type == app.orbitle.domain.ChatType.PRIVATE && !chat.isSavedMessages && it != "0" },
+                ),
                 canWrite = chat.canWrite != false,
                 botAppId = info.botAppId,
                 join = join,
