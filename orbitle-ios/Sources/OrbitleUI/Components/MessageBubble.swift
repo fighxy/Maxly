@@ -14,6 +14,7 @@ import UIKit
 /// угол меньше.
 public struct MessageBubble: View {
     private let message: Message
+    private let layout: MessageBubbleLayout
     private let isOutgoing: Bool
     private let maxWidth: CGFloat
     private let phase: VoicePhase
@@ -130,6 +131,7 @@ public struct MessageBubble: View {
         onButton: ((InlineButton) -> Void)? = nil
     ) {
         self.message = message
+        self.layout = MessageBubbleLayout(message: message, showsAuthorName: showsAuthorName, showsComments: allowsComments)
         self.isOutgoing = isOutgoing
         self.maxWidth = maxWidth
         self.phase = phase
@@ -173,6 +175,15 @@ public struct MessageBubble: View {
     }
 
     public var body: some View {
+        if let pin = message.content.pin {
+            ServiceMessageNotice(pin: pin, onOpen: onFocusReply)
+                .background(highlighted ? Color.orbitleAccent.opacity(0.12) : Color.clear)
+        } else {
+            messageRow
+        }
+    }
+
+    private var messageRow: some View {
         HStack(alignment: .bottom, spacing: 6) {
             if isOutgoing { Spacer(minLength: 40) }
             if !isOutgoing, reservesAvatar {
@@ -351,25 +362,12 @@ public struct MessageBubble: View {
     // MARK: Стикеры и крупные эмодзи
 
     /// Сообщение без подложки: стикер или от одного до трёх эмодзи (одно анимодзи — Lottie).
-    private enum Standalone {
-        case sticker(StickerContent)
-        case emoji([String], lottie: URL?)
-    }
-
-    private var standalone: Standalone? {
-        if let sticker = message.content.sticker { return .sticker(sticker) }
-        guard message.content.attachments.isEmpty, message.content.reply == nil, message.content.forward == nil,
-              !showsComments, let emoji = ChatContentFormat.bigEmoji(message.displayText) else { return nil }
-        let lottie = emoji.count == 1
-            ? (message.content.formatting ?? []).first { $0.kind == .animoji }?.url.flatMap(URL.init(string:))
-            : nil
-        return .emoji(emoji, lottie: lottie)
-    }
+    private var standalone: MessageBubbleLayout.Standalone? { layout.standalone }
 
     private static let stickerSize: CGFloat = 168
 
     @ViewBuilder
-    private func standaloneBody(_ standalone: Standalone) -> some View {
+    private func standaloneBody(_ standalone: MessageBubbleLayout.Standalone) -> some View {
         VStack(alignment: isOutgoing ? .trailing : .leading, spacing: 4) {
             if showsAuthorName, !authorTitle.isEmpty {
                 Text(authorTitle)
@@ -379,6 +377,11 @@ public struct MessageBubble: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
                     .background(.ultraThinMaterial, in: Capsule())
+            }
+            if let forward = message.content.forward {
+                forwardLabel(forward)
+                    .padding(8)
+                    .background(fill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             if let reply = message.content.reply {
                 quote(reply)
@@ -491,7 +494,7 @@ public struct MessageBubble: View {
                     voice: voice,
                     phase: phase,
                     outgoing: isOutgoing,
-                    time: hasText || timeInReactions ? nil : AnyView(meta),
+                    time: layout.metadata == .voice(voice.id) ? AnyView(meta) : nil,
                     transcript: transcript,
                     onTranscribe: onTranscribe,
                     onToggle: onVoice,
@@ -526,7 +529,7 @@ public struct MessageBubble: View {
                 CallBubble(
                     call: call,
                     outgoing: isOutgoing,
-                    time: hasText || timeInReactions ? nil : AnyView(meta),
+                    time: layout.metadata == .call(call.id) ? AnyView(meta) : nil,
                     timeText: ChatContentFormat.time(message.timestamp)
                 )
                 .padding(.horizontal, 10)
@@ -540,13 +543,7 @@ public struct MessageBubble: View {
                     .padding(.horizontal, 10)
                     .padding(.bottom, 8)
             }
-            if !hasText, visuals.isEmpty, message.content.voices.isEmpty, message.content.calls.isEmpty, message.content.poll == nil, !reactionsInside {
-                // Пустое сообщение, только файл или контакт: время отдельной строкой.
-                if message.content.files.isEmpty, message.content.contacts.isEmpty, message.content.linkPreview == nil {
-                    Text(message.text.isEmpty ? " " : message.text)
-                        .padding(.horizontal, 12)
-                        .padding(.top, 7)
-                }
+            if layout.metadata == .footer {
                 HStack {
                     Spacer(minLength: 0)
                     meta
@@ -606,7 +603,7 @@ public struct MessageBubble: View {
         return MediaMosaic(
             attachments: visuals,
             maxWidth: bubbleWidth - inset * 2,
-            time: hasText ? nil : ChatContentFormat.time(message.timestamp),
+            time: layout.metadata == .media ? ChatContentFormat.time(message.timestamp) : nil,
             status: isOutgoing ? message.status : nil,
             isRead: message.isRead,
             cornerRadius: hasFill ? Self.radius - inset : Self.radius,
@@ -631,10 +628,10 @@ public struct MessageBubble: View {
                 text: message.displayText,
                 spans: message.content.formatting ?? [],
                 outgoing: isOutgoing,
-                trailingSpace: timeInReactions ? nil : metaReserve
+                trailingSpace: layout.metadata == .text ? metaReserve : nil
             )
             .textSelection(.enabled)
-            if !timeInReactions {
+            if layout.metadata == .text {
                 meta
             }
         }
@@ -649,13 +646,13 @@ public struct MessageBubble: View {
 
     /// Реакции лежат внутри пузыря, если у него есть подложка (фото без подписи — под ним).
     private var reactionsInside: Bool {
-        standalone == nil && hasFill && !message.content.reactions.isEmpty
+        layout.reactionsInside
     }
 
     /// Время переезжает из текста в ряд реакций, как в привычных мессенджерах, — и у
     /// голосового тоже: правый нижний угол пузыря один для всех сообщений.
     private var timeInReactions: Bool {
-        reactionsInside
+        layout.metadata == .reactions
     }
 
     private var reactionsRow: some View {
@@ -839,7 +836,7 @@ public struct MessageBubble: View {
     }
 
     private var hasText: Bool {
-        !message.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && message.content.sticker == nil
+        layout.hasText
     }
 
     private var stretchesText: Bool {
@@ -848,18 +845,16 @@ public struct MessageBubble: View {
     }
 
     private var hasHeader: Bool {
-        (showsAuthorName && !authorTitle.isEmpty) || message.content.reply != nil || message.content.forward != nil
+        layout.hasHeader
     }
 
     private var authorTitle: String {
         message.authorName.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Подложка есть у всего, кроме сообщения только из фото и видео.
+    /// Медиа без подписи остаются без подложки; смешанное содержимое собирается в карточку.
     private var hasFill: Bool {
-        hasText || hasHeader || !message.content.voices.isEmpty || !message.content.files.isEmpty
-            || !message.content.contacts.isEmpty || visuals.isEmpty
-            || showsComments
+        layout.hasFill
     }
 
     private var fill: Color {

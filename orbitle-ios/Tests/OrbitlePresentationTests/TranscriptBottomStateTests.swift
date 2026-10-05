@@ -3,6 +3,25 @@ import Testing
 
 @Suite("Лента: низ и кнопка «вниз»")
 struct TranscriptBottomStateTests {
+    @Test("Переход к ответу или непрочитанным отключает удержание низа без жеста")
+    func readingHistory() {
+        var state = TranscriptBottomState()
+        let jump = state.beginJump()
+        state.beginReadingHistory()
+        #expect(!state.atBottom)
+        #expect(state.jump == nil)
+        let completed = state.finishJump(jump)
+        #expect(!completed)
+        state.received(2)
+        state.markerMoved(bottomY: .infinity, viewportHeight: 700, dragging: false)
+        #expect(state.unseen == 2)
+        #expect(state.showsButton(hasMessages: true))
+        state.beginReadingHistory()
+        #expect(state.unseen == 2)
+        state.markerMoved(bottomY: 700, viewportHeight: 700, dragging: false)
+        #expect(state.atBottom && state.unseen == 0)
+    }
+
     @Test("Сначала внизу, кнопки нет; пальцем вверх — кнопка есть, у низа — снова нет")
     func showAndHide() {
         var state = TranscriptBottomState()
