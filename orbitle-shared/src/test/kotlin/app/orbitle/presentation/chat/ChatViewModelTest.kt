@@ -50,7 +50,9 @@ class FakeMessages : MessageRepository {
     override fun header(chatId: String) = headerInfo.map { it }
     var latestFailure: Exception? = null
     var olderFailure: Exception? = null
+    var latestCalls = 0
     override suspend fun loadLatest(chatId: String) {
+        latestCalls++
         latestFailure?.let { throw it }
     }
     override suspend fun loadOlder(chatId: String): Boolean {
@@ -171,6 +173,17 @@ class ChatViewModelTest {
         main.dispatcher.scheduler.runCurrent()
         assertNull(model.state.value.emptyHint)
         assertEquals(1, model.state.value.items.count { it is ChatItem.Bubble })
+    }
+
+    @Test
+    fun refusedChatStopsRetryingAfterAFewTries() {
+        repo.latestFailure = OrbitleError.Server(OrbitleError.RATE_LIMIT_CODE)
+        val model = vm()
+        // Открытие и три повтора с паузами 20, 40 и 80 с — и всё: каждый отказ продлевает лимит.
+        main.dispatcher.scheduler.advanceTimeBy(10 * 60_000L)
+        main.dispatcher.scheduler.runCurrent()
+        assertEquals(1 + ChatViewModel.LATEST_RETRY_LIMIT, repo.latestCalls)
+        assertEquals(ChatViewModel.RATE_LIMIT_GAVE_UP_HINT, model.state.value.emptyHint)
     }
 
     @Test
