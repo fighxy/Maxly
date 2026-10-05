@@ -164,4 +164,3 @@ struct TranscriptBubble: View, Equatable {
         )
     }
 }
-
