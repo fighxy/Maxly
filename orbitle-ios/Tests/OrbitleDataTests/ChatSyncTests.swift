@@ -233,6 +233,21 @@ struct ChatSyncTests {
         #expect(await row(parts.chats) == nil)
     }
 
+    @Test("Неактивный чат (вышел, закрыт) уходит из списка: при обновлении и по пушу")
+    func inactiveChatsLeaveTheList() async throws {
+        let parts = try await makeSync()
+        try await parts.chats.upsert([makeChat(), makeChat(id: "c2")])
+        var gone = makeChat()
+        gone.isActive = false
+        await parts.api.setChats([gone, makeChat(id: "c2")])
+        try await parts.chats.refresh()
+        #expect(await row(parts.chats) == nil)
+        #expect(await row(parts.chats, "c2") != nil)
+
+        await parts.sync.consume(event(.chatGone, chat: "c2"))
+        #expect(await row(parts.chats, "c2") == nil)
+    }
+
     @Test("Отписка от канала уходит на сервер и убирает чат с историей; отказ оставляет его")
     func leaveChannel() async throws {
         let parts = try await makeSync()

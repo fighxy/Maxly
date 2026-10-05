@@ -44,6 +44,9 @@ public struct ChatRecord: Sendable, Hashable {
     public var lastKnown: Bool
     /// Отметка прочтения других участников, мс (`participants` карточки чата). `0` — не сказано.
     public var peerReadMark: Int64
+    /// Аккаунт участвует в чате. Не хранится: неактивный чат из ответа сервера убирается из
+    /// списка (как в Komet), а не записывается.
+    public var isActive: Bool = true
 
     public init(
         id: String,
