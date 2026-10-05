@@ -623,7 +623,8 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             official: profile.official,
             isPublic: profile.isPublic,
             commands: profile.commands.map { CoreProfile.Command(name: $0.name, description: $0.description_) },
-            hasWebApp: profile.hasWebApp
+            hasWebApp: profile.hasWebApp,
+            commentsEnabled: profile.comments < 0 ? nil : profile.comments == 1
         )
     }
 

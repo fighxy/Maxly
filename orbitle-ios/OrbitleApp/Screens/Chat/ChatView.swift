@@ -73,7 +73,7 @@ struct ChatView: View {
         ChatTranscript(
             viewModel: viewModel,
             chatType: kind,
-            commentsEnabled: commentsEnabled,
+            commentsEnabled: comments,
             canWrite: writable,
             reveal: reveal,
             focus: $composerFocused,
@@ -435,6 +435,12 @@ struct ChatView: View {
         }
     }
 
+    /// Родные комментарии канала: флаг из списка чатов, а если список не знает (канал из поиска
+    /// или карточка в списке без опций) — из карточки канала.
+    private var comments: Bool? {
+        commentsEnabled ?? profile?.profile?.commentsEnabled
+    }
+
     /// Название в шапке: из списка чатов, а у чата вне списка (канал из поиска) — из карточки,
     /// когда она пришла. Без неё было бы общее «Чат».
     private var headerTitle: String {
@@ -596,6 +602,6 @@ struct ChatView: View {
 
     /// В канале с комментариями счётчики постов спрашиваются у сервера, когда лента меняется.
     private var wantsCommentCounts: Bool {
-        kind == .channel && commentsEnabled != false
+        kind == .channel && comments != false
     }
 }

@@ -205,12 +205,14 @@ public struct CoreProfile: Sendable, Equatable {
     public var commands: [Command]
     /// Бот с мини-приложением (кнопка «Открыть приложение»).
     public var hasWebApp: Bool
+    /// Опция канала `COMMENTS`: `nil`, если карточка не сказала.
+    public var commentsEnabled: Bool?
 
     public init(
         kind: String, chatId: String, peerId: String = "", title: String = "", avatarURL: String = "",
         description: String = "", link: String = "", phone: String = "", participants: Int = 0,
         lastSeenMs: Int64 = 0, online: Bool = false, official: Bool = false, isPublic: Bool = false,
-        commands: [Command] = [], hasWebApp: Bool = false
+        commands: [Command] = [], hasWebApp: Bool = false, commentsEnabled: Bool? = nil
     ) {
         self.kind = kind
         self.chatId = chatId
@@ -227,6 +229,7 @@ public struct CoreProfile: Sendable, Equatable {
         self.isPublic = isPublic
         self.commands = commands
         self.hasWebApp = hasWebApp
+        self.commentsEnabled = commentsEnabled
     }
 }
 

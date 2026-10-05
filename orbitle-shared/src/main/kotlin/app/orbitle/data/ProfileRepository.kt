@@ -91,6 +91,7 @@ class CoreProfileRepository(private val client: MaxClient) : ProfileRepository {
             participants = chat.participantsCount.takeIf { it > 0 },
             isOfficial = options?.get("OFFICIAL") == true,
             isPublic = chat.raw["access"] == "PUBLIC",
+            commentsEnabled = options?.get("COMMENTS") as? Boolean,
         )
     }
 

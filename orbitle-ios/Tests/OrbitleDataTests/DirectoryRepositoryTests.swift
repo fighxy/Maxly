@@ -158,5 +158,8 @@ struct DirectoryRepositoryTests {
         #expect(channel.kind == .channel)
         #expect(channel.peerId == nil)
         #expect(channel.participants == 12)
+        #expect(channel.commentsEnabled == nil)
+        let quiet = CoreMapping.profile(CoreProfile(kind: "channel", chatId: "-10", commentsEnabled: false))
+        #expect(quiet.commentsEnabled == false)
     }
 }

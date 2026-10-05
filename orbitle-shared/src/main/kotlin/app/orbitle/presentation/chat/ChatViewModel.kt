@@ -794,6 +794,7 @@ class ChatViewModel(
                     updatedAtMs = 0,
                     avatarUrl = it.avatarUrl,
                     isVerified = it.isOfficial,
+                    commentsEnabled = it.commentsEnabled,
                     canWrite = false,
                 ),
                 participants = it.participants,

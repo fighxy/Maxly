@@ -118,7 +118,8 @@ enum CoreMapping {
             isOfficial: core.official,
             isPublic: core.isPublic,
             commands: core.commands.map { ChatProfile.BotCommand(name: $0.name, description: text($0.description)) },
-            hasWebApp: core.hasWebApp
+            hasWebApp: core.hasWebApp,
+            commentsEnabled: core.commentsEnabled
         )
     }
 

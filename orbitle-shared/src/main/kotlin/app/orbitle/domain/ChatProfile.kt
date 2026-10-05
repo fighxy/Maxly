@@ -17,6 +17,8 @@ data class ChatProfile(
     val isPublic: Boolean = false,
     val participants: Int? = null,
     val commands: List<BotCommand> = emptyList(),
+    /** Родные комментарии канала (опция `COMMENTS`); `null` — карточка не сказала. */
+    val commentsEnabled: Boolean? = null,
 ) {
     enum class Kind { USER, BOT, SAVED, GROUP, CHANNEL }
 
