@@ -352,7 +352,11 @@ private fun start(context: android.content.Context, intent: Intent) {
 @Composable
 private fun Header(state: ProfileUiState) {
     Column(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Avatar(state.avatar, 104.dp)
+        // Кольцо историй собеседника: владельца вне ленты профиль спрашивает сам.
+        val stories = app.orbitle.ui.stories.LocalStoryRings.current
+        val peer = state.profile.peerId.takeIf { state.profile.kind == app.orbitle.domain.ChatProfile.Kind.USER }
+        androidx.compose.runtime.LaunchedEffect(peer) { stories.load(peer) }
+        app.orbitle.ui.stories.StoryRingAvatar(state.avatar, stories.ringOf(peer), 104.dp, onRingClick = peer?.let { { stories.open(it) } })
         Spacer(Modifier.height(14.dp))
         Row(Modifier.padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(state.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)

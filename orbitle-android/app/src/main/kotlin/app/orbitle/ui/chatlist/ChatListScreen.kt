@@ -146,6 +146,10 @@ fun ChatListScreen(
     onTogglePrivateMode: () -> Unit = {},
     newChat: NewChatModel? = null,
     onOpenCreated: (id: String, title: String) -> Unit = { _, _ -> },
+    /** Полоса историй над чатами; `null` — без неё. */
+    storiesHeader: (@Composable () -> Unit)? = null,
+    /** Потянули список вниз: обновить и истории. */
+    onPullRefresh: () -> Unit = {},
 ) {
     LifecycleResumeEffect(viewModel) {
         viewModel.reloadLocal()
@@ -239,7 +243,10 @@ fun ChatListScreen(
     ) { padding ->
         PullToRefreshBox(
             isRefreshing = state.isRefreshing,
-            onRefresh = viewModel::refresh,
+            onRefresh = {
+                viewModel.refresh()
+                onPullRefresh()
+            },
             modifier = Modifier.padding(padding).fillMaxSize(),
         ) {
             val open: (ChatListItem) -> Unit = {
@@ -275,6 +282,7 @@ fun ChatListScreen(
                         folderPage.content, folderPage.items, searching = false, listState = listStates.of(folderPage.id),
                         onOpenChat = open, actions = actions, onRetry = viewModel::refresh,
                         canReorderPins = state.canReorderPins && folderPage.id == ChatFolder.ALL_ID,
+                        header = storiesHeader,
                     )
                 }
             } else {
@@ -292,6 +300,7 @@ fun ChatListScreen(
                         state.content, state.items, searching = searching, listState = listState,
                         onOpenChat = open, actions = actions, onRetry = viewModel::refresh,
                         canReorderPins = state.canReorderPins,
+                        header = storiesHeader.takeIf { !state.isSearchActive },
                     )
                 }
             }
@@ -320,10 +329,12 @@ private fun ChatListBody(
     onRetry: () -> Unit,
     /** В меню закреплённых строк есть «Изменить порядок». */
     canReorderPins: Boolean = false,
+    /** Первая строка списка: полоса историй. */
+    header: (@Composable () -> Unit)? = null,
 ) {
     when (content) {
         ChatListContent.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        ChatListContent.List -> ChatList(items, listState, onOpenChat, actions, canReorderPins)
+        ChatListContent.List -> ChatList(items, listState, onOpenChat, actions, canReorderPins, header)
         ChatListContent.Empty -> Placeholder(
             icon = { Icon(Icons.Outlined.ChatBubbleOutline, null, Modifier.size(56.dp)) },
             title = stringResource(if (searching) R.string.chats_search_empty else R.string.chats_empty),
@@ -429,8 +440,10 @@ private fun ChatList(
     onOpenChat: (ChatListItem) -> Unit,
     actions: ChatRowActions,
     canReorderPins: Boolean = false,
+    header: (@Composable () -> Unit)? = null,
 ) {
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+        if (header != null) item(key = "stories-strip") { header() }
         items(items, key = { it.id }) { item ->
             ChatRow(
                 item,
@@ -767,7 +780,14 @@ fun ChatRow(
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Avatar(item.avatar, 56.dp, online = item.isOnline, modifier = Modifier.privateBlur(privacy, 8.dp))
+            // Кольцо историй собеседника: касание аватара открывает его истории. Заглушки
+            // приватного режима колец не показывают.
+            val stories = app.orbitle.ui.stories.LocalStoryRings.current
+            val ring = if (privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER) null else stories.ringOf(item.peerId)
+            app.orbitle.ui.stories.StoryRingAvatar(
+                item.avatar, ring, 56.dp, online = item.isOnline, modifier = Modifier.privateBlur(privacy, 8.dp),
+                onRingClick = item.peerId?.let { peer -> { stories.open(peer) } },
+            )
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

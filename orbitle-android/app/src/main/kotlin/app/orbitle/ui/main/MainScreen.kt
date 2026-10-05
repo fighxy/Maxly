@@ -82,6 +82,23 @@ import app.orbitle.ui.settings.AboutScreen
 import app.orbitle.ui.settings.MessagesScreen
 import app.orbitle.ui.settings.SettingsScreen
 import app.orbitle.domain.Account
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import app.orbitle.domain.OutgoingStory
+import app.orbitle.presentation.stories.StoriesViewModel
+import app.orbitle.presentation.stories.StoryText
+import app.orbitle.ui.stories.LocalStoryRings
+import app.orbitle.ui.stories.StoriesStrip
+import app.orbitle.ui.stories.StoryComposer
+import app.orbitle.ui.stories.StoryFiles
+import app.orbitle.ui.stories.StoryRings
+import app.orbitle.ui.stories.StoryViewer
+import kotlinx.coroutines.launch
 
 /** Вкладки нижней панели. */
 enum class Tab(val route: String, val title: Int, val icon: ImageVector, val selectedIcon: ImageVector) {
@@ -114,6 +131,24 @@ fun MainScreen(
     val privatePrefs by container.privateMode.state.collectAsStateWithLifecycle()
     val privateDisplay = app.orbitle.data.PrivateModeSettings.display(privatePrefs, canBlur = android.os.Build.VERSION.SDK_INT >= 31)
     val showsBar = Tab.entries.any { it.route == route } || route == null
+    // Истории: одна модель на список, шапку чата и профиль.
+    val storiesModel = viewModel { StoriesViewModel(container.stories, container.session.connection) }
+    val stories by storiesModel.state.collectAsStateWithLifecycle()
+    var composingStory by remember { mutableStateOf<OutgoingStory?>(null) }
+    val context = LocalContext.current
+    val storyScope = rememberCoroutineScope()
+    val pickStory = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) storyScope.launch {
+            composingStory = StoryFiles.import(context, uri)
+            if (composingStory == null) Toast.makeText(context, "Не удалось открыть файл", Toast.LENGTH_SHORT).show()
+        }
+    }
+    val addStory = { pickStory.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }
+    LaunchedEffect(stories.message) {
+        val text = stories.message ?: return@LaunchedEffect
+        Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+        storiesModel.consumeMessage()
+    }
     // Действие из профиля чата (поиск, «О чате», звонок, очистка, удаление): чат откроет его после возврата.
     var chatAction by remember { mutableStateOf<Pair<String, ChatAction>?>(null) }
     fun openChat(id: String, title: String? = null) {
@@ -150,7 +185,10 @@ fun MainScreen(
             }
         },
     ) { padding ->
-        androidx.compose.runtime.CompositionLocalProvider(app.orbitle.ui.components.LocalPrivateMode provides privateDisplay) {
+        androidx.compose.runtime.CompositionLocalProvider(
+            app.orbitle.ui.components.LocalPrivateMode provides privateDisplay,
+            LocalStoryRings provides StoryRings(stories, storiesModel::open, storiesModel::loadRing),
+        ) {
         NavHost(nav, startDestination = Tab.CHATS.route, modifier = Modifier.padding(padding).consumeWindowInsets(padding)) {
             composable(Tab.CHATS.route) {
                 ChatListScreen(
@@ -163,6 +201,15 @@ fun MainScreen(
                     onTogglePrivateMode = container.privateMode::toggle,
                     newChat = newChat,
                     onOpenCreated = { id, title -> openChat(id, title) },
+                    storiesHeader = {
+                        StoriesStrip(
+                            stories,
+                            self = StoryText.avatar(account?.id ?: container.messages.currentUserId.orEmpty(), account?.displayName.orEmpty(), account?.avatarUrl),
+                            onOpen = storiesModel::open,
+                            onAdd = addStory,
+                        )
+                    },
+                    onPullRefresh = storiesModel::refresh,
                 )
             }
             composable(Tab.CALLS.route) { CallsScreen(callsModel, onOpenChat = { openChat(it) }) }
@@ -295,6 +342,29 @@ fun MainScreen(
             }
         }
         }
+    }
+    stories.viewer?.let { viewer ->
+        StoryViewer(
+            viewer,
+            userAgent = container.videoSourceUserAgent(),
+            onNext = storiesModel::next,
+            onPrevious = storiesModel::previous,
+            onNextOwner = storiesModel::nextOwner,
+            onPreviousOwner = storiesModel::previousOwner,
+            onClose = storiesModel::close,
+            onDelete = storiesModel::deleteCurrent,
+        )
+    }
+    composingStory?.let { story ->
+        StoryComposer(
+            story,
+            userAgent = container.videoSourceUserAgent(),
+            onPublish = { audience ->
+                composingStory = null
+                storiesModel.publish(story, audience)
+            },
+            onCancel = { composingStory = null },
+        )
     }
 }
 

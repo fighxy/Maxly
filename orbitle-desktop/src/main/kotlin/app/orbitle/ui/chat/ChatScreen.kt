@@ -651,7 +651,12 @@ private fun ChatTopBar(
             val real = state.header ?: return@TopAppBar
             val header = if (privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER) app.orbitle.presentation.settings.PrivateModeMask.header(real) else real
             Row(Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onOpenProfile), verticalAlignment = Alignment.CenterVertically) {
-                Avatar(header.avatar, 40.dp, modifier = Modifier.privateBlur(privacy, 6.dp))
+                val stories = app.orbitle.ui.stories.LocalStoryRings.current
+                val ring = if (privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER) null else stories.ringOf(header.peerId)
+                app.orbitle.ui.stories.StoryRingAvatar(
+                    header.avatar, ring, 40.dp, modifier = Modifier.privateBlur(privacy, 6.dp),
+                    onRingClick = header.peerId?.let { peer -> { stories.open(peer) } },
+                )
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {

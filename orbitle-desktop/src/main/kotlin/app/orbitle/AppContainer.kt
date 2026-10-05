@@ -94,6 +94,8 @@ class AppContainer {
     val privateMode = PrivateModeSettings(preferenceStore)
     val stickers: StickerRepository = CoreStickerRepository(client)
     val comments = CoreCommentsRepository(client)
+
+    val stories: app.orbitle.data.StoriesRepository = app.orbitle.data.CoreStoriesRepository(client)
     val mediaSaver = DownloadsSaver()
 
     private val localMarks = object : DraftStore, ChatLocalMarks {
