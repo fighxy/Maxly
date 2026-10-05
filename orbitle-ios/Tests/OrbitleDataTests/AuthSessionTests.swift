@@ -252,6 +252,22 @@ struct SessionCoreTests {
         }
     }
 
+    @Test("Первое подключение не удалось, ядро переподключается само: кэш и «подключение», не офлайн")
+    func startKeepsReconnecting() async throws {
+        try await withSession { parts in
+            await parts.core.setStoredToken(true)
+            await parts.core.setStartPhase(.reconnecting)
+            await parts.session.restoreSession()
+            #expect(await parts.session.currentPhase == .signedIn(userId: ""))
+            var states = parts.session.connectionStates().makeAsyncIterator()
+            #expect(await states.next() == .connecting)
+            await parts.core.setUser("33")
+            await parts.session.observe(.ready)
+            #expect(await states.next() == .online)
+            #expect(await parts.session.currentPhase == .signedIn(userId: "33"))
+        }
+    }
+
     @Test("Кэш под одним id, а ядро вошло другим: чужой кэш стирается")
     func cacheOfOtherAccount() async throws {
         try await withSession { parts in

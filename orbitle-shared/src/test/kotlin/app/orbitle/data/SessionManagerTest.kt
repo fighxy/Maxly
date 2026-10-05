@@ -114,6 +114,18 @@ class SessionManagerTest {
     }
 
     @Test
+    fun startThatKeepsReconnectingShowsCacheAsConnecting() = runTest(UnconfinedTestDispatcher()) {
+        // the core reports a failed first connect as RECONNECTING and retries by itself
+        core.startPhase = CorePhase.RECONNECTING
+        core.stored = true
+        ids.lastUserId = "7"
+        val s = session()
+        s.restoreSession()
+        assertEquals(AuthPhase.SignedIn("7"), s.phase.value)
+        assertEquals(ConnectionState.CONNECTING, s.connection.value)
+    }
+
+    @Test
     fun freshNoticeFollowsCodePasswordAndRegistrationOnly() = runTest(UnconfinedTestDispatcher()) {
         core.stored = true
         core.startPhase = CorePhase.READY
