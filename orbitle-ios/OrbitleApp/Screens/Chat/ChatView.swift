@@ -110,7 +110,8 @@ struct ChatView: View {
                     isMuted: isMuted,
                     // Звук чата вне списка не переключить: его нет среди чатов аккаунта.
                     onToggleMute: canWrite == nil ? nil : onToggleMute,
-                    onOpenApp: openAppAction
+                    onOpenApp: openAppAction,
+                    join: joinAction
                 )
                 if panelShown, writable, let stickerPanel {
                     StickerPanel(
@@ -148,7 +149,7 @@ struct ChatView: View {
             ToolbarItem(placement: .principal) {
                 Button(action: openProfile) {
                     ChatHeaderTitle(
-                        title: title,
+                        title: headerTitle,
                         maskedTitle: maskedTitle,
                         status: privateMode.isMasked ? .none : headerStatus,
                         isVerified: live().isVerified || profile?.isOfficial == true,
@@ -417,6 +418,28 @@ struct ChatView: View {
         return { [viewModel] in viewModel.openBotApp(botId: botId, title: appTitle) }
     }
 
+    /// Канал или группа вне списка (открыты из поиска) с публичной ссылкой: вместо плашки
+    /// «Подписаться» или «Вступить».
+    private var joinAction: ChatComposer.Join? {
+        guard canWrite == nil, let card = profile?.profile, let link = card.linkURL?.absoluteString else { return nil }
+        let label: String
+        switch card.kind {
+        case .channel: label = "Подписаться"
+        case .group: label = "Вступить"
+        case .user, .bot, .saved: return nil
+        }
+        return ChatComposer.Join(label: label, busy: viewModel.joining) { [viewModel] in
+            Task { await viewModel.join(link: link) }
+        }
+    }
+
+    /// Название в шапке: из списка чатов, а у чата вне списка (канал из поиска) — из карточки,
+    /// когда она пришла. Без неё было бы общее «Чат».
+    private var headerTitle: String {
+        if canWrite == nil, let name = profile?.profile?.title, !name.isEmpty { return name }
+        return title
+    }
+
     /// Тип чата для ленты и поля ввода: из списка, а для чата вне списка — из карточки.
     private var kind: ChatType {
         guard canWrite == nil, let card = profile?.profile else { return chatType }
@@ -484,7 +507,7 @@ struct ChatView: View {
 
     /// Заголовок для системы: в приватном режиме общий, иначе название чата.
     private var shownTitle: String {
-        privateMode.isMasked ? maskedTitle : title
+        privateMode.isMasked ? maskedTitle : headerTitle
     }
 
     private var maskedTitle: String {

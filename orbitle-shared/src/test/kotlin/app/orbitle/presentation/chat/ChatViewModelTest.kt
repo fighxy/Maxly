@@ -680,6 +680,28 @@ class ChatViewModelTest {
     }
 
     @Test
+    fun channelOutsideTheListShowsItsCardAndJoins() {
+        val chats = FakeChats()
+        val card = app.orbitle.domain.ChatProfile(app.orbitle.domain.ChatProfile.Kind.CHANNEL, "10", title = "Новости", link = "https://max.ru/news", participants = 117_844)
+        val profiles = object : app.orbitle.data.ProfileRepository {
+            override fun cached(chatId: String) = null
+            override suspend fun profile(chatId: String) = card
+            override suspend fun sharedPage(chatId: String, tab: app.orbitle.domain.SharedMediaTab, beforeMessageId: String) = emptyList<Message>()
+        }
+        val model = ChatViewModel("10", repo, ChatFormatter(ZoneOffset.UTC), now = { now }, fallbackTitle = "Чат", chats = chats, profiles = profiles)
+        val state = model.state.value
+        assertEquals("Новости", state.header!!.title)
+        assertEquals(ChatType.CHANNEL, state.header!!.type)
+        assertFalse(state.canWrite)
+        assertEquals(JoinUi("Подписаться", false), state.join)
+        model.join()
+        assertEquals(listOf("https://max.ru/news"), chats.joined)
+        // Чат встал в стор: шапка из него, кнопки больше нет.
+        repo.headerInfo.value = ChatHeaderInfo(chat(ChatType.CHANNEL).copy(title = "Новости", canWrite = false))
+        assertNull(model.state.value.join)
+    }
+
+    @Test
     fun openAppButtonOfABotHeader() {
         repo.headerInfo.value = ChatHeaderInfo(chat(), botAppId = "77")
         val model = vm()
@@ -700,6 +722,11 @@ private class FakeChats : ChatRepository {
     var calls = 0
     var answer = ButtonAnswer(null, null)
     val pressed = mutableListOf<String>()
+    val joined = mutableListOf<String>()
+    override suspend fun joinByLink(link: String): String? {
+        joined += link
+        return "10"
+    }
     override suspend fun pressButton(chatId: String, messageId: String, callbackId: String, payload: String?): ButtonAnswer {
         pressed += "$chatId/$messageId/$callbackId/$payload"
         return answer

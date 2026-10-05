@@ -246,6 +246,7 @@ fun MainScreen(
                         emojiSupported = EmojiSupport::canDraw, comments = container.comments,
                         mediaSaver = container.mediaSaver,
                         chats = container.chats,
+                        profiles = container.profiles,
                     ) }
                 ChatScreen(
                     model,
