@@ -43,6 +43,9 @@ jobs:
         env:
           MAX_KMP_CORE_TOKEN: ${{ secrets.MAX_KMP_CORE_TOKEN }}
         run: bash scripts/fetch-core.sh
+      # ffmpeg для тестов встроенного проигрывателя видео: без него они пропускаются.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       # build включает jvmTest: тесты общего кода из orbitle-shared на библиотеках десктопа.
       - name: Build and tests
         env:
