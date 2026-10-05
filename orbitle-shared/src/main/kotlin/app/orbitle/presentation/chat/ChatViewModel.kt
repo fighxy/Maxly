@@ -286,11 +286,17 @@ class ChatViewModel(
 
     private var latestRetry: kotlinx.coroutines.Job? = null
 
-    /** Повтор свежей страницы после `too.many.requests`, тихо: ошибки уже показаны или не нужны. */
-    private fun scheduleLatestRetry() {
+    /**
+     * Повтор свежей страницы после `too.many.requests`, тихо: ошибки уже показаны или не нужны.
+     * Не больше [LATEST_RETRY_LIMIT] раз, с растущей паузой: каждый отказ продлевает ограничение
+     * сервера, и бесконечный повтор в чате, который сервер не отдаёт, держал бы под ним весь
+     * аккаунт.
+     */
+    private fun scheduleLatestRetry(attempt: Int = 0) {
         latestRetry?.cancel()
+        if (attempt >= LATEST_RETRY_LIMIT) return
         latestRetry = viewModelScope.launch {
-            delay(RATE_LIMIT_RETRY_MS)
+            delay(RATE_LIMIT_RETRY_MS shl attempt)
             try {
                 repository.loadLatest(chatId)
                 latestLoaded = true
@@ -299,7 +305,14 @@ class ChatViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (app.orbitle.data.CoreErrors.map(e).isRateLimit) scheduleLatestRetry()
+                if (!app.orbitle.data.CoreErrors.map(e).isRateLimit) return@launch
+                if (attempt + 1 < LATEST_RETRY_LIMIT) {
+                    scheduleLatestRetry(attempt + 1)
+                } else if (latestFailure != null) {
+                    // Сам больше не спрашиваем: пустой экран говорит, что делать.
+                    latestFailure = RATE_LIMIT_GAVE_UP_HINT
+                    rebuild()
+                }
             }
         }
     }
@@ -1361,6 +1374,10 @@ class ChatViewModel(
         const val COUNTS_RETRIES = 4
         /** Через сколько повторить свежую страницу после `too.many.requests`. */
         const val RATE_LIMIT_RETRY_MS = 20_000L
+        /** Сколько раз сам повторить свежую страницу после `too.many.requests` (паузы 1×, 2×, 4×). */
+        const val LATEST_RETRY_LIMIT = 3
+        /** Пустой экран, когда сервер так и не отдал историю после повторов. */
+        const val RATE_LIMIT_GAVE_UP_HINT = "Сервер не отдаёт сообщения этого чата. Откройте его снова чуть позже"
         /** Пустой экран, пока сервер просит подождать: лента загрузится сама. */
         const val RATE_LIMIT_HINT = "Сервер просит подождать. Сообщения загрузятся сами через несколько секунд"
         /** Пауза перед следующей старой страницей после ошибки. */

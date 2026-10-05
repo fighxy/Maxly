@@ -460,10 +460,15 @@ public final class ChatViewModel {
 
     /// Повтор сверки после `too.many.requests`. Без перезагрузки ленты: новые сообщения
     /// приходят в подписку как обычные вставки, прокрутка не сбивается.
-    private func scheduleLatestRetry() {
+    ///
+    /// Не больше `latestRetryLimit` раз, с растущей паузой: каждый отказ продлевает ограничение
+    /// сервера, и бесконечный повтор в чате, который сервер не отдаёт, держал бы под ним весь
+    /// аккаунт. Дальше — только «Повторить» на экране.
+    private func scheduleLatestRetry(attempt: Int = 0) {
         latestRetry?.cancel()
+        guard attempt < Self.latestRetryLimit else { return }
         latestRetry = Task { [weak self] in
-            try? await Task.sleep(for: Self.rateLimitRetry)
+            try? await Task.sleep(for: Self.rateLimitRetry * (1 << attempt))
             guard !Task.isCancelled, let self, self.watch != nil else { return }
             do {
                 try await self.repository.fetchLatest(chatId: self.chatId)
@@ -473,7 +478,7 @@ public final class ChatViewModel {
             } catch let error as OrbitleError {
                 // В замыкании задачи тип ошибки не выводится из `fetchLatest`: приводим явно.
                 guard !Task.isCancelled, error.isRateLimit else { return }
-                self.scheduleLatestRetry()
+                self.scheduleLatestRetry(attempt: attempt + 1)
             } catch {}
         }
     }
@@ -743,6 +748,8 @@ public final class ChatViewModel {
     static let retryAfterError: TimeInterval = 30
     /// Через сколько повторить сверку ленты после `too.many.requests`.
     static let rateLimitRetry: Duration = .seconds(20)
+    /// Сколько раз сам повторить свежую страницу после `too.many.requests` (паузы 1×, 2×, 4×).
+    static let latestRetryLimit = 3
 
     /// Прокрутить к цитате, если она уже в загруженном окне.
     public func focusReply(_ messageId: String) {
