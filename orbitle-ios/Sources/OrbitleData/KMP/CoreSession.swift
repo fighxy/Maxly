@@ -577,6 +577,23 @@ public protocol MaxCore: Sendable {
     func enablePassword(password: String, hint: String) async throws
     func changePassword(oldPassword: String, newPassword: String) async throws
     func disablePassword(password: String) async throws
+
+    // MARK: Истории (схема Komet feature/FullStack)
+
+    /// Лента историй (`STORIES_LIST` 208): по кольцу на владельца, пустые не входят.
+    func loadStoriesFeed() async throws -> [StoryRing]
+    /// Истории владельца (`STORIES_GET_BY_OWNER_ID` 210), от старых к новым, и его свежее кольцо.
+    func loadOwnerStories(owner: StoryOwner) async throws -> OwnerStories
+    /// История просмотрена (`STORIES_MARK` 214).
+    func markStorySeen(owner: StoryOwner, storyId: String) async throws
+    /// Своя история на сутки: слот загрузки, загрузка, `STORIES_SEND` 215. `audience` — `1` всем,
+    /// `2` контактам. Ответ — своё кольцо и опубликованные истории. Отмена — как у `sendMedia`.
+    func publishStory(path: String, isVideo: Bool, durationMs: Int64, audience: Int,
+                      progress: @escaping @Sendable (Double) -> Void) async throws -> OwnerStories
+    /// Удалить свои истории (`STORIES_DELETE` 218).
+    func deleteStories(ids: [String]) async throws
+    /// Пуши колец (`NOTIF_STORIES_UPDATE` 216). Пустое кольцо — историй у владельца не осталось.
+    func storyUpdates() -> AsyncStream<StoryRing>
 }
 
 public extension MaxCore {
@@ -721,6 +738,15 @@ public extension MaxCore {
     func enablePassword(password: String, hint: String) async throws { throw unsupported }
     func changePassword(oldPassword: String, newPassword: String) async throws { throw unsupported }
     func disablePassword(password: String) async throws { throw unsupported }
+
+    // Фейки без историй.
+    func loadStoriesFeed() async throws -> [StoryRing] { throw unsupported }
+    func loadOwnerStories(owner: StoryOwner) async throws -> OwnerStories { throw unsupported }
+    func markStorySeen(owner: StoryOwner, storyId: String) async throws { throw unsupported }
+    func publishStory(path: String, isVideo: Bool, durationMs: Int64, audience: Int,
+                      progress: @escaping @Sendable (Double) -> Void) async throws -> OwnerStories { throw unsupported }
+    func deleteStories(ids: [String]) async throws { throw unsupported }
+    func storyUpdates() -> AsyncStream<StoryRing> { AsyncStream { $0.finish() } }
 }
 
 /// Ответ расшифровки голосового: `status` `1` — готово (`text` пуст, если речи не нашлось),

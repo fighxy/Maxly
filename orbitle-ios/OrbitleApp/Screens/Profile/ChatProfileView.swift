@@ -43,6 +43,8 @@ struct ChatProfileView: View {
 
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Истории собеседника: кольцо на аватаре, касание открывает их.
+    @Environment(StoriesViewModel.self) private var stories: StoriesViewModel?
     @State private var copied: String?
     /// Сдвиг шапки: больше нуля — профиль тянут вниз, меньше — прокрутили.
     @State private var offset: CGFloat = 0
@@ -134,6 +136,8 @@ struct ChatProfileView: View {
         .task {
             await viewModel.loadIfStale()
             await viewModel.loadExtras()
+            // Кольцо владельца вне ленты профиль спрашивает сам (один раз за сеанс).
+            await stories?.loadRing(storyOwner)
         }
         .refreshable { await viewModel.load() }
         .task(id: sharedVersion) {
@@ -213,7 +217,13 @@ struct ChatProfileView: View {
         let pull = max(offset, 0)
         let scroll = min(offset, 0)
         let scale = reduceMotion ? 1 : (pull > 0 ? 1 + min(pull, 160) / 320 : max(0.55, 1 + scroll / 220))
+        let owner = storyOwner
+        let hasStories = stories?.ring(of: owner) != nil
         return Button {
+            if hasStories, let owner {
+                stories?.open(owner)
+                return
+            }
             guard let url = viewModel.shown.avatarURL else { return }
             avatarViewer = MediaViewerRequest(
                 id: "avatar",
@@ -223,10 +233,15 @@ struct ChatProfileView: View {
             ChatHeaderAvatar(viewModel: viewModel, size: Self.avatarSize, isOnline: viewModel.isOnline || live.isOnline)
         }
         .buttonStyle(.plain)
-        .disabled(viewModel.shown.avatarURL == nil)
+        .disabled(viewModel.shown.avatarURL == nil && !hasStories)
         .scaleEffect(scale, anchor: pull > 0 ? .top : .bottom)
         .opacity(reduceMotion ? 1 : Double(max(0, min(1, 1 + (scroll + 40) / 80))))
         .accessibilityLabel("Фото профиля")
+    }
+
+    /// Собеседник — владелец колец историй; у ботов, групп и каналов их нет.
+    private var storyOwner: String? {
+        viewModel.shown.kind == .user ? viewModel.shown.peerId : nil
     }
 
     private var compactTitle: some View {
@@ -821,18 +836,20 @@ struct ChatHeaderAvatar: View {
     let viewModel: ChatProfileViewModel
     let size: CGFloat
     var isOnline = false
+    /// Собеседник с историями — аватар в кольце. Заглушки приватного режима колец не показывают.
+    @Environment(StoriesViewModel.self) private var stories: StoriesViewModel?
+    @Environment(\.privateMode) private var privateMode
 
     var body: some View {
         if viewModel.shown.kind == .saved {
             ChatAvatarView(avatar: ChatAvatar(kind: .savedMessages, colorIndex: 0), size: size)
         } else {
-            AvatarView(
-                title: viewModel.title,
-                id: viewModel.shown.peerId ?? viewModel.chatId,
-                url: viewModel.shown.avatarURL,
-                size: size,
-                isOnline: isOnline
-            )
+            let initials = ChatAvatar.initials(for: viewModel.title)
+            let kind: ChatAvatar.Kind = viewModel.shown.avatarURL.map { .photo($0, initials: initials) } ?? .initials(initials)
+            let id = viewModel.shown.peerId ?? viewModel.chatId
+            let ring = viewModel.shown.kind == .user && privateMode != .placeholder ? stories?.ring(of: viewModel.shown.peerId) : nil
+            StoryRingAvatar(avatar: ChatAvatar(kind: kind, colorIndex: ChatAvatar.colorIndex(for: id)), ring: ring, size: size, isOnline: isOnline)
+                .accessibilityLabel(privateMode.isMasked ? "" : viewModel.title)
         }
     }
 }

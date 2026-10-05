@@ -48,6 +48,11 @@ enum MediaExporter {
         try await exportVideo(AVURLAsset(url: url))
     }
 
+    /// Фото из системного выбора (новая история): JPEG не больше 2560 px.
+    static func draft(photoData data: Data) throws -> AttachmentDraft {
+        try writePhoto(data)
+    }
+
     // MARK: Файлы
 
     /// Копия файла из «Файлов». Доступ к файлу вне песочницы открыт только на время копии.

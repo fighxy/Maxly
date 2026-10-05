@@ -10,7 +10,12 @@ struct ChatListView: View {
     @Binding var selection: String?
     var newChat: NewChatModel?
     var onOpened: (NewChatOpened) -> Void = { _ in }
+    /// Свой аватар для плитки «Ваша история» и кнопка новой истории; без них полосы нет.
+    var selfAvatar: ChatAvatar?
+    var onAddStory: (() -> Void)?
     @State private var composeShown = false
+    /// Истории: полоса над чатами и кольца на аватарах личных чатов. `nil` в превью.
+    @Environment(StoriesViewModel.self) private var stories: StoriesViewModel?
     /// Настройка приватного режима для плавающей кнопки. `nil` в превью без контейнера.
     @Environment(PrivateModeSettings.self) private var privateModeSettings: PrivateModeSettings?
     @Environment(\.privateMode) private var privateMode
@@ -116,6 +121,12 @@ struct ChatListView: View {
                 .listRowSeparator(.hidden)
                 .selectionDisabled()
             }
+            if let stories, let selfAvatar, let onAddStory {
+                StoriesStrip(stories: stories, selfAvatar: selfAvatar, onAdd: onAddStory)
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .selectionDisabled()
+            }
             if let message = viewModel.inlineError {
                 Button {
                     viewModel.dismissError()
@@ -164,7 +175,12 @@ struct ChatListView: View {
     }
 
     private func row(_ item: ChatListItem) -> some View {
-        ChatRow(item: item)
+        // Собеседник личного чата с историями: касание аватара открывает их.
+        let peer = stories?.peer(ofChat: item.id, type: item.type)
+        let ring = stories?.ring(of: peer)
+        var openStories: (() -> Void)?
+        if let peer, let stories { openStories = { stories.open(peer) } }
+        return ChatRow(item: item, storyRing: ring, onStoryTap: openStories)
             .tag(item.id)
             .listRowInsets(rowInsets)
             .listRowBackground(item.isPinned ? Color.orbitlePinnedBackground : nil)

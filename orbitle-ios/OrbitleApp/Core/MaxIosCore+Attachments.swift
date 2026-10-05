@@ -86,7 +86,7 @@ extension MaxIosCore {
 }
 
 /// Задача ядра, которую может отменить `onCancel`: он бывает раньше, чем задача создана.
-private final class RunningTask: @unchecked Sendable {
+final class RunningTask: @unchecked Sendable {
     private let lock = NSLock()
     private var task: IosTask?
     private var cancelled = false
