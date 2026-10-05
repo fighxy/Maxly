@@ -858,7 +858,31 @@ class ChatViewModel(
             markRead()
         }
         chat.commentsEnabled?.let { knownComments = it }
+        if (chat.type == ChatType.CHANNEL && stored != null && commentsFlag() == null) askCommentsFlag()
         if (chat.type != builtFor || commentsFlag() != builtComments) rebuild()
+    }
+
+    private var commentsFlagAsked = false
+
+    /**
+     * Канал из списка, а опции `COMMENTS` в его строке нет: список отдаёт чаты коротко. Флаг —
+     * из полной карточки канала, один раз, как на iOS. Без него родные комментарии не видны.
+     */
+    private fun askCommentsFlag() {
+        val repo = profiles ?: return
+        if (commentsFlagAsked) return
+        commentsFlagAsked = true
+        viewModelScope.launch {
+            try {
+                val flag = repo.profile(chatId).commentsEnabled ?: return@launch
+                knownComments = flag
+                rebuild()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Без карточки флаг остаётся неизвестным: плашки нет, как при выключенных.
+            }
+        }
     }
 
     private fun commentsFlag(): Boolean? = header?.chat?.commentsEnabled ?: knownComments
