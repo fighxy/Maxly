@@ -86,6 +86,9 @@ data class ChatHeaderUi(
     val isSavedMessages: Boolean = false,
     /** Собеседник личного чата: владелец кольца историй на аватаре. */
     val peerId: String? = null,
+    /** Чей аватар с кольцом: человек, группа или канал. Пусто — кольца нет. */
+    val storyOwnerId: String? = null,
+    val storyOwnerType: app.orbitle.domain.StoryOwner.Type = app.orbitle.domain.StoryOwner.Type.USER,
 )
 
 data class ChatUiState(
@@ -1152,6 +1155,16 @@ class ChatViewModel(
                 header = ChatHeaderUi(
                     title, subtitle, accent, ChatListFormatter().avatar(chat, title), chat.isVerified, chat.type, chat.isSavedMessages,
                     peerId = chat.peerId.takeIf { chat.type == app.orbitle.domain.ChatType.PRIVATE && !chat.isSavedMessages && it != "0" },
+                    storyOwnerId = when {
+                        chat.isSavedMessages -> null
+                        chat.type == app.orbitle.domain.ChatType.PRIVATE -> chat.peerId?.takeIf { it != "0" }
+                        else -> chat.id
+                    },
+                    storyOwnerType = when (chat.type) {
+                        app.orbitle.domain.ChatType.GROUP -> app.orbitle.domain.StoryOwner.Type.CHAT
+                        app.orbitle.domain.ChatType.CHANNEL -> app.orbitle.domain.StoryOwner.Type.CHANNEL
+                        else -> app.orbitle.domain.StoryOwner.Type.USER
+                    },
                 ),
                 canWrite = chat.canWrite != false,
                 botAppId = info.botAppId,
