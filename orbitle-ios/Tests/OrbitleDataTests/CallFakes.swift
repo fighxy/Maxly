@@ -133,7 +133,7 @@ final class FakeConnector: @unchecked Sendable {
 }
 
 @MainActor
-final class FakePeer: CallPeer {
+final class FakeCallPeer: CallPeer {
     var onEvent: ((PeerEvent) -> Void)?
     var signalingState: PeerSignalingState = .stable
     var isGatheringComplete = false
@@ -150,7 +150,7 @@ final class FakePeer: CallPeer {
     var remotes: [SessionDescription] = []
     var candidates: [IceCandidate] = []
     var tracks: [RemoteTrack] = []
-    var channels: [FakeChannel] = []
+    var channels: [FakeCallChannel] = []
     var levels: (local: Double, remote: Double)?
     var closed = false
     var offerSdp = "v=0\r\na=msid:stream cam-track\r\na=ssrc:11 msid:stream cam-track\r\n"
@@ -203,7 +203,7 @@ final class FakePeer: CallPeer {
     func remoteTracks() -> [RemoteTrack] { tracks }
 
     func openChannel(label: String) -> (any CallDataChannel)? {
-        let channel = FakeChannel(label: label)
+        let channel = FakeCallChannel(label: label)
         channels.append(channel)
         return channel
     }
@@ -215,7 +215,7 @@ final class FakePeer: CallPeer {
 }
 
 @MainActor
-final class FakeChannel: CallDataChannel {
+final class FakeCallChannel: CallDataChannel {
     let label: String
     var isOpen = false
     var onOpen: (() -> Void)?
@@ -242,8 +242,8 @@ final class FakeChannel: CallDataChannel {
 }
 
 @MainActor
-final class FakeMedia: CallMedia {
-    var peers: [FakePeer] = []
+final class FakeCallMedia: CallMedia {
+    var peers: [FakeCallPeer] = []
     var camera: CallCameraPosition?
     var cameraStarts: [CallCameraPosition] = []
     var screen = false
@@ -252,10 +252,10 @@ final class FakeMedia: CallMedia {
     var shutDown = false
     var cameraError: CallMediaError?
 
-    var peer: FakePeer? { peers.last }
+    var peer: FakeCallPeer? { peers.last }
 
     func makePeer(iceServers: [CallIceServer]) -> (any CallPeer)? {
-        let peer = FakePeer(iceServers: iceServers)
+        let peer = FakeCallPeer(iceServers: iceServers)
         peers.append(peer)
         return peer
     }
