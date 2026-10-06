@@ -31,7 +31,7 @@ struct CallSessionTests {
     private func session(
         role: CallRole,
         servers: [FakeWs2Server],
-        media: FakeMedia,
+        media: FakeCallMedia,
         isGroup: Bool = false,
         timing: CallSession.Timing? = nil
     ) -> (CallSession, FakeConnector) {
@@ -67,7 +67,7 @@ struct CallSessionTests {
     @Test("Исходящий напрямую: офер собеседнику, гудки, ответ, кандидаты, разговор")
     func outgoingDirect() async throws {
         let server = FakeWs2Server()
-        let media = FakeMedia()
+        let media = FakeCallMedia()
         let (call, _) = session(role: .caller, servers: [server], media: media)
         var phases: [CallState.Phase] = []
         call.onChange = { phases.append($0.phase) }
@@ -116,7 +116,7 @@ struct CallSessionTests {
     @Test("Исходящий: сброс до ответа — CANCELED, отказ собеседника — «отклонён»")
     func outgoingCanceledAndDeclined() async throws {
         let first = FakeWs2Server()
-        let (call, _) = session(role: .caller, servers: [first], media: FakeMedia())
+        let (call, _) = session(role: .caller, servers: [first], media: FakeCallMedia())
         await call.start()
         first.notify("connection", connectionNotice())
         #expect(await settle { call.state.phase == .ringing })
@@ -124,7 +124,7 @@ struct CallSessionTests {
         #expect(first.commands("hangup").first?["reason"]?.string == "CANCELED")
 
         let second = FakeWs2Server()
-        let (declined, _) = session(role: .caller, servers: [second], media: FakeMedia())
+        let (declined, _) = session(role: .caller, servers: [second], media: FakeCallMedia())
         await declined.start()
         second.notify("connection", connectionNotice())
         #expect(await settle { declined.state.phase == .ringing })
@@ -136,7 +136,7 @@ struct CallSessionTests {
     @Test("Входящий: звонит до ответа, офер ждёт ответа, ответ шлёт accept-call и SDP")
     func incomingAnswered() async throws {
         let server = FakeWs2Server()
-        let media = FakeMedia()
+        let media = FakeCallMedia()
         let (call, _) = session(role: .callee, servers: [server], media: media)
         #expect(call.state.phase == .ringing)
         await call.start()
@@ -167,14 +167,14 @@ struct CallSessionTests {
     @Test("Входящий: звонящий сбросил — пропущенный; отклонить — REJECTED")
     func incomingMissedAndRejected() async throws {
         let server = FakeWs2Server()
-        let (call, _) = session(role: .callee, servers: [server], media: FakeMedia())
+        let (call, _) = session(role: .callee, servers: [server], media: FakeCallMedia())
         await call.start()
         server.notify("connection", connectionNotice())
         server.notify("hungup", ["participantId": .int(peerId)])
         #expect(await settle { call.state.phase == .ended(.missed) })
 
         let second = FakeWs2Server()
-        let (rejected, _) = session(role: .callee, servers: [second], media: FakeMedia())
+        let (rejected, _) = session(role: .callee, servers: [second], media: FakeCallMedia())
         await rejected.start()
         await rejected.hangUp()
         #expect(rejected.state.phase == .ended(.rejected))
@@ -183,7 +183,7 @@ struct CallSessionTests {
 
         // Отклонить можно и до того, как сокет открылся.
         let third = FakeWs2Server()
-        let (early, _) = session(role: .callee, servers: [third], media: FakeMedia())
+        let (early, _) = session(role: .callee, servers: [third], media: FakeCallMedia())
         await early.hangUp()
         #expect(third.commands("hangup").first?["reason"]?.string == "REJECTED")
     }
@@ -191,7 +191,7 @@ struct CallSessionTests {
     @Test("Через сервер (SFU): allocate-consumer, офер сервера, accept-producer с ssrc и сессией")
     func serverTopology() async throws {
         let server = FakeWs2Server()
-        let media = FakeMedia()
+        let media = FakeCallMedia()
         let (call, _) = session(role: .joiner, servers: [server], media: media, isGroup: true)
         await call.start()
         server.notify("connection", connectionNotice(topology: "SERVER"))
@@ -249,7 +249,7 @@ struct CallSessionTests {
     @Test("Микрофон, камера, громкая связь и экран: настройки уходят серверу")
     func mediaControls() async throws {
         let server = FakeWs2Server()
-        let media = FakeMedia()
+        let media = FakeCallMedia()
         let (call, _) = session(role: .caller, servers: [server], media: media)
         await call.start()
         server.notify("connection", connectionNotice())
@@ -302,7 +302,7 @@ struct CallSessionTests {
     @Test("Участники и видео собеседника по подписи дорожки")
     func participantsAndTracks() async throws {
         let server = FakeWs2Server()
-        let media = FakeMedia()
+        let media = FakeCallMedia()
         let (call, _) = session(role: .caller, servers: [server], media: media)
         await call.start()
         server.notify("connection", connectionNotice(peerMedia: ["isAudioEnabled": false, "isVideoEnabled": true]))
@@ -332,7 +332,7 @@ struct CallSessionTests {
     @Test("Сервер закрыл разговор или сказал conversation-ended — звонок кончается")
     func serverEnds() async throws {
         let server = FakeWs2Server()
-        let (call, _) = session(role: .caller, servers: [server], media: FakeMedia())
+        let (call, _) = session(role: .caller, servers: [server], media: FakeCallMedia())
         await call.start()
         server.notify("connection", connectionNotice())
         server.notify("accepted-call")
@@ -342,7 +342,7 @@ struct CallSessionTests {
 
         let other = FakeWs2Server()
         other.fail("change-media-settings", with: "conversation-ended")
-        let (ended, _) = session(role: .caller, servers: [other], media: FakeMedia())
+        let (ended, _) = session(role: .caller, servers: [other], media: FakeCallMedia())
         await ended.start()
         other.notify("connection", connectionNotice())
         #expect(await settle { other.commands("accept-call").count == 1 })
@@ -355,7 +355,7 @@ struct CallSessionTests {
         let server = FakeWs2Server()
         var fast = timing()
         fast.wake = .milliseconds(20)
-        let (call, _) = session(role: .caller, servers: [server], media: FakeMedia(), timing: fast)
+        let (call, _) = session(role: .caller, servers: [server], media: FakeCallMedia(), timing: fast)
         await call.start()
         #expect(await settle { server.commands("accept-call").count == 1 })
         #expect(server.commandNames == ["change-media-settings", "accept-call"])
@@ -366,7 +366,7 @@ struct CallSessionTests {
     func reconnects() async throws {
         let first = FakeWs2Server()
         let second = FakeWs2Server()
-        let media = FakeMedia()
+        let media = FakeCallMedia()
         let (call, connector) = session(role: .caller, servers: [first, second], media: media)
         await call.start()
         first.notify("connection", connectionNotice())
@@ -387,7 +387,7 @@ struct CallSessionTests {
 
     @Test("Сервер звонков недоступен — звонок не начался")
     func connectFails() async {
-        let (call, connector) = session(role: .caller, servers: [], media: FakeMedia())
+        let (call, connector) = session(role: .caller, servers: [], media: FakeCallMedia())
         await call.start()
         #expect(connector.connections == 1)
         #expect(call.state.phase == .ended(.failed("Сервер звонков недоступен")))
@@ -396,7 +396,7 @@ struct CallSessionTests {
     @Test("Запись и приглашение — команды сервера звонков")
     func recordAndInvite() async throws {
         let server = FakeWs2Server()
-        let (call, _) = session(role: .joiner, servers: [server], media: FakeMedia(), isGroup: true)
+        let (call, _) = session(role: .joiner, servers: [server], media: FakeCallMedia(), isGroup: true)
         await call.start()
         await call.setRecording(true)
         #expect(call.state.recording)
