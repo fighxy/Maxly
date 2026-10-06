@@ -220,7 +220,6 @@ fun MainScreen(
                                     onAdd = addStory,
                                 )
                             },
-                            onPullRefresh = storiesModel::refresh,
                         )
                     }
                     VerticalDivider()

@@ -77,7 +77,6 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -148,8 +147,6 @@ fun ChatListScreen(
     onOpenCreated: (id: String, title: String) -> Unit = { _, _ -> },
     /** Полоса историй над чатами; `null` — без неё. */
     storiesHeader: (@Composable () -> Unit)? = null,
-    /** Потянули список вниз: обновить и истории. */
-    onPullRefresh: () -> Unit = {},
 ) {
     LifecycleResumeEffect(viewModel) {
         viewModel.reloadLocal()
@@ -241,14 +238,9 @@ fun ChatListScreen(
         },
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
     ) { padding ->
-        PullToRefreshBox(
-            isRefreshing = state.isRefreshing,
-            onRefresh = {
-                viewModel.refresh()
-                onPullRefresh()
-            },
-            modifier = Modifier.padding(padding).fillMaxSize(),
-        ) {
+        // Без «потянуть, чтобы обновить»: на ПК её нечем тянуть, а значок обновления висел над
+        // списком. Список обновляется сам — пушами и сверкой после подключения.
+        Box(Modifier.padding(padding).fillMaxSize()) {
             val open: (ChatListItem) -> Unit = {
                 if (state.isSearchActive) viewModel.selectSearchResult(it.id)
                 viewModel.opened(it.id)
