@@ -23,6 +23,10 @@ struct ChatComposer: View {
     var onOpenApp: (() -> Void)? = nil
     /// «Подписаться» или «Вступить» вместо плашки у канала или группы вне списка.
     var join: Join? = nil
+    /// Поиск по каналу. Стоит справа от кнопки звука.
+    var onSearch: (() -> Void)? = nil
+    /// Высота кнопок звука и поиска в канале: круг и капсула одной линии.
+    private static let channelControl: CGFloat = 38
 
     struct Join {
         let label: String
@@ -262,16 +266,34 @@ struct ChatComposer: View {
             .frame(maxWidth: .infinity)
             .accessibilityLabel(join.label)
         } else if chatType == .channel, let onToggleMute {
-            Button(action: onToggleMute) {
-                Label(isMuted ? "Включить звук" : "Выключить звук", systemImage: isMuted ? "bell" : "bell.slash")
-                    .font(.subheadline.weight(.medium))
-                    .padding(.horizontal, 18)
-                    .frame(minHeight: 38)
-                    .contentShape(Capsule())
+            // Капсула звука по центру, поиск — круг той же высоты справа.
+            // Пустой круг слева держит подпись на оси экрана.
+            HStack(spacing: 8) {
+                Color.clear.frame(width: Self.channelControl, height: Self.channelControl)
+                    .accessibilityHidden(true)
+                Button(action: onToggleMute) {
+                    Label(isMuted ? "Включить звук" : "Выключить звук", systemImage: isMuted ? "bell" : "bell.slash")
+                        .font(.subheadline.weight(.medium))
+                        .padding(.horizontal, 18)
+                        .frame(height: Self.channelControl)
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.orbitleAccent)
+                .orbitleGlassCapsule()
+                if let onSearch {
+                    Button(action: onSearch) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 16, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.orbitleAccent)
+                    .orbitleGlassCircle(size: Self.channelControl)
+                    .accessibilityLabel("Поиск")
+                } else {
+                    Color.clear.frame(width: Self.channelControl, height: Self.channelControl)
+                }
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.orbitleAccent)
-            .orbitleGlassCapsule()
             .frame(maxWidth: .infinity)
         } else {
             Text("Писать в этот чат нельзя")

@@ -189,10 +189,13 @@ fun MainScreen(
     ) { padding ->
         androidx.compose.runtime.CompositionLocalProvider(
             app.orbitle.ui.components.LocalPrivateMode provides privateDisplay,
-            LocalStoryRings provides StoryRings(stories, storiesModel::open, storiesModel::loadRing),
+            LocalStoryRings provides StoryRings(stories, storiesModel::open, storiesModel::loadRing, storiesModel::loadOwner),
         ) {
         NavHost(nav, startDestination = Tab.CHATS.route, modifier = Modifier.padding(padding).consumeWindowInsets(padding)) {
             composable(Tab.CHATS.route) {
+                var storiesCollapsed by androidx.compose.runtime.remember {
+                    androidx.compose.runtime.mutableStateOf(container.storyStrip.isCollapsed())
+                }
                 ChatListScreen(
                     chatList,
                     onOpenChat = { openChat(it.id) },
@@ -214,6 +217,11 @@ fun MainScreen(
                         )
                     },
                     onPullRefresh = storiesModel::refresh,
+                    storiesCollapsed = storiesCollapsed,
+                    onStoriesCollapsed = {
+                        storiesCollapsed = it
+                        container.storyStrip.setCollapsed(it)
+                    },
                 )
             }
             composable(Tab.CALLS.route) { CallsScreen(callsModel, onOpenChat = { openChat(it) }) }
@@ -311,6 +319,9 @@ fun MainScreen(
                     onActionHandled = { chatAction = null },
                     openMessage = openMessage?.takeIf { it.first == chatId }?.let { it.second to it.third },
                     onMessageOpened = { openMessage = null },
+                    onBlockComment = { postId, comment ->
+                        container.chatAdmin.blockCommentAuthor(chatId, postId, comment.authorId, comment.id)
+                    },
                     botApp = { request, onClose ->
                         val app = viewModel(key = "bot-app-${request.botId}-${request.startParam}-${request.title}") {
                             MiniAppViewModel(null, container.account, request.title) {
@@ -344,6 +355,28 @@ fun MainScreen(
                         chatAction = chatId to action
                         nav.popBackStack()
                     } else null,
+                    onManage = {
+                        val channel = model.state.value.profile.kind == app.orbitle.domain.ChatProfile.Kind.CHANNEL
+                        nav.navigate("manage/$chatId?channel=$channel")
+                    },
+                )
+            }
+            composable(
+                "manage/{chatId}?channel={channel}",
+                arguments = listOf(navArgument("channel") { type = NavType.BoolType; defaultValue = false }),
+            ) { entry ->
+                val chatId = entry.arguments?.getString("chatId").orEmpty()
+                val channel = entry.arguments?.getBoolean("channel") == true
+                val manage = viewModel(key = "manage-$chatId") {
+                    app.orbitle.presentation.profile.ChatManageViewModel(
+                        chatId, channel, container.messages.currentUserId, container.chatAdmin,
+                    )
+                }
+                val people by container.contacts.contacts.collectAsStateWithLifecycle()
+                app.orbitle.ui.profile.ManageRoute(
+                    manage,
+                    people.map { app.orbitle.data.ChatPerson(it.id, it.displayName) },
+                    onBack = { nav.popBackStack() },
                 )
             }
         }
