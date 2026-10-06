@@ -731,7 +731,10 @@ fun VoiceRow(
             )
             if (onTranscript != null) {
                 Spacer(Modifier.width(8.dp))
-                TranscriptButton(transcriptOpen, colors.accent, onTranscript)
+                // По центру кнопки воспроизведения (42 dp), а не у верха строки.
+                Box(Modifier.height(42.dp), contentAlignment = Alignment.Center) {
+                    TranscriptButton(transcriptOpen, colors.accent, onTranscript)
+                }
             }
         }
         Row(Modifier.fillMaxWidth().padding(start = 52.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -778,16 +781,39 @@ private fun TranscriptButton(open: Boolean, accent: Color, onClick: () -> Unit) 
             if (expanded) {
                 Icon(Icons.Filled.KeyboardArrowUp, null, tint = accent, modifier = Modifier.size(18.dp))
             } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = accent, modifier = Modifier.size(12.dp))
-                    Text(TranscriptToggle.LETTER, color = accent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                }
+                TranscribeMark(accent)
             }
         }
     }
 }
 
 private const val TRANSCRIPT_ANIMATION_MS = 200
+
+/**
+ * Значок «→Т» линиями, а не текстом: у буквы шрифта свои отступы над и под ней, и стрелка-иконка
+ * рядом вставала выше середины «Т». Здесь стрелка ровно на середине буквы, обе по центру капсулы.
+ */
+@Composable
+private fun TranscribeMark(color: Color) {
+    androidx.compose.foundation.Canvas(Modifier.size(width = 18.dp, height = 12.dp)) {
+        val stroke = 1.8.dp.toPx()
+        val cap = androidx.compose.ui.graphics.StrokeCap.Round
+        val mid = size.height / 2
+        // Стрелка: древко и наконечник.
+        val tip = size.width * 0.42f
+        val head = size.height * 0.28f
+        drawLine(color, androidx.compose.ui.geometry.Offset(stroke / 2, mid), androidx.compose.ui.geometry.Offset(tip, mid), stroke, cap)
+        drawLine(color, androidx.compose.ui.geometry.Offset(tip - head, mid - head), androidx.compose.ui.geometry.Offset(tip, mid), stroke, cap)
+        drawLine(color, androidx.compose.ui.geometry.Offset(tip - head, mid + head), androidx.compose.ui.geometry.Offset(tip, mid), stroke, cap)
+        // «Т»: перекладина у верха, ножка до низа.
+        val left = size.width * 0.58f
+        val right = size.width - stroke / 2
+        val top = stroke / 2
+        val bottom = size.height - stroke / 2
+        drawLine(color, androidx.compose.ui.geometry.Offset(left, top), androidx.compose.ui.geometry.Offset(right, top), stroke, cap)
+        drawLine(color, androidx.compose.ui.geometry.Offset((left + right) / 2, top), androidx.compose.ui.geometry.Offset((left + right) / 2, bottom), stroke, cap)
+    }
+}
 
 /** Файл: нажатие скачивает и открывает, во время загрузки — кольцо прогресса. */
 @Composable
