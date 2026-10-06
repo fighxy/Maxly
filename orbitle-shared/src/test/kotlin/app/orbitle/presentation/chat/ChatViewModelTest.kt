@@ -223,6 +223,26 @@ class ChatViewModelTest {
     }
 
     @Test
+    fun muteButtonInsteadOfComposerInAChannel() {
+        val chats = FakeChats()
+        repo.headerInfo.value = ChatHeaderInfo(chat(ChatType.CHANNEL).copy(canWrite = false))
+        val model = vm(chats = chats)
+        assertEquals(false, model.state.value.muted)
+        model.toggleMute()
+        assertEquals(true, model.state.value.muted)
+        assertEquals(listOf("10" to true), chats.mutes)
+        // Стор отразил звук — кнопка та же.
+        repo.headerInfo.value = ChatHeaderInfo(chat(ChatType.CHANNEL).copy(canWrite = false, isMuted = true))
+        assertEquals(true, model.state.value.muted)
+        // Писать можно — кнопки звука нет, есть поле ввода.
+        repo.headerInfo.value = ChatHeaderInfo(chat(ChatType.GROUP))
+        assertNull(model.state.value.muted)
+        // Канал вне списка: вместо кнопки звука «Подписаться».
+        repo.headerInfo.value = null
+        assertNull(vm(chats = chats).state.value.muted)
+    }
+
+    @Test
     fun itemsNewestFirstWithDaySeparators() {
         val model = vm()
         repo.list.value = listOf(msg("1", at = now - day), msg("2", at = now - 60_000), msg("3", author = "1", at = now))
@@ -775,6 +795,10 @@ private class FakeChats : ChatRepository {
     val pressed = mutableListOf<String>()
     val joined = mutableListOf<String>()
     val left = mutableListOf<String>()
+    val mutes = mutableListOf<Pair<String, Boolean>>()
+    override suspend fun setMuted(chatId: String, muted: Boolean) {
+        mutes += chatId to muted
+    }
     var leaveFails = false
     override suspend fun leaveChat(chatId: String) {
         left += chatId

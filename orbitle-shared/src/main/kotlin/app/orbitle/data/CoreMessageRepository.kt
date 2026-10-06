@@ -124,7 +124,9 @@ class CoreMessageRepository(
 
     override suspend fun olderPage(chatId: String, beforeMs: Long): HistorySpan? {
         val id = chatId.toLong()
-        val page = MaxCoreGateway.read { client.loadHistory(id, from = beforeMs, backward = PAGE) }
+        // Страницу ждёт листающий читатель: она уходит и во время паузы фоновых чтений
+        // после чужого too.many.requests (реакции, счётчики), иначе лента молча вставала.
+        val page = MaxCoreGateway.readNow { client.loadHistory(id, from = beforeMs, backward = PAGE) }
         resolveSenders(id)
         val older = page.messages.filter { it.time < beforeMs }
         return span(older, reachedOldest = older.isEmpty()) ?: HistorySpan.START
@@ -132,7 +134,7 @@ class CoreMessageRepository(
 
     override suspend fun newerPage(chatId: String, afterMs: Long): HistorySpan? {
         val id = chatId.toLong()
-        val page = MaxCoreGateway.read {
+        val page = MaxCoreGateway.readNow {
             client.api.messages.getChatHistory(id, from = afterMs, forward = PAGE, backward = 0).also { client.store.putHistory(id, it) }
         }
         resolveSenders(id)
