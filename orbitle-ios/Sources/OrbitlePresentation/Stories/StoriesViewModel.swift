@@ -98,26 +98,33 @@ public final class StoriesViewModel {
         return rings.first { $0.owner.id == ownerId } ?? peers[ownerId]
     }
 
+    /// Кольцо на аватаре чата. У человека — по id собеседника, у группы и канала — если владелец того же типа.
+    public func ring(of ownerId: String?, kind: StoryOwner.Kind) -> StoryRing? {
+        guard let ring = ring(of: ownerId), StoryStripMotion.ringMatches(ring, kind: kind) else { return nil }
+        return ring
+    }
+
     /// Собеседник личного чата: id диалога — это `мой id ^ id собеседника`, как и у эталонного
-    /// клиента. У «Избранного», групп и каналов колец нет.
+    /// клиента. У «Избранного» собеседника нет.
     public func peer(ofChat chatId: String, type: ChatType) -> String? {
         guard type == .private, chatId != "0", let chat = Int64(chatId), let me = Int64(myId), me != 0 else { return nil }
         let peer = chat ^ me
         return peer > 0 && peer != me ? String(peer) : nil
     }
 
-    /// Кольцо владельца вне ленты (человек из открытого профиля или чата): один запрос на
-    /// владельца за жизнь модели.
-    public func loadRing(_ ownerId: String?) async {
-        guard let ownerId, !ownerId.isEmpty, ownerId != "0", feed[ownerId] == nil, !requested.contains(ownerId) else { return }
-        requested.insert(ownerId)
+    /// Кольцо человека вне ленты. Группа и канал запрашиваются с их типом.
+    public func loadRing(_ ownerId: String?, kind: StoryOwner.Kind = .user) async {
+        guard let ownerId, !ownerId.isEmpty, ownerId != "0" else { return }
+        let key = "\(kind.rawValue):\(ownerId)"
+        guard feed[ownerId] == nil, !requested.contains(key) else { return }
+        requested.insert(key)
         do {
-            let reply = try await repository.stories(owner: StoryOwner(id: ownerId))
+            let reply = try await repository.stories(owner: StoryOwner(id: ownerId, kind: kind))
             cache[ownerId] = reply.stories.filter { $0.media != nil }
             peers[ownerId] = reply.ring
             publishState()
         } catch {
-            requested.remove(ownerId)
+            requested.remove(key)
         }
     }
 
@@ -315,11 +322,21 @@ public final class StoriesViewModel {
         marked.insert(story.id)
         // Кольцо гаснет сразу, не дожидаясь ответа сервера.
         var current = self.ring(of: ring.owner.id) ?? ring
+        let previousRead = current.read
         current.read = min(current.read + 1, current.total)
         replaceRing(current)
         let repository = repository
-        pending.append(Task {
-            _ = try? await repository.markSeen(owner: story.owner, storyId: story.id)
+        let ownerId = ring.owner.id
+        pending.append(Task { [weak self] in
+            do {
+                try await repository.markSeen(owner: story.owner, storyId: story.id)
+            } catch {
+                guard let self else { return }
+                self.marked.remove(story.id)
+                guard var now = self.ring(of: ownerId), now.read == min(previousRead + 1, now.total) else { return }
+                now.read = previousRead
+                self.replaceRing(now)
+            }
         })
     }
 

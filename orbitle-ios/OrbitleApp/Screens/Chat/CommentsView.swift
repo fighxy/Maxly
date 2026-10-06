@@ -9,6 +9,9 @@ import OrbitleUI
 struct CommentsView: View {
     @Bindable var model: CommentsViewModel
     let onClose: () -> Void
+    /// Блок автора комментария. Ошибку показывает этот экран.
+    var onBlockAuthor: ((Message) async throws(OrbitleError) -> Void)? = nil
+    @State private var blockNotice: String?
     @State private var reveal = PrivateModeReveal()
     @State private var atBottom = true
     @State private var visibleCommentId: String?
@@ -76,6 +79,11 @@ struct CommentsView: View {
                 if phase != .active { reveal.hideAll() }
             }
             .onChange(of: privateMode) { _, _ in reveal.hideAll() }
+            .alert("Комментарий", isPresented: Binding(get: { blockNotice != nil }, set: { if !$0 { blockNotice = nil } })) {
+                Button("OK", role: .cancel) { blockNotice = nil }
+            } message: {
+                Text(blockNotice ?? "")
+            }
         }
     }
 
@@ -201,6 +209,24 @@ struct CommentsView: View {
                 allowsReactions: model.canReact(comment),
                 quickReactions: model.quickReactions(for: comment)
             )
+            .contextMenu {
+                if comment.authorId != "0", let onBlockAuthor {
+                    Button("Заблокировать автора", role: .destructive) {
+                        Task {
+                            do {
+                                try await onBlockAuthor(comment)
+                                blockNotice = "Автор комментария заблокирован"
+                            } catch let error as OrbitleError {
+                                blockNotice = error.userMessage ?? "Не удалось заблокировать"
+                            } catch is CancellationError {
+                                return
+                            } catch {
+                                blockNotice = "Не удалось заблокировать"
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

@@ -54,6 +54,7 @@ class AppContainer(context: Context) {
     )
 
     val chats: ChatRepository = CoreChatRepository(client)
+    val chatAdmin: app.orbitle.data.ChatAdminRepository = app.orbitle.data.CoreChatAdminRepository(client)
 
     val account: AccountRepository = CoreAccountRepository(client)
 
@@ -94,6 +95,7 @@ class AppContainer(context: Context) {
     }
 
     val appearance = AppearanceSettings(preferenceStore)
+    val storyStrip = app.orbitle.data.StoryStripSettings(preferenceStore)
 
     /** Приватный режим: только на этом устройстве. */
     val privateMode = app.orbitle.data.PrivateModeSettings(preferenceStore)

@@ -55,7 +55,8 @@ class CoreStoriesRepository(private val client: MaxClient) : StoriesRepository {
         }
 
     override suspend fun feed(): List<StoryRing> {
-        val previews = MaxCoreGateway.read { client.api.stories.feed() }.filterNot { it.isEmpty }
+        // Ядро не читает курсор следующей страницы, поэтому это одна страница.
+        val previews = MaxCoreGateway.read { client.api.stories.feed(FEED_PAGE) }.filterNot { it.isEmpty }
         resolve(previews)
         val state = client.store.state.value
         return previews.map { ring(it, state) }
@@ -134,6 +135,8 @@ class CoreStoriesRepository(private val client: MaxClient) : StoriesRepository {
                 expiresAtMs = preview.lastStoryExpirationTime,
             )
         }
+
+        const val FEED_PAGE = 100
 
         fun story(core: CoreStory): Story {
             val media = core.media
