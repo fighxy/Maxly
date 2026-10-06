@@ -13,6 +13,12 @@ public protocol MessageRepository: Sendable {
     func sharedMedia(chatId: String, types: [SharedAttachType], anchorId: String, forward: Int, backward: Int) async -> [Message]?
     /// Расширить окно на страницу, при необходимости догрузив историю с сервера.
     func loadOlder(chatId: String) async throws(OrbitleError)
+    /// Сплошная страница истории с сервера вокруг сообщения `messageId` (серверный id) или,
+    /// если задан `at`, вокруг этого момента: до `forward` новее и до `backward` старше, от
+    /// старых к новым. Для перехода к сообщению далеко за окном ленты (цитата, закреп, поиск) и
+    /// листания от краёв такого окна. В кэш не пишется: это не свежая история, и окно ленты,
+    /// которое держит последние сообщения подряд, её не видит.
+    func historyAround(chatId: String, messageId: String, at: Date?, forward: Int, backward: Int) async throws(OrbitleError) -> [Message]
     /// Страница строго старше `before` (самые новые, если `nil`), от новых к старым.
     func loadMore(chatId: String, before: Date?) async throws(OrbitleError) -> [Message]
     /// Самые свежие сообщения с сервера.
@@ -104,6 +110,10 @@ extension MessageRepository {
     public func searchInChat(chatId: String, query: String) async throws(OrbitleError) -> [FoundMessage] { throw .invalidRequest }
 
     public func sharedHistory(chatId: String, limit: Int) async -> [Message] { [] }
+
+    public func historyAround(chatId: String, messageId: String, at: Date?, forward: Int, backward: Int) async throws(OrbitleError) -> [Message] {
+        throw .invalidRequest
+    }
 
     public func sharedMedia(chatId: String, types: [SharedAttachType], anchorId: String, forward: Int, backward: Int) async -> [Message]? {
         nil

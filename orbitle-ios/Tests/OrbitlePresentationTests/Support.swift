@@ -318,8 +318,32 @@ actor FakeMessageRepository: MessageRepository {
 
     nonisolated func messages(chatId: String) -> AsyncStream<[Message]> { feed.stream }
     nonisolated func emit(_ messages: [Message]) { feed.continuation.yield(messages) }
-    func loadOlder(chatId: String) async throws(OrbitleError) {}
-    func loadMore(chatId: String, before: Date?) async throws(OrbitleError) -> [Message] { [] }
+    /// Сколько раз окно ленты расширяли на страницу.
+    private(set) var olderLoads = 0
+    func loadOlder(chatId: String) async throws(OrbitleError) { olderLoads += 1 }
+    /// Страницы `loadMore` по очереди; кончились — пусто.
+    private var morePages: [[Message]] = []
+    func queueMore(_ page: [Message]) { morePages.append(page) }
+    func loadMore(chatId: String, before: Date?) async throws(OrbitleError) -> [Message] {
+        morePages.isEmpty ? [] : morePages.removeFirst()
+    }
+
+    struct AroundRequest: Equatable {
+        var messageId: String
+        var at: Date?
+        var forward: Int
+        var backward: Int
+    }
+
+    /// Запросы окна вокруг сообщения и ответы на них по очереди; ответы кончились — ошибка.
+    private(set) var aroundRequests: [AroundRequest] = []
+    private var aroundPages: [[Message]] = []
+    func queueAround(_ page: [Message]) { aroundPages.append(page) }
+    func historyAround(chatId: String, messageId: String, at: Date?, forward: Int, backward: Int) async throws(OrbitleError) -> [Message] {
+        aroundRequests.append(AroundRequest(messageId: messageId, at: at, forward: forward, backward: backward))
+        guard !aroundPages.isEmpty else { throw .networkUnavailable }
+        return aroundPages.removeFirst()
+    }
     func fetchLatest(chatId: String) async throws(OrbitleError) {
         if let latestError { throw latestError }
     }

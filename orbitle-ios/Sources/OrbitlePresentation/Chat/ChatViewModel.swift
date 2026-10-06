@@ -13,20 +13,56 @@ public final class ChatViewModel {
             let ids = messages.map(\.id)
             let oldIds = oldValue.map(\.id)
             messagesChange = isRestoringHistory ? .reload : CollectionChange.between(oldIds, ids)
+            changeFromPaging = pagingInFlight
             if !isRestoringHistory, Self.contentChanged(from: oldValue, to: messages) { contentVersion &+= 1 }
             if ids != oldIds { transcriptVersion &+= 1 }
             placeUnreadAnchor()
             rows = TranscriptLayout.rows(messages, currentUserId: currentUserId, unreadAnchorId: unreadAnchorId)
             settleTranscripts()
             applyPinState()
+            settleSeen()
+            recountUnreadBelow()
         }
     }
+    /// Живая лента из репозитория: последние сообщения чата подряд. Лента показывает её или
+    /// окно вокруг далёкого сообщения (`window`).
+    @ObservationIgnored private var live: [Message] = []
+    /// Окно вокруг сообщения, к которому перешли и которого не было в живой ленте.
+    private var window: TimelineWindow?
+    /// Лента показывает окно, ещё не сошедшееся с живой лентой: новых внизу не видно, кнопка
+    /// «вниз» ведёт к живой ленте.
+    public var isJumped: Bool { window.map { !$0.joined } ?? false }
+    /// Раньше могут быть сообщения: верх ленты догружает их сам.
+    public var canLoadOlder: Bool { window.map { !$0.reachedOldest } ?? true }
+    /// Идёт загрузка окна вокруг далёкого сообщения.
+    public private(set) var isJumping = false
+    public private(set) var isLoadingNewer = false
+    /// Последнее изменение ленты — страница окна, а не новое в чате: экран не едет за ним вниз.
+    /// Держится до следующего изменения: экран читает его позже, в `onChange`.
+    @ObservationIgnored public private(set) var changeFromPaging = false
+    @ObservationIgnored private var pagingInFlight = false
+    /// С каких сообщений переходили к цитатам: кнопка «вниз» возвращает к ним по очереди.
+    @ObservationIgnored private var returnStack: [String] = []
+    /// До какого момента читатель долистал ленту. Чужие сообщения новее — непрочитанные ниже экрана.
+    @ObservationIgnored private var seenUpTo: Date?
+    /// Непрочитанные ниже экрана: число на кнопке «вниз».
+    public private(set) var unreadBelow = 0
+    /// Сообщение у низа экрана, когда читатель ушёл из чата посреди истории.
+    @ObservationIgnored private var savedPlace: String?
+    /// Номер строки по id сообщения: плашка даты ищет верхнюю из видимых.
+    @ObservationIgnored private var rowIndex: [String: Int] = [:]
     /// Сообщение, над которым стоит «Непрочитанные сообщения». Ставится один раз при открытии
     /// чата и не двигается, пока чат открыт; своё отправленное сообщение его убирает.
     public private(set) var unreadAnchorId: String? {
         didSet {
             guard unreadAnchorId != oldValue else { return }
             rows = TranscriptLayout.rows(messages, currentUserId: currentUserId, unreadAnchorId: unreadAnchorId)
+            // Разделитель встал после отметки «долистал»: непрочитанные под ним снова считаются.
+            if let anchor = unreadAnchorId, let seen = seenUpTo, let before = readBefore(anchor), before < seen {
+                seenUpTo = before
+            }
+            settleSeen()
+            recountUnreadBelow()
         }
     }
     /// Сколько непрочитанных было при открытии и ещё ждут места в ленте.
@@ -42,7 +78,11 @@ public final class ChatViewModel {
     /// Столько ждём пуша с текстом, если сервер ответил «ещё расшифровываю».
     static let transcriptWait: Duration = .seconds(60)
     /// Строки ленты с разделителями дней, склейкой и подписями автора (`TranscriptLayout`).
-    public private(set) var rows: [TranscriptRow] = []
+    public private(set) var rows: [TranscriptRow] = [] {
+        didSet {
+            rowIndex = Dictionary(rows.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        }
+    }
     /// Растёт, когда меняется состав ленты (новое, удалённое, история): экран анимирует по нему,
     /// не сравнивая списки id при каждой перерисовке.
     public private(set) var transcriptVersion = 0
@@ -80,7 +120,8 @@ public final class ChatViewModel {
     /// Черновик, отложенный на время правки.
     @ObservationIgnored private var draftBeforeEdit = ""
     public private(set) var voicePhases: [String: VoicePhase] = [:]
-    public private(set) var scrollTarget: String?
+    /// Просьба прокрутить ленту: переход к сообщению или вниз. Экран выполняет её и снимает.
+    public private(set) var scrollTarget: ChatScrollTarget?
     public private(set) var scrollToken = 0
     public private(set) var highlightedId: String?
     /// Пост, чьи комментарии открыты в модальном окне.
@@ -223,7 +264,9 @@ public final class ChatViewModel {
     /// Подпись кнопки бота, нажатие которой ждёт ответа сервера.
     public private(set) var pressingButton: String?
     /// Кэш и серверная сверка при каждом открытии не являются live-вставками.
-    public private(set) var isRestoringHistory = false
+    public private(set) var isRestoringHistory = false {
+        didSet { if !isRestoringHistory { settleSeen() } }
+    }
     @ObservationIgnored private var watchGeneration = 0
     @ObservationIgnored private var loadGeneration = 0
     @ObservationIgnored private var latestRetry: Task<Void, Never>?
@@ -242,15 +285,23 @@ public final class ChatViewModel {
 
     /// Чат открыт с `count` непрочитанными (до отметки прочтения): над первым из них встанет
     /// разделитель, лента откроется на нём.
+    ///
+    /// Это и есть открытие чата (возврат из профиля его не вызывает): окно перехода, возвраты
+    /// к цитатам и отметка «долистал» прежнего захода сбрасываются.
     public func noteUnreadOnOpen(_ count: Int) {
         pendingUnread = max(count, 0)
+        returnStack = []
+        seenUpTo = nil
+        if window != nil { setWindow(nil) }
         unreadAnchorId = nil
         placeUnreadAnchor()
+        settleSeen()
+        recountUnreadBelow()
     }
 
     private func placeUnreadAnchor() {
         guard pendingUnread > 0, unreadAnchorId == nil else { return }
-        guard let anchor = TranscriptLayout.unreadAnchor(messages, unread: pendingUnread, currentUserId: currentUserId, complete: latestLoaded) else { return }
+        guard let anchor = TranscriptLayout.unreadAnchor(live, unread: pendingUnread, currentUserId: currentUserId, complete: latestLoaded) else { return }
         pendingUnread = 0
         unreadAnchorId = anchor
     }
@@ -349,7 +400,7 @@ public final class ChatViewModel {
             var first = true
             for await page in stream {
                 guard let self, !Task.isCancelled, self.watchGeneration == generation else { return }
-                if self.messages != page { self.messages = page }
+                self.receiveLive(page)
                 if first, finishesRestoration {
                     self.messagesChange = .reload
                     if loaded { self.latestLoaded = true }
@@ -430,6 +481,11 @@ public final class ChatViewModel {
                 finishCancelledLoad(generation)
                 return
             }
+            await reachUnread(generation)
+            guard generation == loadGeneration, !Task.isCancelled else {
+                finishCancelledLoad(generation)
+                return
+            }
             loaded = true
             error = nil
         } catch {
@@ -497,6 +553,7 @@ public final class ChatViewModel {
         var reply = replyTarget?.id
         replyTarget = nil
         stickToBottom = true
+        returnToLiveForSending()
         do {
             for batch in plan.batches {
                 try await repository.sendAttachments(batch.drafts, caption: batch.caption, chatId: chatId, replyTo: reply)
@@ -523,6 +580,10 @@ public final class ChatViewModel {
 
     public func loadOlder() async {
         guard !isLoadingOlder, !isRestoringHistory, !Task.isCancelled else { return }
+        if window != nil {
+            await loadOlderInWindow()
+            return
+        }
         isLoadingOlder = true
         let generation = loadGeneration
         defer { if generation == loadGeneration { isLoadingOlder = false } }
@@ -557,6 +618,7 @@ public final class ChatViewModel {
         mentionDraft.clear()
         replyTarget = nil
         stickToBottom = true
+        returnToLiveForSending()
         do {
             try await repository.send(text: text, chatId: chatId, replyTo: reply?.id, formatting: spans)
             error = nil
@@ -751,18 +813,287 @@ public final class ChatViewModel {
     /// Сколько раз сам повторить свежую страницу после `too.many.requests` (паузы 1×, 2×, 4×).
     static let latestRetryLimit = 3
 
-    /// Прокрутить к цитате, если она уже в загруженном окне.
-    public func focusReply(_ messageId: String) {
-        guard let match = messages.first(where: { $0.id == messageId || $0.serverId == messageId }) else { return }
-        scrollTarget = match.id
+    /// Перейти к сообщению: цитате, закрепу, найденному, «Показать в чате». `source` — с какого
+    /// сообщения перешли (кнопка «вниз» сначала вернёт к нему), `date` — время цели, если известно.
+    public func focusReply(_ messageId: String, from source: String? = nil, at date: Date? = nil) {
+        Task { await jump(to: messageId, from: source, at: date) }
+    }
+
+    /// Сообщение есть в ленте — лента едет к нему и подсвечивает. Нет — с сервера приходит окно
+    /// вокруг него (`TimelineWindow`), лента показывает окно. Неотправленное своё сообщение,
+    /// которого нет в ленте, искать негде.
+    public func jump(to messageId: String, from source: String? = nil, at date: Date? = nil) async {
+        if let match = Self.find(messageId, in: messages) {
+            noteReturn(from: source, to: match.id)
+            focus(on: match.id)
+            return
+        }
+        if window != nil, let match = Self.find(messageId, in: live) {
+            setWindow(nil)
+            noteReturn(from: source, to: match.id)
+            focus(on: match.id)
+            return
+        }
+        guard Int64(messageId) != nil, !isJumping else { return }
+        isJumping = true
+        defer { isJumping = false }
+        do {
+            let page = try await repository.historyAround(
+                chatId: chatId, messageId: messageId, at: date,
+                forward: Self.aroundForward, backward: Self.aroundBackward
+            )
+            guard let match = Self.find(messageId, in: page) else {
+                showNotice("Сообщение не найдено")
+                return
+            }
+            var opened = TimelineWindow(page)
+            if opened.meets(live) { opened.join(live) }
+            setWindow(opened)
+            noteReturn(from: source, to: match.id)
+            focus(on: match.id)
+        } catch {
+            if error.isRateLimit { showNotice("Сервер просит подождать") } else { show(error) }
+        }
+    }
+
+    /// Кнопка «вниз»: сначала назад к сообщению, с которого перешли к цитате, потом из окна к
+    /// живой ленте. `false` — ни того ни другого: экран сам едет к последнему сообщению.
+    public func returnFromJump() -> Bool {
+        while let source = returnStack.popLast() {
+            if let match = Self.find(source, in: messages) {
+                request(.message(match.id, highlight: false))
+                return true
+            }
+            if window != nil, let match = Self.find(source, in: live) {
+                setWindow(nil)
+                request(.message(match.id, highlight: false))
+                return true
+            }
+        }
+        guard isJumped else { return false }
+        setWindow(nil)
+        request(.bottom)
+        return true
+    }
+
+    /// Экран выполнил просьбу прокрутки.
+    public func consumeScroll() {
+        scrollTarget = nil
+    }
+
+    /// Страница новее окна перехода, когда низ окна показался. Дойдя до живой ленты, окно
+    /// сливается с ней, и лента снова живая.
+    public func loadNewer() async {
+        guard let current = window, !current.joined, !isLoadingNewer, let newest = current.messages.last else { return }
+        isLoadingNewer = true
+        defer { isLoadingNewer = false }
+        do {
+            let page = try await repository.historyAround(
+                chatId: chatId, messageId: newest.serverId ?? newest.id, at: newest.timestamp,
+                forward: Self.windowPage, backward: 0
+            )
+            // Пока страница шла, окно могли закрыть или пополнить.
+            guard var latest = window, !latest.joined else { return }
+            let added = latest.append(page)
+            if added == 0 || latest.meets(live) { latest.join(live) }
+            pagingInFlight = true
+            setWindow(latest)
+            pagingInFlight = false
+        } catch {
+            guard !error.isRateLimit else { return }
+            show(error)
+        }
+    }
+
+    /// Страница старше окна перехода, когда его верх показался.
+    private func loadOlderInWindow() async {
+        guard let current = window, !current.reachedOldest, let oldest = current.messages.first else { return }
+        isLoadingOlder = true
+        defer { isLoadingOlder = false }
+        do {
+            let page = try await repository.historyAround(
+                chatId: chatId, messageId: oldest.serverId ?? oldest.id, at: oldest.timestamp,
+                forward: 0, backward: Self.windowPage
+            )
+            guard var latest = window else { return }
+            if latest.prepend(page) == 0 { latest.reachedOldest = true }
+            pagingInFlight = true
+            setWindow(latest)
+            pagingInFlight = false
+        } catch {
+            guard !error.isRateLimit else { return }
+            show(error)
+        }
+    }
+
+    /// Сообщение у низа экрана, пока читатель листает: всё до него прочитано глазами.
+    public func noteBottomVisible(_ id: String?) {
+        guard let id, let message = Self.find(id, in: messages) else { return }
+        markSeen(message.timestamp)
+    }
+
+    /// Лента у низа живой ленты: непрочитанных ниже нет, возвраты к цитатам больше не нужны.
+    public func noteAtBottom() {
+        guard !isJumped else { return }
+        returnStack.removeAll()
+        if let last = live.last?.timestamp { markSeen(last) }
+    }
+
+    /// Экран чата закрывается. Внизу живой ленты место не хранится: чат откроется на свежих,
+    /// как в Telegram. Окно перехода при следующем открытии уже закрыто — его место тоже нет.
+    public func savePlace(_ id: String?, atBottom: Bool) {
+        savedPlace = atBottom || isJumped ? nil : id
+    }
+
+    /// Место прошлого захода, если его сообщение есть в ленте: чат открывается на нём.
+    public var restoredPlace: String? {
+        guard let savedPlace, Self.find(savedPlace, in: messages) != nil else { return nil }
+        return savedPlace
+    }
+
+    /// Верхняя из видимых строк (id в любом порядке; чужие id, вроде метки низа, не считаются).
+    public func topRow(among visible: [String]) -> String? {
+        guard let top = visible.compactMap({ rowIndex[$0] }).min(), rows.indices.contains(top) else { return nil }
+        return rows[top].id
+    }
+
+    /// Дата сообщения строки — плашка над лентой во время прокрутки.
+    public func dayTitle(ofRow id: String?, now: Date = Date()) -> String? {
+        guard let id, let index = rowIndex[id], rows.indices.contains(index) else { return nil }
+        return ChatContentFormat.dayTitle(rows[index].message.timestamp, now: now)
+    }
+
+    /// Сколько сообщений окна перехода вокруг цели: чуть больше после неё, как в Telegram.
+    static let aroundBackward = 25
+    static let aroundForward = 35
+    /// Страница при листании окна перехода.
+    static let windowPage = 40
+    /// Сколько страниц сверх окна ленты открытие чата догружает ради первого непрочитанного.
+    static let unreadPages = 4
+
+    private static func find(_ id: String, in list: [Message]) -> Message? {
+        list.first { $0.id == id || $0.serverId == id }
+    }
+
+    private func request(_ target: ChatScrollTarget) {
+        scrollTarget = target
         scrollToken += 1
-        highlightedId = match.id
-        let token = match.id
+    }
+
+    private func focus(on id: String) {
+        request(.message(id, highlight: true))
+        highlightedId = id
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(1200))
-            guard let self, self.highlightedId == token else { return }
+            guard let self, self.highlightedId == id else { return }
             self.highlightedId = nil
         }
+    }
+
+    private func noteReturn(from source: String?, to target: String) {
+        guard let source, source != target, returnStack.last != source else { return }
+        returnStack.append(source)
+        if returnStack.count > 20 { returnStack.removeFirst() }
+    }
+
+    /// Лента показывает окно перехода или, без него, живую ленту.
+    private func setWindow(_ value: TimelineWindow?) {
+        window = value
+        let shown = value?.messages ?? live
+        if messages != shown { messages = shown }
+    }
+
+    /// Новая живая лента из репозитория.
+    private func receiveLive(_ page: [Message]) {
+        live = page
+        if var current = window {
+            if current.joined {
+                current.absorb(page)
+                window = current
+                if messages != current.messages { messages = current.messages }
+            } else {
+                // Лента показывает старую историю: закреп и счётчик «вниз» берутся из живой.
+                applyPinState()
+                recountUnreadBelow()
+            }
+        } else if messages != page {
+            messages = page
+        }
+    }
+
+    /// Своё сообщение ложится вниз живой ленты: окно перехода закрывается, лента едет вниз.
+    private func returnToLiveForSending() {
+        returnStack.removeAll()
+        guard isJumped else { return }
+        setWindow(nil)
+        request(.bottom)
+    }
+
+    /// Время сообщения перед первым непрочитанным: до него всё прочитано.
+    private func readBefore(_ anchorId: String) -> Date? {
+        guard let index = live.firstIndex(where: { $0.id == anchorId }) else { return nil }
+        return index > 0 ? live[index - 1].timestamp : live[index].timestamp.addingTimeInterval(-0.001)
+    }
+
+    /// Отметка «долистал» при открытии: до первого непрочитанного или до последнего сообщения.
+    /// Пока непрочитанные ждут места в ленте, отметки нет.
+    private func settleSeen() {
+        guard seenUpTo == nil, !isRestoringHistory, !live.isEmpty else { return }
+        if let anchor = unreadAnchorId, let before = readBefore(anchor) {
+            seenUpTo = before
+        } else if pendingUnread == 0 {
+            seenUpTo = live.last?.timestamp
+        } else {
+            return
+        }
+        recountUnreadBelow()
+    }
+
+    private func markSeen(_ time: Date) {
+        guard let seen = seenUpTo, time > seen else { return }
+        seenUpTo = time
+        recountUnreadBelow()
+    }
+
+    /// Чужие сообщения живой ленты новее отметки «долистал».
+    private func recountUnreadBelow() {
+        var count = 0
+        if let seen = seenUpTo {
+            for message in live where message.timestamp > seen && !isOutgoing(message) && message.content.pin == nil {
+                count += 1
+            }
+        }
+        if count != unreadBelow { unreadBelow = count }
+    }
+
+    /// Непрочитанных больше, чем чужих в окне ленты: окно растёт страницами, пока первое
+    /// непрочитанное не войдёт в него, но не больше `unreadPages` страниц — дальше разделитель
+    /// встанет над самым старым. Считает по страницам репозитория, а не по ленте: подписка
+    /// приносит окно позже.
+    private func reachUnread(_ generation: Int) async {
+        guard pendingUnread > 0 else { return }
+        var shown = live
+        if shown.isEmpty {
+            shown = (try? await repository.loadMore(chatId: chatId, before: nil)) ?? []
+        }
+        var incoming = shown.filter { countsAsUnread($0) }.count
+        var cursor = shown.map(\.timestamp).min()
+        var pages = 0
+        while incoming < pendingUnread, pages < Self.unreadPages, let before = cursor {
+            guard generation == loadGeneration, !Task.isCancelled else { return }
+            guard let page = try? await repository.loadMore(chatId: chatId, before: before), !page.isEmpty else { break }
+            pages += 1
+            incoming += page.filter { countsAsUnread($0) }.count
+            cursor = page.map(\.timestamp).min()
+        }
+        for _ in 0..<pages {
+            guard generation == loadGeneration, !Task.isCancelled else { return }
+            try? await repository.loadOlder(chatId: chatId)
+        }
+    }
+
+    private func countsAsUnread(_ message: Message) -> Bool {
+        !isOutgoing(message) && message.content.pin == nil
     }
 
     public func openComments(_ message: Message) {
@@ -1494,7 +1825,7 @@ public final class ChatViewModel {
 
     public func pin(_ message: Message) async {
         guard message.status == .sent, Int64(message.id) != nil, message.content.pin == nil else { return }
-        pinBaselineId = messages.reversed().first { $0.content.pin != nil }?.id
+        pinBaselineId = live.reversed().first { $0.content.pin != nil }?.id
         do {
             try await repository.pin(chatId: chatId, messageId: message.id)
             let preview = message.replySnippet.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1507,7 +1838,7 @@ public final class ChatViewModel {
     }
 
     public func unpin() async {
-        pinBaselineId = messages.reversed().first { $0.content.pin != nil }?.id
+        pinBaselineId = live.reversed().first { $0.content.pin != nil }?.id
         do {
             try await repository.pin(chatId: chatId, messageId: "0")
             pinOverride = PinNotice(messageId: nil, preview: "")
@@ -1534,6 +1865,7 @@ public final class ChatViewModel {
             show(.rejected("Нужно хотя бы два ответа"))
             return
         }
+        returnToLiveForSending()
         do {
             try await repository.sendPoll(chatId: chatId, title: title, answers: options)
             showNotice("Опрос отправлен")
@@ -1584,7 +1916,7 @@ public final class ChatViewModel {
     }
 
     private func applyPinState() {
-        let latestId = messages.reversed().first { $0.content.pin != nil }?.id
+        let latestId = live.reversed().first { $0.content.pin != nil }?.id
         if pinOverride != nil, latestId != pinBaselineId {
             pinOverride = nil
             pinBaselineId = nil
@@ -1597,7 +1929,7 @@ public final class ChatViewModel {
             }
             return
         }
-        pinned = Self.pinnedNotice(in: messages)
+        pinned = Self.pinnedNotice(in: live)
     }
 
     static func pinnedNotice(in messages: [Message]) -> (id: String, text: String)? {

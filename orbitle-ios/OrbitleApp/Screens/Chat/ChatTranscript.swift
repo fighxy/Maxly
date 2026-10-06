@@ -4,7 +4,12 @@ import OrbitleDomain
 import OrbitlePresentation
 import OrbitleUI
 
-/// Лента чата: пузыри, разделители дней, «Раньше», кнопка «вниз» и удержание низа.
+/// Лента чата: пузыри, разделители дней, подгрузка истории, кнопка «вниз» и удержание низа.
+///
+/// Положение как в Telegram: чат открывается на первом непрочитанном или там, где читатель
+/// остался; старое подгружается само, когда показался верх ленты; переход к цитате, закрепу
+/// или найденному сообщению ведёт к нему, даже если оно далеко в истории (модель приносит окно
+/// вокруг него), а кнопка «вниз» сначала возвращает к сообщению, с которого перешли.
 ///
 /// Ячейка перерисовывается, только если поменялось её содержимое. Раньше
 /// каждый пузырь сам читал общие свойства модели (ход голосового, загрузки, подсветку),
@@ -31,6 +36,8 @@ struct ChatTranscript: View {
     @State private var isOpening = true
     @State private var position: String?
     @State private var olderAnchor: String?
+    /// Верх ленты на экране: подгрузка старого запускается, когда он показался.
+    @State private var headerVisible = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.chatWallpaper) private var wallpaper
 
@@ -61,6 +68,7 @@ struct ChatTranscript: View {
                             .id(row.id)
                             .transition(.orbitleBubble(outgoing: row.isOutgoing, reduceMotion: reduceMotion))
                         }
+                        newerLoader
                         bottomMarker
                     }
                     .transaction { transaction in
@@ -87,7 +95,12 @@ struct ChatTranscript: View {
                 // высокими постами не является надёжной целью первого позиционирования.
                 .scrollPosition(id: $position, anchor: .bottom)
                 .coordinateSpace(name: "transcript-viewport")
-                .modifier(TranscriptBottomTracking(bottom: $bottom, viewportHeight: geo.size.height))
+                .modifier(TranscriptBottomTracking(
+                    bottom: $bottom,
+                    viewportHeight: geo.size.height,
+                    anchorsBottom: bottom.atBottom && !viewModel.isJumped
+                ))
+                .modifier(FloatingDayOverlay(model: viewModel))
                 // Клавиатура уходит, когда ленту тянут вниз вслед за пальцем или просто касаются
                 // её: касание не мешает кнопкам пузырей, жест срабатывает вместе с ними.
                 .scrollDismissesKeyboard(.interactively)
@@ -99,6 +112,8 @@ struct ChatTranscript: View {
                     guard !restoring else { return }
                     let opening = isOpening
                     isOpening = false
+                    // Короткая история целиком на экране: верх уже виден, подгрузка — сразу.
+                    if headerVisible { loadOlderFromTop() }
                     guard opening || bottom.atBottom else { return }
                     var transaction = Transaction()
                     transaction.disablesAnimations = true
@@ -118,6 +133,13 @@ struct ChatTranscript: View {
                     }
                 }
                 .overlay {
+                    if viewModel.isJumping {
+                        ProgressView()
+                            .padding(14)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                    }
+                }
+                .overlay {
                     if viewModel.messages.isEmpty && viewModel.isRestoringHistory {
                         ProgressView("Загрузка сообщений…")
                             .padding(16)
@@ -134,21 +156,30 @@ struct ChatTranscript: View {
                 .animation(OrbitleMotion.fade, value: viewModel.showsSavedPlaceholder)
                 .overlay(alignment: .bottomTrailing) {
                     Group {
-                        if bottom.showsButton(hasMessages: !viewModel.messages.isEmpty) {
-                            ScrollDownButton(unseen: bottom.unseen) { scrollToLatest(proxy) }
+                        if bottom.showsButton(hasMessages: !viewModel.messages.isEmpty) || viewModel.isJumped {
+                            ScrollDownButton(unseen: viewModel.unreadBelow) { goDown(proxy) }
                                 .padding(.trailing, OrbitleTheme.pad)
                                 .padding(.bottom, 10)
                                 .transition(.orbitlePop(reduceMotion: reduceMotion))
                         }
                     }
                     .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: bottom.atBottom)
-                    .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: bottom.unseen)
+                    .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.unreadBelow)
                 }
-                .onChange(of: viewModel.scrollToken) { _, _ in
-                    guard let id = viewModel.scrollTarget else { return }
-                    bottom.beginReadingHistory()
-                    proxy.scrollTo(id, anchor: .center)
+                .onChange(of: viewModel.scrollToken) { _, _ in perform(viewModel.scrollTarget, proxy: proxy) }
+                // Строка у низа экрана: до неё всё прочитано, счётчик «вниз» уменьшается.
+                .onChange(of: position) { _, id in
+                    guard !isOpening else { return }
+                    viewModel.noteBottomVisible(id)
                 }
+                .onChange(of: bottom.atBottom) { _, atBottom in
+                    if atBottom, !isOpening { viewModel.noteAtBottom() }
+                }
+                .onAppear {
+                    // Просьба прокрутки, оставшаяся от прошлого захода, к этому открытию не относится.
+                    if isOpening { viewModel.consumeScroll() }
+                }
+                .onDisappear { viewModel.savePlace(position, atBottom: bottom.atBottom) }
                 .onChange(of: geo.size.height) { _, _ in
                     // iOS 17 не умеет sizeChanges: клавиатура и многострочный ввод
                     // должны удерживать последнее сообщение, только если читатель внизу.
@@ -185,18 +216,39 @@ struct ChatTranscript: View {
             Text("Здесь пока нет сообщений")
                 .foregroundStyle(.secondary)
                 .padding(24)
-        } else if !viewModel.messages.isEmpty {
-            Button("Раньше") {
-                // Старое ложится сверху: верхнее сообщение остаётся на месте.
-                olderAnchor = viewModel.messages.first?.id
-                Task {
-                    await viewModel.loadOlder()
-                }
+        } else if !viewModel.messages.isEmpty && viewModel.canLoadOlder {
+            // Старое подгружается само, когда верх ленты показался: как в Telegram, без кнопки.
+            ZStack {
+                if viewModel.isLoadingOlder { ProgressView().controlSize(.small) }
             }
-            .disabled(viewModel.isLoadingOlder || viewModel.isRestoringHistory)
-            .font(.footnote)
-            .padding(.top, 8)
+            .frame(maxWidth: .infinity)
+            .frame(height: 32)
+            .onAppear {
+                headerVisible = true
+                loadOlderFromTop()
+            }
+            .onDisappear { headerVisible = false }
         }
+    }
+
+    /// Низ окна перехода: страница новее грузится, когда он показался. Дойдя до живой ленты,
+    /// окно сливается с ней, и загрузчик уходит.
+    @ViewBuilder
+    private var newerLoader: some View {
+        if viewModel.isJumped {
+            ProgressView()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .onAppear { Task { await viewModel.loadNewer() } }
+        }
+    }
+
+    /// Старое ложится сверху, а верхнее сообщение остаётся на месте (`follow`).
+    private func loadOlderFromTop() {
+        guard !viewModel.messages.isEmpty, !viewModel.isLoadingOlder, !viewModel.isRestoringHistory, !isOpening else { return }
+        olderAnchor = viewModel.messages.first?.id
+        Task { await viewModel.loadOlder() }
     }
 
     /// Метка низа ленты: видна — значит, пользователь внизу (iOS 17).
@@ -223,6 +275,10 @@ struct ChatTranscript: View {
         if let anchor = viewModel.unreadAnchorId {
             bottom.beginReadingHistory()
             proxy.scrollTo(anchor, anchor: UnitPoint(x: 0.5, y: 0.12))
+        } else if let place = viewModel.restoredPlace {
+            // Вернулись в чат, из которого ушли посреди истории, — на то же место.
+            bottom.beginReadingHistory()
+            position = place
         } else {
             position = viewModel.messages.last?.id
         }
@@ -230,6 +286,8 @@ struct ChatTranscript: View {
 
     private func follow(_ proxy: ScrollViewProxy) {
         guard !viewModel.messages.isEmpty else { return }
+        // Модель просит прокрутку (переход, возврат): ленту ставит она, а не смена состава.
+        if viewModel.scrollTarget != nil { return }
         let change = viewModel.messagesChange
         if case .prepended = change, let anchor = olderAnchor {
             olderAnchor = nil
@@ -245,6 +303,8 @@ struct ChatTranscript: View {
             if !viewModel.isRestoringHistory { isOpening = false }
             return
         }
+        // Страницы окна перехода — история, а не новое в чате: лента стоит на месте.
+        if viewModel.changeFromPaging || viewModel.isJumped { return }
         if viewModel.isRestoringHistory || change == .reload || change == .initial {
             // Первое открытие — сразу к последнему. Вернулись в чат (из профиля собеседника),
             // читая историю, — место в ленте не теряется.
@@ -262,8 +322,39 @@ struct ChatTranscript: View {
         if bottom.atBottom && !Self.scrollsToBottomByHand { return }
         if bottom.atBottom || added.contains(where: viewModel.isOutgoing) {
             scrollToLatest(proxy)
-        } else {
-            bottom.received(added.filter { !viewModel.isOutgoing($0) }.count)
+        }
+        // Иначе чужое ждёт ниже: число на кнопке «вниз» считает модель (`unreadBelow`).
+    }
+
+    /// Кнопка «вниз»: назад к сообщению, с которого перешли к цитате, или из окна перехода к
+    /// живой ленте (это просит модель), иначе — к последнему сообщению.
+    private func goDown(_ proxy: ScrollViewProxy) {
+        if viewModel.returnFromJump() { return }
+        scrollToLatest(proxy)
+    }
+
+    /// Просьба модели: к сообщению посередине экрана или вниз после выхода из окна перехода.
+    /// Лента ленивая: строки вокруг цели измеряются в пути, поэтому на следующем проходе
+    /// цикла прокрутка повторяется уже по измеренным строкам.
+    private func perform(_ target: ChatScrollTarget?, proxy: ScrollViewProxy) {
+        guard let target else { return }
+        viewModel.consumeScroll()
+        switch target {
+        case .message(let id, _):
+            bottom.beginReadingHistory()
+            center(id, proxy)
+            Task { @MainActor in
+                await Task.yield()
+                center(id, proxy)
+            }
+        case .bottom:
+            let jump = bottom.beginJump()
+            jumpToBottom(proxy)
+            Task { @MainActor in
+                await Task.yield()
+                guard bottom.finishJump(jump) else { return }
+                jumpToBottom(proxy)
+            }
         }
     }
 
@@ -284,6 +375,12 @@ struct ChatTranscript: View {
                 jumpToBottom(proxy)
             }
         }
+    }
+
+    private func center(_ id: String, _ proxy: ScrollViewProxy) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { proxy.scrollTo(id, anchor: .center) }
     }
 
     private func jumpToBottom(_ proxy: ScrollViewProxy) {
@@ -418,12 +515,15 @@ private struct SavedMessagesPlaceholder: View {
 private struct TranscriptBottomTracking: ViewModifier {
     @Binding var bottom: TranscriptBottomState
     let viewportHeight: CGFloat
+    /// Держать низ при росте содержимого: лента внизу живой ленты. В окне перехода страницы
+    /// новее ложатся под экран, и лента стоит на месте.
+    let anchorsBottom: Bool
     @State private var dragging = false
 
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
             content
-                .defaultScrollAnchor(bottom.atBottom ? .bottom : .top, for: .sizeChanges)
+                .defaultScrollAnchor(anchorsBottom ? .bottom : .top, for: .sizeChanges)
                 .onScrollPhaseChange { _, phase in
                     dragging = phase == .tracking || phase == .interacting || phase == .decelerating
                     // Палец взял ленту во время прыжка «вниз»: доводки к низу не будет.
@@ -466,4 +566,63 @@ private struct TranscriptBottomTracking: ViewModifier {
 private struct TranscriptBottomPreference: PreferenceKey {
     static let defaultValue: CGFloat = .infinity
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+/// Плашка даты верхних сообщений поверх ленты, пока лента едет, и чуть после остановки, как в
+/// Telegram. Только iOS 18: на iOS 17 нет ни видимых строк, ни фазы прокрутки — там даты видны
+/// разделителями в ленте. Состояние живёт в модификаторе: прокрутка не пересобирает ленту.
+private struct FloatingDayOverlay: ViewModifier {
+    let model: ChatViewModel
+    @State private var topRowId: String?
+    @State private var scrolling = false
+    @State private var shown = false
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content
+                .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.3) { ids in
+                    let top = model.topRow(among: ids)
+                    if top != topRowId { topRowId = top }
+                }
+                .onScrollPhaseChange { _, phase in
+                    let moving = phase != .idle
+                    if moving != scrolling { scrolling = moving }
+                }
+                .overlay(alignment: .top) {
+                    ZStack {
+                        if shown, let day = model.dayTitle(ofRow: topRowId) {
+                            FloatingDayPill(title: day)
+                                .transition(.opacity)
+                        }
+                    }
+                    .padding(.top, 8)
+                    .allowsHitTesting(false)
+                    .animation(OrbitleMotion.fade, value: shown)
+                }
+                .task(id: scrolling) {
+                    if scrolling {
+                        shown = true
+                    } else if shown {
+                        try? await Task.sleep(for: .milliseconds(1200))
+                        if !Task.isCancelled { shown = false }
+                    }
+                }
+        } else {
+            content
+        }
+    }
+}
+
+/// Дата верхних сообщений поверх ленты, пока она едет, как в Telegram.
+private struct FloatingDayPill: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .orbitleGlassCapsule()
+    }
 }

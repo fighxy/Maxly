@@ -286,7 +286,7 @@ struct ChatView: View {
             List(viewModel.searchHits, id: \.messageId) { hit in
                 Button {
                     searchShown = false
-                    viewModel.focusReply(hit.messageId)
+                    viewModel.focusReply(hit.messageId, at: hit.date)
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(hit.text.isEmpty ? "Сообщение" : hit.text).lineLimit(2)

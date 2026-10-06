@@ -63,6 +63,9 @@ public protocol MaxAPI: Sendable {
     func fetchMessages(chatId: String, before: Date?, limit: Int) async -> Result<[MessageRecord], MaxAPIError>
     /// Свежая страница открытого пользователем чата: уходит и во время паузы чтений.
     func fetchOpenedMessages(chatId: String, limit: Int) async -> Result<[MessageRecord], MaxAPIError>
+    /// Сплошная страница вокруг сообщения `messageId` (или момента `at`, если он задан): до
+    /// `forward` новее и до `backward` старше, от старых к новым.
+    func fetchMessagesAround(chatId: String, messageId: String, at: Date?, forward: Int, backward: Int) async -> Result<[MessageRecord], MaxAPIError>
     /// Сообщения с вложениями `types` вокруг `anchorId`: до `forward` новее, до `backward` старше.
     func fetchSharedMedia(chatId: String, types: [SharedAttachType], anchorId: String, forward: Int, backward: Int) async -> Result<[MessageRecord], MaxAPIError>
     /// `clientId` это локальный id. Ядро само ставит числовой `cid` в пакет, локальный id на сервер не уходит.
@@ -152,6 +155,10 @@ public extension MaxAPI {
 
     func fetchOpenedMessages(chatId: String, limit: Int) async -> Result<[MessageRecord], MaxAPIError> {
         await fetchMessages(chatId: chatId, before: nil, limit: limit)
+    }
+    /// Источник без страниц вокруг сообщения: переход к далёкому сообщению недоступен.
+    func fetchMessagesAround(chatId: String, messageId: String, at: Date?, forward: Int, backward: Int) async -> Result<[MessageRecord], MaxAPIError> {
+        .failure(.invalidResponse)
     }
     /// Источник без серверных общих медиа: профиль обходится историей из кэша.
     func fetchSharedMedia(chatId: String, types: [SharedAttachType], anchorId: String, forward: Int, backward: Int) async -> Result<[MessageRecord], MaxAPIError> {
@@ -277,6 +284,16 @@ public final class MaxAPIClient: MaxAPI, Sendable {
     public func fetchOpenedMessages(chatId: String, limit: Int) async -> Result<[MessageRecord], MaxAPIError> {
         await catching {
             let page = try await core.loadOpenedHistory(chatId: chatId, limit: limit)
+            return page.map(CoreMapping.message)
+        }
+    }
+
+    public func fetchMessagesAround(chatId: String, messageId: String, at: Date?, forward: Int, backward: Int) async -> Result<[MessageRecord], MaxAPIError> {
+        await catching {
+            let page = try await core.loadHistoryAround(
+                chatId: chatId, messageId: messageId, fromMs: at?.unixMillis ?? 0,
+                forward: forward, backward: backward
+            )
             return page.map(CoreMapping.message)
         }
     }
