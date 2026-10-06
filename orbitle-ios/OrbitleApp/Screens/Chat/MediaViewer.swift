@@ -16,6 +16,8 @@ struct MediaViewer: View {
     let onClose: () -> Void
     @State private var selection: String
     @State private var zoomed = false
+    /// Поворот фото четвертями по часовой, свой у каждого кадра.
+    @State private var turns: [String: Int] = [:]
 
     init(
         request: MediaViewerRequest,
@@ -57,6 +59,18 @@ struct MediaViewer: View {
                     .allowsHitTesting(false)
             }
             HStack(spacing: 12) {
+                if let slide = request.slides.first(where: { $0.id == selection }), !slide.isVideo {
+                    Button {
+                        turns[slide.id, default: 0] += 1
+                    } label: {
+                        Image(systemName: "rotate.right")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .background(.black.opacity(0.45), in: Circle())
+                    }
+                    .accessibilityLabel("Повернуть")
+                }
                 if let onSave {
                     saveMenu(onSave)
                 }
@@ -129,7 +143,7 @@ struct MediaViewer: View {
                 await download(slide)
             }
         } else {
-            ZoomableImage(url: slide.stillURL) { zoomed = $0 }
+            ZoomableImage(url: slide.stillURL, turns: turns[slide.id] ?? 0) { zoomed = $0 }
         }
     }
 }
@@ -270,6 +284,8 @@ private struct PlayerController: UIViewControllerRepresentable {
 /// Фото с жестом увеличения. Пока масштаб больше единицы, экран не закрывается смахиванием.
 private struct ZoomableImage: UIViewRepresentable {
     let url: URL?
+    /// Поворот четвертями по часовой: картинка перерисовывается повёрнутой и заново вписывается.
+    var turns = 0
     let onZoom: (Bool) -> Void
 
     func makeUIView(context: Context) -> UIScrollView {
@@ -291,6 +307,7 @@ private struct ZoomableImage: UIViewRepresentable {
     }
 
     func updateUIView(_ scroll: UIScrollView, context: Context) {
+        context.coordinator.rotate(to: turns)
         context.coordinator.layout()
     }
 
@@ -303,6 +320,9 @@ private struct ZoomableImage: UIViewRepresentable {
         weak var scroll: UIScrollView?
         var imageView: UIImageView?
         private var task: URLSessionDataTask?
+        /// Картинка как пришла и сколько четвертей она повёрнута на экране.
+        private var original: UIImage?
+        private var turns = 0
 
         init(onZoom: @escaping (Bool) -> Void) {
             self.onZoom = onZoom
@@ -317,21 +337,53 @@ private struct ZoomableImage: UIViewRepresentable {
 
         func load(_ url: URL?) {
             task?.cancel()
+            original = nil
             imageView?.image = nil
             guard let url else { return }
             if url.isFileURL {
-                imageView?.image = UIImage(contentsOfFile: url.path)
-                layout()
+                show(UIImage(contentsOfFile: url.path))
                 return
             }
             task = URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
                 guard let self, let data, let image = UIImage(data: data) else { return }
                 DispatchQueue.main.async {
-                    self.imageView?.image = image
-                    self.layout()
+                    self.show(image)
                 }
             }
             task?.resume()
+        }
+
+        private func show(_ image: UIImage?) {
+            original = image
+            imageView?.image = image.map { Self.rotated($0, turns: turns) }
+            layout()
+        }
+
+        /// Повернуть на `next` четвертей: зум сбрасывается, повёрнутая картинка вписывается заново.
+        func rotate(to next: Int) {
+            guard next != turns else { return }
+            turns = next
+            guard let original, let imageView, let scroll else { return }
+            scroll.setZoomScale(1, animated: false)
+            UIView.transition(with: imageView, duration: 0.2, options: .transitionCrossDissolve) {
+                imageView.image = Self.rotated(original, turns: next)
+            }
+            layout()
+        }
+
+        /// Картинка, повёрнутая на `turns` четвертей по часовой.
+        static func rotated(_ image: UIImage, turns: Int) -> UIImage {
+            let quarter = ((turns % 4) + 4) % 4
+            guard quarter != 0 else { return image }
+            let size = quarter % 2 == 0 ? image.size : CGSize(width: image.size.height, height: image.size.width)
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = image.scale
+            return UIGraphicsImageRenderer(size: size, format: format).image { context in
+                let canvas = context.cgContext
+                canvas.translateBy(x: size.width / 2, y: size.height / 2)
+                canvas.rotate(by: CGFloat(quarter) * .pi / 2)
+                image.draw(in: CGRect(x: -image.size.width / 2, y: -image.size.height / 2, width: image.size.width, height: image.size.height))
+            }
         }
 
         func layout() {
