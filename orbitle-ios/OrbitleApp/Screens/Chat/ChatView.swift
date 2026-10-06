@@ -168,9 +168,8 @@ struct ChatView: View {
             .navigationTitle(shownTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { headerToolbar }
-            // Единая спокойная подложка шапки, без отдельной капсулы вокруг названия.
-            .toolbarBackground(.regularMaterial, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
+            // Стеклянная капсула названия над лентой, под статус-баром мягкое размытие.
+            .chatHeaderBlur()
             .navigationDestination(isPresented: $profileShown) { profileDestination }
             .task {
                 // Шапка: статус и аватар из карточки чата, она же открывается профилем.

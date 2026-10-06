@@ -36,6 +36,8 @@ public final class ChatViewModel {
     public var canLoadOlder: Bool { window.map { !$0.reachedOldest } ?? true }
     /// Идёт загрузка окна вокруг далёкого сообщения.
     public private(set) var isJumping = false
+    /// Последняя страница старого не пришла (пауза сервера, сеть): экран повторит её сам.
+    @ObservationIgnored public private(set) var olderFailed = false
     public private(set) var isLoadingNewer = false
     /// Последнее изменение ленты — страница окна, а не новое в чате: экран не едет за ним вниз.
     /// Держится до следующего изменения: экран читает его позже, в `onChange`.
@@ -585,6 +587,7 @@ public final class ChatViewModel {
             return
         }
         isLoadingOlder = true
+        olderFailed = false
         let generation = loadGeneration
         defer { if generation == loadGeneration { isLoadingOlder = false } }
         stickToBottom = false
@@ -592,7 +595,8 @@ public final class ChatViewModel {
             try await repository.loadOlder(chatId: chatId)
         } catch {
             guard generation == loadGeneration, !Task.isCancelled else { return }
-            // Пауза сервера: старые сообщения догрузятся при следующей прокрутке вверх.
+            olderFailed = true
+            // Пауза сервера: экран спросит страницу ещё раз, пока верх ленты на экране.
             if error.isRateLimit { return }
             if isNewDialog, messages.isEmpty, error != .networkUnavailable { return }
             show(error)
@@ -909,6 +913,7 @@ public final class ChatViewModel {
     private func loadOlderInWindow() async {
         guard let current = window, !current.reachedOldest, let oldest = current.messages.first else { return }
         isLoadingOlder = true
+        olderFailed = false
         defer { isLoadingOlder = false }
         do {
             let page = try await repository.historyAround(
@@ -921,6 +926,7 @@ public final class ChatViewModel {
             setWindow(latest)
             pagingInFlight = false
         } catch {
+            olderFailed = true
             guard !error.isRateLimit else { return }
             show(error)
         }

@@ -36,6 +36,8 @@ struct ChatTranscript: View {
     @State private var isOpening = true
     @State private var position: String?
     @State private var olderAnchor: String?
+    /// Верх ленты на экране: не пришедшая страница старого спрашивается снова, пока он виден.
+    @State private var headerVisible = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.chatWallpaper) private var wallpaper
 
@@ -220,7 +222,11 @@ struct ChatTranscript: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 32)
-            .onAppear { loadOlderFromTop() }
+            .onAppear {
+                headerVisible = true
+                loadOlderFromTop()
+            }
+            .onDisappear { headerVisible = false }
         }
     }
 
@@ -237,11 +243,18 @@ struct ChatTranscript: View {
         }
     }
 
-    /// Старое ложится сверху, а верхнее сообщение остаётся на месте (`follow`).
-    private func loadOlderFromTop() {
+    /// Старое ложится сверху, а верхнее сообщение остаётся на месте (`follow`). Страница не
+    /// пришла (пауза сервера после too.many.requests, сеть), а верх всё ещё на экране — она
+    /// спрашивается снова через 3, 6 и 12 секунд: раньше лента молча вставала до новой прокрутки.
+    private func loadOlderFromTop(attempt: Int = 0) {
         guard !viewModel.messages.isEmpty, !viewModel.isLoadingOlder, !viewModel.isRestoringHistory, !isOpening else { return }
         olderAnchor = viewModel.messages.first?.id
-        Task { await viewModel.loadOlder() }
+        Task {
+            await viewModel.loadOlder()
+            guard viewModel.olderFailed, attempt < 3 else { return }
+            try? await Task.sleep(for: .seconds(3 << attempt))
+            if headerVisible { loadOlderFromTop(attempt: attempt + 1) }
+        }
     }
 
     /// Метка низа ленты: видна — значит, пользователь внизу (iOS 17).

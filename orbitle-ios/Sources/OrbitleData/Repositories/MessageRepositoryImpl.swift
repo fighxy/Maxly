@@ -886,7 +886,15 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
 
         let cursor = local.last?.timestamp ?? before
         let started = generation
-        let response = await api.fetchMessages(chatId: chatId, before: cursor, limit: Self.pageSize - local.count)
+        let limit = Self.pageSize - local.count
+        // Страница старше курсора — это листание вверх: её ждёт пользователь, и пауза фоновых
+        // чтений после чужого too.many.requests её не держит.
+        let response: Result<[MessageRecord], MaxAPIError>
+        if let cursor {
+            response = await api.fetchOlderMessages(chatId: chatId, before: cursor, limit: limit)
+        } else {
+            response = await api.fetchMessages(chatId: chatId, before: nil, limit: limit)
+        }
         try ensureCurrent(started)
         switch response {
         case .success(let fetched):

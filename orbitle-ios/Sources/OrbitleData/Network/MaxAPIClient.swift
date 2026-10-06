@@ -63,6 +63,8 @@ public protocol MaxAPI: Sendable {
     func fetchMessages(chatId: String, before: Date?, limit: Int) async -> Result<[MessageRecord], MaxAPIError>
     /// Свежая страница открытого пользователем чата: уходит и во время паузы чтений.
     func fetchOpenedMessages(chatId: String, limit: Int) async -> Result<[MessageRecord], MaxAPIError>
+    /// Страница строго старше `before`, когда пользователь листает вверх: уходит и во время паузы чтений.
+    func fetchOlderMessages(chatId: String, before: Date, limit: Int) async -> Result<[MessageRecord], MaxAPIError>
     /// Сплошная страница вокруг сообщения `messageId` (или момента `at`, если он задан): до
     /// `forward` новее и до `backward` старше, от старых к новым.
     func fetchMessagesAround(chatId: String, messageId: String, at: Date?, forward: Int, backward: Int) async -> Result<[MessageRecord], MaxAPIError>
@@ -155,6 +157,9 @@ public extension MaxAPI {
 
     func fetchOpenedMessages(chatId: String, limit: Int) async -> Result<[MessageRecord], MaxAPIError> {
         await fetchMessages(chatId: chatId, before: nil, limit: limit)
+    }
+    func fetchOlderMessages(chatId: String, before: Date, limit: Int) async -> Result<[MessageRecord], MaxAPIError> {
+        await fetchMessages(chatId: chatId, before: before, limit: limit)
     }
     /// Источник без страниц вокруг сообщения: переход к далёкому сообщению недоступен.
     func fetchMessagesAround(chatId: String, messageId: String, at: Date?, forward: Int, backward: Int) async -> Result<[MessageRecord], MaxAPIError> {
@@ -284,6 +289,13 @@ public final class MaxAPIClient: MaxAPI, Sendable {
     public func fetchOpenedMessages(chatId: String, limit: Int) async -> Result<[MessageRecord], MaxAPIError> {
         await catching {
             let page = try await core.loadOpenedHistory(chatId: chatId, limit: limit)
+            return page.map(CoreMapping.message)
+        }
+    }
+
+    public func fetchOlderMessages(chatId: String, before: Date, limit: Int) async -> Result<[MessageRecord], MaxAPIError> {
+        await catching {
+            let page = try await core.loadOlderHistory(chatId: chatId, beforeMs: before.unixMillis, limit: limit)
             return page.map(CoreMapping.message)
         }
     }
