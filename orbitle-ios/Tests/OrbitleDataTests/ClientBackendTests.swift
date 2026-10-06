@@ -102,6 +102,13 @@ actor FakeMaxCore: MaxCore {
         return callLog
     }
 
+    private(set) var deletedCalls: [[String]] = []
+
+    func deleteCallHistory(ids: [String]) async throws {
+        if let directoryError { throw directoryError }
+        deletedCalls.append(ids)
+    }
+
     // Настройки аккаунта (docs/settings.md).
     nonisolated let folderList: [ServerFolder] = [
         ServerFolder(id: "all.chat.folder", title: "Все", isAllChats: true),

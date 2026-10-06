@@ -14,6 +14,8 @@ public struct CallRow: Identifiable, Hashable, Sendable {
     public let avatarURL: URL?
     public let isGroup: Bool
     public let isMissed: Bool
+    /// Видеозвонок: перезвонить так же.
+    public let isVideo: Bool
     public let status: String
     /// SF Symbol направления.
     public let directionSymbol: String
@@ -248,6 +250,7 @@ public final class CallsViewModel {
             avatarURL: first.avatarURL,
             isGroup: first.isGroup,
             isMissed: kind == .missed,
+            isVideo: first.isVideo,
             status: status,
             directionSymbol: Self.symbol(kind),
             dateText: date,

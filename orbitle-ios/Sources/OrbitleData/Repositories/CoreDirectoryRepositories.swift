@@ -163,7 +163,37 @@ public actor CoreCallHistoryRepository: CallHistoryRepository {
         self.core = core
     }
 
-    public nonisolated var capabilities: CallCapabilities { [.history] }
+    /// Удаление уходит на сервер (`VIDEO_CHAT_DELETE_HISTORY`), ссылка создаётся там же.
+    /// Вход по ссылке открывает звонок, поэтому его делает центр звонков, а не журнал.
+    public nonisolated var capabilities: CallCapabilities { [.history, .delete, .createLink, .join] }
+
+    /// Удаляет звонки на сервере и загружает журнал заново.
+    public func delete(ids: [String]) async throws(OrbitleError) {
+        let valid = ids.filter { Int64($0) != nil }
+        guard !valid.isEmpty else { return }
+        do {
+            try await core.deleteCallHistory(ids: valid)
+        } catch {
+            Log.warning(.calls, "Звонки не удалились: \(error)")
+            throw CoreMapping.apiError(error).orbitleError
+        }
+        Log.info(.calls, "Удалено звонков: \(valid.count)")
+        cached = cached?.filter { !valid.contains($0.id) }
+        if let cached { broadcast(cached) }
+    }
+
+    public func createCallLink() async throws(OrbitleError) -> URL {
+        do {
+            let link = try await core.createCallLink()
+            guard let url = URL(string: link.url) else { throw OrbitleError.invalidRequest }
+            return url
+        } catch let error as OrbitleError {
+            throw error
+        } catch {
+            Log.warning(.calls, "Ссылка на звонок не создалась: \(error)")
+            throw CoreMapping.apiError(error).orbitleError
+        }
+    }
 
     public nonisolated func calls() -> AsyncStream<[CallRecord]> {
         let (stream, continuation) = AsyncStream.makeStream(of: [CallRecord].self)

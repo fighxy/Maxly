@@ -578,8 +578,18 @@ public protocol MaxCore: Sendable {
     func pressButton(chatId: String, messageId: String, callbackId: String, payload: String) async throws -> CoreButtonAnswer
     /// Мини-приложение бота (`WEB_APP_INIT_DATA` 160). Пустые `chatId` и `startParam` не уходят.
     func launchBotApp(botId: String, chatId: String, startParam: String) async throws -> MiniApp
-    /// Сигнал звонка. `nil` — сервер не вернул адрес.
-    func signalCall(calleeId: String, isVideo: Bool) async throws -> CoreCallSignal?
+    /// Позвонить пользователю (`VIDEO_CHAT_START_ACTIVE` 78): адрес ws2 и свой номер в звонке.
+    func startCall(calleeId: String, isVideo: Bool) async throws -> CoreCallStart
+    /// Войти в звонок по ссылке (`VIDEO_CHAT_JOIN_BY_LINK` 166).
+    func joinCall(link: String, isVideo: Bool) async throws -> CoreCallStart
+    /// Новый групповой звонок со ссылкой (`VIDEO_CHAT_START` 76).
+    func createCallLink() async throws -> CoreCallLink
+    /// Что за звонок за ссылкой (`LINK_INFO` 89); `nil` — ссылка не в звонок.
+    func callLinkInfo(link: String) async throws -> CoreCallLinkInfo?
+    /// Удалить звонки журнала на сервере (`VIDEO_CHAT_DELETE_HISTORY` 164).
+    func deleteCallHistory(ids: [String]) async throws
+    /// Входящие звонки (`NOTIF_CALL_START` 137) с разобранным `vcp`.
+    func incomingCalls() -> AsyncStream<CoreIncomingCall>
     func enablePassword(password: String, hint: String) async throws
     func changePassword(oldPassword: String, newPassword: String) async throws
     func disablePassword(password: String) async throws
@@ -746,7 +756,12 @@ public extension MaxCore {
     func botCommands(botId: String) async throws -> [CoreBotCommand] { throw unsupported }
     func pressButton(chatId: String, messageId: String, callbackId: String, payload: String) async throws -> CoreButtonAnswer { throw unsupported }
     func launchBotApp(botId: String, chatId: String, startParam: String) async throws -> MiniApp { throw unsupported }
-    func signalCall(calleeId: String, isVideo: Bool) async throws -> CoreCallSignal? { throw unsupported }
+    func startCall(calleeId: String, isVideo: Bool) async throws -> CoreCallStart { throw unsupported }
+    func joinCall(link: String, isVideo: Bool) async throws -> CoreCallStart { throw unsupported }
+    func createCallLink() async throws -> CoreCallLink { throw unsupported }
+    func callLinkInfo(link: String) async throws -> CoreCallLinkInfo? { throw unsupported }
+    func deleteCallHistory(ids: [String]) async throws { throw unsupported }
+    func incomingCalls() -> AsyncStream<CoreIncomingCall> { AsyncStream { $0.finish() } }
     func enablePassword(password: String, hint: String) async throws { throw unsupported }
     func changePassword(oldPassword: String, newPassword: String) async throws { throw unsupported }
     func disablePassword(password: String) async throws { throw unsupported }
@@ -838,12 +853,87 @@ public struct CoreBotCommand: Sendable, Equatable {
     }
 }
 
-public struct CoreCallSignal: Sendable, Equatable {
+/// Звонок, который принял сервер: адрес сигнального сокета ws2 и свой номер в звонке.
+public struct CoreCallStart: Sendable, Equatable {
     public var conversationId: String
-    public var endpoint: String
+    public var ws2Url: String
+    public var callsUserId: Int64
+    /// Ссылка группового звонка; пусто у звонка один на один.
+    public var joinLink: String
+    public var isVideo: Bool
 
-    public init(conversationId: String, endpoint: String) {
+    public init(conversationId: String, ws2Url: String, callsUserId: Int64, joinLink: String = "", isVideo: Bool = false) {
         self.conversationId = conversationId
-        self.endpoint = endpoint
+        self.ws2Url = ws2Url
+        self.callsUserId = callsUserId
+        self.joinLink = joinLink
+        self.isVideo = isVideo
+    }
+}
+
+/// Новый групповой звонок. `name` пустое, если сервер его не дал.
+public struct CoreCallLink: Sendable, Equatable {
+    public var conversationId: String
+    public var url: String
+    public var name: String
+
+    public init(conversationId: String, url: String, name: String = "") {
+        self.conversationId = conversationId
+        self.url = url
+        self.name = name
+    }
+}
+
+/// Звонок за ссылкой до входа в него.
+public struct CoreCallLinkInfo: Sendable, Equatable {
+    public var url: String
+    public var name: String
+    public var participants: Int
+    public var isVideo: Bool
+
+    public init(url: String, name: String, participants: Int, isVideo: Bool) {
+        self.url = url
+        self.name = name
+        self.participants = participants
+        self.isVideo = isVideo
+    }
+}
+
+/// Входящий звонок из пуша: кто звонит, адрес ws2 и серверы ICE из `vcp`.
+public struct CoreIncomingCall: Sendable, Equatable {
+    public var conversationId: String
+    public var callerId: String
+    public var callerName: String
+    public var callerAvatarURL: String
+    public var chatId: String
+    public var isVideo: Bool
+    public var ws2Url: String
+    public var callsUserId: Int64
+    public var stunUrls: [String]
+    public var turnUrls: [String]
+    public var turnUsername: String
+    public var turnPassword: String
+    /// 0 — сервер не сказал срок.
+    public var expiresAtMs: Int64
+
+    public init(
+        conversationId: String, callerId: String, callerName: String = "", callerAvatarURL: String = "",
+        chatId: String = "", isVideo: Bool = false, ws2Url: String, callsUserId: Int64,
+        stunUrls: [String] = [], turnUrls: [String] = [], turnUsername: String = "", turnPassword: String = "",
+        expiresAtMs: Int64 = 0
+    ) {
+        self.conversationId = conversationId
+        self.callerId = callerId
+        self.callerName = callerName
+        self.callerAvatarURL = callerAvatarURL
+        self.chatId = chatId
+        self.isVideo = isVideo
+        self.ws2Url = ws2Url
+        self.callsUserId = callsUserId
+        self.stunUrls = stunUrls
+        self.turnUrls = turnUrls
+        self.turnUsername = turnUsername
+        self.turnPassword = turnPassword
+        self.expiresAtMs = expiresAtMs
     }
 }

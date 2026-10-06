@@ -12,10 +12,13 @@ let package = Package(
         .library(name: "OrbitleData", targets: ["OrbitleData"]),
         .library(name: "OrbitleUI", targets: ["OrbitleUI"]),
         .library(name: "OrbitlePresentation", targets: ["OrbitlePresentation"]),
+        .library(name: "OrbitleCallMedia", targets: ["OrbitleCallMedia"]),
     ],
     // Lottie (airbnb, бинарная сборка): анимированные стикеры и эмодзи Max (docs/stickers.md).
+    // WebRTC (сборка Google WebRTC M154 от stasel, BSD): звук и видео звонков (docs/calls.md).
     dependencies: [
         .package(url: "https://github.com/airbnb/lottie-spm.git", from: "4.5.0"),
+        .package(url: "https://github.com/stasel/WebRTC.git", exact: "154.0.0"),
     ],
     targets: [
         .target(name: "OrbitleDomain"),
@@ -34,6 +37,12 @@ let package = Package(
         // ViewModel экранов: чистый Swift поверх протоколов домена, без SwiftUI и ядра.
         // Так логика экранов проходит `swift test` без Xcode-таргета приложения.
         .target(name: "OrbitlePresentation", dependencies: ["OrbitleDomain"]),
+        // WebRTC за протоколами `CallMedia`/`CallPeer` из OrbitleData: логика звонка проходит
+        // `swift test` с фейковым медиа, а это — настоящие соединение, камера и экран.
+        .target(
+            name: "OrbitleCallMedia",
+            dependencies: ["OrbitleDomain", "OrbitleData", .product(name: "WebRTC", package: "WebRTC")]
+        ),
         .testTarget(name: "OrbitleDomainTests", dependencies: ["OrbitleDomain"]),
         .testTarget(
             name: "OrbitleDataTests",

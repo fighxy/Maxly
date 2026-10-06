@@ -5,10 +5,15 @@ import OrbitleUI
 
 /// Вкладка «Звонки»: переключатель «Все» / «Пропущенные» в панели навигации
 /// (на iOS 26 — на стекле), строки «Создать звонок» и «Присоединиться», история.
+/// Справа в строке — перезвонить; удаление свайпом уходит на сервер.
 struct CallsView: View {
     @Bindable var viewModel: CallsViewModel
     /// Открыть чат собеседника.
     let onOpenChat: (String) -> Void
+    /// Войти в групповой звонок по ссылке.
+    let onJoin: (String) -> Void
+    /// Перезвонить: строка и видео ли.
+    let onCall: (CallRow, Bool) -> Void
 
     @State private var showsCallsUnavailable = false
     @State private var isJoining = false
@@ -66,7 +71,8 @@ struct CallsView: View {
                 .textInputAutocapitalization(.never)
             Button("Отмена", role: .cancel) {}
             Button("Войти") {
-                Task { await viewModel.join(link: joinLink) }
+                let link = joinLink.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !link.isEmpty { onJoin(link) }
             }
         }
         .alert("Не получилось", isPresented: errorShown) {
@@ -75,7 +81,10 @@ struct CallsView: View {
             Text(viewModel.errorMessage ?? "")
         }
         .sheet(item: createdLink) { link in
-            CallLinkSheet(link: link.url)
+            CallLinkSheet(link: link.url) {
+                viewModel.createdLink = nil
+                onJoin(link.url.absoluteString)
+            }
         }
     }
 
@@ -102,12 +111,27 @@ struct CallsView: View {
         case .ready:
             Section {
                 ForEach(viewModel.rows) { row in
-                    Button {
-                        if let chatId = row.chatId { onOpenChat(chatId) }
-                    } label: {
-                        CallRowView(row: row)
+                    HStack(spacing: 4) {
+                        Button {
+                            if let chatId = row.chatId { onOpenChat(chatId) }
+                        } label: {
+                            CallRowView(row: row)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(privateMode.isMasked ? maskedLabel(row) : row.accessibilityLabel)
+                        if !row.isGroup, !row.peerId.isEmpty {
+                            Button {
+                                onCall(row, row.isVideo)
+                            } label: {
+                                Image(systemName: row.isVideo ? "video" : "phone")
+                                    .font(.title3)
+                                    .foregroundStyle(Color.orbitleAccent)
+                                    .frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel(row.isVideo ? "Видеозвонок" : "Позвонить")
+                        }
                     }
-                    .accessibilityLabel(privateMode.isMasked ? maskedLabel(row) : row.accessibilityLabel)
                     .swipeActions(edge: .trailing) {
                         Button(role: .destructive) {
                             Task { await viewModel.delete(row) }
@@ -170,9 +194,11 @@ struct CreatedLink: Identifiable {
     var id: String { url.absoluteString }
 }
 
-/// Созданная ссылка на звонок: поделиться или скопировать.
+/// Ссылка на звонок: войти, поделиться или скопировать.
 struct CallLinkSheet: View {
     let link: URL
+    /// Войти в звонок по этой ссылке. `nil` — уже в нём.
+    var onJoin: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -183,6 +209,16 @@ struct CallLinkSheet: View {
                         .textSelection(.enabled)
                 } footer: {
                     Text("Отправьте ссылку тем, кого хотите позвать в звонок.")
+                }
+                if let onJoin {
+                    Section {
+                        Button {
+                            dismiss()
+                            onJoin()
+                        } label: {
+                            Label("Войти в звонок", systemImage: "phone.arrow.up.right")
+                        }
+                    }
                 }
                 Section {
                     ShareLink(item: link) {
@@ -195,7 +231,7 @@ struct CallLinkSheet: View {
                     }
                 }
             }
-            .navigationTitle("Новый звонок")
+            .navigationTitle(onJoin == nil ? "Ссылка на звонок" : "Новый звонок")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

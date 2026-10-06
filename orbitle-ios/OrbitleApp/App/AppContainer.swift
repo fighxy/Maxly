@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OrbitleCallMedia
 import OrbitleData
 import OrbitleDomain
 import OrbitlePresentation
@@ -51,6 +52,9 @@ final class AppContainer {
     @ObservationIgnored private var calls: any CallHistoryRepository = UnavailableCallHistoryRepository()
     @ObservationIgnored private var coreContacts: CoreContactRepository?
     @ObservationIgnored private var coreCalls: CoreCallHistoryRepository?
+    /// Звонки (docs/calls.md): один центр на приложение и системный экран звонка.
+    @ObservationIgnored private(set) var callCenter: CallCenter?
+    @ObservationIgnored private var callKit: CallKitController?
     @ObservationIgnored private var profiles: (any ChatProfileRepository)?
     @ObservationIgnored private var profileActions: (any ProfileActionsRepository)?
     /// Стикеры и анимодзи (docs/stickers.md); панель одна на все чаты: каталог грузится раз.
@@ -185,6 +189,24 @@ final class AppContainer {
             self.coreCalls = coreCalls
             self.contacts = coreContacts
             self.calls = coreCalls
+            let callKit = CallKitController()
+            let directory = CallPeerDirectory(core: core)
+            let center = CallCenter(
+                service: CoreCallService(core: core),
+                engine: SessionCallEngine { WebRTCCallMedia() },
+                system: callKit,
+                lookup: { await directory.peer($0) }
+            )
+            // Сервер кладёт звонок в журнал чуть позже конца разговора.
+            center.onCallEnded = { [weak self] in
+                guard let calls = self?.callsModel else { return }
+                Task {
+                    try? await Task.sleep(for: .seconds(2))
+                    await calls.refresh()
+                }
+            }
+            self.callKit = callKit
+            self.callCenter = center
             self.profiles = CoreChatProfileRepository(core: core, cache: self.profileCache)
             self.profileActions = CoreProfileActions(core: core)
             self.stickerRepository = CoreStickerRepository(core: core)
@@ -206,6 +228,7 @@ final class AppContainer {
                     Log.info(.auth, "Фаза входа: \(Self.describe(next))")
                     switch next {
                     case .signedOut, .expired:
+                        await self.callCenter?.deactivate()
                         self.dropScreenModels()
                         // Отметка относилась к прежнему сеансу. Истёкший токен её не стирает:
                         // следующий вход по коду всё равно заменит её новой.
@@ -218,8 +241,10 @@ final class AppContainer {
                         // Кэш показывался под запомненным id, а ядро вошло другим аккаунтом
                         // (или вход после истёкшей сессии): модели чатов помнят прежнего автора.
                         if case .signedIn(let old) = previous, old != id {
+                            await self.callCenter?.deactivate()
                             self.dropScreenModels()
                         }
+                        self.callCenter?.activate()
                     default:
                         break
                     }
@@ -560,6 +585,45 @@ final class AppContainer {
         let accounts = accounts
         return MiniAppModel(title: request.title, repository: accounts) { () async throws(OrbitleError) -> MiniApp in
             try await accounts.launchBotApp(botId: request.botId, chatId: request.chatId, startParam: request.startParam)
+        }
+    }
+
+    // MARK: Звонки
+
+    /// Позвонить пользователю: сначала разрешение на микрофон.
+    func startCall(_ peer: CallCenter.Peer, video: Bool) {
+        guard let center = callCenter else { return }
+        Task {
+            guard await CallPermissions.microphone() else {
+                center.showError(CallPermissions.microphoneDenied)
+                return
+            }
+            await center.startCall(to: peer, video: video)
+        }
+    }
+
+    /// Войти в групповой звонок по ссылке.
+    func joinCall(link: String) {
+        guard let center = callCenter else { return }
+        Task {
+            guard await CallPermissions.microphone() else {
+                center.showError(CallPermissions.microphoneDenied)
+                return
+            }
+            await center.join(link: link)
+        }
+    }
+
+    /// Ответить на входящий.
+    func answerCall(video: Bool) {
+        guard let center = callCenter else { return }
+        Task {
+            guard await CallPermissions.microphone() else {
+                center.showError(CallPermissions.microphoneDenied)
+                await center.decline()
+                return
+            }
+            await center.answer(video: video)
         }
     }
 
