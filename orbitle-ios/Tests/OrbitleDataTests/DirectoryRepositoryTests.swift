@@ -56,6 +56,50 @@ struct DirectoryRepositoryTests {
         #expect(await third.next() == [])
     }
 
+    @Test("Журнал звонков: удаление уходит на сервер и сразу пропадает из списка")
+    func callsDelete() async throws {
+        let core = FakeMaxCore()
+        await core.setDirectory(calls: [coreCall("1", time: 2_000), coreCall("2", time: 1_000)])
+        let repository = CoreCallHistoryRepository(core: core)
+        #expect(repository.capabilities.contains(.delete))
+        var iterator = repository.calls().makeAsyncIterator()
+        #expect(await iterator.next()?.map(\.id) == ["1", "2"])
+        try await repository.delete(ids: ["1", "звонок"])
+        #expect(await core.deletedCalls == [["1"]])
+        #expect(await iterator.next()?.map(\.id) == ["2"])
+
+        await core.setDirectory(calls: [coreCall("2", time: 1_000)], error: CoreFailure(kind: "NETWORK", key: nil))
+        await #expect(throws: OrbitleError.networkUnavailable) { try await repository.delete(ids: ["2"]) }
+    }
+
+    @Test("Звонки из ядра: адрес ws2, свой номер, ICE и срок входящего")
+    func callService() throws {
+        let incoming = try #require(CoreCallService.incoming(CoreIncomingCall(
+            conversationId: "c", callerId: "5", callerName: "Анна", chatId: "", isVideo: true,
+            ws2Url: "wss://sig.test/ws?userId=9", callsUserId: 9, stunUrls: ["stun:a"], turnUrls: ["turn:b"],
+            turnUsername: "u", turnPassword: "p", expiresAtMs: 1_700_000_000_000
+        )))
+        #expect(incoming.connection.selfId == 9)
+        #expect(incoming.connection.signalingURL.absoluteString == "wss://sig.test/ws?userId=9")
+        #expect(incoming.connection.iceServers == [
+            CallIceServer(urls: ["stun:a"]),
+            CallIceServer(urls: ["turn:b"], username: "u", credential: "p"),
+        ])
+        #expect(incoming.expiresAt == Date(timeIntervalSince1970: 1_700_000_000))
+        #expect(incoming.chatId == nil)
+        #expect(incoming.isVideo)
+        #expect(CoreCallService.incoming(CoreIncomingCall(conversationId: "", callerId: "5", ws2Url: "wss://s", callsUserId: 1)) == nil)
+
+        let start = try CoreCallService.connection(CoreCallStart(
+            conversationId: "c", ws2Url: "wss://sig.test/ws?tgt=start", callsUserId: 3, joinLink: "https://max.ru/joincall/t"
+        ))
+        #expect(start.selfId == 3)
+        #expect(start.joinLink?.absoluteString == "https://max.ru/joincall/t")
+        #expect(throws: OrbitleError.invalidRequest) {
+            try CoreCallService.connection(CoreCallStart(conversationId: "c", ws2Url: "https://sig.test", callsUserId: 3))
+        }
+    }
+
     @Test("Отметки звонков: у каждого аккаунта свои, выход их стирает")
     @MainActor
     func callMarks() throws {

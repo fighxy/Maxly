@@ -63,7 +63,7 @@ struct PreviewCalls: CallHistoryRepository {
 
 #Preview("Звонки") {
     NavigationStack {
-        CallsView(viewModel: CallsViewModel(calls: PreviewCalls())) { _ in }
+        CallsView(viewModel: CallsViewModel(calls: PreviewCalls()), onOpenChat: { _ in }, onJoin: { _ in }, onCall: { _, _ in })
     }
 }
 

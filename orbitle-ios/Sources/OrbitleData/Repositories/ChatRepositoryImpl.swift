@@ -431,15 +431,6 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         }
     }
 
-    public func signalCall(calleeId: String, isVideo: Bool) async throws(OrbitleError) -> String? {
-        switch await api.signalCall(calleeId: calleeId, isVideo: isVideo) {
-        case .success(let signal):
-            return signal?.conversationId
-        case .failure(let error):
-            throw error.orbitleError
-        }
-    }
-
     public func pressButton(chatId: String, messageId: String, callbackId: String, payload: String?) async throws(OrbitleError) -> BotButtonAnswer {
         switch await api.pressButton(chatId: chatId, messageId: messageId, callbackId: callbackId, payload: payload) {
         case .success(let answer):

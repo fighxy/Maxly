@@ -1,6 +1,6 @@
 # orbitle-ios
 
-iOS-клиент Orbitle на SwiftUI. Слои описаны в [`docs/architecture.md`](../docs/architecture.md). Komet — карта функций клиента Max ([`docs/komet-reference.md`](../docs/komet-reference.md)), не образец структуры. Вкладка «Настройки» описана в [`docs/settings.md`](docs/settings.md). Реакции на сообщения — в [`docs/reactions.md`](docs/reactions.md). Вложения (фото, видео, файлы, контакты) — в [`docs/attachments.md`](docs/attachments.md). Приватный режим — в [`docs/privacy-mode.md`](docs/privacy-mode.md). Анимации и правила плавности — в [`docs/animations.md`](docs/animations.md). Кэш медиа и экран «Данные и память» — в [`docs/storage.md`](docs/storage.md). Сохранение в «Фото» и «Файлы» — в [`docs/saving.md`](docs/saving.md). Расшифровка голосовых — в [`docs/transcription.md`](docs/transcription.md). Шапка чата и профиль — в [`docs/profile.md`](docs/profile.md). Эмодзи и стикеры — в [`docs/stickers.md`](docs/stickers.md).
+iOS-клиент Orbitle на SwiftUI. Слои описаны в [`docs/architecture.md`](../docs/architecture.md). Komet — карта функций клиента Max ([`docs/komet-reference.md`](../docs/komet-reference.md)), не образец структуры. Вкладка «Настройки» описана в [`docs/settings.md`](docs/settings.md). Реакции на сообщения — в [`docs/reactions.md`](docs/reactions.md). Вложения (фото, видео, файлы, контакты) — в [`docs/attachments.md`](docs/attachments.md). Приватный режим — в [`docs/privacy-mode.md`](docs/privacy-mode.md). Анимации и правила плавности — в [`docs/animations.md`](docs/animations.md). Кэш медиа и экран «Данные и память» — в [`docs/storage.md`](docs/storage.md). Сохранение в «Фото» и «Файлы» — в [`docs/saving.md`](docs/saving.md). Расшифровка голосовых — в [`docs/transcription.md`](docs/transcription.md). Шапка чата и профиль — в [`docs/profile.md`](docs/profile.md). Эмодзи и стикеры — в [`docs/stickers.md`](docs/stickers.md). Звонки (ws2, WebRTC, CallKit) — в [`docs/calls.md`](docs/calls.md).
 
 ## Слои
 
@@ -8,6 +8,7 @@ iOS-клиент Orbitle на SwiftUI. Слои описаны в [`docs/archite
 - `Sources/OrbitleData` — SwiftData, URLSession, очередь исходящих, синхронизация и сессия. Ядро сюда входит только как протокол `MaxCore`.
 - `Sources/OrbitlePresentation` — логика экранов без SwiftUI: `AuthViewModel`, `PhoneNumber`, `ChatListViewModel`, `ChatListFormatter`, `ChatViewModel`. Зависит только от `OrbitleDomain`, покрыта тестами `Tests/OrbitlePresentationTests` на фейковых репозиториях.
 - `Sources/OrbitleUI` — цвета, отступы, аватар, строка чата (принимает готовые строки), пузырь сообщения.
+- `Sources/OrbitleCallMedia` — WebRTC (Google WebRTC M154, сборка stasel): соединение, микрофон, камера, показ экрана, аудиосессия и вид видео. Логика звонка в `OrbitleData/Calls` с ним не связана и тестируется на фейках.
 - `OrbitleApp` — точка входа, контейнер, навигация и тонкие SwiftUI-экраны. Это таргет Xcode. `import MaxIos` живёт только в `OrbitleApp/Core/MaxIosCore.swift`.
 
 Профиль устройства остаётся внутри ядра: Android, Pixel 8. Приложение не подставляет данные iPhone.
@@ -41,7 +42,7 @@ iOS-клиент Orbitle на SwiftUI. Слои описаны в [`docs/archite
 
 Истории (схема Komet `feature/FullStack`): полоса над списком чатов («Ваша история» с кнопкой новой, затем кольца — сначала непросмотренные, потом свежие), кольца на аватарах личных чатов (собеседник — `id диалога ^ свой id`), в шапке чата и в профиле. Просмотр на весь экран: полосы прогресса, фото 5 секунд, видео по длине, касание слева — назад, справа — вперёд, удержание — пауза, свайп вниз — закрыть, вбок — к соседнему владельцу; продолжение с первой непросмотренной, удаление своей. Публикация фото или видео из медиатеки на сутки: всем или только контактам.
 
-Звонки, стикеры, отправка «печатает», поиск, пуши APNs и QR-вход нового устройства в этот прототип не входят.
+Звонки: аудио и видео один на один, групповые по ссылке, входящие с CallKit, смена камеры, показ экрана приложения, плашка идущего звонка и удаление из журнала на сервере ([`docs/calls.md`](docs/calls.md)). Пуши APNs (и входящие звонки, пока приложение выгружено) и QR-вход нового устройства в этот прототип не входят.
 
 ## Сборка
 

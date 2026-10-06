@@ -134,8 +134,6 @@ public protocol ChatRepository: Sendable {
     func members(chatId: String) async throws(OrbitleError) -> [ChatMemberRef]
     /// Команды бота. Имена без ведущего слэша.
     func botCommands(botId: String) async throws(OrbitleError) -> [BotCommandRef]
-    /// Сигнал личного звонка. `nil` — сервер не вернул адрес. Звук и видео не открываются.
-    func signalCall(calleeId: String, isVideo: Bool) async throws(OrbitleError) -> String?
     /// Нажатие inline-кнопки `CALLBACK` бота (опкод 118). Сам ответ бота обычно приходит
     /// сообщением; здесь — короткий текст или адрес, если сервер их прислал.
     func pressButton(chatId: String, messageId: String, callbackId: String, payload: String?) async throws(OrbitleError) -> BotButtonAnswer
@@ -176,7 +174,6 @@ public extension ChatRepository {
     func joinByLink(_ link: String) async throws(OrbitleError) -> String? { throw .invalidRequest }
     func members(chatId: String) async throws(OrbitleError) -> [ChatMemberRef] { throw .invalidRequest }
     func botCommands(botId: String) async throws(OrbitleError) -> [BotCommandRef] { throw .invalidRequest }
-    func signalCall(calleeId: String, isVideo: Bool) async throws(OrbitleError) -> String? { throw .invalidRequest }
     func pressButton(chatId: String, messageId: String, callbackId: String, payload: String?) async throws(OrbitleError) -> BotButtonAnswer {
         throw .invalidRequest
     }

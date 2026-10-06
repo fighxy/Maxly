@@ -124,19 +124,6 @@ extension MaxIosCore {
         }
     }
 
-    func signalCall(calleeId: String, isVideo: Bool) async throws -> CoreCallSignal? {
-        try await call("signalCall") { done in
-            self.client.signalCall(calleeId: calleeId, isVideo: isVideo) { signal, kind, key in
-                if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
-                } else if let signal {
-                    done(.success(CoreCallSignal(conversationId: signal.conversationId, endpoint: signal.endpoint)))
-                } else {
-                    done(.success(nil))
-                }
-            }
-        }
-    }
 
     private static func found(_ message: IosFoundMessage) -> CoreFoundMessage {
         CoreFoundMessage(

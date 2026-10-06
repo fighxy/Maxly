@@ -113,6 +113,8 @@ struct MainTabView: View {
             let account = container.accountSettingsModel()
             if account.profile == nil { await account.reloadProfile() }
         }))
+        // Звонок поверх всего: полный экран или плашка свёрнутого (docs/calls.md).
+        .modifier(CallHost(center: container.callCenter, onAnswer: { container.answerCall(video: $0) }))
         // Бейдж «Звонков» нужен и до первого открытия вкладки.
         .task {
             let calls = container.callsViewModel()
@@ -180,9 +182,14 @@ struct MainTabView: View {
             }
         case .calls:
             NavigationStack {
-                CallsView(viewModel: container.callsViewModel()) { chatId in
-                    router.openChat(chatId)
-                }
+                CallsView(
+                    viewModel: container.callsViewModel(),
+                    onOpenChat: { chatId in router.openChat(chatId) },
+                    onJoin: { link in container.joinCall(link: link) },
+                    onCall: { row, video in
+                        container.startCall(CallCenter.Peer(id: row.peerId, name: row.name, avatarURL: row.avatarURL), video: video)
+                    }
+                )
             }
         case .settings:
             NavigationStack {
@@ -313,7 +320,8 @@ struct MainTabView: View {
                     }
                 },
                 quickReaction: settings.quickReactionEnabled ? settings.quickReaction : nil,
-                makeBotApp: { container.botAppModel($0) }
+                makeBotApp: { container.botAppModel($0) },
+                onCall: { peer, video in container.startCall(peer, video: video) }
             )
             .id(id)
         }

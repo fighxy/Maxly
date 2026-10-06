@@ -135,7 +135,6 @@ public protocol MaxAPI: Sendable {
     func chatMembers(chatId: String) async -> Result<[CoreChatMember], MaxAPIError>
     func botCommands(botId: String) async -> Result<[CoreBotCommand], MaxAPIError>
     func pressButton(chatId: String, messageId: String, callbackId: String, payload: String?) async -> Result<CoreButtonAnswer, MaxAPIError>
-    func signalCall(calleeId: String, isVideo: Bool) async -> Result<CoreCallSignal?, MaxAPIError>
 }
 
 /// Ответ списка чатов. `complete` — это весь список аккаунта: чатов, которых в нём нет,
@@ -238,7 +237,6 @@ public extension MaxAPI {
     func pressButton(chatId: String, messageId: String, callbackId: String, payload: String?) async -> Result<CoreButtonAnswer, MaxAPIError> {
         .failure(.invalidResponse)
     }
-    func signalCall(calleeId: String, isVideo: Bool) async -> Result<CoreCallSignal?, MaxAPIError> { .failure(.invalidResponse) }
 }
 
 /// Клиент API Max поверх `MaxCore`. Типы Kotlin сюда не попадают.
@@ -401,10 +399,6 @@ public final class MaxAPIClient: MaxAPI, Sendable {
 
     public func botCommands(botId: String) async -> Result<[CoreBotCommand], MaxAPIError> {
         await catching { try await core.botCommands(botId: botId) }
-    }
-
-    public func signalCall(calleeId: String, isVideo: Bool) async -> Result<CoreCallSignal?, MaxAPIError> {
-        await catching { try await core.signalCall(calleeId: calleeId, isVideo: isVideo) }
     }
 
     public func pressButton(chatId: String, messageId: String, callbackId: String, payload: String?) async -> Result<CoreButtonAnswer, MaxAPIError> {

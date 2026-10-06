@@ -1930,20 +1930,6 @@ public final class ChatViewModel {
         }
     }
 
-    public func signalCall(video: Bool) async {
-        guard let peerId else { return }
-        do {
-            let conversation = try await chats?.signalCall(calleeId: peerId, isVideo: video)
-            if conversation == nil {
-                showNotice("Сервер не принял звонок")
-            } else {
-                showNotice("Сервер принял звонок. Звук и видео этот клиент не передаёт.")
-            }
-        } catch {
-            show(error)
-        }
-    }
-
     private func applyPinState() {
         let latestId = live.reversed().first { $0.content.pin != nil }?.id
         if pinOverride != nil, latestId != pinBaselineId {

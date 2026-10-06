@@ -40,6 +40,8 @@ struct ChatView: View {
     var quickReaction: String? = nil
     /// Мини-приложение бота: кнопка «Открыть приложение» и inline-кнопки `OPEN_APP`.
     var makeBotApp: ((BotAppRequest) -> MiniAppModel)? = nil
+    /// Позвонить собеседнику личного чата (из профиля): аудио или видео.
+    var onCall: ((CallCenter.Peer, Bool) -> Void)? = nil
     @Environment(\.openURL) private var openURL
     @State private var profile: ChatProfileViewModel?
     @State private var profileShown = false
@@ -602,10 +604,11 @@ struct ChatView: View {
             context.onPoll = { closeProfile { pollShown = true } }
             context.onSchedule = { closeProfile { scheduleShown = true } }
         }
-        if kind == .private, viewModel.peerId != nil, card.shown.kind == .user {
-            let chat = viewModel
+        if kind == .private, let peerId = viewModel.peerId, card.shown.kind == .user, let onCall {
+            let peer = CallCenter.Peer(id: peerId, name: card.shown.title, avatarURL: card.shown.avatarURL)
             context.onCall = { video in
-                Task { await chat.signalCall(video: video) }
+                profileShown = false
+                onCall(peer, video)
             }
         }
         return context
