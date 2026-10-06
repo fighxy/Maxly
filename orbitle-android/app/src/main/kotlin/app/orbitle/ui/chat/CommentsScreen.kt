@@ -54,6 +54,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,8 +68,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.orbitle.data.CoreErrors
 import app.orbitle.domain.Message
 import app.orbitle.domain.MessageStatus
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import app.orbitle.presentation.chat.ChatItem
 import app.orbitle.presentation.chat.CommentsModel
 import app.orbitle.presentation.chat.CommentsState
@@ -86,6 +90,8 @@ fun CommentsScreen(
     canWrite: Boolean,
     quickReactions: List<String>,
     onClose: () -> Unit,
+    /** Заблокировать автора комментария. `null` — пункта нет. Бросает ошибку сервера. */
+    onBlockAuthor: (suspend (Message) -> Unit)? = null,
 ) {
     BackHandler(onBack = onClose)
     val state by model.state.collectAsStateWithLifecycle()
@@ -192,8 +198,26 @@ fun CommentsScreen(
             }
         }
     }
+    val blockScope = rememberCoroutineScope()
     actionsFor?.let { comment ->
-        CommentActions(model, comment, quickReactions, onDismiss = { actionsFor = null })
+        CommentActions(
+            model, comment, quickReactions,
+            onBlockAuthor = onBlockAuthor?.let { action ->
+                { blocked ->
+                    blockScope.launch {
+                        try {
+                            action(blocked)
+                            snackbar.showSnackbar("Автор комментария заблокирован")
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Throwable) {
+                            CoreErrors.map(e).userMessage?.let { snackbar.showSnackbar(it) }
+                        }
+                    }
+                }
+            },
+            onDismiss = { actionsFor = null },
+        )
     }
 }
 
@@ -250,7 +274,13 @@ private fun CommentComposer(draft: String, canSend: Boolean, onDraft: (String) -
 /** Меню комментария: реакции и копирование; у неотправленного — повтор и удаление. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CommentActions(model: CommentsModel, comment: Message, quickReactions: List<String>, onDismiss: () -> Unit) {
+private fun CommentActions(
+    model: CommentsModel,
+    comment: Message,
+    quickReactions: List<String>,
+    onBlockAuthor: ((Message) -> Unit)?,
+    onDismiss: () -> Unit,
+) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val clipboard = LocalClipboardManager.current
     val colors = ListItemDefaults.colors(containerColor = Color.Transparent)
@@ -272,6 +302,16 @@ private fun CommentActions(model: CommentsModel, comment: Message, quickReaction
                     ) { Text(emoji, fontSize = 26.sp) }
                 }
             }
+        }
+        if (onBlockAuthor != null && comment.authorId != "0") {
+            ListItem(
+                headlineContent = { Text("Заблокировать автора") },
+                modifier = Modifier.clickable {
+                    onBlockAuthor(comment)
+                    onDismiss()
+                },
+                colors = colors,
+            )
         }
         if (comment.status == MessageStatus.FAILED) {
             ListItem(

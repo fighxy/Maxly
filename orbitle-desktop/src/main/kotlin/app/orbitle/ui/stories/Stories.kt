@@ -99,10 +99,13 @@ import kotlin.math.abs
 class StoryRings(
     val state: StoriesUiState,
     val open: (String) -> Unit,
-    /** Спросить кольцо владельца вне ленты (открытый профиль). */
+    /** Спросить кольцо человека вне ленты (открытый профиль). */
     val load: (String?) -> Unit = {},
+    /** Спросить кольцо человека, группы или канала. */
+    val loadOwner: (String?, app.orbitle.domain.StoryOwner.Type) -> Unit = { id, _ -> load(id) },
 ) {
     fun ringOf(ownerId: String?): StoryRing? = state.ringOf(ownerId)
+    fun ringFor(ownerId: String?, type: app.orbitle.domain.StoryOwner.Type): StoryRing? = state.ringFor(ownerId, type)
 }
 
 val LocalStoryRings = compositionLocalOf { StoryRings(StoriesUiState(), open = {}) }

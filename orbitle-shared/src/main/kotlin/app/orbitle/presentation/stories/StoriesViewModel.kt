@@ -58,6 +58,12 @@ data class StoriesUiState(
         if (own?.owner?.id == ownerId) return own
         return rings.firstOrNull { it.owner.id == ownerId } ?: peers[ownerId]
     }
+
+    /** Кольцо на аватаре: человек — по id собеседника, группа и канал — только если владелец того же типа. */
+    fun ringFor(ownerId: String?, ownerType: StoryOwner.Type): StoryRing? {
+        val ring = ringOf(ownerId) ?: return null
+        return ring.takeIf { StoryStripMotion.ringMatches(it, ownerType) }
+    }
 }
 
 /**
@@ -77,7 +83,7 @@ class StoriesViewModel(
     /** Кольца ленты по id владельца, включая своё. */
     private var feed: Map<String, StoryRing> = emptyMap()
     private var peers: Map<String, StoryRing> = emptyMap()
-    /** Владельцы вне ленты, о которых уже спрашивали. */
+    /** Владельцы вне ленты, о которых уже спрашивали. Ключ — тип и id. */
     private val requested = HashSet<String>()
     private val cache = HashMap<String, List<Story>>()
     /** Истории, уже отмеченные просмотренными за этот просмотр. */
@@ -119,13 +125,19 @@ class StoriesViewModel(
      * Кольцо владельца вне ленты (человек из открытого профиля или чата): один запрос на
      * владельца за сессию модели.
      */
-    fun loadRing(ownerId: String?) {
-        if (ownerId.isNullOrEmpty() || ownerId == "0" || ownerId in feed || !requested.add(ownerId)) return
+    fun loadRing(ownerId: String?) = loadOwner(ownerId, StoryOwner.Type.USER)
+
+    /**
+     * Кольцо владельца вне ленты: человек из профиля или группа и канал.
+     * Один запрос на пару (тип, id) за сессию модели.
+     */
+    fun loadOwner(ownerId: String?, type: StoryOwner.Type) {
+        if (ownerId.isNullOrEmpty() || ownerId == "0" || ownerId in feed || !requested.add(requestKey(ownerId, type))) return
         viewModelScope.launch {
             val reply = try {
-                repository.stories(StoryOwner(ownerId))
+                repository.stories(StoryOwner(ownerId, type))
             } catch (e: Throwable) {
-                requested.remove(ownerId)
+                requested.remove(requestKey(ownerId, type))
                 return@launch
             }
             cache[ownerId] = reply.stories.filter { it.media != null }
@@ -319,9 +331,14 @@ class StoriesViewModel(
         if (index < (seenAtOpen[ring.owner.id] ?: 0) || !marked.add(story.id)) return
         // Кольцо гаснет сразу, не дожидаясь ответа сервера.
         val current = _state.value.ringOf(ring.owner.id) ?: ring
+        val previousRead = current.read
         replaceRing(current.copy(read = (current.read + 1).coerceAtMost(current.total)))
         viewModelScope.launch {
-            runCatching { repository.markSeen(story.owner, story.id) }
+            val sent = runCatching { repository.markSeen(story.owner, story.id) }.isSuccess
+            if (sent) return@launch
+            marked.remove(story.id)
+            val now = _state.value.ringOf(ring.owner.id) ?: return@launch
+            if (now.read == (previousRead + 1).coerceAtMost(now.total)) replaceRing(now.copy(read = previousRead))
         }
     }
 
@@ -380,5 +397,7 @@ class StoriesViewModel(
 
         private fun StoryRing.withProfile(known: StoryRing?): StoryRing =
             if (known == null) this else copy(name = name.ifBlank { known.name }, avatarUrl = avatarUrl ?: known.avatarUrl)
+
+        private fun requestKey(ownerId: String, type: StoryOwner.Type) = "${type.code}:$ownerId"
     }
 }
