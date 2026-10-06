@@ -10,6 +10,8 @@ struct ChatListView: View {
     @Binding var selection: String?
     var newChat: NewChatModel?
     var onOpened: (NewChatOpened) -> Void = { _ in }
+    /// Найденное сообщение: чат откроется на нём. По умолчанию — просто чат.
+    var onOpenMessage: (ChatSearchMessage) -> Void = { _ in }
     /// Свой аватар для плитки «Ваша история» и кнопка новой истории; без них полосы нет.
     var selfAvatar: ChatAvatar?
     var onAddStory: (() -> Void)?
@@ -333,10 +335,17 @@ struct ChatListView: View {
             }
             if !search.messages.isEmpty {
                 Section("Сообщения") {
-                    // Переход к самому сообщению экран чата пока не умеет: открывается чат.
+                    // Чат открывается на самом сообщении: модель чата запоминает его до открытия.
                     ForEach(search.messages) { message in
-                        FoundMessageRow(message: message)
-                            .tag(message.chatId)
+                        Button {
+                            onOpenMessage(message)
+                            selection = message.chatId
+                        } label: {
+                            FoundMessageRow(message: message)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .selectionDisabled()
                     }
                 }
             }

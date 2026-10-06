@@ -51,6 +51,8 @@ public final class ChatViewModel {
     public private(set) var unreadBelow = 0
     /// Сообщение у низа экрана, когда читатель ушёл из чата посреди истории.
     @ObservationIgnored private var savedPlace: String?
+    /// Сообщение, на котором открывают чат (`openAt`), пока экран не встал.
+    @ObservationIgnored private var pendingOpen: (messageId: String, date: Date?)?
     /// Номер строки по id сообщения: плашка даты ищет верхнюю из видимых.
     @ObservationIgnored private var rowIndex: [String: Int] = [:]
     /// Сообщение, над которым стоит «Непрочитанные сообщения». Ставится один раз при открытии
@@ -878,6 +880,27 @@ public final class ChatViewModel {
         setWindow(nil)
         request(.bottom)
         return true
+    }
+
+    /// Чат открывают на сообщении (найденном в общем поиске): лента встанет на нём, как после
+    /// перехода по цитате, а не на «Непрочитанных» или прежнем месте. Уже открытый и сверенный
+    /// чат переходит сразу, иначе — когда экран встанет после открытия (`startPendingOpen`).
+    public func openAt(messageId: String, at date: Date? = nil) {
+        if watch != nil, latestLoaded, !isRestoringHistory {
+            focusReply(messageId, at: date)
+        } else {
+            pendingOpen = (messageId, date)
+        }
+    }
+
+    /// Чат открывается на сообщении (`openAt`), переход ещё не начат.
+    public var hasPendingOpen: Bool { pendingOpen != nil }
+
+    /// Экран встал после открытия: переход к сообщению, на котором чат открыли.
+    public func startPendingOpen() {
+        guard let target = pendingOpen else { return }
+        pendingOpen = nil
+        focusReply(target.messageId, at: target.date)
     }
 
     /// Экран выполнил просьбу прокрутки.

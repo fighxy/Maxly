@@ -731,7 +731,8 @@ public final class ChatListViewModel {
                 messageId: found.messageId,
                 chatTitle: byId[found.chatId].map(formatter.title(for:)) ?? ChatSearchMessage.unknownChatTitle,
                 snippet: ChatSearchMessage.snippet(found.text),
-                time: found.date.map { formatter.timeLabel(for: $0, now: date) } ?? ""
+                time: found.date.map { formatter.timeLabel(for: $0, now: date) } ?? "",
+                date: found.date
             )
         }
     }

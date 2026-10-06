@@ -278,6 +278,12 @@ struct ChatTranscript: View {
     /// иначе счётчик на кнопке «вниз». История, удаление и перестановка ленту не двигают.
     /// Первое положение ленты: разделитель непрочитанных у верха экрана, иначе последнее сообщение.
     private func openAtStart(_ proxy: ScrollViewProxy) {
+        // Чат открыт на найденном сообщении: переход к нему ставит ленту сам, когда история сверена.
+        if viewModel.hasPendingOpen {
+            bottom.beginReadingHistory()
+            if !viewModel.isRestoringHistory { viewModel.startPendingOpen() }
+            return
+        }
         if let anchor = viewModel.unreadAnchorId {
             bottom.beginReadingHistory()
             proxy.scrollTo(anchor, anchor: UnitPoint(x: 0.5, y: 0.12))

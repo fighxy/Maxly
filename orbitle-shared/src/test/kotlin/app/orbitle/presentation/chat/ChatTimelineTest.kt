@@ -166,6 +166,20 @@ class ChatTimelineTest {
     }
 
     @Test
+    fun opensAtAFoundMessageInsteadOfTheUnread() {
+        repo.server = (1..199).map(::msg)
+        repo.base.headerInfo.value = ChatHeaderInfo(chat(unread = 99), readMarkMs = time(100))
+        val model = vm()
+        // Время из поиска: окно вокруг сообщения без отдельного запроса самого сообщения.
+        model.openAt("20", time(20))
+        val state = model.state.value
+        assertEquals(time(20), repo.around.last())
+        assertEquals(ScrollRequest.Target.Message("20", highlight = true), state.scroll?.target)
+        assertTrue(20 in keys(model))
+        assertTrue(state.hasNewer)
+    }
+
+    @Test
     fun jumpToALoadedMessageOnlyScrolls() {
         repo.server = (1..199).map(::msg)
         repo.base.headerInfo.value = ChatHeaderInfo(chat(unread = 0))

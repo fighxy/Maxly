@@ -177,6 +177,9 @@ fun ChatScreen(
     /** Действие, выбранное в профиле этого чата: экран открывает его, когда профиль закрылся. */
     requestedAction: ChatAction? = null,
     onActionHandled: () -> Unit = {},
+    /** Сообщение из общего поиска и его время (мс, 0 — неизвестно): чат открывается на нём. */
+    openMessage: Pair<String, Long>? = null,
+    onMessageOpened: () -> Unit = {},
     /** Мини-приложение бота поверх чата: кнопка «Открыть приложение» и inline-кнопки `OPEN_APP`. */
     botApp: @Composable (request: BotAppRequest, onClose: () -> Unit) -> Unit = { _, onClose -> onClose() },
 ) {
@@ -309,6 +312,11 @@ fun ChatScreen(
         val text = notice ?: return@LaunchedEffect
         snackbar.showSnackbar(text)
         model.consumeMessage()
+    }
+    LaunchedEffect(openMessage) {
+        val (id, at) = openMessage ?: return@LaunchedEffect
+        model.openAt(id, at)
+        onMessageOpened()
     }
     LaunchedEffect(requestedAction) {
         val action = requestedAction ?: return@LaunchedEffect

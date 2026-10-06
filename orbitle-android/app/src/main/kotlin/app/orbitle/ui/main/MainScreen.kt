@@ -151,6 +151,8 @@ fun MainScreen(
     }
     // Действие из профиля чата (поиск, «О чате», звонок, очистка, удаление): чат откроет его после возврата.
     var chatAction by remember { mutableStateOf<Pair<String, ChatAction>?>(null) }
+    // Найденное в общем поиске сообщение: чат откроется на нём (id чата, id сообщения, время).
+    var openMessage by remember { mutableStateOf<Triple<String, String, Long>?>(null) }
     fun openChat(id: String, title: String? = null) {
         nav.navigate(if (title == null) "chat/$id" else "chat/$id?title=${Uri.encode(title)}")
     }
@@ -195,8 +197,10 @@ fun MainScreen(
                     chatList,
                     onOpenChat = { openChat(it.id) },
                     onOpenFound = { openChat(it.id, it.title) },
-                    // Переход к самому сообщению экран чата пока не умеет: открывается чат.
-                    onOpenMessage = { openChat(it.chatId) },
+                    onOpenMessage = {
+                        openMessage = Triple(it.chatId, it.messageId, it.timeMs)
+                        openChat(it.chatId)
+                    },
                     privateMode = privatePrefs,
                     onTogglePrivateMode = container.privateMode::toggle,
                     newChat = newChat,
@@ -305,6 +309,8 @@ fun MainScreen(
                     quickReaction = accountState.settings.quickReaction.takeIf { accountState.settings.quickReactionEnabled },
                     requestedAction = chatAction?.takeIf { it.first == chatId }?.second,
                     onActionHandled = { chatAction = null },
+                    openMessage = openMessage?.takeIf { it.first == chatId }?.let { it.second to it.third },
+                    onMessageOpened = { openMessage = null },
                     botApp = { request, onClose ->
                         val app = viewModel(key = "bot-app-${request.botId}-${request.startParam}-${request.title}") {
                             MiniAppViewModel(null, container.account, request.title) {

@@ -158,6 +158,8 @@ fun MainScreen(
         storiesModel.consumeMessage()
         storySnack.showSnackbar(text)
     }
+    // Найденное в общем поиске сообщение: чат откроется на нём (id чата, id сообщения, время).
+    var openMessage by remember { mutableStateOf<Triple<String, String, Long>?>(null) }
     fun openChat(id: String, title: String? = null) {
         chatId = id
         chatTitle = title
@@ -207,7 +209,10 @@ fun MainScreen(
                             chatList,
                             onOpenChat = { openChat(it.id) },
                             onOpenFound = { openChat(it.id, it.title) },
-                            onOpenMessage = { openChat(it.chatId) },
+                            onOpenMessage = {
+                                openChat(it.chatId)
+                                openMessage = Triple(it.chatId, it.messageId, it.timeMs)
+                            },
                             privateMode = privatePrefs,
                             onTogglePrivateMode = container.privateMode::toggle,
                             newChat = newChat,
@@ -237,6 +242,8 @@ fun MainScreen(
                                 chatTitle = null
                             },
                             quickReaction = accountState.settings.quickReaction.takeIf { accountState.settings.quickReactionEnabled },
+                            openMessage = openMessage?.takeIf { it.first == chatId }?.let { it.second to it.third },
+                            onMessageOpened = { openMessage = null },
                         )
                     }
                 }
@@ -320,6 +327,8 @@ private fun ChatPane(
     onCloseProfile: () -> Unit,
     onCloseChat: () -> Unit,
     quickReaction: String? = null,
+    openMessage: Pair<String, Long>? = null,
+    onMessageOpened: () -> Unit = {},
 ) {
     // Действие из профиля (поиск, «О чате», звонок, очистка, удаление): чат откроет его после возврата.
     var chatAction by remember { mutableStateOf<Pair<String, ChatAction>?>(null) }
@@ -367,6 +376,8 @@ private fun ChatPane(
                 quickReaction = quickReaction,
                 requestedAction = chatAction?.takeIf { it.first == chatId }?.second,
                 onActionHandled = { chatAction = null },
+                openMessage = openMessage,
+                onMessageOpened = onMessageOpened,
                 botApp = { request, onClose ->
                     val app = viewModel(key = "bot-app-${request.botId}-${request.startParam}-${request.title}") {
                         MiniAppViewModel(null, container.account, request.title) {
