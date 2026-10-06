@@ -36,8 +36,6 @@ struct ChatTranscript: View {
     @State private var isOpening = true
     @State private var position: String?
     @State private var olderAnchor: String?
-    /// Верх ленты на экране: подгрузка старого запускается, когда он показался.
-    @State private var headerVisible = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.chatWallpaper) private var wallpaper
 
@@ -112,8 +110,6 @@ struct ChatTranscript: View {
                     guard !restoring else { return }
                     let opening = isOpening
                     isOpening = false
-                    // Короткая история целиком на экране: верх уже виден, подгрузка — сразу.
-                    if headerVisible { loadOlderFromTop() }
                     guard opening || bottom.atBottom else { return }
                     var transaction = Transaction()
                     transaction.disablesAnimations = true
@@ -176,8 +172,9 @@ struct ChatTranscript: View {
                     if atBottom, !isOpening { viewModel.noteAtBottom() }
                 }
                 .onAppear {
-                    // Просьба прокрутки, оставшаяся от прошлого захода, к этому открытию не относится.
-                    if isOpening { viewModel.consumeScroll() }
+                    // Просьба прокрутки от прошлого захода к этому открытию не относится. Пришедшая,
+                    // пока лента была скрыта (профиль), выполняется сейчас: иначе она держала бы `follow`.
+                    if isOpening { viewModel.consumeScroll() } else { perform(viewModel.scrollTarget, proxy: proxy) }
                 }
                 .onDisappear { viewModel.savePlace(position, atBottom: bottom.atBottom) }
                 .onChange(of: geo.size.height) { _, _ in
@@ -223,11 +220,7 @@ struct ChatTranscript: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 32)
-            .onAppear {
-                headerVisible = true
-                loadOlderFromTop()
-            }
-            .onDisappear { headerVisible = false }
+            .onAppear { loadOlderFromTop() }
         }
     }
 
