@@ -66,6 +66,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.NotificationsActive
+import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.outlined.MarkChatUnread
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -384,20 +386,26 @@ fun ChatScreen(
                 )
             } else if (state.join != null) {
                 val join = state.join!!
-                // Канал или группа вне списка (из поиска): вступление вместо плашки.
-                Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
-                    Button(
-                        onClick = model::join,
-                        enabled = !join.busy,
-                        modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
-                    ) {
+                // Канал или группа вне списка (из поиска): вступление вместо поля ввода.
+                ReadOnlyBar {
+                    Button(onClick = model::join, enabled = !join.busy, contentPadding = PaddingValues(horizontal = 28.dp)) {
                         if (join.busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text(join.label)
+                    }
+                }
+            } else if (state.muted != null) {
+                // Подписан, а писать нельзя (канал): кнопка звука, как в Telegram.
+                val muted = state.muted == true
+                ReadOnlyBar {
+                    FilledTonalButton(onClick = model::toggleMute, contentPadding = PaddingValues(horizontal = 24.dp)) {
+                        Icon(if (muted) Icons.Outlined.NotificationsActive else Icons.Outlined.NotificationsOff, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (muted) "Включить звук" else "Выключить звук")
                     }
                 }
             } else {
                 Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
                     Text(
-                        if (state.header?.type == app.orbitle.domain.ChatType.CHANNEL) "Писать в канал могут только администраторы" else "Писать в этот чат нельзя",
+                        "Писать в этот чат нельзя",
                         Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp),
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -604,4 +612,14 @@ private fun ChatTopBar(
             }
         },
     )
+}
+
+/** Вместо поля ввода, когда писать нельзя: одна небольшая кнопка по центру. */
+@Composable
+private fun ReadOnlyBar(content: @Composable () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
+        Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+            content()
+        }
+    }
 }

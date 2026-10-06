@@ -99,6 +99,11 @@ data class ChatUiState(
     val botAppId: String? = null,
     /** Канал или группа вне списка: «Подписаться» или «Вступить» вместо плашки. */
     val join: JoinUi? = null,
+    /**
+     * Писать нельзя, а чат в списке (подписан на канал): вместо поля ввода кнопка звука, как в
+     * Telegram. `true` — уведомления выключены. `null` — кнопки нет.
+     */
+    val muted: Boolean? = null,
     val isLoading: Boolean = true,
     val isLoadingOlder: Boolean = false,
     val hasOlder: Boolean = true,
@@ -356,6 +361,10 @@ class ChatViewModel(
     /** До этого времени старые страницы не спрашиваются: прокрутка у верха после ошибки
      *  иначе повторяла бы запрос на каждое изменение ленты. */
     private var olderRetryAt = 0L
+    /** Отказы подряд при подгрузке старого: после паузы страница спрашивается снова сама, но
+     *  не больше [OLDER_AUTO_RETRIES] раз — дальше ждёт прокрутки. */
+    private var olderFailures = 0
+    private var olderRetry: Job? = null
 
     fun loadOlder() {
         val current = _state.value
@@ -374,12 +383,26 @@ class ChatViewModel(
                 throw e
             } catch (e: Exception) {
                 val limited = app.orbitle.data.CoreErrors.map(e).isRateLimit
-                olderRetryAt = now() + if (limited) RATE_LIMIT_RETRY_MS else OLDER_RETRY_MS
-                // Пауза сервера: старые сообщения догрузятся при следующей прокрутке вверх.
+                val wait = if (limited) {
+                    (app.orbitle.data.ServerRateLimit.shared.remainingMs() ?: OLDER_RETRY_MS).coerceIn(OLDER_RETRY_MS, RATE_LIMIT_RETRY_MS)
+                } else {
+                    OLDER_RETRY_MS
+                }
+                olderRetryAt = now() + wait
                 if (!limited) show(e)
-                true
+                // Читатель у верха ждёт страницу: после паузы она спрашивается снова сама.
+                if (++olderFailures <= OLDER_AUTO_RETRIES) {
+                    olderRetry?.cancel()
+                    olderRetry = viewModelScope.launch {
+                        delay(wait)
+                        olderRetryAt = 0L
+                        loadOlder()
+                    }
+                }
+                null
             }
-            _state.update { it.copy(isLoadingOlder = false, hasOlder = more) }
+            if (more != null) olderFailures = 0
+            _state.update { it.copy(isLoadingOlder = false, hasOlder = more ?: it.hasOlder) }
         }
     }
 
@@ -1051,6 +1074,8 @@ class ChatViewModel(
         val join = if (stored == null && card != null && card.link != null) {
             JoinUi(if (card.kind == app.orbitle.domain.ChatProfile.Kind.CHANNEL) "Подписаться" else "Вступить", joining)
         } else null
+        // Сервер принял звук: своё нажатие больше не нужно держать поверх стора.
+        if (stored != null && pendingMute == stored.chat.isMuted) pendingMute = null
         if (info == null) {
             askOutsider()
             val title = fallbackTitle?.takeIf { it.isNotBlank() }
@@ -1082,6 +1107,7 @@ class ChatViewModel(
                 canWrite = chat.canWrite != false,
                 botAppId = info.botAppId,
                 join = join,
+                muted = if (stored != null && chats != null && chat.canWrite == false) pendingMute ?: chat.isMuted else null,
             )
         }
         if (chat.unreadCount > 0) {
@@ -1094,6 +1120,28 @@ class ChatViewModel(
     }
 
     private var commentsFlagAsked = false
+
+    /** Нажатый звук, пока стор его не отразил: кнопка меняется сразу. */
+    private var pendingMute: Boolean? = null
+
+    /** Кнопка звука вместо поля ввода (канал, где писать нельзя): выключить или включить уведомления. */
+    fun toggleMute() {
+        val chats = chats ?: return
+        val next = !(_state.value.muted ?: return)
+        pendingMute = next
+        _state.update { it.copy(muted = next) }
+        viewModelScope.launch {
+            try {
+                chats.setMuted(chatId, next)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                pendingMute = null
+                _state.update { it.copy(muted = header?.chat?.isMuted ?: it.muted?.not()) }
+                show(e)
+            }
+        }
+    }
 
     /**
      * Канал из списка, а опции `COMMENTS` в его строке нет: список отдаёт чаты коротко. Флаг —
@@ -1668,6 +1716,7 @@ class ChatViewModel(
         const val RATE_LIMIT_HINT = "Сервер просит подождать. Сообщения загрузятся сами через несколько секунд"
         /** Пауза перед следующей старой страницей после ошибки. */
         const val OLDER_RETRY_MS = 5_000L
+        const val OLDER_AUTO_RETRIES = 3
         const val REACTION_FAILURE = "Не удалось поставить реакцию"
     }
 }
