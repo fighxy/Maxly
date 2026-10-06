@@ -84,6 +84,32 @@ fun MediaViewer(
         // Поворот фото четвертями по часовой, свой у каждого фото. Счёт не по модулю 4:
         // анимация после четвёртого поворота идёт дальше по часовой, а не крутится назад.
         val turns = remember { androidx.compose.runtime.mutableStateMapOf<String, Int>() }
+        // Клавиши просмотра: ←/→ — соседнее, R — повернуть, Ctrl+S — сохранить. Остальное
+        // (переход по чатам и прочее) под открытым просмотром не срабатывает, кроме выхода.
+        val keyScope = androidx.compose.runtime.rememberCoroutineScope()
+        app.orbitle.ui.keys.HotkeyHandler { hotkey ->
+            when (hotkey.action) {
+                app.orbitle.ui.keys.HotkeyAction.VIEWER_PREVIOUS -> {
+                    if (pager.currentPage > 0) keyScope.launch { pager.animateScrollToPage(pager.currentPage - 1) }
+                    true
+                }
+                app.orbitle.ui.keys.HotkeyAction.VIEWER_NEXT -> {
+                    if (pager.currentPage < state.items.lastIndex) keyScope.launch { pager.animateScrollToPage(pager.currentPage + 1) }
+                    true
+                }
+                app.orbitle.ui.keys.HotkeyAction.ROTATE -> {
+                    val photo = state.items.getOrNull(pager.currentPage) as? ChatAttachment.Photo
+                    if (photo != null) turns[photo.id] = (turns[photo.id] ?: 0) + 1
+                    true
+                }
+                app.orbitle.ui.keys.HotkeyAction.SAVE -> {
+                    if (!saving) onSave?.invoke()
+                    true
+                }
+                app.orbitle.ui.keys.HotkeyAction.QUIT -> false
+                else -> true
+            }
+        }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             HorizontalPager(pager, Modifier.fillMaxSize(), key = { state.items[it].id }) { page ->
                 when (val item = state.items[page]) {

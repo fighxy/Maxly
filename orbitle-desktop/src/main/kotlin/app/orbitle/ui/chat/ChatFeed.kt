@@ -165,6 +165,7 @@ import app.orbitle.ui.components.edgeFade
 import app.orbitle.ui.components.LocalChatBackdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.gestures.animateScrollBy
 
 /** Закрытый пузырь приватного режима: заглушка или размытый пузырь, касание открывает его. */
 @Composable
@@ -278,6 +279,22 @@ internal fun ChatFeed(
     val items by rememberUpdatedState(state.items)
     val hasNewer by rememberUpdatedState(state.hasNewer)
 
+    // PageUp / PageDown: лента на экран вверх или вниз (лента перевёрнута: вверх — к старым).
+    val pageScope = androidx.compose.runtime.rememberCoroutineScope()
+    app.orbitle.ui.keys.HotkeyHandler { hotkey ->
+        val step = listState.layoutInfo.viewportSize.height * 0.85f
+        when (hotkey.action) {
+            app.orbitle.ui.keys.HotkeyAction.PAGE_UP -> {
+                pageScope.launch { listState.animateScrollBy(step) }
+                true
+            }
+            app.orbitle.ui.keys.HotkeyAction.PAGE_DOWN -> {
+                pageScope.launch { listState.animateScrollBy(-step) }
+                true
+            }
+            else -> false
+        }
+    }
     // Запросы модели: выполнить один раз и снять.
     val request = state.scroll
     LaunchedEffect(request?.token) {

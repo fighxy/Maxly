@@ -82,6 +82,15 @@ fun main() {
             icon = painterResource(R.drawable.app_icon),
             state = rememberWindowState(size = DpSize(1100.dp, 760.dp)),
         ) {
+            // Ctrl+Q (⌘Q) — выход, как в Telegram Desktop.
+            app.orbitle.ui.keys.HotkeyHandler { hotkey ->
+                if (hotkey.action == app.orbitle.ui.keys.HotkeyAction.QUIT) {
+                    exitApplication()
+                    true
+                } else {
+                    false
+                }
+            }
             CompositionLocalProvider(
                 LocalLifecycleOwner provides owner,
                 LocalViewModelStoreOwner provides owner,

@@ -807,6 +807,30 @@ class ChatViewModel(
 
     fun cancelReply() = _state.update { it.copy(replyTo = null) }
 
+    /**
+     * Ответ на сообщение выше ([older]) или ниже выбранного, как Ctrl+↑ / Ctrl+↓ в Telegram
+     * Desktop: без ответа — на последнее сообщение, у последнего вниз — ответ снимается. Лента
+     * показывает выбранное. `false` — выбирать не из чего.
+     */
+    fun replyToNeighbour(older: Boolean): Boolean {
+        val candidates = visible.filter { it.status == MessageStatus.SENT && !it.isService && it.id.toLongOrNull() != null }
+        if (candidates.isEmpty()) return false
+        val current = _state.value.replyTo?.let { reply -> candidates.indexOfFirst { it.id == reply.id } } ?: -1
+        val next = when {
+            current < 0 -> if (older) candidates.lastIndex else return false
+            older -> (current - 1).coerceAtLeast(0)
+            current == candidates.lastIndex -> {
+                cancelReply()
+                return true
+            }
+            else -> current + 1
+        }
+        val message = candidates[next]
+        beginReply(message)
+        requestScroll(ScrollRequest.Target.Message(message.id, highlight = true))
+        return true
+    }
+
     // Правка
 
     fun canEdit(message: Message): Boolean =
@@ -819,6 +843,16 @@ class ChatViewModel(
             it.copy(editing = message, replyTo = null, draft = message.text)
         }
     }
+
+    /** ↑ в пустом поле ввода: правка своего последнего сообщения, которое можно править. */
+    fun editLast(): Boolean {
+        val last = visible.lastOrNull { canEdit(it) } ?: return false
+        beginEdit(last)
+        return true
+    }
+
+    /** К последнему сообщению (Ctrl+End): окно перехода и возвраты больше не нужны. */
+    fun toBottom() = toLatest()
 
     fun cancelEdit() {
         if (_state.value.editing == null) return

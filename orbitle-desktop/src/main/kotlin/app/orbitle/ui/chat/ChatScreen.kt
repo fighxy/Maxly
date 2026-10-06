@@ -13,6 +13,8 @@ import androidx.compose.material.icons.outlined.Download
 import app.orbitle.presentation.chat.ReactionPalette
 import androidx.compose.material.icons.outlined.Group
 import app.orbitle.platform.BackHandler
+import app.orbitle.ui.keys.HotkeyAction
+import app.orbitle.ui.keys.HotkeyHandler
 import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -288,6 +290,30 @@ fun ChatScreen(
         snackbar.showSnackbar(text)
         model.consumeMessage()
     }
+    // Горячие клавиши чата: поиск в нём, вложение, выбор ответа и «к последнему».
+    HotkeyHandler { hotkey ->
+        when (hotkey.action) {
+            HotkeyAction.SEARCH -> {
+                searching = true
+                true
+            }
+            HotkeyAction.ATTACH -> state.canWrite && run {
+                attaching = true
+                true
+            }
+            HotkeyAction.REPLY_OLDER -> state.canWrite && model.replyToNeighbour(older = true)
+            HotkeyAction.REPLY_NEWER -> state.canWrite && model.replyToNeighbour(older = false)
+            HotkeyAction.TO_LATEST -> {
+                model.toBottom()
+                true
+            }
+            else -> false
+        }
+    }
+    // Esc при ответе или правке отменяет их, а не закрывает чат.
+    BackHandler(enabled = state.replyTo != null || state.editing != null) {
+        if (state.editing != null) model.cancelEdit() else model.cancelReply()
+    }
     LaunchedEffect(openMessage) {
         val (id, at) = openMessage ?: return@LaunchedEffect
         model.openAt(id, at)
@@ -366,6 +392,7 @@ fun ChatScreen(
                     onRecordingStart = model.media::stopVoice,
                     onMention = model::insertMention,
                     onCommand = model::insertCommand,
+                    onEditLast = model::editLast,
                 )
             } else if (state.join != null) {
                 val join = state.join!!

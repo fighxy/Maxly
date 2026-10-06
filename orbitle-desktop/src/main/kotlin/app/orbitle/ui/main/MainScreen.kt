@@ -60,6 +60,10 @@ import app.orbitle.R
 import app.orbitle.data.PrivateModeSettings
 import app.orbitle.domain.Account
 import app.orbitle.domain.Chat
+import app.orbitle.ui.keys.HotkeyAction
+import app.orbitle.ui.keys.HotkeyHandler
+import app.orbitle.ui.keys.LocalSendKey
+import app.orbitle.ui.settings.KeyboardScreen
 import app.orbitle.platform.BackHandler
 import app.orbitle.presentation.calls.CallsViewModel
 import app.orbitle.presentation.chat.ChatViewModel
@@ -108,7 +112,7 @@ enum class Tab(val title: Int, val icon: ImageVector, val selectedIcon: ImageVec
     SETTINGS(R.string.tab_settings, Icons.Outlined.Settings, Icons.Filled.Settings),
 }
 
-private enum class SettingsPage { Home, About, Devices, Appearance, Profile, Privacy, Security, RecoveryEmail, Storage, Folders, Blocked, MiniApp, Messages }
+private enum class SettingsPage { Home, About, Devices, Appearance, Profile, Privacy, Security, RecoveryEmail, Storage, Folders, Blocked, MiniApp, Messages, Keyboard }
 
 /** Окно после входа: рельс вкладок, список чатов и открытый чат рядом. */
 @Composable
@@ -134,6 +138,7 @@ fun MainScreen(
     val contactsModel = viewModel { ContactsViewModel(container.contacts, { container.messages.currentUserId }, chats = container.chats) }
     val newChat = viewModel(key = "new-chat") { NewChatModel(container.contacts, container.chats) { container.messages.currentUserId } }
     val privatePrefs by container.privateMode.state.collectAsStateWithLifecycle()
+    val sendKey by container.keyboard.sendKey.collectAsStateWithLifecycle()
     val privateDisplay = PrivateModeSettings.display(privatePrefs, canBlur = true)
     // Истории: одна модель на список, шапку чата и профиль.
     val storiesModel = viewModel { StoriesViewModel(container.stories, container.session.connection) }
@@ -173,6 +178,52 @@ fun MainScreen(
             else -> SettingsPage.Home
         }
     }
+    // Горячие клавиши окна, как в Telegram Desktop: поиск, соседний чат, папки, «Избранное»,
+    // новое сообщение и настройки. Открытый чат и просмотр фото кладут свои поверх.
+    HotkeyHandler { hotkey ->
+        when (hotkey.action) {
+            HotkeyAction.SEARCH, HotkeyAction.SEARCH_CHATS -> {
+                tab = Tab.CHATS
+                chatList.setSearchActive(true)
+                true
+            }
+            HotkeyAction.NEXT_CHAT, HotkeyAction.PREVIOUS_CHAT -> {
+                val list = chats.pages.firstOrNull { it.id == chats.selectedFolderId }?.items ?: chats.items
+                if (list.isEmpty()) return@HotkeyHandler false
+                val index = list.indexOfFirst { it.id == chatId }
+                val next = when {
+                    index < 0 -> 0
+                    hotkey.action == HotkeyAction.NEXT_CHAT -> (index + 1).coerceAtMost(list.lastIndex)
+                    else -> (index - 1).coerceAtLeast(0)
+                }
+                chatList.opened(list[next].id)
+                openChat(list[next].id)
+                true
+            }
+            HotkeyAction.FOLDER -> {
+                val folder = chats.folders.getOrNull(hotkey.index) ?: return@HotkeyHandler false
+                tab = Tab.CHATS
+                chatList.setSearchActive(false)
+                chatList.selectFolder(folder.id)
+                true
+            }
+            HotkeyAction.SAVED_MESSAGES -> {
+                openChat(Chat.SAVED_MESSAGES_ID)
+                true
+            }
+            HotkeyAction.NEW_MESSAGE -> {
+                tab = Tab.CHATS
+                newChat.show()
+                true
+            }
+            HotkeyAction.SETTINGS -> {
+                tab = Tab.SETTINGS
+                settingsPage = SettingsPage.Home
+                true
+            }
+            else -> false
+        }
+    }
     BackHandler(enabled = tab == Tab.CHATS && profileFor != null) { profileFor = null }
     BackHandler(enabled = tab == Tab.CHATS && profileFor == null && chatId != null) {
         chatId = null
@@ -181,6 +232,7 @@ fun MainScreen(
     CompositionLocalProvider(
         LocalPrivateMode provides privateDisplay,
         LocalStoryRings provides StoryRings(stories, storiesModel::open, storiesModel::loadRing),
+        LocalSendKey provides sendKey,
     ) {
         Box(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -440,6 +492,7 @@ private fun SettingsPane(
             onStorage = { onOpen(SettingsPage.Storage) },
             onFolders = { onOpen(SettingsPage.Folders) },
             onMessages = { onOpen(SettingsPage.Messages) },
+            onKeyboard = { onOpen(SettingsPage.Keyboard) },
             profileLink = profileLink,
             accountLimits = limits,
         )
@@ -449,6 +502,7 @@ private fun SettingsPane(
             onBack = onBack,
         )
         SettingsPage.About -> AboutScreen(onBack)
+        SettingsPage.Keyboard -> KeyboardScreen(container.keyboard, onBack)
         SettingsPage.Devices -> DevicesScreen(container.sessions, onBack)
         SettingsPage.Appearance -> AppearanceScreen(container.appearance, onBack)
         SettingsPage.Profile -> ProfileEditScreen(accountModel, onBack, onLogout)

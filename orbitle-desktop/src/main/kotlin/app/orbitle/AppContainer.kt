@@ -91,6 +91,7 @@ class AppContainer {
     }
 
     val appearance = AppearanceSettings(preferenceStore)
+    val keyboard = app.orbitle.ui.keys.KeyboardSettings(preferenceStore)
     val privateMode = PrivateModeSettings(preferenceStore)
     val stickers: StickerRepository = CoreStickerRepository(client)
     val comments = CoreCommentsRepository(client)
