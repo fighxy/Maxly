@@ -126,27 +126,23 @@ final class CallKitController: NSObject, CallSystem {
         }
     }
 
-    fileprivate func performStart(_ action: CXStartCallAction) {
-        CallAudio.configure(video: action.isVideo)
-        provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: nil)
-        action.fulfill()
+    fileprivate func started(_ id: UUID, video: Bool) {
+        CallAudio.configure(video: video)
+        provider.reportOutgoingCall(with: id, startedConnectingAt: nil)
     }
 
-    fileprivate func performAnswer(_ action: CXAnswerCallAction) {
-        CallAudio.configure(video: video[action.callUUID] ?? false)
-        delegate?.systemAnswered(action.callUUID)
-        action.fulfill()
+    fileprivate func answered(_ id: UUID) {
+        CallAudio.configure(video: video[id] ?? false)
+        delegate?.systemAnswered(id)
     }
 
-    fileprivate func performEnd(_ action: CXEndCallAction) {
-        video[action.callUUID] = nil
-        delegate?.systemEnded(action.callUUID)
-        action.fulfill()
+    fileprivate func ended(_ id: UUID) {
+        video[id] = nil
+        delegate?.systemEnded(id)
     }
 
-    fileprivate func performMute(_ action: CXSetMutedCallAction) {
-        delegate?.systemMuted(action.callUUID, muted: action.isMuted)
-        action.fulfill()
+    fileprivate func muted(_ id: UUID, _ muted: Bool) {
+        delegate?.systemMuted(id, muted: muted)
     }
 
     fileprivate func reset() {
@@ -155,26 +151,37 @@ final class CallKitController: NSObject, CallSystem {
     }
 }
 
-/// Делегат CallKit. Очередь делегата — главная (`setDelegate(_:queue: nil)`).
+/// Делегат CallKit. Очередь делегата — главная (`setDelegate(_:queue: nil)`). На главный актор
+/// уходят только id и флаги: сами действия CallKit не `Sendable`, их `fulfill` — здесь.
 extension CallKitController: CXProviderDelegate {
     nonisolated func providerDidReset(_ provider: CXProvider) {
         MainActor.assumeIsolated { reset() }
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
-        MainActor.assumeIsolated { performStart(action) }
+        let id = action.callUUID
+        let video = action.isVideo
+        MainActor.assumeIsolated { started(id, video: video) }
+        action.fulfill()
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
-        MainActor.assumeIsolated { performAnswer(action) }
+        let id = action.callUUID
+        MainActor.assumeIsolated { answered(id) }
+        action.fulfill()
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
-        MainActor.assumeIsolated { performEnd(action) }
+        let id = action.callUUID
+        MainActor.assumeIsolated { ended(id) }
+        action.fulfill()
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
-        MainActor.assumeIsolated { performMute(action) }
+        let id = action.callUUID
+        let isMuted = action.isMuted
+        MainActor.assumeIsolated { muted(id, isMuted) }
+        action.fulfill()
     }
 
     nonisolated func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
