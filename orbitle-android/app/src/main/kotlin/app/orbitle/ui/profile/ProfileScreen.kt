@@ -114,6 +114,8 @@ fun ProfileScreen(
     mediaUserAgent: String = "",
     /** Профиль открыт из чата: поиск, звонок и действия с чатом. */
     chatActions: ProfileChatActions? = null,
+    /** Группа или канал: название, участники, ссылка, права. */
+    onManage: (() -> Unit)? = null,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val notice by model.notice.collectAsStateWithLifecycle()
@@ -227,6 +229,11 @@ fun ProfileScreen(
                             if (index < state.rows.lastIndex) Box(Modifier.padding(start = 16.dp).fillMaxWidth().height(0.5.dp).background(MaterialTheme.colorScheme.outlineVariant))
                         }
                     }
+                }
+            }
+            if (onManage != null && (state.profile.kind == ChatProfile.Kind.GROUP || state.profile.kind == ChatProfile.Kind.CHANNEL)) {
+                item(key = "manage") {
+                    TextButton(onClick = onManage, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Управление") }
                 }
             }
             if (state.commands.isNotEmpty()) {
@@ -354,9 +361,23 @@ private fun Header(state: ProfileUiState) {
     Column(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         // Кольцо историй собеседника: владельца вне ленты профиль спрашивает сам.
         val stories = app.orbitle.ui.stories.LocalStoryRings.current
-        val peer = state.profile.peerId.takeIf { state.profile.kind == app.orbitle.domain.ChatProfile.Kind.USER }
-        androidx.compose.runtime.LaunchedEffect(peer) { stories.load(peer) }
-        app.orbitle.ui.stories.StoryRingAvatar(state.avatar, stories.ringOf(peer), 104.dp, onRingClick = peer?.let { { stories.open(it) } })
+        val ownerType = when (state.profile.kind) {
+            app.orbitle.domain.ChatProfile.Kind.GROUP -> app.orbitle.domain.StoryOwner.Type.CHAT
+            app.orbitle.domain.ChatProfile.Kind.CHANNEL -> app.orbitle.domain.StoryOwner.Type.CHANNEL
+            else -> app.orbitle.domain.StoryOwner.Type.USER
+        }
+        val ownerId = when (state.profile.kind) {
+            app.orbitle.domain.ChatProfile.Kind.USER, app.orbitle.domain.ChatProfile.Kind.BOT -> state.profile.peerId
+            app.orbitle.domain.ChatProfile.Kind.GROUP, app.orbitle.domain.ChatProfile.Kind.CHANNEL -> state.profile.chatId
+            else -> null
+        }
+        androidx.compose.runtime.LaunchedEffect(ownerId, ownerType) { stories.loadOwner(ownerId, ownerType) }
+        app.orbitle.ui.stories.StoryRingAvatar(
+            state.avatar,
+            stories.ringFor(ownerId, ownerType),
+            104.dp,
+            onRingClick = ownerId?.let { id -> { stories.open(id) } },
+        )
         Spacer(Modifier.height(14.dp))
         Row(Modifier.padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(state.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)

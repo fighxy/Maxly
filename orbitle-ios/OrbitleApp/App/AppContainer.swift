@@ -51,6 +51,8 @@ final class AppContainer {
     @ObservationIgnored private var contacts: any ContactRepository = UnavailableContactRepository()
     @ObservationIgnored private var calls: any CallHistoryRepository = UnavailableCallHistoryRepository()
     @ObservationIgnored private var coreContacts: CoreContactRepository?
+    /// Управление группой и каналом. До входа ядра пусто.
+    @ObservationIgnored private(set) var chatAdmin: (any ChatAdminRepository)?
     @ObservationIgnored private var coreCalls: CoreCallHistoryRepository?
     /// Звонки (docs/calls.md): один центр на приложение и системный экран звонка.
     @ObservationIgnored private(set) var callCenter: CallCenter?
@@ -209,6 +211,7 @@ final class AppContainer {
             self.callCenter = center
             self.profiles = CoreChatProfileRepository(core: core, cache: self.profileCache)
             self.profileActions = CoreProfileActions(core: core)
+            self.chatAdmin = CoreChatAdminRepository(core: core)
             self.stickerRepository = CoreStickerRepository(core: core)
             self.accounts = CoreAccountRepository(core: core)
             self.folderRepository = CoreFolderRepository(core: core)

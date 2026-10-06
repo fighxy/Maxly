@@ -180,6 +180,8 @@ fun ChatScreen(
     onMessageOpened: () -> Unit = {},
     /** Мини-приложение бота поверх чата: кнопка «Открыть приложение» и inline-кнопки `OPEN_APP`. */
     botApp: @Composable (request: BotAppRequest, onClose: () -> Unit) -> Unit = { _, onClose -> onClose() },
+    /** Блок автора комментария под постом канала. Ошибку показывает экран комментариев. */
+    onBlockComment: suspend (postId: String, comment: Message) -> Unit = { _, _ -> },
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val privacy = app.orbitle.ui.components.LocalPrivateMode.current
@@ -403,14 +405,13 @@ fun ChatScreen(
                     }
                 }
             } else if (state.muted != null) {
-                // Подписан, а писать нельзя (канал): кнопка звука, как в Telegram.
-                val muted = state.muted == true
+                // Подписан, а писать нельзя (канал): звук по центру, поиск — круг справа.
                 ReadOnlyBar {
-                    FilledTonalButton(onClick = model::toggleMute, contentPadding = PaddingValues(horizontal = 24.dp)) {
-                        Icon(if (muted) Icons.Outlined.NotificationsActive else Icons.Outlined.NotificationsOff, null, Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(if (muted) "Включить звук" else "Выключить звук")
-                    }
+                    ChannelSoundSearchBar(
+                        muted = state.muted == true,
+                        onToggleMute = model::toggleMute,
+                        onSearch = { searching = true },
+                    )
                 }
             } else {
                 Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
@@ -438,6 +439,7 @@ fun ChatScreen(
                 canWrite = true,
                 quickReactions = state.reactionCatalog,
                 onClose = model::closeComments,
+                onBlockAuthor = { comment -> onBlockComment(comments.post.id, comment) },
             )
         }
         botAppRequest?.let { request ->
@@ -597,10 +599,13 @@ private fun ChatTopBar(
             val header = if (privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER) app.orbitle.presentation.settings.PrivateModeMask.header(real) else real
             Row(Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onOpenProfile), verticalAlignment = Alignment.CenterVertically) {
                 val stories = app.orbitle.ui.stories.LocalStoryRings.current
-                val ring = if (privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER) null else stories.ringOf(header.peerId)
+                androidx.compose.runtime.LaunchedEffect(header.storyOwnerId, header.storyOwnerType) {
+                    stories.loadOwner(header.storyOwnerId, header.storyOwnerType)
+                }
+                val ring = if (privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER) null else stories.ringFor(header.storyOwnerId, header.storyOwnerType)
                 app.orbitle.ui.stories.StoryRingAvatar(
                     header.avatar, ring, 40.dp, modifier = Modifier.privateBlur(privacy, 6.dp),
-                    onRingClick = header.peerId?.let { peer -> { stories.open(peer) } },
+                    onRingClick = header.storyOwnerId?.let { owner -> { stories.open(owner) } },
                 )
                 Spacer(Modifier.width(12.dp))
                 Column {
