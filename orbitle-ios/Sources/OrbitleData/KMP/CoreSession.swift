@@ -423,6 +423,9 @@ public protocol MaxCore: Sendable {
     /// Самая свежая страница чата, который пользователь только что открыл. Не ждёт паузы после
     /// `too.many.requests` (её ждут фоновые чтения), но отказ сервера её продлевает.
     func loadOpenedHistory(chatId: String, limit: Int) async throws -> [CoreMessage]
+    /// Сплошная страница вокруг сообщения `messageId` или, если `fromMs` больше нуля, вокруг
+    /// этого момента (`CHAT_HISTORY` с `forward`), от старых к новым. В стор ядра не пишется.
+    func loadHistoryAround(chatId: String, messageId: String, fromMs: Int64, forward: Int, backward: Int) async throws -> [CoreMessage]
     /// Сообщения с вложениями `attachTypes` вокруг `anchorId` с сервера (`CHAT_MEDIA`).
     func loadSharedMedia(chatId: String, anchorId: String, attachTypes: [String], forward: Int, backward: Int) async throws -> [CoreMessage]
     func sendText(chatId: String, text: String) async throws -> CoreMessage
@@ -616,6 +619,9 @@ public extension MaxCore {
     /// Фейки в тестах, которым контакты не нужны.
     func loadContacts() async throws -> [CoreContact] { [] }
     func loadSharedMedia(chatId: String, anchorId: String, attachTypes: [String], forward: Int, backward: Int) async throws -> [CoreMessage] {
+        throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
+    }
+    func loadHistoryAround(chatId: String, messageId: String, fromMs: Int64, forward: Int, backward: Int) async throws -> [CoreMessage] {
         throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
     }
     func loadCallHistory() async throws -> [CoreCall] { [] }

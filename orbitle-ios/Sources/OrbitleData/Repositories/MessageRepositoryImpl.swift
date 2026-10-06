@@ -1330,6 +1330,33 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         }
     }
 
+    /// Окно вокруг далёкого сообщения с сервера, мимо кэша: страница вне свежей истории
+    /// открыла бы в кэше дыру, а `loadMore` считает сохранённую историю сплошной. Сообщения,
+    /// которые уже лежат в кэше, берутся оттуда — со скачанными файлами и своими реакциями.
+    public func historyAround(chatId: String, messageId: String, at: Date?, forward: Int, backward: Int) async throws(OrbitleError) -> [Message] {
+        let started = generation
+        let result = await api.fetchMessagesAround(chatId: chatId, messageId: messageId, at: at, forward: forward, backward: backward)
+        try ensureCurrent(started)
+        switch result {
+        case .success(let records):
+            let page = records.filter { $0.threadOf.isEmpty }
+            let keys = page.map { $0.serverId ?? $0.id }
+            let byId = (try? messages(ids: keys)) ?? [:]
+            let byServerId = (try? messages(serverIds: keys)) ?? [:]
+            let mark = peerReadMark(chatId)
+            return page
+                .map { record -> Message in
+                    let key = record.serverId ?? record.id
+                    var message = (byServerId[key] ?? byId[key]).map { Self.record($0).domain } ?? record.domain
+                    message.isRead = mark > 0 && message.status == .sent && message.timestamp.unixMillis <= mark
+                    return message
+                }
+                .sorted { $0.timestamp < $1.timestamp }
+        case .failure(let error):
+            throw error.orbitleError
+        }
+    }
+
     /// Основная лента — последние сообщения окна от старых к новым. Тред — хронологически.
     private func snapshot(chatId: String, threadOf: String) -> [Message] {
         if threadOf.isEmpty {

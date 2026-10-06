@@ -107,7 +107,7 @@ struct TranscriptBubble: View, Equatable {
             onOpen: { viewModel.presentMedia(message, startId: $0) },
             onVoice: { viewModel.toggleVoice(message) },
             onFile: { viewModel.openFile(message, attachmentId: $0) },
-            onFocusReply: { viewModel.focusReply($0) },
+            onFocusReply: { viewModel.focusReply($0, from: message.id) },
             onForward: { viewModel.requestForward(message) },
             onDelete: { viewModel.requestDelete(message) },
             onEdit: state.canEdit ? { viewModel.beginEdit(message) } : nil,
