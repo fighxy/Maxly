@@ -43,6 +43,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CornerBasedShape
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.ui.semantics.contentDescription
@@ -315,7 +317,11 @@ private fun BubbleContent(
     val content = message.content
     val visuals = content.visuals
     val text = message.displayText.trim()
-    Column(Modifier.padding(if (visuals.isNotEmpty() && text.isEmpty() && item.authorName == null && content.reply == null && content.forward == null) 3.dp else 0.dp)) {
+    val pad = if (visuals.isNotEmpty() && text.isEmpty() && item.authorName == null && content.reply == null && content.forward == null) 3.dp else 0.dp
+    // С фото или видео пузырь шириной с медиа, как в Telegram: подпись переносится под картинкой,
+    // а не растягивает пузырь вбок от узкой вертикальной фотографии.
+    val mediaWidth = if (visuals.isNotEmpty()) Modifier.width(visualsWidth(visuals, maxWidth - 6.dp) + pad * 2) else Modifier
+    Column(mediaWidth.padding(pad)) {
         val headerPadding = Modifier.padding(start = 12.dp, end = 12.dp, top = 7.dp)
         item.authorName?.let {
             Text(
@@ -351,7 +357,13 @@ private fun BubbleContent(
         }
         if (visuals.isNotEmpty()) {
             val bubbleMedia = LocalBubbleMedia.current
-            Visuals(visuals, maxWidth - 6.dp, Modifier.padding(top = if (item.authorName != null || content.forward != null || content.reply != null) 6.dp else 0.dp), mediaShape, onLongPress = onLongPress, onDoubleTap = onDoubleTap) {
+            // Подпись под медиа: снизу у картинки прямые углы, она переходит в подпись.
+            val shape = if (text.isNotEmpty()) {
+                (mediaShape as? CornerBasedShape)?.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp)) ?: mediaShape
+            } else {
+                mediaShape
+            }
+            Visuals(visuals, maxWidth - 6.dp, Modifier.padding(top = if (item.authorName != null || content.forward != null || content.reply != null) 6.dp else 0.dp), shape, onLongPress = onLongPress, onDoubleTap = onDoubleTap) {
                 bubbleMedia.onVisual(message, it)
             }
         }
@@ -531,12 +543,7 @@ fun ReplyQuote(author: String, preview: String, colors: BubbleColors, modifier: 
 @Composable
 private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modifier = Modifier, shape: Shape, onLongPress: () -> Unit = {}, onDoubleTap: () -> Unit = {}, onOpen: (ChatAttachment) -> Unit) {
     if (visuals.size == 1) {
-        val (w, h) = when (val v = visuals.first()) {
-            is ChatAttachment.Photo -> v.photo.width to v.photo.height
-            is ChatAttachment.Video -> v.video.width to v.video.height
-            else -> null to null
-        }
-        val frame = ChatContentFormat.frame(w, h, maxWidth.value.toDouble(), 360.0)
+        val frame = singleFrame(visuals.first(), maxWidth)
         Box(modifier.size(frame.width.dp, frame.height.dp).clip(shape).combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(visuals.first()) }) { VisualCell(visuals.first()) }
         return
     }
@@ -549,6 +556,20 @@ private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modif
         }
     }
 }
+
+/** Одно фото или видео: по пропорциям, не выше 360 dp. */
+private fun singleFrame(visual: ChatAttachment, maxWidth: Dp): ChatContentFormat.Frame {
+    val (w, h) = when (visual) {
+        is ChatAttachment.Photo -> visual.photo.width to visual.photo.height
+        is ChatAttachment.Video -> visual.video.width to visual.video.height
+        else -> null to null
+    }
+    return ChatContentFormat.frame(w, h, maxWidth.value.toDouble(), 360.0)
+}
+
+/** Ширина медиа пузыря ([Visuals]): одно — по пропорциям, несколько — сетка во всю ширину. */
+private fun visualsWidth(visuals: List<ChatAttachment>, maxWidth: Dp): Dp =
+    if (visuals.size == 1) singleFrame(visuals.first(), maxWidth).width.dp else maxWidth
 
 @Composable
 private fun VisualCell(attachment: ChatAttachment) {
