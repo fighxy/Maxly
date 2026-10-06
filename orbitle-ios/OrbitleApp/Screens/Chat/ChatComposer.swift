@@ -239,38 +239,42 @@ struct ChatComposer: View {
         .accessibilityLabel(viewModel.editTarget == nil ? "Отправить" : "Сохранить правку")
     }
 
-    /// Писать нельзя: вне списка — «Подписаться» или «Вступить», в канале — кнопка уведомлений,
-    /// в остальных — пояснение.
+    /// Писать нельзя: вне списка — «Подписаться» или «Вступить», в канале — кнопка звука, как в
+    /// Telegram, в остальных — пояснение. Кнопки — небольшие капсулы по центру, не во всю ширину.
     @ViewBuilder
     private var readOnlyBar: some View {
         if let join {
             Button(action: join.action) {
                 ZStack {
                     Text(join.label)
-                        .font(.body.weight(.semibold))
+                        .font(.subheadline.weight(.semibold))
                         .opacity(join.busy ? 0 : 1)
-                    if join.busy { ProgressView() }
+                    if join.busy { ProgressView().controlSize(.small) }
                 }
-                .frame(maxWidth: .infinity, minHeight: 44)
+                .padding(.horizontal, 22)
+                .frame(minHeight: 38)
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
             .foregroundStyle(Color.orbitleAccent)
             .orbitleGlassCapsule()
             .disabled(join.busy)
+            .frame(maxWidth: .infinity)
             .accessibilityLabel(join.label)
         } else if chatType == .channel, let onToggleMute {
             Button(action: onToggleMute) {
-                Text(isMuted ? "Включить уведомления" : "Выключить уведомления")
-                    .font(.body.weight(.medium))
-                    .frame(maxWidth: .infinity, minHeight: 44)
+                Label(isMuted ? "Включить звук" : "Выключить звук", systemImage: isMuted ? "bell" : "bell.slash")
+                    .font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 18)
+                    .frame(minHeight: 38)
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
             .foregroundStyle(Color.orbitleAccent)
             .orbitleGlassCapsule()
+            .frame(maxWidth: .infinity)
         } else {
-            Text(chatType == .channel ? "Писать в канал могут только администраторы" : "В этот чат нельзя отправлять сообщения")
+            Text("Писать в этот чат нельзя")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

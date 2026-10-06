@@ -3,6 +3,69 @@ import UIKit
 import OrbitleDomain
 import OrbitleUI
 
+/// Мягкое размытие у края ленты, как у популярных мессенджеров: материал проявляется по
+/// плавной маске, без полосы с резкой границей. Пузыри, уезжая под край, мягко гаснут.
+/// Касаний не ловит.
+///
+/// Материал, а не стекло iOS 26: капсулы шапки и поля ввода уже стеклянные, стекло под
+/// стеклом Apple не советует.
+struct ChatEdgeFade: View {
+    enum Side { case top, bottom }
+
+    let edge: Side
+    /// Доля высоты от края, где материал ещё полный (под полем ввода — всё, что под ним).
+    var solid: CGFloat = 0
+
+    var body: some View {
+        Rectangle()
+            .fill(.ultraThinMaterial)
+            .mask {
+                LinearGradient(
+                    stops: Self.stops(solid: solid),
+                    startPoint: edge == .top ? .top : .bottom,
+                    endPoint: edge == .top ? .bottom : .top
+                )
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    /// Непрозрачность маски от края внутрь: полная до `solid`, дальше плавно (ease-out) к нулю.
+    static func stops(solid: CGFloat) -> [Gradient.Stop] {
+        let start = min(max(solid, 0), 0.95)
+        let rest = 1 - start
+        let curve: [(CGFloat, Double)] = [(0, 1), (0.25, 0.82), (0.5, 0.5), (0.75, 0.2), (1, 0)]
+        var stops = [Gradient.Stop(color: .black, location: 0)]
+        for (t, opacity) in curve {
+            stops.append(Gradient.Stop(color: .black.opacity(opacity), location: start + rest * t))
+        }
+        return stops
+    }
+}
+
+/// Верхний край: мягкое размытие только под статус-баром и чуть ниже. Ряд заголовка оно не
+/// закрывает — капсула названия и круглые кнопки висят над лентой сами.
+struct ChatHeaderBlur: View {
+    /// Насколько размытие заходит ниже статус-бара.
+    static let fade: CGFloat = 14
+
+    var body: some View {
+        // Высота — статус-бар окна, а не верхний отступ экрана: в отступ входит и панель
+        // навигации, и размытие вышло бы полосой.
+        ChatEdgeFade(edge: .top)
+            .frame(height: Self.statusBarHeight + Self.fade)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .ignoresSafeArea(edges: .top)
+    }
+
+    private static var statusBarHeight: CGFloat {
+        let top = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.keyWindow?.safeAreaInsets.top }
+            .first ?? 0
+        return top > 0 ? top : 20
+    }
+}
+
 /// Нижний край, как у популярных мессенджеров: не размытие, а лёгкий переход в фон экрана.
 /// Лента почти не тронута до самых нижних кнопок: фон проявляется по плавной кривой на
 /// `height` pt, начиная на `rise` выше верха нижних кнопок (`controlsTop`, глобальная
@@ -79,9 +142,16 @@ struct ChatBottomBlur: View {
 }
 
 extension View {
+    /// Шапка чата без системной подложки и без системного края прокрутки iOS 26 — только
+    /// мягкое размытие под статус-баром: капсула названия и круглые кнопки висят над лентой.
+    func chatHeaderBlur() -> some View {
+        toolbarBackground(.hidden, for: .navigationBar)
+            .overlay(alignment: .top) { ChatHeaderBlur() }
+    }
+
     /// На iOS 26 лента рисует свой край прокрутки под панелью навигации (затемнение с
     /// размытием — в тёмной теме это была заметная тёмная полоса за шапкой) и над нижними
-    /// кнопками. Шапка имеет системную подложку, низ — `ChatBottomBlur`; эффекты краёв выключены,
+    /// кнопками. Края у ленты свои (`ChatHeaderBlur`, `ChatBottomBlur`), системные выключены,
     /// чтобы не ложиться вторым слоем. На iOS 17 и 18 такого края нет.
     @ViewBuilder
     func chatSystemEdgeEffectHidden() -> some View {

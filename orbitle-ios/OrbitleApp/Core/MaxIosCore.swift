@@ -145,6 +145,18 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func loadOlderHistory(chatId: String, beforeMs: Int64, limit: Int) async throws -> [CoreMessage] {
+        try await call("loadOlderHistory") { done in
+            self.client.loadHistory(chatId: chatId, beforeMs: beforeMs, limit: Int32(limit)) { messages, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(messages.map(Self.message)))
+                }
+            }
+        }
+    }
+
     func loadOpenedHistory(chatId: String, limit: Int) async throws -> [CoreMessage] {
         try await call("loadOpenedHistory") { done in
             self.client.loadHistory(chatId: chatId, beforeMs: 0, limit: Int32(limit)) { messages, kind, key in
@@ -564,8 +576,11 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     ]
     /// Чтения, отказ которым включает паузу, хотя сами они её не ждут. Истории владельца открыл
     /// пользователь, как и комментарии; окно вокруг далёкого сообщения — переход по цитате,
-    /// закрепу или поиску и листание от его краёв.
-    private static let limitAwareCalls: Set<String> = pacedCalls.union(["loadComments", "loadOpenedHistory", "loadOwnerStories", "loadHistoryAround"])
+    /// закрепу или поиску и листание от его краёв; старые страницы ленты — листание вверх
+    /// (раньше они ждали паузы от чужих отказов, и лента молча вставала).
+    private static let limitAwareCalls: Set<String> = pacedCalls.union([
+        "loadComments", "loadOpenedHistory", "loadOwnerStories", "loadHistoryAround", "loadOlderHistory",
+    ])
 
     /// Вызов ядра с колбэком. Неудача пишется в журнал видом ошибки и ключом сервера.
     /// Во время паузы сервера чтения из `pacedCalls` сразу получают тот же отказ.
