@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Rotate90DegreesCw
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.runtime.collectAsState
@@ -80,10 +81,13 @@ fun MediaViewer(
         val pager = rememberPagerState(initialPage = state.index) { state.items.size }
         LaunchedEffect(pager) { snapshotFlow { pager.currentPage }.collect(onPage) }
         var chrome by remember { mutableStateOf(true) }
+        // Поворот фото четвертями по часовой, свой у каждого фото. Счёт не по модулю 4:
+        // анимация после четвёртого поворота идёт дальше по часовой, а не крутится назад.
+        val turns = remember { androidx.compose.runtime.mutableStateMapOf<String, Int>() }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             HorizontalPager(pager, Modifier.fillMaxSize(), key = { state.items[it].id }) { page ->
                 when (val item = state.items[page]) {
-                    is ChatAttachment.Photo -> ZoomablePhoto(item.photo.url, onTap = { chrome = !chrome })
+                    is ChatAttachment.Photo -> ZoomablePhoto(item.photo.url, turns[item.id] ?: 0, onTap = { chrome = !chrome })
                     is ChatAttachment.Video -> VideoPage(item.video, state.videoUrls[item.id], userAgent, active = pager.currentPage == page)
                     else -> Unit
                 }
@@ -101,6 +105,12 @@ fun MediaViewer(
                     }
                     if (state.items.size > 1) {
                         Text("${pager.currentPage + 1} из ${state.items.size}", color = Color.White, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(end = 12.dp))
+                    }
+                    val current = state.items.getOrNull(pager.currentPage)
+                    if (current is ChatAttachment.Photo) {
+                        IconButton(onClick = { turns[current.id] = (turns[current.id] ?: 0) + 1 }) {
+                            Icon(Icons.Outlined.Rotate90DegreesCw, "Повернуть", tint = Color.White)
+                        }
                     }
                     if (onSave != null) {
                         if (saving) {
@@ -121,11 +131,21 @@ private fun viewerDate(timeMs: Long): String {
     return "${formatter.dayLabel(timeMs, System.currentTimeMillis())}, ${formatter.time(timeMs)}"
 }
 
-/** Фото с зумом 1…5×: щипок, сдвиг увеличенного, двойное касание. */
+/**
+ * Фото с зумом 1…5×: щипок, сдвиг увеличенного, двойное касание. [turns] — поворот четвертями
+ * по часовой: повёрнутое на бок фото уменьшается, чтобы целиком влезть в экран.
+ */
 @Composable
-private fun ZoomablePhoto(url: String?, onTap: () -> Unit) {
+private fun ZoomablePhoto(url: String?, turns: Int, onTap: () -> Unit) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
+    var imageSize by remember { mutableStateOf(androidx.compose.ui.geometry.Size.Unspecified) }
+    val angle by androidx.compose.animation.core.animateFloatAsState(turns * 90f, label = "rotation")
+    // Повернули — зум и сдвиг сначала.
+    LaunchedEffect(turns) {
+        scale = 1f
+        offset = Offset.Zero
+    }
     Box(
         Modifier
             .fillMaxSize()
@@ -173,9 +193,12 @@ private fun ZoomablePhoto(url: String?, onTap: () -> Unit) {
             model = url,
             contentDescription = "Фото",
             contentScale = ContentScale.Fit,
+            onSuccess = { imageSize = it.painter.intrinsicSize },
             modifier = Modifier.fillMaxSize().graphicsLayer {
-                scaleX = scale
-                scaleY = scale
+                val fit = sidewaysFit(imageSize, size, turns)
+                scaleX = scale * fit
+                scaleY = scale * fit
+                rotationZ = angle
                 translationX = offset.x
                 translationY = offset.y
             },
@@ -225,4 +248,16 @@ private fun VideoPage(video: VideoContent, url: String?, userAgent: String, acti
             VideoControls(player, state, Modifier.align(Alignment.BottomCenter))
         }
     }
+}
+
+/**
+ * Во сколько раз уменьшить фото, повёрнутое на бок ([turns] нечётно), чтобы оно влезло в
+ * [box]: вписанная картинка после поворота меняет ширину с высотой. Ровно стоящее — без изменений.
+ */
+internal fun sidewaysFit(image: androidx.compose.ui.geometry.Size, box: androidx.compose.ui.geometry.Size, turns: Int): Float {
+    if (turns % 2 == 0 || image == androidx.compose.ui.geometry.Size.Unspecified || image.width <= 0f || image.height <= 0f || box.width <= 0f || box.height <= 0f) return 1f
+    val fitted = minOf(box.width / image.width, box.height / image.height)
+    val width = image.width * fitted
+    val height = image.height * fitted
+    return minOf(box.width / height, box.height / width, 1f)
 }
