@@ -372,7 +372,7 @@ fun MainScreen(
                         chatId, channel, container.messages.currentUserId, container.chatAdmin,
                     )
                 }
-                val people by container.contacts.contacts.collectAsStateWithLifecycle()
+                val people by container.contacts.contacts.collectAsStateWithLifecycle(initialValue = emptyList())
                 app.orbitle.ui.profile.ManageRoute(
                     manage,
                     people.map { app.orbitle.data.ChatPerson(it.id, it.displayName) },

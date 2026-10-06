@@ -25,7 +25,7 @@ class CoreChatAdminRepository(private val client: MaxClient) : ChatAdminReposito
 
     override suspend fun setPhoto(chatId: String, jpeg: ByteArray) {
         if (jpeg.isEmpty()) throw app.orbitle.domain.OrbitleError.Rejected("Файл пустой")
-        val token = MaxCoreGateway.call { client.api.media.uploadPhoto(jpeg, "chat.jpg").photoToken }
+        val token = MaxCoreGateway.call { client.media.uploadPhoto(jpeg, "chat.jpg").photoToken }
         store(MaxCoreGateway.call { client.api.chats.updateProfile(id(chatId), photoToken = token) })
     }
 

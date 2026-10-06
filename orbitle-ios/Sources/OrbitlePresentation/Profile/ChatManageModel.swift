@@ -79,12 +79,14 @@ public final class ChatManageModel {
         membersSeeLink = card.membersSeeLink
     }
 
-    private func run(_ fallback: String, _ body: () async throws(OrbitleError) -> String) async {
+    private func run(_ fallback: String, _ body: () async throws -> String) async {
         guard !busy else { return }
         busy = true
         defer { busy = false }
-        do { message = try await body() }
-        catch let error as OrbitleError { message = error.userMessage ?? fallback }
-        catch { message = fallback }
+        do {
+            message = try await body()
+        } catch {
+            message = (error as? OrbitleError)?.userMessage ?? fallback
+        }
     }
 }
