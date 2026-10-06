@@ -66,6 +66,15 @@ import androidx.compose.material.icons.outlined.MarkChatUnread
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.filled.Mic
@@ -176,8 +185,11 @@ internal fun Composer(
     onRecordingStart: () -> Unit = {},
     onMention: (app.orbitle.data.ChatMemberRow) -> Unit = {},
     onCommand: (app.orbitle.data.BotCommandRow) -> Unit = {},
+    /** ↑ в пустом поле: правка своего последнего сообщения. `false` — править нечего. */
+    onEditLast: () -> Boolean = { false },
 ) {
     var showPanel by rememberSaveable { mutableStateOf(false) }
+    val sendKey = app.orbitle.ui.keys.LocalSendKey.current
     val voice = rememberVoiceRecording(recorder, onVoice, onRecordingStart)
     val hasPanel = panel != null
     val onPanel: (Boolean) -> Unit = { showPanel = it }
@@ -271,7 +283,11 @@ internal fun Composer(
                             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                             maxLines = 6,
-                            modifier = Modifier.fillMaxWidth().focusRequester(focus).onFocusChanged { if (it.isFocused && showPanel) onPanel(false) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focus)
+                                .onFocusChanged { if (it.isFocused && showPanel) onPanel(false) }
+                                .onPreviewKeyEvent { composerKey(it, sendKey, field.text.isEmpty(), state.canSend, onSend, onEditLast) },
                         )
                     }
                     if (hasPanel) {
@@ -587,5 +603,33 @@ internal fun RecordingBar(voice: VoiceRecordingUi, modifier: Modifier) {
                 modifier = Modifier.graphicsLayer { translationX = voice.dragX * density; alpha = 1f - progress * 0.8f },
             )
         }
+    }
+}
+
+/**
+ * Клавиши поля ввода, как в Telegram Desktop: отправка выбранной клавишей ([SendKey]: Enter или
+ * Ctrl+Enter; другая даёт новую строку) и ↑ в пустом поле — правка своего последнего сообщения.
+ */
+private fun composerKey(
+    event: androidx.compose.ui.input.key.KeyEvent,
+    sendKey: app.orbitle.ui.keys.SendKey,
+    empty: Boolean,
+    canSend: Boolean,
+    onSend: () -> Unit,
+    onEditLast: () -> Boolean,
+): Boolean {
+    if (event.type != KeyEventType.KeyDown) return false
+    val command = event.isCtrlPressed || event.isMetaPressed
+    return when (event.key) {
+        Key.Enter, Key.NumPadEnter -> {
+            val sends = when (sendKey) {
+                app.orbitle.ui.keys.SendKey.ENTER -> !event.isShiftPressed && !command && !event.isAltPressed
+                app.orbitle.ui.keys.SendKey.CTRL_ENTER -> command
+            }
+            if (sends && canSend) onSend()
+            sends
+        }
+        Key.DirectionUp -> empty && !command && !event.isShiftPressed && !event.isAltPressed && onEditLast()
+        else -> false
     }
 }

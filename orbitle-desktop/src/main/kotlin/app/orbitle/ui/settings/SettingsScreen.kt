@@ -15,6 +15,7 @@ import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Timer
@@ -91,6 +92,7 @@ fun SettingsScreen(
     onStorage: () -> Unit = {},
     onFolders: () -> Unit = {},
     onMessages: () -> Unit = {},
+    onKeyboard: () -> Unit = {},
     onDigitalId: () -> Unit = {},
     onSferum: () -> Unit = {},
     /** Ссылка на свой профиль для QR и приглашения; `null` — сервер её ещё не дал. */
@@ -138,6 +140,7 @@ fun SettingsScreen(
             SettingsItem(Icons.Outlined.Contacts, "Контакты", onClick = onContacts)
             SettingsItem(Icons.Outlined.Folder, "Папки", onClick = onFolders)
             SettingsItem(Icons.Outlined.Palette, "Оформление", onClick = onAppearance)
+            SettingsItem(Icons.Outlined.Keyboard, "Клавиатура", subtitle = "Отправка и горячие клавиши", onClick = onKeyboard)
             if (profileLink != null) {
                 SettingsItem(Icons.Outlined.PersonAdd, "Пригласить друзей") { sheet = "invite" }
             }

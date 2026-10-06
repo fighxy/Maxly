@@ -180,6 +180,30 @@ class ChatTimelineTest {
     }
 
     @Test
+    fun keyboardPicksTheMessageToReplyToAndTheLastOwnToEdit() {
+        repo.server = (1..198).map(::msg) + msg(199, author = "1")
+        repo.base.headerInfo.value = ChatHeaderInfo(chat(unread = 0))
+        val model = vm()
+        // Ctrl+↓ без ответа — нечего выбирать.
+        assertFalse(model.replyToNeighbour(older = false))
+        // Ctrl+↑: последнее, потом выше.
+        assertTrue(model.replyToNeighbour(older = true))
+        assertEquals("199", model.state.value.replyTo?.id)
+        model.replyToNeighbour(older = true)
+        assertEquals("198", model.state.value.replyTo?.id)
+        assertEquals(ScrollRequest.Target.Message("198", highlight = true), model.state.value.scroll?.target)
+        // Ctrl+↓: ниже, а у последнего — ответ снимается.
+        model.replyToNeighbour(older = false)
+        assertEquals("199", model.state.value.replyTo?.id)
+        assertTrue(model.replyToNeighbour(older = false))
+        assertNull(model.state.value.replyTo)
+        // ↑ в пустом поле: своё последнее — в правку.
+        assertTrue(model.editLast())
+        assertEquals("199", model.state.value.editing?.id)
+        assertEquals("т199", model.state.value.draft)
+    }
+
+    @Test
     fun jumpToALoadedMessageOnlyScrolls() {
         repo.server = (1..199).map(::msg)
         repo.base.headerInfo.value = ChatHeaderInfo(chat(unread = 0))
