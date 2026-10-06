@@ -27,6 +27,8 @@ struct ChatView: View {
     var live: () -> ChatHeaderLive = { ChatHeaderLive() }
     /// Модель профиля чата: шапка берёт из неё статус, нажатие на шапку открывает профиль.
     var makeProfile: (() -> ChatProfileViewModel?)?
+    /// Управление группой или каналом. `nil` — до входа ядра.
+    var chatAdmin: (any ChatAdminRepository)? = nil
     /// Очистка переписки или удаление чата из профиля. Первый флаг — очистка, второй — у всех.
     var onEraseChat: ((Bool, Bool) -> Void)? = nil
     /// Выйти из группы или отписаться от канала из профиля.
@@ -144,7 +146,8 @@ struct ChatView: View {
                 // Звук чата вне списка не переключить: его нет среди чатов аккаунта.
                 onToggleMute: canWrite == nil ? nil : onToggleMute,
                 onOpenApp: openAppAction,
-                join: joinAction
+                join: joinAction,
+                onSearch: kind == .channel && onToggleMute != nil && canWrite != nil ? { searchShown = true } : nil
             )
             if panelShown, writable, let stickerPanel {
                 StickerPanel(
@@ -179,6 +182,7 @@ struct ChatView: View {
                 // Возврат из профиля тоже запускает эту задачу: свежую карточку не перезапрашиваем.
                 await profile?.loadIfStale()
                 viewModel.notePeer(profile?.shown.peerId, isBot: profile?.shown.kind == .bot)
+                await stories?.loadRing(storyOwner, kind: storyKind)
                 // Общие медиа из кэша — заранее, чтобы профиль открылся с ними. Пауза: сначала лента.
                 try? await Task.sleep(for: .seconds(1))
                 guard !Task.isCancelled, let card = profile else { return }
@@ -220,7 +224,7 @@ struct ChatView: View {
 
     /// Касание аватара в шапке: истории собеседника, если есть, иначе профиль.
     private func openAvatar() {
-        if let owner = storyOwner, stories?.ring(of: owner) != nil {
+        if let owner = storyOwner, stories?.ring(of: owner, kind: storyKind) != nil {
             stories?.open(owner)
         } else {
             openProfile()
@@ -232,6 +236,8 @@ struct ChatView: View {
         if let profile {
             ChatProfileView(
                 viewModel: profile,
+                chatAdmin: chatAdmin,
+                contactList: contactList,
                 context: profileContext(for: profile),
                 live: live()
             )
@@ -245,7 +251,16 @@ struct ChatView: View {
         navigationLayer
             .sheet(item: $viewModel.openedComments, onDismiss: { viewModel.closeComments() }) { post in
                 if let model = viewModel.commentsModel(for: post) {
-                    CommentsView(model: model) { viewModel.closeComments() }
+                    CommentsView(model: model, onBlockAuthor: { comment in
+                        guard let chatAdmin else { throw OrbitleError.rejected("Управление чатом недоступно") }
+                        let messageId = comment.serverId ?? comment.id
+                        try await chatAdmin.blockCommentAuthor(
+                            chatId: viewModel.chatId,
+                            postId: model.postId,
+                            userId: comment.authorId,
+                            messageId: messageId
+                        )
+                    }) { viewModel.closeComments() }
                         .presentationDragIndicator(.visible)
                         // В листе комментариев обоев нет: пузыри обычные.
                         .environment(\.chatWallpaper, .plain)
@@ -507,10 +522,22 @@ struct ChatView: View {
         }
     }
 
-    /// Собеседник личного чата — владелец колец историй. В приватном режиме колец нет.
+    /// Владелец колец в шапке. В приватном режиме колец нет.
     private var storyOwner: String? {
-        guard !privateMode.isMasked, let card = profile?.shown, card.kind == .user else { return nil }
-        return card.peerId
+        guard !privateMode.isMasked, let card = profile?.shown else { return nil }
+        switch card.kind {
+        case .user, .bot: return card.peerId
+        case .group, .channel: return viewModel.chatId
+        case .saved: return nil
+        }
+    }
+
+    private var storyKind: StoryOwner.Kind {
+        switch profile?.shown.kind {
+        case .group: .chat
+        case .channel: .channel
+        default: .user
+        }
     }
 
     private func openProfile() {

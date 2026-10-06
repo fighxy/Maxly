@@ -38,6 +38,8 @@ struct ChatProfileView: View {
     @Bindable var viewModel: ChatProfileViewModel
     /// Открыть переписку. `nil`, когда профиль открыт из самого чата: туда ведёт «назад».
     var onWrite: (() -> Void)?
+    var chatAdmin: (any ChatAdminRepository)? = nil
+    var contactList: (() -> AsyncStream<[Contact]>)? = nil
     var context: ChatProfileContext?
     var live = ChatHeaderLive()
 
@@ -57,6 +59,9 @@ struct ChatProfileView: View {
     @State private var blocking = false
     /// Лист причин жалобы.
     @State private var reporting = false
+    @State private var managing = false
+    @State private var manageModel: ChatManageModel?
+    @State private var manageContacts: [ChatAdminPerson] = []
     @Namespace private var tabs
 
     private static let avatarSize: CGFloat = 100
@@ -133,11 +138,16 @@ struct ChatProfileView: View {
             }
             Button("Отмена", role: .cancel) {}
         }
+        .sheet(isPresented: $managing) {
+            if let manageModel {
+                ChatManageView(model: manageModel, contacts: manageContacts)
+            }
+        }
         .task {
             await viewModel.loadIfStale()
             await viewModel.loadExtras()
             // Кольцо владельца вне ленты профиль спрашивает сам (один раз за сеанс).
-            await stories?.loadRing(storyOwner)
+            await stories?.loadRing(storyOwner, kind: storyKind)
         }
         .refreshable { await viewModel.load() }
         .task(id: sharedVersion) {
@@ -218,7 +228,7 @@ struct ChatProfileView: View {
         let scroll = min(offset, 0)
         let scale = reduceMotion ? 1 : (pull > 0 ? 1 + min(pull, 160) / 320 : max(0.55, 1 + scroll / 220))
         let owner = storyOwner
-        let hasStories = stories?.ring(of: owner) != nil
+        let hasStories = stories?.ring(of: owner, kind: storyKind) != nil
         return Button {
             if hasStories, let owner {
                 stories?.open(owner)
@@ -239,9 +249,21 @@ struct ChatProfileView: View {
         .accessibilityLabel("Фото профиля")
     }
 
-    /// Собеседник — владелец колец историй; у ботов, групп и каналов их нет.
+    /// Владелец колец: человек, бот, группа или канал.
     private var storyOwner: String? {
-        viewModel.shown.kind == .user ? viewModel.shown.peerId : nil
+        switch viewModel.shown.kind {
+        case .user, .bot: viewModel.shown.peerId
+        case .group, .channel: viewModel.chatId
+        case .saved: nil
+        }
+    }
+
+    private var storyKind: StoryOwner.Kind {
+        switch viewModel.shown.kind {
+        case .group: .chat
+        case .channel: .channel
+        default: .user
+        }
     }
 
     private var compactTitle: some View {
@@ -376,6 +398,9 @@ struct ChatProfileView: View {
                 if blocked { Task { await viewModel.toggleBlocked() } } else { blocking = true }
             })
         }
+        if viewModel.shown.kind == .group || viewModel.shown.kind == .channel {
+            items.append(Action(id: "manage", title: "Управление", systemImage: "slider.horizontal.3") { openManage() })
+        }
         if context?.onLeave != nil, !isChannel {
             items.append(Action(id: "leave", title: "Покинуть группу", systemImage: "rectangle.portrait.and.arrow.right") { leaving = true })
         }
@@ -387,6 +412,25 @@ struct ChatProfileView: View {
     }
 
     private enum EraseAsk: Equatable { case clear, delete }
+
+    private func openManage() {
+        guard let chatAdmin else { return }
+        manageModel = ChatManageModel(
+            chatId: viewModel.chatId,
+            isChannel: viewModel.shown.kind == .channel,
+            title: viewModel.title,
+            about: viewModel.shown.description ?? "",
+            repository: chatAdmin
+        )
+        managing = true
+        guard let contactList else { return }
+        Task {
+            for await list in contactList() {
+                manageContacts = list.map { ChatAdminPerson(id: $0.id, name: $0.displayName) }
+                break
+            }
+        }
+    }
 
     private var isChannel: Bool { viewModel.shown.kind == .channel }
 
@@ -849,7 +893,17 @@ struct ChatHeaderAvatar: View {
             let initials = ChatAvatar.initials(for: viewModel.title)
             let kind: ChatAvatar.Kind = viewModel.shown.avatarURL.map { .photo($0, initials: initials) } ?? .initials(initials)
             let id = viewModel.shown.peerId ?? viewModel.chatId
-            let ring = viewModel.shown.kind == .user && privateMode != .placeholder ? stories?.ring(of: viewModel.shown.peerId) : nil
+            let ownerKind: StoryOwner.Kind = switch viewModel.shown.kind {
+            case .group: .chat
+            case .channel: .channel
+            default: .user
+            }
+            let ownerId = switch viewModel.shown.kind {
+            case .user, .bot: viewModel.shown.peerId
+            case .group, .channel: viewModel.chatId
+            case .saved: nil
+            }
+            let ring = privateMode != .placeholder ? stories?.ring(of: ownerId, kind: ownerKind) : nil
             StoryRingAvatar(avatar: ChatAvatar(kind: kind, colorIndex: ChatAvatar.colorIndex(for: id)), ring: ring, size: size, isOnline: isOnline, reservesRingSpace: reservesRingSpace)
                 .accessibilityLabel(privateMode.isMasked ? "" : viewModel.title)
         }
