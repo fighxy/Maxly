@@ -24,6 +24,8 @@ private class FakeStories : StoriesRepository {
     var feed: List<StoryRing> = emptyList()
     val owners = mutableMapOf<String, OwnerStories>()
     val marked = mutableListOf<String>()
+    var markFails = false
+    val askedTypes = mutableListOf<app.orbitle.domain.StoryOwner.Type>()
     val deleted = mutableListOf<List<String>>()
     val published = mutableListOf<Pair<OutgoingStory, StoryAudience>>()
     var storyRequests = 0
@@ -33,10 +35,12 @@ private class FakeStories : StoriesRepository {
     override suspend fun feed(): List<StoryRing> = feed
     override suspend fun stories(owner: StoryOwner): OwnerStories {
         storyRequests++
+        askedTypes += owner.type
         failure?.let { throw it }
         return owners[owner.id] ?: OwnerStories(null, emptyList())
     }
     override suspend fun markSeen(owner: StoryOwner, storyId: String) {
+        if (markFails) throw IllegalStateException("mark")
         marked += storyId
     }
     override suspend fun publish(story: OutgoingStory, audience: StoryAudience, progress: (Float) -> Unit): StoryRing? {
@@ -148,6 +152,25 @@ class StoriesViewModelTest {
         assertEquals(listOf("7", "3"), model.state.value.rings.map { it.owner.id })
         repo.updates.tryEmit(ring("3", 0, 0, 600))
         assertNull(model.state.value.ringOf("3"))
+    }
+
+    @Test
+    fun failedMarkDoesNotLeaveTheRingSeen() {
+        repo.feed = listOf(ring("4", 1, 0, 200))
+        repo.owners["4"] = OwnerStories(ring("4", 1, 0, 200), listOf(story("4", "41", 1)))
+        repo.markFails = true
+        val model = StoriesViewModel(repo)
+        model.open("4")
+        assertEquals(0, model.state.value.ringOf("4")?.read)
+        assertTrue(repo.marked.isEmpty())
+    }
+
+    @Test
+    fun groupOutsideTheFeedIsAskedAsAChat() {
+        val model = StoriesViewModel(repo)
+        model.loadOwner("10", app.orbitle.domain.StoryOwner.Type.CHAT)
+        model.loadOwner("10", app.orbitle.domain.StoryOwner.Type.CHAT)
+        assertEquals(listOf(app.orbitle.domain.StoryOwner.Type.CHAT), repo.askedTypes)
     }
 
     @Test

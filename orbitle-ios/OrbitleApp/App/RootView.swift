@@ -300,6 +300,7 @@ struct MainTabView: View {
                 stickerPanel: container.stickerPanelModel(),
                 live: { container.headerLive(id: id) },
                 makeProfile: { container.profileViewModel(chatId: id) },
+                chatAdmin: container.chatAdmin,
                 onEraseChat: { clear, everyone in
                     Task {
                         let gone = await container.eraseChat(id: id, clearHistory: clear, forEveryone: everyone)
