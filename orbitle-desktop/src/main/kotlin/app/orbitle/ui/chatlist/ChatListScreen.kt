@@ -33,6 +33,8 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
 import app.orbitle.presentation.chatlist.FolderPages
+import app.orbitle.ui.stories.StoryStripSlot
+import app.orbitle.ui.stories.rememberStoryStripHandle
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -145,8 +147,11 @@ fun ChatListScreen(
     onTogglePrivateMode: () -> Unit = {},
     newChat: NewChatModel? = null,
     onOpenCreated: (id: String, title: String) -> Unit = { _, _ -> },
-    /** Полоса историй над чатами; `null` — без неё. */
+    /** Полоса историй над поиском и папками; `null` — без неё. */
     storiesHeader: (@Composable () -> Unit)? = null,
+    /** Полоса скрыта жестом. Запоминается на устройстве. */
+    storiesCollapsed: Boolean = false,
+    onStoriesCollapsed: (Boolean) -> Unit = {},
 ) {
     LifecycleResumeEffect(viewModel) {
         viewModel.reloadLocal()
@@ -163,7 +168,16 @@ fun ChatListScreen(
     // Набор папок поменялся — пейджер заново встаёт на выбранную папку, номера не съезжают.
     val pagerState = remember(folderIds) { PagerState(currentPage = selectedPage) { folderIds.size } }
     val listStates = rememberSaveable(saver = FolderListStates.Saver) { FolderListStates() }
+    val looseListState = rememberLazyListState()
     LaunchedEffect(folderIds) { listStates.retain(folderIds) }
+    val storiesHandle = rememberStoryStripHandle(storiesCollapsed, onStoriesCollapsed)
+    val edgeList = if (paged && folderIds.isNotEmpty()) {
+        listStates.of(folderIds[pagerState.currentPage.coerceIn(0, folderIds.lastIndex)])
+    } else {
+        looseListState
+    }
+    storiesHandle.listAtTop = edgeList.firstVisibleItemIndex == 0 && edgeList.firstVisibleItemScrollOffset == 0
+    storiesHandle.forceHidden = state.isSearchActive || state.isReorderingPins
     if (paged) {
         // Вкладка выбрана нажатием — страница доезжает до неё.
         LaunchedEffect(pagerState, selectedPage) {
@@ -206,9 +220,6 @@ fun ChatListScreen(
                         scrollBehavior = scroll,
                     )
                 }
-                if (state.showsFolders && !state.isSearchActive && !state.isReorderingPins) {
-                    FolderTabs(state, selected = if (paged) pagerState.targetPage else selectedPage, onSelect = viewModel::selectFolder)
-                }
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -240,7 +251,17 @@ fun ChatListScreen(
     ) { padding ->
         // Без «потянуть, чтобы обновить»: на ПК её нечем тянуть, а значок обновления висел над
         // списком. Список обновляется сам — пушами и сверкой после подключения.
-        Box(Modifier.padding(padding).fillMaxSize()) {
+        // Колесо у верхнего края прячет и возвращает полосу историй.
+        Column(Modifier.padding(padding).fillMaxSize()) {
+            if (storiesHeader != null && !storiesHandle.forceHidden) {
+                StoryStripSlot(storiesHandle) { storiesHeader() }
+            }
+            if (state.showsFolders && !state.isSearchActive && !state.isReorderingPins) {
+                Box(storiesHandle.headerDrag()) {
+                    FolderTabs(state, selected = if (paged) pagerState.targetPage else selectedPage, onSelect = viewModel::selectFolder)
+                }
+            }
+        Box(Modifier.weight(1f).fillMaxWidth().nestedScroll(storiesHandle.connection)) {
             val open: (ChatListItem) -> Unit = {
                 if (state.isSearchActive) viewModel.selectSearchResult(it.id)
                 viewModel.opened(it.id)
@@ -274,28 +295,26 @@ fun ChatListScreen(
                         folderPage.content, folderPage.items, searching = false, listState = listStates.of(folderPage.id),
                         onOpenChat = open, actions = actions, onRetry = viewModel::refresh,
                         canReorderPins = state.canReorderPins && folderPage.id == ChatFolder.ALL_ID,
-                        header = storiesHeader,
                     )
                 }
             } else {
-                val listState = rememberLazyListState()
-                LaunchedEffect(state.selectedFolderId) { listState.scrollToItem(0) }
+                LaunchedEffect(state.selectedFolderId) { looseListState.scrollToItem(0) }
                 val searching = state.isSearchActive && state.searchQuery.isNotBlank()
                 val showsResults = state.content == ChatListContent.List || state.content == ChatListContent.Empty
                 val hasFound = state.global.isNotEmpty() || state.messages.isNotEmpty() || state.isSearchingServer
                 if (state.isSearchActive && state.searchQuery.isBlank()) {
-                    RecentSearches(state.recent, listState, open, viewModel::removeRecent, viewModel::clearRecent, actions)
+                    RecentSearches(state.recent, looseListState, open, viewModel::removeRecent, viewModel::clearRecent, actions)
                 } else if (searching && showsResults && hasFound) {
-                    SearchResults(state, listState, open, openFound, openMessage, actions)
+                    SearchResults(state, looseListState, open, openFound, openMessage, actions)
                 } else {
                     ChatListBody(
-                        state.content, state.items, searching = searching, listState = listState,
+                        state.content, state.items, searching = searching, listState = looseListState,
                         onOpenChat = open, actions = actions, onRetry = viewModel::refresh,
                         canReorderPins = state.canReorderPins,
-                        header = storiesHeader.takeIf { !state.isSearchActive },
                     )
                 }
             }
+        }
         }
     }
     if (newChat != null) {
@@ -775,10 +794,16 @@ fun ChatRow(
             // Кольцо историй собеседника: касание аватара открывает его истории. Заглушки
             // приватного режима колец не показывают.
             val stories = app.orbitle.ui.stories.LocalStoryRings.current
-            val ring = if (privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER) null else stories.ringOf(item.peerId)
+            val ownerType = when (item.type) {
+                app.orbitle.domain.ChatType.GROUP -> app.orbitle.domain.StoryOwner.Type.CHAT
+                app.orbitle.domain.ChatType.CHANNEL -> app.orbitle.domain.StoryOwner.Type.CHANNEL
+                else -> app.orbitle.domain.StoryOwner.Type.USER
+            }
+            val ownerId = if (item.type == app.orbitle.domain.ChatType.PRIVATE) item.peerId else item.id
+            val ring = if (privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER) null else stories.ringFor(ownerId, ownerType)
             app.orbitle.ui.stories.StoryRingAvatar(
                 item.avatar, ring, 56.dp, online = item.isOnline, modifier = Modifier.privateBlur(privacy, 8.dp),
-                onRingClick = item.peerId?.let { peer -> { stories.open(peer) } },
+                onRingClick = ownerId?.let { owner -> { stories.open(owner) } },
             )
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
