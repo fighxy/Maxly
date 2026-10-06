@@ -218,6 +218,27 @@ struct ChatPositionTests {
         #expect(await repository.olderLoads == 1)
     }
 
+    @Test("Из общего поиска: чат открывается на найденном сообщении, открытый — переходит сразу")
+    func openAtFound() async {
+        let repository = FakeMessageRepository()
+        let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
+        model.openAt(messageId: "2")
+        #expect(model.hasPendingOpen)
+        model.noteUnreadOnOpen(0)
+        await model.loadLatest()
+        model.activate()
+        repository.emit(messages(1...5))
+        _ = await eventually { model.messages.count == 5 }
+        model.startPendingOpen()
+        #expect(!model.hasPendingOpen)
+        #expect(await eventually { model.scrollTarget == .message("2", highlight: true) })
+        model.consumeScroll()
+        model.openAt(messageId: "4")
+        #expect(!model.hasPendingOpen)
+        #expect(await eventually { model.scrollTarget == .message("4", highlight: true) })
+        model.deactivate()
+    }
+
     @Test("Место в ленте: помнится посреди истории, внизу — нет")
     func savedPlace() async {
         let repository = FakeMessageRepository()

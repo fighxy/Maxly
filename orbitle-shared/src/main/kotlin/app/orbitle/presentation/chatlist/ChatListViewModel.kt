@@ -269,6 +269,7 @@ class ChatListViewModel(
                 author = author,
                 snippet = FoundMessageItem.snippet(found.text),
                 time = if (found.timeMs > 0) formatter.timeLabel(found.timeMs, nowMs) else "",
+                timeMs = found.timeMs,
             )
         }
     }
@@ -594,6 +595,8 @@ data class FoundMessageItem(
     val author: String?,
     val snippet: String,
     val time: String,
+    /** Время сообщения, мс Unix; 0 — неизвестно. Чат открывается на нём без лишнего запроса. */
+    val timeMs: Long = 0,
 ) {
     companion object {
         const val OUTGOING_AUTHOR = "Вы"

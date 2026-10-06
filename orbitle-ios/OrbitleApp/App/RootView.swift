@@ -219,6 +219,11 @@ struct MainTabView: View {
         router.chatId = opened.id
     }
 
+    /// Сообщение из общего поиска: модель чата запоминает его, чат откроется на нём.
+    private func openFound(_ message: ChatSearchMessage) {
+        container.chatViewModel(id: message.chatId)?.openAt(messageId: message.messageId, at: message.date)
+    }
+
     @ViewBuilder
     private var chats: some View {
         if sizeClass == .compact {
@@ -227,6 +232,7 @@ struct MainTabView: View {
             NavigationStack(path: chatPath) {
                 ChatListView(
                     viewModel: list, selection: $router.chatId, newChat: container.newChatModel(), onOpened: openCreated,
+                    onOpenMessage: openFound,
                     selfAvatar: selfAvatar, onAddStory: { pickingStory = true }
                 )
                     .navigationDestination(for: String.self) { id in
@@ -237,6 +243,7 @@ struct MainTabView: View {
             NavigationSplitView {
                 ChatListView(
                     viewModel: list, selection: $router.chatId, newChat: container.newChatModel(), onOpened: openCreated,
+                    onOpenMessage: openFound,
                     selfAvatar: selfAvatar, onAddStory: { pickingStory = true }
                 )
             } detail: {

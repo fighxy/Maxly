@@ -433,7 +433,20 @@ class ChatViewModel(
      * ленте — грузится окно вокруг него. [from] — сообщение, с которого перешли: кнопка «вниз»
      * вернёт к нему.
      */
-    fun jumpTo(messageId: String, from: String? = null) {
+    /**
+     * Чат открыт на сообщении (найденном в общем поиске): лента встаёт на нём, как после перехода
+     * по цитате, а не на «Непрочитанных» или прежнем месте. [atMs] — время сообщения, если известно.
+     */
+    fun openAt(messageId: String, atMs: Long = 0) {
+        openedAtMessage = true
+        placeChecked = true
+        jumpTo(messageId, atMs = atMs)
+    }
+
+    /** Чат открыли на сообщении ([openAt]): «Непрочитанные» не уводят ленту от него. */
+    private var openedAtMessage = false
+
+    fun jumpTo(messageId: String, from: String? = null, atMs: Long = 0) {
         if (from != null && from != messageId && returnStack.lastOrNull() != from) returnStack.addLast(from)
         if (visible.any { it.id == messageId }) {
             following = false
@@ -444,6 +457,7 @@ class ChatViewModel(
             _state.update { it.copy(isJumping = true) }
             try {
                 val time = history.firstOrNull { it.id == messageId }?.timeMs
+                    ?: atMs.takeIf { it > 0 }
                     ?: repository.findMessage(chatId, messageId)?.timeMs
                 if (time == null) {
                     _messages.value = "Сообщение не найдено"
@@ -555,7 +569,8 @@ class ChatViewModel(
      * откроется на нём и дальше догрузится к свежим.
      */
     private fun fetchUnread() {
-        if (unreadFetched) return
+        // Открыли на найденном сообщении: окно вокруг отметки прочтения увело бы ленту от него.
+        if (unreadFetched || openedAtMessage) return
         unreadFetched = true
         viewModelScope.launch {
             try {
@@ -1247,7 +1262,8 @@ class ChatViewModel(
         unreadAnchorId = anchor
         following = false
         placeChecked = true
-        requestScroll(ScrollRequest.Target.Unread(anchor))
+        // Открыли на найденном сообщении: разделитель встаёт, но лента остаётся у сообщения.
+        if (!openedAtMessage) requestScroll(ScrollRequest.Target.Unread(anchor))
     }
 
     /** Последнее служебное pin/unpin в истории: id сообщения и само уведомление. */

@@ -57,13 +57,16 @@ public struct ChatSearchMessage: Identifiable, Equatable, Sendable {
     public var snippet: String
     /// Пусто, если время неизвестно.
     public var time: String
+    /// Время сообщения: чат открывается на нём без отдельного запроса. `nil` — неизвестно.
+    public var date: Date?
 
-    public init(chatId: String, messageId: String, chatTitle: String, snippet: String, time: String) {
+    public init(chatId: String, messageId: String, chatTitle: String, snippet: String, time: String, date: Date? = nil) {
         self.chatId = chatId
         self.messageId = messageId
         self.chatTitle = chatTitle
         self.snippet = snippet
         self.time = time
+        self.date = date
     }
 
     /// Название чата, которого нет в списке.
