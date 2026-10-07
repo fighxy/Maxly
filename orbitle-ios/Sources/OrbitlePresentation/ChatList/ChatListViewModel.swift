@@ -88,7 +88,8 @@ public final class ChatListViewModel {
     public var isSearchActive = false {
         didSet {
             guard isSearchActive != oldValue else { return }
-            if !isSearchActive { searchQuery = "" }
+            if isSearchActive { isEditing = false }
+            else { serverSearchTask?.cancel(); searchQuery = "" }
             rebuildSearch()
         }
     }
@@ -102,7 +103,10 @@ public final class ChatListViewModel {
 
     // Режим правки
     public var isEditing = false {
-        didSet { if !isEditing { editSelection.removeAll() } }
+        didSet {
+            if isEditing { isSearchActive = false }
+            else { editSelection.removeAll() }
+        }
     }
     public var editSelection: Set<String> = []
     /// Чат, удаление которого ждёт подтверждения.
@@ -739,6 +743,10 @@ public final class ChatListViewModel {
 
     private func scheduleServerSearch() {
         serverSearchTask?.cancel()
+        // Старые серверные результаты не должны выглядеть совпадениями нового запроса.
+        foundMessages = []
+        search.global = []
+        search.messages = []
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard capabilities.contains(.serverSearch), query.count >= 2 else {
             foundMessages = []

@@ -309,6 +309,21 @@ final class FakeConnection: ConnectionStatusProvider {
 
 /// Репозиторий сообщений для экрана чата.
 actor FakeMessageRepository: MessageRepository {
+    private var searchReplies: [String: (hits: [FoundMessage], gate: Gate?, error: OrbitleError?)] = [:]
+    private(set) var chatSearches: [String] = []
+
+    func setSearch(_ query: String, hits: [FoundMessage] = [], gate: Gate? = nil, error: OrbitleError? = nil) {
+        searchReplies[query] = (hits, gate, error)
+    }
+
+    func searchInChat(chatId: String, query: String) async throws(OrbitleError) -> [FoundMessage] {
+        chatSearches.append(query)
+        guard let reply = searchReplies[query] else { throw .invalidRequest }
+        if let gate = reply.gate { await gate.wait() }
+        if let error = reply.error { throw error }
+        return reply.hits
+    }
+
     var sendError: OrbitleError?
     var latestError: OrbitleError?
     private(set) var sent: [String] = []

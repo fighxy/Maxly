@@ -55,7 +55,6 @@ struct ChatView: View {
     @State private var searchShown = false
     @State private var pollShown = false
     @State private var scheduleShown = false
-    @State private var searchQuery = ""
     @State private var pollTitle = ""
     @State private var pollFirst = ""
     @State private var pollSecond = ""
@@ -225,7 +224,7 @@ struct ChatView: View {
     /// Касание аватара в шапке: истории собеседника, если есть, иначе профиль.
     private func openAvatar() {
         if let owner = storyOwner, stories?.ring(of: owner, kind: storyKind) != nil {
-            stories?.open(owner)
+            stories?.open(owner, kind: storyKind)
         } else {
             openProfile()
         }
@@ -298,28 +297,9 @@ struct ChatView: View {
     }
 
     private var searchSheet: some View {
-        NavigationStack {
-            List(viewModel.searchHits, id: \.messageId) { hit in
-                Button {
-                    searchShown = false
-                    viewModel.focusReply(hit.messageId, at: hit.date)
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(hit.text.isEmpty ? "Сообщение" : hit.text).lineLimit(2)
-                        if let date = hit.date {
-                            Text(ChatContentFormat.time(date)).font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Поиск")
-            .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $searchQuery, prompt: "В этом чате")
-            .onSubmit(of: .search) { Task { await viewModel.searchInChat(searchQuery) } }
-            .overlay { if viewModel.searchBusy { ProgressView() } }
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { searchShown = false } }
-            }
+        ChatSearchSheet(model: viewModel) { hit in
+            searchShown = false
+            viewModel.focusReply(hit.messageId, at: hit.date)
         }
     }
 
