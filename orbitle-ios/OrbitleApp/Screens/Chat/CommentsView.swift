@@ -10,7 +10,7 @@ struct CommentsView: View {
     @Bindable var model: CommentsViewModel
     let onClose: () -> Void
     /// Блок автора комментария. Ошибку показывает этот экран.
-    var onBlockAuthor: ((Message) async throws(OrbitleError) -> Void)? = nil
+    var onBlockAuthor: ((Message) async throws -> Void)? = nil
     @State private var blockNotice: String?
     @State private var reveal = PrivateModeReveal()
     @State private var atBottom = true
