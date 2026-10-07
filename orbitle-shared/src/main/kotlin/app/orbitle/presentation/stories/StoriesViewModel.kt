@@ -129,10 +129,12 @@ class StoriesViewModel(
 
     /**
      * Кольцо владельца вне ленты: человек из профиля или группа и канал.
-     * Один запрос на пару (тип, id) за сессию модели.
+     * Один запрос на пару (тип, id) за сессию модели. Только положительные id: на id чата
+     * группы или канала (отрицательный) сервер отвечает ошибкой валидации и рвёт соединение.
      */
     fun loadOwner(ownerId: String?, type: StoryOwner.Type) {
-        if (ownerId.isNullOrEmpty() || ownerId == "0" || ownerId in feed || !requested.add(requestKey(ownerId, type))) return
+        if (ownerId == null || (ownerId.toLongOrNull() ?: 0L) <= 0L) return
+        if (ownerId in feed || !requested.add(requestKey(ownerId, type))) return
         viewModelScope.launch {
             val reply = try {
                 repository.stories(StoryOwner(ownerId, type))

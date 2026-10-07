@@ -126,6 +126,16 @@ struct StoriesViewModelTests {
         #expect(await repo.storyRequests == 2)
     }
 
+    @Test("Id чата группы или канала (отрицательный) не уходит запросом историй")
+    func chatIdsAreNotRequested() async {
+        let repo = FakeStories()
+        let model = StoriesViewModel(repository: repo)
+        await model.loadRing("-68053921871269", kind: .channel)
+        await model.loadRing("-69354109913842", kind: .chat)
+        await model.loadRing("abc")
+        #expect(await repo.storyRequests == 0)
+    }
+
     @Test("Лента: сначала непросмотренные, затем свежие; своё кольцо отдельно")
     func feedOrder() async {
         let repo = FakeStories()
