@@ -20,7 +20,8 @@ final class RecordingSession {
 
     enum Phase: Equatable {
         case idle
-        /// Палец на кнопке, запись ещё не началась (короткое нажатие — смена режима).
+        /// Палец на кнопке, полосы записи ещё нет: микрофон или камера уже включаются
+        /// (короткое нажатие — смена режима).
         case pressing
         case recording
         /// Запись закреплена свайпом вверх: палец можно убрать.
@@ -54,6 +55,15 @@ final class RecordingSession {
     @ObservationIgnored private var hintTask: Task<Void, Never>?
     /// Режим, в котором идёт текущая запись.
     @ObservationIgnored private var recordingMode: Mode = .voice
+    /// Микрофон или камера включены под пальцем, полосы записи ещё нет.
+    @ObservationIgnored private var warming = false
+    /// Идёт системный запрос доступа: отпущенный палец режим не меняет.
+    @ObservationIgnored private var requestingAccess = false
+    /// Номер нажатия: поздний ответ рекордера прежнего нажатия экран не трогает.
+    @ObservationIgnored private var attempt = 0
+    @ObservationIgnored private var recorderQueue: Task<Void, Never>?
+    /// Запись закреплена этим же нажатием: его отпускание не отправляет её.
+    @ObservationIgnored private var lockedInPress = false
 
     init() {
         mode = Mode(rawValue: UserDefaults.standard.string(forKey: Self.modeKey) ?? "") ?? .voice
@@ -76,15 +86,14 @@ final class RecordingSession {
 
     // MARK: Жест кнопки
 
+    /// Нажатие короче этого — смена режима, дольше — запись, как в Telegram. Микрофон или
+    /// камера включаются сразу под пальцем, так что к этому моменту запись уже идёт.
+    static let holdDelay: Duration = .milliseconds(150)
+
     func pressChanged(_ translation: CGSize) {
         switch phase {
         case .idle:
-            phase = .pressing
-            pressTask = Task { [weak self] in
-                try? await Task.sleep(for: .milliseconds(220))
-                guard let self, !Task.isCancelled, self.phase == .pressing else { return }
-                await self.begin()
-            }
+            press()
         case .recording:
             dragX = min(0, translation.width)
             dragY = min(0, translation.height)
@@ -92,6 +101,7 @@ final class RecordingSession {
                 cancel()
             } else if dragY < -Self.lockDistance {
                 phase = .locked
+                lockedInPress = true
                 dragX = 0
                 dragY = 0
                 Self.haptic(.medium)
@@ -107,12 +117,24 @@ final class RecordingSession {
             pressTask?.cancel()
             pressTask = nil
             phase = .idle
-            toggleMode()
+            if warming {
+                // Короткое касание: включённый под пальцем микрофон или камера не нужны.
+                warming = false
+                discard(recordingMode)
+                toggleMode()
+            } else if !requestingAccess {
+                toggleMode()
+            }
         case .recording:
             send()
         case .locked:
-            // Закреплённую запись отправляет нажатие той же кнопки.
-            send()
+            // Палец, закрепивший запись, отпускается — запись идёт дальше. Отправляет её
+            // следующее нажатие той же кнопки. Раньше отпускание сразу отправляло запись.
+            if lockedInPress {
+                lockedInPress = false
+            } else {
+                send()
+            }
         default:
             break
         }
@@ -120,27 +142,85 @@ final class RecordingSession {
         dragY = 0
     }
 
+    /// Жест оборвался без отпускания пальца (окно запроса доступа, звонок): `pressEnded` не
+    /// придёт. Нажатие без записи забывается, начатая запись закрепляется — её можно
+    /// отправить или выбросить кнопками.
+    func pressCancelled() {
+        switch phase {
+        case .pressing:
+            pressTask?.cancel()
+            pressTask = nil
+            if warming {
+                warming = false
+                discard(recordingMode)
+            }
+            phase = .idle
+        case .recording:
+            phase = .locked
+        default:
+            break
+        }
+        lockedInPress = false
+        dragX = 0
+        dragY = 0
+    }
+
+    /// Палец лёг на кнопку: запись включается сразу, полоса записи — через `holdDelay`.
+    private func press() {
+        let current = mode
+        attempt &+= 1
+        lockedInPress = false
+        phase = .pressing
+        switch access(current) {
+        case .granted:
+            recordingMode = current
+            warming = true
+            onStart?()
+            let attempt = attempt
+            enqueue { [weak self] in
+                guard let self else { return }
+                await self.startRecorder(current, attempt: attempt)
+            }
+            pressTask = Task { [weak self] in
+                try? await Task.sleep(for: Self.holdDelay)
+                guard let self, !Task.isCancelled, self.phase == .pressing, self.warming else { return }
+                self.warming = false
+                self.phase = .recording
+                Self.haptic(.light)
+            }
+        case .undetermined:
+            // Первое касание спрашивает систему; запись не начинается, палец уходит к окну запроса.
+            requestingAccess = true
+            Task { [weak self] in
+                if current == .voice {
+                    _ = await VoiceRecorder.requestPermission()
+                } else {
+                    _ = await VideoNoteRecorder.requestPermissions()
+                }
+                self?.requestingAccess = false
+            }
+        case .denied:
+            show(current == .voice
+                 ? "Нет доступа к микрофону. Разрешите его в Настройках"
+                 : "Нет доступа к камере или микрофону. Разрешите их в Настройках")
+        }
+    }
+
     // MARK: Запись
 
-    private func begin() async {
-        let current = mode
-        guard await permitted(current) else {
-            phase = .idle
-            return
-        }
-        // Палец могли убрать, пока шёл запрос доступа.
-        guard phase == .pressing else { return }
-        recordingMode = current
-        onStart?()
-        phase = .recording
-        Self.haptic(.light)
+    /// Включение микрофона или камеры. Не вышло — полоса записи уходит, если это нажатие ещё идёт.
+    private func startRecorder(_ current: Mode, attempt: Int) async {
         do {
             switch current {
-            case .voice: try voice.start()
+            case .voice: try await voice.start()
             case .video: try await video.start()
             }
         } catch {
             Log.warning(.media, "Запись не началась: \(error)")
+            guard attempt == self.attempt, phase == .pressing || phase == .recording || phase == .locked else { return }
+            pressTask?.cancel()
+            pressTask = nil
+            warming = false
             phase = .idle
             show(current == .voice ? "Не удалось включить микрофон" : "Не удалось включить камеру")
         }
@@ -153,7 +233,8 @@ final class RecordingSession {
         dragX = 0
         dragY = 0
         let current = recordingMode
-        Task { [weak self] in
+        let attempt = attempt
+        enqueue { [weak self] in
             guard let self else { return }
             let draft: AttachmentDraft?
             switch current {
@@ -166,7 +247,7 @@ final class RecordingSession {
                     AttachmentDraft.videoNote(path: $0.url.path, durationMs: $0.durationMs, side: $0.side)
                 }
             }
-            self.phase = .idle
+            if attempt == self.attempt, self.phase == .finishing { self.phase = .idle }
             if let draft {
                 Self.haptic(.light)
                 self.onRecorded?(draft)
@@ -179,8 +260,11 @@ final class RecordingSession {
         pressTask?.cancel()
         pressTask = nil
         switch phase {
+        case .pressing where warming:
+            warming = false
+            discard(recordingMode)
         case .recording, .locked:
-            if recordingMode == .voice { voice.cancel() } else { video.cancel() }
+            discard(recordingMode)
             Self.haptic(.rigid)
         default:
             break
@@ -188,6 +272,23 @@ final class RecordingSession {
         if phase != .finishing { phase = .idle }
         dragX = 0
         dragY = 0
+    }
+
+    private func discard(_ current: Mode) {
+        enqueue { [weak self] in
+            guard let self else { return }
+            if current == .voice { await self.voice.cancel() } else { self.video.cancel() }
+        }
+    }
+
+    /// Включение, остановка и выброс записи идут по очереди: короткое касание выключает
+    /// микрофон уже после того, как он включился, а следующее нажатие ждёт выключения.
+    private func enqueue(_ operation: @escaping @MainActor () async -> Void) {
+        let previous = recorderQueue
+        recorderQueue = Task { @MainActor in
+            await previous?.value
+            await operation()
+        }
     }
 
     private func toggleMode() {
@@ -209,28 +310,23 @@ final class RecordingSession {
         }
     }
 
-    /// Доступ к микрофону (и камере для кружка). Первый раз спрашивается системой, запись
-    /// тогда не начинается: палец уже убран ради окна запроса.
-    private func permitted(_ mode: Mode) async -> Bool {
+    private enum Access {
+        case granted
+        case undetermined
+        case denied
+    }
+
+    /// Доступ к микрофону (и камере для кружка) без запроса: так нажатие не ждёт.
+    private func access(_ mode: Mode) -> Access {
         let microphone = AVAudioApplication.shared.recordPermission
         let camera = AVCaptureDevice.authorizationStatus(for: .video)
         switch mode {
         case .voice:
-            if microphone == .granted { return true }
-            if microphone == .undetermined {
-                _ = await VoiceRecorder.requestPermission()
-                return false
-            }
-            show("Нет доступа к микрофону. Разрешите его в Настройках")
-            return false
+            if microphone == .granted { return .granted }
+            return microphone == .undetermined ? .undetermined : .denied
         case .video:
-            if microphone == .granted, camera == .authorized { return true }
-            if microphone == .undetermined || camera == .notDetermined {
-                _ = await VideoNoteRecorder.requestPermissions()
-                return false
-            }
-            show("Нет доступа к камере или микрофону. Разрешите их в Настройках")
-            return false
+            if microphone == .granted, camera == .authorized { return .granted }
+            return microphone == .undetermined || camera == .notDetermined ? .undetermined : .denied
         }
     }
 
