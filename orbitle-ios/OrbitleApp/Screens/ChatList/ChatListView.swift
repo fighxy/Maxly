@@ -107,7 +107,7 @@ struct ChatListView: View {
             StoriesStrip(stories: stories, selfAvatar: selfAvatar, onAdd: onAddStory)
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)
-                .listRowBackground(Color.orbitleBackground)
+                .listRowBackground(Color.clear)
                 .selectionDisabled()
         }
     }
@@ -125,7 +125,9 @@ struct ChatListView: View {
             }
         }
         .padding(.bottom, 4)
-        .background(Color.orbitleBackground)
+        // Закреплённая шапка полупрозрачная, как панель навигации над ней: строки под ней видны
+        // размытыми, а не обрываются о сплошной фон.
+        .background(.bar)
         .textCase(nil)
     }
 
@@ -148,7 +150,6 @@ struct ChatListView: View {
             await viewModel.refresh()
             await stories?.refresh()
         }
-        .clipped()
     }
 
     @ViewBuilder
