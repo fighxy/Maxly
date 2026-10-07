@@ -1,35 +1,75 @@
 import Foundation
 import OrbitleDomain
 
-/// Жест полосы историй над списком чатов.
-/// Палец вверх — отрицательный `drag`. Полоса полностью открыта при доле 1.
-/// Список не у верхнего края жест не принимает. Шапка передаёт `atTop: true`.
-public enum StoryStripMotion {
-    /// Порог в пунктах, после которого отпущенный жест доводится до конца.
-    public static let threshold: CGFloat = 48
+/// Полоса историй в шапке списка чатов, как в Telegram.
+///
+/// Свёрнута по умолчанию: у заголовка «Чаты» видна стопка из нескольких аватаров с кольцами.
+/// Раскрывается, если потянуть список вниз от верха (палец на экране) или коснуться стопки.
+/// Сворачивается, когда список уезжает вверх — пальцем или по инерции.
+///
+/// `gap` — где верх списка относительно низа шапки: больше нуля — список потянут вниз,
+/// меньше — уехал под шапку, `nil` — верх списка давно за экраном. Меряется по экрану, а не по
+/// смещению прокрутки, поэтому не зависит от того, как прокрутка считает отступы.
+///
+/// Раскрытая или свёрнутая полоса меняет высоту шапки, и список под ней сдвигается. Чтобы этот
+/// сдвиг не переключил полосу обратно, после каждого переключения жест до конца ничего не
+/// меняет (`settling`); следующий — уже по обычным правилам.
+public struct StoryStripMotion: Equatable, Sendable {
+    /// Насколько потянуть список вниз, чтобы раскрыть полосу.
+    public static let pullToExpand: CGFloat = 64
+    /// Насколько список должен уехать под шапку, чтобы полоса свернулась.
+    public static let scrollToCollapse: CGFloat = 24
 
-    public static func reveal(expanded: Bool, drag: CGFloat, height: CGFloat, atTop: Bool) -> CGFloat {
-        guard height > 0 else { return expanded ? 1 : 0 }
-        guard atTop else { return expanded ? 1 : 0 }
-        let base: CGFloat = expanded ? 1 : 0
-        let moved: CGFloat = if expanded && drag < 0 {
-            drag
-        } else if !expanded && drag > 0 {
-            drag
-        } else {
-            0
+    public enum Change: Equatable, Sendable {
+        case none
+        case expand
+        case collapse
+    }
+
+    public private(set) var expanded: Bool
+    /// После переключения: до конца этого жеста полоса не переключается.
+    public private(set) var settling = false
+
+    public init(expanded: Bool = false) {
+        self.expanded = expanded
+    }
+
+    /// Список сдвинулся. `dragging` — палец на списке, `decelerating` — инерция после него.
+    /// Раскрывает только палец: долёт по инерции до верха полосу не открывает.
+    public mutating func moved(gap: CGFloat?, dragging: Bool, decelerating: Bool, hasStories: Bool) -> Change {
+        guard hasStories else { return collapseIfNeeded() }
+        guard !settling, dragging || decelerating else { return .none }
+        let position = gap ?? -.infinity
+        if !expanded, dragging, position >= Self.pullToExpand {
+            expanded = true
+            settling = true
+            return .expand
         }
-        return min(1, max(0, base + moved / height))
+        if expanded, position <= -Self.scrollToCollapse {
+            expanded = false
+            settling = true
+            return .collapse
+        }
+        return .none
     }
 
-    /// Каким останется флаг «открыта» после отпускания.
-    public static func settledExpanded(wasExpanded: Bool, drag: CGFloat, atTop: Bool, threshold: CGFloat) -> Bool {
-        guard atTop else { return wasExpanded }
-        return wasExpanded ? drag > -threshold : drag >= threshold
+    /// Прокрутка остановилась: следующий жест снова переключает полосу.
+    public mutating func scrollEnded() {
+        settling = false
     }
 
-    /// Потянуть список вниз обновляет чаты только у уже открытой полосы.
-    public static func refreshesOnPull(expanded: Bool) -> Bool { expanded }
+    /// Касание стопки у заголовка или самого заголовка.
+    public mutating func toggle(hasStories: Bool) -> Change {
+        guard hasStories || expanded else { return .none }
+        expanded.toggle()
+        return expanded ? .expand : .collapse
+    }
+
+    private mutating func collapseIfNeeded() -> Change {
+        guard expanded else { return .none }
+        expanded = false
+        return .collapse
+    }
 
     /// Кольцо на аватаре: у человека любое, у группы и канала — только их тип.
     public static func ringMatches(_ ring: StoryRing?, kind: StoryOwner.Kind) -> Bool {

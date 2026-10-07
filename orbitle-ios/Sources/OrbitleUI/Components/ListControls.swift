@@ -1,13 +1,15 @@
 import SwiftUI
 import OrbitlePresentation
 
-/// Плоское поле поиска во всю ширину: серая скруглённая подложка, лупа, крестик и «Отмена».
+/// Поле поиска во всю ширину, как в Telegram: серая капсула, в покое лупа и «Поиск» по
+/// центру; при вводе — слева, с крестиком и «Отменой».
 public struct FlatSearchField: View {
     @Binding private var text: String
     @Binding private var isActive: Bool
     private let placeholder: String
     @FocusState private var focused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var glyph
 
     public init(text: Binding<String>, isActive: Binding<Bool>, placeholder: String = "Поиск") {
         _text = text
@@ -15,33 +17,47 @@ public struct FlatSearchField: View {
         self.placeholder = placeholder
     }
 
+    /// Поле в покое: подсказка по центру.
+    private var idle: Bool { !focused && !isActive && text.isEmpty }
+
     public var body: some View {
         HStack(spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-                TextField(placeholder, text: $text)
-                    .focused($focused)
-                    .textFieldStyle(.plain)
-                    .autocorrectionDisabled()
-                    .submitLabel(.search)
-                if !text.isEmpty {
-                    Button {
-                        text = ""
-                        focused = true
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
+            ZStack {
+                HStack(spacing: 6) {
+                    if !idle {
+                        magnifier
+                    }
+                    TextField(idle ? "" : placeholder, text: $text)
+                        .focused($focused)
+                        .textFieldStyle(.plain)
+                        .autocorrectionDisabled()
+                        .submitLabel(.search)
+                    if !text.isEmpty {
+                        Button {
+                            text = ""
+                            focused = true
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Очистить поиск")
+                    }
+                }
+                if idle {
+                    HStack(spacing: 6) {
+                        magnifier
+                        Text(placeholder)
                             .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Очистить поиск")
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
                 }
             }
-            .padding(.horizontal, 10)
-            .frame(minHeight: 38)
-            .background(Color.orbitleField, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .contentShape(Rectangle())
+            .padding(.horizontal, 14)
+            .frame(minHeight: 40)
+            .background(Color.orbitleField, in: Capsule())
+            .contentShape(Capsule())
             .onTapGesture { focused = true }
             if isActive {
                 Button("Отмена") {
@@ -56,6 +72,7 @@ public struct FlatSearchField: View {
             }
         }
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: isActive)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: idle)
         .onChange(of: focused) { _, value in
             // Панель вкладок прячется той же анимацией, что и кнопка «Отмена», а не скачком.
             if value, !isActive {
@@ -67,15 +84,29 @@ public struct FlatSearchField: View {
             focused = value
         }
     }
+
+    /// Лупа переезжает из центра влево вместе с подсказкой.
+    private var magnifier: some View {
+        Image(systemName: "magnifyingglass")
+            .foregroundStyle(.secondary)
+            .matchedGeometryEffect(id: "magnifier", in: glyph)
+            .accessibilityHidden(true)
+    }
 }
 
-/// Полоса папок над списком: название, число непрочитанных, подчёркивание выбранной.
+/// Папки над списком, как в Telegram: стеклянная капсула, внутри названия листаются по
+/// горизонтали, выбранная — на серой «таблетке», которая переезжает к новой. Число
+/// непрочитанных — бейджем рядом с названием.
 public struct FolderStrip: View {
     private let tabs: [ChatFolderTab]
     private let selected: String
     private let onSelect: (String) -> Void
-    @Namespace private var underline
+    @Namespace private var pill
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Высота капсулы и «таблетки» в ней.
+    public static let height: CGFloat = 44
+    private static let inset: CGFloat = 4
 
     public init(tabs: [ChatFolderTab], selected: String, onSelect: @escaping (String) -> Void) {
         self.tabs = tabs
@@ -86,50 +117,52 @@ public struct FolderStrip: View {
     public var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 18) {
+                HStack(spacing: 2) {
                     ForEach(tabs) { tab in
-                        Button {
-                            onSelect(tab.id)
-                        } label: {
-                            VStack(spacing: 6) {
-                                HStack(spacing: 4) {
-                                    Text(tab.title)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(tab.id == selected ? Color.orbitleAccent : .secondary)
-                                    if let badge = tab.badge {
-                                        UnreadBadge(text: badge, muted: tab.id != selected)
-                                            .scaleEffect(0.85)
-                                    }
-                                }
-                                ZStack {
-                                    Capsule().fill(Color.clear).frame(height: 3)
-                                    if tab.id == selected {
-                                        Capsule()
-                                            .fill(Color.orbitleAccent)
-                                            .frame(height: 3)
-                                            .matchedGeometryEffect(id: "underline", in: underline)
-                                    }
-                                }
-                            }
-                            .fixedSize(horizontal: true, vertical: false)
-                            .frame(minHeight: 44, alignment: .bottom)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .id(tab.id)
-                        .accessibilityLabel(tab.badge.map { "\(tab.title), \($0) непрочитанных" } ?? tab.title)
-                        .accessibilityAddTraits(tab.id == selected ? [.isButton, .isSelected] : .isButton)
+                        tabButton(tab)
                     }
                 }
-                .padding(.horizontal, OrbitleTheme.pad)
-                .padding(.top, 4)
+                .padding(Self.inset)
             }
-            .fixedSize(horizontal: false, vertical: true)
+            .frame(height: Self.height)
+            .clipShape(Capsule())
             .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: selected)
             .onChange(of: selected, initial: true) { _, id in
                 withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { proxy.scrollTo(id, anchor: .center) }
             }
         }
+        .orbitleGlassCapsule(interactive: false)
+    }
+
+    private func tabButton(_ tab: ChatFolderTab) -> some View {
+        let isSelected = tab.id == selected
+        return Button {
+            onSelect(tab.id)
+        } label: {
+            HStack(spacing: 6) {
+                Text(tab.title)
+                    .font(.body.weight(isSelected ? .semibold : .regular))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                if let badge = tab.badge {
+                    UnreadBadge(text: badge, muted: !isSelected)
+                }
+            }
+            .padding(.horizontal, 14)
+            .frame(height: Self.height - Self.inset * 2)
+            .background {
+                if isSelected {
+                    Capsule()
+                        .fill(Color.primary.opacity(0.08))
+                        .matchedGeometryEffect(id: "pill", in: pill)
+                }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .id(tab.id)
+        .accessibilityLabel(tab.badge.map { "\(tab.title), \($0) непрочитанных" } ?? tab.title)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
 
@@ -168,12 +201,13 @@ public extension View {
         #endif
     }
 
-    /// Стеклянная капсула для группы кнопок (например, «поиск + добавить»).
+    /// Стеклянная капсула для группы кнопок (например, «поиск + добавить»). `interactive` —
+    /// стекло отзывается на касание само; у капсулы-контейнера с кнопками внутри — нет.
     @ViewBuilder
-    func orbitleGlassCapsule() -> some View {
+    func orbitleGlassCapsule(interactive: Bool = true) -> some View {
         #if compiler(>=6.2)
         if #available(iOS 26.0, macOS 26.0, *) {
-            glassEffect(.regular.interactive(), in: Capsule())
+            glassEffect(interactive ? .regular.interactive() : .regular, in: Capsule())
         } else {
             background(.ultraThinMaterial, in: Capsule())
                 .overlay(Capsule().stroke(Color.primary.opacity(0.08)))

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import OrbitleDomain
 import OrbitlePresentation
 import OrbitleUI
@@ -22,10 +23,18 @@ struct ChatListView: View {
     @Environment(PrivateModeSettings.self) private var privateModeSettings: PrivateModeSettings?
     @Environment(\.privateMode) private var privateMode
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Явное скрытие через заголовок. Прокрутка полосы не меняет эту настройку.
-    @AppStorage("stories.stripCollapsed") private var storiesCollapsed = false
+    /// Полоса историй в шапке: свёрнута в стопку у заголовка или раскрыта, как в Telegram.
+    @State private var storyMotion = StoryStripMotion()
+    /// Положение списка под шапкой. Меняется каждый кадр прокрутки, поэтому не состояние экрана.
+    @State private var scroll = ChatListScrollTracker()
+
+    private static let listTopId = "chat-list-top"
+
     var body: some View {
-        chatList
+        ScrollViewReader { proxy in
+            chatList(proxy)
+                .toolbar { toolbar(proxy) }
+        }
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.isSearchActive)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if viewModel.isEditing { editBar }
@@ -33,7 +42,6 @@ struct ChatListView: View {
         .overlay(alignment: .bottomTrailing) { privateModeButton }
         .navigationTitle(viewModel.navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { toolbar }
         .task {
             viewModel.activate()
             await viewModel.refresh()
@@ -96,59 +104,145 @@ struct ChatListView: View {
         )
     }
 
-    // MARK: Содержимое
+    // MARK: Шапка
 
-    /// Истории — обычная строка того же List: уходят вверх вместе с контентом.
-    /// Нет второго вертикального жеста и изменения высоты списка под пальцем.
-    @ViewBuilder
-    private var storyStrip: some View {
-        if let stories, let selfAvatar, let onAddStory,
-           !storiesCollapsed, !viewModel.isSearchActive, !viewModel.isEditing {
-            StoriesStrip(stories: stories, selfAvatar: selfAvatar, onAdd: onAddStory)
-                .listRowInsets(EdgeInsets())
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-                .selectionDisabled()
-        }
+    /// Истории есть: своя или чужие. Без них полосы и стопки нет — только кнопка новой истории.
+    private var hasStories: Bool {
+        guard let stories, selfAvatar != nil, onAddStory != nil else { return false }
+        return stories.own != nil || !stories.rings.isEmpty
     }
 
-    private var chatChrome: some View {
-        VStack(spacing: 0) {
+    /// В поиске и при правке списка историй в шапке нет.
+    private var storiesAllowed: Bool { !viewModel.isSearchActive && !viewModel.isEditing }
+
+    private var showsStoryStrip: Bool { hasStories && storiesAllowed && storyMotion.expanded }
+
+    private var showsStoryStack: Bool { hasStories && storiesAllowed && !storyMotion.expanded }
+
+    /// Аватары стопки: своя история, затем непросмотренные и просмотренные, как в ленте.
+    private var stackRings: [StoryRing] {
+        guard let stories else { return [] }
+        return [stories.own].compactMap { $0 } + stories.rings
+    }
+
+    /// Шапка над списком: истории, поиск и папки. На iOS 26 — системная панель над прокруткой:
+    /// под ней и под панелью навигации список размывается мягко, без жёсткой границы.
+    private var header: some View {
+        VStack(spacing: 8) {
+            if showsStoryStrip, let stories, let selfAvatar, let onAddStory {
+                StoriesStrip(stories: stories, selfAvatar: selfAvatar, onAdd: onAddStory)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
             FlatSearchField(text: $viewModel.searchQuery, isActive: $viewModel.isSearchActive)
                 .padding(.horizontal, OrbitleTheme.pad)
-                .padding(.top, 4)
-                .padding(.bottom, 8)
             if viewModel.showsFolders, !viewModel.isSearchActive {
                 FolderStrip(tabs: viewModel.folders, selected: viewModel.selectedFolderId) { id in
                     viewModel.selectFolder(id)
                 }
+                .padding(.horizontal, OrbitleTheme.pad)
+                .transition(.opacity)
             }
         }
-        .padding(.bottom, 4)
-        // Закреплённая шапка полупрозрачная, как панель навигации над ней: строки под ней видны
-        // размытыми, а не обрываются о сплошной фон.
-        .background(.bar)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
         .textCase(nil)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: showsStoryStrip)
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { bottom in
+            scroll.headerBottom = bottom
+            storyListMoved()
+        }
     }
 
-    private var chatList: some View {
+    private func chatList(_ proxy: ScrollViewProxy) -> some View {
         List(selection: listSelection) {
-            storyStrip
-            Section {
-                rows
-            } header: {
-                chatChrome
-                    .listRowInsets(EdgeInsets())
-            }
+            listTopMarker
+            rows
         }
         .listStyle(.plain)
+        .environment(\.defaultMinListRowHeight, 0)
         .contentMargins(.top, 0, for: .scrollContent)
         .environment(\.editMode, .constant(viewModel.isEditing ? .active : .inactive))
         .scrollDismissesKeyboard(.interactively)
         .animation(OrbitleMotion.list(viewModel.itemsChange, reduceMotion: reduceMotion), value: viewModel.itemsVersion)
-        .refreshable {
-            await viewModel.refresh()
-            await stories?.refresh()
+        // Потянуть список вниз раскрывает истории, как в Telegram, поэтому обновления
+        // потягиванием нет: список и так сверяется сам.
+        .modifier(ChatListScrollPhase { dragging, decelerating in
+            scroll.dragging = dragging
+            scroll.decelerating = decelerating
+            if !dragging, !decelerating { scrollEnded(proxy) }
+            storyListMoved()
+        })
+        .modifier(ChatListHeaderBar(header: header))
+    }
+
+    /// Нулевая строка над списком: по ней видно, где верх списка относительно шапки.
+    private var listTopMarker: some View {
+        Color.clear
+            .frame(height: 0)
+            .listRowInsets(EdgeInsets())
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .selectionDisabled()
+            .accessibilityHidden(true)
+            .id(Self.listTopId)
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { top in
+                scroll.listTop = top
+                storyListMoved()
+            }
+            .onDisappear {
+                scroll.listTop = nil
+                storyListMoved()
+            }
+    }
+
+    /// Список сдвинулся: может быть, пора раскрыть или свернуть истории.
+    private func storyListMoved() {
+        let gap = scroll.listTop.map { $0 - scroll.headerBottom }
+        var motion = storyMotion
+        let change = motion.moved(gap: gap, dragging: scroll.dragging, decelerating: scroll.decelerating,
+                                  hasStories: hasStories && storiesAllowed)
+        if motion != storyMotion { storyMotion = motion }
+        storiesChanged(change)
+    }
+
+    private func scrollEnded(_ proxy: ScrollViewProxy) {
+        var motion = storyMotion
+        motion.scrollEnded()
+        if motion != storyMotion { storyMotion = motion }
+        // Полосу раскрыли потягиванием: список встаёт сразу под шапку, а не под полосу.
+        if scroll.revealsTop {
+            scroll.revealsTop = false
+            revealListTop(proxy)
+        }
+    }
+
+    private func storiesChanged(_ change: StoryStripMotion.Change) {
+        guard change == .expand else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        scroll.revealsTop = true
+        Task { await stories?.refresh() }
+    }
+
+    /// Касание стопки или заголовка: полоса раскрывается (и список встаёт к ней) или сворачивается.
+    private func toggleStories(_ proxy: ScrollViewProxy) {
+        var motion = storyMotion
+        let change = motion.toggle(hasStories: hasStories && storiesAllowed)
+        withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { storyMotion = motion }
+        guard change == .expand else { return }
+        Task { @MainActor in
+            // Сначала шапка вырастет, затем список встанет к ней.
+            try? await Task.sleep(for: .milliseconds(60))
+            revealListTop(proxy)
+        }
+    }
+
+    /// Верх списка ушёл под выросшую шапку (или далеко за экран) — список встаёт к ней. Если он
+    /// уже на месте (отпущенный палец вернул его сам), прокрутки нет.
+    private func revealListTop(_ proxy: ScrollViewProxy) {
+        let gap = scroll.listTop.map { $0 - scroll.headerBottom } ?? -.infinity
+        guard gap < -4 else { return }
+        withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) {
+            proxy.scrollTo(Self.listTopId, anchor: .top)
         }
     }
 
@@ -406,7 +500,7 @@ struct ChatListView: View {
     // MARK: Панели
 
     @ToolbarContentBuilder
-    private var toolbar: some ToolbarContent {
+    private func toolbar(_ proxy: ScrollViewProxy) -> some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
             Button(viewModel.isEditing ? "Готово" : "Изм.") {
                 withAnimation { viewModel.isEditing.toggle() }
@@ -416,27 +510,33 @@ struct ChatListView: View {
         }
         ToolbarItem(placement: .principal) {
             Button {
-                withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { storiesCollapsed.toggle() }
+                toggleStories(proxy)
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
+                    if showsStoryStack {
+                        StoryStack(rings: stackRings)
+                            .transition(.opacity.combined(with: .scale(scale: 0.6)))
+                    }
                     if viewModel.connection != .online || viewModel.isCatchingUp {
                         ProgressView().controlSize(.small)
                     }
                     Text(viewModel.navigationTitle).font(.headline)
-                    if stories != nil, !viewModel.isSearchActive, !viewModel.isEditing {
-                        Image(systemName: storiesCollapsed ? "chevron.down" : "chevron.up")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
                 }
                 .foregroundStyle(.primary)
+                .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: showsStoryStack)
             }
             .buttonStyle(.plain)
-            .disabled(stories == nil || viewModel.isSearchActive || viewModel.isEditing)
+            .disabled(!hasStories || !storiesAllowed)
             .accessibilityLabel(viewModel.navigationTitle)
-            .accessibilityHint(storiesCollapsed ? "Показать истории" : "Скрыть истории")
+            .accessibilityHint(hasStories ? (storyMotion.expanded ? "Скрыть истории" : "Показать истории") : "")
         }
-        ToolbarItem(placement: .topBarTrailing) {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            if let onAddStory, !viewModel.isSearchActive, !viewModel.isEditing {
+                Button(action: onAddStory) {
+                    AddStoryGlyph()
+                }
+                .accessibilityLabel("Новая история")
+            }
             Button {
                 composeShown = true
             } label: {
@@ -575,6 +675,85 @@ struct ChatListView: View {
                 if clearing { await viewModel.confirmClear(forEveryone: false) }
                 else { await viewModel.confirmDelete(forEveryone: false) }
             }
+        }
+    }
+}
+
+/// Положение списка под шапкой. Класс, а не состояние экрана: меняется каждый кадр прокрутки,
+/// и экран не должен пересобираться из-за этого.
+private final class ChatListScrollTracker {
+    /// Верх списка на экране; `nil` — верхняя строка давно за экраном.
+    var listTop: CGFloat?
+    /// Низ шапки на экране.
+    var headerBottom: CGFloat = 0
+    var dragging = false
+    var decelerating = false
+    /// Полосу историй раскрыли потягиванием: после остановки список встаёт к шапке.
+    var revealsTop = false
+}
+
+/// Фаза прокрутки списка: палец или инерция (iOS 18+). На iOS 17 истории раскрываются только
+/// касанием заголовка.
+private struct ChatListScrollPhase: ViewModifier {
+    let changed: (_ dragging: Bool, _ decelerating: Bool) -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollPhaseChange { _, phase in
+                changed(phase == .tracking || phase == .interacting, phase == .decelerating)
+            }
+        } else {
+            content
+        }
+    }
+}
+
+/// Шапка над списком. На iOS 26 — системная панель (`safeAreaBar`): прокрутка под ней и под
+/// панелью навигации размывается одним мягким переходом. Раньше — вставка над списком с
+/// материалом, который к низу тает, а не обрывается линией.
+private struct ChatListHeaderBar<Header: View>: ViewModifier {
+    let header: Header
+
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            content
+                .scrollEdgeEffectStyle(.soft, for: .top)
+                .safeAreaBar(edge: .top, spacing: 0) { header }
+        } else {
+            fallback(content)
+        }
+        #else
+        fallback(content)
+        #endif
+    }
+
+    private func fallback(_ content: Content) -> some View {
+        content.safeAreaInset(edge: .top, spacing: 0) {
+            header.background(alignment: .top) {
+                Rectangle()
+                    .fill(.bar)
+                    .mask {
+                        LinearGradient(
+                            stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.75), .init(color: .clear, location: 1)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    }
+                    .padding(.bottom, -20)
+                    .ignoresSafeArea(edges: .top)
+            }
+        }
+    }
+}
+
+/// Значок новой истории, как в Telegram: пунктирный круг с плюсом.
+private struct AddStoryGlyph: View {
+    var body: some View {
+        ZStack {
+            Image(systemName: "circle.dashed")
+            Image(systemName: "plus")
+                .font(.system(size: 9, weight: .bold))
         }
     }
 }
