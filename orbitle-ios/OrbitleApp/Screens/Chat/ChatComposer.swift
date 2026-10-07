@@ -34,6 +34,12 @@ struct ChatComposer: View {
     }
     /// Отступ поля ввода от краёв.
     static let inset: CGFloat = 12
+
+    /// Отступ нижних кнопок от правого края: у поля ввода свой, у кнопок канала — общий
+    /// `ChatControlMetrics`. По нему же стоит кнопка «вниз», ровно над правой кнопкой.
+    static func trailingInset(canWrite: Bool) -> CGFloat {
+        canWrite ? inset : ChatControlMetrics.trailingInset
+    }
     @Environment(\.privateMode) private var privateMode
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Стекло поля ввода: скрепка перетекает в поле и обратно (iOS 26).
@@ -109,7 +115,7 @@ struct ChatComposer: View {
                 readOnlyBar
             }
         }
-        .padding(.horizontal, canWrite ? Self.inset : ChatControlMetrics.trailingInset)
+        .padding(.horizontal, Self.trailingInset(canWrite: canWrite))
         .padding(.top, 6)
         .padding(.bottom, 8)
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.editTarget?.id)

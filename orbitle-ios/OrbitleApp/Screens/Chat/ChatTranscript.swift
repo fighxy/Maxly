@@ -157,7 +157,8 @@ struct ChatTranscript: View {
                     Group {
                         if bottom.showsButton(hasMessages: !viewModel.messages.isEmpty) || viewModel.isJumped {
                             ScrollDownButton(unseen: viewModel.unreadBelow) { goDown(proxy) }
-                                .padding(.trailing, ChatControlMetrics.trailingInset)
+                                // Ровно над правой нижней кнопкой: записью, отправкой или поиском канала.
+                                .padding(.trailing, ChatComposer.trailingInset(canWrite: canWrite))
                                 .padding(.bottom, 10)
                                 .transition(.orbitlePop(reduceMotion: reduceMotion))
                         }
