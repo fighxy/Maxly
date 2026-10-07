@@ -251,16 +251,20 @@ struct ChatView: View {
         navigationLayer
             .sheet(item: $viewModel.openedComments, onDismiss: { viewModel.closeComments() }) { post in
                 if let model = viewModel.commentsModel(for: post) {
-                    CommentsView(model: model, onBlockAuthor: { comment in
+                    CommentsView(model: model, onClose: { viewModel.closeComments() }, onBlockAuthor: { comment in
                         guard let chatAdmin else { throw OrbitleError.rejected("Управление чатом недоступно") }
                         let messageId = comment.serverId ?? comment.id
-                        try await chatAdmin.blockCommentAuthor(
-                            chatId: viewModel.chatId,
-                            postId: model.postId,
-                            userId: comment.authorId,
-                            messageId: messageId
-                        )
-                    }) { viewModel.closeComments() }
+                        do {
+                            try await chatAdmin.blockCommentAuthor(
+                                chatId: viewModel.chatId,
+                                postId: model.postId,
+                                userId: comment.authorId,
+                                messageId: messageId
+                            )
+                        } catch {
+                            throw (error as? OrbitleError) ?? .unknown
+                        }
+                    })
                         .presentationDragIndicator(.visible)
                         // В листе комментариев обоев нет: пузыри обычные.
                         .environment(\.chatWallpaper, .plain)
