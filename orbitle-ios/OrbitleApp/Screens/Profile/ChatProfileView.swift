@@ -898,7 +898,7 @@ struct ChatHeaderAvatar: View {
             case .channel: .channel
             default: .user
             }
-            let ownerId = switch viewModel.shown.kind {
+            let ownerId: String? = switch viewModel.shown.kind {
             case .user, .bot: viewModel.shown.peerId
             case .group, .channel: viewModel.chatId
             case .saved: nil
