@@ -26,6 +26,11 @@ public struct TranscriptBottomState: Equatable, Sendable {
     /// Прыжок кнопкой «вниз», который ещё в пути.
     public private(set) var jump: Int?
     private var jumps = 0
+    /// Ленту поставили в историю без пальца (непрочитанные, место прошлого захода, переход к
+    /// сообщению). Пока палец её не взял, признак снимается и без пальца: до прокрутки к цели
+    /// прежнее положение у низа успевает сообщить о себе и включает признак обратно. Без этого
+    /// он залипал — лента держалась низом и при следующей сверке уезжала к последнему сообщению.
+    private var placedInHistory = false
 
     public init() {}
 
@@ -42,7 +47,7 @@ public struct TranscriptBottomState: Equatable, Sendable {
     public mutating func scrolled(distance: Double, dragging: Bool) {
         if distance <= Self.reachDistance {
             reachBottom()
-        } else if dragging, jump == nil, distance > Self.leaveDistance {
+        } else if dragging || placedInHistory, jump == nil, distance > Self.leaveDistance {
             atBottom = false
         }
     }
@@ -60,7 +65,7 @@ public struct TranscriptBottomState: Equatable, Sendable {
         let visible = bottomY.isFinite && bottomY >= 0 && bottomY <= viewportHeight + slack
         if visible {
             reachBottom()
-        } else if jump == nil, dragging ?? true {
+        } else if jump == nil, (dragging ?? true) || placedInHistory {
             atBottom = false
         }
     }
@@ -68,6 +73,7 @@ public struct TranscriptBottomState: Equatable, Sendable {
     /// Палец взял ленту: прыжок больше не доводится.
     public mutating func userTookOver() {
         jump = nil
+        placedInHistory = false
     }
 
     /// Ответ, поиск или непрочитанные открывают историю без жеста пальцем.
@@ -75,12 +81,14 @@ public struct TranscriptBottomState: Equatable, Sendable {
     public mutating func beginReadingHistory() {
         jump = nil
         atBottom = false
+        placedInHistory = true
     }
 
     /// Касание кнопки «вниз». Возвращает id прыжка для `finishJump`.
     public mutating func beginJump() -> Int {
         jumps += 1
         jump = jumps
+        placedInHistory = false
         reachBottom()
         return jumps
     }

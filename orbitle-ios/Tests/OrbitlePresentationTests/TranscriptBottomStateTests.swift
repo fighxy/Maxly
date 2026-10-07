@@ -22,6 +22,37 @@ struct TranscriptBottomStateTests {
         #expect(state.atBottom && state.unseen == 0)
     }
 
+    @Test("Открытие на непрочитанных: прежнее положение у низа не залипает признаком «внизу»")
+    func staleBottomAfterPlacingInHistory() {
+        var state = TranscriptBottomState()
+        state.beginReadingHistory()
+        // До прокрутки к разделителю лента ещё у низа и успевает о себе сообщить.
+        state.scrolled(distance: 10, dragging: false)
+        #expect(state.atBottom)
+        // Прокрутка к разделителю дошла: признак снимается и без пальца.
+        state.scrolled(distance: 1_500, dragging: false)
+        #expect(!state.atBottom)
+        state.scrolled(distance: 10, dragging: false)
+        state.markerMoved(bottomY: .infinity, viewportHeight: 700, dragging: false)
+        #expect(!state.atBottom)
+        // Палец взял ленту — снова обычные правила: рост содержимого признак не снимает.
+        state.userTookOver()
+        state.scrolled(distance: 10, dragging: false)
+        state.scrolled(distance: 500, dragging: false)
+        state.markerMoved(bottomY: .infinity, viewportHeight: 700, dragging: false)
+        #expect(state.atBottom)
+    }
+
+    @Test("Касание «вниз» после открытия в истории возвращает обычное удержание низа")
+    func jumpEndsPlacedHistory() {
+        var state = TranscriptBottomState()
+        state.beginReadingHistory()
+        let id = state.beginJump()
+        _ = state.finishJump(id)
+        state.scrolled(distance: 400, dragging: false)
+        #expect(state.atBottom)
+    }
+
     @Test("Сначала внизу, кнопки нет; пальцем вверх — кнопка есть, у низа — снова нет")
     func showAndHide() {
         var state = TranscriptBottomState()
