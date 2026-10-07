@@ -52,6 +52,8 @@ struct ChatView: View {
     @State private var panelShown = false
     /// Высота последней клавиатуры без нижнего отступа: панель встаёт на её место.
     @State private var keyboardHeight: CGFloat = 300
+    /// Экранная клавиатура на экране: поле ввода стоит над ней, а без неё опускается ниже.
+    @State private var keyboardShown = false
     @State private var searchShown = false
     @State private var pollShown = false
     @State private var scheduleShown = false
@@ -119,6 +121,12 @@ struct ChatView: View {
             // Плавающая и внешняя клавиатуры низкие: панель остаётся обычной высоты.
             if height > 200 { keyboardHeight = height }
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
+            setKeyboardShown(true, note)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { note in
+            setKeyboardShown(false, note)
+        }
     }
 
     private var topBanners: some View {
@@ -159,8 +167,31 @@ struct ChatView: View {
                 .transition(.move(edge: .bottom))
             }
         }
+        // Без клавиатуры и панели капсулы опускаются в нижний отступ экрана, как в Telegram:
+        // над полоской «домой» и так остаётся место.
+        .padding(.bottom, lowersControls ? -Self.controlsLowering : 0)
         // Верх поля ввода — от него лента тает в фон к низу экрана (`ChatBottomBlur`).
         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { bottomControlsTop = $0 }
+    }
+
+    /// На сколько нижние капсулы заходят в нижний отступ экрана.
+    static let controlsLowering: CGFloat = 14
+
+    /// Опускать капсулы: клавиатуры и панели стикеров нет, а внизу экрана есть отступ
+    /// под полоску «домой» (на iPhone с кнопкой «Домой» его нет).
+    private var lowersControls: Bool {
+        guard !keyboardShown, !panelShown else { return false }
+        let inset = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.keyWindow?.safeAreaInsets.bottom }
+            .first ?? 0
+        return inset >= Self.controlsLowering * 2
+    }
+
+    /// Капсулы поднимаются и опускаются вместе с клавиатурой, её же кривой.
+    private func setKeyboardShown(_ shown: Bool, _ note: Notification) {
+        guard keyboardShown != shown else { return }
+        let duration = (note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double) ?? 0.25
+        withAnimation(reduceMotion ? nil : .easeOut(duration: duration)) { keyboardShown = shown }
     }
 
     /// Шапка, переход в профиль и загрузка карточки чата.
