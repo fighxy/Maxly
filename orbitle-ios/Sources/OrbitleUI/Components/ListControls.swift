@@ -29,6 +29,7 @@ public struct FlatSearchField: View {
                 if !text.isEmpty {
                     Button {
                         text = ""
+                        focused = true
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.secondary)
@@ -61,7 +62,7 @@ public struct FlatSearchField: View {
                 withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { isActive = true }
             }
         }
-        .onChange(of: isActive) { _, value in
+        .onChange(of: isActive, initial: true) { _, value in
             // Поиск можно включить снаружи (кнопкой с лупой): тогда поле получает фокус.
             focused = value
         }
@@ -110,7 +111,9 @@ public struct FolderStrip: View {
                                     }
                                 }
                             }
-                            .fixedSize()
+                            .fixedSize(horizontal: true, vertical: false)
+                            .frame(minHeight: 44, alignment: .bottom)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .id(tab.id)
@@ -121,8 +124,9 @@ public struct FolderStrip: View {
                 .padding(.horizontal, OrbitleTheme.pad)
                 .padding(.top, 4)
             }
+            .fixedSize(horizontal: false, vertical: true)
             .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: selected)
-            .onChange(of: selected) { _, id in
+            .onChange(of: selected, initial: true) { _, id in
                 withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { proxy.scrollTo(id, anchor: .center) }
             }
         }

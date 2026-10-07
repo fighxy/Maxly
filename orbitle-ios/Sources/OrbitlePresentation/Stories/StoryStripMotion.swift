@@ -34,6 +34,6 @@ public enum StoryStripMotion {
     /// Кольцо на аватаре: у человека любое, у группы и канала — только их тип.
     public static func ringMatches(_ ring: StoryRing?, kind: StoryOwner.Kind) -> Bool {
         guard let ring else { return false }
-        return kind == .user || ring.owner.kind == kind
+        return ring.owner.kind == kind
     }
 }

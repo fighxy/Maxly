@@ -22,23 +22,10 @@ struct ChatListView: View {
     @Environment(PrivateModeSettings.self) private var privateModeSettings: PrivateModeSettings?
     @Environment(\.privateMode) private var privateMode
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Полоса скрыта жестом. Общее для аккаунтов на этом устройстве.
+    /// Явное скрытие через заголовок. Прокрутка полосы не меняет эту настройку.
     @AppStorage("stories.stripCollapsed") private var storiesCollapsed = false
-    @State private var stripReveal: CGFloat = 1
-    @State private var stripReady = false
-    @State private var draggingStrip = false
-    /// Край списка на старте жеста: к концу жест уже мог сдвинуть список.
-    @State private var dragAtTop = true
-    @GestureState private var stripGestureLive = false
-    @State private var stripHeight: CGFloat = 96
-    @State private var listAtTop = true
-
     var body: some View {
-        VStack(spacing: 0) {
-            storyStrip
-            chatChrome
-            chatList
-        }
+        chatList
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.isSearchActive)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if viewModel.isEditing { editBar }
@@ -47,18 +34,6 @@ struct ChatListView: View {
         .navigationTitle(viewModel.navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
-        .onAppear {
-            guard !stripReady else { return }
-            stripReveal = storiesCollapsed ? 0 : 1
-            stripReady = true
-        }
-        .onChange(of: stripGestureLive) { _, live in
-            // `onEnded` успевает зафиксировать жест в этом же кадре. Отмена — только если он ещё висит.
-            guard !live else { return }
-            Task { @MainActor in
-                if draggingStrip { cancelStripDrag() }
-            }
-        }
         .task {
             viewModel.activate()
             await viewModel.refresh()
@@ -123,41 +98,18 @@ struct ChatListView: View {
 
     // MARK: Содержимое
 
-    /// Истории над поиском и папками. Поиск и правка списка прячут полосу, не забывая жест.
+    /// Истории — обычная строка того же List: уходят вверх вместе с контентом.
+    /// Нет второго вертикального жеста и изменения высоты списка под пальцем.
     @ViewBuilder
     private var storyStrip: some View {
-        if let stories, let selfAvatar, let onAddStory, showsStoryStrip {
-            let reveal = stripReady ? stripReveal : (storiesCollapsed ? 0 : 1)
-            let strip = StoriesStrip(stories: stories, selfAvatar: selfAvatar, onAdd: onAddStory)
-            ZStack(alignment: .bottom) {
-                // Высота без обрезки: иначе измерение схлопывается вместе с полосой.
-                strip
-                    .fixedSize(horizontal: false, vertical: true)
-                    .hidden()
-                    .accessibilityHidden(true)
-                    .background {
-                        GeometryReader { geo in
-                            Color.clear.preference(key: StripHeightKey.self, value: geo.size.height)
-                        }
-                    }
-                strip
-                    .frame(maxWidth: .infinity)
-            }
-            .onPreferenceChange(StripHeightKey.self) { height in
-                // Обрезанный кадр не уменьшает замер: иначе закрытая полоса забывает свою высоту.
-                if height > stripHeight { stripHeight = height }
-            }
-            .frame(height: max(0, stripHeight * reveal), alignment: .bottom)
-            .clipped()
-            .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
-            .simultaneousGesture(stripDrag(header: true))
-            .accessibilityHint(storiesCollapsed ? "Потяните вниз, чтобы показать истории" : "Потяните вверх, чтобы скрыть истории")
+        if let stories, let selfAvatar, let onAddStory,
+           !storiesCollapsed, !viewModel.isSearchActive, !viewModel.isEditing {
+            StoriesStrip(stories: stories, selfAvatar: selfAvatar, onAdd: onAddStory)
+                .listRowInsets(EdgeInsets())
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.orbitleBackground)
+                .selectionDisabled()
         }
-    }
-
-    private var showsStoryStrip: Bool {
-        !viewModel.isSearchActive && !viewModel.isEditing
     }
 
     private var chatChrome: some View {
@@ -165,97 +117,48 @@ struct ChatListView: View {
             FlatSearchField(text: $viewModel.searchQuery, isActive: $viewModel.isSearchActive)
                 .padding(.horizontal, OrbitleTheme.pad)
                 .padding(.top, 4)
-                .padding(.bottom, viewModel.showsFolders && !viewModel.isSearchActive ? 0 : 8)
+                .padding(.bottom, 8)
             if viewModel.showsFolders, !viewModel.isSearchActive {
-                FolderSegments(tabs: viewModel.folders, selected: viewModel.selectedFolderId) { id in
+                FolderStrip(tabs: viewModel.folders, selected: viewModel.selectedFolderId) { id in
                     viewModel.selectFolder(id)
                 }
             }
         }
-        .simultaneousGesture(stripDrag(header: true))
+        .padding(.bottom, 4)
+        .background(Color.orbitleBackground)
+        .textCase(nil)
     }
 
     private var chatList: some View {
-        List(selection: listSelection) { rows }
-            .listStyle(.plain)
-            .coordinateSpace(name: "chat-list")
-            .environment(\.editMode, .constant(viewModel.isEditing ? .active : .inactive))
-            .animation(OrbitleMotion.list(viewModel.itemsChange, reduceMotion: reduceMotion), value: viewModel.itemsVersion)
-            .simultaneousGesture(stripDrag(header: false))
-            .modifier(StoryListRefresh(enabled: viewModel.isSearchActive || !storiesCollapsed) {
-                await viewModel.refresh()
-                await stories?.refresh()
-            })
-            .overlay { placeholder.animation(OrbitleMotion.fade, value: viewModel.content) }
-    }
-
-    /// Поднятие от верхнего края прячет полосу. Потянуть вниз возвращает её.
-    /// Обновление списка — следующее потягивание, когда полоса уже открыта.
-    private func stripDrag(header: Bool) -> some Gesture {
-        DragGesture(minimumDistance: 12)
-            .updating($stripGestureLive) { _, state, _ in state = true }
-            .onChanged { value in
-                guard showsStoryStrip else { return }
-                if !draggingStrip { dragAtTop = header || listAtTop }
-                let drag = value.translation.height
-                let next = StoryStripMotion.reveal(expanded: !storiesCollapsed, drag: drag, height: stripHeight, atTop: dragAtTop)
-                let moved = abs(next - (storiesCollapsed ? 0 : 1)) > 0.001
-                guard moved || draggingStrip else { return }
-                draggingStrip = true
-                if reduceMotion {
-                    let open = StoryStripMotion.settledExpanded(wasExpanded: !storiesCollapsed, drag: drag, atTop: dragAtTop, threshold: StoryStripMotion.threshold)
-                    stripReveal = open ? 1 : 0
-                } else {
-                    stripReveal = next
-                }
+        List(selection: listSelection) {
+            storyStrip
+            Section {
+                rows
+            } header: {
+                chatChrome
+                    .listRowInsets(EdgeInsets())
             }
-            .onEnded { value in
-                guard draggingStrip else { return }
-                finishStripDrag(drag: value.translation.height)
-            }
-    }
-
-    /// Отмена жеста не вызывает `onEnded`: полоса возвращается к запомненному положению.
-    private func cancelStripDrag() {
-        guard draggingStrip else { return }
-        draggingStrip = false
-        stripReveal = storiesCollapsed ? 0 : 1
-    }
-
-    private func finishStripDrag(drag: CGFloat) {
-        let open = StoryStripMotion.settledExpanded(
-            wasExpanded: !storiesCollapsed,
-            drag: drag,
-            atTop: dragAtTop,
-            threshold: StoryStripMotion.threshold
-        )
-        draggingStrip = false
-        storiesCollapsed = !open
-        if reduceMotion {
-            stripReveal = open ? 1 : 0
-        } else {
-            withAnimation(.snappy(duration: 0.22)) { stripReveal = open ? 1 : 0 }
         }
+        .listStyle(.plain)
+        .contentMargins(.top, 0, for: .scrollContent)
+        .environment(\.editMode, .constant(viewModel.isEditing ? .active : .inactive))
+        .scrollDismissesKeyboard(.interactively)
+        .animation(OrbitleMotion.list(viewModel.itemsChange, reduceMotion: reduceMotion), value: viewModel.itemsVersion)
+        .refreshable {
+            await viewModel.refresh()
+            await stories?.refresh()
+        }
+        .clipped()
     }
 
     @ViewBuilder
     private var rows: some View {
-        Color.clear.frame(height: 0)
-            .listRowInsets(EdgeInsets())
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
-            .selectionDisabled()
-            .background {
-                GeometryReader { geo in
-                    Color.clear.preference(key: ListTopKey.self, value: geo.frame(in: .named("chat-list")).minY)
-                }
-            }
-            .onPreferenceChange(ListTopKey.self) { minY in
-                listAtTop = minY >= -2
-            }
         if viewModel.isSearchActive {
             searchResults
         } else {
+            placeholder
+                .listRowSeparator(.hidden)
+                .selectionDisabled()
             if let message = viewModel.inlineError {
                 Button {
                     viewModel.dismissError()
@@ -321,7 +224,7 @@ struct ChatListView: View {
         let match = storyMatch(item)
         let ring = match.flatMap { stories?.ring(of: $0.id, kind: $0.kind) }
         var openStories: (() -> Void)?
-        if let match, let stories { openStories = { stories.open(match.id) } }
+        if let match, let stories { openStories = { stories.open(match.id, kind: match.kind) } }
         return ChatRow(item: item, storyRing: ring, onStoryTap: openStories)
             .tag(item.id)
             .listRowInsets(rowInsets)
@@ -426,75 +329,77 @@ struct ChatListView: View {
     @ViewBuilder
     private var searchResults: some View {
         let search = viewModel.search
-        if viewModel.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty {
-            if !search.recent.isEmpty {
-                Section {
-                    ForEach(search.recent) { item in
-                        ChatRow(item: item)
-                            .tag(item.id)
-                            .listRowInsets(rowInsets)
-                            .swipeActions {
-                                Button(role: .destructive) {
-                                    Task { await viewModel.removeRecent(chatId: item.id) }
-                                } label: {
-                                    Label("Убрать", systemImage: "xmark")
-                                }
+        if viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if search.recent.isEmpty {
+                Text("Поиск по чатам и сообщениям")
+                    .foregroundStyle(.secondary)
+                    .listRowSeparator(.hidden)
+                    .selectionDisabled()
+            } else {
+                HStack {
+                    Text("Недавние").font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Button("Очистить") { Task { await viewModel.clearRecent() } }
+                        .buttonStyle(.plain)
+                }
+                .listRowSeparator(.hidden)
+                .selectionDisabled()
+                ForEach(search.recent) { item in
+                    ChatRow(item: item)
+                        .tag(item.id)
+                        .listRowInsets(rowInsets)
+                        .swipeActions {
+                            Button("Убрать", systemImage: "xmark", role: .destructive) {
+                                Task { await viewModel.removeRecent(chatId: item.id) }
                             }
-                    }
-                } header: {
-                    HStack {
-                        Text("Недавние")
-                        Spacer()
-                        Button("Очистить") { Task { await viewModel.clearRecent() } }
-                            .font(.subheadline)
-                            .foregroundStyle(Color.orbitleAccent)
-                    }
+                        }
                 }
             }
         } else {
             if !search.chats.isEmpty {
-                Section("Чаты") {
-                    ForEach(search.chats) { item in
-                        ChatRow(item: item)
-                            .tag(item.id)
-                            .listRowInsets(rowInsets)
-                    }
+                searchHeading("Чаты")
+                ForEach(search.chats) { item in
+                    ChatRow(item: item).tag(item.id).listRowInsets(rowInsets)
                 }
             }
-            if !search.global.isEmpty || search.isSearchingServer {
-                Section("Глобальный поиск") {
-                    ForEach(search.global) { result in
-                        GlobalResultRow(result: result)
-                            .tag(result.id)
-                    }
-                    if search.isSearchingServer {
-                        HStack { Spacer(); ProgressView(); Spacer() }
-                            .selectionDisabled()
-                    }
+            if !search.global.isEmpty {
+                searchHeading("Глобальный поиск")
+                ForEach(search.global) { result in
+                    GlobalResultRow(result: result).tag(result.id)
                 }
             }
             if !search.messages.isEmpty {
-                Section("Сообщения") {
-                    // Чат открывается на самом сообщении: модель чата запоминает его до открытия.
-                    ForEach(search.messages) { message in
-                        Button {
-                            onOpenMessage(message)
-                            selection = message.chatId
-                        } label: {
-                            FoundMessageRow(message: message)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .selectionDisabled()
+                searchHeading("Сообщения")
+                ForEach(search.messages) { message in
+                    Button {
+                        onOpenMessage(message)
+                        selection = message.chatId
+                    } label: {
+                        FoundMessageRow(message: message).contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .selectionDisabled()
                 }
             }
-            if search.isEmpty, !search.isSearchingServer {
+            if search.isSearchingServer {
+                HStack { Spacer(); ProgressView("Поиск…"); Spacer() }
+                    .listRowSeparator(.hidden)
+                    .selectionDisabled()
+            } else if search.isEmpty {
                 ContentUnavailableView.search(text: viewModel.searchQuery)
                     .listRowSeparator(.hidden)
                     .selectionDisabled()
             }
         }
+    }
+
+    private func searchHeading(_ title: String) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .accessibilityAddTraits(.isHeader)
+            .listRowSeparator(.hidden)
+            .selectionDisabled()
     }
 
     // MARK: Панели
@@ -509,16 +414,26 @@ struct ChatListView: View {
             .disabled(viewModel.items.isEmpty && !viewModel.isEditing)
         }
         ToolbarItem(placement: .principal) {
-            HStack(spacing: 6) {
-                if viewModel.connection != .online || viewModel.isCatchingUp {
-                    ProgressView().controlSize(.small)
+            Button {
+                withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { storiesCollapsed.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    if viewModel.connection != .online || viewModel.isCatchingUp {
+                        ProgressView().controlSize(.small)
+                    }
+                    Text(viewModel.navigationTitle).font(.headline)
+                    if stories != nil, !viewModel.isSearchActive, !viewModel.isEditing {
+                        Image(systemName: storiesCollapsed ? "chevron.down" : "chevron.up")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                Text(viewModel.navigationTitle)
-                    .font(.headline)
-                    .contentTransition(.opacity)
+                .foregroundStyle(.primary)
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isHeader)
+            .buttonStyle(.plain)
+            .disabled(stories == nil || viewModel.isSearchActive || viewModel.isEditing)
+            .accessibilityLabel(viewModel.navigationTitle)
+            .accessibilityHint(storiesCollapsed ? "Показать истории" : "Скрыть истории")
         }
         ToolbarItem(placement: .topBarTrailing) {
             Button {
@@ -762,28 +677,4 @@ private struct ComposeSheet: View {
         }
         .presentationDetents([.medium, .large])
     }
-}
-
-/// Обновление списка есть, только когда полоса уже открыта. Иначе жест вниз её показывает.
-private struct StoryListRefresh: ViewModifier {
-    let enabled: Bool
-    let action: () async -> Void
-
-    func body(content: Content) -> some View {
-        if enabled {
-            content.refreshable { await action() }
-        } else {
-            content
-        }
-    }
-}
-
-private struct StripHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
-}
-
-private struct ListTopKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }

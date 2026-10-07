@@ -41,6 +41,7 @@ struct StoryStripMotionTests {
         #expect(StoryStripMotion.ringMatches(group, kind: .chat))
         #expect(!StoryStripMotion.ringMatches(person, kind: .chat))
         #expect(!StoryStripMotion.ringMatches(group, kind: .channel))
+        #expect(!StoryStripMotion.ringMatches(group, kind: .user))
         #expect(!StoryStripMotion.ringMatches(nil, kind: .user))
     }
 }
