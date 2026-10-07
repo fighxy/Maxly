@@ -156,7 +156,7 @@ struct ChatTranscript: View {
                     Group {
                         if bottom.showsButton(hasMessages: !viewModel.messages.isEmpty) || viewModel.isJumped {
                             ScrollDownButton(unseen: viewModel.unreadBelow) { goDown(proxy) }
-                                .padding(.trailing, OrbitleTheme.pad)
+                                .padding(.trailing, ChatControlMetrics.trailingInset)
                                 .padding(.bottom, 10)
                                 .transition(.orbitlePop(reduceMotion: reduceMotion))
                         }
@@ -472,7 +472,7 @@ private struct ScrollDownButton: View {
             Image(systemName: "chevron.down")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.primary)
-                .orbitleGlassCircle(size: 42)
+                .orbitleGlassCircle(size: ChatControlMetrics.diameter)
                 .overlay(alignment: .top) {
                     if unseen > 0 {
                         Text(unseen > 99 ? "99+" : "\(unseen)")

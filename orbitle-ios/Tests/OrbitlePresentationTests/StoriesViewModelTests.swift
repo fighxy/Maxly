@@ -6,16 +6,18 @@ import OrbitleDomain
 private actor FakeStories: StoriesRepository {
     var me = "1"
     var feedList: [StoryRing] = []
-    var owners: [String: OwnerStories] = [:]
+    var owners: [StoryOwner: OwnerStories] = [:]
     var failure: OrbitleError?
     var publishReply: StoryRing?
     private(set) var marked: [String] = []
+    private(set) var markedOwners: [StoryOwner] = []
     private(set) var deleted: [[String]] = []
     private(set) var published: [StoryAudience] = []
     private(set) var storyRequests = 0
 
     func set(feed: [StoryRing]) { feedList = feed }
-    func set(owner: String, _ value: OwnerStories) { owners[owner] = value }
+    func set(owner: String, _ value: OwnerStories) { owners[StoryOwner(id: owner)] = value }
+    func set(owner: StoryOwner, _ value: OwnerStories) { owners[owner] = value }
     func set(failure: OrbitleError?) { self.failure = failure }
     func set(publishReply: StoryRing?) { self.publishReply = publishReply }
 
@@ -27,11 +29,12 @@ private actor FakeStories: StoriesRepository {
     func stories(owner: StoryOwner) async throws(OrbitleError) -> OwnerStories {
         storyRequests += 1
         if let failure { throw failure }
-        return owners[owner.id] ?? OwnerStories(ring: nil, stories: [])
+        return owners[owner] ?? OwnerStories(ring: nil, stories: [])
     }
 
     func markSeen(owner: StoryOwner, storyId: String) async throws(OrbitleError) {
         marked.append(storyId)
+        markedOwners.append(owner)
     }
 
     func publish(_ story: OutgoingStory, audience: StoryAudience, progress: @escaping @Sendable (Double) -> Void) async throws(OrbitleError) -> StoryRing? {
@@ -63,6 +66,66 @@ private func story(_ owner: String, _ id: String, at seconds: TimeInterval, medi
 @Suite("Истории")
 @MainActor
 struct StoriesViewModelTests {
+    @Test("Одинаковые id человека, группы и канала не смешивают кольца, кэш и просмотр")
+    func ownerNamespaces() async {
+        let repo = FakeStories()
+        let owners = [StoryOwner(id: "2"), StoryOwner(id: "2", kind: .chat), StoryOwner(id: "2", kind: .channel)]
+        var feed: [StoryRing] = []
+        for (index, owner) in owners.enumerated() {
+            let entry = StoryRing(owner: owner, name: "Владелец \(index)", updatedAt: Date(timeIntervalSince1970: 1), total: 1, read: 0)
+            var item = story("2", "same-story-id", at: 1)
+            item.owner = owner
+            await repo.set(owner: owner, OwnerStories(ring: entry, stories: [item]))
+            feed.append(entry)
+        }
+        await repo.set(feed: feed)
+        let model = StoriesViewModel(repository: repo)
+        await model.refresh()
+        #expect(model.rings.map(\.owner) == owners)
+        model.open("2")
+        await model.settle()
+        #expect(model.viewer?.story?.owner == owners[0])
+        model.nextOwner()
+        await model.settle()
+        #expect(model.viewer?.story?.owner == owners[1])
+        model.nextOwner()
+        await model.settle()
+        #expect(model.viewer?.story?.owner == owners[2])
+        #expect(await repo.markedOwners == owners)
+        #expect(await repo.storyRequests == 3)
+        for owner in owners { #expect(model.ring(of: owner.id, kind: owner.kind)?.read == 1) }
+    }
+
+    @Test("Канал с id текущего пользователя не становится своей историей")
+    func channelIsNotOwn() async {
+        let repo = FakeStories()
+        let channel = StoryRing(owner: StoryOwner(id: "1", kind: .channel), name: "Канал", updatedAt: .now, total: 1, read: 0)
+        await repo.set(feed: [channel])
+        let model = StoriesViewModel(repository: repo)
+        await model.refresh()
+        #expect(model.own == nil)
+        #expect(model.rings == [channel])
+        #expect(model.ring(of: "1") == nil)
+        #expect(model.ring(of: "1", kind: .channel) == channel)
+    }
+
+    @Test("Загрузка колец вне ленты учитывает тип владельца")
+    func peerNamespaces() async {
+        let repo = FakeStories()
+        let user = ring("9", total: 1, read: 0, at: 1)
+        var channel = user
+        channel.owner.kind = .channel
+        channel.name = "Канал"
+        await repo.set(owner: user.owner, OwnerStories(ring: user, stories: []))
+        await repo.set(owner: channel.owner, OwnerStories(ring: channel, stories: []))
+        let model = StoriesViewModel(repository: repo)
+        await model.loadRing("9")
+        await model.loadRing("9", kind: .channel)
+        #expect(model.ring(of: "9") == user)
+        #expect(model.ring(of: "9", kind: .channel) == channel)
+        #expect(await repo.storyRequests == 2)
+    }
+
     @Test("Лента: сначала непросмотренные, затем свежие; своё кольцо отдельно")
     func feedOrder() async {
         let repo = FakeStories()

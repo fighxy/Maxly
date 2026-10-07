@@ -26,7 +26,6 @@ struct ChatComposer: View {
     /// Поиск по каналу. Стоит справа от кнопки звука.
     var onSearch: (() -> Void)? = nil
     /// Высота кнопок звука и поиска в канале: круг и капсула одной линии.
-    private static let channelControl: CGFloat = 38
 
     struct Join {
         let label: String
@@ -110,7 +109,7 @@ struct ChatComposer: View {
                 readOnlyBar
             }
         }
-        .padding(.horizontal, Self.inset)
+        .padding(.horizontal, canWrite ? Self.inset : ChatControlMetrics.trailingInset)
         .padding(.top, 6)
         .padding(.bottom, 8)
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.editTarget?.id)
@@ -266,35 +265,8 @@ struct ChatComposer: View {
             .frame(maxWidth: .infinity)
             .accessibilityLabel(join.label)
         } else if chatType == .channel, let onToggleMute {
-            // Капсула звука по центру, поиск — круг той же высоты справа.
-            // Пустой круг слева держит подпись на оси экрана.
-            HStack(spacing: 8) {
-                Color.clear.frame(width: Self.channelControl, height: Self.channelControl)
-                    .accessibilityHidden(true)
-                Button(action: onToggleMute) {
-                    Label(isMuted ? "Включить звук" : "Выключить звук", systemImage: isMuted ? "bell" : "bell.slash")
-                        .font(.subheadline.weight(.medium))
-                        .padding(.horizontal, 18)
-                        .frame(height: Self.channelControl)
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.orbitleAccent)
-                .orbitleGlassCapsule()
-                if let onSearch {
-                    Button(action: onSearch) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 16, weight: .semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Color.orbitleAccent)
-                    .orbitleGlassCircle(size: Self.channelControl)
-                    .accessibilityLabel("Поиск")
-                } else {
-                    Color.clear.frame(width: Self.channelControl, height: Self.channelControl)
-                }
-            }
-            .frame(maxWidth: .infinity)
+            ChannelReadOnlyControls(isMuted: isMuted, onToggleMute: onToggleMute, onSearch: onSearch)
+
         } else {
             Text("Писать в этот чат нельзя")
                 .font(.footnote)

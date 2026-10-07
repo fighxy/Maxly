@@ -32,7 +32,7 @@ public final class StoriesViewModel {
     /// Чужие кольца ленты: сначала непросмотренные, затем свежие.
     public private(set) var rings: [StoryRing] = []
     /// Кольца владельцев вне ленты (открытый профиль или чат).
-    public private(set) var peers: [String: StoryRing] = [:]
+    public private(set) var peers: [StoryOwner: StoryRing] = [:]
     public private(set) var viewer: StoryViewerState?
     /// Идёт публикация: доля загруженного файла.
     public private(set) var publishProgress: Double?
@@ -44,14 +44,14 @@ public final class StoriesViewModel {
     @ObservationIgnored private let repository: any StoriesRepository
     @ObservationIgnored private let now: () -> Date
     /// Кольца ленты по id владельца, включая своё.
-    @ObservationIgnored private var feed: [String: StoryRing] = [:]
+    @ObservationIgnored private var feed: [StoryOwner: StoryRing] = [:]
     /// Владельцы вне ленты, о которых уже спрашивали.
-    @ObservationIgnored private var requested: Set<String> = []
-    @ObservationIgnored private var cache: [String: [Story]] = [:]
+    @ObservationIgnored private var requested: Set<StoryOwner> = []
+    @ObservationIgnored private var cache: [StoryOwner: [Story]] = [:]
     /// Истории, уже отмеченные просмотренными за этот просмотр.
-    @ObservationIgnored private var marked: Set<String> = []
+    @ObservationIgnored private var marked: [StoryOwner: Set<String>] = [:]
     /// Сколько историй владельца было просмотрено, когда его открыли: их не отмечаем снова.
-    @ObservationIgnored private var seenAtOpen: [String: Int] = [:]
+    @ObservationIgnored private var seenAtOpen: [StoryOwner: Int] = [:]
     @ObservationIgnored private var refreshing = false
     @ObservationIgnored private var loading: Task<Void, Never>?
     @ObservationIgnored private var listening: Task<Void, Never>?
@@ -85,23 +85,23 @@ public final class StoriesViewModel {
         defer { refreshing = false }
         myId = await repository.currentUserId()
         guard let list = try? await repository.feed() else { return }
-        var next: [String: StoryRing] = [:]
-        for ring in list where !ring.isEmpty { next[ring.owner.id] = ring }
+        var next: [StoryOwner: StoryRing] = [:]
+        for ring in list where !ring.isEmpty { next[ring.owner] = ring }
         feed = next
         publishState()
     }
 
     /// Кольцо владельца `ownerId` — из ленты или открытого профиля; `nil`, если историй нет.
     public func ring(of ownerId: String?) -> StoryRing? {
-        guard let ownerId, !ownerId.isEmpty, ownerId != "0" else { return nil }
-        if let own, own.owner.id == ownerId { return own }
-        return rings.first { $0.owner.id == ownerId } ?? peers[ownerId]
+        ring(of: ownerId, kind: .user)
     }
 
-    /// Кольцо на аватаре чата. У человека — по id собеседника, у группы и канала — если владелец того же типа.
+    /// Человек, группа и канал имеют разные пространства id.
     public func ring(of ownerId: String?, kind: StoryOwner.Kind) -> StoryRing? {
-        guard let ring = ring(of: ownerId), StoryStripMotion.ringMatches(ring, kind: kind) else { return nil }
-        return ring
+        guard let ownerId, !ownerId.isEmpty, ownerId != "0" else { return nil }
+        let owner = StoryOwner(id: ownerId, kind: kind)
+        if let own, own.owner == owner { return own }
+        return rings.first { $0.owner == owner } ?? peers[owner]
     }
 
     /// Собеседник личного чата: id диалога — это `мой id ^ id собеседника`, как и у эталонного
@@ -115,13 +115,13 @@ public final class StoriesViewModel {
     /// Кольцо человека вне ленты. Группа и канал запрашиваются с их типом.
     public func loadRing(_ ownerId: String?, kind: StoryOwner.Kind = .user) async {
         guard let ownerId, !ownerId.isEmpty, ownerId != "0" else { return }
-        let key = "\(kind.rawValue):\(ownerId)"
-        guard feed[ownerId] == nil, !requested.contains(key) else { return }
+        let key = StoryOwner(id: ownerId, kind: kind)
+        guard feed[key] == nil, !requested.contains(key) else { return }
         requested.insert(key)
         do {
             let reply = try await repository.stories(owner: StoryOwner(id: ownerId, kind: kind))
-            cache[ownerId] = reply.stories.filter { $0.media != nil }
-            peers[ownerId] = reply.ring
+            cache[key] = reply.stories.filter { $0.media != nil }
+            peers[key] = reply.ring
             publishState()
         } catch {
             requested.remove(key)
@@ -129,12 +129,12 @@ public final class StoriesViewModel {
     }
 
     /// Открывает истории `ownerId`: свои — только свои, чужие — с листанием по ленте.
-    public func open(_ ownerId: String) {
-        guard let ring = ring(of: ownerId) else { return }
-        let isOwn = ownerId == myId
+    public func open(_ ownerId: String, kind: StoryOwner.Kind = .user) {
+        guard let ring = ring(of: ownerId, kind: kind) else { return }
+        let isOwn = ring.owner == StoryOwner(id: myId)
         var queue = [ring]
         var index = 0
-        if !isOwn, let found = rings.firstIndex(where: { $0.owner.id == ownerId }) {
+        if !isOwn, let found = rings.firstIndex(where: { $0.owner == ring.owner }) {
             queue = rings
             index = found
         }
@@ -183,7 +183,7 @@ public final class StoriesViewModel {
             fail(error, fallback: "Не удалось удалить историю")
             return
         }
-        let ownerId = story.owner.id
+        let ownerId = story.owner
         let left = current.stories.filter { $0.id != story.id }
         cache[ownerId] = left
         shrink(ownerId)
@@ -215,12 +215,12 @@ public final class StoriesViewModel {
             return
         }
         if myId.isEmpty { myId = await repository.currentUserId() }
-        let me = myId
-        if !me.isEmpty {
+        let me = StoryOwner(id: myId)
+        if !me.id.isEmpty {
             cache[me] = nil
             let old = feed[me]
             feed[me] = ring ?? StoryRing(
-                owner: StoryOwner(id: me),
+                owner: me,
                 name: old?.name ?? "",
                 avatarURL: old?.avatarURL,
                 updatedAt: now(),
@@ -246,7 +246,7 @@ public final class StoriesViewModel {
 
     /// Пуш кольца: пустое убирается, остальное встаёт в ленту.
     func apply(_ ring: StoryRing) {
-        let id = ring.owner.id
+        let id = ring.owner
         if ring.isEmpty {
             feed[id] = nil
             peers[id] = nil
@@ -262,7 +262,7 @@ public final class StoriesViewModel {
     private func showOwner(_ index: Int) {
         guard let current = viewer, current.queue.indices.contains(index) else { return }
         let ring = current.queue[index]
-        let ownerId = ring.owner.id
+        let ownerId = ring.owner
         loading?.cancel()
         let cached = cache[ownerId]
         viewer?.ownerIndex = index
@@ -303,7 +303,7 @@ public final class StoriesViewModel {
             nextOwner()
             return
         }
-        if seenAtOpen[ring.owner.id] == nil { seenAtOpen[ring.owner.id] = ring.read }
+        if seenAtOpen[ring.owner] == nil { seenAtOpen[ring.owner] = ring.read }
         start(Self.resumeIndex(ring, count: stories.count))
     }
 
@@ -318,22 +318,22 @@ public final class StoriesViewModel {
 
     /// Отмечает историю просмотренной один раз; уже просмотренные до открытия не отмечаются.
     private func markSeen(_ ring: StoryRing, _ story: Story, index: Int) {
-        guard story.owner.id != myId, index >= (seenAtOpen[ring.owner.id] ?? 0), !marked.contains(story.id) else { return }
-        marked.insert(story.id)
+        guard story.owner != StoryOwner(id: myId), index >= (seenAtOpen[ring.owner] ?? 0), !marked[story.owner, default: []].contains(story.id) else { return }
+        marked[story.owner, default: []].insert(story.id)
         // Кольцо гаснет сразу, не дожидаясь ответа сервера.
-        var current = self.ring(of: ring.owner.id) ?? ring
+        var current = self.ring(of: ring.owner.id, kind: ring.owner.kind) ?? ring
         let previousRead = current.read
         current.read = min(current.read + 1, current.total)
         replaceRing(current)
         let repository = repository
-        let ownerId = ring.owner.id
+        let ownerId = ring.owner
         pending.append(Task { [weak self] in
             do {
                 try await repository.markSeen(owner: story.owner, storyId: story.id)
             } catch {
                 guard let self else { return }
-                self.marked.remove(story.id)
-                guard var now = self.ring(of: ownerId), now.read == min(previousRead + 1, now.total) else { return }
+                self.marked[story.owner, default: []].remove(story.id)
+                guard var now = self.ring(of: ownerId.id, kind: ownerId.kind), now.read == min(previousRead + 1, now.total) else { return }
                 now.read = previousRead
                 self.replaceRing(now)
             }
@@ -341,7 +341,7 @@ public final class StoriesViewModel {
     }
 
     /// Свои истории после удаления одной: кольцо короче, пустое — убирается.
-    private func shrink(_ ownerId: String) {
+    private func shrink(_ ownerId: StoryOwner) {
         guard var ring = feed[ownerId] else { return }
         ring.total = max(0, ring.total - 1)
         ring.read = min(ring.read, ring.total)
@@ -350,7 +350,7 @@ public final class StoriesViewModel {
     }
 
     private func replaceRing(_ ring: StoryRing) {
-        let id = ring.owner.id
+        let id = ring.owner
         if feed[id] != nil {
             feed[id] = ring
         } else if peers[id] != nil {
@@ -362,11 +362,11 @@ public final class StoriesViewModel {
     }
 
     private func publishState() {
-        let me = myId
-        rings = Self.order(feed.values.filter { $0.owner.id != me })
-        own = me.isEmpty ? nil : feed[me]
+        let me = StoryOwner(id: myId)
+        rings = Self.order(feed.values.filter { $0.owner != me })
+        own = myId.isEmpty ? nil : feed[me]
         if var current = viewer {
-            current.queue = current.queue.map { feed[$0.owner.id] ?? peers[$0.owner.id] ?? $0 }
+            current.queue = current.queue.map { feed[$0.owner] ?? peers[$0.owner] ?? $0 }
             viewer = current
         }
     }
@@ -381,7 +381,9 @@ public final class StoriesViewModel {
     public static func order<S: Sequence>(_ rings: S) -> [StoryRing] where S.Element == StoryRing {
         rings.sorted { a, b in
             if a.hasUnread != b.hasUnread { return a.hasUnread }
-            return a.updatedAt > b.updatedAt
+            if a.updatedAt != b.updatedAt { return a.updatedAt > b.updatedAt }
+            if a.owner.kind != b.owner.kind { return a.owner.kind.rawValue < b.owner.kind.rawValue }
+            return a.owner.id < b.owner.id
         }
     }
 
