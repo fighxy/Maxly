@@ -105,7 +105,7 @@ public struct FolderStrip: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Высота капсулы и «таблетки» в ней.
-    public static let height: CGFloat = 44
+    public static let height: CGFloat = 40
     private static let inset: CGFloat = 4
 
     public init(tabs: [ChatFolderTab], selected: String, onSelect: @escaping (String) -> Void) {
@@ -141,14 +141,14 @@ public struct FolderStrip: View {
         } label: {
             HStack(spacing: 6) {
                 Text(tab.title)
-                    .font(.body.weight(isSelected ? .semibold : .regular))
+                    .font(.callout.weight(isSelected ? .semibold : .regular))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 if let badge = tab.badge {
                     UnreadBadge(text: badge, muted: !isSelected)
                 }
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 13)
             .frame(height: Self.height - Self.inset * 2)
             .background {
                 if isSelected {
