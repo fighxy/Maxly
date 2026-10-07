@@ -702,27 +702,32 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         }
     }
 
-    /// Звук чата: сначала сервер, затем база. При ошибке строка остаётся как была.
+    /// Звук чата: сначала база (кнопка и строка списка меняются сразу), затем сервер. Сервер
+    /// не принял — строка возвращается как была. Раньше база ждала ответа: кнопка звука в
+    /// канале срабатывала с задержкой, а при переподключении — будто не срабатывала вовсе.
     public func setMuted(_ muted: Bool, chatId: String) async throws(OrbitleError) {
+        let previous: Bool
         do {
-            guard try chat(id: chatId) != nil else { throw OrbitleError.invalidRequest }
+            guard let chat = try chat(id: chatId) else { throw OrbitleError.invalidRequest }
+            previous = chat.isMuted
+            chat.isMuted = muted
+            try modelContext.save()
         } catch let error as OrbitleError {
             throw error
         } catch {
             throw .storageError
         }
+        notify()
         if case .failure(let error) = await api.setChatMuted(chatId: chatId, muted: muted) {
             Log.warning(.chats, "Уведомления чата не изменены: \(error)")
+            // Откат, только если строку за это время не переключили снова.
+            if let chat = try? chat(id: chatId), chat.isMuted == muted {
+                chat.isMuted = previous
+                try? modelContext.save()
+                notify()
+            }
             throw error.orbitleError
         }
-        do {
-            guard let chat = try chat(id: chatId) else { return }
-            chat.isMuted = muted
-            try modelContext.save()
-        } catch {
-            throw .storageError
-        }
-        notify()
     }
 
     // MARK: Закреплённые (сервер) и пометки (на устройстве)

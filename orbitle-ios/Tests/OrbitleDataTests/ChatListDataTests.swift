@@ -156,7 +156,7 @@ struct ChatListDataTests {
         #expect(row.lastMessage?.thumbnailURL == nil)
     }
 
-    @Test("Звук чата: запрос на сервер, база меняется после ответа, ошибка ничего не меняет")
+    @Test("Звук чата: база меняется сразу, запрос на сервер, ошибка возвращает строку как была")
     func mute() async throws {
         let parts = try await makeParts()
         try await parts.chats.upsert([makeChat(id: "a")])
@@ -169,6 +169,21 @@ struct ChatListDataTests {
         await #expect(throws: OrbitleError.self) { try await parts.chats.setMuted(false, chatId: "a") }
         #expect(await chatRow(parts.chats, "a")?.isMuted == true)
         await #expect(throws: OrbitleError.invalidRequest) { try await parts.chats.setMuted(true, chatId: "missing") }
+    }
+
+    @Test("Звук чата: строка меняется до ответа сервера, отказ сервера её откатывает")
+    func muteIsOptimistic() async throws {
+        let parts = try await makeParts()
+        try await parts.chats.upsert([makeChat(id: "a")])
+        await parts.api.setMuteError(.offline)
+        var updates = parts.chats.chats().makeAsyncIterator()
+        let before = await updates.next()
+        #expect(before?.first { $0.id == "a" }?.isMuted == false)
+        await #expect(throws: OrbitleError.self) { try await parts.chats.setMuted(true, chatId: "a") }
+        let optimistic = await updates.next()
+        let rolledBack = await updates.next()
+        #expect(optimistic?.first { $0.id == "a" }?.isMuted == true)
+        #expect(rolledBack?.first { $0.id == "a" }?.isMuted == false)
     }
 
     @Test("Закреплённые с сервера: порядок сервера, остальные откреплены, догруженные чаты встают на место")
