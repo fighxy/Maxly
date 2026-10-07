@@ -3,17 +3,19 @@ import OrbitleDomain
 import OrbitlePresentation
 import OrbitleUI
 
-/// Один горизонтальный ряд внутри списка: вертикальная прокрутка принадлежит List.
+/// Раскрытая полоса историй в шапке списка чатов, как в Telegram: своя история первой
+/// (с плюсом), затем непросмотренные, затем просмотренные.
 struct StoriesStrip: View {
     let stories: StoriesViewModel
     let selfAvatar: ChatAvatar
     let onAdd: () -> Void
     @ScaledMetric(relativeTo: .caption) private var labelHeight: CGFloat = 16
-    private let avatarSize: CGFloat = 58
+    private let avatarSize: CGFloat = 62
+    private let tileWidth: CGFloat = 76
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(alignment: .top, spacing: 4) {
+            LazyHStack(alignment: .top, spacing: 2) {
                 selfTile
                 ForEach(stories.rings, id: \.owner) { ring in
                     Button { stories.open(ring.owner.id, kind: ring.owner.kind) } label: {
@@ -26,10 +28,11 @@ struct StoriesStrip: View {
                     .accessibilityValue(ring.hasUnread ? "Есть непросмотренные истории" : "Просмотрено")
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
+            .padding(.top, 4)
+            .padding(.bottom, 6)
         }
-        .frame(height: avatarSize + labelHeight + 22)
+        .frame(height: avatarSize + labelHeight + 16)
     }
 
     private var selfTile: some View {
@@ -56,13 +59,13 @@ struct StoriesStrip: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .offset(x: 1, y: 25)
+            .offset(x: -3, y: 27)
             .accessibilityLabel("Новая история")
         }
     }
 
     private func tileLabel<Avatar: View>(title: String, dim: Bool, @ViewBuilder avatar: () -> Avatar) -> some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 4) {
             avatar()
             Text(title)
                 .font(.caption)
@@ -70,7 +73,26 @@ struct StoriesStrip: View {
                 .frame(height: labelHeight)
                 .foregroundStyle(dim ? Color.secondary : Color.primary)
         }
-        .frame(width: 88)
+        .frame(width: tileWidth)
         .contentShape(Rectangle())
+    }
+}
+
+/// Свёрнутая полоса у заголовка «Чаты», как в Telegram: до трёх аватаров внахлёст, каждый
+/// со своим кольцом. Касание раскрывает полосу.
+struct StoryStack: View {
+    let rings: [StoryRing]
+    private let size: CGFloat = 28
+
+    var body: some View {
+        HStack(spacing: -size * 0.36) {
+            ForEach(Array(rings.prefix(3).enumerated()), id: \.element.owner) { index, ring in
+                StoryRingAvatar(avatar: StoryText.avatar(ring), ring: ring, size: size, reservesRingSpace: true)
+                    .background(Circle().fill(Color.orbitleBackground))
+                    // Первый — сверху, как в Telegram.
+                    .zIndex(Double(3 - index))
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
