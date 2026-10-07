@@ -577,7 +577,8 @@ private struct TranscriptBottomTracking: ViewModifier {
     }
 }
 
-/// Возвращает прокрутку к концу ленты, если она осталась за ним без пальца.
+/// Возвращает прокрутку к концу ленты, если она осталась за ним без пальца, и выключает
+/// системную прокрутку к началу по касанию статус-бара и шапки.
 ///
 /// Ленивая лента ставит прокрутку по прикидке высот ещё не измеренных строк (разделитель
 /// непрочитанных у верха экрана, когда под ним всего пара сообщений; низ ленты при входе в
@@ -617,6 +618,10 @@ private struct TranscriptOverscrollGuard: UIViewRepresentable {
             }
             guard scrollView == nil, let found = enclosingScrollView() else { return }
             scrollView = found
+            // Касание статус-бара или пустого места панели навигации (рядом с кнопками шапки)
+            // система превращает в прокрутку к началу. Ленте чата это не нужно: она уезжала к
+            // самым старым загруженным сообщениям.
+            found.scrollsToTop = false
             // Изменения приходят на главном потоке: их делает UIKit или SwiftUI.
             observations = [
                 found.observe(\.contentSize) { [weak self] _, _ in MainActor.assumeIsolated { self?.schedule() } },
@@ -648,6 +653,8 @@ private struct TranscriptOverscrollGuard: UIViewRepresentable {
         }
 
         private func clamp() {
+            // SwiftUI может вернуть свойство при пересборке прокрутки.
+            if scrollView?.scrollsToTop == true { scrollView?.scrollsToTop = false }
             guard let scroll = scrollView, scroll.window != nil,
                   !scroll.isTracking, !scroll.isDragging, !scroll.isDecelerating else { return }
             let insets = scroll.adjustedContentInset
