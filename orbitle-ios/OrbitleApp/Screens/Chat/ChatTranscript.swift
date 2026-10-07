@@ -80,6 +80,7 @@ struct ChatTranscript: View {
                     .scrollTargetLayout()
                     .padding(.horizontal, Self.feedInset)
                     .padding(.bottom, 8)
+                    .background { TranscriptOverscrollGuard().frame(width: 0, height: 0) }
                     // Новое снизу, удалённое, переставленное — плавно; первая страница и старая
                     // история сверху — сразу, иначе лента дёргается. Правило в `CollectionChange`.
                     .animation(
@@ -98,8 +99,7 @@ struct ChatTranscript: View {
                 .modifier(TranscriptBottomTracking(
                     bottom: $bottom,
                     viewportHeight: geo.size.height,
-                    anchorsBottom: bottom.atBottom && !viewModel.isJumped,
-                    onOverscroll: { jumpToBottom(proxy) }
+                    anchorsBottom: bottom.atBottom && !viewModel.isJumped
                 ))
                 .modifier(FloatingDayOverlay(model: viewModel))
                 // Клавиатура уходит, когда ленту тянут вниз вслед за пальцем или просто касаются
@@ -532,10 +532,7 @@ private struct TranscriptBottomTracking: ViewModifier {
     /// Держать низ при росте содержимого: лента внизу живой ленты. В окне перехода страницы
     /// новее ложатся под экран, и лента стоит на месте.
     let anchorsBottom: Bool
-    /// Лента стоит ниже своего конца: под последним пузырём пустота, пузыри далеко вверху.
-    var onOverscroll: () -> Void = {}
     @State private var dragging = false
-    @State private var overscrolled = false
 
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
@@ -545,22 +542,14 @@ private struct TranscriptBottomTracking: ViewModifier {
                     dragging = phase == .tracking || phase == .interacting || phase == .decelerating
                     // Палец взял ленту во время прыжка «вниз»: доводки к низу не будет.
                     if phase == .tracking || phase == .interacting { update { $0.userTookOver() } }
-                    if phase == .idle, overscrolled { onOverscroll() }
                 }
                 // Доезд до низа по расстоянию — только признак «внизу»; уход от низа решает
                 // метка низа и только под пальцем (см. `TranscriptBottomState.markerMoved`).
-                .onScrollGeometryChange(for: TranscriptScrollMetrics.self) { geometry in
-                    TranscriptScrollMetrics(geometry)
-                } action: { _, metrics in
-                    update { $0.scrolled(distance: Double(metrics.distance), dragging: false) }
-                    // Ленивая лента ставит прокрутку по прикидке высот ещё не измеренных строк
-                    // (например, разделитель непрочитанных у верха экрана, когда под ним всего пара
-                    // сообщений). Измеренные строки оказываются ниже прикидки, содержимое
-                    // укорачивается, а прокрутка остаётся за концом ленты — экран пустой, пузыри
-                    // далеко вверху. Без пальца лента возвращается к своему низу.
-                    let over = metrics.isOverscrolled
-                    if over != overscrolled { overscrolled = over }
-                    if over, !dragging { onOverscroll() }
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentSize.height + geometry.contentInsets.bottom
+                        - geometry.contentOffset.y - geometry.containerSize.height
+                } action: { _, distance in
+                    update { $0.scrolled(distance: Double(distance), dragging: false) }
                 }
                 .onPreferenceChange(TranscriptBottomPreference.self) { bottomY in
                     update { $0.markerMoved(bottomY: Double(bottomY), viewportHeight: Double(viewportHeight), dragging: dragging) }
@@ -588,24 +577,85 @@ private struct TranscriptBottomTracking: ViewModifier {
     }
 }
 
-/// Расстояние от низа экрана до конца ленты (отрицательное — прокрутка ушла за конец) и
-/// длиннее ли лента экрана: короткая лента стоит у низа сама.
-@available(iOS 18.0, *)
-private struct TranscriptScrollMetrics: Equatable {
-    /// Дальше этого за концом ленты без пальца — пустота под пузырями, а не отскок.
-    static let overscrollSlack: CGFloat = 32
+/// Возвращает прокрутку к концу ленты, если она осталась за ним без пальца.
+///
+/// Ленивая лента ставит прокрутку по прикидке высот ещё не измеренных строк (разделитель
+/// непрочитанных у верха экрана, когда под ним всего пара сообщений; низ ленты при входе в
+/// чат). Измеренные строки оказываются ниже прикидки, содержимое укорачивается, а
+/// `UIScrollView` сам прокрутку не поправляет: экран пустой снизу, пузыри далеко вверху, пока
+/// ленту не тронут пальцем. То же бывает, когда уменьшается нижний отступ (ушла клавиатура,
+/// подсказка над полем ввода). Расстояние до низа из `onScrollGeometryChange` для этого не
+/// годится: оно завышено на нижний отступ, и разрыв в сотню пунктов оставался незамеченным.
+/// Поэтому проверка смотрит прямо в `UIScrollView` ленты: после каждого изменения размера,
+/// отступов или положения, когда палец не на ленте и инерции нет.
+private struct TranscriptOverscrollGuard: UIViewRepresentable {
+    func makeUIView(context: Context) -> GuardView { GuardView() }
+    func updateUIView(_ view: GuardView, context: Context) {}
 
-    var distance: CGFloat
-    var overflows: Bool
+    final class GuardView: UIView {
+        /// Дальше этого за концом ленты — пустота под пузырями, а не погрешность.
+        static let slack: CGFloat = 2
 
-    init(_ geometry: ScrollGeometry) {
-        let content = geometry.contentSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
-        distance = geometry.contentSize.height + geometry.contentInsets.bottom
-            - geometry.contentOffset.y - geometry.containerSize.height
-        overflows = content > geometry.containerSize.height
+        private weak var scrollView: UIScrollView?
+        private var observations: [NSKeyValueObservation] = []
+        private var scheduled = false
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+            isHidden = true
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            guard window != nil else {
+                observations = []
+                scrollView = nil
+                return
+            }
+            guard scrollView == nil, let found = enclosingScrollView() else { return }
+            scrollView = found
+            // Изменения приходят на главном потоке: их делает UIKit или SwiftUI.
+            observations = [
+                found.observe(\.contentSize) { [weak self] _, _ in MainActor.assumeIsolated { self?.schedule() } },
+                found.observe(\.contentOffset) { [weak self] _, _ in MainActor.assumeIsolated { self?.schedule() } },
+                found.observe(\.bounds) { [weak self] _, _ in MainActor.assumeIsolated { self?.schedule() } },
+                found.observe(\.contentInset) { [weak self] _, _ in MainActor.assumeIsolated { self?.schedule() } },
+            ]
+            schedule()
+        }
+
+        private func enclosingScrollView() -> UIScrollView? {
+            var view = superview
+            while let current = view {
+                if let scroll = current as? UIScrollView { return scroll }
+                view = current.superview
+            }
+            return nil
+        }
+
+        /// Проверка — после того как SwiftUI закончит раскладку этого прохода.
+        private func schedule() {
+            guard !scheduled else { return }
+            scheduled = true
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.scheduled = false
+                self.clamp()
+            }
+        }
+
+        private func clamp() {
+            guard let scroll = scrollView, scroll.window != nil,
+                  !scroll.isTracking, !scroll.isDragging, !scroll.isDecelerating else { return }
+            let insets = scroll.adjustedContentInset
+            let maxY = max(-insets.top, scroll.contentSize.height + insets.bottom - scroll.bounds.height)
+            guard scroll.contentOffset.y > maxY + Self.slack else { return }
+            scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x, y: maxY), animated: false)
+        }
     }
-
-    var isOverscrolled: Bool { overflows && distance < -Self.overscrollSlack }
 }
 
 private struct TranscriptBottomPreference: PreferenceKey {
