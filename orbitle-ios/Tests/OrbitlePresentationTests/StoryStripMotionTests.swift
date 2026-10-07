@@ -3,62 +3,54 @@ import Testing
 import OrbitleDomain
 @testable import OrbitlePresentation
 
-@Suite("Полоса историй в шапке списка")
+@Suite("Шапка списка чатов: истории, поиск и папки")
 struct StoryStripMotionTests {
-    @Test("Свёрнута по умолчанию; потянуть вниз от верха пальцем — раскрывается")
-    func pullExpands() {
-        var motion = StoryStripMotion()
-        #expect(!motion.expanded)
-        #expect(motion.moved(gap: 40, dragging: true, decelerating: false, hasStories: true) == .none)
-        #expect(motion.moved(gap: 64, dragging: true, decelerating: false, hasStories: true) == .expand)
-        #expect(motion.expanded)
+    /// Истории 0…100, поиск 100…152, папки с 152.
+    private let header = ChatListHeaderGeometry(stories: 0...100, search: 100...152, folders: 152)
+
+    @Test("Стопка у заголовка, пока истории спрятаны; без историй — всегда")
+    func stack() {
+        #expect(header.storiesHidden(at: 100))
+        #expect(header.storiesHidden(at: 93))
+        #expect(!header.storiesHidden(at: 80))
+        #expect(!header.storiesHidden(at: 0))
+        #expect(ChatListHeaderGeometry(search: 0...52, folders: 52).storiesHidden(at: 0))
     }
 
-    @Test("Долёт по инерции до верха полосу не раскрывает")
-    func flingDoesNotExpand() {
-        var motion = StoryStripMotion()
-        #expect(motion.moved(gap: 120, dragging: false, decelerating: true, hasStories: true) == .none)
-        #expect(motion.moved(gap: 120, dragging: false, decelerating: false, hasStories: true) == .none)
-        #expect(!motion.expanded)
+    @Test("Остановка посреди историй или поиска доводится до ближнего края")
+    func snap() {
+        #expect(header.snapTarget(at: 30) == 0)
+        #expect(header.snapTarget(at: 60) == 100)
+        #expect(header.snapTarget(at: 110) == 100)
+        #expect(header.snapTarget(at: 140) == 152)
+        #expect(header.snapTarget(at: 0) == nil)
+        #expect(header.snapTarget(at: 100) == nil)
+        #expect(header.snapTarget(at: 152) == nil)
+        #expect(header.snapTarget(at: 400) == nil)
     }
 
-    @Test("Список уехал под шапку — свёрнута, и пальцем, и по инерции")
-    func scrollCollapses() {
-        var motion = StoryStripMotion(expanded: true)
-        #expect(motion.moved(gap: -10, dragging: true, decelerating: false, hasStories: true) == .none)
-        #expect(motion.moved(gap: -24, dragging: true, decelerating: false, hasStories: true) == .collapse)
-        var flung = StoryStripMotion(expanded: true)
-        #expect(flung.moved(gap: nil, dragging: false, decelerating: true, hasStories: true) == .collapse)
+    @Test("Инерция сверху вниз останавливается на поиске, палец — нет")
+    func fling() {
+        #expect(header.stopsFling(from: 120, to: 90, dragging: false, decelerating: true))
+        #expect(!header.stopsFling(from: 120, to: 90, dragging: true, decelerating: false))
+        #expect(!header.stopsFling(from: 90, to: 60, dragging: false, decelerating: true))
+        #expect(!header.stopsFling(from: 300, to: 200, dragging: false, decelerating: true))
+        #expect(!ChatListHeaderGeometry(search: 0...52).stopsFling(from: 30, to: 10, dragging: false, decelerating: true))
     }
 
-    @Test("Сдвиг списка от смены высоты шапки не переключает полосу обратно до конца жеста")
-    func settlingUntilScrollEnds() {
-        var motion = StoryStripMotion()
-        #expect(motion.moved(gap: 70, dragging: true, decelerating: false, hasStories: true) == .expand)
-        // Шапка выросла, верх списка оказался под ней — тот же жест.
-        #expect(motion.moved(gap: -50, dragging: true, decelerating: false, hasStories: true) == .none)
-        #expect(motion.expanded)
-        motion.scrollEnded()
-        #expect(motion.moved(gap: -30, dragging: true, decelerating: false, hasStories: true) == .collapse)
-        // Шапка уменьшилась, список будто потянут вниз — тот же жест, без раскрытия.
-        #expect(motion.moved(gap: 90, dragging: true, decelerating: false, hasStories: true) == .none)
-        #expect(!motion.expanded)
+    @Test("Папки закрепляются, когда дошли до панели навигации")
+    func pinned() {
+        #expect(!header.foldersPinned(at: 100))
+        #expect(header.foldersPinned(at: 152))
+        #expect(header.foldersPinned(at: 500))
+        #expect(!ChatListHeaderGeometry(search: 0...52).foldersPinned(at: 500))
     }
 
-    @Test("Без пальца и инерции (программная прокрутка) ничего не переключается")
-    func programmaticMovesIgnored() {
-        var motion = StoryStripMotion(expanded: true)
-        #expect(motion.moved(gap: -200, dragging: false, decelerating: false, hasStories: true) == .none)
-        #expect(motion.expanded)
-    }
-
-    @Test("Историй не стало — полоса сворачивается; касание без историй не раскрывает")
-    func noStories() {
-        var motion = StoryStripMotion(expanded: true)
-        #expect(motion.moved(gap: 0, dragging: false, decelerating: false, hasStories: false) == .collapse)
-        #expect(motion.toggle(hasStories: false) == .none)
-        #expect(motion.toggle(hasStories: true) == .expand)
-        #expect(motion.toggle(hasStories: true) == .collapse)
+    @Test("Где стоять со спрятанными и открытыми историями")
+    func positions() {
+        #expect(header.storiesHiddenTop == 100)
+        #expect(header.storiesShownTop == 0)
+        #expect(ChatListHeaderGeometry().storiesHiddenTop == nil)
     }
 
     @Test("Кольцо группы не садится на человека с тем же id")

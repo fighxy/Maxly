@@ -1,76 +1,65 @@
 import Foundation
 import OrbitleDomain
 
-/// Полоса историй в шапке списка чатов, как в Telegram.
+/// Шапка списка чатов внутри самого списка, как в Telegram: первые строки — истории, поиск и
+/// папки. Поиск уезжает вместе со списком, папки, дойдя до панели навигации, закрепляются.
+/// Истории спрятаны над поиском: список встаёт на поиск, истории открывает потягивание вниз.
 ///
-/// Свёрнута по умолчанию: у заголовка «Чаты» видна стопка из нескольких аватаров с кольцами.
-/// Раскрывается, если потянуть список вниз от верха (палец на экране) или коснуться стопки.
-/// Сворачивается, когда список уезжает вверх — пальцем или по инерции.
-///
-/// `gap` — где верх списка относительно низа шапки: больше нуля — список потянут вниз,
-/// меньше — уехал под шапку, `nil` — верх списка давно за экраном. Меряется по экрану, а не по
-/// смещению прокрутки, поэтому не зависит от того, как прокрутка считает отступы.
-///
-/// Раскрытая или свёрнутая полоса меняет высоту шапки, и список под ней сдвигается. Чтобы этот
-/// сдвиг не переключил полосу обратно, после каждого переключения жест до конца ничего не
-/// меняет (`settling`); следующий — уже по обычным правилам.
-public struct StoryStripMotion: Equatable, Sendable {
-    /// Насколько потянуть список вниз, чтобы раскрыть полосу.
-    public static let pullToExpand: CGFloat = 64
-    /// Насколько список должен уехать под шапку, чтобы полоса свернулась.
-    public static let scrollToCollapse: CGFloat = 24
+/// Все координаты — в содержимом списка; `top` — верх его видимой части (под панелью
+/// навигации). Диапазоны — где лежат строки историй и поиска, `folders` — верх строки папок.
+public struct ChatListHeaderGeometry: Equatable, Sendable {
+    /// Насколько истории могут выглядывать, пока у заголовка ещё стопка.
+    public static let stackSlack: CGFloat = 8
 
-    public enum Change: Equatable, Sendable {
-        case none
-        case expand
-        case collapse
+    public var stories: ClosedRange<CGFloat>?
+    public var search: ClosedRange<CGFloat>?
+    public var folders: CGFloat?
+
+    public init(stories: ClosedRange<CGFloat>? = nil, search: ClosedRange<CGFloat>? = nil, folders: CGFloat? = nil) {
+        self.stories = stories
+        self.search = search
+        self.folders = folders
     }
 
-    public private(set) var expanded: Bool
-    /// После переключения: до конца этого жеста полоса не переключается.
-    public private(set) var settling = false
-
-    public init(expanded: Bool = false) {
-        self.expanded = expanded
+    /// Истории спрятаны (или их нет): у заголовка — стопка их аватаров.
+    public func storiesHidden(at top: CGFloat) -> Bool {
+        guard let stories else { return true }
+        return top >= stories.upperBound - Self.stackSlack
     }
 
-    /// Список сдвинулся. `dragging` — палец на списке, `decelerating` — инерция после него.
-    /// Раскрывает только палец: долёт по инерции до верха полосу не открывает.
-    public mutating func moved(gap: CGFloat?, dragging: Bool, decelerating: Bool, hasStories: Bool) -> Change {
-        guard hasStories else { return collapseIfNeeded() }
-        guard !settling, dragging || decelerating else { return .none }
-        let position = gap ?? -.infinity
-        if !expanded, dragging, position >= Self.pullToExpand {
-            expanded = true
-            settling = true
-            return .expand
+    /// Папки дошли до панели навигации: сверху закреплена их копия.
+    public func foldersPinned(at top: CGFloat) -> Bool {
+        guard let folders else { return false }
+        return top >= folders - 0.5
+    }
+
+    /// Прокрутка остановилась посреди историй или поиска: куда доехать — к ближнему краю.
+    public func snapTarget(at top: CGFloat) -> CGFloat? {
+        for range in [stories, search].compactMap({ $0 }) where range.upperBound - range.lowerBound > 1 {
+            guard top > range.lowerBound + 0.5, top < range.upperBound - 0.5 else { continue }
+            let half = (range.upperBound - range.lowerBound) / 2
+            return top - range.lowerBound < half ? range.lowerBound : range.upperBound
         }
-        if expanded, position <= -Self.scrollToCollapse {
-            expanded = false
-            settling = true
-            return .collapse
-        }
-        return .none
+        return nil
     }
 
-    /// Прокрутка остановилась: следующий жест снова переключает полосу.
-    public mutating func scrollEnded() {
-        settling = false
+    /// Инерция сверху вниз по списку долетела до спрятанных историй: она останавливается на
+    /// поиске, как в Telegram. Истории открывает только палец.
+    public func stopsFling(from previous: CGFloat, to top: CGFloat, dragging: Bool, decelerating: Bool) -> Bool {
+        guard let stories, !dragging, decelerating else { return false }
+        let hidden = stories.upperBound - 0.5
+        return previous >= hidden && top < hidden
     }
 
-    /// Касание стопки у заголовка или самого заголовка.
-    public mutating func toggle(hasStories: Bool) -> Change {
-        guard hasStories || expanded else { return .none }
-        expanded.toggle()
-        return expanded ? .expand : .collapse
-    }
+    /// Где стоять, чтобы истории были спрятаны: верх строки поиска.
+    public var storiesHiddenTop: CGFloat? { stories?.upperBound }
 
-    private mutating func collapseIfNeeded() -> Change {
-        guard expanded else { return .none }
-        expanded = false
-        return .collapse
-    }
+    /// Где стоять, чтобы истории были видны целиком.
+    public var storiesShownTop: CGFloat? { stories?.lowerBound }
+}
 
+/// Кольца историй на аватарах списка.
+public enum StoryStripMotion {
     /// Кольцо на аватаре: у человека любое, у группы и канала — только их тип.
     public static func ringMatches(_ ring: StoryRing?, kind: StoryOwner.Kind) -> Bool {
         guard let ring else { return false }
