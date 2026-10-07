@@ -98,7 +98,8 @@ struct ChatTranscript: View {
                 .modifier(TranscriptBottomTracking(
                     bottom: $bottom,
                     viewportHeight: geo.size.height,
-                    anchorsBottom: bottom.atBottom && !viewModel.isJumped
+                    anchorsBottom: bottom.atBottom && !viewModel.isJumped,
+                    onOverscroll: { jumpToBottom(proxy) }
                 ))
                 .modifier(FloatingDayOverlay(model: viewModel))
                 // Клавиатура уходит, когда ленту тянут вниз вслед за пальцем или просто касаются
@@ -530,7 +531,10 @@ private struct TranscriptBottomTracking: ViewModifier {
     /// Держать низ при росте содержимого: лента внизу живой ленты. В окне перехода страницы
     /// новее ложатся под экран, и лента стоит на месте.
     let anchorsBottom: Bool
+    /// Лента стоит ниже своего конца: под последним пузырём пустота, пузыри далеко вверху.
+    var onOverscroll: () -> Void = {}
     @State private var dragging = false
+    @State private var overscrolled = false
 
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
@@ -540,14 +544,22 @@ private struct TranscriptBottomTracking: ViewModifier {
                     dragging = phase == .tracking || phase == .interacting || phase == .decelerating
                     // Палец взял ленту во время прыжка «вниз»: доводки к низу не будет.
                     if phase == .tracking || phase == .interacting { update { $0.userTookOver() } }
+                    if phase == .idle, overscrolled { onOverscroll() }
                 }
                 // Доезд до низа по расстоянию — только признак «внизу»; уход от низа решает
                 // метка низа и только под пальцем (см. `TranscriptBottomState.markerMoved`).
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.contentSize.height + geometry.contentInsets.bottom
-                        - geometry.contentOffset.y - geometry.containerSize.height
-                } action: { _, distance in
-                    update { $0.scrolled(distance: Double(distance), dragging: false) }
+                .onScrollGeometryChange(for: TranscriptScrollMetrics.self) { geometry in
+                    TranscriptScrollMetrics(geometry)
+                } action: { _, metrics in
+                    update { $0.scrolled(distance: Double(metrics.distance), dragging: false) }
+                    // Ленивая лента ставит прокрутку по прикидке высот ещё не измеренных строк
+                    // (например, разделитель непрочитанных у верха экрана, когда под ним всего пара
+                    // сообщений). Измеренные строки оказываются ниже прикидки, содержимое
+                    // укорачивается, а прокрутка остаётся за концом ленты — экран пустой, пузыри
+                    // далеко вверху. Без пальца лента возвращается к своему низу.
+                    let over = metrics.isOverscrolled
+                    if over != overscrolled { overscrolled = over }
+                    if over, !dragging { onOverscroll() }
                 }
                 .onPreferenceChange(TranscriptBottomPreference.self) { bottomY in
                     update { $0.markerMoved(bottomY: Double(bottomY), viewportHeight: Double(viewportHeight), dragging: dragging) }
@@ -573,6 +585,26 @@ private struct TranscriptBottomTracking: ViewModifier {
         change(&next)
         if next != bottom { bottom = next }
     }
+}
+
+/// Расстояние от низа экрана до конца ленты (отрицательное — прокрутка ушла за конец) и
+/// длиннее ли лента экрана: короткая лента стоит у низа сама.
+@available(iOS 18.0, *)
+private struct TranscriptScrollMetrics: Equatable {
+    /// Дальше этого за концом ленты без пальца — пустота под пузырями, а не отскок.
+    static let overscrollSlack: CGFloat = 32
+
+    var distance: CGFloat
+    var overflows: Bool
+
+    init(_ geometry: ScrollGeometry) {
+        let content = geometry.contentSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
+        distance = geometry.contentSize.height + geometry.contentInsets.bottom
+            - geometry.contentOffset.y - geometry.containerSize.height
+        overflows = content > geometry.containerSize.height
+    }
+
+    var isOverscrolled: Bool { overflows && distance < -Self.overscrollSlack }
 }
 
 private struct TranscriptBottomPreference: PreferenceKey {
