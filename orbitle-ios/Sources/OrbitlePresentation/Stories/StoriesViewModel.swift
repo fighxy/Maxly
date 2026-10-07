@@ -112,9 +112,11 @@ public final class StoriesViewModel {
         return peer > 0 && peer != me ? String(peer) : nil
     }
 
-    /// Кольцо человека вне ленты. Группа и канал запрашиваются с их типом.
+    /// Кольцо владельца вне ленты. Группа и канал запрашиваются с их типом, но только с
+    /// положительным id: на id чата (отрицательный) сервер отвечает ошибкой валидации и рвёт
+    /// соединение. Их кольца приходят лентой.
     public func loadRing(_ ownerId: String?, kind: StoryOwner.Kind = .user) async {
-        guard let ownerId, !ownerId.isEmpty, ownerId != "0" else { return }
+        guard let ownerId, let id = Int64(ownerId), id > 0 else { return }
         let key = StoryOwner(id: ownerId, kind: kind)
         guard feed[key] == nil, !requested.contains(key) else { return }
         requested.insert(key)

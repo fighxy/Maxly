@@ -174,6 +174,15 @@ class StoriesViewModelTest {
     }
 
     @Test
+    fun chatIdsOfGroupsAndChannelsAreNotAsked() {
+        val model = StoriesViewModel(repo)
+        model.loadOwner("-68053921871269", app.orbitle.domain.StoryOwner.Type.CHANNEL)
+        model.loadOwner("-69354109913842", app.orbitle.domain.StoryOwner.Type.CHAT)
+        model.loadOwner("abc", app.orbitle.domain.StoryOwner.Type.USER)
+        assertEquals(0, repo.storyRequests)
+    }
+
+    @Test
     fun ringOutsideTheFeedIsAskedOnceForAProfile() {
         repo.owners["9"] = OwnerStories(ring("9", 1, 0, 100), listOf(story("9", "91", 1)))
         val model = StoriesViewModel(repo)
