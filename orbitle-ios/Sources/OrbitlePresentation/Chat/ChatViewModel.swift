@@ -115,6 +115,8 @@ public final class ChatViewModel {
     public private(set) var commandHints: [BotCommandRef] = []
     public private(set) var searchHits: [FoundMessage] = []
     public private(set) var searchBusy = false
+    public private(set) var searchError: String?
+    @ObservationIgnored private var searchGeneration = 0
     public private(set) var error: OrbitleError?
     public private(set) var stickToBottom = true
     /// Цитата над полем ввода.
@@ -1913,20 +1915,30 @@ public final class ChatViewModel {
         }
     }
 
-    public func searchInChat(_ query: String) async {
+    /// Закрытие/очистка поиска отменяет право старого ответа менять экран.
+    public func resetSearch() {
+        searchGeneration += 1
+        searchHits = []
+        searchBusy = false
+        searchError = nil
+    }
+
+    public func searchInChat(_ query: String, debounce: Duration = .zero) async {
+        resetSearch()
         let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !term.isEmpty else {
-            searchHits = []
-            return
-        }
+        guard !term.isEmpty, !Task.isCancelled else { return }
+        let generation = searchGeneration
         searchBusy = true
-        defer { searchBusy = false }
+        defer { if generation == searchGeneration { searchBusy = false } }
         do {
-            searchHits = try await repository.searchInChat(chatId: chatId, query: term)
-            error = nil
+            if debounce > .zero { try await Task.sleep(for: debounce) }
+            guard generation == searchGeneration, !Task.isCancelled else { return }
+            let hits = try await repository.searchInChat(chatId: chatId, query: term)
+            guard generation == searchGeneration, !Task.isCancelled else { return }
+            searchHits = hits
         } catch {
-            searchHits = []
-            show(error)
+            guard generation == searchGeneration, !Task.isCancelled else { return }
+            searchError = (error as? OrbitleError)?.userMessage ?? "Не удалось выполнить поиск"
         }
     }
 

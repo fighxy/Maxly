@@ -231,7 +231,7 @@ struct ChatProfileView: View {
         let hasStories = stories?.ring(of: owner, kind: storyKind) != nil
         return Button {
             if hasStories, let owner {
-                stories?.open(owner)
+                stories?.open(owner, kind: storyKind)
                 return
             }
             guard let url = viewModel.shown.avatarURL else { return }

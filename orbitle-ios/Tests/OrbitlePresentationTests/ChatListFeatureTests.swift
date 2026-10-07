@@ -353,6 +353,25 @@ struct ChatListSearchTests {
         #expect(await repository.searches == ["ан"])
     }
 
+    @Test("Новый запрос сразу убирает старые серверные результаты; правка закрывает поиск")
+    func freshQueryAndEditing() async {
+        let (model, repository) = makeFeatureList(capabilities: [.serverSearch])
+        await repository.set(searchResults: [ChatSearchResult(id: "z", title: "Старый результат", type: .private)])
+        await repository.set(foundMessages: [FoundMessage(chatId: "z", messageId: "1", text: "Старый результат")])
+        model.isSearchActive = true
+        model.searchQuery = "старый"
+        #expect(await eventually { !model.search.isSearchingServer && !model.search.global.isEmpty })
+        model.searchQuery = "новый"
+        #expect(model.search.global.isEmpty && model.search.messages.isEmpty)
+        #expect(model.search.isSearchingServer)
+        model.isEditing = true
+        #expect(!model.isSearchActive && model.searchQuery.isEmpty)
+        #expect(!model.search.isSearchingServer)
+        model.isSearchActive = true
+        #expect(!model.isEditing)
+        model.deactivate()
+    }
+
     @Test("Найденные сообщения: название чата из списка, кусок текста и время")
     func messageSearch() async {
         let (model, repository) = makeFeatureList(capabilities: [.serverSearch])
