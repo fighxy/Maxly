@@ -141,6 +141,28 @@ struct DirectoryRepositoryTests {
         #expect(list[1].avatarURL == URL(string: "https://a/b.jpg"))
     }
 
+    @Test("Первое открытие списка запускает полную синхронизацию: ядро после входа знает не всех")
+    func contactsSyncOnFirstFeed() async {
+        let core = FakeMaxCore()
+        let anna = CoreContact(id: "20", firstName: "Анна", lastName: "", phone: "", avatarURL: "", lastSeenMs: 0, online: false)
+        let boris = CoreContact(id: "30", firstName: "Борис", lastName: "", phone: "", avatarURL: "", lastSeenMs: 0, online: false)
+        // После входа с отметкой синхронизации ядро знает только изменения.
+        await core.setDirectory(contacts: [anna])
+        await core.setSyncedContacts([anna, boris])
+        let repository = CoreContactRepository(core: core)
+        // Что уже есть — сразу, полный список следом.
+        #expect(await first(repository.contacts()).map { $0.map(\.id) } == [["20"], ["20", "30"]])
+        #expect(await core.contactSyncs == 1)
+        // Дальше полная синхронизация не повторяется: кэш и список ядра.
+        await core.setDirectory(contacts: [anna, boris])
+        #expect(await first(repository.contacts()).map { $0.map(\.id) } == [["20", "30"], ["20", "30"]])
+        #expect(await core.contactSyncs == 1)
+        // Новый сеанс — снова полная синхронизация.
+        await repository.reset()
+        _ = await first(repository.contacts())
+        #expect(await core.contactSyncs == 2)
+    }
+
     @Test("Ошибка ядра не оставляет экран в загрузке, кэш показывается сразу")
     func contactsCacheAndError() async {
         let core = FakeMaxCore()
