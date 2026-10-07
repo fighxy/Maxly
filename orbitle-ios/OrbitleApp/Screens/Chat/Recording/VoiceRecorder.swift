@@ -43,21 +43,36 @@ final class VoiceRecorder {
         await AVAudioApplication.requestRecordPermission()
     }
 
-    func start() throws {
+    /// Включить микрофон и начать запись. Аудиосессия включается не на главном потоке: она
+    /// занимает десятки и сотни миллисекунд, и раньше всё это время экран стоял.
+    func start() async throws {
         guard !isRecording else { return }
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
-        try session.setActive(true)
+        try await Task.detached(priority: .userInitiated) {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
+            try session.setActive(true)
+        }.value
+        guard !isRecording else { return }
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
-        guard format.sampleRate > 0, format.channelCount > 0 else { throw VoiceEncoder.Failure.noInput }
-        let encoder = try VoiceEncoder(inputFormat: format)
+        guard format.sampleRate > 0, format.channelCount > 0 else {
+            await Self.deactivateSession()
+            throw VoiceEncoder.Failure.noInput
+        }
+        let encoder: VoiceEncoder
+        do {
+            encoder = try VoiceEncoder(inputFormat: format)
+        } catch {
+            await Self.deactivateSession()
+            throw error
+        }
         encoder.install(on: input, format: format)
         engine.prepare()
         do {
             try engine.start()
         } catch {
             input.removeTap(onBus: 0)
+            await Self.deactivateSession()
             throw error
         }
         self.encoder = encoder
@@ -82,7 +97,7 @@ final class VoiceRecorder {
         guard isRecording, let encoder else { return nil }
         halt()
         let result = await encoder.finish()
-        deactivateSession()
+        await Self.deactivateSession()
         guard let result else {
             Log.warning(.media, "Голосовое не записалось")
             return nil
@@ -96,12 +111,12 @@ final class VoiceRecorder {
     }
 
     /// Остановить и выбросить запись.
-    func cancel() {
+    func cancel() async {
         guard isRecording else { return }
         let encoder = encoder
         halt()
         encoder?.discard()
-        deactivateSession()
+        await Self.deactivateSession()
     }
 
     private func halt() {
@@ -114,8 +129,11 @@ final class VoiceRecorder {
         encoder = nil
     }
 
-    private func deactivateSession() {
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    /// Выключение сессии тоже долгое: не на главном потоке.
+    private static func deactivateSession() async {
+        await Task.detached(priority: .userInitiated) {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }.value
     }
 }
 

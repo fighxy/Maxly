@@ -9,6 +9,8 @@ import OrbitleUI
 struct RecordButton: View {
     let session: RecordingSession
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Палец на кнопке. Сброс без `onEnded` — жест оборвала система.
+    @GestureState private var touching = false
 
     var body: some View {
         ZStack {
@@ -46,9 +48,15 @@ struct RecordButton: View {
         .contentShape(Circle())
         .gesture(
             DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                .updating($touching) { _, state, _ in state = true }
                 .onChanged { session.pressChanged($0.translation) }
                 .onEnded { _ in session.pressEnded() }
         )
+        .onChange(of: touching) { _, live in
+            // Обычное отпускание уже отработало в `onEnded`; здесь остаётся только обрыв жеста.
+            guard !live else { return }
+            Task { @MainActor in session.pressCancelled() }
+        }
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: session.phase)
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: session.mode)
         .accessibilityLabel(accessibilityLabel)
