@@ -124,6 +124,7 @@ public struct FolderStrip: View {
                 .padding(.horizontal, OrbitleTheme.pad)
                 .padding(.top, 4)
             }
+            .fixedSize(horizontal: false, vertical: true)
             .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: selected)
             .onChange(of: selected, initial: true) { _, id in
                 withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { proxy.scrollTo(id, anchor: .center) }
