@@ -10,6 +10,8 @@ public actor CoreContactRepository: ContactRepository {
     private var cached: [Contact]?
     /// Добавлены локально и ещё не пришли в ответе `loadContacts`.
     private var pendingAdds: [String: Contact] = [:]
+    /// Полная синхронизация уже была в этом сеансе.
+    private var synced = false
 
     public init(core: any MaxCore) {
         self.core = core
@@ -27,6 +29,7 @@ public actor CoreContactRepository: ContactRepository {
     public func reset() {
         cached = nil
         pendingAdds = [:]
+        synced = false
     }
 
     /// Короче семи цифр запрос не уходит. Нет человека — `nil`, а не ошибка сети.
@@ -120,6 +123,7 @@ public actor CoreContactRepository: ContactRepository {
         do {
             let raw = try await core.syncContacts()
             Log.info(.contacts, "Синхронизация контактов: \(raw.count)")
+            synced = true
             guard !raw.isEmpty else { return }
             cached = listed(raw)
         } catch {
@@ -128,13 +132,37 @@ public actor CoreContactRepository: ContactRepository {
         }
     }
 
+    /// Кэш, затем список ядра. В первый раз за сеанс — ещё и полная синхронизация: ядро не
+    /// хранит контакты между запусками, а вход с отметкой `contactsSync` приносит только
+    /// изменения. Раньше вкладка «Контакты» оставалась пустой, пока синхронизацию не запускала
+    /// строка «Контакты» в настройках.
     private func feed(_ continuation: AsyncStream<[Contact]>.Continuation) async {
         if let cached { continuation.yield(cached) }
         do {
-            let list = listed(try await core.loadContacts())
+            var list = listed(try await core.loadContacts())
             Log.info(.contacts, "Контакты с сервера: \(list.count)")
-            cached = list
-            continuation.yield(list)
+            var shown = false
+            if !synced {
+                // Что уже есть — сразу, полный список следом.
+                if !list.isEmpty {
+                    cached = list
+                    continuation.yield(list)
+                    shown = true
+                }
+                if let raw = try? await core.syncContacts() {
+                    synced = true
+                    Log.info(.contacts, "Синхронизация контактов: \(raw.count)")
+                    let fresh = listed(raw)
+                    if !raw.isEmpty, fresh != list {
+                        list = fresh
+                        shown = false
+                    }
+                }
+            }
+            if !shown {
+                cached = list
+                continuation.yield(list)
+            }
         } catch {
             Log.warning(.contacts, "Контакты не загрузились: \(error)")
             // Экран не должен вечно показывать загрузку.

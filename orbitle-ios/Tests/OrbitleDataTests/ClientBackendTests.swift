@@ -136,6 +136,20 @@ actor FakeMaxCore: MaxCore {
         directoryError = error
     }
 
+    /// Ответ полной синхронизации контактов; `nil` — ядро её не умеет.
+    var syncedContacts: [CoreContact]?
+    private(set) var contactSyncs = 0
+
+    func syncContacts() async throws -> [CoreContact] {
+        contactSyncs += 1
+        guard let syncedContacts else { throw CoreFailure(kind: "UNKNOWN", key: "unsupported") }
+        return syncedContacts
+    }
+
+    func setSyncedContacts(_ contacts: [CoreContact]?) {
+        syncedContacts = contacts
+    }
+
     /// Ответы `CONTACT_INFO_BY_PHONE`: ключ — телефон `+` и цифры.
     var peopleByPhone: [String: CoreContact] = [:]
     var phoneFailure: CoreFailure?
