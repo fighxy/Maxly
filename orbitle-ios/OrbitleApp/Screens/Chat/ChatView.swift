@@ -18,6 +18,9 @@ struct ChatView: View {
     /// `nil` — чата нет в списке (открыт из поиска или по ссылке): решает карточка чата.
     var canWrite: Bool? = true
     var isMuted = false
+    /// Звук чата прямо из списка чатов. Читается в `body`, поэтому экран обновляется сразу,
+    /// как переключили звук; снимок `isMuted` мог остаться прежним.
+    var mutedNow: (() -> Bool)? = nil
     var onToggleMute: (() -> Void)?
     /// Контакты для вкладки «Контакт» листа вложений. `nil` — вкладка пустая.
     var contactList: (() -> AsyncStream<[Contact]>)? = nil
@@ -149,7 +152,7 @@ struct ChatView: View {
                 canWrite: writable,
                 showsReadOnlyBar: canWrite != nil || profile?.profile != nil,
                 chatType: kind,
-                isMuted: isMuted,
+                isMuted: muted,
                 // Звук чата вне списка не переключить: его нет среди чатов аккаунта.
                 onToggleMute: canWrite == nil ? nil : onToggleMute,
                 onOpenApp: openAppAction,
@@ -173,6 +176,8 @@ struct ChatView: View {
         // Верх поля ввода — от него лента тает в фон к низу экрана (`ChatBottomBlur`).
         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { bottomControlsTop = $0 }
     }
+
+    private var muted: Bool { mutedNow?() ?? isMuted }
 
     /// На сколько нижние капсулы заходят в нижний отступ экрана.
     static let controlsLowering: CGFloat = 14
@@ -231,7 +236,7 @@ struct ChatView: View {
                     maskedTitle: maskedTitle,
                     status: privateMode.isMasked ? .none : headerStatus,
                     isVerified: live().isVerified || profile?.isOfficial == true,
-                    isMuted: isMuted
+                    isMuted: muted
                 )
             }
             .buttonStyle(.plain)
@@ -620,7 +625,8 @@ struct ChatView: View {
         let listed = canWrite != nil
         var context = ChatProfileContext(
             chat: viewModel,
-            isMuted: isMuted,
+            isMuted: muted,
+            mutedNow: mutedNow,
             onToggleMute: listed ? onToggleMute : nil,
             onShowMessage: { showInChat($0) },
             onEraseChat: listed ? onEraseChat : nil

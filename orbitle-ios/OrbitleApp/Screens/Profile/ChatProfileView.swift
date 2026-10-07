@@ -9,6 +9,8 @@ import OrbitleUI
 struct ChatProfileContext {
     var chat: ChatViewModel
     var isMuted: Bool
+    /// Звук прямо из списка чатов: профиль обновляется сразу после переключения.
+    var mutedNow: (() -> Bool)? = nil
     var onToggleMute: (() -> Void)?
     /// Вернуться в чат и подсветить сообщение.
     var onShowMessage: (Message) -> Void
@@ -27,6 +29,8 @@ struct ChatProfileContext {
     var onSchedule: (() -> Void)? = nil
     /// Звонок собеседнику личного чата, `true` — видео. `nil` — звонить некому.
     var onCall: ((Bool) -> Void)? = nil
+
+    var muted: Bool { mutedNow?() ?? isMuted }
 }
 
 /// Профиль собеседника, бота, группы или канала: крупный аватар и имя,
@@ -200,7 +204,7 @@ struct ChatProfileView: View {
                         .foregroundStyle(Color.orbitleAccent)
                         .accessibilityLabel("Официальный")
                 }
-                if context?.isMuted == true {
+                if context?.muted == true {
                     Image(systemName: "speaker.slash.fill")
                         .font(.system(size: 14))
                         .foregroundStyle(.secondary)
@@ -352,7 +356,7 @@ struct ChatProfileView: View {
             list.append(Action(id: "video", title: "Видео", systemImage: "video.fill") { call(true) })
         }
         if viewModel.shown.kind != .saved, let toggle = context?.onToggleMute {
-            let muted = context?.isMuted == true
+            let muted = context?.muted == true
             list.append(Action(
                 id: "mute",
                 title: muted ? "Со звуком" : "Без звука",
