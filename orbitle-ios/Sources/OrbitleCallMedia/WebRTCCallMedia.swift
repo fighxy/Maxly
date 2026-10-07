@@ -320,7 +320,8 @@ final class ScreenCapture {
     }
 
     func stop() {
-        RPScreenRecorder.shared().stopCapture { _ in }
+        // ReplayKit зовёт обработчик на своей очереди: замыкание не должно наследовать главный актор.
+        RPScreenRecorder.shared().stopCapture { @Sendable _ in }
     }
 }
 
