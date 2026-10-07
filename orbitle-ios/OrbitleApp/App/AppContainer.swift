@@ -71,6 +71,7 @@ final class AppContainer {
     @ObservationIgnored private var devicesScreenModel: DevicesModel?
     @ObservationIgnored private var foldersScreenModel: FoldersModel?
     @ObservationIgnored private var phaseTask: Task<Void, Never>?
+    @ObservationIgnored private var connectionTask: Task<Void, Never>?
     /// Журнал для отладки. `nil`, если каталог журнала не удалось открыть.
     let logs: FileLogStore?
     /// Архив отчётов о сбоях для «О приложении». `nil` без каталога журнала.
@@ -251,6 +252,19 @@ final class AppContainer {
                     default:
                         break
                     }
+                }
+            }
+            connectionTask = Task {
+                var wasOnline = false
+                var previous: ConnectionState?
+                for await state in session.connectionStates() {
+                    defer { previous = state }
+                    guard state == .online else { continue }
+                    // Связь вернулась после обрыва (чаще всего приложение проснулось, а iOS успела
+                    // закрыть сокет): журнал звонков и лента историй, запрошенные в этот момент, не
+                    // загрузились. Первое подключение их грузит само.
+                    if wasOnline, previous != .online { self.refreshAfterReconnect() }
+                    wasOnline = true
                 }
             }
             await session.restoreSession()
@@ -633,6 +647,14 @@ final class AppContainer {
     /// Приложение вернулось на экран: сверка с сервером того, что могло прийти без пушей.
     func appBecameActive() async {
         await sync?.appBecameActive()
+    }
+
+    /// После переподключения: журнал звонков и лента историй заново (список чатов и открытый чат
+    /// сверяет `SyncEngine`).
+    private func refreshAfterReconnect() {
+        guard case .signedIn = phase else { return }
+        if let callsModel { Task { await callsModel.refresh() } }
+        if let storiesModel { Task { await storiesModel.refresh() } }
     }
 
     func logout() async {
