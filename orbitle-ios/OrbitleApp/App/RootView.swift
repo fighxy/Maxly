@@ -246,6 +246,7 @@ struct MainTabView: View {
                     onOpenMessage: openFound,
                     selfAvatar: selfAvatar, onAddStory: { pickingStory = true }
                 )
+                .safeAreaInset(edge: .top, spacing: 0) { loginHoldBanner }
                     .navigationDestination(for: String.self) { id in
                         chatScreen(id)
                     }
@@ -257,6 +258,7 @@ struct MainTabView: View {
                     onOpenMessage: openFound,
                     selfAvatar: selfAvatar, onAddStory: { pickingStory = true }
                 )
+                .safeAreaInset(edge: .top, spacing: 0) { loginHoldBanner }
             } detail: {
                 if let id = router.chatId {
                     // Свой стек у колонки: из чата открывается профиль.
@@ -334,6 +336,37 @@ struct MainTabView: View {
                 onCall: { peer, video in container.startCall(peer, video: video) }
             )
             .id(id)
+        }
+    }
+
+    @ViewBuilder
+    private var loginHoldBanner: some View {
+        if let notice = container.loginNotice, notice.place == .chatList {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(notice.title)
+                    .font(.headline)
+                if let message = notice.message, !message.isEmpty {
+                    Text(message)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                HStack(spacing: 12) {
+                    Button("Повторить") {
+                        Task { await container.retryHeldLogin() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Button("Выйти из аккаунта", role: .destructive) {
+                        router.chatId = nil
+                        router.tab = .chats
+                        Task { await container.logout() }
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.regularMaterial)
+            .accessibilityElement(children: .contain)
         }
     }
 }

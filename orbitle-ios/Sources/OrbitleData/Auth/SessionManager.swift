@@ -4,7 +4,7 @@ import OrbitleDomain
 /// `UserDefaults` потокобезопасен. Сессия и тесты держат один и тот же suite.
 extension UserDefaults: @retroactive @unchecked Sendable {}
 
-/// Сессия приложения: шаги входа через ядро, кэш в базе, очистка только при явном выходе.
+/// Сессия приложения: шаги входа через ядро и кэш в базе. Очистка — при выходе, сброшенном токене и блокировке.
 ///
 /// Токен и device id лежат в Keychain ядра (`com.max.kmp.default`). Здесь их нет.
 ///
@@ -27,6 +27,8 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
     private var continuations: [UUID: AsyncStream<AuthPhase>.Continuation] = [:]
     private var connection: ConnectionState = .connecting
     private var connectionContinuations: [UUID: AsyncStream<ConnectionState>.Continuation] = [:]
+    private var notice: LoginNotice?
+    private var noticeContinuations: [UUID: AsyncStream<LoginNotice?>.Continuation] = [:]
     private var phone = ""
     private var codeToken: String?
     private var trackId: String?
@@ -67,6 +69,19 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
             }
         }
     }
+
+    public nonisolated func loginNotices() -> AsyncStream<LoginNotice?> {
+        AsyncStream { continuation in
+            let id = UUID()
+            Task { await self.addNotice(id, continuation) }
+            continuation.onTermination = { _ in
+                Task { await self.removeNotice(id) }
+            }
+        }
+    }
+
+    /// Текущее пояснение. Для тестов.
+    public var currentLoginNotice: LoginNotice? { notice }
 
     public nonisolated func connectionStates() -> AsyncStream<ConnectionState> {
         AsyncStream { continuation in
@@ -109,7 +124,7 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
             let id = await core.currentUserId()
             await enter(userId: id.isEmpty ? remembered : id, epoch: epoch)
         case .tokenRejected:
-            await expire()
+            await rejectToken()
         case .awaitingAuth:
             setConnection(.online)
             publish(.signedOut)
@@ -146,7 +161,7 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         codeToken = code.token
         trackId = nil
         registerToken = nil
-        publish(.codeSent(codeLength: code.codeLength))
+        publishCode(code.codeLength)
     }
 
     public func resendCode() async throws(OrbitleError) {
@@ -161,7 +176,7 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         }
         try ensureCurrent(generation)
         codeToken = code.token
-        publish(.codeSent(codeLength: code.codeLength))
+        publishCode(code.codeLength)
     }
 
     public func verifyCode(_ raw: String) async throws(OrbitleError) {
@@ -191,7 +206,7 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         guard let code = try? await core.requestCode(phone: phone, resend: false) else { return false }
         guard generation == attempt, !isLoggingOut else { return false }
         codeToken = code.token
-        publish(.codeSent(codeLength: code.codeLength))
+        publishCode(code.codeLength)
         return true
     }
 
@@ -248,7 +263,25 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         defaults.removeObject(forKey: Self.userDefaultsKey)
         await messages.setCurrentUser(id: "")
         forgetLoginAttempt()
+        publishNotice(nil)
         publish(.signedOut)
+    }
+
+    public func retryHeldLogin() async {
+        guard notice?.place == .chatList else { return }
+        setConnection(.connecting)
+        do {
+            let started = try await core.start()
+            if started == .ready {
+                publishNotice(nil)
+                setConnection(.online)
+                await sync.networkBecameAvailable()
+            } else if started == .tokenRejected {
+                await rejectToken()
+            }
+        } catch {
+            setConnection(.offline)
+        }
     }
 
     // MARK: Внутреннее
@@ -325,18 +358,49 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         guard epoch == logouts else { return }
         await sync.startEvents(core)
         guard epoch == logouts else { return }
+        publishNotice(nil)
         publish(.signedIn(userId: id))
         await sync.networkBecameAvailable()
         guard epoch == logouts else { return }
         try? await chats.refresh()
     }
 
-    /// Токен ядра отклонён. База остаётся, пока пользователь сам не выйдет.
-    private func expire() async {
+    /// Отказ входа. Поток оставляет список и токен. Сброшенный токен и блокировка
+    /// стирают локальную сессию так же, как выход, но ядро повторно не просят выйти.
+    private func rejectToken() async {
+        if phase == .expired || phase == .signedOut { return }
+        guard isAuthorized || phase == .restoring else { return }
+        let rejection = await core.loginRejection()
+        if rejection?.tokenCleared == false {
+            setConnection(.offline)
+            if phase == .restoring {
+                await showCache(userId: rememberedUserId, epoch: logouts)
+            }
+            if isAuthorized { await sync.networkLost() }
+            publishNotice(LoginNotices.chatList(rejection))
+            return
+        }
+        await wipeRejectedSession(rejection)
+    }
+
+    private func wipeRejectedSession(_ rejection: CoreLoginRejection?) async {
         Log.warning(.auth, "Сервер отклонил сохранённый токен")
+        attempt += 1
+        logouts += 1
+        await sync.stopEvents()
         await sync.networkLost()
+        await sync.reset()
+        await eraseLocal()
+        defaults.removeObject(forKey: Self.userDefaultsKey)
+        await messages.setCurrentUser(id: "")
         forgetLoginAttempt()
+        publishNotice(LoginNotices.loginForm(rejection))
         publish(.expired)
+    }
+
+    private func publishCode(_ length: Int?) {
+        publishNotice(nil)
+        publish(.codeSent(codeLength: length))
     }
 
     /// Чаты и сообщения стираются в своих контекстах, иначе ModelActor оставит старые объекты.
@@ -380,9 +444,9 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         case .tokenRejected:
             setConnection(.offline)
             // Во время входа по коду старый отказ токена шаг не сбрасывает.
-            guard isAuthorized || phase == .restoring else { return }
-            await expire()
+            await rejectToken()
         case .ready:
+            if notice?.place == .chatList { publishNotice(nil) }
             setConnection(.online)
             guard let current = signedInUserId else { return }
             let epoch = logouts
@@ -425,6 +489,22 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         connectionContinuations[id] = nil
     }
 
+    private func addNotice(_ id: UUID, _ continuation: AsyncStream<LoginNotice?>.Continuation) {
+        if case .terminated = continuation.yield(notice) { return }
+        noticeContinuations[id] = continuation
+    }
+
+    private func removeNotice(_ id: UUID) {
+        noticeContinuations[id] = nil
+    }
+
+    private func publishNotice(_ notice: LoginNotice?) {
+        self.notice = notice
+        for continuation in noticeContinuations.values {
+            continuation.yield(notice)
+        }
+    }
+
     private func publish(_ phase: AuthPhase) {
         self.phase = phase
         for continuation in continuations.values {
@@ -438,5 +518,33 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         for continuation in connectionContinuations.values {
             continuation.yield(state)
         }
+    }
+}
+
+/// Запасные строки, когда сервер не прислал заголовок.
+private enum LoginNotices {
+    static func chatList(_ rejection: CoreLoginRejection?) -> LoginNotice {
+        let copy = LoginNotice.composed(
+            serverTitle: rejection?.title,
+            localizedMessage: rejection?.localizedMessage,
+            detail: rejection?.detail,
+            fallbackTitle: "Слишком много входов",
+            fallbackBody: "Сервер временно ограничил вход. Сохранённые чаты доступны без сети, повторите позже"
+        )
+        return LoginNotice(title: copy.title, message: copy.message, place: .chatList)
+    }
+
+    static func loginForm(_ rejection: CoreLoginRejection?) -> LoginNotice {
+        let blocked = rejection?.reason == "blocked"
+        let copy = LoginNotice.composed(
+            serverTitle: rejection?.title,
+            localizedMessage: rejection?.localizedMessage,
+            detail: rejection?.detail,
+            fallbackTitle: blocked ? "Аккаунт заблокирован" : "Сессия завершена",
+            fallbackBody: blocked
+                ? "Сервер не пускает в этот аккаунт. Войти можно будет, когда блокировку снимут"
+                : "Сервер больше не принимает этот вход. Войдите снова по номеру телефона"
+        )
+        return LoginNotice(title: copy.title, message: copy.message, place: .loginForm)
     }
 }

@@ -19,6 +19,8 @@ final class AppContainer {
 
     private(set) var boot: Boot = .loading
     private(set) var phase: AuthPhase = .restoring
+    /// Плашка «слишком много входов» над списком. Экран входа читает то же пояснение сам.
+    private(set) var loginNotice: LoginNotice?
 
     // Зависимости и кэш моделей экранов не наблюдаются: модели создаются лениво прямо
     // во время отрисовки `RootView`, и запись в наблюдаемое свойство там заставила бы
@@ -92,6 +94,7 @@ final class AppContainer {
     @ObservationIgnored private var devicesScreenModel: DevicesModel?
     @ObservationIgnored private var foldersScreenModel: FoldersModel?
     @ObservationIgnored private var phaseTask: Task<Void, Never>?
+    @ObservationIgnored private var noticeTask: Task<Void, Never>?
     @ObservationIgnored private var connectionTask: Task<Void, Never>?
     /// Журнал для отладки. `nil`, если каталог журнала не удалось открыть.
     let logs: FileLogStore?
@@ -282,9 +285,8 @@ final class AppContainer {
                     case .signedOut, .expired:
                         await self.callCenter?.deactivate()
                         self.dropScreenModels()
-                        // Отметка относилась к прежнему сеансу. Истёкший токен её не стирает:
-                        // следующий вход по коду всё равно заменит её новой.
-                        if next == .signedOut { self.accountLimits.clear() }
+                        // Сессия закончилась: ограничения прежнего входа больше не действуют.
+                        self.accountLimits.clear()
                     case .signedIn(let id):
                         // Вход с шага кода, пароля или имени, а не восстановление: ограничения нового сеанса.
                         if let entry = previous.freshEntry {
@@ -302,6 +304,11 @@ final class AppContainer {
                     default:
                         break
                     }
+                }
+            }
+            noticeTask = Task {
+                for await next in session.loginNotices() {
+                    self.loginNotice = next
                 }
             }
             connectionTask = Task {
@@ -761,6 +768,10 @@ final class AppContainer {
         guard case .signedIn = phase else { return }
         if let callsModel { Task { await callsModel.refresh() } }
         if let storiesModel { Task { await storiesModel.refresh() } }
+    }
+
+    func retryHeldLogin() async {
+        await session?.retryHeldLogin()
     }
 
     func logout() async {

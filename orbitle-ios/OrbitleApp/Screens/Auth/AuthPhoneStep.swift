@@ -20,8 +20,14 @@ struct AuthPhoneStep: View {
                 title: "Телефон",
                 subtitle: Text("Проверьте код страны и введите свой номер телефона.")
             )
-            if viewModel.sessionExpired {
-                Text("Сессия истекла. Войдите снова. Переписка на устройстве сохранится, пока вы сами не выйдете.")
+            if let notice = viewModel.loginNoticeText {
+                Text(notice)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 12)
+            } else if viewModel.sessionExpired {
+                Text("Сессия завершена. Войдите снова по номеру телефона.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

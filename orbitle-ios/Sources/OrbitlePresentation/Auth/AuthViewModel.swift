@@ -29,6 +29,8 @@ public final class AuthViewModel {
     public private(set) var error: OrbitleError?
     /// Сервер отклонил сохранённый токен: экран объясняет, почему снова вход.
     public private(set) var sessionExpired = false
+    /// Текст отказа над полем номера. Пусто — короткая запасная фраза экрана.
+    public private(set) var loginNoticeText: String?
     /// Номер (E.164), на который ушёл код.
     public private(set) var sentTo: String?
     /// Когда можно запросить код повторно.
@@ -209,6 +211,7 @@ public final class AuthViewModel {
     @ObservationIgnored private let resendInterval: TimeInterval
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var watch: Task<Void, Never>?
+    @ObservationIgnored private var noticeWatch: Task<Void, Never>?
     @ObservationIgnored private var operation: Task<OrbitleError?, Never>?
     /// Автоотправка полного кода. Внутренний доступ — чтобы тесты дожидались её, а не спали.
     @ObservationIgnored private(set) var pendingAutoSubmit: Task<Void, Never>?
@@ -334,11 +337,32 @@ public final class AuthViewModel {
                 self.apply(phase)
             }
         }
+        let notices = auth.loginNotices()
+        noticeWatch = Task { [weak self] in
+            for await notice in notices {
+                guard let self else { return }
+                self.apply(notice)
+            }
+        }
     }
 
     public func deactivate() {
         watch?.cancel()
         watch = nil
+        noticeWatch?.cancel()
+        noticeWatch = nil
+    }
+
+    func apply(_ notice: LoginNotice?) {
+        guard let notice, notice.place == .loginForm else {
+            loginNoticeText = nil
+            return
+        }
+        sessionExpired = true
+        loginNoticeText = [notice.title, notice.message]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
     }
 
     // MARK: Действия

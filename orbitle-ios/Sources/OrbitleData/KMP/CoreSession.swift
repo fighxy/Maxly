@@ -470,6 +470,8 @@ public protocol MaxCore: Sendable {
     func phaseName() async -> CorePhase
     func currentUserId() async -> String
     func hasStoredToken() async -> Bool
+    /// Почему ядро отклонило вход. `nil`, пока фазы `tokenRejected` нет.
+    func loginRejection() async -> CoreLoginRejection?
     func start() async throws -> CorePhase
     func requestCode(phone: String, resend: Bool) async throws -> CoreCode
     func verifyCode(token: String, code: String) async throws -> CoreAuthStep
@@ -747,6 +749,9 @@ public protocol MaxCore: Sendable {
 }
 
 public extension MaxCore {
+    /// Ядро без отдельного отказа входа: причины нет.
+    func loginRejection() async -> CoreLoginRejection? { nil }
+
     /// Ядро без ответа на отметку: она уходит прежним вызовом, ответ неизвестен.
     func markRead(chatId: String, messageId: String, mark: Int64) async throws -> CoreReadMark {
         try await markRead(chatId: chatId, messageId: messageId)
@@ -1083,5 +1088,35 @@ public struct CoreIncomingCall: Sendable, Equatable {
         self.turnUsername = turnUsername
         self.turnPassword = turnPassword
         self.expiresAtMs = expiresAtMs
+    }
+}
+
+/// Отказ входа, который ядро уже разобрало: причина, тексты сервера и судьба токена.
+public struct CoreLoginRejection: Sendable, Equatable {
+    public var reason: String
+    public var errorKey: String?
+    public var serverText: String?
+    public var title: String?
+    public var localizedMessage: String?
+    /// Поле `description` моста: в Swift оно называется иначе, здесь это пояснение сервера.
+    public var detail: String?
+    public var tokenCleared: Bool
+
+    public init(
+        reason: String,
+        errorKey: String? = nil,
+        serverText: String? = nil,
+        title: String? = nil,
+        localizedMessage: String? = nil,
+        detail: String? = nil,
+        tokenCleared: Bool
+    ) {
+        self.reason = reason
+        self.errorKey = errorKey
+        self.serverText = serverText
+        self.title = title
+        self.localizedMessage = localizedMessage
+        self.detail = detail
+        self.tokenCleared = tokenCleared
     }
 }

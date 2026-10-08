@@ -595,6 +595,19 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func loginRejection() async -> CoreLoginRejection? {
+        guard let value = client.loginRejection() else { return nil }
+        return CoreLoginRejection(
+            reason: value.reason,
+            errorKey: value.errorKey,
+            serverText: value.serverText,
+            title: value.title,
+            localizedMessage: value.localizedMessage,
+            detail: value.description_,
+            tokenCleared: value.tokenCleared
+        )
+    }
+
     func events() -> AsyncStream<CoreEvent> {
         AsyncStream { continuation in
             let watch = WatchBox(client.watchEvents { event in
