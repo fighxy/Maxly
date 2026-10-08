@@ -70,4 +70,16 @@
     <string name="about_core">Ядро max-kmp-core</string>
     <string name="about_text">Неофициальный клиент Max для Android. Работает на открытом ядре max-kmp-core и представляется сервису как Android-устройство.</string>
     <string name="about_source">Исходный код</string>
+    <string name="diag_title">Диагностика</string>
+    <string name="diag_log">Журнал</string>
+    <string name="diag_log_hint">Звонки, ошибки и запуски — отправьте его вместе с описанием проблемы</string>
+    <string name="diag_log_share">Отправить журнал</string>
+    <string name="diag_log_clear">Очистить журнал</string>
+    <string name="diag_log_empty">Журнал пуст</string>
+    <string name="diag_crashes">Отчёты о сбоях</string>
+    <string name="diag_crashes_none">Сбоев не было</string>
+    <string name="diag_crashes_clear">Удалить все отчёты</string>
+    <string name="diag_share">Отправить</string>
+    <string name="diag_delete">Удалить</string>
+    <string name="diag_close">Закрыть</string>
 </resources>

@@ -2,4 +2,5 @@
 <paths>
     <cache-path name="files" path="files/" />
     <cache-path name="outgoing" path="outgoing/" />
+    <cache-path name="diagnostics" path="diagnostics/" />
 </paths>

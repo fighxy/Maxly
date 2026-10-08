@@ -42,7 +42,8 @@ import kotlinx.coroutines.launch
 
 /** Зависимости приложения: одно ядро, одна сессия, репозитории над стором ядра. */
 class AppContainer(context: Context) {
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    /** Корутины приложения; исключение в них пишется в журнал и отчёт, а не роняет процесс. */
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + app.orbitle.diagnostics.Diagnostics.coroutineHandler)
 
     /**
      * Без догрузки дыр истории после переподключения (`fillGapsOnReconnect`), как на iOS: ядро
@@ -183,9 +184,7 @@ class AppContainer(context: Context) {
     ).also { center ->
         app.orbitle.calls.AndroidWebRtc.init(context.applicationContext)
         app.orbitle.calls.CallPermissions.init(context.applicationContext)
-        app.orbitle.data.calls.CallLog.sink = { level, message ->
-            if (level == 'W') android.util.Log.w("OrbitleCalls", message) else android.util.Log.i("OrbitleCalls", message)
-        }
+        // Журнал звонков (CallLog) пишет в общий журнал приложения: файл и logcat «Orbitle/calls».
         // Журнал звонков читается заново, когда сервер успел записать звонок.
         center.onCallEnded = {
             scope.launch {
