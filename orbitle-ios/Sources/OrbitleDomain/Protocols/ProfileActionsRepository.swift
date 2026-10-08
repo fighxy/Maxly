@@ -70,4 +70,22 @@ public protocol ProfileActionsRepository: Sendable {
     /// В чёрном списке ли пользователь. Список спрашивается один раз за сеанс.
     func isBlocked(userId: String) async throws(OrbitleError) -> Bool
     func setBlocked(userId: String, blocked: Bool) async throws(OrbitleError)
+    /// Страница участников с ролями (`CHAT_MEMBERS` 59). Первая — с `ChatMembersRules.firstMarker`.
+    func membersPage(chatId: String, marker: Int64) async throws(OrbitleError) -> ChatMembersPage
+    /// Поиск участников на сервере по имени.
+    func searchMembers(chatId: String, query: String) async throws(OrbitleError) -> [ChatMemberEntry]
+}
+
+public extension ProfileActionsRepository {
+    /// Источник без страниц: весь список одной страницей, без ролей.
+    func membersPage(chatId: String, marker: Int64) async throws(OrbitleError) -> ChatMembersPage {
+        guard marker == ChatMembersRules.firstMarker else { return ChatMembersPage(members: [], marker: nil) }
+        let rows = try await members(chatId: chatId)
+        return ChatMembersPage(members: rows.map { ChatMemberEntry(id: $0.id, name: $0.name, avatarURL: $0.avatarURL) }, marker: nil)
+    }
+
+    /// Источник без поиска на сервере: экран ищет среди загруженных.
+    func searchMembers(chatId: String, query: String) async throws(OrbitleError) -> [ChatMemberEntry] {
+        throw .invalidRequest
+    }
 }

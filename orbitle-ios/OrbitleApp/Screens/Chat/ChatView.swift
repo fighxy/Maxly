@@ -750,6 +750,12 @@ struct ChatView: View {
                 onOpenChat(id)
             }
         }
+        if let onOpenDialog {
+            context.onOpenDialog = { draft in
+                profileShown = false
+                onOpenDialog(draft)
+            }
+        }
         context.onSearch = { closeProfile { searchShown = true } }
         if writable {
             context.onPoll = { closeProfile { pollShown = true } }

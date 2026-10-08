@@ -1,7 +1,7 @@
 import Foundation
 
-/// Роль участника группы или канала. Роли не приходят в списке участников: их даёт карточка
-/// чата (`owner` и `adminParticipants`).
+/// Роль участника группы или канала. Ядро выводит её из карточки чата (`owner`,
+/// `adminParticipants`); `arrange` делает то же по карточке, если роли не пришли.
 public enum ChatMemberRole: String, Hashable, Sendable {
     case owner
     case admin
@@ -91,6 +91,11 @@ public enum ChatMembersRules {
             return copy
         }
         return ranked.filter { $0.role == .owner } + ranked.filter { $0.role == .admin } + ranked.filter { $0.role == .member }
+    }
+
+    /// Порядок экрана: владелец, админы, остальные — каждый в порядке сервера.
+    public static func ranked(_ list: [ChatMemberEntry]) -> [ChatMemberEntry] {
+        list.filter { $0.role == .owner } + list.filter { $0.role == .admin } + list.filter { $0.role == .member }
     }
 
     /// Поиск по уже загруженным: без учёта регистра, «ё» = «е», пробелы по краям не важны;

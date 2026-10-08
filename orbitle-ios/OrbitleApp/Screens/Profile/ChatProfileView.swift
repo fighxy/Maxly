@@ -22,6 +22,8 @@ struct ChatProfileContext {
     var join: (label: String, run: () -> Void)? = nil
     /// Открыть другой чат (общий чат собеседника).
     var onOpenChat: ((String) -> Void)? = nil
+    /// Личный чат с человеком (участник группы), даже если диалога ещё нет в списке.
+    var onOpenDialog: ((DialogDraft) -> Void)? = nil
     /// Поиск по чату. Профиль закрывается, поиск открывается на экране чата.
     var onSearch: (() -> Void)? = nil
     /// Опрос и отложенная отправка. `nil` — в этот чат писать нельзя.
@@ -52,6 +54,8 @@ struct ChatProfileView: View {
     /// Истории собеседника: кольцо на аватаре, касание открывает их.
     @Environment(StoriesViewModel.self) private var stories: StoriesViewModel?
     @State private var copied: String?
+    /// Открытый экран «Участники».
+    @State private var membersList: ChatMembersListModel?
     /// Сдвиг шапки: больше нуля — профиль тянут вниз, меньше — прокрутили.
     @State private var offset: CGFloat = 0
     @State private var avatarViewer: MediaViewerRequest?
@@ -141,6 +145,18 @@ struct ChatProfileView: View {
                 Button(reason.title) { Task { await viewModel.complain(reasonId: reason.id) } }
             }
             Button("Отмена", role: .cancel) {}
+        }
+        .sheet(item: $membersList) { model in
+            ChatMembersView(
+                model: model,
+                onOpenDialog: context?.onOpenDialog.map { open in
+                    { draft in
+                        membersList = nil
+                        open(draft)
+                    }
+                },
+                onClose: { membersList = nil }
+            )
         }
         .sheet(isPresented: $managing) {
             if let manageModel {
@@ -500,6 +516,29 @@ struct ChatProfileView: View {
         let members = viewModel.members
         if !members.isEmpty {
             section(title: "УЧАСТНИКИ") {
+                if let chat = context?.chat, viewModel.membersList(currentUserId: chat.currentUserId) != nil {
+                    Button {
+                        membersList = viewModel.membersList(currentUserId: chat.currentUserId)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "person.2")
+                                .frame(width: 36, height: 36)
+                                .foregroundStyle(Color.orbitleAccent)
+                            Text("Все участники и поиск")
+                                .font(.body)
+                                .foregroundStyle(Color.orbitleAccent)
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    Divider().padding(.leading, 64)
+                }
                 ForEach(Array(members.prefix(50).enumerated()), id: \.element.id) { index, member in
                     if index > 0 { Divider().padding(.leading, 64) }
                     HStack(spacing: 12) {

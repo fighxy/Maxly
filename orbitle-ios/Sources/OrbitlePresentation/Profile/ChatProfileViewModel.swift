@@ -359,6 +359,12 @@ public final class ChatProfileViewModel {
 
     public var canBlock: Bool { actions != nil && personId != nil }
 
+    /// Экран «Участники» группы: страницы, роли, поиск. `nil` — не группа или нет источника.
+    public func membersList(currentUserId: String) -> ChatMembersListModel? {
+        guard let actions, shown.kind == .group else { return nil }
+        return ChatMembersListModel(chatId: chatId, currentUserId: currentUserId, actions: actions)
+    }
+
     /// «12 участников», «1 200 подписчиков» — подпись общего чата.
     public static func membersText(_ count: Int, channel: Bool) -> String {
         channel

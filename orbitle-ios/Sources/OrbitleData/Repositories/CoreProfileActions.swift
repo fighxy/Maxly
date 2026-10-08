@@ -19,6 +19,28 @@ public actor CoreProfileActions: ProfileActionsRepository {
         }
     }
 
+    /// Пустой `nextMarker` ядра — страниц больше нет.
+    public func membersPage(chatId: String, marker: Int64) async throws(OrbitleError) -> ChatMembersPage {
+        try await run {
+            let page = try await core.loadChatMembers(chatId: chatId, marker: marker == 0 ? "" : String(marker), count: ChatMembersRules.pageSize)
+            return ChatMembersPage(members: page.members.map(Self.entry), marker: Int64(page.nextMarker))
+        }
+    }
+
+    public func searchMembers(chatId: String, query: String) async throws(OrbitleError) -> [ChatMemberEntry] {
+        try await run { try await core.searchChatMembers(chatId: chatId, query: query).map(Self.entry) }
+    }
+
+    static func entry(_ member: CoreGroupMember) -> ChatMemberEntry {
+        ChatMemberEntry(
+            id: member.id,
+            name: member.name,
+            avatarURL: member.avatarURL.isEmpty ? nil : URL(string: member.avatarURL),
+            role: ChatMemberRole(rawValue: member.role) ?? .member,
+            alias: member.alias.isEmpty ? nil : member.alias
+        )
+    }
+
     public func commonChats(userId: String) async throws(OrbitleError) -> [CommonChat] {
         try await run { try await core.commonChats(userId: userId) }
     }
