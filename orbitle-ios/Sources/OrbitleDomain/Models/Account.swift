@@ -135,6 +135,10 @@ public struct AccountSettings: Sendable, Hashable {
     public var quickReaction: String
     /// Сервер не выключил быструю реакцию (`DOUBLE_TAP_REACTION_DISABLED` не `true`).
     public var quickReactionEnabled: Bool
+    /// Сервер разрешил архив своих историй (`stories-history`).
+    public var storiesHistory: Bool
+    /// Бот семейной защиты. Пусто — мини-приложение не открывается.
+    public var familyProtectionBotId: String
 
     public static let defaultQuickReaction = "👍"
 
@@ -145,7 +149,8 @@ public struct AccountSettings: Sendable, Hashable {
         familyProtection: FamilyProtection = .off, familyProtectionRaw: String = "", privacyLocked: Bool = false,
         showReadMark: Bool? = nil, inactiveTTL: InactiveTTL = .sixMonths,
         inviteLink: URL? = nil, sferumBotId: Int64 = 2_340_831, digitalIdBotId: Int64 = 8_250_447,
-        quickReaction: String = AccountSettings.defaultQuickReaction, quickReactionEnabled: Bool = true
+        quickReaction: String = AccountSettings.defaultQuickReaction, quickReactionEnabled: Bool = true,
+        storiesHistory: Bool = false, familyProtectionBotId: String = ""
     ) {
         self.isKnown = isKnown
         self.phonePrivacy = phonePrivacy
@@ -165,6 +170,8 @@ public struct AccountSettings: Sendable, Hashable {
         self.digitalIdBotId = digitalIdBotId
         self.quickReaction = quickReaction
         self.quickReactionEnabled = quickReactionEnabled
+        self.storiesHistory = storiesHistory
+        self.familyProtectionBotId = familyProtectionBotId
     }
 
     public static let unknown = AccountSettings()

@@ -34,7 +34,7 @@ extension MaxIosCore {
 
     func scheduleMessage(chatId: String, text: String, sendAtMs: Int64) async throws {
         let _: Void = try await call("scheduleMessage") { done in
-            self.client.scheduleMessage(chatId: chatId, text: text, sendAt: sendAtMs) { kind, key in
+            self.client.scheduleMessage(chatId: chatId, text: text, sendAt: sendAtMs) { _, kind, key in
                 if let kind { done(.failure(CoreFailure(kind: kind, key: key))) } else { done(.success(())) }
             }
         }
@@ -46,7 +46,7 @@ extension MaxIosCore {
                 if let kind {
                     done(.failure(CoreFailure(kind: kind, key: key)))
                 } else {
-                    done(.success(messages.map(Self.found)))
+                    done(.success((messages ?? []).map(Self.scheduled)))
                 }
             }
         }
@@ -68,7 +68,7 @@ extension MaxIosCore {
 
     func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws {
         let _: Void = try await call("votePoll") { done in
-            self.client.votePoll(chatId: chatId, messageId: messageId, pollId: pollId, answerId: answerId) { kind, key in
+            self.client.votePoll(chatId: chatId, messageId: messageId, pollId: pollId, answerId: answerId) { _, kind, key in
                 if let kind { done(.failure(CoreFailure(kind: kind, key: key))) } else { done(.success(())) }
             }
         }
@@ -124,6 +124,14 @@ extension MaxIosCore {
         }
     }
 
+
+    /// Отложенное сообщение в том же виде, что поиск: время — когда оно уйдёт.
+    private static func scheduled(_ message: IosScheduledMessage) -> CoreFoundMessage {
+        CoreFoundMessage(
+            chatId: message.chatId, messageId: message.messageId, senderId: message.senderId,
+            text: message.text, timeMs: message.sendAt
+        )
+    }
 
     private static func found(_ message: IosFoundMessage) -> CoreFoundMessage {
         CoreFoundMessage(

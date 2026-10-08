@@ -425,7 +425,9 @@ extension MaxIosCore {
             sferumBotId: value.sferumBotId,
             digitalIdBotId: value.digitalIdBotId,
             quickReaction: value.quickReaction.isEmpty ? AccountSettings.defaultQuickReaction : value.quickReaction,
-            quickReactionEnabled: !value.quickReactionDisabled
+            quickReactionEnabled: !value.quickReactionDisabled,
+            storiesHistory: value.storiesHistory,
+            familyProtectionBotId: value.familyProtectionBotId
         )
     }
 
