@@ -168,9 +168,6 @@ The core is pinned to max-kmp-core `33cca05` in `core.lock`. Everything below ru
 - **Unread divider:** it follows the account's own read mark, and the local mark
   (`MaxState.localReads`, kept by the core while read receipts are hidden) wins when it is newer
   than the server mark, so the divider stays put when the server never got ours.
-- **Unread divider:** it follows the account's own read mark, and the local mark
-  (`MaxState.localReads`, kept by the core while read receipts are hidden) wins when it is newer
-  than the server mark, so the divider stays put when the server never got ours.
 
 ## Сборка
 
