@@ -1,8 +1,9 @@
 package app.orbitle.presentation.chat
 
 /**
- * Правила отметки прочтения, согласованные с iOS. Значения будут повторены в
- * test-fixtures/client-rules/constants.json: менять их нужно вместе.
+ * Правила отметки прочтения, согласованные с iOS. Те же значения записаны в
+ * `test-fixtures/client-rules/constants.json` (`readMarks`), `ClientRulesFixtureTest` сверяет их:
+ * менять нужно вместе.
  */
 object ReadMarkRules {
     /** Отметка уходит через столько мс после последней смены кандидата: быстрая прокрутка шлёт одну. */
