@@ -8,12 +8,14 @@ on:
       - "orbitle-ios/**"
       - "scripts/**"
       - "test-fixtures/**"
+      - "test-fixtures/client-rules/**"
       - ".github/workflows/ios.yml"
   pull_request:
     paths:
       - "orbitle-ios/**"
       - "scripts/**"
       - "test-fixtures/**"
+      - "test-fixtures/client-rules/**"
       - ".github/workflows/ios.yml"
 
 permissions:
