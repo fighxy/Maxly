@@ -599,9 +599,9 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         if items.isEmpty { return [] }
         let media = items.map { IosPhotoRefresh(chatId: $0.chatId, messageId: $0.messageId, photoIds: [$0.photoId]) }
         return try await call("refreshPhotoURLs") { done in
-            client.refreshPhotoUrls(media: media) { photos, kind, key in
+            self.client.refreshPhotoUrls(media: media) { photos, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                     return
                 }
                 let mapped = (photos ?? []).map {
