@@ -178,3 +178,34 @@ struct ReadMarkClientTests {
         #expect(await core.readAt == [1_700_000_000_123, 0])
     }
 }
+
+@Suite("Отметки прочтения: экран чата")
+struct ScreenReadMarkTests {
+    @Test("Отметка до последнего сообщения уходит с его временем и снимает бейдж сразу")
+    func markUpToLast() async throws {
+        let (chats, api) = try makeRepository()
+        try await chats.upsert([chatRecord(unread: 3, sentMs: 100_000)])
+        try await chats.markRead(chatId: "c1", messageId: "m99", at: 100_000)
+        #expect(await api.readMarks == [100_000])
+        #expect(await row(chats)?.unreadCount == 0)
+    }
+
+    @Test("Отметка ниже последнего: бейдж не пропадает, счётчик — из ответа сервера")
+    func markPartway() async throws {
+        let (chats, api) = try makeRepository()
+        try await chats.upsert([chatRecord(unread: 3, sentMs: 100_000)])
+        await api.set(readReplies: [CoreReadMark(unread: 1, mark: 90_000)])
+        try await chats.markRead(chatId: "c1", messageId: "m98", at: 90_000)
+        #expect(await api.readMarks == [90_000])
+        #expect(await row(chats)?.unreadCount == 1)
+    }
+
+    @Test("Непрочитанных нет — сервер не дёргается")
+    func nothingToRead() async throws {
+        let (chats, api) = try makeRepository()
+        try await chats.upsert([chatRecord(unread: 0, sentMs: 100_000)])
+        try await chats.markRead(chatId: "c1", messageId: "m99", at: 100_000)
+        try await chats.markRead(chatId: "unknown", messageId: "m1", at: 100_000)
+        #expect(await api.readMarks.isEmpty)
+    }
+}

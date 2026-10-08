@@ -205,78 +205,39 @@ struct ChatListConnectionTests {
 @Suite("Список чатов: прочтение")
 @MainActor
 struct ChatListReadTests {
-    @Test("Открытие чата с непрочитанными сразу убирает бейдж и отмечает на сервере")
-    func openMarks() async {
+    @Test("Открытие чата его не читает: прочитанным его отмечает экран по увиденному")
+    func openDoesNotMark() async {
         let (model, repository) = makeList()
         repository.emit([chat("a", at: 1, unread: 3)])
         #expect(await eventually { model.items.first?.unreadBadge == "3" })
         await model.open(chatId: "a")
-        #expect(model.items.first?.unreadBadge == nil)
-        #expect(await repository.marked == ["a"])
         #expect(model.openChatId == "a")
-    }
-
-    @Test("Чат без непрочитанных сервер не дёргает")
-    func openWithoutUnread() async {
-        let (model, repository) = makeList()
-        repository.emit([chat("a", at: 1, unread: 0)])
-        #expect(await eventually { model.items.count == 1 })
-        await model.open(chatId: "a")
+        #expect(model.items.first?.unreadBadge == "3")
+        try? await Task.sleep(for: .milliseconds(30))
         #expect(await repository.marked.isEmpty)
     }
 
-    @Test("Новое сообщение в открытом чате отмечается прочитанным само")
+    @Test("Новое сообщение в открытом чате список сам не читает")
     func liveMessageInOpenChat() async {
         let (model, repository) = makeList()
         repository.emit([chat("a", at: 1, unread: 0), chat("b", at: 2, unread: 0)])
         #expect(await eventually { model.items.count == 2 })
         await model.open(chatId: "a")
         repository.emit([chat("a", at: 3, unread: 1), chat("b", at: 2, unread: 4)])
-        #expect(await eventually { await repository.marked == ["a"] })
-        #expect(model.items.first(where: { $0.id == "a" })?.unreadBadge == nil)
+        #expect(await eventually { model.items.first(where: { $0.id == "a" })?.unreadBadge == "1" })
         #expect(model.items.first(where: { $0.id == "b" })?.unreadBadge == "4")
-
-        await model.open(chatId: nil)
-        repository.emit([chat("a", at: 4, unread: 2), chat("b", at: 2, unread: 4)])
-        #expect(await eventually { model.items.first?.unreadBadge == "2" })
         try? await Task.sleep(for: .milliseconds(30))
-        #expect(await repository.marked == ["a"])
+        #expect(await repository.marked.isEmpty)
     }
 
-    @Test("Открытый чат отмечается снова, только когда счётчик вырос")
-    func openChatRemarksOnGrowth() async {
+    @Test("Свайп «прочитано» отмечает чат сразу")
+    func swipeMarks() async {
         let (model, repository) = makeList()
-        repository.emit([chat("a", at: 1, unread: 0)])
-        #expect(await eventually { model.items.count == 1 })
-        await model.open(chatId: "a")
-        repository.emit([chat("a", at: 2, unread: 1)])
-        #expect(await eventually { await repository.marked == ["a"] })
-
-        // Тот же счётчик в следующем снимке (правка, ответ списка): отметка не повторяется.
-        repository.emit([chat("a", at: 3, unread: 1), chat("b", at: 3, unread: 2)])
+        repository.emit([chat("a", at: 1, unread: 2), chat("b", at: 2, unread: 0)])
         #expect(await eventually { model.items.count == 2 })
-        try? await Task.sleep(for: .milliseconds(30))
+        await model.toggleRead(chatId: "a")
+        #expect(model.items.first(where: { $0.id == "a" })?.unreadBadge == nil)
         #expect(await repository.marked == ["a"])
-
-        repository.emit([chat("a", at: 4, unread: 2), chat("b", at: 3, unread: 2)])
-        #expect(await eventually { await repository.marked == ["a", "a"] })
-    }
-
-    @Test("Сообщение, пришедшее пока отметка в пути, тоже отмечается")
-    func growthWhileMarking() async {
-        let (model, repository) = makeList()
-        repository.emit([chat("a", at: 1, unread: 0)])
-        #expect(await eventually { model.items.count == 1 })
-        await model.open(chatId: "a")
-        let gate = Gate()
-        await repository.set(markGate: gate)
-        repository.emit([chat("a", at: 2, unread: 1)])
-        #expect(await eventually { await gate.arrivals == 1 })
-        repository.emit([chat("a", at: 3, unread: 2)])
-        try? await Task.sleep(for: .milliseconds(30))
-        #expect(await repository.marked == ["a"])
-        await gate.open()
-        #expect(await eventually { await repository.marked == ["a", "a"] })
     }
 
     @Test("Сетевая ошибка отметки не показывается, остальные показываются")
@@ -285,10 +246,10 @@ struct ChatListReadTests {
         repository.emit([chat("a", at: 1, unread: 1), chat("b", at: 2, unread: 1)])
         #expect(await eventually { model.items.count == 2 })
         await repository.set(markError: .networkUnavailable)
-        await model.open(chatId: "a")
+        await model.toggleRead(chatId: "a")
         #expect(model.error == nil)
         await repository.set(markError: .storageError)
-        await model.open(chatId: "b")
+        await model.toggleRead(chatId: "b")
         #expect(model.error == .storageError)
         #expect(model.inlineError == "Не удалось сохранить данные на устройстве")
     }

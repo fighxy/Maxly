@@ -200,6 +200,16 @@ actor FakeChatRepository: ChatRepository {
         if let markError { throw markError }
     }
 
+    /// Отметки экрана чата: «чат:сообщение@время».
+    private(set) var readMarks: [String] = []
+    var readMarkError: OrbitleError?
+    func set(readMarkError: OrbitleError?) { self.readMarkError = readMarkError }
+
+    func markRead(chatId: String, messageId: String, at mark: Int64) async throws(OrbitleError) {
+        readMarks.append("\(chatId):\(messageId)@\(mark)")
+        if let readMarkError { throw readMarkError }
+    }
+
     func setPinned(_ pinned: Bool, chatId: String) async throws(OrbitleError) {
         try await record("\(pinned ? "pin" : "unpin") \(chatId)")
     }
