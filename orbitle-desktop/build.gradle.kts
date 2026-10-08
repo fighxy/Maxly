@@ -207,7 +207,8 @@ compose.desktop {
 }
 
 // Общие с iOS сценарии ws2 (test-fixtures/calls/ws2), «печатает» (test-fixtures/typing) и «Кем прочитано»
-// (test-fixtures/readers) — вход тестов общего кода: правка файла перезапускает их.
+// (test-fixtures/readers), а также разметка, черновики, выбор сообщений,
+// участники и имена (test-fixtures/{formatting,drafts,selection,members,names}) — вход тестов общего кода: правка файла перезапускает их.
 tasks.withType<Test>().configureEach {
     inputs.dir(layout.projectDirectory.dir("../test-fixtures/calls/ws2"))
         .withPropertyName("ws2Fixtures")
@@ -217,5 +218,20 @@ tasks.withType<Test>().configureEach {
         .withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.dir(layout.projectDirectory.dir("../test-fixtures/readers"))
         .withPropertyName("readersFixtures")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.dir(layout.projectDirectory.dir("../test-fixtures/formatting"))
+        .withPropertyName("formattingFixtures")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.dir(layout.projectDirectory.dir("../test-fixtures/drafts"))
+        .withPropertyName("draftsFixtures")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.dir(layout.projectDirectory.dir("../test-fixtures/selection"))
+        .withPropertyName("selectionFixtures")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.dir(layout.projectDirectory.dir("../test-fixtures/members"))
+        .withPropertyName("membersFixtures")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.dir(layout.projectDirectory.dir("../test-fixtures/names"))
+        .withPropertyName("namesFixtures")
         .withPathSensitivity(PathSensitivity.RELATIVE)
 }
