@@ -65,6 +65,7 @@ fun ChatManageScreen(
     onPickPhoto: () -> Unit,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
+    val people by model.memberList.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var picking by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { model.load() }
@@ -143,9 +144,13 @@ fun ChatManageScreen(
                     TextButton(onClick = { picking = true }, enabled = !state.busy) { Text("Добавить") }
                 }
             }
-            items(state.members, key = { it.id }) { person ->
-                MemberRow(person, state.memberPresence[person.id], state.busy, onAdmin = { model.setAdmin(person.id, person.role != ChatPerson.Role.ADMIN) }, onRemove = { model.removeMember(person.id) })
+            if (people.members.size > 1 || people.isSearch || people.hasMore) {
+                item(key = "members-search") { MemberSearchField(people.query, model.memberList::search, Modifier.padding(bottom = 4.dp)) }
             }
+            items(people.visible, key = { it.id }) { person ->
+                ManagedMemberRow(person, state.memberPresence[person.id], state.busy, onAdmin = { model.setAdmin(person.id, person.role != ChatPerson.Role.ADMIN) }, onRemove = { model.removeMember(person.id) })
+            }
+            memberListTail(people, model.memberList::loadMore)
             if (state.requests.isNotEmpty()) {
                 item { Section("Заявки") }
                 items(state.requests, key = { "req-${it.id}" }) { person ->
@@ -184,28 +189,17 @@ private fun Toggle(title: String, checked: Boolean, busy: Boolean, onChange: (Bo
 }
 
 @Composable
-private fun MemberRow(person: ChatPerson, presence: String?, busy: Boolean, onAdmin: () -> Unit, onRemove: () -> Unit) {
-    val role = when (person.role) {
-        ChatPerson.Role.OWNER -> "владелец"
-        ChatPerson.Role.ADMIN -> "админ"
-        ChatPerson.Role.MEMBER -> ""
-    }
-    // Роль и присутствие одной строкой: «админ · в сети».
-    val line = listOfNotNull(role.takeIf { it.isNotEmpty() }, presence).joinToString(" · ")
-    ListItem(
-        headlineContent = { Text(person.name) },
-        supportingContent = if (line.isEmpty()) null else ({ Text(line) }),
-        trailingContent = {
-            if (person.role != ChatPerson.Role.OWNER) {
-                Row {
-                    TextButton(onClick = onAdmin, enabled = !busy) {
-                        Text(if (person.role == ChatPerson.Role.ADMIN) "Снять" else "Админ")
-                    }
-                    TextButton(onClick = onRemove, enabled = !busy) { Text("Удалить") }
+private fun ManagedMemberRow(person: ChatPerson, presence: String?, busy: Boolean, onAdmin: () -> Unit, onRemove: () -> Unit) {
+    MemberRow(person, presence) {
+        if (person.role != ChatPerson.Role.OWNER) {
+            Row {
+                TextButton(onClick = onAdmin, enabled = !busy) {
+                    Text(if (person.role == ChatPerson.Role.ADMIN) "Снять" else "Админ")
                 }
+                TextButton(onClick = onRemove, enabled = !busy) { Text("Удалить") }
             }
-        },
-    )
+        }
+    }
 }
 
 @Composable

@@ -7,7 +7,7 @@ import app.orbitle.domain.ServerFolder
 import kotlinx.coroutines.flow.Flow
 
 /** Список чатов. Источник правды — стор ядра; репозиторий только переводит модели. */
-interface ChatRepository {
+interface ChatRepository : ChatMembersSource {
     /** Чаты, `null` до первого снимка с сервера. */
     val chats: Flow<List<Chat>?>
     /** Папки сервера без системной «Все». */
@@ -57,6 +57,12 @@ interface ChatRepository {
 
     /** Участники группы или канала, первая страница. */
     suspend fun members(chatId: String): List<ChatMemberRow> = emptyList()
+
+    override suspend fun memberPage(chatId: String, marker: Long?): MemberPage =
+        if (marker == null) MemberPage(members(chatId).map { ChatPerson(it.id, it.name) }, null) else MemberPage(emptyList(), null)
+
+    override suspend fun searchMembers(chatId: String, query: String): List<ChatPerson> =
+        MemberSearch.filter(members(chatId).map { ChatPerson(it.id, it.name) }, query)
 
     /** Общие чаты с человеком (`CHAT_SEARCH_COMMON_PARTICIPANTS` 198). */
     suspend fun commonChats(userId: String): List<SharedChat> = emptyList()

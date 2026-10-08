@@ -165,21 +165,14 @@ class CoreChatRepository(
         ReadMarks.send(client, id, last)
     }
 
-    override suspend fun members(chatId: String): List<ChatMemberRow> {
-        val id = chatId.toLongOrNull() ?: return emptyList()
-        val page = MaxCoreGateway.call { client.api.chats.getChatMembers(id) }
-        val presence = client.store.state.value.presence
-        return page.members.mapNotNull { member ->
-            val user = com.max.core.api.MaxUser.from(member.contact) ?: return@mapNotNull null
-            val seen = PresenceTime.freshest(presence[user.id], PresenceTime.from(member.presence))
-            ChatMemberRow(
-                user.id.toString(),
-                user.displayName?.trim().orEmpty().ifEmpty { "Участник" },
-                isOnline = PresenceTime.isOnline(seen),
-                lastSeenMs = PresenceTime.ms(seen?.seen),
-            )
-        }
-    }
+    private val people = CoreChatMembers(client)
+
+    override suspend fun members(chatId: String): List<ChatMemberRow> =
+        people.memberPage(chatId).members.map { ChatMemberRow(it.id, it.name, isOnline = it.isOnline, lastSeenMs = it.lastSeenMs) }
+
+    override suspend fun memberPage(chatId: String, marker: Long?): MemberPage = people.memberPage(chatId, marker)
+
+    override suspend fun searchMembers(chatId: String, query: String): List<ChatPerson> = people.searchMembers(chatId, query)
 
     override suspend fun commonChats(userId: String): List<SharedChat> {
         val id = userId.toLongOrNull() ?: return emptyList()

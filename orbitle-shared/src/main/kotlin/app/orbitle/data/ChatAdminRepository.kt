@@ -20,6 +20,8 @@ data class ChatPerson(
     val id: String,
     val name: String,
     val role: Role = Role.MEMBER,
+    /** Подпись админа («должность») из карточки чата. */
+    val alias: String? = null,
     /** Присутствие, если оно уже известно (стор или сама страница участников); `0` — неизвестно. */
     val isOnline: Boolean = false,
     val lastSeenMs: Long = 0,
@@ -40,7 +42,7 @@ enum class GroupOption {
  * Управление группой и каналом: карточка, участники, админы, ссылка, заявки, права, комментарии.
  * Передача владения и набор реакций чата в API ядра не описаны и сюда не входят.
  */
-interface ChatAdminRepository {
+interface ChatAdminRepository : ChatMembersSource {
     suspend fun snapshot(chatId: String): ChatAdminSnapshot
     suspend fun saveCard(chatId: String, title: String, description: String)
     suspend fun setPhoto(chatId: String, jpeg: ByteArray)
@@ -55,4 +57,21 @@ interface ChatAdminRepository {
     suspend fun setComments(chatId: String, enabled: Boolean)
     /** Заблокировать автора комментария под постом канала. */
     suspend fun blockCommentAuthor(chatId: String, postId: String, userId: String, messageId: String)
+
+    /** Без постраничного списка — весь [members] одной страницей. */
+    override suspend fun memberPage(chatId: String, marker: Long?): MemberPage =
+        if (marker == null) MemberPage(members(chatId), null) else MemberPage(emptyList(), null)
+
+    /** Без поиска на сервере — по именам из [members]. */
+    override suspend fun searchMembers(chatId: String, query: String): List<ChatPerson> =
+        MemberSearch.filter(members(chatId), query)
+}
+
+/** Поиск по именам, когда сервер не ищет сам. */
+object MemberSearch {
+    fun filter(people: List<ChatPerson>, query: String): List<ChatPerson> {
+        val term = query.trim().lowercase()
+        if (term.isEmpty()) return people
+        return people.filter { it.name.lowercase().contains(term) }
+    }
 }

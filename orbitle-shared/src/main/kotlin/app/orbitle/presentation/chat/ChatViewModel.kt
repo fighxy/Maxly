@@ -160,9 +160,6 @@ data class InChatSearchState(
 
 /** Участники, общие чаты, жалобы и сигнал звонка. */
 data class ChatToolsState(
-    val members: List<ChatMemberRow> = emptyList(),
-    /** «в сети» или «был(а)…» участников по id; без записи — ничего не известно. */
-    val memberPresence: Map<String, String> = emptyMap(),
     val shared: List<SharedChat> = emptyList(),
     val reasons: List<ComplaintChoice> = emptyList(),
     val busy: Boolean = false,
@@ -206,6 +203,11 @@ class ChatViewModel(
     val search: StateFlow<InChatSearchState> = _search.asStateFlow()
 
     private val _tools = MutableStateFlow(ChatToolsState())
+    /** Участники группы или канала в «О чате»: постранично и с поиском. */
+    val memberList: app.orbitle.presentation.profile.MemberList? = chats?.let { app.orbitle.presentation.profile.MemberList(viewModelScope, it, chatId) }
+
+    /** Подпись присутствия участника в «О чате» («в сети», «был(а)…»); `null` — ничего не известно. */
+    fun memberPresence(person: app.orbitle.data.ChatPerson): String? = formatter.presence(person.isOnline, person.lastSeenMs, now())
     val tools: StateFlow<ChatToolsState> = _tools.asStateFlow()
 
     private val _scheduled = MutableStateFlow<List<FoundMessage>>(emptyList())
@@ -1884,7 +1886,7 @@ class ChatViewModel(
             _tools.update { it.copy(busy = true, error = null) }
             try {
                 val chat = header?.chat
-                val members = runCatching { source.members(chatId) }.getOrDefault(emptyList())
+                memberList?.load()
                 val shared = chat?.peerId?.let { runCatching { source.commonChats(it) }.getOrDefault(emptyList()) }.orEmpty()
                 val typeId = when (chat?.type) {
                     ChatType.CHANNEL -> LockPayloads.COMPLAINT_CHANNEL
@@ -1894,9 +1896,7 @@ class ChatViewModel(
                 val reasons = if (typeId == null) emptyList() else {
                     runCatching { source.complaintReasons()[typeId].orEmpty() }.getOrDefault(emptyList())
                 }
-                val at = now()
-                val presence = members.mapNotNull { m -> formatter.presence(m.isOnline, m.lastSeenMs, at)?.let { m.id to it } }.toMap()
-                _tools.update { it.copy(members = members, memberPresence = presence, shared = shared, reasons = reasons, busy = false) }
+                _tools.update { it.copy(shared = shared, reasons = reasons, busy = false) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

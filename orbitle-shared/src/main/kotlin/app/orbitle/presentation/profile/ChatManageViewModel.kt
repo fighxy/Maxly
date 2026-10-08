@@ -55,14 +55,23 @@ class ChatManageViewModel(
     private val _state = MutableStateFlow(ChatManageState(isChannel = isChannel, selfId = selfId))
     val state: StateFlow<ChatManageState> = _state.asStateFlow()
 
+    /** Участники постранично и поиск; загруженные страницы — и в [ChatManageState.members]. */
+    val memberList = MemberList(viewModelScope, repository, chatId)
+
+    init {
+        viewModelScope.launch {
+            memberList.state.collect { list -> _state.update { it.copy(members = list.members, memberPresence = presenceOf(list.members)) } }
+        }
+    }
+
     fun load() {
         viewModelScope.launch {
             _state.update { it.copy(busy = true) }
             try {
                 val card = repository.snapshot(chatId)
-                val members = runCatching { repository.members(chatId) }.getOrDefault(emptyList())
                 val requests = runCatching { repository.joinRequests(chatId) }.getOrDefault(emptyList())
-                _state.value = stateOf(card, members, requests)
+                _state.value = stateOf(card, memberList.state.value.members, requests)
+                memberList.load()
             } catch (e: Throwable) {
                 fail(e, "Не удалось открыть управление")
                 _state.update { it.copy(busy = false) }
@@ -155,9 +164,9 @@ class ChatManageViewModel(
     }
 
     private suspend fun reloadPeople() {
-        val members = runCatching { repository.members(chatId) }.getOrDefault(_state.value.members)
+        memberList.load()
         val requests = runCatching { repository.joinRequests(chatId) }.getOrDefault(_state.value.requests)
-        _state.update { it.copy(members = members, memberPresence = presenceOf(members), requests = requests) }
+        _state.update { it.copy(requests = requests) }
     }
 
     private fun stateOf(card: ChatAdminSnapshot, members: List<ChatPerson>, requests: List<ChatPerson>) = ChatManageState(

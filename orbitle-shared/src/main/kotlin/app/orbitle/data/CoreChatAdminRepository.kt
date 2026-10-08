@@ -29,27 +29,27 @@ class CoreChatAdminRepository(private val client: MaxClient) : ChatAdminReposito
         store(MaxCoreGateway.call { client.api.chats.updateProfile(id(chatId), photoToken = token) })
     }
 
+    private val people = CoreChatMembers(client)
+
+    /** Весь список: страницы [memberPage] подряд. */
     override suspend fun members(chatId: String): List<ChatPerson> {
-        val numeric = id(chatId)
-        // Список чатов часто без `admins`. Карточка нужна до ролей.
-        val stored = MaxCoreGateway.call { client.api.chats.getChat(numeric) }.also { store(it) }
-        val admins = adminIds(stored)
-        val owner = stored.owner
-        val all = ArrayList<ChatMember>()
-        var marker = 0L
-        var pages = 0
-        while (pages < MEMBER_PAGES) {
-            pages += 1
-            val page = MaxCoreGateway.call { client.api.chats.getChatMembers(numeric, marker, MEMBER_PAGE) }
-            if (page.members.isEmpty()) break
+        val all = ArrayList<ChatPerson>()
+        var marker: Long? = null
+        repeat(CoreChatMembers.PAGES) {
+            val page = memberPage(chatId, marker)
             all += page.members
-            val next = page.marker
-            // Без `marker` в ответе — последняя страница.
-            if (next == null || next == 0L || next == marker || page.members.size < MEMBER_PAGE) break
-            marker = next
+            marker = page.next ?: return all.distinctBy { it.id }
         }
-        return all.mapNotNull { person(it, owner, admins) }
+        return all.distinctBy { it.id }
     }
+
+    override suspend fun memberPage(chatId: String, marker: Long?): MemberPage {
+        // Список чатов часто без `admins`: перед первой страницей карточка свежая, роли по ней.
+        if (marker == null) MaxCoreGateway.call { client.api.chats.getChat(id(chatId)) }.also { store(it) }
+        return people.memberPage(chatId, marker)
+    }
+
+    override suspend fun searchMembers(chatId: String, query: String): List<ChatPerson> = people.searchMembers(chatId, query)
 
     override suspend fun addMembers(chatId: String, userIds: List<String>) {
         val ids = userIds.mapNotNull { it.toLongOrNull() }
@@ -156,24 +156,6 @@ class CoreChatAdminRepository(private val client: MaxClient) : ChatAdminReposito
         )
     }
 
-    /** Id из `admins` и ключей `adminParticipants` карточки чата. */
-    private fun adminIds(chat: CoreChat): Set<Long> {
-        val ids = LinkedHashSet<Long>()
-        fun add(value: Any?) {
-            when (value) {
-                is Number -> ids += value.toLong()
-                is String -> value.toLongOrNull()?.let { ids += it }
-                is Map<*, *> -> add(value["id"] ?: value["userId"])
-            }
-        }
-        (chat.raw["admins"] as? Collection<*>)?.forEach(::add)
-        when (val participants = chat.raw["adminParticipants"]) {
-            is Map<*, *> -> participants.keys.forEach(::add)
-            is Collection<*> -> participants.forEach(::add)
-        }
-        return ids
-    }
-
     companion object {
         fun snapshotOf(chat: CoreChat): ChatAdminSnapshot {
             val options = chat.raw["options"] as? Map<*, *>
@@ -192,9 +174,6 @@ class CoreChatAdminRepository(private val client: MaxClient) : ChatAdminReposito
                 membersCanSeePrivateLink = flag("MEMBERS_CAN_SEE_PRIVATE_LINK"),
             )
         }
-
-        private const val MEMBER_PAGE = 50
-        private const val MEMBER_PAGES = 40
 
         fun linkOf(raw: Map<*, *>): String? {
             for (key in listOf("link", "inviteLink", "privateLink", "baseLink")) {

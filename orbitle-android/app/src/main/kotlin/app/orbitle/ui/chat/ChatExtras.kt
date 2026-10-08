@@ -171,23 +171,10 @@ fun ChatToolsSheet(
             tools.notice?.let {
                 Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
             }
-            SectionTitle("Участники")
-            if (tools.members.isEmpty()) {
-                Text("Список пуст", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                tools.members.forEach { member ->
-                    Column(Modifier.padding(vertical = 4.dp)) {
-                        Text(member.name.ifBlank { member.id }, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        tools.memberPresence[member.id]?.let { presence ->
-                            Text(
-                                presence,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (member.isOnline) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                            )
-                        }
-                    }
-                }
+            model.memberList?.let { list ->
+                val people by list.state.collectAsStateWithLifecycle()
+                SectionTitle("Участники")
+                app.orbitle.ui.profile.MemberListBlock(people, onQuery = list::search, onMore = list::loadMore, presence = model::memberPresence)
             }
             SectionTitle("Общие чаты")
             if (tools.shared.isEmpty()) {
