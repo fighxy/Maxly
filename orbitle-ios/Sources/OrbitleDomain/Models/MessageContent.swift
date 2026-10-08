@@ -422,12 +422,55 @@ public struct PollContent: Hashable, Sendable, Codable {
     public var title: String
     public var answers: [PollAnswer]
     public var total: Int
+    /// Несколько ответов сразу. Старые записи без поля — один ответ.
+    public var multiple: Bool
 
-    public init(id: String, title: String, answers: [PollAnswer], total: Int = 0) {
+    public init(id: String, title: String, answers: [PollAnswer], total: Int = 0, multiple: Bool = false) {
         self.id = id
         self.title = title
         self.answers = answers
         self.total = total
+        self.multiple = multiple
+    }
+
+    /// Бит 2 маски флагов опроса — несколько ответов.
+    public static func allowsSeveral(flags: Int) -> Bool { flags & 2 != 0 }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, title, answers, total, multiple
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        title = try c.decode(String.self, forKey: .title)
+        answers = try c.decode([PollAnswer].self, forKey: .answers)
+        total = try c.decodeIfPresent(Int.self, forKey: .total) ?? 0
+        multiple = try c.decodeIfPresent(Bool.self, forKey: .multiple) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(title, forKey: .title)
+        try c.encode(answers, forKey: .answers)
+        try c.encode(total, forKey: .total)
+        try c.encode(multiple, forKey: .multiple)
+    }
+}
+
+/// Свежие счётчики опроса. `messageId` пустой у ответа на голос: его знает вызывающий.
+public struct PollCountUpdate: Hashable, Sendable {
+    public var pollId: String
+    public var total: Int
+    public var votes: [String: Int]
+    public var multiple: Bool
+
+    public init(pollId: String, total: Int, votes: [String: Int], multiple: Bool = false) {
+        self.pollId = pollId
+        self.total = total
+        self.votes = votes
+        self.multiple = multiple
     }
 }
 

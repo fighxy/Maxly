@@ -250,7 +250,9 @@ enum MessageContentCodec {
         guard answers.count >= 2 else { return nil }
         let total = integer(state?["total"]) ?? answers.reduce(0) { $0 + $1.votes }
         let title = (map["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return PollContent(id: id, title: title.isEmpty ? "Опрос" : title, answers: answers, total: total)
+        let flags = integer(map["flags"]) ?? 0
+        let multiple = PollContent.allowsSeveral(flags: flags) || (map["multiple"] as? Bool == true)
+        return PollContent(id: id, title: title.isEmpty ? "Опрос" : title, answers: answers, total: total, multiple: multiple)
     }
 
     /// `CONTROL` `pin` / `unpin`. Текст берётся из `pinnedMessage.text`.

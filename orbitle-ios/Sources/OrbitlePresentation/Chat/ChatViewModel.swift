@@ -239,6 +239,9 @@ public final class ChatViewModel {
     @ObservationIgnored private var pinBaselineId: String?
     @ObservationIgnored private var pinHub: PinHub?
     @ObservationIgnored private var pinWatch: Task<Void, Never>?
+    @ObservationIgnored private var scheduledHub: ScheduledHub?
+    @ObservationIgnored private var scheduledWatch: Task<Void, Never>?
+    @ObservationIgnored private var pollRefresh: Task<Void, Never>?
     /// Собеседник личного чата: команды бота и сигнал звонка.
     @ObservationIgnored public var peerId: String?
     @ObservationIgnored public var peerIsBot = false
@@ -309,6 +312,13 @@ public final class ChatViewModel {
     public func attachPins(_ hub: PinHub?) {
         pinHub = hub
     }
+
+    public func attachScheduled(_ hub: ScheduledHub?) {
+        scheduledHub = hub
+    }
+
+    /// Отложенные сообщения этого чата, по времени отправки.
+    public private(set) var scheduledItems: [FoundMessage] = []
 
     /// Шапка: текущий закреп и «2 из 5», когда их несколько.
     public var bannerPin: (id: String, text: String, counter: String?)? {
@@ -507,6 +517,8 @@ public final class ChatViewModel {
         startMessagesWatch()
         startPinWatch()
         Task { [weak self] in await self?.reloadPins() }
+        startScheduledWatch()
+        startPollRefresh()
         let progress = repository.uploadProgress()
         progressWatch = Task { [weak self] in
             for await snapshot in progress {
@@ -591,6 +603,10 @@ public final class ChatViewModel {
         draftWatch = nil
         pinWatch?.cancel()
         pinWatch = nil
+        scheduledWatch?.cancel()
+        scheduledWatch = nil
+        pollRefresh?.cancel()
+        pollRefresh = nil
         flushDraft()
     }
 
@@ -2406,8 +2422,101 @@ public final class ChatViewModel {
             try await repository.schedule(chatId: chatId, text: text, sendAt: date)
             draft = ""
             showNotice("Сообщение запланировано")
+            await loadScheduled()
         } catch {
             show(error)
+        }
+    }
+
+    public func loadScheduled() async {
+        do {
+            let items = try await repository.scheduled(chatId: chatId)
+            scheduledItems = items.sorted { ($0.date ?? .distantFuture) < ($1.date ?? .distantFuture) }
+        } catch {
+            show(error)
+        }
+    }
+
+    public func editScheduled(_ item: FoundMessage, text: String, at date: Date) async {
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { return }
+        do {
+            _ = try await repository.editScheduled(chatId: chatId, messageId: item.messageId, text: body, sendAt: date)
+            showNotice("Отложенное изменено")
+            await loadScheduled()
+        } catch {
+            show(error)
+        }
+    }
+
+    public func cancelScheduled(_ item: FoundMessage) async {
+        do {
+            try await repository.cancelScheduled(chatId: chatId, messageIds: [item.messageId])
+            scheduledItems.removeAll { $0.messageId == item.messageId }
+            showNotice("Отложенное отменено")
+        } catch {
+            show(error)
+        }
+    }
+
+    /// Отправить отложенное сейчас: время отправки становится текущим.
+    public func sendScheduledNow(_ item: FoundMessage) async {
+        await editScheduled(item, text: item.text, at: Date())
+    }
+
+    public func castVotes(_ message: Message, answerIds: [String]) async {
+        let ids = answerIds.filter { !$0.isEmpty }
+        guard let poll = message.content.poll, !ids.isEmpty,
+              let serverId = message.serverId ?? (Int64(message.id) != nil ? message.id : nil) else { return }
+        do {
+            let update = try await repository.castVotes(chatId: chatId, messageId: serverId, pollId: poll.id, answerIds: ids)
+            await repository.applyPollCounts(chatId: chatId, messageId: message.id, update: update)
+            error = nil
+        } catch {
+            show(error)
+        }
+    }
+
+    private func startScheduledWatch() {
+        scheduledWatch?.cancel()
+        guard let scheduledHub else { return }
+        let stream = scheduledHub.events()
+        scheduledWatch = Task { [weak self] in
+            for await push in stream {
+                guard let self, !Task.isCancelled, push.chatId == self.chatId else { continue }
+                await self.loadScheduled()
+            }
+        }
+    }
+
+    /// Опросы на экране. Пуша со счётом нет, поэтому спрашиваем редко.
+    private func startPollRefresh() {
+        pollRefresh?.cancel()
+        pollRefresh = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(20))
+                guard let self, !Task.isCancelled else { return }
+                await self.refreshVisiblePolls()
+            }
+        }
+    }
+
+    private func refreshVisiblePolls() async {
+        let polls: [(messageId: String, pollId: String)] = messages.compactMap { message in
+            guard let poll = message.content.poll else { return nil }
+            let id = message.serverId ?? (Int64(message.id) != nil ? message.id : nil)
+            guard let id else { return nil }
+            return (id, poll.id)
+        }
+        guard !polls.isEmpty else { return }
+        do {
+            let updates = try await repository.refreshPolls(chatId: chatId, polls: polls)
+            for update in updates {
+                guard let message = messages.first(where: { $0.content.poll?.id == update.pollId }) else { continue }
+                await repository.applyPollCounts(chatId: chatId, messageId: message.id, update: update)
+            }
+        } catch {
+            // Тихий повтор на следующем круге.
         }
     }
 

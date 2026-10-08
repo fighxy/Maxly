@@ -71,6 +71,7 @@ public struct MessageBubble: View {
     private let onInfo: (() -> Void)?
     /// Голос в опросе: id ответа.
     private let onVote: ((String) -> Void)?
+    private let onCast: (([String]) -> Void)?
     /// Нажатие inline-кнопки бота. `nil` — кнопки видны, но не нажимаются.
     private let onButton: ((InlineButton) -> Void)?
     /// «Выбрать»: режим выбора нескольких сообщений. `nil` — пункта нет.
@@ -133,6 +134,7 @@ public struct MessageBubble: View {
         onMarkUnread: (() -> Void)? = nil,
         onInfo: (() -> Void)? = nil,
         onVote: ((String) -> Void)? = nil,
+        onCast: (([String]) -> Void)? = nil,
         onButton: ((InlineButton) -> Void)? = nil,
         onSelect: (() -> Void)? = nil
     ) {
@@ -179,6 +181,7 @@ public struct MessageBubble: View {
         self.onMarkUnread = onMarkUnread
         self.onInfo = onInfo
         self.onVote = onVote
+        self.onCast = onCast
         self.onButton = onButton
     }
 
@@ -534,7 +537,7 @@ public struct MessageBubble: View {
                     .padding(.vertical, 8)
             }
             if let poll = message.content.poll {
-                PollChoices(poll: poll, outgoing: isOutgoing, onVote: onVote)
+                PollChoices(poll: poll, outgoing: isOutgoing, onVote: onVote, onCast: onCast)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
             }
@@ -944,6 +947,8 @@ private struct PollChoices: View {
     let poll: PollContent
     let outgoing: Bool
     let onVote: ((String) -> Void)?
+    var onCast: (([String]) -> Void)? = nil
+    @State private var picked: Set<String> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -952,7 +957,11 @@ private struct PollChoices: View {
                 .foregroundStyle(outgoing ? Color.orbitleOutgoingText : Color.primary)
             ForEach(poll.answers, id: \.id) { answer in
                 Button {
-                    onVote?(answer.id)
+                    if poll.multiple {
+                        if picked.contains(answer.id) { picked.remove(answer.id) } else { picked.insert(answer.id) }
+                    } else {
+                        onVote?(answer.id)
+                    }
                 } label: {
                     HStack {
                         Text(answer.text)
@@ -966,10 +975,15 @@ private struct PollChoices: View {
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
-                    .background((outgoing ? Color.orbitleOutgoingText : Color.primary).opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background((outgoing ? Color.orbitleOutgoingText : Color.primary).opacity(picked.contains(answer.id) ? 0.28 : 0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
-                .disabled(onVote == nil)
+                .disabled(poll.multiple ? onCast == nil : onVote == nil)
+            }
+            if poll.multiple, onCast != nil {
+                Button("Голосовать") { onCast?(Array(picked)) }
+                    .font(.subheadline.weight(.semibold))
+                    .disabled(picked.isEmpty)
             }
             Text(poll.total == 1 ? "1 голос" : "\(poll.total) голосов")
                 .font(.caption)

@@ -100,6 +100,65 @@ extension MaxIosCore {
         }
     }
 
+    func castPollVotes(chatId: String, messageId: String, pollId: String, answerIds: [String]) async throws -> CorePollCounts {
+        try await call("castPollVotes") { done in
+            self.client.castPollVotes(chatId: chatId, messageId: messageId, pollId: pollId, answerIds: answerIds) { state, kind, key in
+                if let kind {
+                    done(.failure(Self.failed(kind: kind, key: key)))
+                } else if let state {
+                    done(.success(Self.counts(pollId: pollId, total: Int(state.total), answers: state.answers, multiple: false)))
+                } else {
+                    done(.failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)))
+                }
+            }
+        }
+    }
+
+    func pollUpdates(chatId: String, polls: [CorePollRef]) async throws -> [CorePollCounts] {
+        let refs = polls.map { IosPollRef(messageId: $0.messageId, pollId: $0.pollId) }
+        return try await call("pollUpdates") { done in
+            self.client.pollUpdates(chatId: chatId, polls: refs) { polls, kind, key in
+                if let kind {
+                    done(.failure(Self.failed(kind: kind, key: key)))
+                } else {
+                    done(.success((polls ?? []).map {
+                        Self.counts(pollId: $0.pollId, total: Int($0.total), answers: $0.answers, multiple: $0.multiple)
+                    }))
+                }
+            }
+        }
+    }
+
+    func editScheduled(chatId: String, messageId: String, text: String, sendAtMs: Int64) async throws -> CoreFoundMessage {
+        try await call("editScheduled") { done in
+            self.client.editScheduled(chatId: chatId, messageId: messageId, text: text, sendAt: sendAtMs) { message, kind, key in
+                if let kind {
+                    done(.failure(Self.failed(kind: kind, key: key)))
+                } else if let message {
+                    done(.success(Self.scheduled(message)))
+                } else {
+                    done(.failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)))
+                }
+            }
+        }
+    }
+
+    func cancelScheduled(chatId: String, messageIds: [String]) async throws {
+        let _: Void = try await call("cancelScheduled") { done in
+            self.client.cancelScheduled(chatId: chatId, messageIds: messageIds) { kind, key in
+                if let kind { done(.failure(Self.failed(kind: kind, key: key))) } else { done(.success(())) }
+            }
+        }
+    }
+
+    private static func counts(pollId: String, total: Int, answers: [IosPollAnswer], multiple: Bool) -> CorePollCounts {
+        var votes: [String: Int] = [:]
+        for answer in answers where !answer.answerId.isEmpty {
+            votes[answer.answerId] = Int(answer.votes)
+        }
+        return CorePollCounts(pollId: pollId, total: total, votes: votes, multiple: multiple)
+    }
+
     func searchInChat(chatId: String, query: String) async throws -> [CoreFoundMessage] {
         try await call("searchInChat") { done in
             self.client.searchInChat(chatId: chatId, query: query) { messages, kind, key in

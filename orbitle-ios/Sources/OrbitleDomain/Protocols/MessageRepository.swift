@@ -101,6 +101,11 @@ public protocol MessageRepository: Sendable {
     func scheduled(chatId: String) async throws(OrbitleError) -> [FoundMessage]
     func sendPoll(chatId: String, title: String, answers: [String]) async throws(OrbitleError)
     func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws(OrbitleError)
+    func castVotes(chatId: String, messageId: String, pollId: String, answerIds: [String]) async throws(OrbitleError) -> PollCountUpdate
+    func refreshPolls(chatId: String, polls: [(messageId: String, pollId: String)]) async throws(OrbitleError) -> [PollCountUpdate]
+    func applyPollCounts(chatId: String, messageId: String, update: PollCountUpdate) async
+    func editScheduled(chatId: String, messageId: String, text: String, sendAt: Date) async throws(OrbitleError) -> FoundMessage
+    func cancelScheduled(chatId: String, messageIds: [String]) async throws(OrbitleError)
     func searchInChat(chatId: String, query: String) async throws(OrbitleError) -> [FoundMessage]
 }
 
@@ -150,6 +155,11 @@ extension MessageRepository {
     public func scheduled(chatId: String) async throws(OrbitleError) -> [FoundMessage] { throw .invalidRequest }
     public func sendPoll(chatId: String, title: String, answers: [String]) async throws(OrbitleError) { throw .invalidRequest }
     public func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws(OrbitleError) { throw .invalidRequest }
+    public func castVotes(chatId: String, messageId: String, pollId: String, answerIds: [String]) async throws(OrbitleError) -> PollCountUpdate { throw .invalidRequest }
+    public func refreshPolls(chatId: String, polls: [(messageId: String, pollId: String)]) async throws(OrbitleError) -> [PollCountUpdate] { throw .invalidRequest }
+    public func applyPollCounts(chatId: String, messageId: String, update: PollCountUpdate) async {}
+    public func editScheduled(chatId: String, messageId: String, text: String, sendAt: Date) async throws(OrbitleError) -> FoundMessage { throw .invalidRequest }
+    public func cancelScheduled(chatId: String, messageIds: [String]) async throws(OrbitleError) { throw .invalidRequest }
     public func searchInChat(chatId: String, query: String) async throws(OrbitleError) -> [FoundMessage] { throw .invalidRequest }
 
     public func sharedHistory(chatId: String, limit: Int) async -> [Message] { [] }

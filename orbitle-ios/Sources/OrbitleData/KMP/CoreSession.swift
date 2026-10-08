@@ -86,6 +86,30 @@ public struct CoreFoundMessage: Sendable, Equatable {
     }
 }
 
+/// Опрос, чей счётчик надо обновить. Id — десятичные строки.
+public struct CorePollRef: Sendable, Equatable {
+    public var messageId: String
+    public var pollId: String
+    public init(messageId: String, pollId: String) {
+        self.messageId = messageId
+        self.pollId = pollId
+    }
+}
+
+/// Счётчики опроса. `multiple` у обновления 306; у ответа на голос флага нет.
+public struct CorePollCounts: Sendable, Equatable {
+    public var pollId: String
+    public var total: Int
+    public var votes: [String: Int]
+    public var multiple: Bool
+    public init(pollId: String, total: Int, votes: [String: Int], multiple: Bool = false) {
+        self.pollId = pollId
+        self.total = total
+        self.votes = votes
+        self.multiple = multiple
+    }
+}
+
 public struct CoreChat: Sendable, Equatable {
     public var id: String
     public var title: String
@@ -406,6 +430,9 @@ public struct CoreEvent: Sendable, Equatable {
         /// `messageId` — сообщение, `unread` — сколько закрепов осталось (`-1` неизвестно).
         /// В базу не пишется: плашку обновляет открытый чат.
         case pinned
+        /// Отложенное сообщение (`created`, `edited`, `deleted`, `fired` в `text`).
+        /// В базу не пишется: список перечитывает открытый чат.
+        case scheduled
     }
 
     public var kind: Kind
@@ -671,6 +698,12 @@ public protocol MaxCore: Sendable {
     func scheduledMessages(chatId: String) async throws -> [CoreFoundMessage]
     func sendPoll(chatId: String, title: String, answers: [String]) async throws -> CoreMessage
     func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws
+    /// Несколько ответов одного опроса (`SEND_VOTE` 304).
+    func castPollVotes(chatId: String, messageId: String, pollId: String, answerIds: [String]) async throws -> CorePollCounts
+    /// Счётчики видимых опросов (`GET_POLL_UPDATES` 306). Пуша со счётом нет.
+    func pollUpdates(chatId: String, polls: [CorePollRef]) async throws -> [CorePollCounts]
+    func editScheduled(chatId: String, messageId: String, text: String, sendAtMs: Int64) async throws -> CoreFoundMessage
+    func cancelScheduled(chatId: String, messageIds: [String]) async throws
     func searchInChat(chatId: String, query: String) async throws -> [CoreFoundMessage]
     func chatMembers(chatId: String) async throws -> [CoreChatMember]
     func botCommands(botId: String) async throws -> [CoreBotCommand]
@@ -927,6 +960,10 @@ public extension MaxCore {
     func scheduledMessages(chatId: String) async throws -> [CoreFoundMessage] { throw unsupported }
     func sendPoll(chatId: String, title: String, answers: [String]) async throws -> CoreMessage { throw unsupported }
     func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws { throw unsupported }
+    func castPollVotes(chatId: String, messageId: String, pollId: String, answerIds: [String]) async throws -> CorePollCounts { throw unsupported }
+    func pollUpdates(chatId: String, polls: [CorePollRef]) async throws -> [CorePollCounts] { throw unsupported }
+    func editScheduled(chatId: String, messageId: String, text: String, sendAtMs: Int64) async throws -> CoreFoundMessage { throw unsupported }
+    func cancelScheduled(chatId: String, messageIds: [String]) async throws { throw unsupported }
     func searchInChat(chatId: String, query: String) async throws -> [CoreFoundMessage] { throw unsupported }
     func chatMembers(chatId: String) async throws -> [CoreChatMember] { throw unsupported }
     func botCommands(botId: String) async throws -> [CoreBotCommand] { throw unsupported }

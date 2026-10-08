@@ -21,6 +21,8 @@ public actor SyncEngine {
     private var presenceSink: (any PresenceSink)?
     /// Пуши закрепов сообщений. В базу не пишутся.
     private var pinHub: PinHub?
+    /// Пуши отложенных сообщений. В базу не пишутся.
+    private var scheduledHub: ScheduledHub?
 
     private var pollTask: Task<Void, Never>?
     private var eventTask: Task<Void, Never>?
@@ -70,6 +72,10 @@ public actor SyncEngine {
     /// Куда отдавать пуши закрепов. База их не хранит.
     public func attachPins(_ hub: PinHub?) {
         pinHub = hub
+    }
+
+    public func attachScheduled(_ hub: ScheduledHub?) {
+        scheduledHub = hub
     }
 
     /// Чаты, история которых сейчас опрашивается.
@@ -282,6 +288,9 @@ public actor SyncEngine {
             // Список закрепов живёт в открытом чате. Строку сообщения и превью чата пуш не меняет.
             guard !event.chatId.isEmpty else { return }
             pinHub?.publish(PinPush(chatId: event.chatId, action: event.text, messageId: event.messageId, count: event.unread))
+        case .scheduled:
+            guard !event.chatId.isEmpty else { return }
+            scheduledHub?.publish(ScheduledPush(chatId: event.chatId, messageId: event.messageId, action: event.text))
         case .typing:
             let mine = await messages.currentUser()
             guard !event.authorId.isEmpty, event.authorId != mine else { return }

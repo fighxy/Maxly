@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import OrbitleDomain
 
@@ -53,5 +54,19 @@ struct PinBarTests {
         hub.publish(push)
         let got = await task.value
         #expect(got == push)
+    }
+}
+
+@Suite("Несколько ответов опроса")
+struct PollSeveralTests {
+    @Test("Бит 2 маски — несколько ответов, остальные биты нет")
+    func several() {
+        #expect(PollContent.allowsSeveral(flags: 0) == false)
+        #expect(PollContent.allowsSeveral(flags: 1) == false)
+        #expect(PollContent.allowsSeveral(flags: 2) == true)
+        #expect(PollContent.allowsSeveral(flags: 3) == true)
+        let data = #"{"id":"p","title":"t","answers":[],"total":0}"#.data(using: .utf8)!
+        let poll = try! JSONDecoder().decode(PollContent.self, from: data)
+        #expect(poll.multiple == false)
     }
 }

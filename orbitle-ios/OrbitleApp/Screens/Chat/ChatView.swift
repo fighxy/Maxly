@@ -73,6 +73,8 @@ struct ChatView: View {
     @State private var pollFirst = ""
     @State private var pollSecond = ""
     @State private var scheduleDate = Date().addingTimeInterval(3600)
+    @State private var editingScheduled: FoundMessage?
+    @State private var scheduleEditText = ""
     /// Верх нижних кнопок на экране, для мягкого размытия низа ленты.
     @State private var bottomControlsTop: CGFloat = 0
     /// Обои из «Оформления» и где они лежат на экране (для перехода в них у низа ленты).
@@ -463,19 +465,61 @@ struct ChatView: View {
     private var scheduleSheet: some View {
         NavigationStack {
             Form {
-                DatePicker("Когда", selection: $scheduleDate, in: Date()..., displayedComponents: [.date, .hourAndMinute])
+                if !viewModel.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Section("Новое") {
+                        DatePicker("Когда", selection: $scheduleDate, in: Date()..., displayedComponents: [.date, .hourAndMinute])
+                        Button("Запланировать") {
+                            scheduleShown = false
+                            Task { await viewModel.schedule(text: viewModel.draft, at: scheduleDate) }
+                        }
+                    }
+                }
+                Section("Запланированные") {
+                    if viewModel.scheduledItems.isEmpty {
+                        Text("Пока ничего не ждёт отправки")
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(viewModel.scheduledItems, id: \.messageId) { item in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.text).lineLimit(2)
+                            if let date = item.date {
+                                Text(date.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .swipeActions {
+                            Button("Сейчас") { Task { await viewModel.sendScheduledNow(item) } }
+                                .tint(.orbitleAccent)
+                            Button("Отменить", role: .destructive) { Task { await viewModel.cancelScheduled(item) } }
+                        }
+                        .onTapGesture {
+                            editingScheduled = item
+                            scheduleEditText = item.text
+                            scheduleDate = item.date ?? Date().addingTimeInterval(3600)
+                        }
+                    }
+                }
+                if editingScheduled != nil {
+                    Section("Изменить") {
+                        TextField("Текст", text: $scheduleEditText, axis: .vertical)
+                        DatePicker("Когда", selection: $scheduleDate, in: Date()..., displayedComponents: [.date, .hourAndMinute])
+                        Button("Сохранить") {
+                            guard let item = editingScheduled else { return }
+                            editingScheduled = nil
+                            Task { await viewModel.editScheduled(item, text: scheduleEditText, at: scheduleDate) }
+                        }
+                        .disabled(scheduleEditText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
             }
             .navigationTitle("Отправить позже")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Отмена") { scheduleShown = false } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Запланировать") {
-                        scheduleShown = false
-                        Task { await viewModel.schedule(text: viewModel.draft, at: scheduleDate) }
-                    }
-                    .disabled(viewModel.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
+                ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { scheduleShown = false } }
+            }
+            .task {
+                await viewModel.loadScheduled()
             }
         }
     }

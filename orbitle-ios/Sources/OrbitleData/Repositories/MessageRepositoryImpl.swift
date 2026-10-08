@@ -880,6 +880,65 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         }
     }
 
+    public func castVotes(chatId: String, messageId: String, pollId: String, answerIds: [String]) async throws(OrbitleError) -> PollCountUpdate {
+        switch await api.castPollVotes(chatId: chatId, messageId: messageId, pollId: pollId, answerIds: answerIds) {
+        case .success(let counts):
+            return PollCountUpdate(pollId: counts.pollId, total: counts.total, votes: counts.votes, multiple: counts.multiple)
+        case .failure(let error):
+            throw error.orbitleError
+        }
+    }
+
+    public func refreshPolls(chatId: String, polls: [(messageId: String, pollId: String)]) async throws(OrbitleError) -> [PollCountUpdate] {
+        let refs = polls.map { CorePollRef(messageId: $0.messageId, pollId: $0.pollId) }
+        switch await api.pollUpdates(chatId: chatId, polls: refs) {
+        case .success(let counts):
+            return counts.map { PollCountUpdate(pollId: $0.pollId, total: $0.total, votes: $0.votes, multiple: $0.multiple) }
+        case .failure(let error):
+            throw error.orbitleError
+        }
+    }
+
+    public func applyPollCounts(chatId: String, messageId: String, update: PollCountUpdate) async {
+        do {
+            guard let row = try message(id: messageId) ?? message(serverId: messageId) else { return }
+            var content = MessageContentCodec.decode(row.contentJSON)
+            var changed = false
+            content.attachments = content.attachments.map { attachment in
+                guard case .poll(var poll) = attachment else { return attachment }
+                guard update.pollId.isEmpty || poll.id == update.pollId else { return attachment }
+                poll.total = update.total
+                poll.multiple = poll.multiple || update.multiple
+                poll.answers = poll.answers.map { answer in
+                    var next = answer
+                    if let votes = update.votes[answer.id] { next.votes = votes }
+                    return next
+                }
+                changed = true
+                return .poll(poll)
+            }
+            guard changed else { return }
+            row.contentJSON = MessageContentCodec.encode(content)
+            try modelContext.save()
+            notify(chatId: chatId)
+        } catch {
+            Log.warning(.messages, "Счётчик опроса не записан: \(error)")
+        }
+    }
+
+    public func editScheduled(chatId: String, messageId: String, text: String, sendAt: Date) async throws(OrbitleError) -> FoundMessage {
+        switch await api.editScheduled(chatId: chatId, messageId: messageId, text: text, sendAtMs: sendAt.unixMillis) {
+        case .success(let item): return item
+        case .failure(let error): throw error.orbitleError
+        }
+    }
+
+    public func cancelScheduled(chatId: String, messageIds: [String]) async throws(OrbitleError) {
+        if case .failure(let error) = await api.cancelScheduled(chatId: chatId, messageIds: messageIds) {
+            throw error.orbitleError
+        }
+    }
+
     public func searchInChat(chatId: String, query: String) async throws(OrbitleError) -> [FoundMessage] {
         switch await api.searchInChat(chatId: chatId, query: query) {
         case .success(let hits): return hits.filter { !$0.messageId.isEmpty }

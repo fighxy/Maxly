@@ -159,6 +159,10 @@ public protocol MaxAPI: Sendable {
     func scheduledMessages(chatId: String) async -> Result<[FoundMessage], MaxAPIError>
     func sendPoll(chatId: String, title: String, answers: [String]) async -> Result<Void, MaxAPIError>
     func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async -> Result<Void, MaxAPIError>
+    func castPollVotes(chatId: String, messageId: String, pollId: String, answerIds: [String]) async -> Result<CorePollCounts, MaxAPIError>
+    func pollUpdates(chatId: String, polls: [CorePollRef]) async -> Result<[CorePollCounts], MaxAPIError>
+    func editScheduled(chatId: String, messageId: String, text: String, sendAtMs: Int64) async -> Result<FoundMessage, MaxAPIError>
+    func cancelScheduled(chatId: String, messageIds: [String]) async -> Result<Void, MaxAPIError>
     func searchInChat(chatId: String, query: String) async -> Result<[FoundMessage], MaxAPIError>
     func chatMembers(chatId: String) async -> Result<[CoreChatMember], MaxAPIError>
     func botCommands(botId: String) async -> Result<[CoreBotCommand], MaxAPIError>
@@ -296,6 +300,10 @@ public extension MaxAPI {
     func scheduledMessages(chatId: String) async -> Result<[FoundMessage], MaxAPIError> { .failure(.invalidResponse) }
     func sendPoll(chatId: String, title: String, answers: [String]) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
     func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
+    func castPollVotes(chatId: String, messageId: String, pollId: String, answerIds: [String]) async -> Result<CorePollCounts, MaxAPIError> { .failure(.invalidResponse) }
+    func pollUpdates(chatId: String, polls: [CorePollRef]) async -> Result<[CorePollCounts], MaxAPIError> { .failure(.invalidResponse) }
+    func editScheduled(chatId: String, messageId: String, text: String, sendAtMs: Int64) async -> Result<FoundMessage, MaxAPIError> { .failure(.invalidResponse) }
+    func cancelScheduled(chatId: String, messageIds: [String]) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
     func searchInChat(chatId: String, query: String) async -> Result<[FoundMessage], MaxAPIError> { .failure(.invalidResponse) }
     func chatMembers(chatId: String) async -> Result<[CoreChatMember], MaxAPIError> { .failure(.invalidResponse) }
     func botCommands(botId: String) async -> Result<[CoreBotCommand], MaxAPIError> { .failure(.invalidResponse) }
@@ -479,6 +487,32 @@ public final class MaxAPIClient: MaxAPI, Sendable {
 
     public func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async -> Result<Void, MaxAPIError> {
         await catching { try await core.votePoll(chatId: chatId, messageId: messageId, pollId: pollId, answerId: answerId) }
+    }
+
+    public func castPollVotes(chatId: String, messageId: String, pollId: String, answerIds: [String]) async -> Result<CorePollCounts, MaxAPIError> {
+        await catching { try await core.castPollVotes(chatId: chatId, messageId: messageId, pollId: pollId, answerIds: answerIds) }
+    }
+
+    public func pollUpdates(chatId: String, polls: [CorePollRef]) async -> Result<[CorePollCounts], MaxAPIError> {
+        await catching { try await core.pollUpdates(chatId: chatId, polls: polls) }
+    }
+
+    public func editScheduled(chatId: String, messageId: String, text: String, sendAtMs: Int64) async -> Result<FoundMessage, MaxAPIError> {
+        await catching { Self.found(try await core.editScheduled(chatId: chatId, messageId: messageId, text: text, sendAtMs: sendAtMs), chatId: chatId) }
+    }
+
+    public func cancelScheduled(chatId: String, messageIds: [String]) async -> Result<Void, MaxAPIError> {
+        await catching { try await core.cancelScheduled(chatId: chatId, messageIds: messageIds) }
+    }
+
+    private static func found(_ found: CoreFoundMessage, chatId: String) -> FoundMessage {
+        FoundMessage(
+            chatId: found.chatId.isEmpty ? chatId : found.chatId,
+            messageId: found.messageId,
+            senderId: found.senderId,
+            text: found.text.trimmingCharacters(in: .whitespacesAndNewlines),
+            date: found.timeMs > 0 ? Date(timeIntervalSince1970: TimeInterval(found.timeMs) / 1000) : nil
+        )
     }
 
     public func searchInChat(chatId: String, query: String) async -> Result<[FoundMessage], MaxAPIError> {

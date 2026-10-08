@@ -43,6 +43,7 @@ final class AppContainer {
     @ObservationIgnored private var sync: SyncEngine?
     /// Пуши закрепов сообщений: в базу не пишутся, их слушает открытый чат.
     @ObservationIgnored private let pinHub = PinHub()
+    @ObservationIgnored private let scheduledHub = ScheduledHub()
     private let recentSearches = RecentSearchesStore()
     @ObservationIgnored private var authModel: AuthViewModel?
     @ObservationIgnored private var listModel: ChatListViewModel?
@@ -210,6 +211,7 @@ final class AppContainer {
             Task.detached(priority: .utility) { await storage.trim() }
             let sync = SyncEngine(outbox: outbox, chats: chats, messages: messages)
             await sync.attachPins(pinHub)
+            await sync.attachScheduled(scheduledHub)
             await sync.connectOutgoing()
             let session = SessionManager(
                 core: core,
@@ -516,6 +518,7 @@ final class AppContainer {
         )
         model.typingReporter = typingReporter
         model.attachPins(pinHub)
+        model.attachScheduled(scheduledHub)
         chatModels[id] = model
         return model
     }

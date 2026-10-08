@@ -173,6 +173,7 @@ struct TranscriptBubble: View, Equatable {
             onMarkUnread: viewModel.canMarkUnread(message) ? { viewModel.requestMarkUnread(message) } : nil,
             onInfo: state.showsInfo ? { [chatType = state.chatType] in viewModel.showMessageInfo(message, chatType: chatType) } : nil,
             onVote: { answerId in Task { await viewModel.vote(message, answerId: answerId) } },
+            onCast: { ids in Task { await viewModel.castVotes(message, answerIds: ids) } },
             onButton: { button in press(button) },
             onSelect: state.selectable ? { [reduceMotion] in
                 withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { viewModel.selection.begin(with: message) }
