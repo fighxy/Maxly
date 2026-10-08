@@ -86,10 +86,11 @@ class CoreMessageRepository(
             val raw = state.chats[id] ?: return@combine null
             val chat = ChatMapping.chat(raw, state, config, now, mutes = ChatMutes.of(client))
             val peer = ChatMapping.dialogPeer(raw, state.me)
-            val seen = PresenceTime.ms(peer?.let { state.presence[it]?.seen })
+            val peerPresence = peer?.let { state.presence[it] }
+            val seen = PresenceTime.ms(peerPresence?.seen)
             val typing = typists.typists(state, id, now) { state.displayName(it)?.takeIf(String::isNotBlank) }
             val bot = peer?.let { state.users[it] }?.takeIf { "BOT" in it.options && com.max.core.api.hasWebApp(it.options) }
-            ChatHeaderInfo(chat, participants(raw.raw), seen, typing, botAppId = bot?.id?.toString(), readMarkMs = ReadMarks.own(raw, state))
+            ChatHeaderInfo(chat, participants(raw.raw), seen, presence = PresenceTime.status(peerPresence), typing = typing, botAppId = bot?.id?.toString(), readMarkMs = ReadMarks.own(raw, state))
         }.distinctUntilChanged()
     }
 

@@ -208,7 +208,7 @@ class ChatViewModel(
     val memberList: app.orbitle.presentation.profile.MemberList? = chats?.let { app.orbitle.presentation.profile.MemberList(viewModelScope, it, chatId) }
 
     /** Подпись присутствия участника в «О чате» («в сети», «был(а)…»); `null` — ничего не известно. */
-    fun memberPresence(person: app.orbitle.data.ChatPerson): String? = formatter.presence(person.isOnline, person.lastSeenMs, now())
+    fun memberPresence(person: app.orbitle.data.ChatPerson): String? = formatter.presence(person.isOnline, person.lastSeenMs, now(), person.presence)
     val tools: StateFlow<ChatToolsState> = _tools.asStateFlow()
 
     private val _scheduled = MutableStateFlow<List<FoundMessage>>(emptyList())

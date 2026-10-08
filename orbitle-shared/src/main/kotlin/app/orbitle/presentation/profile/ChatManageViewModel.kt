@@ -190,7 +190,7 @@ class ChatManageViewModel(
 
     private fun presenceOf(members: List<ChatPerson>): Map<String, String> {
         val at = now()
-        return members.mapNotNull { m -> presenceText.status(m.isOnline, m.lastSeenMs, at)?.let { m.id to it } }.toMap()
+        return members.mapNotNull { m -> presenceText.status(m.isOnline, m.lastSeenMs, at, m.presence)?.let { m.id to it } }.toMap()
     }
 
     private fun fail(error: Throwable, fallback: String) {

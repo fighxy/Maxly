@@ -28,6 +28,8 @@ data class ChatPerson(
     /** Присутствие, если оно уже известно (стор или сама страница участников); `0` — неизвестно. */
     val isOnline: Boolean = false,
     val lastSeenMs: Long = 0,
+    /** Код присутствия ядра (`PresenceStatus`), `-1` — неизвестно. */
+    val presence: Int = -1,
 ) {
     enum class Role { OWNER, ADMIN, MEMBER }
 }

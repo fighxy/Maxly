@@ -105,8 +105,26 @@ class ChatContentFormatTest {
         assertEquals("был(а) в 00:05", text.status(false, ms(2026, 10, 2, 0, 5), now))
         assertEquals("был(а) вчера в 23:59", text.status(false, ms(2026, 10, 1, 23, 59), now))
         assertEquals("был(а) вчера в 22:00", text.status(false, ms(2026, 10, 1, 22), now))
-        assertEquals("был(а) 5 марта", text.status(false, ms(2026, 3, 5), now))
+        assertEquals("был(а) 5 мар", text.status(false, ms(2026, 3, 5), now))
+        assertEquals("был(а) 9 мая", text.status(false, ms(2026, 5, 9), now))
         assertEquals("был(а) 05.03.2024", text.status(false, ms(2024, 3, 5), now))
+    }
+
+    @Test
+    fun presenceCodesHideTheTime() {
+        val text = PresenceText(zone)
+        val now = ms(2026, 10, 2, 18)
+        val seen = now - 5 * 60_000
+        assertEquals("в сети", text.status(false, seen, now, presence = 1))
+        assertEquals("был(а) недавно", text.status(false, seen, now, presence = 2))
+        assertEquals("был(а) давно", text.status(false, 0, now, presence = 3))
+        // Незнакомый код — «недавно», как у ядра.
+        assertEquals("был(а) недавно", text.status(false, 0, now, presence = 7))
+        assertEquals("был(а) 5 минут назад", text.status(false, seen, now, presence = 0))
+        assertNull(text.status(false, 0, now, presence = 0))
+        assertNull(text.nextChange(false, seen, now, presence = 2))
+        assertNull(text.nextChange(false, seen, now, presence = 3))
+        assertEquals(now + 60_000, text.nextChange(false, seen, now, presence = 0))
     }
 
     @Test

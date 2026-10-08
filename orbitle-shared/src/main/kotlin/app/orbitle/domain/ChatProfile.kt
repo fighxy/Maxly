@@ -13,6 +13,8 @@ data class ChatProfile(
     val phone: String? = null,
     val isOnline: Boolean = false,
     val lastSeenMs: Long = 0,
+    /** Код присутствия ядра (`PresenceStatus`), `-1` — неизвестно. */
+    val presence: Int = -1,
     val isOfficial: Boolean = false,
     val isPublic: Boolean = false,
     val participants: Int? = null,

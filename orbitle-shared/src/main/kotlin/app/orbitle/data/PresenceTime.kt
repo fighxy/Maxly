@@ -1,6 +1,7 @@
 package app.orbitle.data
 
 import com.max.core.api.PresenceInfo
+import com.max.core.api.PresenceStatus
 
 /** Присутствие человека так, как его видит приложение: время в мс и «в сети». */
 object PresenceTime {
@@ -13,6 +14,9 @@ object PresenceTime {
         seen < SECONDS_LIMIT -> seen * 1000
         else -> seen
     }
+
+    /** Код присутствия по правилу ядра ([PresenceStatus.of]): `-1` неизвестно, `0`..`3` как прислано. */
+    fun status(info: PresenceInfo?): Int = PresenceStatus.of(info)
 
     /** В сети ли по записи присутствия (`status` 1). */
     fun isOnline(info: PresenceInfo?): Boolean = info?.status == 1

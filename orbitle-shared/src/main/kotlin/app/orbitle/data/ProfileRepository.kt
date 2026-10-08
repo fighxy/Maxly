@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.map
 import com.max.core.api.Chat as CoreChat
 
 /** Присутствие собеседника: в сети ли и когда был (мс, `0` — неизвестно). */
-data class PeerPresence(val isOnline: Boolean, val lastSeenMs: Long)
+data class PeerPresence(val isOnline: Boolean, val lastSeenMs: Long, val presence: Int = -1)
 
 /** Профиль чата и его общие медиа. */
 interface ProfileRepository {
@@ -71,7 +71,7 @@ class CoreProfileRepository(private val client: MaxClient) : ProfileRepository {
         return client.store.state
             .map { it.presence[id] }
             .distinctUntilChanged()
-            .map { info -> info?.let { PeerPresence(PresenceTime.isOnline(it), PresenceTime.ms(it.seen)) } }
+            .map { info -> info?.let { PeerPresence(PresenceTime.isOnline(it), PresenceTime.ms(it.seen), PresenceTime.status(it)) } }
     }
 
     private fun userProfile(
@@ -93,6 +93,7 @@ class CoreProfileRepository(private val client: MaxClient) : ProfileRepository {
             phone = displayFrom.phone?.takeIf { it > 0 }?.toString(),
             isOnline = PresenceTime.isOnline(presence),
             lastSeenMs = PresenceTime.ms(presence?.seen),
+            presence = PresenceTime.status(presence),
             isOfficial = "OFFICIAL" in displayFrom.options,
             commands = commands.orEmpty(),
         )

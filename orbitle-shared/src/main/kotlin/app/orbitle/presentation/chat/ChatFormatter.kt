@@ -52,7 +52,7 @@ class ChatFormatter(val zone: ZoneId = ZoneId.systemDefault()) {
                 "${PresenceText.grouped(count)} ${PresenceText.plural(count, "участник", "участника", "участников")}" to false
             }
             // О присутствии ничего не известно: вторая строка пустая.
-            else -> (presence.status(chat.isOnline, info.lastSeenMs, nowMs) ?: "") to chat.isOnline
+            else -> (presence.status(chat.isOnline, info.lastSeenMs, nowMs, info.presence) ?: "") to chat.isOnline
         }
     }
 
@@ -60,9 +60,9 @@ class ChatFormatter(val zone: ZoneId = ZoneId.systemDefault()) {
     fun subtitleChange(info: ChatHeaderInfo, nowMs: Long): Long? {
         val chat = info.chat
         if (chat.type != ChatType.PRIVATE || chat.isSavedMessages || chat.isBot) return null
-        return presence.nextChange(chat.isOnline, info.lastSeenMs, nowMs)
+        return presence.nextChange(chat.isOnline, info.lastSeenMs, nowMs, info.presence)
     }
 
     /** Подпись присутствия участника; `null` — ничего не известно. */
-    fun presence(online: Boolean, lastSeenMs: Long, nowMs: Long): String? = presence.status(online, lastSeenMs, nowMs)
+    fun presence(online: Boolean, lastSeenMs: Long, nowMs: Long, code: Int = -1): String? = presence.status(online, lastSeenMs, nowMs, code)
 }

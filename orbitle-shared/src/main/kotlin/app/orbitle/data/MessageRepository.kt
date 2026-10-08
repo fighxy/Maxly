@@ -15,6 +15,8 @@ data class ChatHeaderInfo(
     val participants: Int? = null,
     /** Когда собеседник был в сети (мс), 0 — неизвестно. */
     val lastSeenMs: Long = 0,
+    /** Код присутствия собеседника (`PresenceStatus` ядра), `-1` — неизвестно. */
+    val presence: Int = -1,
     /** Кто сейчас печатает, записывает или отправляет, по времени начала. */
     val typing: List<app.orbitle.domain.Typist> = emptyList(),
     /** Бот с мини-приложением: его id для кнопки «Открыть приложение», иначе `null`. */

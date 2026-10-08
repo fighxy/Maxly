@@ -154,6 +154,7 @@ class CoreChatAdminRepository(private val client: MaxClient) : ChatAdminReposito
             mentionName = user.mentionName,
             isOnline = PresenceTime.isOnline(presence),
             lastSeenMs = PresenceTime.ms(presence?.seen),
+            presence = PresenceTime.status(presence),
         )
     }
 

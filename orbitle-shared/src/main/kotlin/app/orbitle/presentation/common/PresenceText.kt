@@ -1,5 +1,6 @@
 package app.orbitle.presentation.common
 
+import com.max.core.api.PresenceStatus
 import java.time.Instant
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
@@ -8,12 +9,18 @@ import java.time.temporal.ChronoUnit
 class PresenceText(private val zone: ZoneId = ZoneId.systemDefault()) {
 
     /**
-     * «в сети» или «был(а)…». `null`, когда о присутствии ничего не известно ([lastSeenMs] `0`):
-     * тогда строки нет вовсе, а не «был(а) недавно». Время из будущего (часы телефона отстают)
-     * считается текущим.
+     * «в сети» или «был(а)…» по коду [presence] ([PresenceStatus]) и времени [lastSeenMs]:
+     * `1` — «в сети», `2` — «был(а) недавно», `3` — «был(а) давно» (время скрыто, не смотрится),
+     * `0` и `-1` — по времени; другой код — «недавно», как у ядра. `null`, когда времени нет и код
+     * ничего не говорит: строки нет вовсе. [online] главнее кода (запись «в сети» из той же
+     * записи присутствия). Время из будущего (часы телефона отстают) считается текущим.
      */
-    fun status(online: Boolean, lastSeenMs: Long, nowMs: Long): String? {
-        if (online) return "в сети"
+    fun status(online: Boolean, lastSeenMs: Long, nowMs: Long, presence: Int = PresenceStatus.UNKNOWN): String? {
+        when (code(online, presence)) {
+            PresenceStatus.ONLINE -> return "в сети"
+            PresenceStatus.RECENTLY -> return "был(а) недавно"
+            PresenceStatus.LONG_AGO -> return "был(а) давно"
+        }
         if (lastSeenMs <= 0) return null
         val seen = minOf(lastSeenMs, nowMs)
         val seconds = (nowMs - seen) / 1000
@@ -29,18 +36,20 @@ class PresenceText(private val zone: ZoneId = ZoneId.systemDefault()) {
         return when {
             days == 0L -> "был(а) в $time"
             days == 1L -> "был(а) вчера в $time"
-            date.year == now.year -> "был(а) ${date.dayOfMonth} ${MONTHS_GENITIVE[date.monthValue - 1]}"
+            date.year == now.year -> "был(а) ${date.dayOfMonth} ${MONTHS_SHORT[date.monthValue - 1]}"
             else -> "был(а) %02d.%02d.%04d".format(date.dayOfMonth, date.monthValue, date.year)
         }
     }
 
     /**
      * Когда подпись [status] сменится сама: следующая минута в первый час, потом полночь
-     * («в 14:00» → «вчера в 14:00» → дата). `null` — не сменится (в сети, ничего не известно,
-     * или уже дата).
+     * («в 14:00» → «вчера в 14:00» → дата). `null` — не сменится (в сети, «недавно», «давно»,
+     * ничего не известно, или уже дата).
      */
-    fun nextChange(online: Boolean, lastSeenMs: Long, nowMs: Long): Long? {
-        if (online || lastSeenMs <= 0) return null
+    fun nextChange(online: Boolean, lastSeenMs: Long, nowMs: Long, presence: Int = PresenceStatus.UNKNOWN): Long? {
+        val code = code(online, presence)
+        if (code != PresenceStatus.OFFLINE && code != PresenceStatus.UNKNOWN) return null
+        if (lastSeenMs <= 0) return null
         val seen = minOf(lastSeenMs, nowMs)
         val elapsed = nowMs - seen
         if (elapsed < HOUR_MS) return seen + (elapsed / MINUTE_MS + 1) * MINUTE_MS
@@ -51,9 +60,19 @@ class PresenceText(private val zone: ZoneId = ZoneId.systemDefault()) {
         return now.toLocalDate().plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
     }
 
+    /** Код для подписи: «в сети» по [online], иначе [presence], неизвестный код — «недавно». */
+    private fun code(online: Boolean, presence: Int): Int = when {
+        online -> PresenceStatus.ONLINE
+        presence in PresenceStatus.UNKNOWN..PresenceStatus.LONG_AGO -> presence
+        else -> PresenceStatus.RECENTLY
+    }
+
     companion object {
         private const val MINUTE_MS = 60_000L
         private const val HOUR_MS = 3_600_000L
+
+        /** Месяц в подписи «был(а) 27 сен»: май в родительном, остальные сокращены. */
+        val MONTHS_SHORT = listOf("янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек")
 
         val MONTHS_GENITIVE = listOf(
             "января", "февраля", "марта", "апреля", "мая", "июня",

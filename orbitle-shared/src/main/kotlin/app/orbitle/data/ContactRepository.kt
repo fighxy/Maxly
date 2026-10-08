@@ -147,6 +147,7 @@ class CoreContactRepository(private val client: MaxClient) : ContactRepository {
                 avatarUrl = user.baseUrl?.takeIf { it.isNotBlank() },
                 isOnline = PresenceTime.isOnline(presence),
                 lastSeenMs = PresenceTime.ms(presence?.seen),
+                presence = PresenceTime.status(presence),
                 isBot = "BOT" in user.options,
                 isOfficial = "OFFICIAL" in user.options,
                 isServiceAccount = "SERVICE_ACCOUNT" in user.options,

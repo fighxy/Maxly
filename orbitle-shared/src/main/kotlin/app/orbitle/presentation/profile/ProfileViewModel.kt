@@ -122,7 +122,7 @@ class ProfileViewModel(
         }
         // «был(а) 5 минут назад» стареет: подпись пересчитывается, когда должна смениться.
         viewModelScope.launch {
-            _state.map { Triple(it.profile.kind, it.profile.isOnline, it.profile.lastSeenMs) }
+            _state.map { listOf(it.profile.kind, it.profile.isOnline, it.profile.lastSeenMs, it.profile.presence) }
                 .distinctUntilChanged()
                 .collectLatest { tickPresence() }
         }
@@ -283,7 +283,7 @@ class ProfileViewModel(
         presence ?: return
         _state.update { s ->
             if (s.profile.kind != ChatProfile.Kind.USER) return@update s
-            val profile = s.profile.copy(isOnline = presence.isOnline, lastSeenMs = presence.lastSeenMs)
+            val profile = s.profile.copy(isOnline = presence.isOnline, lastSeenMs = presence.lastSeenMs, presence = presence.presence)
             val (subtitle, accent) = subtitle(profile)
             s.copy(profile = profile, subtitle = subtitle, subtitleAccent = accent)
         }
@@ -298,7 +298,7 @@ class ProfileViewModel(
             last = at
             val profile = _state.value.profile
             if (profile.kind != ChatProfile.Kind.USER) return
-            val next = presence.nextChange(profile.isOnline, profile.lastSeenMs, at) ?: return
+            val next = presence.nextChange(profile.isOnline, profile.lastSeenMs, at, profile.presence) ?: return
             delay(next - at + 1)
             _state.update { s ->
                 val (subtitle, accent) = subtitle(s.profile)
@@ -368,7 +368,7 @@ class ProfileViewModel(
 
     private fun subtitle(profile: ChatProfile): Pair<String, Boolean> = when (profile.kind) {
         // О присутствии ничего не известно: строки нет.
-        ChatProfile.Kind.USER -> (presence.status(profile.isOnline, profile.lastSeenMs, now()) ?: "") to profile.isOnline
+        ChatProfile.Kind.USER -> (presence.status(profile.isOnline, profile.lastSeenMs, now(), profile.presence) ?: "") to profile.isOnline
         ChatProfile.Kind.BOT -> "бот" to false
         ChatProfile.Kind.SAVED -> "ваши сообщения и заметки" to false
         ChatProfile.Kind.CHANNEL -> (profile.participants?.let { "${grouped(it)} ${PresenceText.plural(it, "подписчик", "подписчика", "подписчиков")}" }

@@ -13,6 +13,8 @@ data class Contact(
     val isOnline: Boolean = false,
     /** Когда был в сети (мс), 0 — неизвестно. */
     val lastSeenMs: Long = 0,
+    /** Код присутствия ядра (`PresenceStatus`): `-1` неизвестно, `2` недавно, `3` давно. */
+    val presence: Int = -1,
     /** Опция `BOT`. */
     val isBot: Boolean = false,
     /** Опция `OFFICIAL`. */

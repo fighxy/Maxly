@@ -58,6 +58,7 @@ class CoreChatMembers(private val client: MaxClient, private val pageSize: Int =
                 mentionName = entry.user?.mentionName,
                 isOnline = PresenceTime.isOnline(presence),
                 lastSeenMs = PresenceTime.ms(presence?.seen),
+                presence = PresenceTime.status(presence),
             )
         }
 

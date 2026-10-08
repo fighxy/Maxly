@@ -162,7 +162,7 @@ class ContactsViewModel(
     private fun row(contact: Contact, nowMs: Long): ContactRow {
         val name = contact.displayName
         // О присутствии ничего не известно: строки нет.
-        val seen = presence.status(contact.isOnline, contact.lastSeenMs, nowMs)?.replaceFirstChar { it.uppercase() }.orEmpty()
+        val seen = presence.status(contact.isOnline, contact.lastSeenMs, nowMs, contact.presence)?.replaceFirstChar { it.uppercase() }.orEmpty()
         val status = when {
             contact.isOnline -> seen
             contact.isServiceAccount -> "Служебный аккаунт"
