@@ -74,9 +74,10 @@ class CoreStoriesRepository(private val client: MaxClient) : StoriesRepository {
         )
     }
 
+    /** Через ядро: при скрытых отметках о прочтении оно просмотр не отправляет. */
     override suspend fun markSeen(owner: StoryOwner, storyId: String) {
         val id = storyId.toLongOrNull() ?: return
-        MaxCoreGateway.call { client.api.stories.mark(coreOwner(owner), id) }
+        MaxCoreGateway.call { client.markStorySeen(coreOwner(owner), id) }
     }
 
     override suspend fun publish(story: OutgoingStory, audience: StoryAudience, progress: (Float) -> Unit): StoryRing? {

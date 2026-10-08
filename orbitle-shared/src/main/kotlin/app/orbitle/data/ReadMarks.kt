@@ -1,8 +1,5 @@
 package app.orbitle.data
 
-import com.max.core.api.ReadState
-import com.max.core.events.MaxEvent
-import com.max.core.protocol.Opcode
 import com.max.core.state.MaxState
 import com.max.shared.MaxClient
 import com.max.core.api.Chat as CoreChat
@@ -41,42 +38,13 @@ internal object ReadMarks {
             ?: state.chats[chatId]?.lastMessage?.takeIf { it.id == messageId }?.time
 
     /**
-     * Сколько непрочитанных оставить в карточке чата после ответа сервера на отметку. Стор
-     * пересчитывает счётчик сам, но с неполной историей держит прежний счётчик сервера. Ответ
-     * сервера ([serverUnread]) точнее, если с запроса в чат не пришло ничего нового (последнее
-     * сообщение то же, [lastBefore]) и он меньше того, что в сторе. `null` — оставить как есть.
-     */
-    fun unreadAfterRead(chat: CoreChat?, lastBefore: Long?, serverUnread: Int): Int? {
-        if (chat == null || serverUnread < 0) return null
-        if (chat.lastMessage?.id != lastBefore) return null
-        return serverUnread.takeIf { it < chat.newMessages }
-    }
-
-    /**
-     * Ответ на отметку [mark] не старее своей отметки в сторе. Ответы на две отметки подряд
-     * могут прийти в обратном порядке: запоздавший ответ на старую не должен откатывать новую
-     * и возвращать счётчик непрочитанных.
-     */
-    fun isFresh(state: MaxState, chatId: Long, mark: Long): Boolean {
-        val me = state.me ?: return false
-        return mark >= (state.readMarks[chatId]?.get(me) ?: 0L)
-    }
-
-    /**
-     * Прочитать чат [chatId] до сообщения [messageId]: отметка уходит временем сообщения, стор
-     * получает ответ сервера сразу, не дожидаясь пуша.
+     * Прочитать чат [chatId] до сообщения [messageId] через ядро ([MaxClient.markRead]): отметка
+     * уходит временем сообщения, стор получает ответ сервера сразу, не дожидаясь пуша. Когда
+     * отметки о прочтении скрыты, ядро ничего не отправляет и читает чат только на устройстве.
+     * Своих запросов отметки клиент не шлёт.
      */
     suspend fun send(client: MaxClient, chatId: Long, messageId: Long) {
-        val before = client.store.state.value
-        val lastBefore = before.chats[chatId]?.lastMessage?.id
-        val time = messageTime(before, chatId, messageId)
-        val reply: ReadState = MaxCoreGateway.call { client.api.messages.markRead(chatId, messageId, time) }
-        val me = client.store.state.value.me ?: return
-        if (!isFresh(client.store.state.value, chatId, reply.mark)) return
-        client.store.apply(MaxEvent.MessageRead(chatId, me, reply.mark, false, Opcode.CHAT_MARK.value, null))
-        val after = client.store.state.value.chats[chatId] ?: return
-        unreadAfterRead(after, lastBefore, reply.unread)?.let { unread ->
-            client.store.putChats(listOf(after.copy(newMessages = unread)))
-        }
+        val time = messageTime(client.store.state.value, chatId, messageId)
+        MaxCoreGateway.call { client.markRead(chatId, messageId, time) }
     }
 }

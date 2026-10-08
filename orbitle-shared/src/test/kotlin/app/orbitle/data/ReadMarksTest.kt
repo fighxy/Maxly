@@ -3,9 +3,7 @@ package app.orbitle.data
 import com.max.core.api.MaxMessage
 import com.max.core.state.MaxState
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import com.max.core.api.Chat as CoreChat
 
@@ -59,26 +57,5 @@ class ReadMarksTest {
         // Последнее сообщение чата есть в карточке, даже если истории не загружено.
         assertEquals(1_000L, ReadMarks.messageTime(st, 10L, 500L))
         assertNull(ReadMarks.messageTime(st, 10L, 999L))
-    }
-
-    @Test
-    fun serverUnreadReplacesAStaleCounterOnlyWhenNothingNewArrived() {
-        val card = chat(unread = 5)
-        assertEquals(0, ReadMarks.unreadAfterRead(card, lastBefore = 500L, serverUnread = 0))
-        assertEquals(2, ReadMarks.unreadAfterRead(card, lastBefore = 500L, serverUnread = 2))
-        // С запроса пришло новое сообщение: ответ сервера его ещё не считает.
-        assertNull(ReadMarks.unreadAfterRead(card, lastBefore = 499L, serverUnread = 0))
-        // Ответ сервера не поднимает счётчик.
-        assertNull(ReadMarks.unreadAfterRead(card, lastBefore = 500L, serverUnread = 7))
-        assertNull(ReadMarks.unreadAfterRead(null, lastBefore = 500L, serverUnread = 0))
-    }
-
-    @Test
-    fun lateReplyToAnOlderMarkIsIgnored() {
-        val card = chat()
-        val st = state(card, marks = mapOf(me to 2_000L))
-        assertFalse(ReadMarks.isFresh(st, 10L, 1_500L))
-        assertTrue(ReadMarks.isFresh(st, 10L, 2_000L))
-        assertTrue(ReadMarks.isFresh(state(card), 10L, 1L))
     }
 }
