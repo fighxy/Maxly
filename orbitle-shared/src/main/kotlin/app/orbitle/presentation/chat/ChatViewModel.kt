@@ -242,6 +242,8 @@ class ChatViewModel(
     /** Непрочитанные при открытии, ещё не нашедшие места в ленте; `-1` — шапки ещё не было. */
     private var pendingUnread = -1
     private var markedReadId: String? = null
+    /** Счётчик непрочитанных из прошлой шапки: отметка повторяется, только когда он вырос. */
+    private var headerUnread = 0
     private var active = true
     /** Чат только что помечен непрочитанным и закрывается: прочтение не отправляется. */
     private var markingUnread = false
@@ -1192,7 +1194,12 @@ class ChatViewModel(
                 muted = if (stored != null && chats != null && chat.canWrite == false) pendingMute ?: chat.isMuted else null,
             )
         }
-        if (chat.unreadCount > 0) {
+        // Непрочитанных стало больше (пришли с синхронизацией, мимо ленты): прочитать заново то,
+        // что на экране. Пока счётчик не растёт, шапка отметку не повторяет: она обновляется
+        // каждую секунду, а часть чата может законно оставаться непрочитанной.
+        val grew = chat.unreadCount > headerUnread
+        headerUnread = chat.unreadCount
+        if (grew) {
             markedReadId = null
             markRead()
         }

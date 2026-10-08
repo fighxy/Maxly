@@ -58,6 +58,24 @@ class ChatMappingTest {
     }
 
     @Test
+    fun ownMessageReadByMarkBetweenMessageAndLastEvent() {
+        // Время последнего события (2 000) двигают и реакции: сравнивается время сообщения (1 000).
+        val own = mapOf("id" to 500L, "sender" to me, "text" to "Ок", "time" to 1_000L, "type" to "USER")
+        val read = dialog(last = own, participants = mapOf(me to 0L, 2L to 1_500L))
+        assertEquals(DeliveryState.READ, ChatMapping.chat(read, state(read), null, 0).lastMessage?.delivery)
+    }
+
+    @Test
+    fun ownMessageReadByPushWhileTheCardIsOld() {
+        val own = mapOf("id" to 500L, "sender" to me, "text" to "Ок", "time" to 1_000L, "type" to "USER")
+        val chat = dialog(last = own, participants = mapOf(me to 0L, 2L to 100L))
+        val pushed = state(chat).copy(readMarks = mapOf(10L to mapOf(2L to 1_000L)))
+        assertEquals(DeliveryState.READ, ChatMapping.chat(chat, pushed, null, 0).lastMessage?.delivery)
+        val mine = state(chat).copy(readMarks = mapOf(10L to mapOf(me to 5_000L)))
+        assertEquals(DeliveryState.SENT, ChatMapping.chat(chat, mine, null, 0).lastMessage?.delivery)
+    }
+
+    @Test
     fun attachmentKinds() {
         fun kind(attach: Map<String, Any?>) = ChatMapping.attachmentKind(listOf(attach))
         assertEquals(MessageMediaKind.PHOTO, kind(mapOf("_type" to "PHOTO")))

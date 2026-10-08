@@ -47,11 +47,13 @@ object ChatMapping {
         val attaches = last?.attaches?.takeIf { it.isNotEmpty() } ?: (forwarded?.get("attaches") as? List<*>).orEmpty()
         val media = attachmentKind(attaches)
         val outgoing = last?.sender != null && me != null && last.sender == me
-        val peerRead = peerReadMark(chat, me)
+        // Отметка собеседника — и из карточки чата, и из пушей прочтения: пуш карточку не меняет.
+        val peerRead = ReadMarks.peer(chat, state)
         val lastMessage = if (last != null && (outgoing || last.sender != null || media != null)) {
             var delivery = if (outgoing) DeliveryState.SENT else null
-            // Собеседник прочитал всё до своей отметки: отправленное раньше неё прочитано.
-            if (delivery == DeliveryState.SENT && peerRead > 0 && peerRead >= updated) delivery = DeliveryState.READ
+            // Собеседник прочитал всё до своей отметки: отправленное не позже неё прочитано. Сравнивается
+            // время самого сообщения: время последнего события чата двигают и правки, и реакции.
+            if (delivery == DeliveryState.SENT && peerRead > 0 && peerRead >= last.time) delivery = DeliveryState.READ
             ChatLastMessage(
                 authorId = last.sender?.toString(),
                 authorName = last.sender?.let { state.users[it]?.displayName },

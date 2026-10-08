@@ -161,9 +161,7 @@ class CoreChatRepository(
         val id = chatId.toLongOrNull() ?: return
         val state = client.store.state.value
         val last = state.chats[id]?.lastMessage?.id ?: state.messagesOf(id).maxByOrNull { it.time }?.id ?: return
-        val read = MaxCoreGateway.call { client.api.messages.markRead(id, last) }
-        val me = state.me ?: return
-        client.store.apply(com.max.core.events.MaxEvent.MessageRead(id, me, read.mark, false, 0, null))
+        ReadMarks.send(client, id, last)
     }
 
     override suspend fun members(chatId: String): List<ChatMemberRow> {

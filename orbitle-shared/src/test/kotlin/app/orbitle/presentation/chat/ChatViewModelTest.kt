@@ -508,6 +508,34 @@ class ChatViewModelTest {
     }
 
     @Test
+    fun headerUpdatesRepeatTheMarkOnlyWhenUnreadGrows() {
+        val model = vm()
+        repo.headerInfo.value = ChatHeaderInfo(chat(unread = 2))
+        repo.list.value = listOf(msg("1", at = now - 1_000), msg("2"))
+        // Прочитана только верхняя часть: второе сообщение законно остаётся непрочитанным.
+        model.onVisible("1", atBottom = false)
+        assertEquals(listOf("1"), repo.reads)
+        // Шапка обновляется (присутствие, «печатает»), счётчик не растёт: отметка не повторяется.
+        repo.headerInfo.value = ChatHeaderInfo(chat(unread = 1), lastSeenMs = now)
+        repo.headerInfo.value = ChatHeaderInfo(chat(unread = 1), lastSeenMs = now + 1_000)
+        assertEquals(listOf("1"), repo.reads)
+        // Непрочитанных стало больше мимо ленты (синхронизация): видимое читается заново.
+        repo.headerInfo.value = ChatHeaderInfo(chat(unread = 2), lastSeenMs = now + 2_000)
+        assertEquals(listOf("1", "1"), repo.reads)
+    }
+
+    @Test
+    fun newIncomingMessageInAnOpenChatIsRead() {
+        val model = vm()
+        repo.headerInfo.value = ChatHeaderInfo(chat())
+        repo.list.value = listOf(msg("1", at = now - 1_000))
+        model.onVisible("1", atBottom = true)
+        repo.list.value = repo.list.value + msg("2")
+        repo.headerInfo.value = ChatHeaderInfo(chat(unread = 1))
+        assertEquals("2", repo.reads.last())
+    }
+
+    @Test
     fun markUnreadSendsTheMessageTimeAndLeaves() {
         val model = vm()
         repo.headerInfo.value = ChatHeaderInfo(chat())

@@ -54,10 +54,7 @@ class CoreMessageRepository(
         val id = chatId.toLongOrNull() ?: 0L
         return combine(client.store.state, pending) { state, queued ->
             val chat = state.chats[id]
-            val peerRead = maxOf(
-                chat?.let { ChatMapping.peerReadMark(it, state.me) } ?: 0L,
-                state.readMarks[id].orEmpty().filterKeys { it != state.me }.values.maxOrNull() ?: 0L,
-            )
+            val peerRead = chat?.let { ReadMarks.peer(it, state) } ?: 0L
             val stored = state.messagesOf(id).filterNot(MessageMapping::isComment).map { MessageMapping.message(it, id, state, peerRead) }
             stored + queued[chatId].orEmpty()
         }.distinctUntilChanged()
@@ -80,8 +77,7 @@ class CoreMessageRepository(
             val typing = state.typingUsers(id, now).filter { it != state.me }
                 .map { state.users[it]?.displayName?.takeIf(String::isNotBlank) ?: "Кто-то" }
             val bot = peer?.let { state.users[it] }?.takeIf { "BOT" in it.options && com.max.core.api.hasWebApp(it.options) }
-            val mark = state.me?.let { me -> (raw.raw["participants"] as? Map<*, *>)?.entries?.firstOrNull { ChatMapping.longOf(it.key) == me }?.value }
-            ChatHeaderInfo(chat, participants(raw.raw), seen, typing, botAppId = bot?.id?.toString(), readMarkMs = ChatMapping.longOf(mark) ?: 0L)
+            ChatHeaderInfo(chat, participants(raw.raw), seen, typing, botAppId = bot?.id?.toString(), readMarkMs = ReadMarks.own(raw, state))
         }.distinctUntilChanged()
     }
 
@@ -482,12 +478,11 @@ class CoreMessageRepository(
         client.store.apply(MaxEvent.MessagesDeleted(chatId.toLong(), ids, null, null, false, 0, null))
     }
 
+    /** Отметка уходит временем самого сообщения ([ReadMarks.send]), а не часами устройства. */
     override suspend fun markRead(chatId: String, messageId: String) {
         val id = chatId.toLong()
         val message = messageId.toLongOrNull() ?: return
-        val state = MaxCoreGateway.call { client.api.messages.markRead(id, message) }
-        val me = client.store.state.value.me ?: return
-        client.store.apply(MaxEvent.MessageRead(id, me, state.mark, false, 0, null))
+        ReadMarks.send(client, id, message)
     }
 
     /** Стор ядро обновляет само: отметка прочтения и счётчик сервера. */
