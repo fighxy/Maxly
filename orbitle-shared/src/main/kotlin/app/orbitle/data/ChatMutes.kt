@@ -6,13 +6,13 @@ import com.max.core.events.MaxEvent
 import com.max.core.state.MaxState
 import com.max.shared.MaxClient
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.transformLatest
 import java.util.WeakHashMap
@@ -66,13 +66,11 @@ class ChatMutes {
         fun of(client: MaxClient): ChatMutes = synchronized(byClient) { byClient.getOrPut(client) { ChatMutes() } }
 
         /**
-         * Пуши `NOTIF_CONFIG` 134 клиента. Обработчики роутера идут после того, как ядро влило
-         * пуш в `accountConfig`, так что по сигналу читается уже новый конфиг.
+         * Пуши `NOTIF_CONFIG` 134 клиента из `appliedEvents`: событие приходит, когда ядро уже
+         * влило пуш в `accountConfig`, так что по сигналу читается новый конфиг.
          */
-        fun configPushes(client: MaxClient): Flow<Unit> = callbackFlow {
-            val subscription = client.router.on<MaxEvent.ConfigUpdated> { trySend(Unit) }
-            awaitClose { subscription.cancel() }
-        }
+        fun configPushes(client: MaxClient): Flow<Unit> =
+            client.appliedEvents.filterIsInstance<MaxEvent.ConfigUpdated>().map { }
 
         /**
          * Список чатов из стора и конфига. Пересобирается от нового конфига, от пуша настроек
