@@ -275,7 +275,7 @@ fun MainScreen(
             composable("profile-edit") { ProfileEditScreen(accountModel, onBack = { nav.popBackStack() }, onLogout = onLogout) }
             composable("privacy") { PrivacyScreen(accountModel, onBack = { nav.popBackStack() }, onBlocked = { nav.navigate("blocked") }, privateMode = container.privateMode, ghost = ghostModel) }
             composable("security") {
-                SecurityScreen(securityModel, onBack = { nav.popBackStack() }, onChangeEmail = { nav.navigate("recovery-email") })
+                SecurityScreen(securityModel, onBack = { nav.popBackStack() }, onChangeEmail = { nav.navigate("recovery-email") }, account = accountModel)
             }
             composable(
                 "mini-app/{kind}",

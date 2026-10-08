@@ -16,7 +16,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.AlternateEmail
-import androidx.compose.material.icons.outlined.FamilyRestroom
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -45,14 +44,18 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.orbitle.domain.TwoFactorStatus
+import app.orbitle.presentation.settings.AccountSettingsViewModel
 import app.orbitle.presentation.settings.RecoveryEmailViewModel
 import app.orbitle.presentation.settings.SecurityViewModel
 import kotlinx.coroutines.delay
 
-/** «Безопасность»: облачный пароль и почта восстановления. Семейная защита здесь не включается. */
+/**
+ * «Безопасность»: облачный пароль и почта восстановления, статус семейной защиты из настроек
+ * аккаунта [account] (только чтение: здесь она не включается).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SecurityScreen(model: SecurityViewModel, onBack: () -> Unit, onChangeEmail: () -> Unit) {
+fun SecurityScreen(model: SecurityViewModel, onBack: () -> Unit, onChangeEmail: () -> Unit, account: AccountSettingsViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { model.load() }
     Scaffold(
@@ -133,13 +136,7 @@ fun SecurityScreen(model: SecurityViewModel, onBack: () -> Unit, onChangeEmail: 
                 TextButton(onClick = { model.load() }, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Повторить") }
             }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
-            SettingsItem(Icons.Outlined.FamilyRestroom, "Семейная защита", subtitle = "Скоро", enabled = false) {}
-            Text(
-                "Мини-приложение семейной защиты ещё не открыто для сторонних клиентов MAX.",
-                Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            FamilyProtectionRow(account)
         }
     }
 }
