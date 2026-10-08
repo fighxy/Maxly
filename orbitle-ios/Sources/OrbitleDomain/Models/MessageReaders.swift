@@ -180,3 +180,13 @@ public enum MessageReaders {
         return lhs < rhs
     }
 }
+
+/// Правила экрана сведений о сообщении, кроме «Кем прочитано».
+public enum MessageInfo {
+    /// Время правки для строки «изменено»: `updateTime` сообщения (мс). `nil` или `0` (так его
+    /// отдаёт мост, если правки не было) — не изменялось.
+    public static func editedTime(updateTime: Int64?) -> Int64? {
+        guard let updateTime, updateTime > 0 else { return nil }
+        return updateTime
+    }
+}

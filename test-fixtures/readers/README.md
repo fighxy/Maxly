@@ -100,6 +100,24 @@ Kotlin-проигрыватель пишется отдельно и долже�
 ```
 
 `expect.status` — `read`, `delivered` или `null` (строки нет), `text` — сама строка или `null`.
+Строка только для своих сообщений: у входящих её нет никогда.
+
+## Файл `kind: "edited"`
+
+Строка «изменено» на экране сведений. Источник — `updateTime` сообщения (мс): `null`, `0` или
+нет поля — сообщение не изменялось (мост iOS отдаёт `0`, ядро — `null`). Значение — число или
+строка с числом.
+
+```json
+{
+  "kind": "edited",
+  "name": "info-edited",
+  "cases": [
+    {"name": "never-null", "updateTime": null, "expect": {"edited": false, "time": null}},
+    {"name": "edited", "updateTime": 8000, "expect": {"edited": true, "time": 8000}}
+  ]
+}
+```
 
 ## Сценарии
 
@@ -122,4 +140,5 @@ Kotlin-проигрыватель пишется отдельно и долже�
 | `nobody` | пустой список |
 | `readers-order-ties` | равные отметки — по id как числу |
 | `ids-string-and-number` | числа и строки, мусорные записи |
-| `info-private-status` | «Прочитано» / «Доставлено» в личном чате |
+| `info-private-status` | «Прочитано» / «Доставлено» в личном чате, только своё |
+| `info-edited` | «изменено»: `updateTime` `null`/`0` — не изменялось |

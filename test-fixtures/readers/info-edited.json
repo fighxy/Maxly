@@ -1,0 +1,12 @@
+{
+  "kind": "edited",
+  "name": "info-edited",
+  "description": "Строка «изменено» на экране сведений: updateTime сообщения (мс); null или 0 — не изменялось.",
+  "cases": [
+    {"name": "never-null", "updateTime": null, "expect": {"edited": false, "time": null}},
+    {"name": "never-zero", "updateTime": 0, "expect": {"edited": false, "time": null}},
+    {"name": "missing", "expect": {"edited": false, "time": null}},
+    {"name": "edited", "updateTime": 8000, "expect": {"edited": true, "time": 8000}},
+    {"name": "edited-string", "updateTime": "8000", "expect": {"edited": true, "time": 8000}}
+  ]
+}

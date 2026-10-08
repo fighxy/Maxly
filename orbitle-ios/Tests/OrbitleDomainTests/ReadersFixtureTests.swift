@@ -16,7 +16,7 @@ struct ReadersFixtureTests {
         "group-size-100", "group-size-101", "group-size-server-lower", "group-size-server-higher",
         "pushed-mark-newer", "pushed-mark-older", "live-push",
         "reactor-not-participant", "reactions-error", "nobody", "readers-order-ties", "ids-string-and-number",
-        "info-private-status",
+        "info-private-status", "info-edited",
     ]
 
     @Test("Сценарий проигрывается", arguments: played)
@@ -26,6 +26,7 @@ struct ReadersFixtureTests {
         switch fixture["kind"] as? String {
         case "readers": try ReadersFixturePlayer.readers(fixture, file: name)
         case "info": try ReadersFixturePlayer.info(fixture, file: name)
+        case "edited": try ReadersFixturePlayer.edited(fixture, file: name)
         default: Issue.record("\(name): неизвестный kind \(String(describing: fixture["kind"]))")
         }
     }
@@ -187,6 +188,22 @@ enum ReadersFixturePlayer {
             )
             #expect(status?.rawValue == expect["status"] as? String, "\(label): статус \(String(describing: status))")
             #expect(status?.title == expect["text"] as? String, "\(label): текст")
+        }
+    }
+}
+
+extension ReadersFixturePlayer {
+    // MARK: edited
+
+    static func edited(_ fixture: [String: Any], file: String) throws {
+        let cases = try objects(fixture["cases"], file)
+        #expect(!cases.isEmpty, "\(file): нет случаев")
+        for item in cases {
+            let label = "\(file)/\(item["name"] as? String ?? "?")"
+            let expect = try object(item["expect"], label)
+            let time = MessageInfo.editedTime(updateTime: MessageReaders.number(item["updateTime"]))
+            #expect((time != nil) == (expect["edited"] as? Bool), "\(label): edited")
+            #expect(time == MessageReaders.number(expect["time"]), "\(label): time \(String(describing: time))")
         }
     }
 }
