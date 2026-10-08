@@ -5,8 +5,8 @@ import OrbitleDomain
 public enum MaxAPIError: Error, Sendable, Equatable {
     /// Нет сети или соединение с сервером потеряно.
     case offline
-    /// Сервер вернул ошибку с кодом.
-    case server(code: String)
+    /// Сервер вернул ошибку с кодом. `text` — фраза сервера для экрана, если она есть.
+    case server(code: String, text: String?)
     /// Сохранённый токен больше не действует.
     case sessionExpired
     /// Ввод отклонён, например неверный пароль.
@@ -30,7 +30,7 @@ public enum MaxAPIError: Error, Sendable, Equatable {
     public var orbitleError: OrbitleError {
         switch self {
         case .offline: .networkUnavailable
-        case .server(let code): .server(code: code)
+        case .server(let code, let text): .server(code: code, text: text)
         case .sessionExpired: .authExpired
         case .rejected(let message): .rejected(message)
         case .invalidResponse: .invalidRequest

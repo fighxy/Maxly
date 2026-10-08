@@ -7,8 +7,8 @@ public enum OrbitleError: Error, Sendable, Equatable {
     case networkUnavailable
     /// Сессия истекла, нужно войти заново.
     case authExpired
-    /// Сервер вернул ошибку.
-    case server(code: String)
+    /// Сервер вернул ошибку. `text` — фраза сервера, если она есть; иначе экран берёт свою.
+    case server(code: String, text: String?)
     /// Запрос отклонён как неверный.
     case invalidRequest
     /// Пользовательский ввод отклонён, например неверный пароль. Текст можно показать как есть.
@@ -28,8 +28,10 @@ extension OrbitleError: LocalizedError {
         switch self {
         case .networkUnavailable: "Нет соединения с сервером"
         case .authExpired: "Сессия истекла, войдите снова"
-        case .server(let code) where code == Self.rateLimitCode: "Сервер просит подождать: слишком много запросов"
-        case .server(let code): "Ошибка сервера (\(code)). Попробуйте позже"
+        case .server(_, let text?) where !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+            text.trimmingCharacters(in: .whitespacesAndNewlines)
+        case .server(let code, _) where code == Self.rateLimitCode: "Сервер просит подождать: слишком много запросов"
+        case .server(let code, _): "Ошибка сервера (\(code)). Попробуйте позже"
         case .invalidRequest: "Сервер отклонил запрос"
         case .rejected(let message): message
         case .storageError: "Не удалось сохранить данные на устройстве"
@@ -51,7 +53,8 @@ extension OrbitleError {
 
     /// Сервер ответил «слишком много запросов»: повтор пройдёт сам после паузы.
     public var isRateLimit: Bool {
-        self == .server(code: Self.rateLimitCode)
+        if case .server(let code, _) = self { return code == Self.rateLimitCode }
+        return false
     }
 
     /// Повтор того же действия позже может пройти без участия пользователя.

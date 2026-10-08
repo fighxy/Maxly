@@ -187,12 +187,12 @@ enum CoreMapping {
             // а вне входа это просто отклонённый запрос, а не «неверный пароль».
             return .invalidResponse
         case "SERVER", "UPLOAD":
-            return .server(code: failure.key ?? failure.kind)
+            return .server(code: failure.key ?? failure.kind, text: failure.serverText)
         case "NOT_FOUND":
             return .invalidResponse
         case "MALFORMED_REPLY":
             // Сервер ответил без нужных полей: это его сбой, а не ошибка пользователя.
-            return .server(code: failure.kind)
+            return .server(code: failure.kind, text: nil)
         case "CANCELLED":
             return .cancelled
         default:

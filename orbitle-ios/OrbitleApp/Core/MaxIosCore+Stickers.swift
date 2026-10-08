@@ -9,7 +9,7 @@ extension MaxIosCore {
         try await call("sendSticker") { done in
             self.client.sendSticker(chatId: chatId, stickerId: stickerId, replyTo: replyTo) { message, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else if let message {
                     done(.success(Self.message(message)))
                 } else {
@@ -26,7 +26,7 @@ extension MaxIosCore {
         return try await call("sendText") { done in
             self.client.sendText(chatId: chatId, text: text, replyTo: replyTo, animoji: marks) { message, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else if let message {
                     done(.success(Self.message(message)))
                 } else {
@@ -40,7 +40,7 @@ extension MaxIosCore {
         try await call("loadStickerCatalog") { done in
             self.client.loadStickerCatalog { catalog, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else if let catalog {
                     done(.success(StickerCatalog(
                         sets: catalog.sets.map {
@@ -66,7 +66,7 @@ extension MaxIosCore {
         try await call("loadStickers") { done in
             self.client.loadStickers(ids: ids) { list, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(list.map {
                         Sticker(
@@ -88,7 +88,7 @@ extension MaxIosCore {
         try await call("loadAnimojis") { done in
             self.client.loadAnimojis { list, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(list.map {
                         AnimatedEmoji(id: $0.id, emoji: $0.emoji, iconURL: Self.webURL($0.iconUrl), lottieURL: Self.webURL($0.lottieUrl))

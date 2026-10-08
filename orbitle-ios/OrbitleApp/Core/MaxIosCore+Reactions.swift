@@ -9,7 +9,7 @@ extension MaxIosCore {
         try await call("setReaction") { done in
             self.client.setReaction(chatId: chatId, messageId: messageId, postId: postId, reaction: emoji) { json, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(json ?? ""))
                 }
@@ -21,7 +21,7 @@ extension MaxIosCore {
         try await call("loadReactions") { done in
             self.client.loadReactions(chatId: chatId, messageIds: messageIds) { list, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     var reactions: [String: String] = [:]
                     for item in list { reactions[item.messageId] = item.json }
@@ -35,7 +35,7 @@ extension MaxIosCore {
         try await call("loadReactionCatalog") { done in
             self.client.loadReactionCatalog { emoji, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(emoji))
                 }
@@ -47,7 +47,7 @@ extension MaxIosCore {
         try await call("transcribeVoice") { done in
             self.client.transcribeVoice(chatId: chatId, messageId: messageId, audioId: audioId) { result, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(CoreTranscription(status: Int(result.status), text: result.text)))
                 }
@@ -59,7 +59,7 @@ extension MaxIosCore {
         try await call("loadReactionUsers") { done in
             self.client.loadReactionUsers(chatId: chatId, messageId: messageId) { users, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(users.map {
                         ReactionUser(
@@ -79,7 +79,7 @@ extension MaxIosCore {
         try await call("loadMessageReaders") { done in
             self.client.loadMessageReaders(chatId: chatId, messageId: messageId) { readers, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(readers.map {
                         MessageReader(

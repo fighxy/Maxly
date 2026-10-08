@@ -39,7 +39,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("start") { done in
             self.client.start { phase, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(CorePhase(raw: phase ?? "failed")))
                 }
@@ -51,7 +51,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("requestCode") { done in
             self.client.requestCode(phone: phone, resend: resend) { code, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else if let code {
                     let length = code.codeLength > 0 ? Int(code.codeLength) : nil
                     done(.success(CoreCode(token: code.token, codeLength: length)))
@@ -90,7 +90,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         let _: Void = try await call("logout") { done in
             self.client.logout { kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(()))
                 }
@@ -102,7 +102,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("loadChats") { done in
             self.client.loadChats { chats, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(chats.map(Self.chat)))
                 }
@@ -114,7 +114,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("loadChats") { done in
             self.client.loadChatList { list, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else if let list {
                     done(.success((list.chats.map(Self.chat), list.complete)))
                 } else {
@@ -128,7 +128,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("loadChat") { done in
             self.client.loadChat(chatId: id) { chat, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else if let chat {
                     done(.success(Self.chat(chat)))
                 } else {
@@ -142,7 +142,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("loadHistory") { done in
             self.client.loadHistory(chatId: chatId, beforeMs: beforeMs, limit: Int32(limit)) { messages, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(messages.map(Self.message)))
                 }
@@ -154,7 +154,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("loadOlderHistory") { done in
             self.client.loadHistory(chatId: chatId, beforeMs: beforeMs, limit: Int32(limit)) { messages, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(messages.map(Self.message)))
                 }
@@ -166,7 +166,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("loadOpenedHistory") { done in
             self.client.loadHistory(chatId: chatId, beforeMs: 0, limit: Int32(limit)) { messages, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(messages.map(Self.message)))
                 }
@@ -178,7 +178,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("searchPublic") { done in
             self.client.searchPublic(query: query, from: Int32(from), count: Int32(count)) { chats, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(chats.map { chat in
                         CoreSearchChat(
@@ -195,7 +195,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("searchMessages") { done in
             self.client.searchMessages(query: query, count: Int32(count)) { messages, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(messages.map { message in
                         CoreFoundMessage(
@@ -215,7 +215,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
                 forward: Int32(forward), backward: Int32(backward)
             ) { messages, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(messages.map(Self.message)))
                 }
@@ -230,7 +230,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
                 forward: Int32(forward), backward: Int32(backward)
             ) { messages, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(messages.map(Self.message)))
                 }
@@ -242,7 +242,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("sendText") { done in
             self.client.sendText(chatId: chatId, text: text) { message, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else if let message {
                     done(.success(Self.message(message)))
                 } else {
@@ -264,7 +264,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("loadComments") { done in
             self.client.loadComments(chatId: chatId, postId: postId, beforeMs: beforeMs, limit: Int32(limit)) { list, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(list.map(Self.message)))
                 }
@@ -292,7 +292,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         let _: Void = try await call("deleteMessages") { done in
             self.client.deleteMessages(chatId: chatId, messageIds: messageIds, forEveryone: forEveryone) { kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(()))
                 }
@@ -312,7 +312,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("loadCommentCounts") { done in
             self.client.loadCommentCounts(chatId: chatId, postIds: postIds) { list, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     var counts: [String: Int] = [:]
                     for item in list { counts[item.postId] = Int(item.count) }
@@ -323,7 +323,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     }
 
     private static func single(_ message: IosMessage?, kind: String?, key: String?) -> Result<CoreMessage, Error> {
-        if let kind { return .failure(CoreFailure(kind: kind, key: key)) }
+        if let kind { return .failure(Self.failed(kind: kind, key: key)) }
         guard let message else { return .failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)) }
         return .success(Self.message(message))
     }
@@ -332,7 +332,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         let _: Void = try await call("setChatMuted") { done in
             self.client.setChatMuted(chatId: chatId, muted: muted) { kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(()))
                 }
@@ -344,7 +344,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         let _: Void = try await call("setChatMuteUntil") { done in
             self.client.setChatMuteUntil(chatId: chatId, untilMs: untilMs) { kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(()))
                 }
@@ -378,7 +378,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         let _: Void = try await call("markRead") { done in
             self.client.markRead(chatId: chatId, messageId: messageId) { kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(()))
                 }
@@ -390,7 +390,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("markRead") { done in
             self.client.markReadAt(chatId: chatId, messageId: messageId, mark: mark) { reply, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(CoreReadMark(unread: Int(reply.unread), mark: reply.mark)))
                 }
@@ -402,7 +402,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("markUnread") { done in
             self.client.markUnread(chatId: chatId, mark: mark) { unread, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(Int(unread.int32Value)))
                 }
@@ -414,7 +414,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("loadContacts") { done in
             self.client.loadContacts { contacts, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(contacts.map(Self.contact)))
                 }
@@ -426,7 +426,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("findByPhone") { done in
             self.client.findByPhone(phone: phone) { contact, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else if let contact {
                     done(.success(Self.contact(contact)))
                 } else {
@@ -440,7 +440,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("addContact") { done in
             self.client.addContact(userId: userId, firstName: firstName) { contact, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else if let contact {
                     done(.success(Self.contact(contact)))
                 } else {
@@ -454,7 +454,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("createGroup") { done in
             self.client.createGroup(title: title, userIds: memberIds) { chat, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(chat.map(Self.chat)))
                 }
@@ -466,7 +466,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("createChannel") { done in
             self.client.createChannel(title: title) { chat, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(chat.map(Self.chat)))
                 }
@@ -478,7 +478,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         let _: Void = try await call("deleteChat") { done in
             self.client.deleteChat(chatId: chatId, lastEventTimeMs: lastEventTimeMs, forAll: forEveryone) { kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(()))
                 }
@@ -490,7 +490,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         let _: Void = try await call("leaveChat") { done in
             self.client.leaveChat(chatId: chatId) { kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(()))
                 }
@@ -502,7 +502,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         let _: Void = try await call("clearHistory") { done in
             self.client.clearHistory(chatId: chatId, lastEventTimeMs: lastEventTimeMs, forAll: forEveryone) { kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(()))
                 }
@@ -514,7 +514,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("joinByLink") { done in
             self.client.joinByLink(link: link) { chat, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else if let chat {
                     done(.success(Self.chat(chat)))
                 } else {
@@ -528,7 +528,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("loadCallHistory") { done in
             self.client.loadCallHistory { calls, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(calls.map(Self.callRecord)))
                 }
@@ -540,7 +540,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("loadProfile") { done in
             self.client.loadProfile(chatId: chatId) { profile, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else if let profile {
                     done(.success(Self.profile(profile)))
                 } else {
@@ -554,7 +554,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("mediaLink") { done in
             self.client.mediaLink(chatId: chatId, messageId: messageId, kind: kind, attachmentId: attachmentId) { url, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else if let url, !url.isEmpty {
                     done(.success(url))
                 } else {
@@ -568,7 +568,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         try await call("setPinnedChats") { done in
             self.client.setPinnedChats(chatIds: chatIds) { ids, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(ids))
                 }
@@ -641,6 +641,11 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         "loadComments", "loadOpenedHistory", "loadOwnerStories", "loadHistoryAround", "loadOlderHistory",
     ])
 
+    /// Текст сервера читается сразу в колбэке, пока `IosErrors.current()` ещё жив.
+    static func failed(kind: String, key: String?) -> CoreFailure {
+        CoreFailure(kind: kind, key: key, serverText: IosErrors.shared.current()?.displayText)
+    }
+
     /// Вызов ядра с колбэком. Неудача пишется в журнал видом ошибки и ключом сервера.
     /// Во время паузы сервера чтения из `pacedCalls` сразу получают тот же отказ.
     func call<T: Sendable>(_ name: String, _ start: @escaping (@escaping (Result<T, Error>) -> Void) -> Void) async throws -> T {
@@ -676,7 +681,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     }
 
     private static func step(_ step: IosAuthStep?, kind: String?, key: String?) -> Result<CoreAuthStep, Error> {
-        if let kind { return .failure(CoreFailure(kind: kind, key: key)) }
+        if let kind { return .failure(Self.failed(kind: kind, key: key)) }
         guard let step else { return .failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)) }
         switch step.kind {
         case "password":

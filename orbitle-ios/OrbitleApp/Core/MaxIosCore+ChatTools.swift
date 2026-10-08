@@ -14,7 +14,7 @@ extension MaxIosCore {
         return try await call("sendRichText") { done in
             self.client.sendRichText(chatId: chatId, text: text, replyTo: replyTo, animoji: emoji, mentions: marks) { message, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else if let message {
                     done(.success(Self.message(message)))
                 } else {
@@ -27,7 +27,7 @@ extension MaxIosCore {
     func pinMessage(chatId: String, messageId: String) async throws {
         let _: Void = try await call("pinMessage") { done in
             self.client.pinMessage(chatId: chatId, messageId: messageId) { kind, key in
-                if let kind { done(.failure(CoreFailure(kind: kind, key: key))) } else { done(.success(())) }
+                if let kind { done(.failure(Self.failed(kind: kind, key: key))) } else { done(.success(())) }
             }
         }
     }
@@ -35,7 +35,7 @@ extension MaxIosCore {
     func scheduleMessage(chatId: String, text: String, sendAtMs: Int64) async throws {
         let _: Void = try await call("scheduleMessage") { done in
             self.client.scheduleMessage(chatId: chatId, text: text, sendAt: sendAtMs) { _, kind, key in
-                if let kind { done(.failure(CoreFailure(kind: kind, key: key))) } else { done(.success(())) }
+                if let kind { done(.failure(Self.failed(kind: kind, key: key))) } else { done(.success(())) }
             }
         }
     }
@@ -44,7 +44,7 @@ extension MaxIosCore {
         try await call("scheduledMessages") { done in
             self.client.scheduledMessages(chatId: chatId) { messages, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success((messages ?? []).map(Self.scheduled)))
                 }
@@ -56,7 +56,7 @@ extension MaxIosCore {
         try await call("sendPoll") { done in
             self.client.sendPoll(chatId: chatId, title: title, answers: answers) { message, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else if let message {
                     done(.success(Self.message(message)))
                 } else {
@@ -69,7 +69,7 @@ extension MaxIosCore {
     func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws {
         let _: Void = try await call("votePoll") { done in
             self.client.votePoll(chatId: chatId, messageId: messageId, pollId: pollId, answerId: answerId) { _, kind, key in
-                if let kind { done(.failure(CoreFailure(kind: kind, key: key))) } else { done(.success(())) }
+                if let kind { done(.failure(Self.failed(kind: kind, key: key))) } else { done(.success(())) }
             }
         }
     }
@@ -78,7 +78,7 @@ extension MaxIosCore {
         try await call("searchInChat") { done in
             self.client.searchInChat(chatId: chatId, query: query) { messages, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(messages.map(Self.found)))
                 }
@@ -90,7 +90,7 @@ extension MaxIosCore {
         try await call("chatMembers") { done in
             self.client.chatMembers(chatId: chatId) { members, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(members.map {
                         CoreChatMember(id: $0.id, name: $0.name, avatarURL: $0.avatarUrl.isEmpty ? nil : URL(string: $0.avatarUrl))
@@ -104,7 +104,7 @@ extension MaxIosCore {
         try await call("botCommands") { done in
             self.client.botCommands(botId: botId) { commands, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(commands.map { CoreBotCommand(name: $0.name, summary: $0.description_) }))
                 }
@@ -116,7 +116,7 @@ extension MaxIosCore {
         try await call("pressButton") { done in
             self.client.pressButton(chatId: chatId, messageId: messageId, callbackId: callbackId, payload: payload) { answer, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(CoreButtonAnswer(text: answer?.text ?? "", url: answer?.url ?? "")))
                 }

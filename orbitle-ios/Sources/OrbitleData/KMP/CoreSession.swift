@@ -20,10 +20,14 @@ public enum CorePhase: String, Sendable, Equatable {
 public struct CoreFailure: Error, Sendable, Equatable {
     public var kind: String
     public var key: String?
+    /// Текст сервера для экрана. Пусто — у экрана остаётся своя фраза.
+    public var serverText: String?
 
-    public init(kind: String, key: String?) {
+    public init(kind: String, key: String?, serverText: String? = nil) {
         self.kind = kind
         self.key = key.flatMap { $0.isEmpty ? nil : $0 }
+        let trimmed = serverText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.serverText = trimmed.isEmpty ? nil : trimmed
     }
 }
 

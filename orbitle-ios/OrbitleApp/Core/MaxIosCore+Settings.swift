@@ -37,7 +37,7 @@ extension MaxIosCore {
         try await call("deleteAccount") { done in
             self.client.deleteAccount { ms, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(ms.int64Value))
                 }
@@ -100,7 +100,7 @@ extension MaxIosCore {
         try await call("checkOwnPresence") { done in
             self.client.checkOwnPresence { presence, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(presence.map {
                         CorePresence(userId: $0.userId, status: Int($0.status), seenMs: $0.seenMs)
@@ -142,7 +142,7 @@ extension MaxIosCore {
         try await call("loadSessions") { done in
             self.client.loadSessions { sessions, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(sessions.map(Self.session)))
                 }
@@ -166,7 +166,7 @@ extension MaxIosCore {
         try await call("loadBlockedUsers") { done in
             self.client.loadBlockedUsers { users, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(users.map {
                         BlockedUser(id: $0.id, name: $0.name, phone: $0.phone, avatarURL: URL(string: $0.avatarUrl))
@@ -192,7 +192,7 @@ extension MaxIosCore {
         try await call("commonChats") { done in
             self.client.commonChats(userId: userId) { chats, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(chats.map {
                         CommonChat(
@@ -212,7 +212,7 @@ extension MaxIosCore {
         try await call("complaintReasons") { done in
             self.client.complaintReasons(typeId: Int32(typeId)) { reasons, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(reasons.map { ComplaintReason(id: Int($0.id), title: $0.title) }))
                 }
@@ -224,7 +224,7 @@ extension MaxIosCore {
         try await call("sendComplaint") { done in
             self.client.sendComplaint(reasonId: Int32(reasonId), typeId: Int32(typeId), ids: ids) { result, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(result == "ok"))
                 }
@@ -236,7 +236,7 @@ extension MaxIosCore {
         try await call("syncContacts") { done in
             self.client.syncContacts { contacts, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(contacts.map(Self.contact)))
                 }
@@ -247,7 +247,7 @@ extension MaxIosCore {
     func enablePassword(password: String, hint: String) async throws {
         let _: Void = try await call("enablePassword") { done in
             self.client.enablePassword(password: password, hint: hint) { kind, key in
-                if let kind { done(.failure(CoreFailure(kind: kind, key: key))) } else { done(.success(())) }
+                if let kind { done(.failure(Self.failed(kind: kind, key: key))) } else { done(.success(())) }
             }
         }
     }
@@ -255,7 +255,7 @@ extension MaxIosCore {
     func changePassword(oldPassword: String, newPassword: String) async throws {
         let _: Void = try await call("changePassword") { done in
             self.client.changePassword(oldPassword: oldPassword, newPassword: newPassword) { kind, key in
-                if let kind { done(.failure(CoreFailure(kind: kind, key: key))) } else { done(.success(())) }
+                if let kind { done(.failure(Self.failed(kind: kind, key: key))) } else { done(.success(())) }
             }
         }
     }
@@ -263,7 +263,7 @@ extension MaxIosCore {
     func disablePassword(password: String) async throws {
         let _: Void = try await call("disablePassword") { done in
             self.client.disablePassword(password: password) { kind, key in
-                if let kind { done(.failure(CoreFailure(kind: kind, key: key))) } else { done(.success(())) }
+                if let kind { done(.failure(Self.failed(kind: kind, key: key))) } else { done(.success(())) }
             }
         }
     }
@@ -278,7 +278,7 @@ extension MaxIosCore {
         try await call("startEmailChange") { done in
             self.client.startEmailChange(password: password) { trackId, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else if let trackId, !trackId.isEmpty {
                     done(.success(trackId))
                 } else {
@@ -292,7 +292,7 @@ extension MaxIosCore {
         try await call("sendEmailCode") { done in
             self.client.sendEmailCode(trackId: trackId, email: email) { seconds, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(Int(seconds.int32Value)))
                 }
@@ -337,7 +337,7 @@ extension MaxIosCore {
         try await call("loadFolders") { done in
             self.client.loadFolders { folders, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(folders.map(Self.folder)))
                 }
@@ -378,12 +378,12 @@ extension MaxIosCore {
     // MARK: Преобразования
 
     private static func voidResult(_ kind: String?, _ key: String?) -> Result<Void, Error> {
-        if let kind { return .failure(CoreFailure(kind: kind, key: key)) }
+        if let kind { return .failure(Self.failed(kind: kind, key: key)) }
         return .success(())
     }
 
     private static func profileResult(_ value: IosMyProfile?, _ kind: String?, _ key: String?) -> Result<MyProfile, Error> {
-        if let kind { return .failure(CoreFailure(kind: kind, key: key)) }
+        if let kind { return .failure(Self.failed(kind: kind, key: key)) }
         guard let value else { return .failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)) }
         return .success(MyProfile(
             id: value.id,
@@ -398,7 +398,7 @@ extension MaxIosCore {
     }
 
     private static func settingsResult(_ value: IosAccountSettings?, _ kind: String?, _ key: String?) -> Result<AccountSettings, Error> {
-        if let kind { return .failure(CoreFailure(kind: kind, key: key)) }
+        if let kind { return .failure(Self.failed(kind: kind, key: key)) }
         guard let value else { return .failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)) }
         return .success(settings(value))
     }
@@ -443,13 +443,13 @@ extension MaxIosCore {
     }
 
     private static func twoFactorResult(_ value: IosTwoFactor?, _ kind: String?, _ key: String?) -> Result<TwoFactorStatus, Error> {
-        if let kind { return .failure(CoreFailure(kind: kind, key: key)) }
+        if let kind { return .failure(Self.failed(kind: kind, key: key)) }
         guard let value else { return .failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)) }
         return .success(TwoFactorStatus(isEnabled: value.enabled, email: value.email, hint: value.hint))
     }
 
     private static func miniAppResult(_ value: IosMiniApp?, _ kind: String?, _ key: String?) -> Result<MiniApp, Error> {
-        if let kind { return .failure(CoreFailure(kind: kind, key: key)) }
+        if let kind { return .failure(Self.failed(kind: kind, key: key)) }
         guard let value, let url = URL(string: value.url) else {
             return .failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil))
         }

@@ -24,7 +24,7 @@ extension MaxIosCore {
                     },
                     onResult: { message, kind, key in
                         if let kind {
-                            done(.failure(CoreFailure(kind: kind, key: key)))
+                            done(.failure(Self.failed(kind: kind, key: key)))
                         } else if let message {
                             done(.success(Self.message(message)))
                         } else {
@@ -51,7 +51,7 @@ extension MaxIosCore {
                 }
                 let onResult: (IosMessage?, String?, String?) -> Void = { message, kind, key in
                     if let kind {
-                        done(.failure(CoreFailure(kind: kind, key: key)))
+                        done(.failure(Self.failed(kind: kind, key: key)))
                     } else if let message {
                         done(.success(Self.message(message)))
                     } else {
@@ -74,7 +74,7 @@ extension MaxIosCore {
         try await call("sendContact") { done in
             self.client.sendContact(chatId: chatId, contactId: contactId, replyTo: replyTo) { message, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else if let message {
                     done(.success(Self.message(message)))
                 } else {

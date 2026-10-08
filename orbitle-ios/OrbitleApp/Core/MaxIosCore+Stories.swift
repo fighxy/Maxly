@@ -9,7 +9,7 @@ extension MaxIosCore {
         try await call("loadStoriesFeed") { done in
             self.client.loadStoriesFeed { rings, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(rings.map(Self.ring)))
                 }
@@ -21,7 +21,7 @@ extension MaxIosCore {
         try await call("loadOwnerStories") { done in
             self.client.loadOwnerStories(ownerId: owner.id, type: Int32(owner.kind.rawValue)) { reply, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else if let reply {
                     done(.success(OwnerStories(ring: reply.preview.map(Self.ring), stories: reply.stories.map(Self.story))))
                 } else {
@@ -35,7 +35,7 @@ extension MaxIosCore {
         let _: Void = try await call("markStorySeen") { done in
             self.client.markStorySeen(ownerId: owner.id, type: Int32(owner.kind.rawValue), storyId: storyId) { kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(()))
                 }
@@ -59,7 +59,7 @@ extension MaxIosCore {
                     },
                     onResult: { published, kind, key in
                         if let kind {
-                            done(.failure(CoreFailure(kind: kind, key: key)))
+                            done(.failure(Self.failed(kind: kind, key: key)))
                         } else if let published {
                             done(.success(OwnerStories(ring: published.preview.map(Self.ring), stories: published.stories.map(Self.story))))
                         } else {
@@ -78,7 +78,7 @@ extension MaxIosCore {
         let _: Void = try await call("deleteStories") { done in
             self.client.deleteStories(storyIds: ids) { kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(()))
                 }

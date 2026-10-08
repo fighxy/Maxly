@@ -25,7 +25,7 @@ extension MaxIosCore {
         try await call("createCallLink") { done in
             self.client.createCallLink { link, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else if let link {
                     done(.success(CoreCallLink(conversationId: link.conversationId, url: link.url, name: link.name)))
                 } else {
@@ -39,7 +39,7 @@ extension MaxIosCore {
         try await call("callLinkInfo") { done in
             self.client.callLinkInfo(link: link) { info, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(info.map {
                         CoreCallLinkInfo(url: $0.url, name: $0.name, participants: Int($0.participants), isVideo: $0.isVideo)
@@ -53,7 +53,7 @@ extension MaxIosCore {
         let _: Void = try await call("deleteCallHistory") { done in
             self.client.deleteCallHistory(ids: ids) { kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(()))
                 }
@@ -85,7 +85,7 @@ extension MaxIosCore {
     }
 
     private static func started(_ start: IosCallStart?, _ kind: String?, _ key: String?) -> Result<CoreCallStart, Error> {
-        if let kind { return .failure(CoreFailure(kind: kind, key: key)) }
+        if let kind { return .failure(Self.failed(kind: kind, key: key)) }
         guard let start else { return .failure(CoreFailure(kind: "UNKNOWN", key: nil)) }
         return .success(CoreCallStart(
             conversationId: start.conversationId,

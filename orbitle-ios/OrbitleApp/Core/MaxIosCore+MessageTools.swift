@@ -34,7 +34,7 @@ extension MaxIosCore {
         try await call("saveDraft") { done in
             self.client.saveDraft(chatId: chatId, text: text, elementsJson: elementsJSON, replyTo: replyTo) { time, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(time.int64Value))
                 }
@@ -45,7 +45,7 @@ extension MaxIosCore {
     func discardDraft(chatId: String, time: Int64) async throws {
         let _: Void = try await call("discardDraft") { done in
             self.client.discardDraft(chatId: chatId, time: time) { kind, key in
-                if let kind { done(.failure(CoreFailure(kind: kind, key: key))) } else { done(.success(())) }
+                if let kind { done(.failure(Self.failed(kind: kind, key: key))) } else { done(.success(())) }
             }
         }
     }
@@ -70,7 +70,7 @@ extension MaxIosCore {
         try await call("removeContact") { done in
             self.client.removeContact(userId: userId) { contact, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(contact.map(Self.contact)))
                 }
@@ -110,7 +110,7 @@ extension MaxIosCore {
         try await call("searchChatMembers") { done in
             self.client.searchChatMembers(chatId: chatId, query: query) { members, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(members.map(Self.member)))
                 }
@@ -158,7 +158,7 @@ extension MaxIosCore {
         try await call("loadPresence") { done in
             self.client.loadPresence(userIds: userIds) { list, kind, key in
                 if let kind {
-                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success((list ?? []).map(Self.presence)))
                 }
@@ -188,7 +188,7 @@ extension MaxIosCore {
     }
 
     private static func reply<T>(_ value: T?, kind: String?, key: String?) -> Result<T, Error> {
-        if let kind { return .failure(CoreFailure(kind: kind, key: key)) }
+        if let kind { return .failure(Self.failed(kind: kind, key: key)) }
         guard let value else { return .failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)) }
         return .success(value)
     }
