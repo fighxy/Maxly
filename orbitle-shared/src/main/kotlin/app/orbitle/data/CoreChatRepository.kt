@@ -56,7 +56,7 @@ class CoreChatRepository(
 
     override val typing: Flow<Map<String, List<app.orbitle.domain.Typist>>> = combine(client.store.state, ticks) { state, now ->
         state.typing.keys.mapNotNull { chatId ->
-            val list = typists.typists(state, chatId, now) { state.users[it]?.displayName?.takeIf(String::isNotBlank) }
+            val list = typists.typists(state, chatId, now) { state.displayName(it)?.takeIf(String::isNotBlank) }
             if (list.isEmpty()) null else chatId.toString() to list
         }.toMap()
     }.distinctUntilChanged()
@@ -370,7 +370,7 @@ class CoreChatRepository(
                     FoundMessage(
                         chatId = chatId.toString(),
                         messageId = message.id.toString(),
-                        senderName = sender?.let { state.users[it]?.displayName }?.takeIf { it.isNotBlank() },
+                        senderName = sender?.let(state::displayName)?.takeIf { it.isNotBlank() },
                         isOutgoing = sender != null && sender == state.me,
                         text = message.text.trim(),
                         timeMs = message.time,

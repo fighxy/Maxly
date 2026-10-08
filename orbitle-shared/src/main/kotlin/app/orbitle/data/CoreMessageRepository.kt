@@ -81,7 +81,7 @@ class CoreMessageRepository(
             val chat = ChatMapping.chat(raw, state, config, now, mutes = ChatMutes.of(client))
             val peer = ChatMapping.dialogPeer(raw, state.me)
             val seen = PresenceTime.ms(peer?.let { state.presence[it]?.seen })
-            val typing = typists.typists(state, id, now) { state.users[it]?.displayName?.takeIf(String::isNotBlank) }
+            val typing = typists.typists(state, id, now) { state.displayName(it)?.takeIf(String::isNotBlank) }
             val bot = peer?.let { state.users[it] }?.takeIf { "BOT" in it.options && com.max.core.api.hasWebApp(it.options) }
             ChatHeaderInfo(chat, participants(raw.raw), seen, typing, botAppId = bot?.id?.toString(), readMarkMs = ReadMarks.own(raw, state))
         }.distinctUntilChanged()
@@ -547,7 +547,8 @@ class CoreMessageRepository(
         // Ядро освежило сведения о чате: группа могла вырасти или в ней идёт звонок.
         if (readers.isEmpty() && !client.isMessageReadersAvailable(id)) return null
         val known = client.store.state.value.users
-        return readers.map { MessageMapping.reader(it, known[it.userId]) }
+        val state = client.store.state.value
+        return readers.map { MessageMapping.reader(it, known[it.userId], state.displayLabel(it.userId)) }
     }
 
     override suspend fun reactionUsers(chatId: String, messageId: String): List<app.orbitle.domain.ReactionUser> {
@@ -557,7 +558,7 @@ class CoreMessageRepository(
             val user = known[entry.userId]
             app.orbitle.domain.ReactionUser(
                 userId = entry.userId.toString(),
-                name = user?.displayName.orEmpty(),
+                name = client.displayLabel(entry.userId),
                 avatarUrl = user?.baseUrl?.takeIf { it.isNotBlank() },
                 emoji = entry.reaction,
             )

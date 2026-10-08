@@ -48,17 +48,18 @@ object MessageMapping {
         val sender = message.sender
         val user = sender?.let { state.users[it] }
         val outgoing = sender != null && sender == state.me
-        val names: (Long) -> String? = { id -> state.users[id]?.displayName }
+        // Имена — по правилу ядра: книга, своё имя контакта, имя профиля, телефон.
+        val names: (Long) -> String? = { id -> state.displayName(id) }
         val control = message.attaches.firstNotNullOfOrNull { (it as? Map<*, *>)?.takeIf { map -> map["_type"] == "CONTROL" } }
         return Message(
             id = message.id.toString(),
             chatId = (message.chatId ?: fallbackChatId).toString(),
             authorId = sender?.toString().orEmpty(),
-            text = if (control != null && message.text.isBlank()) serviceText(control, user?.displayName, names) else message.text,
+            text = if (control != null && message.text.isBlank()) serviceText(control, sender?.let(state::displayName), names) else message.text,
             timeMs = message.time,
             status = MessageStatus.SENT,
             content = content(message, names),
-            authorName = user?.displayName.orEmpty(),
+            authorName = sender?.let(state::displayLabel).orEmpty(),
             authorAvatarUrl = user?.baseUrl?.takeIf { it.isNotBlank() },
             isRead = outgoing && peerRead > 0 && peerRead >= message.time,
             isService = control != null,
@@ -69,10 +70,10 @@ object MessageMapping {
      * Прочитавший из ядра ([com.max.core.api.MessageReaders.build]) для «Кем прочитано»: порядок,
      * отметка и реакция — как у ядра, имя и аватар — из [user] (профиль может быть ещё не загружен).
      */
-    fun reader(reader: com.max.core.api.MessageReader, user: MaxUser?): app.orbitle.domain.MessageReader =
+    fun reader(reader: com.max.core.api.MessageReader, user: MaxUser?, name: String? = null): app.orbitle.domain.MessageReader =
         app.orbitle.domain.MessageReader(
             userId = reader.userId.toString(),
-            name = user?.displayName.orEmpty(),
+            name = name ?: user?.displayName.orEmpty(),
             avatarUrl = user?.baseUrl?.takeIf { it.isNotBlank() },
             emoji = reader.reaction?.takeIf { it.isNotEmpty() },
             readMarkMs = reader.readMark,

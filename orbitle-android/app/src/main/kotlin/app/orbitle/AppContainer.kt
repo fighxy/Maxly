@@ -102,8 +102,38 @@ class AppContainer(context: Context) {
     val addressBook: app.orbitle.data.AddressBook = app.orbitle.contacts.AndroidAddressBook(context.applicationContext)
 
     /** Модель доступа к телефонной книге; помнит в настройках, что системный запрос уже был. */
+    /** Книга устройства — ядру, для имён людей из неё. */
+    val addressBookSink: app.orbitle.data.AddressBookSink = app.orbitle.data.CoreAddressBookSink(client)
+
     fun phoneBookModel(): app.orbitle.presentation.contacts.PhoneBookViewModel =
-        app.orbitle.presentation.contacts.PhoneBookViewModel(addressBook, contacts, { messages.currentUserId }, preferenceStore)
+        app.orbitle.presentation.contacts.PhoneBookViewModel(addressBook, contacts, { messages.currentUserId }, preferenceStore, addressBookSink)
+
+    /** Разрешение на книгу при прошлой сверке; `null` — сверки ещё не было. */
+    private var bookGranted: Boolean? = null
+
+    /**
+     * Сверка с разрешением при возврате в приложение: появилось — книга читается и уходит ядру,
+     * отозвали — ядру уходит пустая книга. Без перемен книга заново не читается (это делает
+     * «обновить» на экране контактов), если только ядро её не забыло.
+     */
+    fun syncAddressBook(granted: Boolean) {
+        // Выход из аккаунта стирает книгу в ядре: тогда её надо отдать снова.
+        if (bookGranted == granted && (!granted || client.store.state.value.addressBook.isNotEmpty())) return
+        bookGranted = granted
+        if (!granted) {
+            addressBookSink.publish(emptyList())
+            return
+        }
+        scope.launch {
+            try {
+                addressBookSink.publish(addressBook.entries())
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                bookGranted = null
+            }
+        }
+    }
 
     /** Приватный режим: только на этом устройстве. */
     val privateMode = app.orbitle.data.PrivateModeSettings(preferenceStore)

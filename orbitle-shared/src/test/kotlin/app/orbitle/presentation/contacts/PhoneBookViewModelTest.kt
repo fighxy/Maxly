@@ -21,9 +21,9 @@ class PhoneBookMatcherTest {
     @Test
     fun matchesByNormalizedPhone() {
         val entries = listOf(
-            PhoneBookEntry("a", "Анна", listOf("79991234567")),
-            PhoneBookEntry("b", "Борис", listOf("442079460958", "79997654321")),
-            PhoneBookEntry("c", "Вера", listOf("79990000000")),
+            PhoneBookEntry("a", "Анна", listOf("+79991234567")),
+            PhoneBookEntry("b", "Борис", listOf("+442079460958", "+79997654321")),
+            PhoneBookEntry("c", "Вера", listOf("+79990000000")),
         )
         val contacts = listOf(
             contact("1", "79991234567"),
@@ -34,9 +34,9 @@ class PhoneBookMatcherTest {
         val matches = PhoneBookMatcher.match(entries, contacts)
         assertEquals(
             listOf(
-                PhoneBookMatch(entries[0], contacts[0], "79991234567"),
-                PhoneBookMatch(entries[1], contacts[2], "442079460958"),
-                PhoneBookMatch(entries[1], contacts[1], "79997654321"),
+                PhoneBookMatch(entries[0], contacts[0], "+79991234567"),
+                PhoneBookMatch(entries[1], contacts[2], "+442079460958"),
+                PhoneBookMatch(entries[1], contacts[1], "+79997654321"),
             ),
             matches,
         )
@@ -45,17 +45,17 @@ class PhoneBookMatcherTest {
     @Test
     fun aContactIsMatchedOnceAndRussianTrunkPrefixDoesNotMatter() {
         val entries = listOf(
-            PhoneBookEntry("a", "Анна", listOf("79991234567")),
-            PhoneBookEntry("a2", "Анна (рабочий)", listOf("79991234567")),
+            PhoneBookEntry("a", "Анна", listOf("+79991234567")),
+            PhoneBookEntry("a2", "Анна (рабочий)", listOf("+79991234567")),
         )
         val contacts = listOf(contact("1", "89991234567"))
-        assertEquals(listOf(PhoneBookMatch(entries[0], contacts[0], "79991234567")), PhoneBookMatcher.match(entries, contacts))
+        assertEquals(listOf(PhoneBookMatch(entries[0], contacts[0], "+79991234567")), PhoneBookMatcher.match(entries, contacts))
     }
 
     @Test
     fun nothingToMatch() {
         assertTrue(PhoneBookMatcher.match(emptyList(), listOf(contact("1", "79991234567"))).isEmpty())
-        assertTrue(PhoneBookMatcher.match(listOf(PhoneBookEntry("a", "Анна", listOf("79991234567"))), listOf(contact("1", ""))).isEmpty())
+        assertTrue(PhoneBookMatcher.match(listOf(PhoneBookEntry("a", "Анна", listOf("+79991234567"))), listOf(contact("1", ""))).isEmpty())
     }
 }
 
@@ -77,8 +77,8 @@ class PhoneBookViewModelTest {
 
     private class FakeBook(override val isAvailable: Boolean = true) : AddressBook {
         var book = listOf(
-            PhoneBookEntry("a", "Анна", listOf("79991234567")),
-            PhoneBookEntry("b", "Борис", listOf("79997654321")),
+            PhoneBookEntry("a", "Анна", listOf("+79991234567")),
+            PhoneBookEntry("b", "Борис", listOf("+79997654321")),
         )
         var reads = 0
         var failure: Exception? = null
@@ -107,6 +107,22 @@ class PhoneBookViewModelTest {
 
     private fun model(addressBook: AddressBook = book, store: PreferenceStore? = prefs) =
         PhoneBookViewModel(addressBook, contacts, currentUserId = { "100" }, prefs = store)
+
+    @Test
+    fun theWholeBookGoesToTheCoreAndRevokeSendsAnEmptyOne() {
+        val published = mutableListOf<List<PhoneBookEntry>>()
+        val model = PhoneBookViewModel(book, contacts, currentUserId = { "100" }, prefs = prefs, sink = { published += it })
+        model.findFriends()
+        model.systemPromptShown()
+        model.permissionResult(granted = true, canAskAgain = false)
+        assertEquals(listOf(book.book), published)
+        book.book = book.book.take(1)
+        model.refresh()
+        assertEquals(book.book, published.last())
+        model.permissionChecked(granted = false, canAskAgain = false)
+        assertEquals(emptyList<PhoneBookEntry>(), published.last())
+        assertEquals(3, published.size)
+    }
 
     @Test
     fun firstTapShowsTheRationaleAndNothingIsReadOnItsOwn() {

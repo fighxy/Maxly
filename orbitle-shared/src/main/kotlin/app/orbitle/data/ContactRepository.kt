@@ -142,6 +142,7 @@ class CoreContactRepository(private val client: MaxClient) : ContactRepository {
                 id = user.id.toString(),
                 firstName = first,
                 lastName = last,
+                label = state.displayName(user.id),
                 phone = user.phone?.toString().orEmpty(),
                 avatarUrl = user.baseUrl?.takeIf { it.isNotBlank() },
                 isOnline = PresenceTime.isOnline(presence),

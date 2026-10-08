@@ -85,7 +85,7 @@ class CoreProfileRepository(private val client: MaxClient) : ProfileRepository {
         return ChatProfile(
             kind = if (bot) ChatProfile.Kind.BOT else ChatProfile.Kind.USER,
             chatId = chatId,
-            title = displayFrom.displayName.orEmpty(),
+            title = client.store.state.value.displayName(displayFrom.id) ?: displayFrom.displayName.orEmpty(),
             avatarUrl = displayFrom.baseUrl?.takeIf { it.isNotEmpty() },
             peerId = displayFrom.id.toString(),
             description = card.description?.trim()?.takeIf { it.isNotEmpty() },

@@ -55,6 +55,14 @@ import app.orbitle.ui.theme.OrbitleTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    override fun onResume() {
+        super.onResume()
+        // Разрешение на книгу могли дать или отозвать в настройках, пока приложение было в фоне.
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_CONTACTS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        (application as OrbitleApp).container.syncAddressBook(granted)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)

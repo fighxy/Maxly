@@ -149,7 +149,7 @@ class CoreChatAdminRepository(private val client: MaxClient) : ChatAdminReposito
         val presence = PresenceTime.freshest(client.store.state.value.presence[user.id], PresenceTime.from(member.presence))
         return ChatPerson(
             user.id.toString(),
-            user.displayName?.trim().orEmpty().ifEmpty { "Участник" },
+            client.store.state.value.displayName(user.id) ?: user.displayName?.trim().orEmpty().ifEmpty { "Участник" },
             role,
             isOnline = PresenceTime.isOnline(presence),
             lastSeenMs = PresenceTime.ms(presence?.seen),

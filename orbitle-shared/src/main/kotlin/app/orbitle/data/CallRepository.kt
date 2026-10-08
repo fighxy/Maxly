@@ -73,7 +73,7 @@ class CoreCallRepository(private val client: MaxClient) : CallRepository {
             return CallRecord(
                 id = entry.messageId.toString(),
                 peerId = peerId?.toString() ?: chatId.orEmpty(),
-                title = peer?.displayName?.takeIf { it.isNotBlank() } ?: if (isGroup) "Групповой звонок" else "Звонок",
+                title = peerId?.let(state::displayName)?.takeIf { it.isNotBlank() } ?: peer?.displayName?.takeIf { it.isNotBlank() } ?: if (isGroup) "Групповой звонок" else "Звонок",
                 avatarUrl = peer?.baseUrl?.takeIf { it.isNotBlank() },
                 isGroup = isGroup,
                 chatId = chatId?.takeIf { it.isNotEmpty() },

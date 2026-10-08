@@ -7,7 +7,7 @@ import app.orbitle.data.ContactRepository
 import app.orbitle.data.PreferenceStore
 import app.orbitle.domain.Contact
 import app.orbitle.domain.PhoneBookEntry
-import app.orbitle.domain.PhoneNumbers
+import com.max.core.api.PhoneNumbers
 import app.orbitle.presentation.common.PresenceText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -109,8 +109,8 @@ data class PhoneBookUiState(
 
 /**
  * Доступ к телефонной книге с экрана контактов: пояснение, системный запрос (его показывает
- * экран), отказ и отказ насовсем, чтение книги. Прочитанное живёт только в памяти модели и
- * пропадает, если разрешение отозвали; на сервер ничего не уходит.
+ * экран), отказ и отказ насовсем, чтение книги. Прочитанное живёт только в памяти (модели и
+ * ядра — для имён людей из книги) и пропадает, если разрешение отозвали; на сервер ничего не уходит.
  */
 class PhoneBookViewModel(
     private val addressBook: AddressBook,
@@ -118,6 +118,8 @@ class PhoneBookViewModel(
     private val currentUserId: () -> String? = { null },
     /** Здесь помнится, что системный запрос уже показывали: иначе отказ насовсем не отличить. */
     private val prefs: PreferenceStore? = null,
+    /** Прочитанная книга — ядру для имён; отозвали разрешение — пустая книга. */
+    private val sink: app.orbitle.data.AddressBookSink? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(PhoneBookUiState(isAvailable = addressBook.isAvailable))
     val state: StateFlow<PhoneBookUiState> = _state.asStateFlow()
@@ -222,7 +224,9 @@ class PhoneBookViewModel(
         _state.update { it.copy(isLoading = true, error = null) }
         loading = viewModelScope.launch {
             try {
-                cached = addressBook.entries()
+                val entries = addressBook.entries()
+                cached = entries
+                sink?.publish(entries)
                 rematch()
             } catch (e: CancellationException) {
                 throw e
@@ -236,6 +240,7 @@ class PhoneBookViewModel(
 
     private fun forget() {
         loading?.cancel()
+        sink?.publish(emptyList())
         cached = null
         matched = emptyList()
         _state.update { it.copy(entryCount = null, matchCount = 0, isLoading = false, error = null) }

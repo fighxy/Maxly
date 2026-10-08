@@ -16,9 +16,12 @@ data class Contact(
     val isOfficial: Boolean = false,
     /** Опция `SERVICE_ACCOUNT`. */
     val isServiceAccount: Boolean = false,
+    /** Имя по правилу ядра (книга, своё имя контакта, имя профиля); `null` — из имени и фамилии. */
+    val label: String? = null,
 ) {
     val displayName: String
         get() {
+            label?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
             val name = listOf(firstName.trim(), lastName.trim()).filter { it.isNotEmpty() }.joinToString(" ")
             if (name.isNotEmpty()) return name
             val digits = phone.filter { it.isDigit() }

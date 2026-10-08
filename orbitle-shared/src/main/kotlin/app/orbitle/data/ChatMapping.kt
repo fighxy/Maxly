@@ -41,7 +41,7 @@ object ChatMapping {
         val me = state.me
         val peerId = dialogPeer(chat, me)
         val peer = peerId?.let { state.users[it] }
-        val title = chat.title?.takeIf { it.isNotBlank() } ?: peer?.displayName.orEmpty()
+        val title = chat.title?.takeIf { it.isNotBlank() } ?: peerId?.let(state::displayLabel).orEmpty()
         val avatar = (chat.raw["baseIconUrl"] as? String)?.takeIf { it.isNotBlank() } ?: peer?.baseUrl?.takeIf { it.isNotBlank() }
         val forwarded = forwardedOf(last)
         val attaches = last?.attaches?.takeIf { it.isNotEmpty() } ?: (forwarded?.get("attaches") as? List<*>).orEmpty()
@@ -56,7 +56,7 @@ object ChatMapping {
             if (delivery == DeliveryState.SENT && peerRead > 0 && peerRead >= last.time) delivery = DeliveryState.READ
             ChatLastMessage(
                 authorId = last.sender?.toString(),
-                authorName = last.sender?.let { state.users[it]?.displayName },
+                authorName = last.sender?.let(state::displayName),
                 isOutgoing = outgoing,
                 delivery = delivery,
                 media = media,

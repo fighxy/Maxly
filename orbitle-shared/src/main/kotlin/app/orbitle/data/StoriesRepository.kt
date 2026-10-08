@@ -127,7 +127,7 @@ class CoreStoriesRepository(private val client: MaxClient) : StoriesRepository {
             val chat = state.chats[id]
             return StoryRing(
                 owner = owner(preview.owner),
-                name = user?.displayName?.takeIf { it.isNotBlank() } ?: chat?.title.orEmpty(),
+                name = (if (user != null) state.displayName(id) else null)?.takeIf { it.isNotBlank() } ?: chat?.title.orEmpty(),
                 avatarUrl = user?.baseUrl?.takeIf { it.isNotBlank() } ?: (chat?.raw?.get("baseIconUrl") as? String)?.takeIf { it.isNotBlank() },
                 updatedAtMs = preview.updateTime,
                 total = preview.totalCount,
