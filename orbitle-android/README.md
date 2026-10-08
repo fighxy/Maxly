@@ -157,7 +157,8 @@ The core is pinned to max-kmp-core `33cca05` in `core.lock`. Everything below ru
 - **Transport:** TCP + TLS through the core, no WebSocket. Default host `api.oneme.ru`
   (`api2.oneme.ru` is a CNAME of it with a Russian Trusted CA certificate; we keep `api`).
 - **App activity** is reported with `client.setInteractive`: active while the app is in the
-  foreground and the screen is unlocked, or while a call is in progress (`AppActivity.android`).
+  foreground and the screen is unlocked, or while a call is in progress, also in the background
+  (`AppActivity.android`); the core's 29 s `PING` carries that flag.
 - **Read marks** (rule agreed with iOS, constants in `ReadMarkRules`): a message counts as seen
   only when at least 30 % of its height is inside the feed viewport; the top bar, the input field
   and the on-screen keyboard are outside it, and the feed's content padding under overlays does

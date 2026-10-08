@@ -81,7 +81,8 @@ The core is pinned to max-kmp-core `33cca05` in `core.lock`. Everything below ru
 - **Transport:** TCP + TLS through the core, no WebSocket. Default host `api.oneme.ru`
   (`api2.oneme.ru` is a CNAME of it with a Russian Trusted CA certificate; we keep `api`).
 - **App activity** is reported with `client.setInteractive`: active while the window is visible,
-  focused and had input within the last 60 s (`WindowActivity`).
+  focused and had input within the last 60 s (`WindowActivity`), or while a call is in progress,
+  even with the window minimized or unfocused (`AppActivity.desktop`).
 - **No read marks in the background:** the window lifecycle is `RESUMED` only while the window is
   shown and focused, `STARTED` otherwise, so a minimized or unfocused window marks nothing read.
 - **Read marks** (rule agreed with iOS, constants in `ReadMarkRules`): a message counts as seen

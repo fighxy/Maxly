@@ -39,6 +39,14 @@ class AppActivityTest {
     }
 
     @Test
+    fun `desktop stays active during a call even when the window is not`() {
+        assertTrue(AppActivity.desktop(windowActive = true, inCall = false))
+        assertFalse(AppActivity.desktop(windowActive = false, inCall = false))
+        // Окно свёрнуто или без фокуса, но идёт разговор: флаг не гаснет.
+        assertTrue(AppActivity.desktop(windowActive = false, inCall = true))
+    }
+
+    @Test
     fun `every change is reported once, the first one at once`() = runTest {
         val active = MutableStateFlow(false)
         val sent = mutableListOf<Boolean>()

@@ -47,6 +47,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 
 /** Зависимости окна: одно ядро, одна сессия, репозитории над стором ядра. Токен хранит само ядро. */
 class AppContainer {
@@ -243,9 +245,14 @@ class AppContainer {
     )
 
     init {
-        // Флаг активности для ядра: окно видно, в фокусе и в нём недавно был ввод. Режим
-        // призрака ядро сводит с ним само.
-        app.orbitle.presentation.common.AppActivity.report(scope, window.active) { client.setInteractive(it) }
+        // Флаг активности для ядра: окно видно, в фокусе и в нём недавно был ввод, или идёт звонок
+        // (тогда и в свёрнутом окне). Режим призрака ядро сводит с ним само.
+        val active = combine(
+            window.active,
+            callCenter.state.map(app.orbitle.presentation.common.AppActivity::inCall),
+            app.orbitle.presentation.common.AppActivity::desktop,
+        )
+        app.orbitle.presentation.common.AppActivity.report(scope, active) { client.setInteractive(it) }
     }
 
     private companion object {

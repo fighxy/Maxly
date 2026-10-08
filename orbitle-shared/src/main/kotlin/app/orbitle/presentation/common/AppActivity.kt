@@ -19,8 +19,17 @@ object AppActivity {
         return !call.state.isEnded && !call.isRinging
     }
 
-    /** Android: приложение на переднем плане при разблокированном экране или идёт звонок. */
+    /**
+     * Android: приложение на переднем плане при разблокированном экране или идёт звонок. Во время
+     * звонка флаг остаётся `true` и в фоне: ядро шлёт `PING` раз в 29 с с этим флагом.
+     */
     fun android(foreground: Boolean, unlocked: Boolean, inCall: Boolean): Boolean = (foreground && unlocked) || inCall
+
+    /**
+     * Desktop: окно видно, в фокусе и в нём недавно был ввод ([windowActive]) или идёт звонок —
+     * тогда и в свёрнутом или неактивном окне.
+     */
+    fun desktop(windowActive: Boolean, inCall: Boolean): Boolean = windowActive || inCall
 
     /** Шлёт [report] каждое новое значение [active], первое — сразу. */
     fun report(scope: CoroutineScope, active: Flow<Boolean>, report: suspend (Boolean) -> Unit): Job =
