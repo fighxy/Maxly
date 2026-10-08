@@ -214,7 +214,7 @@ struct SessionLoginTests {
 
 @Suite("Сессия: фазы ядра")
 struct SessionCoreTests {
-    @Test("Отказ токена во время работы открывает вход и не стирает базу")
+    @Test("Отказ токена во время работы открывает вход и стирает базу")
     func tokenRejectedWhileSignedIn() async throws {
         try await withSession { parts in
             await parts.core.setUser("1")
@@ -222,8 +222,91 @@ struct SessionCoreTests {
             await parts.session.restoreSession()
             await parts.session.observe(.tokenRejected)
             #expect(await parts.session.currentPhase == .expired)
+            #expect(await snapshot(parts.chats).isEmpty)
+            #expect(await parts.media.clearCount == 1)
+            #expect(parts.defaults.string(forKey: SessionManager.userDefaultsKey) == nil)
+            #expect(await parts.messages.currentUser() == "")
+            let notice = await parts.session.currentLoginNotice
+            #expect(notice?.place == .loginForm)
+            #expect(notice?.title == "Сессия завершена")
+            #expect(notice?.message == "Сервер больше не принимает этот вход. Войдите снова по номеру телефона")
+        }
+    }
+
+    @Test("Блокировка стирает базу, заголовок сервера важнее запасного")
+    func blockedClearsAndPrefersServerTitle() async throws {
+        try await withSession { parts in
+            await parts.core.setUser("1")
+            await parts.api.setChats([makeChat(id: "keep")])
+            await parts.session.restoreSession()
+            await parts.core.setLoginRejection(CoreLoginRejection(
+                reason: "blocked", title: "Доступ закрыт", detail: "Напишите в поддержку", tokenCleared: true
+            ))
+            await parts.session.observe(.tokenRejected)
+            #expect(await parts.session.currentPhase == .expired)
+            #expect(await snapshot(parts.chats).isEmpty)
+            let notice = await parts.session.currentLoginNotice
+            #expect(notice?.title == "Доступ закрыт")
+            #expect(notice?.message == "Напишите в поддержку")
+        }
+    }
+
+    @Test("Без заголовка сервера у блокировки запасные строки")
+    func blockedFallback() async throws {
+        try await withSession { parts in
+            await parts.core.setUser("1")
+            await parts.session.restoreSession()
+            await parts.core.setLoginRejection(CoreLoginRejection(
+                reason: "blocked", localizedMessage: "обрывок", tokenCleared: true
+            ))
+            await parts.session.observe(.tokenRejected)
+            let notice = await parts.session.currentLoginNotice
+            #expect(notice?.title == "Аккаунт заблокирован")
+            #expect(notice?.message == "Сервер не пускает в этот аккаунт. Войти можно будет, когда блокировку снимут")
+        }
+    }
+
+    @Test("Поток входов оставляет чаты и плашку, повтор поднимает ядро")
+    func floodKeepsChatList() async throws {
+        try await withSession { parts in
+            await parts.core.setUser("1")
+            await parts.api.setChats([makeChat(id: "keep")])
+            await parts.session.restoreSession()
+            await parts.core.setLoginRejection(CoreLoginRejection(reason: "flood", tokenCleared: false))
+            await parts.session.observe(.tokenRejected)
+            #expect(await parts.session.currentPhase == .signedIn(userId: "1"))
             #expect(await snapshot(parts.chats).contains(where: { $0.id == "keep" }))
             #expect(await parts.media.clearCount == 0)
+            let notice = await parts.session.currentLoginNotice
+            #expect(notice?.place == .chatList)
+            #expect(notice?.title == "Слишком много входов")
+            #expect(notice?.message == "Сервер временно ограничил вход. Сохранённые чаты доступны без сети, повторите позже")
+            await parts.core.setLoginRejection(CoreLoginRejection(
+                reason: "flood", title: "Подождите", localizedMessage: "Много попыток", tokenCleared: false
+            ))
+            await parts.session.observe(.tokenRejected)
+            #expect(await parts.session.currentLoginNotice?.title == "Подождите")
+            #expect(await parts.session.currentLoginNotice?.message == "Много попыток")
+            await parts.core.setStartPhase(.ready)
+            let starts = await parts.core.startCount
+            await parts.session.retryHeldLogin()
+            #expect(await parts.core.startCount == starts + 1)
+            #expect(await parts.session.currentLoginNotice == nil)
+            #expect(await parts.session.currentPhase == .signedIn(userId: "1"))
+        }
+    }
+
+    @Test("Успешное переподключение снимает плашку потока")
+    func readyClearsFlood() async throws {
+        try await withSession { parts in
+            await parts.core.setUser("1")
+            await parts.session.restoreSession()
+            await parts.core.setLoginRejection(CoreLoginRejection(reason: "flood", tokenCleared: false))
+            await parts.session.observe(.tokenRejected)
+            #expect(await parts.session.currentLoginNotice?.place == .chatList)
+            await parts.session.observe(.ready)
+            #expect(await parts.session.currentLoginNotice == nil)
+            #expect(await parts.session.currentPhase == .signedIn(userId: "1"))
         }
     }
 
@@ -233,8 +316,10 @@ struct SessionCoreTests {
             await parts.core.setStartPhase(.awaitingAuth)
             await parts.session.restoreSession()
             try await parts.session.requestCode(phone: "+79990001122")
+            await parts.core.setLoginRejection(CoreLoginRejection(reason: "flood", tokenCleared: false))
             await parts.session.observe(.tokenRejected)
             #expect(await parts.session.currentPhase == .codeSent(codeLength: 6))
+            #expect(await parts.session.currentLoginNotice == nil)
         }
     }
 

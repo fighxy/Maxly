@@ -29,6 +29,10 @@ actor FakeMaxCore: MaxCore {
         presenceHeld[userId] ?? CorePresence(userId: userId, status: -1)
     }
     func setAppActive(_ active: Bool) async { appActive.append(active) }
+    var loginRejectionValue: CoreLoginRejection?
+    func loginRejection() async -> CoreLoginRejection? { loginRejectionValue }
+    func setLoginRejection(_ value: CoreLoginRejection?) { loginRejectionValue = value }
+    private(set) var startCount = 0
     var phase: CorePhase = .idle
     var userId = ""
     var storedToken = false
@@ -286,6 +290,7 @@ actor FakeMaxCore: MaxCore {
     func hasStoredToken() async -> Bool { storedToken }
 
     func start() async throws -> CorePhase {
+        startCount += 1
         if let startError { throw startError }
         phase = startPhase
         return startPhase
@@ -728,18 +733,19 @@ struct SessionManagerTests {
         }
     }
 
-    @Test("Отклонённый токен оставляет базу")
-    func tokenRejectedKeepsCache() async throws {
+    @Test("Отклонённый токен стирает базу и не просит ядро выйти ещё раз")
+    func tokenRejectedClearsCache() async throws {
         try await withSession { parts in
             try await parts.chats.upsert([makeChat(id: "keep")])
             await parts.core.setStartPhase(.tokenRejected)
             await parts.core.setStoredToken(true)
             await parts.session.restoreSession()
             #expect(await phase(of: parts.session) == .expired)
-            let kept = await snapshot(parts.chats)
-            #expect(kept.contains(where: { $0.id == "keep" }))
-            #expect(await parts.media.clearCount == 0)
+            #expect(await snapshot(parts.chats).isEmpty)
+            #expect(await parts.media.clearCount == 1)
             #expect(await parts.core.didLogout == false)
+            #expect(await parts.session.currentLoginNotice?.place == .loginForm)
+            #expect(await parts.session.currentLoginNotice?.title == "Сессия завершена")
         }
     }
 
