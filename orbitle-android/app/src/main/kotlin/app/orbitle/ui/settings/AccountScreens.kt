@@ -37,7 +37,6 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.HourglassEmpty
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Phone
-import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -77,11 +76,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.orbitle.domain.Account
 import app.orbitle.domain.BlockedUser
 import app.orbitle.domain.InactiveTtl
-import app.orbitle.domain.PrivacyAccess
 import app.orbitle.presentation.auth.PhoneNumber
 import app.orbitle.presentation.chatlist.ChatAvatar
 import app.orbitle.presentation.settings.AccountSettingsViewModel
 import app.orbitle.presentation.settings.GhostModeViewModel
+import app.orbitle.presentation.settings.PrivacyText
 import app.orbitle.ui.components.Avatar
 import kotlinx.coroutines.launch
 
@@ -330,7 +329,9 @@ private fun DeleteProfileDialogs(
 
 /**
  * «Конфиденциальность»: вверху блок «Дополнительно» с режимом призрака ([ghost], `null` — без него),
- * дальше настройки MAX: номер, статус «в сети», безопасный режим, срок неактивности, чёрный список.
+ * дальше настройки MAX ([MaxPrivacySection]: безопасный режим, поиск по номеру, звонки,
+ * приглашения, контент, «Информация»), приватный режим, чёрный список со счётчиком и срок
+ * неактивности. Пароль, семейная защита и устройства — на своих экранах.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -344,6 +345,7 @@ fun PrivacyScreen(
     val state by model.state.collectAsStateWithLifecycle()
     val settings = state.settings
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { model.countBlocked() }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -367,27 +369,19 @@ fun PrivacyScreen(
                 )
             }
             val enabled = settings.known
-            SettingsItem(Icons.Outlined.Phone, "Кто видит мой номер", subtitle = settings.phonePrivacy.title, enabled = enabled) { dialog = "phone" }
-            SettingsItem(
-                Icons.Outlined.Visibility,
-                "Кто видит, что я в сети",
-                subtitle = if (settings.onlineHidden) "Никто" else "Мои контакты",
-                enabled = enabled,
-            ) { dialog = "online" }
-            ListItem(
-                leadingContent = { Icon(Icons.Outlined.Shield, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-                headlineContent = { Text("Безопасный режим") },
-                supportingContent = { Text("Писать, звонить и приглашать в чаты смогут только контакты, нежелательный контент скрыт") },
-                trailingContent = { Switch(settings.safeMode, onCheckedChange = model::setSafeMode, enabled = enabled) },
-                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.clickable(enabled = enabled) { model.setSafeMode(!settings.safeMode) },
-            )
+            MaxPrivacySection(model)
             privateMode?.let {
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                 PrivateModeSection(it) { dialog = "privateStyle" }
             }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
-            SettingsItem(Icons.Outlined.Block, "Чёрный список", onClick = onBlocked)
+            SettingsItem(
+                Icons.Outlined.Block,
+                PrivacyText.BLACKLIST,
+                subtitle = PrivacyText.BLACKLIST_DESCRIPTION,
+                trailing = state.blocked?.let { { Text(it.size.toString(), color = MaterialTheme.colorScheme.onSurfaceVariant) } },
+                onClick = onBlocked,
+            )
             SettingsItem(
                 Icons.Outlined.HourglassEmpty,
                 "Удалить аккаунт, если меня нет",
@@ -397,12 +391,6 @@ fun PrivacyScreen(
         }
     }
     when (dialog) {
-        "phone" -> ChoiceDialog("Кто видит мой номер", PrivacyAccess.entries, settings.phonePrivacy, { it.title }, { dialog = null }) {
-            model.setPhonePrivacy(it)
-        }
-        "online" -> ChoiceDialog("Кто видит, что я в сети", listOf(false, true), settings.onlineHidden, { if (it) "Никто" else "Мои контакты" }, { dialog = null }) {
-            model.setOnlineHidden(it)
-        }
         "privateStyle" -> privateMode?.let { settings ->
             val prefs by settings.state.collectAsStateWithLifecycle()
             ChoiceDialog("Вид", app.orbitle.domain.PrivateModeStyle.entries, prefs.style, { it.title }, { dialog = null }) {
