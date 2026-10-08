@@ -160,6 +160,12 @@ The core is pinned to max-kmp-core `85b5aa6` in `core.lock`. Everything below ru
   not count either (`ReadVisibility`). Only the newest seen message is marked: the mark is sent
   200 ms after the candidate last changed, a newer candidate replaces a pending one, and a mark
   older than the one already sent never goes out. Leaving the screen cancels a pending mark.
+- **Unread divider:** it follows the account's own read mark, and the local mark
+  (`MaxState.localReads`, kept by the core while read receipts are hidden) wins when it is newer
+  than the server mark, so the divider stays put when the server never got ours.
+- **Unread divider:** it follows the account's own read mark, and the local mark
+  (`MaxState.localReads`, kept by the core while read receipts are hidden) wins when it is newer
+  than the server mark, so the divider stays put when the server never got ours.
 
 ## Сборка
 

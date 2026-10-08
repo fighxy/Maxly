@@ -19,13 +19,18 @@ internal object ReadMarks {
         return maxOf(ChatMapping.peerReadMark(chat, state.me), pushed)
     }
 
-    /** Своя отметка прочтения в чате (мс). */
+    /**
+     * Своя отметка прочтения в чате (мс): по ней встаёт разделитель непрочитанных. Берётся самая
+     * свежая из трёх: запись в карточке чата, пуш `NOTIF_MARK` и местная отметка
+     * ([MaxState.localReads]). Местная появляется, когда отметки о прочтении скрыты и сервер свою
+     * не получает: без неё разделитель каждый раз возвращался бы к серверной.
+     */
     fun own(chat: CoreChat, state: MaxState): Long {
         val me = state.me ?: return 0L
         val listed = (chat.raw["participants"] as? Map<*, *>)?.entries
             ?.firstOrNull { ChatMapping.longOf(it.key) == me }?.value
             ?.let(ChatMapping::longOf) ?: 0L
-        return maxOf(listed, state.readMarks[chat.id]?.get(me) ?: 0L)
+        return maxOf(listed, state.readMarks[chat.id]?.get(me) ?: 0L, state.localReads[chat.id]?.time ?: 0L)
     }
 
     /**

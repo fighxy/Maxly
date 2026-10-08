@@ -1,5 +1,6 @@
 package app.orbitle.data
 
+import com.max.core.api.LocalRead
 import com.max.core.api.MaxMessage
 import com.max.core.state.MaxState
 import org.junit.Assert.assertEquals
@@ -26,8 +27,17 @@ class ReadMarksTest {
         ),
     )!!
 
-    private fun state(chat: CoreChat, marks: Map<Long, Long> = emptyMap(), messages: List<MaxMessage> = emptyList()) =
-        MaxState(me = me, chats = mapOf(chat.id to chat), messages = mapOf(chat.id to messages), readMarks = mapOf(chat.id to marks))
+    private fun state(
+        chat: CoreChat,
+        marks: Map<Long, Long> = emptyMap(),
+        messages: List<MaxMessage> = emptyList(),
+        localReads: Map<Long, LocalRead> = emptyMap(),
+        ghostMode: Boolean = false,
+        hideReadReceipts: Boolean = false,
+    ) = MaxState(
+        me = me, chats = mapOf(chat.id to chat), messages = mapOf(chat.id to messages), readMarks = mapOf(chat.id to marks),
+        ghostMode = ghostMode, hideReadReceipts = hideReadReceipts, localReads = localReads,
+    )
 
     @Test
     fun peerMarkTakesTheNewerOfCardAndPush() {
@@ -46,6 +56,42 @@ class ReadMarksTest {
         val card = chat(participants = mapOf(me to 1_200L, peer to 0L))
         assertEquals(1_200L, ReadMarks.own(card, state(card)))
         assertEquals(4_000L, ReadMarks.own(card, state(card, marks = mapOf(me to 4_000L, peer to 9_000L))))
+    }
+
+    @Test
+    fun ownMarkPrefersTheNewerLocalRead() {
+        val card = chat(participants = mapOf(me to 1_200L, peer to 0L))
+        val local = mapOf(card.id to LocalRead(7L, 5_000L))
+        // Местная отметка новее серверной: разделитель встаёт по ней, а не по карточке.
+        assertEquals(5_000L, ReadMarks.own(card, state(card, marks = mapOf(me to 1_200L), localReads = local)))
+        // Местная старше серверной: серверная не откатывается.
+        val older = mapOf(card.id to LocalRead(3L, 600L))
+        assertEquals(1_200L, ReadMarks.own(card, state(card, marks = mapOf(me to 1_200L), localReads = older)))
+    }
+
+    @Test
+    fun ownMarkWithoutALocalReadStaysTheServerMark() {
+        val card = chat(participants = mapOf(me to 1_200L, peer to 0L))
+        assertEquals(1_200L, ReadMarks.own(card, state(card, localReads = emptyMap())))
+        // Местная отметка другого чата эту не двигает.
+        val other = mapOf(99L to LocalRead(7L, 9_000L))
+        assertEquals(1_200L, ReadMarks.own(card, state(card, localReads = other)))
+    }
+
+    @Test
+    fun ownMarkInGhostModeUsesTheLocalRead() {
+        val card = chat(participants = mapOf(me to 1_000L, peer to 0L))
+        val hidden = state(
+            card,
+            marks = mapOf(me to 1_000L),
+            localReads = mapOf(card.id to LocalRead(8L, 6_000L)),
+            ghostMode = true,
+            hideReadReceipts = true,
+        )
+        // Сервер отметку не получал: разделитель держится на местной.
+        assertEquals(6_000L, ReadMarks.own(card, hidden))
+        // Режим призрака сам по себе отметку не двигает — только местная запись.
+        assertEquals(1_000L, ReadMarks.own(card, hidden.copy(localReads = emptyMap())))
     }
 
     @Test
