@@ -2,6 +2,7 @@ package app.orbitle.presentation.chatlist
 
 import app.orbitle.domain.Chat
 import app.orbitle.domain.ChatType
+import app.orbitle.presentation.common.TypingText
 import app.orbitle.domain.DeliveryState
 import app.orbitle.domain.MessageMediaKind
 import app.orbitle.domain.SavedMessagesWelcome
@@ -253,18 +254,8 @@ class ChatListFormatter(private val zone: ZoneId = ZoneId.systemDefault()) {
             MessageMediaKind.GROUP_CALL -> "Групповой звонок"
         }
 
-        fun typingText(count: Int, type: ChatType): String {
-            if (count <= 1 || type != ChatType.GROUP) return "печатает…"
-            val tens = count % 100
-            val ones = count % 10
-            val noun = when {
-                tens in 11..14 -> "участников"
-                ones == 1 -> "участник"
-                ones in 2..4 -> "участника"
-                else -> "участников"
-            }
-            return if (ones == 1 && tens != 11) "$count $noun печатает…" else "$count $noun печатают…"
-        }
+        fun typingText(count: Int, type: ChatType): String =
+            if (count <= 1 || type != ChatType.GROUP) "печатает…" else TypingText.counted(count)
 
         fun unreadPhrase(count: Int): String {
             val tens = count % 100
