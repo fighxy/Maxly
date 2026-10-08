@@ -2,6 +2,7 @@ package app.orbitle.data
 
 import app.orbitle.domain.ChatDraft
 import app.orbitle.domain.TextSpan
+import com.max.core.api.MaxDraft
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -24,6 +25,22 @@ class DraftCodecTest {
         assertEquals(draft.updatedAtMs, back.updatedAtMs)
         assertEquals("77", back.replyTo)
         assertEquals(draft.formatting.toSet(), back.formatting.toSet())
+    }
+
+    @Test
+    fun replyWithoutTextIsADraft() {
+        val draft = ChatDraft("", 1_790_000_000_000L, replyTo = "77")
+        assertEquals(draft, DraftCodec.decode(DraftCodec.encode(draft)))
+        assertNull(DraftCodec.decode(DraftCodec.encode(ChatDraft("  ", 1))))
+    }
+
+    @Test
+    fun coreDraftWithOnlyAReplyIsKept() {
+        val reply = CoreDraftRepository.draft(MaxDraft(10, "", emptyList(), 77, 500))
+        assertEquals(ChatDraft("", 500, emptyList(), "77"), reply)
+        assertEquals(true, reply?.isEmpty?.not())
+        assertNull(CoreDraftRepository.draft(MaxDraft(10, " ", emptyList(), null, 500)))
+        assertEquals(ChatDraft("текст", 600), CoreDraftRepository.draft(MaxDraft(10, "текст", emptyList(), null, 600)))
     }
 
     @Test

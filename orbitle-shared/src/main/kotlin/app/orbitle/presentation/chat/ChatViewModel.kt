@@ -804,14 +804,15 @@ class ChatViewModel(
     /** Ответ из черновика, пока сообщения нет в загруженной ленте. */
     private var draftReplyId: String? = null
 
-    /** Поле ввода как черновик: текст, все отметки и ответ. `null` — пусто. */
+    /** Поле ввода как черновик: текст, все отметки и ответ. Ответ без текста — тоже черновик; `null` — ни того, ни другого. */
     private fun currentDraft(): ChatDraft? {
+        val reply = _state.value.replyTo?.id ?: draftReplyId
         val text = _state.value.draft
-        if (text.isBlank()) return null
+        if (text.isBlank()) return reply?.let { ChatDraft("", now(), emptyList(), it) }
         val marks = (animojiDraft.spans(text) + mentionDraft.spans(text) + formatDraft.spans)
             .distinctBy { Triple(it.kind, it.from, it.length) }
             .sortedWith(compareBy({ it.from }, { it.kind.ordinal }))
-        return ChatDraft(text, now(), marks, _state.value.replyTo?.id ?: draftReplyId)
+        return ChatDraft(text, now(), marks, reply)
     }
 
     /** Поле поменялось: сразу на устройство, на сервер — после паузы. */

@@ -112,7 +112,7 @@ class AppContainer {
         override fun load(chatId: String): ChatDraft? = prefs.getString(key(chatId), null)?.let(app.orbitle.data.DraftCodec::decode)
         override fun save(chatId: String, draft: ChatDraft?) {
             prefs.edit().apply {
-                if (draft == null || draft.text.isBlank()) remove(key(chatId)) else putString(key(chatId), app.orbitle.data.DraftCodec.encode(draft))
+                if (draft == null || draft.isEmpty) remove(key(chatId)) else putString(key(chatId), app.orbitle.data.DraftCodec.encode(draft))
             }.apply()
         }
         override fun drafts(): Map<String, ChatDraft> {

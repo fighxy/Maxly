@@ -43,13 +43,17 @@ class CoreDraftRepository(private val client: MaxClient) : DraftRepository {
         MaxCoreGateway.call { client.discardDraft(id) }
     }
 
-    private fun draft(draft: com.max.core.api.MaxDraft): ChatDraft? {
-        if (draft.text.isBlank()) return null
-        return ChatDraft(
-            text = draft.text,
-            updatedAtMs = draft.updateTime,
-            formatting = TextMarks.fromElements(draft.elements.filter { it.fits(draft.text.length) }),
-            replyTo = draft.replyTo?.toString(),
-        )
+    companion object {
+        /** Черновик ядра для экрана; `null` — ни текста, ни ответа. */
+        fun draft(draft: com.max.core.api.MaxDraft): ChatDraft? {
+            // Ответ без текста — черновик (так сохраняет и веб). Вложения сервера ядро держит только в `raw`.
+            if (draft.text.isBlank() && draft.replyTo == null) return null
+            return ChatDraft(
+                text = draft.text,
+                updatedAtMs = draft.updateTime,
+                formatting = TextMarks.fromElements(draft.elements.filter { it.fits(draft.text.length) }),
+                replyTo = draft.replyTo?.toString(),
+            )
+        }
     }
 }

@@ -517,7 +517,8 @@ class ChatListViewModel(
         if (next.isPinned) pinPlaces?.get(chat.id)?.let { next = next.copy(pinOrder = it) }
         pendingMutes[chat.id]?.let { next = next.copy(isMuted = it) }
         if (chat.id in markedUnread && chat.unreadCount == 0) next = next.copy(isMarkedUnread = true)
-        ChatDraft.later(drafts[chat.id], remoteDrafts[chat.id])?.let { next = next.copy(draft = it) }
+        // Строке нужен текст черновика: ответ без текста списку не виден и чат не поднимает.
+        ChatDraft.later(drafts[chat.id], remoteDrafts[chat.id])?.takeIf { it.text.isNotBlank() }?.let { next = next.copy(draft = it) }
         return next
     }
 

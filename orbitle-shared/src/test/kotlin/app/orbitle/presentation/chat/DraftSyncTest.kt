@@ -43,7 +43,7 @@ class MemoryFullDrafts : DraftStore {
     override fun put(chatId: String, text: String) = save(chatId, ChatDraft(text, 0))
     override fun load(chatId: String) = map[chatId]
     override fun save(chatId: String, draft: ChatDraft?) {
-        if (draft == null || draft.text.isBlank()) map.remove(chatId) else map[chatId] = draft
+        if (draft == null || draft.isEmpty) map.remove(chatId) else map[chatId] = draft
     }
 }
 
@@ -106,6 +106,19 @@ class DraftSyncTest {
     }
 
     @Test
+    fun replyWithoutTextIsSavedAndNothingAtAllIsADiscard() {
+        sync.changed("1", ChatDraft("", 1, replyTo = "7"))
+        sync.flush("1")
+        scope.runCurrent()
+        assertEquals(listOf("1" to ChatDraft("", 1, replyTo = "7")), server.saves)
+        sync.changed("1", ChatDraft("", 2))
+        sync.flush("1")
+        scope.runCurrent()
+        assertEquals(1, server.saves.size)
+        assertEquals(listOf("1"), server.discards)
+    }
+
+    @Test
     fun sentMessageDropsTheDraftRightAway() {
         server.stored.value = mapOf("1" to ChatDraft("abc", 5))
         sync.changed("1", ChatDraft("abcd", 6))
@@ -142,6 +155,37 @@ class ChatDraftsTest {
         assertEquals("жирный текст", second.state.value.draft)
         assertEquals(listOf(TextSpan(TextSpan.Kind.STRONG, 0, 6)), second.state.value.formatting)
         assertEquals("7", second.state.value.replyTo?.id)
+    }
+
+    @Test
+    fun replyOnAnEmptyComposerIsADraftThatComesBack() {
+        repo.list.value = listOf(Message("7", "10", "2", "вопрос", 1))
+        val first = vm()
+        first.beginReply(repo.list.value.first())
+        assertEquals(ChatDraft("", 5_000, emptyList(), "7"), local.map["10"])
+        scope.advanceTimeBy(1_600)
+        scope.runCurrent()
+        assertEquals(listOf("10" to ChatDraft("", 5_000, emptyList(), "7")), server.saves)
+
+        val second = vm()
+        assertEquals("", second.state.value.draft)
+        assertEquals("7", second.state.value.replyTo?.id)
+
+        second.cancelReply()
+        assertNull(local.map["10"])
+        scope.advanceTimeBy(1_600)
+        scope.runCurrent()
+        assertEquals(listOf("10"), server.discards)
+    }
+
+    @Test
+    fun serverReplyDraftWaitsForItsMessage() {
+        server.stored.value = mapOf("10" to ChatDraft("", 9_000, replyTo = "7"))
+        val model = vm()
+        assertNull(model.state.value.replyTo)
+        repo.list.value = listOf(Message("7", "10", "2", "вопрос", 1))
+        scope.runCurrent()
+        assertEquals("7", model.state.value.replyTo?.id)
     }
 
     @Test

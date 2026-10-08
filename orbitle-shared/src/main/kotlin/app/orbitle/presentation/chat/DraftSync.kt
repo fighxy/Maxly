@@ -34,10 +34,10 @@ class DraftSync(
 
     fun server(chatId: String): ChatDraft? = remote.current(chatId)
 
-    /** Поле ввода [chatId] стало таким; `null` или пустой текст — черновика больше нет. */
+    /** Поле ввода [chatId] стало таким; `null` или ни текста, ни ответа — черновика больше нет. */
     fun changed(chatId: String, draft: ChatDraft?) {
         synchronized(lock) {
-            wanted[chatId] = draft?.takeIf { it.text.isNotBlank() }
+            wanted[chatId] = draft?.takeIf { !it.isEmpty }
             waiting.remove(chatId)?.cancel()
             waiting[chatId] = scope.launch {
                 delay(delayMs)
@@ -55,7 +55,10 @@ class DraftSync(
         }
     }
 
-    /** Сообщение ушло: черновик убрать сразу. */
+    /**
+     * Сообщение ушло: черновик убрать сразу.
+     * TODO: убрать, когда ядро само шлёт `DRAFT_DISCARD` после отправки.
+     */
     fun sent(chatId: String) {
         changed(chatId, null)
         flush(chatId)

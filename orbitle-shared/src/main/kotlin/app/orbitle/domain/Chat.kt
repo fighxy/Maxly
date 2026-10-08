@@ -58,7 +58,8 @@ data class ChatLastMessage(
 
 /**
  * Черновик, оставленный в поле ввода чата: текст с отметками ([formatting] — разметка, упоминания,
- * анимодзи, смещения в [text]) и id сообщения, на которое начат ответ.
+ * анимодзи, смещения в [text]) и id сообщения, на которое начат ответ. Черновик бывает и из одного
+ * ответа без текста; без текста и без ответа черновика нет ([isEmpty]). Вложений в черновиках нет.
  */
 data class ChatDraft(
     val text: String,
@@ -66,6 +67,9 @@ data class ChatDraft(
     val formatting: List<TextSpan> = emptyList(),
     val replyTo: String? = null,
 ) {
+    /** Ни текста, ни ответа: такой черновик удаляется. */
+    val isEmpty: Boolean get() = text.isBlank() && replyTo == null
+
     /** То же содержимое, время не в счёт. */
     fun sameContent(other: ChatDraft?): Boolean =
         other != null && text == other.text && replyTo == other.replyTo && formatting.toSet() == other.formatting.toSet()
