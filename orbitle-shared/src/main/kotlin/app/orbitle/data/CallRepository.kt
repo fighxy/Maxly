@@ -2,6 +2,7 @@ package app.orbitle.data
 
 import app.orbitle.domain.CallOutcome
 import app.orbitle.domain.CallRecord
+import com.max.core.calls.CallLink
 import com.max.core.calls.CallLogEntry
 import com.max.core.state.MaxState
 import com.max.shared.MaxClient
@@ -14,6 +15,10 @@ interface CallRepository {
     /** `null`, пока история ни разу не загружалась. */
     val calls: StateFlow<List<CallRecord>?>
     suspend fun refresh()
+    /** Удаляет звонки на сервере (`VIDEO_CHAT_DELETE_HISTORY`) и из журнала. */
+    suspend fun delete(ids: List<String>)
+    /** Новый групповой звонок: ссылка, по которой в него входят. */
+    suspend fun createLink(): String
     fun clear()
 }
 
@@ -28,6 +33,20 @@ class CoreCallRepository(private val client: MaxClient) : CallRepository {
         if (unknown.isNotEmpty()) runCatching { MaxCoreGateway.read { client.loadUsers(unknown.take(100)) } }
         val state = client.store.state.value
         _calls.value = entries.map { record(it, me, state) }
+    }
+
+    override suspend fun delete(ids: List<String>) {
+        val valid = ids.mapNotNull { it.toLongOrNull() }
+        if (valid.isEmpty()) return
+        MaxCoreGateway.call { client.api.calls.deleteHistory(valid) }
+        val removed = valid.map { it.toString() }.toSet()
+        _calls.value = _calls.value?.filterNot { it.id in removed }
+    }
+
+    override suspend fun createLink(): String = MaxCoreGateway.call {
+        val created = client.api.calls.createConference()
+        val token = CallLink.token(created.joinLink) ?: throw IllegalStateException("no call link")
+        CallLink.url(token)
     }
 
     override fun clear() {

@@ -9,7 +9,9 @@ import app.orbitle.data.PreferenceStore
 import app.orbitle.domain.CallOutcome
 import app.orbitle.domain.CallRecord
 import app.orbitle.domain.ChatWallpaper
+import app.orbitle.domain.ConnectionState
 import app.orbitle.domain.Contact
+import app.orbitle.domain.OrbitleError
 import app.orbitle.domain.TextSizeStep
 import app.orbitle.domain.ThemeMode
 import app.orbitle.domain.WallpaperImage
@@ -31,6 +33,15 @@ class FakeCalls : CallRepository {
     override val calls = MutableStateFlow<List<CallRecord>?>(null)
     var refreshes = 0
     override suspend fun refresh() { refreshes++ }
+    val deleted = mutableListOf<List<String>>()
+    var failDelete = false
+    override suspend fun delete(ids: List<String>) {
+        if (failDelete) throw OrbitleError.NetworkUnavailable
+        deleted += ids
+        calls.value = calls.value?.filterNot { it.id in ids }
+    }
+    var link = "https://max.ru/call/abc"
+    override suspend fun createLink() = link
     override fun clear() { calls.value = null }
 }
 
@@ -65,14 +76,47 @@ class CallsViewModelTest {
     }
 
     @Test
-    fun missedFilterAndHide() {
+    fun missedFilterAndDelete() {
         val model = vm()
         repo.calls.value = listOf(call("1", outcome = CallOutcome.MISSED), call("2", outgoing = true, at = now - 1))
         model.setFilter(CallsFilter.MISSED)
         assertEquals(listOf("1"), model.state.value.rows.map { it.id })
-        model.hide(model.state.value.rows.first())
+        model.delete(model.state.value.rows.first())
         assertEquals(CallsUiState.Content.EMPTY, model.state.value.content)
-        assertEquals(setOf("1"), marks.hiddenIds)
+        assertEquals(listOf(listOf("1")), repo.deleted)
+        // Сервер удалил звонок: скрывать его локально больше незачем.
+        assertEquals(emptySet<String>(), marks.hiddenIds)
+    }
+
+    @Test
+    fun failedDeleteBringsTheRowBack() {
+        val model = vm()
+        repo.calls.value = listOf(call("1", outcome = CallOutcome.MISSED))
+        repo.failDelete = true
+        model.delete(model.state.value.rows.first())
+        assertEquals(listOf("1"), model.state.value.rows.map { it.id })
+        assertEquals(emptySet<String>(), marks.hiddenIds)
+        assertEquals(OrbitleError.NetworkUnavailable.userMessage, model.state.value.error)
+    }
+
+    @Test
+    fun createdLinkIsShownUntilDismissed() {
+        val model = vm()
+        model.createLink()
+        assertEquals("https://max.ru/call/abc", model.state.value.createdLink)
+        assertFalse(model.state.value.isCreatingLink)
+        model.dismissLink()
+        assertNull(model.state.value.createdLink)
+    }
+
+    @Test
+    fun reconnectRefreshesHistory() {
+        val connection = MutableStateFlow(ConnectionState.ONLINE)
+        CallsViewModel(repo, marks, ZoneOffset.UTC, connection) { now }
+        assertEquals(0, repo.refreshes)
+        connection.value = ConnectionState.CONNECTING
+        connection.value = ConnectionState.ONLINE
+        assertEquals(1, repo.refreshes)
     }
 
     @Test

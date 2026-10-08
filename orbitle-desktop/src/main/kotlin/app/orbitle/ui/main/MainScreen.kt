@@ -131,7 +131,7 @@ fun MainScreen(
     var miniAppKey by rememberSaveable { mutableIntStateOf(0) }
     var miniKind by rememberSaveable { mutableStateOf(MiniApp.Kind.DIGITAL_ID.wire) }
     val chats by chatList.state.collectAsStateWithLifecycle()
-    val callsModel = viewModel { CallsViewModel(container.calls, container.callMarks) }
+    val callsModel = viewModel { CallsViewModel(container.calls, container.callMarks, connection = container.session.connection) }
     val calls by callsModel.state.collectAsStateWithLifecycle()
     val accountModel = viewModel { AccountSettingsViewModel(container.account) }
     val accountState by accountModel.state.collectAsStateWithLifecycle()
