@@ -56,11 +56,12 @@ class AppContainer {
      * Без догрузки дыр истории после переподключения (`fillGapsOnReconnect`), как на iOS: ядро
      * листало историю всех чатов подряд, до 16 страниц на чат, и сервер отвечал
      * `too.many.requests` — заодно и на историю открытого чата. Открытый чат сам берёт свежую
-     * страницу, старое догружается прокруткой.
+     * страницу, старое догружается прокруткой. Диагностика ядра (пуши черновиков, уже без
+     * текста) пишется в журнал приложения.
      */
     val client: MaxClient = MaxClient(
         MaxClientConfig(namespace = CORE_NAMESPACE, messageLimit = MESSAGE_LIMIT, fillGapsOnReconnect = false),
-    )
+    ).apply { onDiagnostic = { line -> app.orbitle.data.diagnostics.AppLog.i("core", line) } }
 
     val chats: ChatRepository = CoreChatRepository(client)
     val chatAdmin: app.orbitle.data.ChatAdminRepository = app.orbitle.data.CoreChatAdminRepository(client)
