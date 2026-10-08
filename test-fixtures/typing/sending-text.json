@@ -1,0 +1,69 @@
+{
+  "kind": "sending",
+  "name": "sending-text",
+  "description": "TEXT на каждую правку текста, не чаще раза в 6 с на чат; у другого чата свой порог.",
+  "steps": [
+    {
+      "at": 0,
+      "do": "editText",
+      "chatId": "c1",
+      "sent": [
+        {
+          "chatId": "c1",
+          "type": "TEXT"
+        }
+      ]
+    },
+    {
+      "at": 1000,
+      "do": "editText",
+      "chatId": "c1",
+      "sent": []
+    },
+    {
+      "at": 5999,
+      "do": "editText",
+      "chatId": "c1",
+      "sent": []
+    },
+    {
+      "at": 6000,
+      "do": "editText",
+      "chatId": "c1",
+      "sent": [
+        {
+          "chatId": "c1",
+          "type": "TEXT"
+        }
+      ]
+    },
+    {
+      "at": 7000,
+      "do": "editText",
+      "chatId": "c2",
+      "sent": [
+        {
+          "chatId": "c2",
+          "type": "TEXT"
+        }
+      ]
+    },
+    {
+      "at": 11999,
+      "do": "editText",
+      "chatId": "c1",
+      "sent": []
+    },
+    {
+      "at": 12000,
+      "do": "editText",
+      "chatId": "c1",
+      "sent": [
+        {
+          "chatId": "c1",
+          "type": "TEXT"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "kind": "sending",
+  "name": "sending-channel",
+  "description": "В чат, куда писать нельзя, ничего не уходит и запись не повторяется; комментарии к посту несут postId.",
+  "steps": [
+    {
+      "at": 0,
+      "do": "editText",
+      "chatId": "ch",
+      "canWrite": false,
+      "sent": []
+    },
+    {
+      "at": 100,
+      "do": "openStickers",
+      "chatId": "ch",
+      "canWrite": false,
+      "sent": []
+    },
+    {
+      "at": 200,
+      "do": "uploadProgress",
+      "chatId": "ch",
+      "type": "PHOTO",
+      "canWrite": false,
+      "sent": []
+    },
+    {
+      "at": 300,
+      "do": "startRecording",
+      "chatId": "ch",
+      "type": "AUDIO",
+      "canWrite": false,
+      "sent": []
+    },
+    {
+      "at": 5300,
+      "do": "tick",
+      "sent": []
+    },
+    {
+      "at": 10300,
+      "do": "tick",
+      "sent": []
+    },
+    {
+      "at": 11000,
+      "do": "editText",
+      "chatId": "ch",
+      "postId": "p1",
+      "sent": [
+        {
+          "chatId": "ch",
+          "type": "TEXT",
+          "postId": "p1"
+        }
+      ]
+    },
+    {
+      "at": 12000,
+      "do": "editText",
+      "chatId": "ch",
+      "postId": "p1",
+      "sent": []
+    },
+    {
+      "at": 17000,
+      "do": "openStickers",
+      "chatId": "ch",
+      "postId": "p1",
+      "sent": [
+        {
+          "chatId": "ch",
+          "type": "STICKER",
+          "postId": "p1"
+        }
+      ]
+    }
+  ]
+}

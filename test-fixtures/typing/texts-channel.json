@@ -1,0 +1,48 @@
+{
+  "kind": "texts",
+  "name": "texts-channel",
+  "description": "В канале индикатора нет.",
+  "cases": [
+    {
+      "name": "text",
+      "chat": "channel",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "TEXT",
+          "startedAt": 0
+        }
+      ],
+      "list": null,
+      "header": null
+    },
+    {
+      "name": "sticker-two",
+      "chat": "channel",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "STICKER",
+          "startedAt": 0
+        },
+        {
+          "userId": "2",
+          "name": "Петя",
+          "type": "STICKER",
+          "startedAt": 1000
+        }
+      ],
+      "list": null,
+      "header": null
+    },
+    {
+      "name": "nobody",
+      "chat": "channel",
+      "typing": [],
+      "list": null,
+      "header": null
+    }
+  ]
+}

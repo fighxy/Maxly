@@ -1,0 +1,363 @@
+{
+  "kind": "texts",
+  "name": "texts-names-unknown",
+  "description": "Группа без нужного имени: счёт участников («2 участника печатают…»), один без имени — только действие.",
+  "cases": [
+    {
+      "name": "one-unknown",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 0
+        }
+      ],
+      "list": "печатает…",
+      "header": "печатает"
+    },
+    {
+      "name": "one-unknown-sticker",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": null,
+          "type": "STICKER",
+          "startedAt": 0
+        }
+      ],
+      "list": "выбирает стикер…",
+      "header": "выбирает стикер"
+    },
+    {
+      "name": "two-second-unknown",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "TEXT",
+          "startedAt": 0
+        },
+        {
+          "userId": "2",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 1000
+        }
+      ],
+      "list": "2 участника печатают…",
+      "header": "2 участника печатают"
+    },
+    {
+      "name": "three-middle-unknown",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "TEXT",
+          "startedAt": 0
+        },
+        {
+          "userId": "2",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 1000
+        },
+        {
+          "userId": "3",
+          "name": "Маша",
+          "type": "TEXT",
+          "startedAt": 2000
+        }
+      ],
+      "list": "3 участника печатают…",
+      "header": "3 участника печатают"
+    },
+    {
+      "name": "four-only-first-needed",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "TEXT",
+          "startedAt": 0
+        },
+        {
+          "userId": "2",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 1000
+        },
+        {
+          "userId": "3",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 2000
+        },
+        {
+          "userId": "4",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 3000
+        }
+      ],
+      "list": "Иван и ещё 3 печатают…",
+      "header": "Иван и ещё 3 печатают"
+    },
+    {
+      "name": "four-first-unknown",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 0
+        },
+        {
+          "userId": "2",
+          "name": "Петя",
+          "type": "TEXT",
+          "startedAt": 1000
+        },
+        {
+          "userId": "3",
+          "name": "Маша",
+          "type": "TEXT",
+          "startedAt": 2000
+        },
+        {
+          "userId": "4",
+          "name": "Оля",
+          "type": "TEXT",
+          "startedAt": 3000
+        }
+      ],
+      "list": "4 участника печатают…",
+      "header": "4 участника печатают"
+    },
+    {
+      "name": "five-unknown-file",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": null,
+          "type": "FILE",
+          "startedAt": 0
+        },
+        {
+          "userId": "2",
+          "name": null,
+          "type": "FILE",
+          "startedAt": 10
+        },
+        {
+          "userId": "3",
+          "name": null,
+          "type": "FILE",
+          "startedAt": 20
+        },
+        {
+          "userId": "4",
+          "name": null,
+          "type": "FILE",
+          "startedAt": 30
+        },
+        {
+          "userId": "5",
+          "name": null,
+          "type": "FILE",
+          "startedAt": 40
+        }
+      ],
+      "list": "5 участников отправляют файл…",
+      "header": "5 участников отправляют файл"
+    },
+    {
+      "name": "twenty-one-unknown",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 0
+        },
+        {
+          "userId": "2",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 10
+        },
+        {
+          "userId": "3",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 20
+        },
+        {
+          "userId": "4",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 30
+        },
+        {
+          "userId": "5",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 40
+        },
+        {
+          "userId": "6",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 50
+        },
+        {
+          "userId": "7",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 60
+        },
+        {
+          "userId": "8",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 70
+        },
+        {
+          "userId": "9",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 80
+        },
+        {
+          "userId": "10",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 90
+        },
+        {
+          "userId": "11",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 100
+        },
+        {
+          "userId": "12",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 110
+        },
+        {
+          "userId": "13",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 120
+        },
+        {
+          "userId": "14",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 130
+        },
+        {
+          "userId": "15",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 140
+        },
+        {
+          "userId": "16",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 150
+        },
+        {
+          "userId": "17",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 160
+        },
+        {
+          "userId": "18",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 170
+        },
+        {
+          "userId": "19",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 180
+        },
+        {
+          "userId": "20",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 190
+        },
+        {
+          "userId": "21",
+          "name": null,
+          "type": "TEXT",
+          "startedAt": 200
+        }
+      ],
+      "list": "21 участник печатает…",
+      "header": "21 участник печатает"
+    },
+    {
+      "name": "earliest-unknown-other-type-ignored",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": null,
+          "type": "AUDIO",
+          "startedAt": 0
+        },
+        {
+          "userId": "2",
+          "name": "Петя",
+          "type": "TEXT",
+          "startedAt": 1000
+        }
+      ],
+      "list": "записывает аудио…",
+      "header": "записывает аудио"
+    },
+    {
+      "name": "two-unknown-photo",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": null,
+          "type": "PHOTO",
+          "startedAt": 0
+        },
+        {
+          "userId": "2",
+          "name": null,
+          "type": "PHOTO",
+          "startedAt": 1000
+        },
+        {
+          "userId": "3",
+          "name": "Маша",
+          "type": "TEXT",
+          "startedAt": 2000
+        }
+      ],
+      "list": "2 участника отправляют фото…",
+      "header": "2 участника отправляют фото"
+    }
+  ]
+}

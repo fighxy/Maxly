@@ -1,0 +1,119 @@
+{
+  "kind": "expiry",
+  "name": "expiry-order",
+  "description": "Порядок — по началу: повторный пуш место не меняет, пуш после истечения — новое начало.",
+  "ttlMs": 8000,
+  "steps": [
+    {
+      "at": 0,
+      "push": {
+        "chatId": "c1",
+        "userId": "2",
+        "type": "TEXT"
+      }
+    },
+    {
+      "at": 1000,
+      "push": {
+        "chatId": "c1",
+        "userId": "1",
+        "type": "TEXT"
+      }
+    },
+    {
+      "at": 2000,
+      "push": {
+        "chatId": "c1",
+        "userId": "2",
+        "type": "STICKER"
+      }
+    },
+    {
+      "at": 2000,
+      "expect": {
+        "c1": [
+          {
+            "userId": "2",
+            "type": "STICKER"
+          },
+          {
+            "userId": "1",
+            "type": "TEXT"
+          }
+        ]
+      }
+    },
+    {
+      "at": 6000,
+      "push": {
+        "chatId": "c1",
+        "userId": "1",
+        "type": "TEXT"
+      }
+    },
+    {
+      "at": 10000,
+      "expect": {
+        "c1": [
+          {
+            "userId": "2",
+            "type": "STICKER"
+          },
+          {
+            "userId": "1",
+            "type": "TEXT"
+          }
+        ]
+      }
+    },
+    {
+      "at": 10001,
+      "expect": {
+        "c1": [
+          {
+            "userId": "1",
+            "type": "TEXT"
+          }
+        ]
+      }
+    },
+    {
+      "at": 11000,
+      "push": {
+        "chatId": "c1",
+        "userId": "2",
+        "type": "TEXT"
+      }
+    },
+    {
+      "at": 11000,
+      "expect": {
+        "c1": [
+          {
+            "userId": "1",
+            "type": "TEXT"
+          },
+          {
+            "userId": "2",
+            "type": "TEXT"
+          }
+        ]
+      }
+    },
+    {
+      "at": 14001,
+      "expect": {
+        "c1": [
+          {
+            "userId": "2",
+            "type": "TEXT"
+          }
+        ]
+      }
+    },
+    {
+      "at": 19001,
+      "expect": {}
+    }
+  ]
+}

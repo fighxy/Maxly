@@ -1,0 +1,71 @@
+{
+  "kind": "sending",
+  "name": "sending-throttle-per-chat",
+  "description": "Порог один на чат для всех типов; пропущенный кадр время порога не сдвигает.",
+  "steps": [
+    {
+      "at": 0,
+      "do": "editText",
+      "chatId": "c1",
+      "sent": [
+        {
+          "chatId": "c1",
+          "type": "TEXT"
+        }
+      ]
+    },
+    {
+      "at": 2000,
+      "do": "openStickers",
+      "chatId": "c1",
+      "sent": []
+    },
+    {
+      "at": 4000,
+      "do": "uploadProgress",
+      "chatId": "c1",
+      "type": "FILE",
+      "sent": []
+    },
+    {
+      "at": 6000,
+      "do": "uploadProgress",
+      "chatId": "c1",
+      "type": "FILE",
+      "sent": [
+        {
+          "chatId": "c1",
+          "type": "FILE"
+        }
+      ]
+    },
+    {
+      "at": 8000,
+      "do": "editText",
+      "chatId": "c1",
+      "sent": []
+    },
+    {
+      "at": 12000,
+      "do": "openStickers",
+      "chatId": "c1",
+      "sent": [
+        {
+          "chatId": "c1",
+          "type": "STICKER"
+        }
+      ]
+    },
+    {
+      "at": 13000,
+      "do": "openStickers",
+      "chatId": "c2",
+      "sent": [
+        {
+          "chatId": "c2",
+          "type": "STICKER"
+        }
+      ]
+    }
+  ]
+}

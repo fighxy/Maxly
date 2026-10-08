@@ -1,0 +1,88 @@
+{
+  "kind": "sending",
+  "name": "sending-uploads",
+  "description": "PHOTO, VIDEO и FILE на события хода загрузки, не чаще раза в 6 с на чат.",
+  "steps": [
+    {
+      "at": 0,
+      "do": "uploadProgress",
+      "chatId": "c1",
+      "type": "PHOTO",
+      "sent": [
+        {
+          "chatId": "c1",
+          "type": "PHOTO"
+        }
+      ]
+    },
+    {
+      "at": 1000,
+      "do": "uploadProgress",
+      "chatId": "c1",
+      "type": "PHOTO",
+      "sent": []
+    },
+    {
+      "at": 3000,
+      "do": "uploadProgress",
+      "chatId": "c1",
+      "type": "PHOTO",
+      "sent": []
+    },
+    {
+      "at": 6000,
+      "do": "uploadProgress",
+      "chatId": "c1",
+      "type": "PHOTO",
+      "sent": [
+        {
+          "chatId": "c1",
+          "type": "PHOTO"
+        }
+      ]
+    },
+    {
+      "at": 12000,
+      "do": "uploadProgress",
+      "chatId": "c1",
+      "type": "VIDEO",
+      "sent": [
+        {
+          "chatId": "c1",
+          "type": "VIDEO"
+        }
+      ]
+    },
+    {
+      "at": 15000,
+      "do": "uploadProgress",
+      "chatId": "c1",
+      "type": "VIDEO",
+      "sent": []
+    },
+    {
+      "at": 20000,
+      "do": "uploadProgress",
+      "chatId": "c1",
+      "type": "FILE",
+      "sent": [
+        {
+          "chatId": "c1",
+          "type": "FILE"
+        }
+      ]
+    },
+    {
+      "at": 21000,
+      "do": "uploadProgress",
+      "chatId": "c2",
+      "type": "FILE",
+      "sent": [
+        {
+          "chatId": "c2",
+          "type": "FILE"
+        }
+      ]
+    }
+  ]
+}

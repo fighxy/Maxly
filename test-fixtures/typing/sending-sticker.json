@@ -1,0 +1,45 @@
+{
+  "kind": "sending",
+  "name": "sending-sticker",
+  "description": "STICKER при открытии панели стикеров, без повторов, пока она открыта.",
+  "steps": [
+    {
+      "at": 0,
+      "do": "openStickers",
+      "chatId": "c1",
+      "sent": [
+        {
+          "chatId": "c1",
+          "type": "STICKER"
+        }
+      ]
+    },
+    {
+      "at": 3000,
+      "do": "openStickers",
+      "chatId": "c1",
+      "sent": []
+    },
+    {
+      "at": 5000,
+      "do": "tick",
+      "sent": []
+    },
+    {
+      "at": 10000,
+      "do": "tick",
+      "sent": []
+    },
+    {
+      "at": 11000,
+      "do": "openStickers",
+      "chatId": "c1",
+      "sent": [
+        {
+          "chatId": "c1",
+          "type": "STICKER"
+        }
+      ]
+    }
+  ]
+}

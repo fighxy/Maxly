@@ -1,0 +1,399 @@
+{
+  "kind": "texts",
+  "name": "texts-group",
+  "description": "Группа: тип того, кто начал раньше всех; в строке только печатающие с этим типом, по времени начала, с именами.",
+  "cases": [
+    {
+      "name": "one",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "TEXT",
+          "startedAt": 0
+        }
+      ],
+      "list": "Иван печатает…",
+      "header": "Иван печатает"
+    },
+    {
+      "name": "two",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "TEXT",
+          "startedAt": 0
+        },
+        {
+          "userId": "2",
+          "name": "Петя",
+          "type": "TEXT",
+          "startedAt": 1000
+        }
+      ],
+      "list": "Иван и Петя печатают…",
+      "header": "Иван и Петя печатают"
+    },
+    {
+      "name": "three",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "TEXT",
+          "startedAt": 0
+        },
+        {
+          "userId": "2",
+          "name": "Петя",
+          "type": "TEXT",
+          "startedAt": 1000
+        },
+        {
+          "userId": "3",
+          "name": "Маша",
+          "type": "TEXT",
+          "startedAt": 2000
+        }
+      ],
+      "list": "Иван, Петя и Маша печатают…",
+      "header": "Иван, Петя и Маша печатают"
+    },
+    {
+      "name": "four",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "TEXT",
+          "startedAt": 0
+        },
+        {
+          "userId": "2",
+          "name": "Петя",
+          "type": "TEXT",
+          "startedAt": 1000
+        },
+        {
+          "userId": "3",
+          "name": "Маша",
+          "type": "TEXT",
+          "startedAt": 2000
+        },
+        {
+          "userId": "4",
+          "name": "Оля",
+          "type": "TEXT",
+          "startedAt": 3000
+        }
+      ],
+      "list": "Иван и ещё 3 печатают…",
+      "header": "Иван и ещё 3 печатают"
+    },
+    {
+      "name": "five",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "TEXT",
+          "startedAt": 0
+        },
+        {
+          "userId": "2",
+          "name": "Петя",
+          "type": "TEXT",
+          "startedAt": 1000
+        },
+        {
+          "userId": "3",
+          "name": "Маша",
+          "type": "TEXT",
+          "startedAt": 2000
+        },
+        {
+          "userId": "4",
+          "name": "Оля",
+          "type": "TEXT",
+          "startedAt": 3000
+        },
+        {
+          "userId": "5",
+          "name": "Женя",
+          "type": "TEXT",
+          "startedAt": 4000
+        }
+      ],
+      "list": "Иван и ещё 4 печатают…",
+      "header": "Иван и ещё 4 печатают"
+    },
+    {
+      "name": "earliest-first",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "2",
+          "name": "Петя",
+          "type": "TEXT",
+          "startedAt": 2000
+        },
+        {
+          "userId": "3",
+          "name": "Маша",
+          "type": "TEXT",
+          "startedAt": 3000
+        },
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "TEXT",
+          "startedAt": 1000
+        }
+      ],
+      "list": "Иван, Петя и Маша печатают…",
+      "header": "Иван, Петя и Маша печатают"
+    },
+    {
+      "name": "sticker-one",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "STICKER",
+          "startedAt": 0
+        }
+      ],
+      "list": "Иван выбирает стикер…",
+      "header": "Иван выбирает стикер"
+    },
+    {
+      "name": "audio-two",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "AUDIO",
+          "startedAt": 0
+        },
+        {
+          "userId": "2",
+          "name": "Петя",
+          "type": "AUDIO",
+          "startedAt": 500
+        }
+      ],
+      "list": "Иван и Петя записывают аудио…",
+      "header": "Иван и Петя записывают аудио"
+    },
+    {
+      "name": "video-message-one",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "VIDEO_MSG",
+          "startedAt": 0
+        }
+      ],
+      "list": "Иван записывает видеосообщение…",
+      "header": "Иван записывает видеосообщение"
+    },
+    {
+      "name": "photo-two",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "PHOTO",
+          "startedAt": 0
+        },
+        {
+          "userId": "2",
+          "name": "Петя",
+          "type": "PHOTO",
+          "startedAt": 100
+        }
+      ],
+      "list": "Иван и Петя отправляют фото…",
+      "header": "Иван и Петя отправляют фото"
+    },
+    {
+      "name": "video-three",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "VIDEO",
+          "startedAt": 0
+        },
+        {
+          "userId": "2",
+          "name": "Петя",
+          "type": "VIDEO",
+          "startedAt": 100
+        },
+        {
+          "userId": "3",
+          "name": "Маша",
+          "type": "VIDEO",
+          "startedAt": 200
+        }
+      ],
+      "list": "Иван, Петя и Маша отправляют видео…",
+      "header": "Иван, Петя и Маша отправляют видео"
+    },
+    {
+      "name": "file-four",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "FILE",
+          "startedAt": 0
+        },
+        {
+          "userId": "2",
+          "name": "Петя",
+          "type": "FILE",
+          "startedAt": 100
+        },
+        {
+          "userId": "3",
+          "name": "Маша",
+          "type": "FILE",
+          "startedAt": 200
+        },
+        {
+          "userId": "4",
+          "name": "Оля",
+          "type": "FILE",
+          "startedAt": 300
+        }
+      ],
+      "list": "Иван и ещё 3 отправляют файл…",
+      "header": "Иван и ещё 3 отправляют файл"
+    },
+    {
+      "name": "mixed-earliest-type-wins",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "TEXT",
+          "startedAt": 0
+        },
+        {
+          "userId": "2",
+          "name": "Петя",
+          "type": "STICKER",
+          "startedAt": 1000
+        },
+        {
+          "userId": "3",
+          "name": "Маша",
+          "type": "TEXT",
+          "startedAt": 2000
+        }
+      ],
+      "list": "Иван и Маша печатают…",
+      "header": "Иван и Маша печатают"
+    },
+    {
+      "name": "mixed-earliest-sticker",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "TEXT",
+          "startedAt": 1000
+        },
+        {
+          "userId": "2",
+          "name": "Петя",
+          "type": "STICKER",
+          "startedAt": 0
+        }
+      ],
+      "list": "Петя выбирает стикер…",
+      "header": "Петя выбирает стикер"
+    },
+    {
+      "name": "mixed-unsorted-input",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "3",
+          "name": "Маша",
+          "type": "AUDIO",
+          "startedAt": 3000
+        },
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "TEXT",
+          "startedAt": 2000
+        },
+        {
+          "userId": "2",
+          "name": "Петя",
+          "type": "AUDIO",
+          "startedAt": 1000
+        }
+      ],
+      "list": "Петя и Маша записывают аудио…",
+      "header": "Петя и Маша записывают аудио"
+    },
+    {
+      "name": "missing-null-unknown-are-text",
+      "chat": "group",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "startedAt": 0
+        },
+        {
+          "userId": "2",
+          "name": "Петя",
+          "type": null,
+          "startedAt": 1000
+        },
+        {
+          "userId": "3",
+          "name": "Маша",
+          "type": "DRAWING",
+          "startedAt": 2000
+        },
+        {
+          "userId": "4",
+          "name": "Оля",
+          "type": "TEXT",
+          "startedAt": 3000
+        }
+      ],
+      "list": "Иван и ещё 3 печатают…",
+      "header": "Иван и ещё 3 печатают"
+    },
+    {
+      "name": "nobody",
+      "chat": "group",
+      "typing": [],
+      "list": null,
+      "header": null
+    }
+  ]
+}

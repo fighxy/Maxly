@@ -1,0 +1,129 @@
+{
+  "kind": "sending",
+  "name": "sending-recording",
+  "description": "AUDIO и VIDEO_MSG в начале записи и каждые 5 с от начала, пока она идёт; каждый повтор проходит порог 6 с.",
+  "steps": [
+    {
+      "at": 0,
+      "do": "startRecording",
+      "chatId": "c1",
+      "type": "AUDIO",
+      "sent": [
+        {
+          "chatId": "c1",
+          "type": "AUDIO"
+        }
+      ]
+    },
+    {
+      "at": 4999,
+      "do": "tick",
+      "sent": []
+    },
+    {
+      "at": 5000,
+      "do": "tick",
+      "sent": []
+    },
+    {
+      "at": 10000,
+      "do": "tick",
+      "sent": [
+        {
+          "chatId": "c1",
+          "type": "AUDIO"
+        }
+      ]
+    },
+    {
+      "at": 15000,
+      "do": "tick",
+      "sent": []
+    },
+    {
+      "at": 20000,
+      "do": "tick",
+      "sent": [
+        {
+          "chatId": "c1",
+          "type": "AUDIO"
+        }
+      ]
+    },
+    {
+      "at": 22000,
+      "do": "stopRecording",
+      "chatId": "c1",
+      "sent": []
+    },
+    {
+      "at": 25000,
+      "do": "tick",
+      "sent": []
+    },
+    {
+      "at": 30000,
+      "do": "tick",
+      "sent": []
+    },
+    {
+      "at": 40000,
+      "do": "editText",
+      "chatId": "c2",
+      "sent": [
+        {
+          "chatId": "c2",
+          "type": "TEXT"
+        }
+      ]
+    },
+    {
+      "at": 43000,
+      "do": "startRecording",
+      "chatId": "c2",
+      "type": "VIDEO_MSG",
+      "sent": []
+    },
+    {
+      "at": 46000,
+      "do": "tick",
+      "sent": []
+    },
+    {
+      "at": 48000,
+      "do": "tick",
+      "sent": [
+        {
+          "chatId": "c2",
+          "type": "VIDEO_MSG"
+        }
+      ]
+    },
+    {
+      "at": 53000,
+      "do": "tick",
+      "sent": []
+    },
+    {
+      "at": 58000,
+      "do": "tick",
+      "sent": [
+        {
+          "chatId": "c2",
+          "type": "VIDEO_MSG"
+        }
+      ]
+    },
+    {
+      "at": 60000,
+      "do": "stopRecording",
+      "chatId": "c2",
+      "sent": []
+    },
+    {
+      "at": 63000,
+      "do": "tick",
+      "sent": []
+    }
+  ]
+}

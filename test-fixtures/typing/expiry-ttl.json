@@ -1,0 +1,145 @@
+{
+  "kind": "expiry",
+  "name": "expiry-ttl",
+  "description": "Отметка живёт 8 с после последнего пуша 129 включительно; повторный пуш продлевает срок и заменяет тип.",
+  "ttlMs": 8000,
+  "steps": [
+    {
+      "at": 0,
+      "push": {
+        "chatId": "c1",
+        "userId": "1",
+        "type": "TEXT"
+      }
+    },
+    {
+      "at": 0,
+      "expect": {
+        "c1": [
+          {
+            "userId": "1",
+            "type": "TEXT"
+          }
+        ]
+      }
+    },
+    {
+      "at": 7999,
+      "expect": {
+        "c1": [
+          {
+            "userId": "1",
+            "type": "TEXT"
+          }
+        ]
+      }
+    },
+    {
+      "at": 8000,
+      "expect": {
+        "c1": [
+          {
+            "userId": "1",
+            "type": "TEXT"
+          }
+        ]
+      }
+    },
+    {
+      "at": 8001,
+      "expect": {}
+    },
+    {
+      "at": 10000,
+      "push": {
+        "chatId": "c1",
+        "userId": "1",
+        "type": "TEXT"
+      }
+    },
+    {
+      "at": 15000,
+      "push": {
+        "chatId": "c1",
+        "userId": "1",
+        "type": "STICKER"
+      }
+    },
+    {
+      "at": 18001,
+      "expect": {
+        "c1": [
+          {
+            "userId": "1",
+            "type": "STICKER"
+          }
+        ]
+      }
+    },
+    {
+      "at": 23000,
+      "expect": {
+        "c1": [
+          {
+            "userId": "1",
+            "type": "STICKER"
+          }
+        ]
+      }
+    },
+    {
+      "at": 23001,
+      "expect": {}
+    },
+    {
+      "at": 30000,
+      "push": {
+        "chatId": "c1",
+        "userId": "1"
+      }
+    },
+    {
+      "at": 30000,
+      "push": {
+        "chatId": "c2",
+        "userId": "2",
+        "type": ""
+      }
+    },
+    {
+      "at": 30000,
+      "push": {
+        "chatId": "c3",
+        "userId": "3",
+        "type": "DRAWING"
+      }
+    },
+    {
+      "at": 30000,
+      "expect": {
+        "c1": [
+          {
+            "userId": "1",
+            "type": null
+          }
+        ],
+        "c2": [
+          {
+            "userId": "2",
+            "type": null
+          }
+        ],
+        "c3": [
+          {
+            "userId": "3",
+            "type": "DRAWING"
+          }
+        ]
+      }
+    },
+    {
+      "at": 38001,
+      "expect": {}
+    }
+  ]
+}

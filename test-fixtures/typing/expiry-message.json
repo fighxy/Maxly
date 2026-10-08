@@ -1,0 +1,144 @@
+{
+  "kind": "expiry",
+  "name": "expiry-message",
+  "description": "Сообщение пользователя снимает его отметку сразу и только в этом чате.",
+  "ttlMs": 8000,
+  "steps": [
+    {
+      "at": 0,
+      "push": {
+        "chatId": "c1",
+        "userId": "1",
+        "type": "TEXT"
+      }
+    },
+    {
+      "at": 500,
+      "push": {
+        "chatId": "c1",
+        "userId": "2",
+        "type": "FILE"
+      }
+    },
+    {
+      "at": 1000,
+      "push": {
+        "chatId": "c2",
+        "userId": "1",
+        "type": "AUDIO"
+      }
+    },
+    {
+      "at": 1000,
+      "expect": {
+        "c1": [
+          {
+            "userId": "1",
+            "type": "TEXT"
+          },
+          {
+            "userId": "2",
+            "type": "FILE"
+          }
+        ],
+        "c2": [
+          {
+            "userId": "1",
+            "type": "AUDIO"
+          }
+        ]
+      }
+    },
+    {
+      "at": 3000,
+      "message": {
+        "chatId": "c1",
+        "userId": "1"
+      }
+    },
+    {
+      "at": 3000,
+      "expect": {
+        "c1": [
+          {
+            "userId": "2",
+            "type": "FILE"
+          }
+        ],
+        "c2": [
+          {
+            "userId": "1",
+            "type": "AUDIO"
+          }
+        ]
+      }
+    },
+    {
+      "at": 3500,
+      "message": {
+        "chatId": "c1",
+        "userId": "3"
+      }
+    },
+    {
+      "at": 3500,
+      "expect": {
+        "c1": [
+          {
+            "userId": "2",
+            "type": "FILE"
+          }
+        ],
+        "c2": [
+          {
+            "userId": "1",
+            "type": "AUDIO"
+          }
+        ]
+      }
+    },
+    {
+      "at": 4000,
+      "message": {
+        "chatId": "c1",
+        "userId": "2"
+      }
+    },
+    {
+      "at": 4000,
+      "expect": {
+        "c2": [
+          {
+            "userId": "1",
+            "type": "AUDIO"
+          }
+        ]
+      }
+    },
+    {
+      "at": 5000,
+      "push": {
+        "chatId": "c1",
+        "userId": "1",
+        "type": "TEXT"
+      }
+    },
+    {
+      "at": 5000,
+      "expect": {
+        "c1": [
+          {
+            "userId": "1",
+            "type": "TEXT"
+          }
+        ],
+        "c2": [
+          {
+            "userId": "1",
+            "type": "AUDIO"
+          }
+        ]
+      }
+    }
+  ]
+}

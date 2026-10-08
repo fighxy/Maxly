@@ -1,0 +1,153 @@
+{
+  "kind": "texts",
+  "name": "texts-private",
+  "description": "Личный чат: только действие, без имени. Неизвестный и отсутствующий тип — «печатает».",
+  "cases": [
+    {
+      "name": "text",
+      "chat": "private",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "TEXT",
+          "startedAt": 0
+        }
+      ],
+      "list": "печатает…",
+      "header": "печатает"
+    },
+    {
+      "name": "type-missing",
+      "chat": "private",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "startedAt": 0
+        }
+      ],
+      "list": "печатает…",
+      "header": "печатает"
+    },
+    {
+      "name": "type-null",
+      "chat": "private",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": null,
+          "startedAt": 0
+        }
+      ],
+      "list": "печатает…",
+      "header": "печатает"
+    },
+    {
+      "name": "type-unknown",
+      "chat": "private",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "DRAWING",
+          "startedAt": 0
+        }
+      ],
+      "list": "печатает…",
+      "header": "печатает"
+    },
+    {
+      "name": "audio",
+      "chat": "private",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "AUDIO",
+          "startedAt": 0
+        }
+      ],
+      "list": "записывает аудио…",
+      "header": "записывает аудио"
+    },
+    {
+      "name": "video-message",
+      "chat": "private",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "VIDEO_MSG",
+          "startedAt": 0
+        }
+      ],
+      "list": "записывает видеосообщение…",
+      "header": "записывает видеосообщение"
+    },
+    {
+      "name": "photo",
+      "chat": "private",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "PHOTO",
+          "startedAt": 0
+        }
+      ],
+      "list": "отправляет фото…",
+      "header": "отправляет фото"
+    },
+    {
+      "name": "video",
+      "chat": "private",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "VIDEO",
+          "startedAt": 0
+        }
+      ],
+      "list": "отправляет видео…",
+      "header": "отправляет видео"
+    },
+    {
+      "name": "file",
+      "chat": "private",
+      "typing": [
+        {
+          "userId": "1",
+          "name": "Иван",
+          "type": "FILE",
+          "startedAt": 0
+        }
+      ],
+      "list": "отправляет файл…",
+      "header": "отправляет файл"
+    },
+    {
+      "name": "sticker",
+      "chat": "private",
+      "typing": [
+        {
+          "userId": "1",
+          "name": null,
+          "type": "STICKER",
+          "startedAt": 0
+        }
+      ],
+      "list": "выбирает стикер…",
+      "header": "выбирает стикер"
+    },
+    {
+      "name": "nobody",
+      "chat": "private",
+      "typing": [],
+      "list": null,
+      "header": null
+    }
+  ]
+}
