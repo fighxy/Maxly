@@ -1,0 +1,233 @@
+{
+  "kind": "edit",
+  "name": "edit",
+  "description": "Правка сообщения (MSG_EDIT 67) всегда шлёт весь список elements; без разметки — пустой список [], поле не опускается. Если текст (после обрезки краёв) и разметка не изменились, запроса нет.",
+  "cases": [
+    {
+      "name": "add-formatting",
+      "original": {
+        "text": "Привет мир",
+        "elements": []
+      },
+      "draft": {
+        "text": "Привет мир",
+        "spans": [
+          {
+            "type": "STRONG",
+            "from": 7,
+            "length": 3
+          }
+        ]
+      },
+      "expect": {
+        "request": true,
+        "text": "Привет мир",
+        "elements": [
+          {
+            "type": "STRONG",
+            "from": 7,
+            "length": 3
+          }
+        ]
+      }
+    },
+    {
+      "name": "clear-formatting",
+      "original": {
+        "text": "Привет мир",
+        "elements": [
+          {
+            "type": "STRONG",
+            "from": 7,
+            "length": 3
+          }
+        ]
+      },
+      "draft": {
+        "text": "Привет мир",
+        "spans": []
+      },
+      "expect": {
+        "request": true,
+        "text": "Привет мир",
+        "elements": []
+      }
+    },
+    {
+      "name": "keeps-untouched",
+      "original": {
+        "text": "Привет мир",
+        "elements": [
+          {
+            "type": "STRONG",
+            "from": 0,
+            "length": 6
+          },
+          {
+            "type": "LINK",
+            "from": 7,
+            "length": 3,
+            "attributes": {
+              "url": "https://max.ru"
+            }
+          }
+        ]
+      },
+      "draft": {
+        "text": "Привет мир!",
+        "spans": [
+          {
+            "type": "STRONG",
+            "from": 0,
+            "length": 6
+          },
+          {
+            "type": "LINK",
+            "from": 7,
+            "length": 3,
+            "url": "https://max.ru"
+          }
+        ]
+      },
+      "expect": {
+        "request": true,
+        "text": "Привет мир!",
+        "elements": [
+          {
+            "type": "STRONG",
+            "from": 0,
+            "length": 6
+          },
+          {
+            "type": "LINK",
+            "from": 7,
+            "length": 3,
+            "attributes": {
+              "url": "https://max.ru"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "unchanged-no-request",
+      "original": {
+        "text": "Привет мир",
+        "elements": [
+          {
+            "type": "STRONG",
+            "from": 7,
+            "length": 3
+          }
+        ]
+      },
+      "draft": {
+        "text": " Привет мир ",
+        "spans": [
+          {
+            "type": "STRONG",
+            "from": 8,
+            "length": 3
+          }
+        ]
+      },
+      "expect": {
+        "request": false
+      }
+    },
+    {
+      "name": "code-becomes-monospaced",
+      "original": {
+        "text": "Привет мир",
+        "elements": [
+          {
+            "type": "CODE",
+            "from": 7,
+            "length": 3
+          }
+        ]
+      },
+      "draft": {
+        "text": "Привет мир!",
+        "spans": [
+          {
+            "type": "MONOSPACED",
+            "from": 7,
+            "length": 3
+          }
+        ]
+      },
+      "expect": {
+        "request": true,
+        "text": "Привет мир!",
+        "elements": [
+          {
+            "type": "MONOSPACED",
+            "from": 7,
+            "length": 3
+          }
+        ]
+      }
+    },
+    {
+      "name": "code-read-unchanged",
+      "original": {
+        "text": "Привет мир",
+        "elements": [
+          {
+            "type": "CODE",
+            "from": 7,
+            "length": 3
+          }
+        ]
+      },
+      "draft": {
+        "text": "Привет мир",
+        "spans": [
+          {
+            "type": "MONOSPACED",
+            "from": 7,
+            "length": 3
+          }
+        ]
+      },
+      "expect": {
+        "request": false
+      }
+    },
+    {
+      "name": "quote-kept",
+      "original": {
+        "text": "Привет мир",
+        "elements": [
+          {
+            "type": "QUOTE",
+            "from": 0,
+            "length": 10
+          }
+        ]
+      },
+      "draft": {
+        "text": "Привет мир и всё",
+        "spans": [
+          {
+            "type": "QUOTE",
+            "from": 0,
+            "length": 10
+          }
+        ]
+      },
+      "expect": {
+        "request": true,
+        "text": "Привет мир и всё",
+        "elements": [
+          {
+            "type": "QUOTE",
+            "from": 0,
+            "length": 10
+          }
+        ]
+      }
+    }
+  ]
+}

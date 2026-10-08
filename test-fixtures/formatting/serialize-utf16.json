@@ -1,0 +1,47 @@
+{
+  "kind": "serialize",
+  "name": "serialize-utf16",
+  "description": "Отрезки поля ввода и elements — в единицах UTF-16, эмодзи занимает две.",
+  "cases": [
+    {
+      "name": "after-emoji",
+      "text": "Смотри 😀 сюда",
+      "spans": [
+        {
+          "type": "STRONG",
+          "from": 10,
+          "length": 4
+        }
+      ],
+      "expect": {
+        "elements": [
+          {
+            "type": "STRONG",
+            "from": 10,
+            "length": 4
+          }
+        ]
+      }
+    },
+    {
+      "name": "emoji-itself",
+      "text": "Смотри 😀 сюда",
+      "spans": [
+        {
+          "type": "EMPHASIZED",
+          "from": 7,
+          "length": 2
+        }
+      ],
+      "expect": {
+        "elements": [
+          {
+            "type": "EMPHASIZED",
+            "from": 7,
+            "length": 2
+          }
+        ]
+      }
+    }
+  ]
+}

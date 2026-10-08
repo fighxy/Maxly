@@ -1,0 +1,311 @@
+{
+  "kind": "serialize",
+  "name": "serialize-merge",
+  "description": "Отрезки поля ввода в elements: один вид — пересекающиеся и смежные сливаются, ссылки — только с тем же адресом; порядок по from, затем по виду, затем по длине.",
+  "cases": [
+    {
+      "name": "overlap-merged",
+      "text": "один два три четыре",
+      "spans": [
+        {
+          "type": "STRONG",
+          "from": 0,
+          "length": 8
+        },
+        {
+          "type": "STRONG",
+          "from": 5,
+          "length": 7
+        }
+      ],
+      "expect": {
+        "elements": [
+          {
+            "type": "STRONG",
+            "from": 0,
+            "length": 12
+          }
+        ]
+      }
+    },
+    {
+      "name": "adjacent-merged",
+      "text": "один два три четыре",
+      "spans": [
+        {
+          "type": "EMPHASIZED",
+          "from": 0,
+          "length": 5
+        },
+        {
+          "type": "EMPHASIZED",
+          "from": 5,
+          "length": 3
+        }
+      ],
+      "expect": {
+        "elements": [
+          {
+            "type": "EMPHASIZED",
+            "from": 0,
+            "length": 8
+          }
+        ]
+      }
+    },
+    {
+      "name": "gap-kept",
+      "text": "один два три четыре",
+      "spans": [
+        {
+          "type": "STRONG",
+          "from": 0,
+          "length": 4
+        },
+        {
+          "type": "STRONG",
+          "from": 5,
+          "length": 3
+        }
+      ],
+      "expect": {
+        "elements": [
+          {
+            "type": "STRONG",
+            "from": 0,
+            "length": 4
+          },
+          {
+            "type": "STRONG",
+            "from": 5,
+            "length": 3
+          }
+        ]
+      }
+    },
+    {
+      "name": "different-types-kept",
+      "text": "один два три четыре",
+      "spans": [
+        {
+          "type": "UNDERLINE",
+          "from": 5,
+          "length": 7
+        },
+        {
+          "type": "STRONG",
+          "from": 5,
+          "length": 7
+        },
+        {
+          "type": "STRIKETHROUGH",
+          "from": 5,
+          "length": 3
+        }
+      ],
+      "expect": {
+        "elements": [
+          {
+            "type": "STRONG",
+            "from": 5,
+            "length": 7
+          },
+          {
+            "type": "UNDERLINE",
+            "from": 5,
+            "length": 7
+          },
+          {
+            "type": "STRIKETHROUGH",
+            "from": 5,
+            "length": 3
+          }
+        ]
+      }
+    },
+    {
+      "name": "two-runs",
+      "text": "один два три четыре",
+      "spans": [
+        {
+          "type": "STRONG",
+          "from": 0,
+          "length": 8
+        },
+        {
+          "type": "STRONG",
+          "from": 9,
+          "length": 3
+        }
+      ],
+      "expect": {
+        "elements": [
+          {
+            "type": "STRONG",
+            "from": 0,
+            "length": 8
+          },
+          {
+            "type": "STRONG",
+            "from": 9,
+            "length": 3
+          }
+        ]
+      }
+    },
+    {
+      "name": "links-by-url",
+      "text": "один два три четыре",
+      "spans": [
+        {
+          "type": "LINK",
+          "from": 0,
+          "length": 4,
+          "url": "https://a.ru"
+        },
+        {
+          "type": "LINK",
+          "from": 4,
+          "length": 4,
+          "url": "https://a.ru"
+        },
+        {
+          "type": "LINK",
+          "from": 9,
+          "length": 3,
+          "url": "https://b.ru"
+        }
+      ],
+      "expect": {
+        "elements": [
+          {
+            "type": "LINK",
+            "from": 0,
+            "length": 8,
+            "attributes": {
+              "url": "https://a.ru"
+            }
+          },
+          {
+            "type": "LINK",
+            "from": 9,
+            "length": 3,
+            "attributes": {
+              "url": "https://b.ru"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "adjacent-links-different-url",
+      "text": "один два три четыре",
+      "spans": [
+        {
+          "type": "LINK",
+          "from": 0,
+          "length": 4,
+          "url": "https://a.ru"
+        },
+        {
+          "type": "LINK",
+          "from": 4,
+          "length": 4,
+          "url": "https://b.ru"
+        }
+      ],
+      "expect": {
+        "elements": [
+          {
+            "type": "LINK",
+            "from": 0,
+            "length": 4,
+            "attributes": {
+              "url": "https://a.ru"
+            }
+          },
+          {
+            "type": "LINK",
+            "from": 4,
+            "length": 4,
+            "attributes": {
+              "url": "https://b.ru"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "quote-heading-pass-through",
+      "text": "один два три четыре",
+      "spans": [
+        {
+          "type": "QUOTE",
+          "from": 0,
+          "length": 8
+        },
+        {
+          "type": "HEADING",
+          "from": 13,
+          "length": 6
+        }
+      ],
+      "expect": {
+        "elements": [
+          {
+            "type": "QUOTE",
+            "from": 0,
+            "length": 8
+          },
+          {
+            "type": "HEADING",
+            "from": 13,
+            "length": 6
+          }
+        ]
+      }
+    },
+    {
+      "name": "zero-length-dropped",
+      "text": "один два три четыре",
+      "spans": [
+        {
+          "type": "STRONG",
+          "from": 3,
+          "length": 0
+        }
+      ],
+      "expect": {
+        "elements": []
+      }
+    },
+    {
+      "name": "clipped-to-text",
+      "text": "один два три четыре",
+      "spans": [
+        {
+          "type": "MONOSPACED",
+          "from": 13,
+          "length": 50
+        }
+      ],
+      "expect": {
+        "elements": [
+          {
+            "type": "MONOSPACED",
+            "from": 13,
+            "length": 6
+          }
+        ]
+      }
+    },
+    {
+      "name": "nothing",
+      "text": "один два три четыре",
+      "spans": [],
+      "expect": {
+        "elements": []
+      }
+    }
+  ]
+}

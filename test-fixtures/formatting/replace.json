@@ -1,0 +1,241 @@
+{
+  "kind": "replace",
+  "name": "replace",
+  "description": "Правка текста поля сдвигает отрезки: на месте at убрано removed и вставлено inserted единиц UTF-16. Вставка до отрезка или в его начало сдвигает его, внутри — растягивает, в конце и дальше — не трогает; удалённое вырезается, пустые отрезки выпадают; замена внутри отрезка размечается так же.",
+  "cases": [
+    {
+      "name": "insert-before",
+      "spans": [
+        {
+          "type": "STRONG",
+          "from": 4,
+          "length": 3
+        }
+      ],
+      "edit": {
+        "at": 0,
+        "removed": 0,
+        "inserted": 2
+      },
+      "expect": {
+        "spans": [
+          {
+            "type": "STRONG",
+            "from": 6,
+            "length": 3
+          }
+        ]
+      }
+    },
+    {
+      "name": "insert-at-start",
+      "spans": [
+        {
+          "type": "STRONG",
+          "from": 4,
+          "length": 3
+        }
+      ],
+      "edit": {
+        "at": 4,
+        "removed": 0,
+        "inserted": 1
+      },
+      "expect": {
+        "spans": [
+          {
+            "type": "STRONG",
+            "from": 5,
+            "length": 3
+          }
+        ]
+      }
+    },
+    {
+      "name": "insert-inside",
+      "spans": [
+        {
+          "type": "STRONG",
+          "from": 4,
+          "length": 3
+        }
+      ],
+      "edit": {
+        "at": 5,
+        "removed": 0,
+        "inserted": 2
+      },
+      "expect": {
+        "spans": [
+          {
+            "type": "STRONG",
+            "from": 4,
+            "length": 5
+          }
+        ]
+      }
+    },
+    {
+      "name": "insert-at-end",
+      "spans": [
+        {
+          "type": "STRONG",
+          "from": 4,
+          "length": 3
+        }
+      ],
+      "edit": {
+        "at": 7,
+        "removed": 0,
+        "inserted": 2
+      },
+      "expect": {
+        "spans": [
+          {
+            "type": "STRONG",
+            "from": 4,
+            "length": 3
+          }
+        ]
+      }
+    },
+    {
+      "name": "delete-inside",
+      "spans": [
+        {
+          "type": "EMPHASIZED",
+          "from": 2,
+          "length": 6
+        }
+      ],
+      "edit": {
+        "at": 3,
+        "removed": 2,
+        "inserted": 0
+      },
+      "expect": {
+        "spans": [
+          {
+            "type": "EMPHASIZED",
+            "from": 2,
+            "length": 4
+          }
+        ]
+      }
+    },
+    {
+      "name": "delete-whole",
+      "spans": [
+        {
+          "type": "EMPHASIZED",
+          "from": 2,
+          "length": 3
+        }
+      ],
+      "edit": {
+        "at": 1,
+        "removed": 5,
+        "inserted": 0
+      },
+      "expect": {
+        "spans": []
+      }
+    },
+    {
+      "name": "delete-head",
+      "spans": [
+        {
+          "type": "UNDERLINE",
+          "from": 4,
+          "length": 4
+        }
+      ],
+      "edit": {
+        "at": 2,
+        "removed": 4,
+        "inserted": 0
+      },
+      "expect": {
+        "spans": [
+          {
+            "type": "UNDERLINE",
+            "from": 2,
+            "length": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "delete-tail",
+      "spans": [
+        {
+          "type": "UNDERLINE",
+          "from": 4,
+          "length": 4
+        }
+      ],
+      "edit": {
+        "at": 6,
+        "removed": 4,
+        "inserted": 0
+      },
+      "expect": {
+        "spans": [
+          {
+            "type": "UNDERLINE",
+            "from": 4,
+            "length": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "replace-inside",
+      "spans": [
+        {
+          "type": "STRONG",
+          "from": 0,
+          "length": 6
+        }
+      ],
+      "edit": {
+        "at": 2,
+        "removed": 2,
+        "inserted": 3
+      },
+      "expect": {
+        "spans": [
+          {
+            "type": "STRONG",
+            "from": 0,
+            "length": 7
+          }
+        ]
+      }
+    },
+    {
+      "name": "emoji-typed-before",
+      "spans": [
+        {
+          "type": "STRONG",
+          "from": 0,
+          "length": 3
+        }
+      ],
+      "edit": {
+        "at": 0,
+        "removed": 0,
+        "inserted": 2
+      },
+      "expect": {
+        "spans": [
+          {
+            "type": "STRONG",
+            "from": 2,
+            "length": 3
+          }
+        ]
+      }
+    }
+  ]
+}

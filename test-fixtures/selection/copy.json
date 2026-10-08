@@ -1,0 +1,159 @@
+{
+  "kind": "copy",
+  "name": "copy",
+  "description": "Копирование выбранных сообщений. Одно — просто текст. Несколько — от старых к новым блоки «Имя, [дд.мм.гггг чч:мм]» и текст с новой строки, между блоками пустая строка. Без текста — подпись вложения (media: PHOTO Фото, VIDEO Видео, VIDEO_MESSAGE Видеосообщение, VOICE Голосовое сообщение, FILE Файл, STICKER Стикер, CONTACT Контакт, POLL Опрос; нет вложения — Сообщение). Без имени — «Участник». Время — в поясе timeZone.",
+  "cases": [
+    {
+      "name": "single-plain",
+      "timeZone": "Europe/Moscow",
+      "messages": [
+        {
+          "id": "1",
+          "time": 1791455400000,
+          "authorName": "Анна",
+          "text": "  Привет!  "
+        }
+      ],
+      "expect": "Привет!"
+    },
+    {
+      "name": "single-photo-no-text",
+      "timeZone": "Europe/Moscow",
+      "messages": [
+        {
+          "id": "1",
+          "time": 1791455400000,
+          "authorName": "Анна",
+          "text": "",
+          "media": "PHOTO"
+        }
+      ],
+      "expect": "Фото"
+    },
+    {
+      "name": "two-oldest-first-moscow",
+      "timeZone": "Europe/Moscow",
+      "messages": [
+        {
+          "id": "2",
+          "time": 1791455460000,
+          "authorName": "Борис",
+          "text": "Как дела?"
+        },
+        {
+          "id": "1",
+          "time": 1791455400000,
+          "authorName": "Анна",
+          "text": "Привет"
+        }
+      ],
+      "expect": "Анна, [08.10.2026 13:30]\nПривет\n\nБорис, [08.10.2026 13:31]\nКак дела?"
+    },
+    {
+      "name": "novosibirsk-zone",
+      "timeZone": "Asia/Novosibirsk",
+      "messages": [
+        {
+          "id": "1",
+          "time": 1791455400000,
+          "authorName": "Анна",
+          "text": "Привет"
+        },
+        {
+          "id": "2",
+          "time": 1791505800000,
+          "authorName": "Анна",
+          "text": "Спокойной ночи"
+        }
+      ],
+      "expect": "Анна, [08.10.2026 17:30]\nПривет\n\nАнна, [09.10.2026 07:30]\nСпокойной ночи"
+    },
+    {
+      "name": "placeholders",
+      "timeZone": "UTC",
+      "messages": [
+        {
+          "id": "1",
+          "time": 1791455400000,
+          "authorName": "Анна",
+          "text": "",
+          "media": "PHOTO"
+        },
+        {
+          "id": "2",
+          "time": 1791455401000,
+          "authorName": "Анна",
+          "text": "",
+          "media": "VIDEO"
+        },
+        {
+          "id": "3",
+          "time": 1791455402000,
+          "authorName": "Анна",
+          "text": "",
+          "media": "FILE"
+        },
+        {
+          "id": "4",
+          "time": 1791455403000,
+          "authorName": "Анна",
+          "text": "",
+          "media": "VOICE"
+        },
+        {
+          "id": "5",
+          "time": 1791455404000,
+          "authorName": "Анна",
+          "text": "",
+          "media": "STICKER"
+        },
+        {
+          "id": "6",
+          "time": 1791455405000,
+          "authorName": "Анна",
+          "text": ""
+        }
+      ],
+      "expect": "Анна, [08.10.2026 10:30]\nФото\n\nАнна, [08.10.2026 10:30]\nВидео\n\nАнна, [08.10.2026 10:30]\nФайл\n\nАнна, [08.10.2026 10:30]\nГолосовое сообщение\n\nАнна, [08.10.2026 10:30]\nСтикер\n\nАнна, [08.10.2026 10:30]\nСообщение"
+    },
+    {
+      "name": "caption-wins-over-placeholder",
+      "timeZone": "UTC",
+      "messages": [
+        {
+          "id": "1",
+          "time": 1791455400000,
+          "authorName": "Анна",
+          "text": "Закат",
+          "media": "PHOTO"
+        },
+        {
+          "id": "2",
+          "time": 1791455401000,
+          "authorName": "",
+          "text": "ок"
+        }
+      ],
+      "expect": "Анна, [08.10.2026 10:30]\nЗакат\n\nУчастник, [08.10.2026 10:30]\nок"
+    },
+    {
+      "name": "multiline-text-kept",
+      "timeZone": "UTC",
+      "messages": [
+        {
+          "id": "1",
+          "time": 1791455400000,
+          "authorName": "Анна",
+          "text": "строка 1\nстрока 2"
+        },
+        {
+          "id": "2",
+          "time": 1791455400000,
+          "authorName": "Борис",
+          "text": "да"
+        }
+      ],
+      "expect": "Анна, [08.10.2026 10:30]\nстрока 1\nстрока 2\n\nБорис, [08.10.2026 10:30]\nда"
+    }
+  ]
+}

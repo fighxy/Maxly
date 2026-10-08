@@ -1,0 +1,64 @@
+{
+  "kind": "serialize",
+  "name": "serialize-trim",
+  "description": "Перед отправкой текст поля обрезается по краям (пробелы и переводы строк); отрезки сдвигаются на срезанное начало и обрезаются по новым краям.",
+  "cases": [
+    {
+      "name": "shift-by-leading",
+      "text": "  \nПривет мир \n",
+      "spans": [
+        {
+          "type": "STRONG",
+          "from": 3,
+          "length": 6
+        }
+      ],
+      "expect": {
+        "text": "Привет мир",
+        "elements": [
+          {
+            "type": "STRONG",
+            "from": 0,
+            "length": 6
+          }
+        ]
+      }
+    },
+    {
+      "name": "clip-leading-and-trailing",
+      "text": "  \nПривет мир \n",
+      "spans": [
+        {
+          "type": "EMPHASIZED",
+          "from": 0,
+          "length": 15
+        }
+      ],
+      "expect": {
+        "text": "Привет мир",
+        "elements": [
+          {
+            "type": "EMPHASIZED",
+            "from": 0,
+            "length": 10
+          }
+        ]
+      }
+    },
+    {
+      "name": "only-whitespace-span-dropped",
+      "text": "  \nПривет мир \n",
+      "spans": [
+        {
+          "type": "UNDERLINE",
+          "from": 0,
+          "length": 3
+        }
+      ],
+      "expect": {
+        "text": "Привет мир",
+        "elements": []
+      }
+    }
+  ]
+}

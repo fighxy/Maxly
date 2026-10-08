@@ -1,0 +1,243 @@
+{
+  "kind": "toggle",
+  "name": "toggle",
+  "description": "Кнопка панели над выделением [from, from+length): размеченное целиком этим видом — снять (отрезок режется), иначе разметить всё выделение, сливаясь с соседями того же вида. Пустое выделение ничего не меняет. LINK ставит отдельное действие (setLink): url — адрес, null — убрать ссылку.",
+  "cases": [
+    {
+      "name": "apply",
+      "text": "раз два три",
+      "spans": [],
+      "selection": {
+        "from": 4,
+        "length": 3
+      },
+      "type": "STRONG",
+      "expect": {
+        "spans": [
+          {
+            "type": "STRONG",
+            "from": 4,
+            "length": 3
+          }
+        ]
+      }
+    },
+    {
+      "name": "remove-whole",
+      "text": "раз два три",
+      "spans": [
+        {
+          "type": "STRONG",
+          "from": 4,
+          "length": 3
+        }
+      ],
+      "selection": {
+        "from": 4,
+        "length": 3
+      },
+      "type": "STRONG",
+      "expect": {
+        "spans": []
+      }
+    },
+    {
+      "name": "remove-middle-splits",
+      "text": "раз два три",
+      "spans": [
+        {
+          "type": "STRONG",
+          "from": 0,
+          "length": 11
+        }
+      ],
+      "selection": {
+        "from": 4,
+        "length": 3
+      },
+      "type": "STRONG",
+      "expect": {
+        "spans": [
+          {
+            "type": "STRONG",
+            "from": 0,
+            "length": 4
+          },
+          {
+            "type": "STRONG",
+            "from": 7,
+            "length": 4
+          }
+        ]
+      }
+    },
+    {
+      "name": "partial-extends",
+      "text": "раз два три",
+      "spans": [
+        {
+          "type": "EMPHASIZED",
+          "from": 0,
+          "length": 3
+        }
+      ],
+      "selection": {
+        "from": 0,
+        "length": 7
+      },
+      "type": "EMPHASIZED",
+      "expect": {
+        "spans": [
+          {
+            "type": "EMPHASIZED",
+            "from": 0,
+            "length": 7
+          }
+        ]
+      }
+    },
+    {
+      "name": "covered-by-two-pieces",
+      "text": "раз два три",
+      "spans": [
+        {
+          "type": "UNDERLINE",
+          "from": 0,
+          "length": 4
+        },
+        {
+          "type": "UNDERLINE",
+          "from": 4,
+          "length": 3
+        }
+      ],
+      "selection": {
+        "from": 0,
+        "length": 7
+      },
+      "type": "UNDERLINE",
+      "expect": {
+        "spans": []
+      }
+    },
+    {
+      "name": "other-type-untouched",
+      "text": "раз два три",
+      "spans": [
+        {
+          "type": "STRONG",
+          "from": 4,
+          "length": 3
+        }
+      ],
+      "selection": {
+        "from": 4,
+        "length": 3
+      },
+      "type": "STRIKETHROUGH",
+      "expect": {
+        "spans": [
+          {
+            "type": "STRONG",
+            "from": 4,
+            "length": 3
+          },
+          {
+            "type": "STRIKETHROUGH",
+            "from": 4,
+            "length": 3
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty-selection",
+      "text": "раз два три",
+      "spans": [],
+      "selection": {
+        "from": 4,
+        "length": 0
+      },
+      "type": "STRONG",
+      "expect": {
+        "spans": []
+      }
+    },
+    {
+      "name": "link-set",
+      "text": "раз два три",
+      "spans": [],
+      "selection": {
+        "from": 8,
+        "length": 3
+      },
+      "type": "LINK",
+      "url": "https://max.ru",
+      "expect": {
+        "spans": [
+          {
+            "type": "LINK",
+            "from": 8,
+            "length": 3,
+            "url": "https://max.ru"
+          }
+        ]
+      }
+    },
+    {
+      "name": "link-replaced",
+      "text": "раз два три",
+      "spans": [
+        {
+          "type": "LINK",
+          "from": 4,
+          "length": 7,
+          "url": "https://a.ru"
+        }
+      ],
+      "selection": {
+        "from": 8,
+        "length": 3
+      },
+      "type": "LINK",
+      "url": "https://b.ru",
+      "expect": {
+        "spans": [
+          {
+            "type": "LINK",
+            "from": 4,
+            "length": 4,
+            "url": "https://a.ru"
+          },
+          {
+            "type": "LINK",
+            "from": 8,
+            "length": 3,
+            "url": "https://b.ru"
+          }
+        ]
+      }
+    },
+    {
+      "name": "link-removed",
+      "text": "раз два три",
+      "spans": [
+        {
+          "type": "LINK",
+          "from": 4,
+          "length": 7,
+          "url": "https://a.ru"
+        }
+      ],
+      "selection": {
+        "from": 4,
+        "length": 7
+      },
+      "type": "LINK",
+      "url": null,
+      "expect": {
+        "spans": []
+      }
+    }
+  ]
+}

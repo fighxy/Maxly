@@ -1,0 +1,94 @@
+{
+  "kind": "parse",
+  "name": "parse-unknown",
+  "description": "Незнакомые типы (SPOILER, EMOJI) и LINK без адреса пропускаются; нет elements или null — разметки нет.",
+  "cases": [
+    {
+      "name": "unknown-types",
+      "text": "Текст со ссылкой",
+      "elements": [
+        {
+          "type": "SPOILER",
+          "from": 0,
+          "length": 5
+        },
+        {
+          "type": "EMOJI",
+          "from": 0,
+          "length": 1
+        },
+        {
+          "type": "STRONG",
+          "from": 0,
+          "length": 5
+        }
+      ],
+      "expect": {
+        "spans": [
+          {
+            "type": "STRONG",
+            "from": 0,
+            "length": 5,
+            "text": "Текст"
+          }
+        ]
+      }
+    },
+    {
+      "name": "link-without-url",
+      "text": "Текст со ссылкой",
+      "elements": [
+        {
+          "type": "LINK",
+          "from": 9,
+          "length": 7
+        },
+        {
+          "type": "LINK",
+          "from": 9,
+          "length": 7,
+          "attributes": {
+            "url": ""
+          }
+        },
+        {
+          "type": "LINK",
+          "from": 9,
+          "length": 7,
+          "attributes": {}
+        }
+      ],
+      "expect": {
+        "spans": []
+      }
+    },
+    {
+      "name": "no-type",
+      "text": "Текст со ссылкой",
+      "elements": [
+        {
+          "from": 0,
+          "length": 5
+        }
+      ],
+      "expect": {
+        "spans": []
+      }
+    },
+    {
+      "name": "elements-null",
+      "text": "Текст со ссылкой",
+      "elements": null,
+      "expect": {
+        "spans": []
+      }
+    },
+    {
+      "name": "elements-missing",
+      "text": "Текст со ссылкой",
+      "expect": {
+        "spans": []
+      }
+    }
+  ]
+}
