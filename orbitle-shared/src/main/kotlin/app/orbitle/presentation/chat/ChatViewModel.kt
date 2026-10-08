@@ -12,6 +12,7 @@ import app.orbitle.data.ChatHeaderInfo
 import app.orbitle.data.LockPayloads
 import app.orbitle.data.MessageRepository
 import app.orbitle.domain.Chat
+import app.orbitle.domain.ChatDraft
 import app.orbitle.domain.ChatType
 import app.orbitle.domain.Message
 import app.orbitle.domain.MessageStatus
@@ -183,6 +184,8 @@ class ChatViewModel(
     stickerRecents: RecentStickerStore? = null,
     /** Черновики полей ввода по чатам: переживают выход из чата и перезапуск. */
     private val drafts: DraftStore? = null,
+    /** Черновики на сервере; `null` — только на устройстве. */
+    private val draftSync: DraftSync? = null,
     emojiSupported: (String) -> Boolean = { true },
     /** Комментарии постов канала; `null` — без них. */
     private val comments: CommentsRepository? = null,
@@ -311,10 +314,21 @@ class ChatViewModel(
     val commentsModel: StateFlow<CommentsModel?> = _comments.asStateFlow()
 
     init {
-        drafts?.get(chatId)?.takeIf { it.isNotEmpty() }?.let { saved -> _state.update { it.copy(draft = saved) } }
+        ChatDraft.later(drafts?.load(chatId), draftSync?.server(chatId))?.let(::applyDraft)
+        draftSync?.let { sync ->
+            viewModelScope.launch {
+                // Черновик с другого устройства пришёл позже открытия, а поле ещё не трогали.
+                sync.serverDrafts.collect { all ->
+                    val server = all[chatId] ?: return@collect
+                    if (draftTouched || _state.value.editing != null || server.updatedAtMs <= restoredDraftAt) return@collect
+                    if (!server.sameContent(currentDraft())) applyDraft(server)
+                }
+            }
+        }
         viewModelScope.launch {
             repository.messages(chatId).collect {
                 history = it
+                attachDraftReply()
                 pruneSelection()
                 rebuild()
                 markRead()
@@ -660,7 +674,7 @@ class ChatViewModel(
             formatDraft.edit(previous, text, cursor)
         }
         _state.update { it.copy(draft = text, formatting = formatDraft.spans) }
-        if (_state.value.editing == null) drafts?.put(chatId, text)
+        if (_state.value.editing == null) syncDraft()
         refreshHints(text)
         if (typed) sendTyping(typingPolicy.editText(chatId, now(), canWrite = canSignalTyping()))
     }
@@ -774,7 +788,72 @@ class ChatViewModel(
         return if (to > from) from to to else null
     }
 
-    private fun publishFormatting() = _state.update { it.copy(formatting = formatDraft.spans) }
+    private fun publishFormatting() {
+        _state.update { it.copy(formatting = formatDraft.spans) }
+        if (_state.value.editing == null) syncDraft()
+    }
+
+    // Черновик
+
+    /** Время восстановленного черновика: более ранний с сервера его не заменит. */
+    private var restoredDraftAt = 0L
+    /** Поле меняли после открытия чата. */
+    private var draftTouched = false
+    /** Ответ из черновика, пока сообщения нет в загруженной ленте. */
+    private var draftReplyId: String? = null
+
+    /** Поле ввода как черновик: текст, все отметки и ответ. `null` — пусто. */
+    private fun currentDraft(): ChatDraft? {
+        val text = _state.value.draft
+        if (text.isBlank()) return null
+        val marks = (animojiDraft.spans(text) + mentionDraft.spans(text) + formatDraft.spans)
+            .distinctBy { Triple(it.kind, it.from, it.length) }
+            .sortedWith(compareBy({ it.from }, { it.kind.ordinal }))
+        return ChatDraft(text, now(), marks, _state.value.replyTo?.id ?: draftReplyId)
+    }
+
+    /** Поле поменялось: сразу на устройство, на сервер — после паузы. */
+    private fun syncDraft() {
+        draftTouched = true
+        val draft = currentDraft()
+        drafts?.save(chatId, draft)
+        draftSync?.changed(chatId, draft)
+    }
+
+    /** Сообщение ушло: черновика больше нет ни здесь, ни на сервере. */
+    private fun dropDraft() {
+        draftTouched = true
+        draftReplyId = null
+        drafts?.save(chatId, null)
+        draftSync?.sent(chatId)
+    }
+
+    /** Черновик в поле: текст, разметка, «живые» упоминания и анимодзи, ответ. */
+    private fun applyDraft(draft: ChatDraft) {
+        val text = draft.text
+        val spans = draft.formatting.filter { it.from >= 0 && it.length > 0 && it.from + it.length <= text.length }
+        formatDraft.restore(spans, text.length)
+        restoreMentions(text, spans)
+        animojiDraft.clear()
+        for (span in spans) {
+            if (span.kind != TextSpan.Kind.ANIMOJI) continue
+            val id = span.entityId ?: continue
+            animojiDraft.insert(AnimatedEmoji(id, text.substring(span.from, span.from + span.length), lottieUrl = span.url))
+        }
+        restoredDraftAt = draft.updatedAtMs
+        draftReplyId = draft.replyTo
+        _state.update { it.copy(draft = text, formatting = formatDraft.spans, replyTo = null) }
+        attachDraftReply()
+    }
+
+    /** Ответ черновика показывается, как только его сообщение есть в ленте. */
+    private fun attachDraftReply() {
+        val id = draftReplyId ?: return
+        if (_state.value.editing != null || _state.value.replyTo != null) return
+        val message = history.firstOrNull { it.id == id } ?: return
+        draftReplyId = null
+        _state.update { it.copy(replyTo = message) }
+    }
 
     /** Анимодзи из панели: символ вставляет экран, отметка уйдёт вместе с текстом. */
     fun noteAnimoji(emoji: AnimatedEmoji) {
@@ -786,6 +865,8 @@ class ChatViewModel(
     fun sendVoice(recording: app.orbitle.domain.VoiceRecording) {
         val reply = _state.value.replyTo
         _state.update { it.copy(replyTo = null) }
+        draftReplyId = null
+        syncDraft()
         viewModelScope.launch {
             try {
                 repository.sendVoice(chatId, recording, reply?.id)
@@ -800,6 +881,8 @@ class ChatViewModel(
     fun sendVideoNote(recording: app.orbitle.domain.VideoNoteRecording) {
         val reply = _state.value.replyTo
         _state.update { it.copy(replyTo = null) }
+        draftReplyId = null
+        syncDraft()
         viewModelScope.launch {
             try {
                 repository.sendVideoNote(chatId, recording, reply?.id)
@@ -820,6 +903,8 @@ class ChatViewModel(
     fun sendSticker(sticker: Sticker) {
         val reply = _state.value.replyTo
         _state.update { it.copy(replyTo = null) }
+        draftReplyId = null
+        syncDraft()
         stickers?.usedSticker(sticker)
         viewModelScope.launch {
             try {
@@ -870,7 +955,7 @@ class ChatViewModel(
         dropUnreadSeparator()
         val reply = _state.value.replyTo
         _state.update { it.copy(draft = "", replyTo = null, formatting = emptyList()) }
-        drafts?.put(chatId, "")
+        dropDraft()
         viewModelScope.launch {
             try {
                 if (marks.isEmpty()) repository.send(chatId, text, reply?.id)
@@ -897,7 +982,7 @@ class ChatViewModel(
     private fun sendAttachments(items: List<OutgoingFile>, caption: String) {
         val reply = _state.value.replyTo
         _state.update { it.copy(draft = "", replyTo = null, attachments = emptyList(), uploadProgress = 0f, formatting = emptyList()) }
-        drafts?.put(chatId, "")
+        dropDraft()
         val uploadKind = uploadKind(items)
         val canSignal = canSignalTyping()
         val signalUpload = { sendTyping(typingPolicy.uploadProgress(chatId, uploadKind, now(), canWrite = canSignal)) }
@@ -990,9 +1075,15 @@ class ChatViewModel(
         if (_state.value.editing != null) cancelEdit()
         if (!isServer(message)) return
         _state.update { it.copy(replyTo = message) }
+        draftReplyId = null
+        syncDraft()
     }
 
-    fun cancelReply() = _state.update { it.copy(replyTo = null) }
+    fun cancelReply() {
+        _state.update { it.copy(replyTo = null) }
+        draftReplyId = null
+        syncDraft()
+    }
 
     /**
      * Ответ на сообщение выше ([older]) или ниже выбранного, по Ctrl+↑ / Ctrl+↓
@@ -2072,6 +2163,8 @@ class ChatViewModel(
     fun commentCount(post: Message): Int? = commentCounts[post.id] ?: post.content.comments
 
     override fun onCleared() {
+        // Ушли из чата: отложенный черновик уходит на сервер сейчас.
+        draftSync?.flush(chatId)
         // Ушли из чата: его голосовое больше не играет.
         val playing = media.playback.value
         if (playing != null && history.any { it.id == playing.messageId }) media.stopVoice()
@@ -2184,10 +2277,16 @@ internal fun feedItems(
     return result
 }
 
-/** Черновики полей ввода: id чата → текст. */
+/** Черновики полей ввода на устройстве: id чата → текст (с разметкой и ответом — [load] / [save]). */
 interface DraftStore {
     fun get(chatId: String): String?
     fun put(chatId: String, text: String)
+
+    /** Черновик целиком; хранилище одного текста отдаёт его без времени и отметок. */
+    fun load(chatId: String): ChatDraft? = get(chatId)?.takeIf { it.isNotBlank() }?.let { ChatDraft(it, 0L) }
+
+    /** `null` — черновика больше нет. */
+    fun save(chatId: String, draft: ChatDraft?) = put(chatId, draft?.text.orEmpty())
 }
 
 /** Быстрые реакции меню сообщения. */

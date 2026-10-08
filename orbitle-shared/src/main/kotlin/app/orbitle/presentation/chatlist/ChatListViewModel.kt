@@ -96,6 +96,8 @@ class ChatListViewModel(
     private val recents: RecentSearchStore? = null,
     /** Пауза после последней буквы перед запросом к серверу. */
     private val searchDelayMs: Long = SEARCH_DELAY_MS,
+    /** Черновики на сервере: из двух черновиков чата показывается более поздний. */
+    serverDrafts: Flow<Map<String, ChatDraft>> = flowOf(emptyMap()),
 ) : ViewModel() {
 
     private var serverSearch: Job? = null
@@ -116,6 +118,7 @@ class ChatListViewModel(
     private var pendingMutes: MutableMap<String, Boolean> = mutableMapOf()
     private var markedUnread: Set<String> = local?.markedUnread.orEmpty()
     private var drafts: Map<String, ChatDraft> = local?.drafts().orEmpty()
+    private var remoteDrafts: Map<String, ChatDraft> = emptyMap()
     private var recentIds: List<String> = recents?.recent().orEmpty()
 
     private val _state = MutableStateFlow(ChatListUiState())
@@ -138,6 +141,12 @@ class ChatListViewModel(
                         pinOrderAccepted = false
                     }
                 }
+                rebuild()
+            }
+        }
+        viewModelScope.launch {
+            serverDrafts.collect {
+                remoteDrafts = it
                 rebuild()
             }
         }
@@ -508,7 +517,7 @@ class ChatListViewModel(
         if (next.isPinned) pinPlaces?.get(chat.id)?.let { next = next.copy(pinOrder = it) }
         pendingMutes[chat.id]?.let { next = next.copy(isMuted = it) }
         if (chat.id in markedUnread && chat.unreadCount == 0) next = next.copy(isMarkedUnread = true)
-        drafts[chat.id]?.let { next = next.copy(draft = it) }
+        ChatDraft.later(drafts[chat.id], remoteDrafts[chat.id])?.let { next = next.copy(draft = it) }
         return next
     }
 

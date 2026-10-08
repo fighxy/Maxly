@@ -56,8 +56,30 @@ data class ChatLastMessage(
     val isForwarded: Boolean = false,
 )
 
-/** Черновик, оставленный в поле ввода чата. */
-data class ChatDraft(val text: String, val updatedAtMs: Long)
+/**
+ * Черновик, оставленный в поле ввода чата: текст с отметками ([formatting] — разметка, упоминания,
+ * анимодзи, смещения в [text]) и id сообщения, на которое начат ответ.
+ */
+data class ChatDraft(
+    val text: String,
+    val updatedAtMs: Long,
+    val formatting: List<TextSpan> = emptyList(),
+    val replyTo: String? = null,
+) {
+    /** То же содержимое, время не в счёт. */
+    fun sameContent(other: ChatDraft?): Boolean =
+        other != null && text == other.text && replyTo == other.replyTo && formatting.toSet() == other.formatting.toSet()
+
+    companion object {
+        /** Из двух черновиков — более поздний; при равном времени [first]. */
+        fun later(first: ChatDraft?, second: ChatDraft?): ChatDraft? = when {
+            first == null -> second
+            second == null -> first
+            second.updatedAtMs > first.updatedAtMs -> second
+            else -> first
+        }
+    }
+}
 
 /** Чат, как его видит UI. Время — миллисекунды Unix. */
 data class Chat(

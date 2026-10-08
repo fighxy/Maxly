@@ -119,19 +119,19 @@ class AppContainer(context: Context) {
     private val localMarks = object : DraftStore, ChatLocalMarks {
         private fun account() = client.store.state.value.me ?: 0
         private fun key(chatId: String) = "draft.${account()}.$chatId"
-        override fun get(chatId: String): String? = prefs.getString(key(chatId), null)?.substringAfter('\t')
-        override fun put(chatId: String, text: String) {
+        override fun get(chatId: String): String? = load(chatId)?.text
+        override fun put(chatId: String, text: String) = save(chatId, text.takeIf { it.isNotBlank() }?.let { ChatDraft(it, System.currentTimeMillis()) })
+        override fun load(chatId: String): ChatDraft? = prefs.getString(key(chatId), null)?.let(app.orbitle.data.DraftCodec::decode)
+        override fun save(chatId: String, draft: ChatDraft?) {
             prefs.edit().apply {
-                if (text.isBlank()) remove(key(chatId)) else putString(key(chatId), "${System.currentTimeMillis()}\t$text")
+                if (draft == null || draft.text.isBlank()) remove(key(chatId)) else putString(key(chatId), app.orbitle.data.DraftCodec.encode(draft))
             }.apply()
         }
         override fun drafts(): Map<String, ChatDraft> {
             val prefix = "draft.${account()}."
             return prefs.all.mapNotNull { (k, v) ->
                 if (!k.startsWith(prefix) || v !is String) return@mapNotNull null
-                val time = v.substringBefore('\t').toLongOrNull() ?: 0L
-                val text = v.substringAfter('\t').trim()
-                if (text.isEmpty()) null else k.removePrefix(prefix) to ChatDraft(text, time)
+                app.orbitle.data.DraftCodec.decode(v)?.let { k.removePrefix(prefix) to it }
             }.toMap()
         }
         override var markedUnread: Set<String>
@@ -140,6 +140,8 @@ class AppContainer(context: Context) {
     }
 
     val drafts: DraftStore = localMarks
+    /** Черновики на сервере: отложенная отправка переживает закрытие чата. */
+    val draftSync = app.orbitle.presentation.chat.DraftSync(scope, app.orbitle.data.CoreDraftRepository(client))
     val chatMarks: ChatLocalMarks = localMarks
 
     /** Недавние эмодзи и стикеры панели. */

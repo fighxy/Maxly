@@ -503,6 +503,20 @@ class ChatListViewModelTest {
     }
 
     @Test
+    fun laterOfLocalAndServerDraftIsShown() {
+        val server = MutableStateFlow(mapOf("a" to ChatDraft("с телефона", now - 1_000)))
+        val vm = ChatListViewModel(repo, connection, ChatListFormatter(ZoneOffset.UTC), now = { now }, local = marks, serverDrafts = server)
+        repo.chats.value = listOf(chat("a"), chat("b"))
+        assertTrue(vm.state.value.items.first { it.id == "a" }.preview.contains("с телефона"))
+        marks.stored = mapOf("a" to ChatDraft("отсюда", now - 500))
+        vm.reloadLocal()
+        assertTrue(vm.state.value.items.first { it.id == "a" }.preview.contains("отсюда"))
+        server.value = mapOf("a" to ChatDraft("ещё новее", now), "b" to ChatDraft("второй", now))
+        assertTrue(vm.state.value.items.first { it.id == "a" }.preview.contains("ещё новее"))
+        assertTrue(vm.state.value.items.first { it.id == "b" }.preview.contains("второй"))
+    }
+
+    @Test
     fun forwardTargetsSkipCurrentArchivedAndReadOnly() {
         repo.chats.value = listOf(
             chat("a", at = now - 10), chat("b", pin = 0), chat("c"),

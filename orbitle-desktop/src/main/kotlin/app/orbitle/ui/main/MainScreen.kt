@@ -447,7 +447,7 @@ private fun ChatPane(
             val model = viewModel(key = "chat-$chatId") {
                 ChatViewModel(
                     chatId, container.messages, fallbackTitle = chatTitle, voicePlayer = container.voicePlayer, files = container.files,
-                    stickerRepository = container.stickers, stickerRecents = container.stickerRecents, drafts = container.drafts,
+                    stickerRepository = container.stickers, stickerRecents = container.stickerRecents, drafts = container.drafts, draftSync = container.draftSync,
                     emojiSupported = EmojiSupport::canDraw, comments = container.comments,
                     mediaSaver = container.mediaSaver,
                     chats = container.chats,
