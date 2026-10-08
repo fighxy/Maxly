@@ -9,6 +9,7 @@ on:
       - "orbitle-shared/**"
       - "orbitle-compose/**"
       - "scripts/fetch-core.ps1"
+      - "scripts/publish-latest.sh"
       - ".github/workflows/desktop.yml"
   pull_request:
     paths:
@@ -16,6 +17,7 @@ on:
       - "orbitle-shared/**"
       - "orbitle-compose/**"
       - "scripts/fetch-core.ps1"
+      - "scripts/publish-latest.sh"
       - ".github/workflows/desktop.yml"
 
 permissions:
@@ -156,16 +158,23 @@ jobs:
           retention-days: 30
           compression-level: 0
 
-  # Пререлиз с установщиками всех трёх ОС, как у Android и iOS. Хранятся последние 5 сборок.
+  # Один пререлиз desktop-latest с установщиками всех трёх ОС под постоянными именами
+  # (Orbitle.msi, Orbitle.dmg, Orbitle.deb): внутри последняя сборка main, у которой прошли
+  # тесты и собрались все три установщика.
   publish:
-    name: Publish pre-release
+    name: Publish desktop-latest
     needs: package
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: write
+    # Выпуски не гоняются наперегонки: следующий ждёт, а скрипт пропускает устаревшую сборку.
+    concurrency:
+      group: publish-desktop
+      cancel-in-progress: false
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: Orbitle-desktop-*-${{ github.sha }}
@@ -174,23 +183,23 @@ jobs:
       - name: Publish installers
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: desktop-latest
+          WATCH: orbitle-desktop/ orbitle-shared/ orbitle-compose/ scripts/fetch-core.ps1 scripts/publish-latest.sh .github/workflows/desktop.yml
         run: |
           set -euo pipefail
           short="${GITHUB_SHA::7}"
+          mkdir -p release
           files=()
-          for file in installers/*; do
-            ext="${file##*.}"
-            target="installers/Orbitle-${short}.${ext}"
-            mv "$file" "$target"
-            files+=("$target")
+          for ext in msi dmg deb; do
+            found=(installers/*."$ext")
+            if [ "${#found[@]}" -ne 1 ] || [ ! -f "${found[0]}" ]; then
+              echo "::error::Нужен ровно один .$ext, есть: ${found[*]}"
+              exit 1
+            fi
+            cp "${found[0]}" "release/Orbitle.$ext"
+            files+=("release/Orbitle.$ext")
           done
-          ls -lh installers
-          gh release delete "desktop-${short}" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "desktop-${short}" "${files[@]}" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --prerelease --title "Orbitle Desktop ${short}" \
-            --notes "Сборка для ПК ${GITHUB_SHA}: Windows (.msi), macOS (.dmg, без подписи — открыть через «Открыть» в контекстном меню), Linux (.deb). Для голосовых, кружков и видео нужен ffmpeg в PATH."
-          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
-            --jq '[.[] | select(.tagName | startswith("desktop-"))] | sort_by(.createdAt) | reverse | .[5:] | .[].tagName' |
-            while read -r old; do
-              gh release delete "$old" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
-            done
+          ls -lh release
+          export TITLE="Orbitle Desktop ${short}"
+          export NOTES="Сборка для ПК ${GITHUB_SHA} от $(date -u '+%Y-%m-%d %H:%M') UTC: Windows (Orbitle.msi), macOS (Orbitle.dmg, без подписи — открыть через «Открыть» в контекстном меню), Linux (Orbitle.deb). Для голосовых, кружков и видео нужен ffmpeg в PATH."
+          bash scripts/publish-latest.sh "${files[@]}"

@@ -8,10 +8,10 @@ Android. Сеть, протокол, вход и хранение сессии �
 
 ## Скачать
 
-Каждый зелёный прогон workflow «Android» публикует пререлиз `android-<sha7>` с файлом
-`Orbitle-<sha7>.apk` ([Releases](https://github.com/fighxy/Orbitle/releases)). Ссылку можно
+Последняя зелёная сборка `main` — в пререлизе `android-latest`, ссылка постоянная:
+https://github.com/fighxy/Orbitle/releases/download/android-latest/Orbitle.apk. Её можно
 открыть прямо на телефоне: браузер скачает `.apk`, остаётся разрешить установку из этого
-источника. Хранятся последние 5 сборок.
+источника.
 
 Сборки подписаны одним ключом, поэтому новая версия ставится поверх старой без потери входа.
 Если в репозитории есть секрет `ORBITLE_KEYSTORE_BASE64` (с `ORBITLE_KEYSTORE_PASSWORD`,
@@ -151,5 +151,5 @@ Material 3, Coil 3, minSdk 26, targetSdk 37. Релизная сборка уж�
 
 Workflow «Android» (`.github/workflows/android.yml`) запускается на изменения в
 `orbitle-android/**` и в самом workflow: собирает ядро по `core.lock` (с кэшем), гоняет
-JVM-тесты, собирает подписанный release-APK, проверяет подпись и публикует пререлиз
-`android-<sha7>`. Код версии — номер прогона, поэтому каждая сборка новее предыдущей.
+JVM-тесты, собирает подписанный release-APK, проверяет подпись и на push в `main` заменяет
+пререлиз `android-latest` (`scripts/publish-latest.sh`). Код версии — номер прогона, поэтому каждая сборка новее предыдущей.

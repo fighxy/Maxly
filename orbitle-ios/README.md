@@ -66,7 +66,7 @@ MAX_KMP_CORE_DIR=~/src/max-kmp-core bash scripts/fetch-core.sh
 bash scripts/build-ipa.sh            # или MAX_KMP_CORE_DIR=… / SKIP_CORE=1
 ```
 
-Скрипт собирает Release для устройства без подписи и кладёт `build/Orbitle.ipa`. Его подписывают своим сертификатом (Sideloadly, AltStore, eSign и т. п.) и ставят на телефон. CI делает то же и выкладывает `.ipa` в артефакты прогона.
+Скрипт собирает Release для устройства без подписи и кладёт `build/Orbitle.ipa`. Его подписывают своим сертификатом (Sideloadly, AltStore, eSign и т. п.) и ставят на телефон. CI делает то же, выкладывает `.ipa` в артефакты прогона, а зелёная сборка `main` заменяет пререлиз `ios-latest`: https://github.com/fighxy/Orbitle/releases/download/ios-latest/Orbitle.ipa.
 
 Тесты библиотек (`OrbitleDomainTests`, `OrbitleDataTests`, `OrbitlePresentationTests`) ядро не требуют:
 

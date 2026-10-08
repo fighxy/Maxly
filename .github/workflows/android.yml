@@ -8,12 +8,14 @@ on:
       - "orbitle-android/**"
       - "orbitle-shared/**"
       - "orbitle-compose/**"
+      - "scripts/publish-latest.sh"
       - ".github/workflows/android.yml"
   pull_request:
     paths:
       - "orbitle-android/**"
       - "orbitle-shared/**"
       - "orbitle-compose/**"
+      - "scripts/publish-latest.sh"
       - ".github/workflows/android.yml"
 
 permissions:
@@ -27,9 +29,6 @@ jobs:
   build:
     name: Tests and APK
     runs-on: ubuntu-latest
-    # Выпуск с .apk (шаг «Publish APK») создаёт релиз в этом репозитории.
-    permissions:
-      contents: write
     timeout-minutes: 45
     defaults:
       run:
@@ -113,24 +112,36 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
-      # Пререлиз с самим .apk: ссылку можно открыть в браузере на телефоне и сразу поставить.
-      # Хранятся последние 5 сборок.
+
+  # Один пререлиз android-latest с Orbitle.apk: ссылка постоянная, её можно открыть в браузере
+  # на телефоне и сразу поставить. Внутри последняя сборка main, у которой прошли тесты.
+  publish:
+    name: Publish android-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    # Выпуски не гоняются наперегонки: следующий ждёт, а скрипт пропускает устаревшую сборку.
+    concurrency:
+      group: publish-android
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Orbitle-apk-${{ github.sha }}
+          path: build
       - name: Publish APK
-        if: github.event_name != 'pull_request'
-        working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: android-latest
+          WATCH: orbitle-android/ orbitle-shared/ orbitle-compose/ scripts/publish-latest.sh .github/workflows/android.yml
         run: |
           set -euo pipefail
           short="${GITHUB_SHA::7}"
-          apk="build/Orbitle-${short}.apk"
-          cp build/Orbitle.apk "$apk"
-          gh release delete "android-${short}" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "android-${short}" "$apk" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --prerelease --title "Orbitle Android ${short}" \
-            --notes "Сборка для Android ${GITHUB_SHA}. Откройте Orbitle-${short}.apk в браузере на телефоне и установите (нужно разрешить установку из этого источника)."
-          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
-            --jq '[.[] | select(.tagName | startswith("android-"))] | sort_by(.createdAt) | reverse | .[5:] | .[].tagName' |
-            while read -r old; do
-              gh release delete "$old" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
-            done
+          export TITLE="Orbitle Android ${short}"
+          export NOTES="Сборка для Android ${GITHUB_SHA} от $(date -u '+%Y-%m-%d %H:%M') UTC. Откройте Orbitle.apk в браузере на телефоне и установите (нужно разрешить установку из этого источника)."
+          ls -lh build/Orbitle.apk
+          bash scripts/publish-latest.sh build/Orbitle.apk

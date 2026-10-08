@@ -62,25 +62,30 @@ Android-клиент и клиент для компьютера написан�
 | [`orbitle-android/`](orbitle-android/) | Android-приложение, `scripts/fetch-core.sh` (AAR ядра по `core.lock`) |
 | [`orbitle-desktop/`](orbitle-desktop/) | клиент для компьютера, `scripts/fetch-core.sh` (исходники ядра по `core.lock`) |
 | [`orbitle-shared/`](orbitle-shared/) | общий Kotlin-код Android и десктопа: модели, данные, view model и их тесты |
-| [`scripts/`](scripts/) | `fetch-core.sh` (ядро для iOS), `fetch-core.ps1` (исходники ядра для десктопа на Windows), `build-ipa.sh`, `smoke-launch.sh`, `validate-ipa.py` |
+| [`scripts/`](scripts/) | `fetch-core.sh` (ядро для iOS), `fetch-core.ps1` (исходники ядра для десктопа на Windows), `build-ipa.sh`, `smoke-launch.sh`, `validate-ipa.py`, `publish-latest.sh` (пререлизы `*-latest`) |
 | [`docs/`](docs/) | общая архитектура клиентов, памятка по клиенту Komet, бренд |
 | [`.github/workflows/`](.github/workflows/) | CI: `ios.yml` (тесты, сборка, запуск в симуляторе, `.ipa`), `android.yml` (тесты, `.apk`), `desktop.yml` (тесты, установщики `.deb`, `.msi`, `.dmg`) |
 
 ## Установка
 
-**iPhone.** Каждый прогон CI на `main`, где собралась `.ipa`, публикует неподписанную сборку в
-пререлизе [`build-<sha7>`](https://github.com/fighxy/Orbitle/releases) (хранятся последние 5).
-Ссылка на файл: `https://github.com/fighxy/Orbitle/releases/download/build-<sha7>/Orbitle-<sha7>.ipa`.
-Откройте её в Safari на iPhone, затем подпишите и установите `.ipa` своим сертификатом
+У каждой платформы один пререлиз с постоянной ссылкой: его заменяет каждая зелёная сборка
+`main` ([Releases](https://github.com/fighxy/Orbitle/releases)).
+
+**iPhone.** Неподписанная сборка в пререлизе `ios-latest`:
+https://github.com/fighxy/Orbitle/releases/download/ios-latest/Orbitle.ipa.
+Откройте ссылку в Safari на iPhone, затем подпишите и установите `.ipa` своим сертификатом
 (eSign, Sideloadly, AltStore и т. п.).
 
-**Android.** Каждый зелёный прогон workflow «Android» на `main` публикует пререлиз
-`android-<sha7>` с файлом `Orbitle-<sha7>.apk` (хранятся последние 5). Ссылку можно открыть
-прямо на телефоне и установить `.apk`.
+**Android.** Пререлиз `android-latest`:
+https://github.com/fighxy/Orbitle/releases/download/android-latest/Orbitle.apk.
+Ссылку можно открыть прямо на телефоне и установить `.apk`.
 
-**Компьютер.** Workflow «Desktop» собирает установщики `.deb`, `.msi` и `.dmg` и прикладывает их
-к прогону как артефакты `Orbitle-desktop-<формат>-<sha>`. Собрать и запустить самому — в
-[orbitle-desktop/README.md](orbitle-desktop/README.md).
+**Компьютер.** Пререлиз `desktop-latest`: Windows —
+https://github.com/fighxy/Orbitle/releases/download/desktop-latest/Orbitle.msi, macOS —
+https://github.com/fighxy/Orbitle/releases/download/desktop-latest/Orbitle.dmg, Linux —
+https://github.com/fighxy/Orbitle/releases/download/desktop-latest/Orbitle.deb. Установщики
+каждого прогона есть и в артефактах `Orbitle-desktop-<формат>-<sha>`. Собрать и запустить
+самому — в [orbitle-desktop/README.md](orbitle-desktop/README.md).
 
 ## Документация
 
