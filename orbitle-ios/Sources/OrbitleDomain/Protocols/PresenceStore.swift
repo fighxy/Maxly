@@ -86,6 +86,10 @@ public actor PresenceStore: PresenceSink {
 
     private func addObserver(_ id: UUID, _ continuation: AsyncStream<Set<String>>.Continuation) {
         observers[id] = continuation
+        // Подписка доходит до хранилища отдельной задачей. Статус, записанный в этот зазор,
+        // иначе теряется: новый подписчик получает уже известные id и читает их сам.
+        let known = Set(entries.keys)
+        if !known.isEmpty { continuation.yield(known) }
     }
 
     private func removeObserver(_ id: UUID) {
