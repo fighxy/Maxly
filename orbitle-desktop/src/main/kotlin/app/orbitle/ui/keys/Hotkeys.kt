@@ -56,6 +56,14 @@ enum class HotkeyAction {
     CALL_HANG_UP,
     /** Ctrl+Shift+R: записать голосовое или кружок (закреплённой записью), повторно — отправить. */
     RECORD,
+    /** Ctrl+B, Ctrl+I, Ctrl+U: жирный, курсив, подчёркнутый у выделения в поле ввода. */
+    FORMAT_BOLD,
+    FORMAT_ITALIC,
+    FORMAT_UNDERLINE,
+    /** Ctrl+Shift+X: зачёркнутый. */
+    FORMAT_STRIKE,
+    /** Ctrl+Shift+M: моноширинный. */
+    FORMAT_MONO,
 }
 
 /** Сработавшая горячая клавиша; [index] — номер папки у [HotkeyAction.FOLDER]. */
@@ -131,11 +139,16 @@ object KeyChords {
                 'a' -> Hotkey(HotkeyAction.CALL_ANSWER)
                 'h' -> Hotkey(HotkeyAction.CALL_HANG_UP)
                 'r' -> Hotkey(HotkeyAction.RECORD)
+                'x' -> Hotkey(HotkeyAction.FORMAT_STRIKE)
+                'm' -> Hotkey(HotkeyAction.FORMAT_MONO)
                 else -> null
             }
         }
         if (ctrl && !alt) {
             return when (key) {
+                'b' -> Hotkey(HotkeyAction.FORMAT_BOLD)
+                'i' -> Hotkey(HotkeyAction.FORMAT_ITALIC)
+                'u' -> Hotkey(HotkeyAction.FORMAT_UNDERLINE)
                 'd' -> Hotkey(HotkeyAction.CALL_MUTE)
                 'e' -> Hotkey(HotkeyAction.CALL_CAMERA)
                 'f' -> Hotkey(HotkeyAction.SEARCH)

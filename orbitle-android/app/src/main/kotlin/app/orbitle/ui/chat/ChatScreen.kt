@@ -454,6 +454,9 @@ fun ChatScreen(
                     },
                     onMention = model::insertMention,
                     onCommand = model::insertCommand,
+                    onToggleFormat = model::toggleFormat,
+                    onLink = model::setLink,
+                    linkAt = model::linkAt,
                 )
             } else if (state.join != null) {
                 val join = state.join!!

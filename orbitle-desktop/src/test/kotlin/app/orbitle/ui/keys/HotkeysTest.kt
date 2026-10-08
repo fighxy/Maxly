@@ -59,6 +59,26 @@ class HotkeysTest {
     }
 
     @Test
+    fun formattingKeysInBothLayouts() {
+        assertEquals(Hotkey(HotkeyAction.FORMAT_BOLD), chord(KeyEvent.VK_B, ctrl = true))
+        assertEquals(Hotkey(HotkeyAction.FORMAT_BOLD), russian('и', ctrl = true))
+        assertEquals(Hotkey(HotkeyAction.FORMAT_ITALIC), chord(KeyEvent.VK_I, ctrl = true))
+        assertEquals(Hotkey(HotkeyAction.FORMAT_ITALIC), russian('ш', ctrl = true))
+        assertEquals(Hotkey(HotkeyAction.FORMAT_UNDERLINE), chord(KeyEvent.VK_U, ctrl = true))
+        assertEquals(Hotkey(HotkeyAction.FORMAT_UNDERLINE), russian('г', ctrl = true))
+        assertEquals(Hotkey(HotkeyAction.FORMAT_STRIKE), chord(KeyEvent.VK_X, ctrl = true, shift = true))
+        assertEquals(Hotkey(HotkeyAction.FORMAT_MONO), chord(KeyEvent.VK_M, ctrl = true, shift = true))
+        // Без Shift это обычные вырезать и ничего.
+        assertNull(chord(KeyEvent.VK_X, ctrl = true))
+        assertNull(chord(KeyEvent.VK_M, ctrl = true))
+        // Буквы без Ctrl — просто ввод.
+        assertNull(chord(KeyEvent.VK_B, 'b'))
+        assertNull(chord(KeyEvent.VK_X, 'X', shift = true))
+        val formatting = HotkeyCatalog.groups("Ctrl").first { it.title == "Форматирование выделенного текста" }
+        assertEquals(listOf("Ctrl+Shift+X"), formatting.entries.first { it.title == "Зачёркнутый" }.keys)
+    }
+
+    @Test
     fun ordinaryTypingIsNotAHotkey() {
         assertNull(chord(KeyEvent.VK_A, 'a'))
         assertNull(russian('ф'))

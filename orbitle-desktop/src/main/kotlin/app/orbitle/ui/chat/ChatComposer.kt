@@ -150,6 +150,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import app.orbitle.domain.Message
+import app.orbitle.domain.TextSpan
 import app.orbitle.domain.MessageStatus
 import app.orbitle.media.AttachmentImporter
 import app.orbitle.media.DesktopVoiceRecorder
@@ -169,7 +170,8 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun Composer(
     state: ChatUiState,
-    onDraft: (String) -> Unit,
+    /** Новый текст поля и курсор после правки (по нему разметка понимает, где набрали). */
+    onDraft: (String, Int) -> Unit,
     onSend: () -> Unit,
     onCancelReply: () -> Unit,
     onCancelEdit: () -> Unit,
@@ -187,6 +189,12 @@ internal fun Composer(
     videoPreview: (@Composable (Modifier) -> Unit)? = null,
     onMention: (app.orbitle.data.ChatMemberRow) -> Unit = {},
     onCommand: (app.orbitle.data.BotCommandRow) -> Unit = {},
+    /** Кнопка или сочетание форматирования для выделения [start, end) поля. */
+    onToggleFormat: (TextSpan.Kind, Int, Int) -> Unit = { _, _, _ -> },
+    /** Ссылка на выделении [start, end): адрес или `null` — убрать. */
+    onLink: (Int, Int, String?) -> Unit = { _, _, _ -> },
+    /** Адрес ссылки, стоящей ровно на выделении; `null` — ссылки нет. */
+    linkAt: (Int, Int) -> String? = { _, _ -> null },
     /** ↑ в пустом поле: правка своего последнего сообщения. `false` — править нечего. */
     onEditLast: () -> Boolean = { false },
 ) {
@@ -197,6 +205,35 @@ internal fun Composer(
     val onPanel: (Boolean) -> Unit = { showPanel = it }
     val keyboard = LocalSoftwareKeyboardController.current
     val insertEmoji = remember { mutableStateOf<(String) -> Unit>({}) }
+    // Текст правки или восстановленный черновик приходит извне: курсор в конец.
+    var field by remember { mutableStateOf(TextFieldValue(state.draft, TextRange(state.draft.length))) }
+    if (field.text != state.draft) field = TextFieldValue(state.draft, TextRange(state.draft.length))
+    val focus = remember { FocusRequester() }
+    var focused by remember { mutableStateOf(false) }
+    // Панель форматирования: открыта кнопкой «Aa» или сама, пока в поле выделен текст.
+    var formatOpen by rememberSaveable { mutableStateOf(false) }
+    // Выделение, для которого открыт диалог ссылки: в диалоге фокус уходит из поля.
+    var linkRange by remember { mutableStateOf<TextRange?>(null) }
+    val toggleFormat: (TextSpan.Kind) -> Unit = { kind ->
+        val selection = field.selection
+        if (!selection.collapsed) onToggleFormat(kind, selection.min, selection.max)
+    }
+    val openLink: () -> Unit = { if (!field.selection.collapsed) linkRange = field.selection }
+    // Сочетания форматирования, пока фокус в поле и в нём выделен текст. Без выделения
+    // сочетание идёт дальше: Ctrl+K остаётся поиском по чатам.
+    app.orbitle.ui.keys.HotkeyHandler(enabled = focused) { hotkey ->
+        if (field.selection.collapsed || linkRange != null) return@HotkeyHandler false
+        when (hotkey.action) {
+            app.orbitle.ui.keys.HotkeyAction.FORMAT_BOLD -> toggleFormat(TextSpan.Kind.STRONG)
+            app.orbitle.ui.keys.HotkeyAction.FORMAT_ITALIC -> toggleFormat(TextSpan.Kind.EMPHASIZED)
+            app.orbitle.ui.keys.HotkeyAction.FORMAT_UNDERLINE -> toggleFormat(TextSpan.Kind.UNDERLINE)
+            app.orbitle.ui.keys.HotkeyAction.FORMAT_STRIKE -> toggleFormat(TextSpan.Kind.STRIKETHROUGH)
+            app.orbitle.ui.keys.HotkeyAction.FORMAT_MONO -> toggleFormat(TextSpan.Kind.MONOSPACED)
+            app.orbitle.ui.keys.HotkeyAction.SEARCH_CHATS -> openLink()
+            else -> return@HotkeyHandler false
+        }
+        true
+    }
     BackHandler(enabled = showPanel) { showPanel = false }
     Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
         Column(if (showPanel) Modifier else Modifier.navigationBarsPadding()) {
@@ -250,6 +287,32 @@ internal fun Composer(
                 )
             }
             ComposerHintsBar(state.hints, onMention, onCommand)
+            if (!voice.state.isActive && (formatOpen || (focused && !field.selection.collapsed))) {
+                FormatBar(
+                    state.formatting,
+                    field.selection,
+                    onToggle = toggleFormat,
+                    onLink = openLink,
+                    modifier = Modifier.padding(top = 4.dp),
+                    hints = formatHints(),
+                )
+            }
+            linkRange?.let { range ->
+                LinkDialog(
+                    current = linkAt(range.min, range.max),
+                    onDone = { url ->
+                        linkRange = null
+                        onLink(range.min, range.max, url)
+                        // Вернуть выделение и фокус в поле.
+                        if (range.max <= field.text.length) field = field.copy(selection = range)
+                        runCatching { focus.requestFocus() }
+                    },
+                    onDismiss = {
+                        linkRange = null
+                        runCatching { focus.requestFocus() }
+                    },
+                )
+            }
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.Bottom) {
                 if (editing == null) {
                     IconButton(onClick = onAttach, modifier = Modifier.size(44.dp)) {
@@ -257,16 +320,12 @@ internal fun Composer(
                     }
                     Spacer(Modifier.width(2.dp))
                 }
-                // Текст правки или восстановленный черновик приходит извне: курсор в конец.
-                var field by remember { mutableStateOf(TextFieldValue(state.draft, TextRange(state.draft.length))) }
-                if (field.text != state.draft) field = TextFieldValue(state.draft, TextRange(state.draft.length))
-                val focus = remember { FocusRequester() }
                 insertEmoji.value = { emoji ->
                     val start = field.selection.min.coerceIn(0, field.text.length)
                     val end = field.selection.max.coerceIn(0, field.text.length)
                     val text = field.text.substring(0, start) + emoji + field.text.substring(end)
                     field = TextFieldValue(text, TextRange(start + emoji.length))
-                    onDraft(text)
+                    onDraft(text, start + emoji.length)
                 }
                 LaunchedEffect(editing?.id, reply?.id) { if ((editing != null || reply != null) && !showPanel) runCatching { focus.requestFocus() } }
                 if (voice.state.isActive) {
@@ -279,14 +338,16 @@ internal fun Composer(
                         .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                     verticalAlignment = Alignment.Bottom,
                 ) {
+                    val linkColor = MaterialTheme.colorScheme.primary
                     Box(Modifier.weight(1f).padding(start = 16.dp, top = 11.dp, bottom = 11.dp, end = 4.dp), contentAlignment = Alignment.CenterStart) {
                         if (state.draft.isEmpty()) Text("Сообщение", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 16.sp)
                         BasicTextField(
                             value = field,
                             onValueChange = {
                                 field = it
-                                if (it.text != state.draft) onDraft(it.text)
+                                if (it.text != state.draft) onDraft(it.text, it.selection.max)
                             },
+                            visualTransformation = remember(state.formatting, linkColor) { FormattingTransformation(state.formatting, linkColor) },
                             textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp),
                             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
@@ -294,10 +355,14 @@ internal fun Composer(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .focusRequester(focus)
-                                .onFocusChanged { if (it.isFocused && showPanel) onPanel(false) }
+                                .onFocusChanged {
+                                    focused = it.isFocused
+                                    if (it.isFocused && showPanel) onPanel(false)
+                                }
                                 .onPreviewKeyEvent { composerKey(it, sendKey, field.text.isEmpty(), state.canSend, onSend, onEditLast) },
                         )
                     }
+                    FormatToggle(formatOpen, onToggle = { formatOpen = !formatOpen })
                     if (hasPanel) {
                         IconButton(
                             onClick = {
@@ -356,6 +421,19 @@ internal fun Composer(
             }
         }
     }
+}
+
+/** Подписи сочетаний клавиш у кнопок панели форматирования. */
+private fun formatHints(): Map<TextSpan.Kind, String> {
+    val command = app.orbitle.ui.keys.KeyChords.command
+    return mapOf(
+        TextSpan.Kind.STRONG to "$command+B",
+        TextSpan.Kind.EMPHASIZED to "$command+I",
+        TextSpan.Kind.UNDERLINE to "$command+U",
+        TextSpan.Kind.STRIKETHROUGH to "$command+Shift+X",
+        TextSpan.Kind.MONOSPACED to "$command+Shift+M",
+        TextSpan.Kind.LINK to "$command+K",
+    )
 }
 
 /** Выбранные вложения над полем ввода, у каждого — крестик. */

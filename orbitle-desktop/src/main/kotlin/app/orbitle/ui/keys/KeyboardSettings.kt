@@ -78,6 +78,17 @@ object HotkeyCatalog {
                 ),
             ),
             Group(
+                "Форматирование выделенного текста",
+                listOf(
+                    Entry(listOf("$command+B"), "Жирный"),
+                    Entry(listOf("$command+I"), "Курсив"),
+                    Entry(listOf("$command+U"), "Подчёркнутый"),
+                    Entry(listOf("$command+Shift+X"), "Зачёркнутый"),
+                    Entry(listOf("$command+Shift+M"), "Моноширинный"),
+                    Entry(listOf("$command+K"), "Ссылка"),
+                ),
+            ),
+            Group(
                 "Звонки и запись",
                 listOf(
                     Entry(listOf("$command+Shift+A"), "Ответить на входящий звонок"),

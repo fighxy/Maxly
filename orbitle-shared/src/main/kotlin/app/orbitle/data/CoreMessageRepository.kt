@@ -198,7 +198,7 @@ class CoreMessageRepository(
     override suspend fun send(chatId: String, text: String, replyTo: String?) = enqueueText(chatId, text, replyTo, emptyList())
 
     override suspend fun sendFormatted(chatId: String, text: String, replyTo: String?, marks: List<TextSpan>) =
-        enqueueText(chatId, text, replyTo, marks.filter { it.kind == TextSpan.Kind.ANIMOJI || it.kind == TextSpan.Kind.MENTION })
+        enqueueText(chatId, text, replyTo, marks)
 
     private suspend fun enqueueText(chatId: String, text: String, replyTo: String?, marks: List<TextSpan>) {
         val local = Message(
@@ -349,8 +349,7 @@ class CoreMessageRepository(
                 } else if (note != null) {
                     MaxCoreGateway.call { uploadVideoNote(chatId, note, replyTo, progress) }
                 } else if (media == null) {
-                    val elements = animojiElements(local.text, local.content.formatting) +
-                        LockPayloads.mentionElements(local.text, local.content.formatting)
+                    val elements = elements(local.text, local.content.formatting)
                     MaxCoreGateway.call { client.sendText(chatId.toLong(), local.text, replyTo?.toLongOrNull(), elements) }
                 } else {
                     val outgoing = media.map { OutgoingMedia(it.path, coreKind(it.kind), it.name) }
@@ -470,8 +469,11 @@ class CoreMessageRepository(
         return LockPayloads.foundMessages(chat, (packet.payload as? Map<*, *>)?.get("result"), me)
     }
 
-    override suspend fun edit(chatId: String, messageId: String, text: String) {
-        val edited = MaxCoreGateway.call { client.api.messages.editMessage(chatId.toLong(), messageId.toLong(), text) }
+    override suspend fun edit(chatId: String, messageId: String, text: String) = editFormatted(chatId, messageId, text, emptyList())
+
+    override suspend fun editFormatted(chatId: String, messageId: String, text: String, marks: List<TextSpan>) {
+        val elements = elements(text, marks)
+        val edited = MaxCoreGateway.call { client.api.messages.editMessage(chatId.toLong(), messageId.toLong(), text, elements) }
         // Своя правка сервером обратно не присылается.
         client.store.apply(MaxEvent.MessageEdited(edited.copy(chatId = edited.chatId ?: chatId.toLong()), 0, null))
     }
@@ -580,6 +582,11 @@ class CoreMessageRepository(
 
     /** User-Agent сессии: адреса видео и файлов CDN выдаёт под Android-клиента. */
     val mediaUserAgent: String get() = client.config.userAgent.httpUserAgent
+
+    /** Все отметки текста для `elements`: анимодзи, упоминания и разметка, по порядку в тексте. */
+    private fun elements(text: String, spans: List<TextSpan>): List<Map<String, Any?>> =
+        (animojiElements(text, spans) + LockPayloads.mentionElements(text, spans) + LockPayloads.formatElements(text, spans))
+            .sortedBy { it["from"] as Int }
 
     /** Отметки `ANIMOJI`: `{type, from, length, entityId, attributes.animojiLottieUrl}`, смещения UTF-16. */
     private fun animojiElements(text: String, spans: List<TextSpan>): List<Map<String, Any?>> = spans.mapNotNull { span ->

@@ -460,6 +460,9 @@ fun ChatScreen(
                     },
                     onMention = model::insertMention,
                     onCommand = model::insertCommand,
+                    onToggleFormat = model::toggleFormat,
+                    onLink = model::setLink,
+                    linkAt = model::linkAt,
                     onEditLast = model::editLast,
                 )
             } else if (state.join != null) {

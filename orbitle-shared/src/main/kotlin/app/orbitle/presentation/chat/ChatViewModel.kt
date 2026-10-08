@@ -137,6 +137,8 @@ data class ChatUiState(
     val pinnedText: String? = null,
     /** Подсказки `@` и `/` над полем ввода. */
     val hints: ComposerHints = ComposerHints(),
+    /** Разметка текста поля ввода ([FormatDraft]): поле рисует её и отправляет с текстом. */
+    val formatting: List<TextSpan> = emptyList(),
 ) {
     val canSend: Boolean get() = draft.isNotBlank() || attachments.isNotEmpty()
 }
@@ -282,6 +284,12 @@ class ChatViewModel(
     /** Анимодзи, вставленные в поле из панели. */
     private val animojiDraft = AnimojiDraft()
     private val mentionDraft = MentionDraft()
+    /** Жирный, курсив и прочая разметка поля ввода. */
+    private val formatDraft = FormatDraft()
+    /** Разметка черновика до начала правки: вернётся вместе с его текстом. */
+    private var formatsBeforeEdit: List<TextSpan> = emptyList()
+    /** Упоминания черновика до начала правки. */
+    private var mentionsBeforeEdit: List<TextSpan> = emptyList()
     /** Локальный закреп, пока в истории не появится более новое служебное pin/unpin. */
     private var pinOverride: PinNotice? = null
     /** Id сообщения истории, которое было последним pin-notice в момент локального pin/unpin. */
@@ -636,15 +644,22 @@ class ChatViewModel(
         }
     }
 
-    fun setDraft(text: String) {
-        val typed = text.isNotEmpty() && text != _state.value.draft && _state.value.editing == null
+    /**
+     * Текст поля ввода. [cursor] — курсор после правки (`-1` — неизвестен): по нему разметка
+     * точнее находит место правки среди одинаковых знаков.
+     */
+    fun setDraft(text: String, cursor: Int = -1) {
+        val previous = _state.value.draft
+        val typed = text.isNotEmpty() && text != previous && _state.value.editing == null
         if (text.isEmpty()) {
             animojiDraft.clear()
             mentionDraft.clear()
+            formatDraft.clear()
         } else {
             mentionDraft.retainPresent(text)
+            formatDraft.edit(previous, text, cursor)
         }
-        _state.update { it.copy(draft = text) }
+        _state.update { it.copy(draft = text, formatting = formatDraft.spans) }
         if (_state.value.editing == null) drafts?.put(chatId, text)
         refreshHints(text)
         if (typed) sendTyping(typingPolicy.editText(chatId, now(), canWrite = canSignalTyping()))
@@ -716,6 +731,50 @@ class ChatViewModel(
         if (name.isEmpty()) return
         setDraft("/$name ")
     }
+
+    // Форматирование
+
+    /**
+     * Кнопка панели форматирования (или сочетание клавиш) для выделения [start, end) поля:
+     * размеченное целиком — снять, иначе разметить. Ссылки — [setLink].
+     */
+    fun toggleFormat(kind: TextSpan.Kind, start: Int, end: Int) {
+        if (kind !in FormatDraft.TOOLBAR || kind == TextSpan.Kind.LINK) return
+        val (from, to) = clampSelection(start, end) ?: return
+        formatDraft.toggle(kind, from, to)
+        publishFormatting()
+    }
+
+    /**
+     * Ссылка на выделении [start, end): [url] из диалога (без схемы — `https://`), `null` или
+     * пусто — убрать ссылку. Адрес с пробелами не принимается.
+     */
+    fun setLink(start: Int, end: Int, url: String?) {
+        val (from, to) = clampSelection(start, end) ?: return
+        if (url.isNullOrBlank()) {
+            formatDraft.setLink(from, to, null)
+        } else {
+            val normalized = FormatDraft.normalizeUrl(url)
+            if (normalized == null) {
+                _messages.value = "Ссылка не похожа на адрес"
+                return
+            }
+            formatDraft.setLink(from, to, normalized)
+        }
+        publishFormatting()
+    }
+
+    /** Адрес ссылки на выделении, чтобы диалог открылся с ним. */
+    fun linkAt(start: Int, end: Int): String? = clampSelection(start, end)?.let { (from, to) -> formatDraft.linkAt(from, to) }
+
+    private fun clampSelection(start: Int, end: Int): Pair<Int, Int>? {
+        val length = _state.value.draft.length
+        val from = minOf(start, end).coerceIn(0, length)
+        val to = maxOf(start, end).coerceIn(0, length)
+        return if (to > from) from to to else null
+    }
+
+    private fun publishFormatting() = _state.update { it.copy(formatting = formatDraft.spans) }
 
     /** Анимодзи из панели: символ вставляет экран, отметка уйдёт вместе с текстом. */
     fun noteAnimoji(emoji: AnimatedEmoji) {
@@ -797,18 +856,20 @@ class ChatViewModel(
         if (attachments.isNotEmpty() && _state.value.editing == null) {
             animojiDraft.clear()
             mentionDraft.clear()
+            formatDraft.clear()
             dropUnreadSeparator()
             sendAttachments(attachments, text)
             return
         }
         if (text.isEmpty()) return
-        val marks = animojiDraft.spans(text) + mentionDraft.spans(text)
+        val marks = composedMarks(text)
         animojiDraft.clear()
         mentionDraft.clear()
-        _state.value.editing?.let { saveEdit(it, text); return }
+        formatDraft.clear()
+        _state.value.editing?.let { saveEdit(it, text, marks); return }
         dropUnreadSeparator()
         val reply = _state.value.replyTo
-        _state.update { it.copy(draft = "", replyTo = null) }
+        _state.update { it.copy(draft = "", replyTo = null, formatting = emptyList()) }
         drafts?.put(chatId, "")
         viewModelScope.launch {
             try {
@@ -822,9 +883,20 @@ class ChatViewModel(
         }
     }
 
+    /**
+     * Отметки текста [text] (уже без пробелов по краям): анимодзи, упоминания и разметка поля.
+     * Одинаковая отметка из двух черновиков (анимодзи правимого сообщения) уходит один раз.
+     */
+    private fun composedMarks(text: String): List<TextSpan> {
+        val formats = formatDraft.trimmed(_state.value.draft).second
+        return (animojiDraft.spans(text) + mentionDraft.spans(text) + formats)
+            .distinctBy { Triple(it.kind, it.from, it.length) }
+            .sortedWith(compareBy({ it.from }, { it.kind.ordinal }))
+    }
+
     private fun sendAttachments(items: List<OutgoingFile>, caption: String) {
         val reply = _state.value.replyTo
-        _state.update { it.copy(draft = "", replyTo = null, attachments = emptyList(), uploadProgress = 0f) }
+        _state.update { it.copy(draft = "", replyTo = null, attachments = emptyList(), uploadProgress = 0f, formatting = emptyList()) }
         drafts?.put(chatId, "")
         val uploadKind = uploadKind(items)
         val canSignal = canSignalTyping()
@@ -951,11 +1023,29 @@ class ChatViewModel(
     fun canEdit(message: Message): Boolean =
         isOutgoing(message) && isServer(message) && message.content.forward == null && message.text.isNotBlank() && !message.isService
 
+    /** Правка: в поле текст сообщения с его разметкой и упоминаниями. */
     fun beginEdit(message: Message) {
         if (!canEdit(message)) return
-        _state.update {
-            if (it.editing == null) draftBeforeEdit = it.draft
-            it.copy(editing = message, replyTo = null, draft = message.text)
+        if (_state.value.editing == null) {
+            draftBeforeEdit = _state.value.draft
+            formatsBeforeEdit = formatDraft.spans
+            mentionsBeforeEdit = mentionDraft.spans(draftBeforeEdit)
+        }
+        val text = message.text
+        val spans = message.content.formatting
+        formatDraft.restore(spans, text.length)
+        restoreMentions(text, spans)
+        _state.update { it.copy(editing = message, replyTo = null, draft = text, formatting = formatDraft.spans) }
+    }
+
+    /** Упоминания из разметки [spans] текста [text] — снова «живые» в поле ввода. */
+    private fun restoreMentions(text: String, spans: List<TextSpan>) {
+        mentionDraft.clear()
+        for (span in spans) {
+            if (span.kind != TextSpan.Kind.MENTION) continue
+            val userId = span.userId ?: continue
+            if (span.from < 0 || span.from + span.length > text.length) continue
+            mentionDraft.insert(text.substring(span.from, span.from + span.length), userId)
         }
     }
 
@@ -971,27 +1061,49 @@ class ChatViewModel(
 
     fun cancelEdit() {
         if (_state.value.editing == null) return
-        _state.update { it.copy(editing = null, draft = draftBeforeEdit) }
+        formatDraft.restore(formatsBeforeEdit, draftBeforeEdit.length)
+        restoreMentions(draftBeforeEdit, mentionsBeforeEdit)
+        _state.update { it.copy(editing = null, draft = draftBeforeEdit, formatting = formatDraft.spans) }
         draftBeforeEdit = ""
+        formatsBeforeEdit = emptyList()
+        mentionsBeforeEdit = emptyList()
     }
 
-    private fun saveEdit(target: Message, text: String) {
+    private fun saveEdit(target: Message, text: String, marks: List<TextSpan>) {
         val restore = draftBeforeEdit
+        val restoreFormats = formatsBeforeEdit
+        val restoreMentionSpans = mentionsBeforeEdit
         draftBeforeEdit = ""
-        _state.update { it.copy(editing = null, draft = restore) }
-        if (text == target.text.trim()) return
+        formatsBeforeEdit = emptyList()
+        mentionsBeforeEdit = emptyList()
+        formatDraft.restore(restoreFormats, restore.length)
+        restoreMentions(restore, restoreMentionSpans)
+        _state.update { it.copy(editing = null, draft = restore, formatting = formatDraft.spans) }
+        if (text == target.text.trim() && sameMarks(marks, target)) return
         viewModelScope.launch {
             try {
-                repository.edit(chatId, target.id, text)
+                repository.editFormatted(chatId, target.id, text, marks)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // Правка не ушла: вернуть её в поле.
+                // Правка не ушла: вернуть её в поле вместе с разметкой.
                 draftBeforeEdit = _state.value.draft
-                _state.update { it.copy(editing = target, draft = text) }
+                formatsBeforeEdit = formatDraft.spans
+                mentionsBeforeEdit = mentionDraft.spans(draftBeforeEdit)
+                formatDraft.restore(marks, text.length)
+                restoreMentions(text, marks)
+                _state.update { it.copy(editing = target, draft = text, formatting = formatDraft.spans) }
                 show(e)
             }
         }
+    }
+
+    /** Разметка правки та же, что у сообщения (текст не менялся): отправлять нечего. */
+    private fun sameMarks(marks: List<TextSpan>, target: Message): Boolean {
+        val lead = target.text.length - target.text.trimStart().length
+        fun key(span: TextSpan) = listOf(span.kind, span.from, span.length, span.url, span.userId)
+        val before = target.content.formatting.map { it.copy(from = it.from - lead) }.map(::key).toSet()
+        return marks.map(::key).toSet() == before
     }
 
     // Удаление

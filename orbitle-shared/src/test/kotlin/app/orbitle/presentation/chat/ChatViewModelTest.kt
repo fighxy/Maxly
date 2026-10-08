@@ -83,6 +83,11 @@ class FakeMessages : MessageRepository {
         edits += messageId to text
         editFailure?.let { throw it }
     }
+    val formattedEdits = mutableListOf<Triple<String, String, List<TextSpan>>>()
+    override suspend fun editFormatted(chatId: String, messageId: String, text: String, marks: List<TextSpan>) {
+        formattedEdits += Triple(messageId, text, marks)
+        edit(chatId, messageId, text)
+    }
     override suspend fun delete(chatId: String, messageIds: List<String>, forEveryone: Boolean) {
         deletes += messageIds to forEveryone
     }

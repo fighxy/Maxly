@@ -92,7 +92,8 @@ interface MessageRepository {
     suspend fun send(chatId: String, text: String, replyTo: String?)
 
     /**
-     * Текст с отметками `ANIMOJI` (смещения UTF-16). Без отметок это обычная [send].
+     * Текст с отметками (смещения UTF-16): анимодзи, упоминания и разметка — жирный, курсив,
+     * подчёркнутый, зачёркнутый, моноширинный, ссылки. Без отметок это обычная [send].
      * Реализация по умолчанию отметки не шлёт: так устроены подмены в тестах.
      */
     suspend fun sendFormatted(chatId: String, text: String, replyTo: String?, marks: List<app.orbitle.domain.TextSpan>) {
@@ -134,6 +135,14 @@ interface MessageRepository {
     fun discard(chatId: String, localId: String)
 
     suspend fun edit(chatId: String, messageId: String, text: String)
+
+    /**
+     * Правка с отметками, как у [sendFormatted]: сервер заменяет ими прежнюю разметку.
+     * Реализация по умолчанию отметки не шлёт.
+     */
+    suspend fun editFormatted(chatId: String, messageId: String, text: String, marks: List<app.orbitle.domain.TextSpan>) {
+        edit(chatId, messageId, text)
+    }
 
     suspend fun delete(chatId: String, messageIds: List<String>, forEveryone: Boolean)
 
