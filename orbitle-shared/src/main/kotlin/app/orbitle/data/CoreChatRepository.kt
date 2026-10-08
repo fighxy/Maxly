@@ -37,7 +37,8 @@ class CoreChatRepository(
     private var usersRequested = mutableSetOf<Long>()
     private val mutes = ChatMutes.of(client)
 
-    override val chats: Flow<List<Chat>?> = ChatMutes.chatList(client.store.state, client.accountConfig, loaded, mutes, clock)
+    override val chats: Flow<List<Chat>?> =
+        ChatMutes.chatList(client.store.state, client.accountConfig, loaded, mutes, clock, ChatMutes.configPushes(client))
 
     override val folders: Flow<List<ServerFolder>> = client.store.state
         .map { it.chatFolders }

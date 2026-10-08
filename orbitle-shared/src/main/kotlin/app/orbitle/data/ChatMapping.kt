@@ -80,7 +80,7 @@ object ChatMapping {
             lastMessage = lastMessage,
             avatarUrl = avatar,
             pinOrder = pinOrder,
-            isMuted = mutes?.isMuted(chat.id, config, nowMs) ?: (config?.isMuted(chat.id, nowMs) ?: false),
+            isMuted = mutes?.isMuted(chat.id, config, nowMs) ?: (config?.chatMuteState(chat.id, nowMs) ?: false),
             isBot = "BOT" in peerOptions,
             isVerified = "OFFICIAL" in peerOptions || options?.get("OFFICIAL") == true,
             isOnline = PresenceTime.isOnline(presence),

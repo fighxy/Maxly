@@ -2,28 +2,38 @@ package app.orbitle.data
 
 import app.orbitle.domain.Chat
 import com.max.core.api.AccountConfig
+import com.max.core.events.MaxEvent
 import com.max.core.state.MaxState
 import com.max.shared.MaxClient
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.transformLatest
 import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Последний известный `dontDisturbUntil` каждого чата. Конфиг аккаунта может прийти без записи
- * о чате (или вовсе без `chats`): тогда звук чата остаётся прежним, а не включается. Чат, о
- * котором конфиг не говорил ни разу, со звуком.
+ * Звук чатов по конфигу аккаунта ([AccountConfig.chatMuteState] и [AccountConfig.chatMuteUntil]).
+ * Когда конфиг о чате не знает (`null`: конфига нет или он неполный), остаётся последний
+ * известный `dontDisturbUntil` чата, а не включается звук. Чат, о котором не было известно
+ * ничего, со звуком.
  */
 class ChatMutes {
     private val known = ConcurrentHashMap<Long, Long>()
 
-    /** Без звука ли [chatId] в [nowMs]: по [config], а если он молчит — по последнему известному. */
+    /** Без звука ли [chatId] в [nowMs]: по [config], а если он не знает — по последнему известному. */
     fun isMuted(chatId: Long, config: AccountConfig?, nowMs: Long): Boolean {
-        val until = untilOf(chatId, config) ?: return false
+        config?.chatMuteState(chatId, nowMs)?.let { muted ->
+            config.chatMuteUntil(chatId)?.let { known[chatId] = it }
+            return muted
+        }
+        val until = known[chatId] ?: return false
         return until < 0 || until > nowMs
     }
 
@@ -41,7 +51,7 @@ class ChatMutes {
     fun clear() = known.clear()
 
     private fun untilOf(chatId: Long, config: AccountConfig?): Long? {
-        val fresh = config?.dontDisturbUntil(chatId)
+        val fresh = config?.chatMuteUntil(chatId)
         if (fresh != null) {
             known[chatId] = fresh
             return fresh
@@ -56,8 +66,18 @@ class ChatMutes {
         fun of(client: MaxClient): ChatMutes = synchronized(byClient) { byClient.getOrPut(client) { ChatMutes() } }
 
         /**
-         * Список чатов из стора и конфига. Пересобирается и от одного нового конфига, и в момент,
-         * когда кончается выключенный на время звук какого-либо чата. `null` — снимка ещё нет.
+         * Пуши `NOTIF_CONFIG` 134 клиента. Обработчики роутера идут после того, как ядро влило
+         * пуш в `accountConfig`, так что по сигналу читается уже новый конфиг.
+         */
+        fun configPushes(client: MaxClient): Flow<Unit> = callbackFlow {
+            val subscription = client.router.on<MaxEvent.ConfigUpdated> { trySend(Unit) }
+            awaitClose { subscription.cancel() }
+        }
+
+        /**
+         * Список чатов из стора и конфига. Пересобирается от нового конфига, от пуша настроек
+         * [pushes] и в момент, когда кончается выключенный на время звук какого-либо чата
+         * (конец ядро событием не присылает). `null` — снимка ещё нет.
          */
         @OptIn(ExperimentalCoroutinesApi::class)
         fun chatList(
@@ -66,7 +86,8 @@ class ChatMutes {
             loaded: Flow<Boolean>,
             mutes: ChatMutes,
             clock: () -> Long,
-        ): Flow<List<Chat>?> = combine(states, configs, loaded) { state, config, ready -> Triple(state, config, ready) }
+            pushes: Flow<Unit> = emptyFlow(),
+        ): Flow<List<Chat>?> = combine(states, configs, loaded, pushes.onStart { emit(Unit) }) { state, config, ready, _ -> Triple(state, config, ready) }
             .transformLatest { (state, config, ready) ->
                 if (!ready && state.chats.isEmpty()) {
                     emit(null)
