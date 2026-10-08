@@ -17,11 +17,12 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     private var peerReadHandler: (@Sendable (String, Int64) async -> Void)?
     /// Переписка стёрта в этом контексте: лента открытого чата живёт в другом акторе.
     private var historyDropped: (@Sendable (String) async -> Void)?
-    private var typingObservers: [UUID: AsyncStream<[String: [String]]>.Continuation] = [:]
-    /// Кто печатает: id чата → id пользователя → когда это перестанет быть правдой.
-    private var typingUntil: [String: [String: Date]] = [:]
+    private var typingObservers: [UUID: AsyncStream<[String: [TypingActivity]]>.Continuation] = [:]
+    /// Кто печатает и до каких пор (правила сроков — в `TypingTracker`).
+    private var typingTracker: TypingTracker
     private var typingExpiry: Task<Void, Never>?
-    private let typingTTL: TimeInterval
+    /// Имена печатающих из сохранённых сообщений: id пользователя → имя. Пустых нет.
+    private var typingNames: [String: String] = [:]
     private let clock: @Sendable () -> Date
     private nonisolated let api: any MaxAPI
     /// Растёт при каждой очистке базы. Ответ сервера на запрос, начатый до очистки
@@ -49,18 +50,18 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// поиск, страницы) доступно, только если его умеет `api`.
     public nonisolated let capabilities: ChatListCapabilities
 
-    /// `typingTTL` — сколько держать «печатает…» без повторного пуша.
+    /// `typingTTL` — сколько держать «печатает…» без повторного пуша (8 с, как у веб-клиента Max).
     public init(
         modelContainer: ModelContainer,
         api: any MaxAPI,
-        typingTTL: TimeInterval = 6,
+        typingTTL: TimeInterval = TypingTracker.defaultTTL,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) {
         let context = ModelContext(modelContainer)
         self.modelExecutor = DefaultSerialModelExecutor(modelContext: context)
         self.modelContainer = modelContainer
         self.api = api
-        self.typingTTL = typingTTL
+        self.typingTracker = TypingTracker(ttl: typingTTL)
         self.clock = clock
         self.capabilities = [.pin, .reorderPins, .markUnread, .mute, .serverSearch, .delete]
     }
@@ -316,7 +317,8 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         serverPins = nil
         requestedPins = nil
         pendingDialogs.removeAll()
-        typingUntil.removeAll()
+        typingTracker.removeAll()
+        typingNames.removeAll()
         publishTyping()
         do {
             // По одному, как в `delete(chatId:)`: пакетное удаление по живому контексту
@@ -911,7 +913,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         api.folderUpdates()
     }
 
-    public nonisolated func typing() -> AsyncStream<[String: [String]]> {
+    public nonisolated func typing() -> AsyncStream<[String: [TypingActivity]]> {
         AsyncStream { continuation in
             let id = UUID()
             Task { await self.addTypingObserver(id, continuation) }
@@ -921,34 +923,40 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         }
     }
 
-    /// Пуш «печатает» от `userId`. Повторный пуш продлевает срок.
-    public func noteTyping(chatId: String, userId: String) {
+    /// Пуш «печатает» от `userId`. Повторный пуш продлевает срок и заменяет тип.
+    /// `type` — значение `type` пуша 129, `nil` — его нет (это обычный набор текста).
+    public func noteTyping(chatId: String, userId: String, type: String? = nil) {
         guard !chatId.isEmpty, !userId.isEmpty else { return }
-        typingUntil[chatId, default: [:]][userId] = clock().addingTimeInterval(typingTTL)
+        typingTracker.note(chatId: chatId, userId: userId, type: type, at: clock())
+        if typingNames[userId] == nil, let name = knownName(userId: userId) {
+            typingNames[userId] = name
+        }
         publishTyping()
         scheduleTypingExpiry()
     }
 
     /// Сообщение от пользователя: он больше не печатает.
     public func stopTyping(chatId: String, userId: String) {
-        guard typingUntil[chatId]?[userId] != nil else { return }
-        typingUntil[chatId]?[userId] = nil
-        if typingUntil[chatId]?.isEmpty == true { typingUntil[chatId] = nil }
+        guard typingTracker.stop(chatId: chatId, userId: userId) else { return }
         publishTyping()
     }
 
     /// Снимает истёкшие отметки. Вызывается таймером и тестами.
     func expireTyping() {
-        let now = clock()
-        var changed = false
-        for (chatId, users) in typingUntil {
-            let alive = users.filter { $0.value > now }
-            if alive.count != users.count {
-                changed = true
-                typingUntil[chatId] = alive.isEmpty ? nil : alive
-            }
-        }
-        if changed { publishTyping() }
+        if typingTracker.expire(at: clock()) { publishTyping() }
+    }
+
+    /// Последнее известное имя автора: из сохранённых сообщений в любом чате.
+    private func knownName(userId: String) -> String? {
+        let id = userId
+        var descriptor = FetchDescriptor<SDMessage>(
+            predicate: #Predicate { $0.authorId == id && $0.authorName != "" },
+            sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+        )
+        descriptor.fetchLimit = 1
+        let name = (try? modelContext.fetch(descriptor).first?.authorName) ?? ""
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func scheduleTypingExpiry() {
@@ -964,15 +972,24 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// `false`, когда печатающих не осталось и таймер можно остановить.
     private func tickTyping() -> Bool {
         expireTyping()
-        if typingUntil.isEmpty {
+        if typingTracker.isEmpty {
             typingExpiry = nil
             return false
         }
         return true
     }
 
-    private func typingSnapshot() -> [String: [String]] {
-        typingUntil.mapValues { $0.keys.sorted() }
+    private func typingSnapshot() -> [String: [TypingActivity]] {
+        var result: [String: [TypingActivity]] = [:]
+        for (chatId, list) in typingTracker.snapshot(at: clock()) {
+            var named: [TypingActivity] = []
+            for var activity in list {
+                activity.name = typingNames[activity.userId]
+                named.append(activity)
+            }
+            result[chatId] = named
+        }
+        return result
     }
 
     private func publishTyping() {
@@ -982,7 +999,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         }
     }
 
-    private func addTypingObserver(_ id: UUID, _ continuation: AsyncStream<[String: [String]]>.Continuation) {
+    private func addTypingObserver(_ id: UUID, _ continuation: AsyncStream<[String: [TypingActivity]]>.Continuation) {
         if case .terminated = continuation.yield(typingSnapshot()) { return }
         typingObservers[id] = continuation
     }

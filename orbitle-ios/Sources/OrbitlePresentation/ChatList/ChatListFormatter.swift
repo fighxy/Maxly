@@ -97,6 +97,8 @@ public struct ChatListItem: Identifiable, Hashable, Sendable {
     public var isForwarded = false
     /// Последнее сообщение своё. По нему приватный режим пишет «Вы отправили сообщение».
     public var lastIsOutgoing = false
+    /// То же «печатает…», но без имён («2 участника печатают…»): его показывает приватный режим.
+    public var anonymousTyping: String?
 
     /// Булавка видна у закреплённых, пока нет бейджа.
     public var showsPin: Bool { isPinned && badge == nil && !hasMention }
@@ -123,9 +125,9 @@ public struct ChatListFormatter: Sendable {
         return calendar
     }
 
-    /// Строка чата. `typing` — кто печатает прямо сейчас, `showDraft` — показывать ли
-    /// черновик (в открытом чате он и так на экране).
-    public func item(for chat: Chat, now: Date, typing: [String] = [], showDraft: Bool = true) -> ChatListItem {
+    /// Строка чата. `typing` — кто печатает прямо сейчас, по времени начала (`TypingFormatter`),
+    /// `showDraft` — показывать ли черновик (в открытом чате он и так на экране).
+    public func item(for chat: Chat, now: Date, typing: [TypingFormatter.Participant] = [], showDraft: Bool = true) -> ChatListItem {
         let title = title(for: chat)
         let isChannel = chat.type == .channel
         var style = ChatListItem.PreviewStyle.message
@@ -134,9 +136,13 @@ public struct ChatListFormatter: Sendable {
         var media: MessageMediaKind?
         var thumbnail: URL?
         let draftText = showDraft ? chat.draft.map { Self.singleLine($0.text) } ?? "" : ""
-        if !typing.isEmpty, !isChannel {
+        let typingText = isChannel ? nil : TypingFormatter.text(chatType: chat.type, participants: typing)
+        var anonymousTyping: String?
+        if let typingText {
             style = .typing
-            text = Self.typingText(count: typing.count, type: chat.type)
+            text = typingText
+            let unnamed = typing.map { TypingFormatter.Participant(name: nil, type: $0.type) }
+            anonymousTyping = TypingFormatter.text(chatType: chat.type, participants: unnamed)
         } else if !draftText.isEmpty {
             style = .draft
             text = draftText
@@ -189,7 +195,8 @@ public struct ChatListFormatter: Sendable {
             hasMention: chat.unreadMentions > 0,
             accessibilityLabel: "",
             isForwarded: style == .message && chat.lastMessage?.isForwarded == true,
-            lastIsOutgoing: chat.lastMessage?.isOutgoing == true
+            lastIsOutgoing: chat.lastMessage?.isOutgoing == true,
+            anonymousTyping: anonymousTyping
         )
         return item.withAccessibility(spoken(item, chat: chat))
     }
@@ -311,22 +318,11 @@ public struct ChatListFormatter: Sendable {
         }
     }
 
-    /// «печатает…» в личном чате, «2 участника печатают…» в группе.
+    /// «печатает…» в личном чате, «2 участника печатают…» в группе — когда имён нет.
+    /// Имена и тип действия учитывает `TypingFormatter`.
     public static func typingText(count: Int, type: ChatType) -> String {
         guard count > 1, type == .group else { return "печатает…" }
-        let tens = count % 100
-        let ones = count % 10
-        let noun: String
-        if (11...14).contains(tens) {
-            noun = "участников"
-        } else {
-            switch ones {
-            case 1: noun = "участник"
-            case 2...4: noun = "участника"
-            default: noun = "участников"
-            }
-        }
-        return count % 10 == 1 && count % 100 != 11 ? "\(count) \(noun) печатает…" : "\(count) \(noun) печатают…"
+        return TypingFormatter.countText(count, kind: .text) + "…"
     }
 
     /// «1 непрочитанное сообщение», «3 непрочитанных сообщения», «5 непрочитанных сообщений».
@@ -391,7 +387,7 @@ extension ChatListItem {
             previewStyle: previewStyle, media: media, thumbnailURL: thumbnailURL, delivery: delivery,
             time: time, unreadCount: unreadCount, unreadBadge: unreadBadge, badge: badge,
             badgeMuted: badgeMuted, hasMention: hasMention, accessibilityLabel: label,
-            isForwarded: isForwarded, lastIsOutgoing: lastIsOutgoing
+            isForwarded: isForwarded, lastIsOutgoing: lastIsOutgoing, anonymousTyping: anonymousTyping
         )
     }
 }

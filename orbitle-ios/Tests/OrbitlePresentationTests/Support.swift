@@ -142,8 +142,8 @@ actor FakeChatRepository: ChatRepository {
     nonisolated let continuation: AsyncStream<[Chat]>.Continuation
     nonisolated let folderStream: AsyncStream<[ChatFolder]>
     nonisolated let folderContinuation: AsyncStream<[ChatFolder]>.Continuation
-    nonisolated let typingStream: AsyncStream<[String: [String]]>
-    nonisolated let typingContinuation: AsyncStream<[String: [String]]>.Continuation
+    nonisolated let typingStream: AsyncStream<[String: [TypingActivity]]>
+    nonisolated let typingContinuation: AsyncStream<[String: [TypingActivity]]>.Continuation
     nonisolated let capabilities: ChatListCapabilities
 
     var refreshError: OrbitleError?
@@ -167,7 +167,7 @@ actor FakeChatRepository: ChatRepository {
         let folders = AsyncStream.makeStream(of: [ChatFolder].self)
         folderStream = folders.stream
         folderContinuation = folders.continuation
-        let typing = AsyncStream.makeStream(of: [String: [String]].self)
+        let typing = AsyncStream.makeStream(of: [String: [TypingActivity]].self)
         typingStream = typing.stream
         typingContinuation = typing.continuation
         self.capabilities = capabilities
@@ -177,8 +177,14 @@ actor FakeChatRepository: ChatRepository {
     nonisolated func emit(_ chats: [Chat]) { continuation.yield(chats) }
     nonisolated func folders() -> AsyncStream<[ChatFolder]> { folderStream }
     nonisolated func emit(folders: [ChatFolder]) { folderContinuation.yield(folders) }
-    nonisolated func typing() -> AsyncStream<[String: [String]]> { typingStream }
-    nonisolated func emit(typing: [String: [String]]) { typingContinuation.yield(typing) }
+    nonisolated func typing() -> AsyncStream<[String: [TypingActivity]]> { typingStream }
+    nonisolated func emit(typing: [String: [TypingActivity]]) { typingContinuation.yield(typing) }
+    /// Печатающие по id, без имён и типа: начало — по порядку в списке.
+    nonisolated func emit(typingIds: [String: [String]]) {
+        typingContinuation.yield(typingIds.mapValues { ids in
+            ids.enumerated().map { TypingActivity(userId: $1, startedAt: Date(timeIntervalSince1970: TimeInterval($0))) }
+        })
+    }
 
     func refresh() async throws(OrbitleError) {
         refreshCount += 1

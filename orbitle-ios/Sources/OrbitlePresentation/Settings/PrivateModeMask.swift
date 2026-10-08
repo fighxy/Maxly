@@ -68,8 +68,9 @@ public enum PrivateModeMask {
             default: preview = messageText(outgoing: item.lastIsOutgoing)
             }
         case .draft: preview = draftText
-        // «печатает…» и «Нет сообщений» имён не содержат.
-        case .typing, .empty: preview = item.preview
+        // «печатает…» — без имён печатающих; «Нет сообщений» имён не содержит.
+        case .typing: preview = item.anonymousTyping ?? item.preview
+        case .empty: preview = item.preview
         }
         var masked = ChatListItem(
             id: item.id,

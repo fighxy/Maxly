@@ -6,14 +6,14 @@ public struct ChatHeaderLive: Equatable, Sendable {
     public var isOnline: Bool
     public var isMuted: Bool
     public var isVerified: Bool
-    /// Сколько человек печатает прямо сейчас.
-    public var typingCount: Int
+    /// Кто печатает прямо сейчас, по времени начала.
+    public var typing: [TypingFormatter.Participant]
 
-    public init(isOnline: Bool = false, isMuted: Bool = false, isVerified: Bool = false, typingCount: Int = 0) {
+    public init(isOnline: Bool = false, isMuted: Bool = false, isVerified: Bool = false, typing: [TypingFormatter.Participant] = []) {
         self.isOnline = isOnline
         self.isMuted = isMuted
         self.isVerified = isVerified
-        self.typingCount = typingCount
+        self.typing = typing
     }
 }
 
@@ -41,10 +41,10 @@ public enum ChatHeaderStatus: Equatable, Sendable {
         case .channel:
             return .plain(subtitle)
         case .user, .bot, .group:
-            if live.typingCount > 0 {
-                let text = ChatListFormatter.typingText(count: live.typingCount, type: kind == .group ? .group : .private)
-                // Точки рисует экран, в тексте их нет.
-                return .typing(text.hasSuffix("…") ? String(text.dropLast()) : text)
+            // Тот же текст, что в строке списка, без «…»: точки рисует экран.
+            let chatType: ChatType = kind == .group ? .group : .private
+            if let text = TypingFormatter.headerText(chatType: chatType, participants: live.typing) {
+                return .typing(text)
             }
             if kind == .user, live.isOnline || isOnline { return .accent("в сети") }
             // «Был(а) недавно» карточки в шапке со строчной.

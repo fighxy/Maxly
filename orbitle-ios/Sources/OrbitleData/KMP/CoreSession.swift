@@ -360,6 +360,8 @@ public struct CoreEvent: Sendable, Equatable {
         case edited
         case deleted
         case chat
+        /// `authorId` печатает в `chatId`. `text` — тип действия пуша 129 (`TEXT`, `STICKER`…),
+        /// пусто — мост его не передал, это обычный набор текста.
         case typing
         case read
         /// Изменились реакции сообщения `messageId`, сами они в `reactionsJSON`.

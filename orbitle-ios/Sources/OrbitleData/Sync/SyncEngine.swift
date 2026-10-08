@@ -245,7 +245,8 @@ public actor SyncEngine {
         case .typing:
             let mine = await messages.currentUser()
             guard !event.authorId.isEmpty, event.authorId != mine else { return }
-            await chats.noteTyping(chatId: event.chatId, userId: event.authorId)
+            // Тип действия (`TEXT`, `STICKER`, …) мост кладёт в `text`; пусто — обычный набор.
+            await chats.noteTyping(chatId: event.chatId, userId: event.authorId, type: event.text.isEmpty ? nil : event.text)
         }
     }
 

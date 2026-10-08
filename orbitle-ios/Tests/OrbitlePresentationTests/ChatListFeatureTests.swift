@@ -460,7 +460,7 @@ struct ChatListLiveTests {
         let (model, repository) = makeFeatureList()
         repository.emit([chat("p", at: 1, type: .private), chat("g", at: 2, type: .group), chat("ch", at: 3, type: .channel)])
         #expect(await eventually { model.items.count == 3 })
-        repository.emit(typing: ["p": ["u1"], "g": ["u1", "u2"], "ch": ["u3"]])
+        repository.emit(typingIds: ["p": ["u1"], "g": ["u1", "u2"], "ch": ["u3"]])
         #expect(await eventually { model.items.first { $0.id == "p" }?.previewStyle == .typing })
         #expect(model.items.first { $0.id == "p" }?.preview == "печатает…")
         #expect(model.items.first { $0.id == "g" }?.preview == "2 участника печатают…")

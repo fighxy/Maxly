@@ -119,8 +119,9 @@ public protocol ChatRepository: Sendable {
     func searchMessages(query: String) async throws(OrbitleError) -> [FoundMessage]
     /// Серверные папки. Пустой массив — папок нет.
     func folders() -> AsyncStream<[ChatFolder]>
-    /// Кто сейчас печатает: id чата → id пользователей.
-    func typing() -> AsyncStream<[String: [String]]>
+    /// Кто сейчас печатает: id чата → печатающие по времени начала (кто раньше, тот первый).
+    /// Чатов без печатающих в словаре нет.
+    func typing() -> AsyncStream<[String: [TypingActivity]]>
     /// Запомнить диалог, которого может не быть в списке: с первым своим сообщением в нём
     /// строка чата появится сразу, не дожидаясь сервера.
     func prepareDialog(_ draft: DialogDraft) async
@@ -167,7 +168,7 @@ public extension ChatRepository {
     func search(query: String) async throws(OrbitleError) -> [ChatSearchResult] { [] }
     func searchMessages(query: String) async throws(OrbitleError) -> [FoundMessage] { [] }
     func folders() -> AsyncStream<[ChatFolder]> { AsyncStream { $0.yield([]); $0.finish() } }
-    func typing() -> AsyncStream<[String: [String]]> { AsyncStream { $0.yield([:]); $0.finish() } }
+    func typing() -> AsyncStream<[String: [TypingActivity]]> { AsyncStream { $0.yield([:]); $0.finish() } }
     func prepareDialog(_ draft: DialogDraft) async {}
     func createGroup(title: String, memberIds: [String]) async throws(OrbitleError) -> String? { throw .invalidRequest }
     func createChannel(title: String) async throws(OrbitleError) -> String? { throw .invalidRequest }

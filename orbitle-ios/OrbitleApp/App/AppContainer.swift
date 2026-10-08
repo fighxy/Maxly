@@ -339,7 +339,7 @@ final class AppContainer {
             isOnline: chat.isOnline,
             isMuted: chat.isMuted,
             isVerified: chat.isVerified,
-            typingCount: list.typing[id]?.count ?? 0
+            typing: list.typingParticipants(chatId: id)
         )
     }
 

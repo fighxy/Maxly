@@ -80,8 +80,8 @@ public final class ChatListViewModel {
     public private(set) var openChatId: String?
     /// Идёт догрузка после восстановления соединения: плашка говорит «Обновление…».
     public private(set) var isCatchingUp = false
-    /// Кто печатает: id чата → id пользователей.
-    public private(set) var typing: [String: [String]] = [:]
+    /// Кто печатает: id чата → печатающие по времени начала.
+    public private(set) var typing: [String: [TypingActivity]] = [:]
 
     // Поиск
     public private(set) var search = ChatSearchState()
@@ -266,6 +266,11 @@ public final class ChatListViewModel {
 
     public func chat(id: String) -> Chat? {
         chats.first { $0.id == id }
+    }
+
+    /// Печатающие в чате для строки и шапки: имя и тип действия, по времени начала.
+    public func typingParticipants(chatId: String) -> [TypingFormatter.Participant] {
+        TypingFormatter.participants(typing[chatId] ?? [])
     }
 
     // MARK: Жизненный цикл
@@ -694,7 +699,7 @@ public final class ChatListViewModel {
     }
 
     private func item(_ chat: Chat, at date: Date) -> ChatListItem {
-        formatter.item(for: chat, now: date, typing: typing[chat.id] ?? [], showDraft: chat.id != openChatId)
+        formatter.item(for: chat, now: date, typing: typingParticipants(chatId: chat.id), showDraft: chat.id != openChatId)
     }
 
     private func rebuildItems() {

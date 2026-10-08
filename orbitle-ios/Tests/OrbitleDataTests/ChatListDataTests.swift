@@ -43,8 +43,13 @@ private func makeParts(user: String = "me") async throws -> ListParts {
     return ListParts(api: api, chats: chats, messages: messages, sync: sync, clock: clock)
 }
 
-private func coreEvent(_ kind: CoreEvent.Kind, chat: String = "c1", message: String = "", author: String = "", text: String = "", at seconds: Int64 = 0) -> CoreEvent {
-    CoreEvent(kind: kind, chatId: chat, messageId: message, authorId: author, text: text, title: "", chatType: "", timeMs: seconds * 1000, unread: -1)
+private func coreEvent(_ kind: CoreEvent.Kind, chat: String = "c1", message: String = "", author: String = "", text: String = "", at seconds: Int64 = 0, authorName: String = "") -> CoreEvent {
+    CoreEvent(kind: kind, chatId: chat, messageId: message, authorId: author, text: text, title: "", chatType: "", timeMs: seconds * 1000, unread: -1, authorName: authorName)
+}
+
+/// Кто печатает: id чата → id пользователей по порядку.
+private func typingIds(_ chats: ChatRepositoryImpl) async -> [String: [String]] {
+    (await first(chats.typing()) ?? [:]).mapValues { $0.map(\.userId) }
 }
 
 private func first<T: Sendable>(_ stream: AsyncStream<T>) async -> T? {
@@ -390,16 +395,34 @@ struct ChatListDataTests {
         try await parts.chats.upsert([makeChat()])
         await parts.sync.consume(coreEvent(.typing, author: "bob"))
         await parts.sync.consume(coreEvent(.typing, author: "me"))
-        #expect(await first(parts.chats.typing()) == ["c1": ["bob"]])
+        #expect(await typingIds(parts.chats) == ["c1": ["bob"]])
 
         parts.clock.advance(3)
         await parts.sync.consume(coreEvent(.typing, author: "ann"))
         parts.clock.advance(3)
         await parts.chats.expireTyping()
-        #expect(await first(parts.chats.typing()) == ["c1": ["ann"]])
+        #expect(await typingIds(parts.chats) == ["c1": ["ann"]])
 
         await parts.sync.consume(coreEvent(.message, message: "m500", author: "ann", text: "Готово", at: 900))
-        #expect(await first(parts.chats.typing()) == [:])
+        #expect(await typingIds(parts.chats) == [:])
+    }
+
+    @Test("Печатающие идут по началу, с типом из пуша и именем из сохранённых сообщений")
+    func typingDetails() async throws {
+        let parts = try await makeParts()
+        try await parts.chats.upsert([makeChat()])
+        await parts.sync.consume(coreEvent(.message, message: "m1", author: "ann", text: "Привет", at: 100, authorName: "Анна Петрова"))
+        await parts.sync.consume(coreEvent(.typing, author: "bob", text: "STICKER"))
+        parts.clock.advance(1)
+        await parts.sync.consume(coreEvent(.typing, author: "ann"))
+        parts.clock.advance(1)
+        // Повторный пуш меняет тип, но не место в очереди.
+        await parts.sync.consume(coreEvent(.typing, author: "bob", text: "FILE"))
+        let typing = await first(parts.chats.typing()) ?? [:]
+        let list = typing["c1"] ?? []
+        #expect(list.map(\.userId) == ["bob", "ann"])
+        #expect(list.map(\.type) == ["FILE", nil])
+        #expect(list.map(\.name) == [nil, "Анна Петрова"])
     }
 
     @Test("Недавние из поиска: новые первыми, без повторов, очистка")

@@ -148,9 +148,12 @@ struct PrivateModeListTests {
         #expect(draft.preview == "скрыт")
         #expect(!draft.accessibilityLabel.contains("Секретный"))
 
-        let typing = PrivateModeMask.item(formatter.item(for: chat("4", type: .group), now: now, typing: ["Аня", "Боря"]))
+        let named = [TypingFormatter.Participant(name: "Аня"), TypingFormatter.Participant(name: "Боря")]
+        let typing = PrivateModeMask.item(formatter.item(for: chat("4", type: .group), now: now, typing: named))
         #expect(typing.previewStyle == .typing)
+        // Имена печатающих приватный режим прячет: остаётся счёт.
         #expect(typing.preview == "2 участника печатают…")
+        #expect(!typing.accessibilityLabel.contains("Аня"))
 
         let empty = PrivateModeMask.item(formatter.item(for: chat("5", preview: nil, last: nil), now: now))
         #expect(empty.previewStyle == .empty)

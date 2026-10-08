@@ -11,18 +11,23 @@ struct ChatHeaderTests {
         #expect(ChatHeaderStatus.make(kind: .user, subtitle: "Был(а) недавно", isOnline: false, live: ChatHeaderLive()) == .plain("был(а) недавно"))
     }
 
-    @Test("«печатает» перекрывает статус, в группе — число печатающих, точки рисует экран")
+    @Test("«печатает» перекрывает статус, в группе — имена или число печатающих, точки рисует экран")
     func typing() {
-        #expect(ChatHeaderStatus.make(kind: .user, subtitle: "В сети", isOnline: true, live: ChatHeaderLive(typingCount: 1)) == .typing("печатает"))
-        let group = ChatHeaderStatus.make(kind: .group, subtitle: "5 участников", isOnline: false, live: ChatHeaderLive(typingCount: 3))
+        let one = [TypingFormatter.Participant(name: "Иван")]
+        #expect(ChatHeaderStatus.make(kind: .user, subtitle: "В сети", isOnline: true, live: ChatHeaderLive(typing: one)) == .typing("печатает"))
+        let unnamed = Array(repeating: TypingFormatter.Participant(), count: 3)
+        let group = ChatHeaderStatus.make(kind: .group, subtitle: "5 участников", isOnline: false, live: ChatHeaderLive(typing: unnamed))
         guard case .typing(let text) = group else { Issue.record("ожидалось «печатают»"); return }
         #expect(!text.hasSuffix("…"))
         #expect(text.contains("3"))
+        let named = [TypingFormatter.Participant(name: "Иван", type: "STICKER"), TypingFormatter.Participant(name: "Петя", type: "STICKER")]
+        #expect(ChatHeaderStatus.make(kind: .group, subtitle: "5 участников", isOnline: false, live: ChatHeaderLive(typing: named)) == .typing("Иван и Петя выбирают стикер"))
+        #expect(ChatHeaderStatus.make(kind: .bot, subtitle: "бот", isOnline: false, live: ChatHeaderLive(typing: named)) == .typing("выбирает стикер"))
     }
 
     @Test("Канал — подписчики, «Избранное» — без строки")
     func channelAndSaved() {
-        #expect(ChatHeaderStatus.make(kind: .channel, subtitle: "12 подписчиков", isOnline: false, live: ChatHeaderLive(typingCount: 2)) == .plain("12 подписчиков"))
+        #expect(ChatHeaderStatus.make(kind: .channel, subtitle: "12 подписчиков", isOnline: false, live: ChatHeaderLive(typing: [TypingFormatter.Participant(name: "Иван")])) == .plain("12 подписчиков"))
         #expect(ChatHeaderStatus.make(kind: .saved, subtitle: "заметки", isOnline: false, live: ChatHeaderLive()) == .none)
     }
 }
