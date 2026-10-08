@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Rotate90DegreesCw
 import androidx.compose.material.icons.filled.PlayArrow
@@ -81,6 +82,8 @@ fun MediaViewer(
         val pager = rememberPagerState(initialPage = state.index) { state.items.size }
         LaunchedEffect(pager) { snapshotFlow { pager.currentPage }.collect(onPage) }
         var chrome by remember { mutableStateOf(true) }
+        var zoomed by remember { mutableStateOf(false) }
+        var togglePlayback by remember { mutableStateOf<(() -> Unit)?>(null) }
         // Поворот фото четвертями по часовой, свой у каждого фото. Счёт не по модулю 4:
         // анимация после четвёртого поворота идёт дальше по часовой, а не крутится назад.
         val turns = remember { androidx.compose.runtime.mutableStateMapOf<String, Int>() }
@@ -106,15 +109,42 @@ fun MediaViewer(
                     if (!saving) onSave?.invoke()
                     true
                 }
+                app.orbitle.ui.keys.HotkeyAction.VIEWER_PAUSE -> {
+                    val toggle = togglePlayback
+                    if (toggle != null) toggle() else chrome = !chrome
+                    true
+                }
                 app.orbitle.ui.keys.HotkeyAction.QUIT -> false
                 else -> true
             }
         }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            HorizontalPager(pager, Modifier.fillMaxSize(), key = { state.items[it].id }) { page ->
+            HorizontalPager(
+                pager,
+                Modifier.fillMaxSize(),
+                key = { state.items[it].id },
+                userScrollEnabled = !zoomed,
+            ) { page ->
+                val step: (Boolean) -> Unit = { forward ->
+                    val target = pager.currentPage + if (forward) 1 else -1
+                    if (target in state.items.indices) keyScope.launch { pager.animateScrollToPage(target) }
+                }
                 when (val item = state.items[page]) {
-                    is ChatAttachment.Photo -> ZoomablePhoto(item.photo.url, turns[item.id] ?: 0, onTap = { chrome = !chrome })
-                    is ChatAttachment.Video -> VideoPage(item.video, state.videoUrls[item.id], userAgent, active = pager.currentPage == page)
+                    is ChatAttachment.Photo -> ZoomablePhoto(
+                        item.photo.url,
+                        turns[item.id] ?: 0,
+                        onChrome = { chrome = !chrome },
+                        onStep = step,
+                        onZoomed = { zoomed = it },
+                    )
+                    is ChatAttachment.Video -> VideoPage(
+                        item.video,
+                        state.videoUrls[item.id],
+                        userAgent,
+                        active = pager.currentPage == page,
+                        onStep = step,
+                        onBindPlayback = { togglePlayback = it },
+                    )
                     else -> Unit
                 }
             }
@@ -162,7 +192,13 @@ private fun viewerDate(timeMs: Long): String {
  * по часовой: повёрнутое на бок фото уменьшается, чтобы целиком влезть в экран.
  */
 @Composable
-private fun ZoomablePhoto(url: String?, turns: Int, onTap: () -> Unit) {
+private fun ZoomablePhoto(
+    url: String?,
+    turns: Int,
+    onChrome: () -> Unit,
+    onStep: (forward: Boolean) -> Unit,
+    onZoomed: (Boolean) -> Unit,
+) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var imageSize by remember { mutableStateOf(androidx.compose.ui.geometry.Size.Unspecified) }
@@ -172,12 +208,46 @@ private fun ZoomablePhoto(url: String?, turns: Int, onTap: () -> Unit) {
         scale = 1f
         offset = Offset.Zero
     }
+    LaunchedEffect(scale) { onZoomed(scale > 1.01f) }
+    DisposableEffect(Unit) { onDispose { onZoomed(false) } }
     Box(
         Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        if (event.type != PointerEventType.Scroll) continue
+                        val change = event.changes.firstOrNull() ?: continue
+                        val dy = change.scrollDelta.y
+                        if (dy == 0f) continue
+                        val next = (scale * if (dy < 0f) 1.15f else 1f / 1.15f).coerceIn(1f, 5f)
+                        val factor = if (scale == 0f) 1f else next / scale
+                        val limitX = size.width * (next - 1) / 2
+                        val limitY = size.height * (next - 1) / 2
+                        offset = if (next == 1f) Offset.Zero else Offset(
+                            (offset.x * factor).coerceIn(-limitX, limitX),
+                            (offset.y * factor).coerceIn(-limitY, limitY),
+                        )
+                        scale = next
+                        change.consume()
+                    }
+                }
+            }
+            .pointerInput(Unit) {
                 detectTapGestures(
-                    onTap = { onTap() },
+                    onTap = { point ->
+                        if (scale > 1.01f) {
+                            onChrome()
+                        } else {
+                            val edge = size.width * 0.22f
+                            when {
+                                point.x < edge -> onStep(false)
+                                point.x > size.width - edge -> onStep(true)
+                                else -> onChrome()
+                            }
+                        }
+                    },
                     onDoubleTap = { point ->
                         if (scale > 1f) {
                             scale = 1f
@@ -237,18 +307,38 @@ private fun ZoomablePhoto(url: String?, turns: Int, onTap: () -> Unit) {
  * Играет только видимая страница. Без ffmpeg ролик открывается системным проигрывателем.
  */
 @Composable
-private fun VideoPage(video: VideoContent, url: String?, userAgent: String, active: Boolean) {
+private fun VideoPage(
+    video: VideoContent,
+    url: String?,
+    userAgent: String,
+    active: Boolean,
+    onStep: (forward: Boolean) -> Unit,
+    onBindPlayback: ((() -> Unit)?) -> Unit,
+) {
     val player = rememberVideoPlayer()
     val state by player.state.collectAsState()
     var opening by remember { mutableStateOf(false) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     LaunchedEffect(url) { if (url != null) player.open(url, userAgent, autoplay = active) }
     LaunchedEffect(active) { if (!active) player.pause() }
+    DisposableEffect(active) {
+        if (active) onBindPlayback { player.toggle() }
+        onDispose { if (active) onBindPlayback(null) }
+    }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         if (state.frame == null) AsyncImage(video.posterUrl, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
         VideoFrame(
             state,
-            Modifier.fillMaxSize().pointerInput(player) { detectTapGestures(onTap = { player.toggle() }) },
+            Modifier.fillMaxSize().pointerInput(player) {
+                detectTapGestures(onTap = { point ->
+                    val edge = size.width * 0.18f
+                    when {
+                        point.x < edge -> onStep(false)
+                        point.x > size.width - edge -> onStep(true)
+                        else -> player.toggle()
+                    }
+                })
+            },
         )
         when {
             state.failed -> IconButton(onClick = {

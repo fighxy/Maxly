@@ -34,12 +34,12 @@ import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PanTool
 import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.ScreenShare
-import androidx.compose.material.icons.filled.StopScreenShare
+import androidx.compose.material.icons.automirrored.filled.ScreenShare
+import androidx.compose.material.icons.automirrored.filled.StopScreenShare
 import androidx.compose.material.icons.filled.SwitchVideo
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
-import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -193,7 +193,7 @@ private fun MoreMenu(call: ActiveCall, state: CallCenterState, actions: CallActi
             }
             DropdownMenuItem(
                 text = { Text(if (call.state.screenSharing) "Остановить показ экрана" else "Показать экран") },
-                leadingIcon = { Icon(if (call.state.screenSharing) Icons.Filled.StopScreenShare else Icons.Filled.ScreenShare, null) },
+                leadingIcon = { Icon(if (call.state.screenSharing) Icons.AutoMirrored.Filled.StopScreenShare else Icons.AutoMirrored.Filled.ScreenShare, null) },
                 onClick = { open = false; actions.toggleScreen() },
             )
             call.joinLink?.let { link ->
@@ -315,10 +315,10 @@ private fun Controls(call: ActiveCall, actions: CallActions, modifier: Modifier)
         call.state.isEnded -> RoundButton("Закрыть", Icons.Filled.Close, Color.White.copy(alpha = 0.2f), modifier, actions::hangUp)
         else -> Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(22.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                if (actions.hasSpeaker) Toggle("Динамик", Icons.Filled.VolumeUp, call.state.speakerOn, actions::toggleSpeaker)
+                if (actions.hasSpeaker) Toggle("Динамик", Icons.AutoMirrored.Filled.VolumeUp, call.state.speakerOn, actions::toggleSpeaker)
                 Toggle("Видео", if (call.state.cameraOn) Icons.Filled.Videocam else Icons.Filled.VideocamOff, call.state.cameraOn, actions::toggleCamera)
                 Toggle("Микрофон", if (call.state.muted) Icons.Filled.MicOff else Icons.Filled.Mic, call.state.muted, actions::toggleMute)
-                Toggle("Экран", Icons.Filled.ScreenShare, call.state.screenSharing, actions::toggleScreen)
+                Toggle("Экран", Icons.AutoMirrored.Filled.ScreenShare, call.state.screenSharing, actions::toggleScreen)
             }
             RoundButton("Завершить", Icons.Filled.CallEnd, Color(0xFFFF3B30), onClick = actions::hangUp)
         }

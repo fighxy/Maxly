@@ -102,6 +102,8 @@ fun SettingsScreen(
     accountLimits: AccountLimits? = null,
     /** Свой статус под номером («Показывать мой онлайн»); `null` — без него. */
     ghost: GhostModeViewModel? = null,
+    /** Ключ открытого раздела: строка подсвечивается, пока деталь видна рядом. */
+    selected: String? = null,
 ) {
     var confirm by rememberSaveable { mutableStateOf(false) }
     var sheet by rememberSaveable { mutableStateOf<String?>(null) }
@@ -127,23 +129,23 @@ fun SettingsScreen(
             if (limitsRow != null) {
                 SettingsItem(Icons.Outlined.Timer, limitsRow.title, subtitle = limitsRow.subtitle) { sheet = "limits" }
             }
-            SettingsItem(Icons.Outlined.Edit, "Изменить профиль", onClick = onEditProfile)
+            SettingsItem(Icons.Outlined.Edit, "Изменить профиль", selected = selected == "profile", onClick = onEditProfile)
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
-            SettingsItem(Icons.Outlined.Badge, "Цифровой ID", onClick = onDigitalId)
-            SettingsItem(Icons.Outlined.School, "Войти в Сферум", onClick = onSferum)
+            SettingsItem(Icons.Outlined.Badge, "Цифровой ID", selected = selected == "digital-id", onClick = onDigitalId)
+            SettingsItem(Icons.Outlined.School, "Войти в Сферум", selected = selected == "sferum", onClick = onSferum)
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
             SettingsItem(Icons.Outlined.Notifications, "Уведомления и звук", subtitle = "Скоро", enabled = false) {}
-            SettingsItem(Icons.Outlined.Key, "Безопасность", onClick = onSecurity)
-            SettingsItem(Icons.Outlined.Lock, "Конфиденциальность", onClick = onPrivacy)
-            SettingsItem(Icons.Outlined.Devices, "Устройства", onClick = onDevices)
-            SettingsItem(Icons.Outlined.Storage, "Данные и память", onClick = onStorage)
+            SettingsItem(Icons.Outlined.Key, "Безопасность", selected = selected == "security", onClick = onSecurity)
+            SettingsItem(Icons.Outlined.Lock, "Конфиденциальность", selected = selected == "privacy", onClick = onPrivacy)
+            SettingsItem(Icons.Outlined.Devices, "Устройства", selected = selected == "devices", onClick = onDevices)
+            SettingsItem(Icons.Outlined.Storage, "Данные и память", selected = selected == "storage", onClick = onStorage)
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
-            SettingsItem(Icons.AutoMirrored.Outlined.Chat, "Сообщения", onClick = onMessages)
+            SettingsItem(Icons.AutoMirrored.Outlined.Chat, "Сообщения", selected = selected == "messages", onClick = onMessages)
             SettingsItem(Icons.Outlined.BookmarkBorder, "Избранное", onClick = onSaved)
             SettingsItem(Icons.Outlined.Contacts, "Контакты", onClick = onContacts)
-            SettingsItem(Icons.Outlined.Folder, "Папки", onClick = onFolders)
-            SettingsItem(Icons.Outlined.Palette, "Оформление", onClick = onAppearance)
-            SettingsItem(Icons.Outlined.Keyboard, "Клавиатура", subtitle = "Отправка и горячие клавиши", onClick = onKeyboard)
+            SettingsItem(Icons.Outlined.Folder, "Папки", selected = selected == "folders", onClick = onFolders)
+            SettingsItem(Icons.Outlined.Palette, "Оформление", selected = selected == "appearance", onClick = onAppearance)
+            SettingsItem(Icons.Outlined.Keyboard, "Клавиатура", subtitle = "Отправка и горячие клавиши", selected = selected == "keyboard", onClick = onKeyboard)
             if (profileLink != null) {
                 SettingsItem(Icons.Outlined.PersonAdd, "Пригласить друзей") { sheet = "invite" }
             }
@@ -152,6 +154,7 @@ fun SettingsScreen(
                 Icons.Outlined.Info,
                 stringResource(R.string.settings_about),
                 trailing = { Text(BuildConfig.VERSION_NAME, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                selected = selected == "about",
                 onClick = onAbout,
             )
             SettingsItem(Icons.AutoMirrored.Filled.Logout, stringResource(R.string.settings_logout), destructive = true) { confirm = true }
@@ -234,6 +237,7 @@ fun SettingsItem(
     destructive: Boolean = false,
     enabled: Boolean = true,
     trailing: (@Composable () -> Unit)? = null,
+    selected: Boolean = false,
     onClick: () -> Unit,
 ) {
     val color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
@@ -242,7 +246,9 @@ fun SettingsItem(
         supportingContent = subtitle?.let { { Text(it) } },
         leadingContent = { Icon(icon, null, tint = if (destructive) color else MaterialTheme.colorScheme.onSurfaceVariant) },
         trailingContent = trailing,
-        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = ListItemDefaults.colors(
+            containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+        ),
         modifier = Modifier.clickable(enabled = enabled, onClick = onClick).alpha(if (enabled) 1f else 0.5f),
     )
 }

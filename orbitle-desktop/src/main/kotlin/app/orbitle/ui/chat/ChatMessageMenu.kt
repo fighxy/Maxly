@@ -101,8 +101,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import app.orbitle.ui.components.AppSheet
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -110,7 +110,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -174,18 +173,17 @@ internal fun MessageActions(
     /** Пометить чат непрочитанным с этого сообщения и закрыть его. */
     onMarkUnread: () -> Unit,
 ) {
-    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val clipboard = LocalClipboardManager.current
     val catalog = model.state.collectAsStateWithLifecycle().value.reactionCatalog
     var allReactions by remember { mutableStateOf(false) }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
+    AppSheet(onDismissRequest = onDismiss, wide = true) {
         if (model.canReact(message) && allReactions) {
             ReactionGrid(catalog, message.content.reactions.firstOrNull { it.mine }?.emoji) { emoji ->
                 model.toggleReaction(message, emoji)
                 onDismiss()
             }
             Spacer(Modifier.size(16.dp))
-            return@ModalBottomSheet
+            return@AppSheet
         }
         if (model.canReact(message)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {

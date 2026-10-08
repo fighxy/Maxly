@@ -24,7 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import app.orbitle.ui.components.AppSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -106,7 +106,7 @@ fun ComposerHintsBar(
 fun InChatSearchSheet(model: ChatViewModel, onHit: (String) -> Unit, onDismiss: () -> Unit) {
     val search by model.search.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf(search.query) }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    AppSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
             OutlinedTextField(
                 value = query,
@@ -159,7 +159,7 @@ fun ChatToolsSheet(
     val tools by model.tools.collectAsStateWithLifecycle()
     val header = model.state.collectAsStateWithLifecycle().value.header
     val canCall = header != null && header.type == ChatType.PRIVATE && !header.isSavedMessages
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    AppSheet(onDismissRequest = onDismiss, wide = true) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("О чате", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
@@ -279,7 +279,7 @@ fun PollComposerSheet(onSend: (String, List<String>) -> Unit, onDismiss: () -> U
     var title by remember { mutableStateOf("") }
     var answers by remember { mutableStateOf(listOf("", "")) }
     var error by remember { mutableStateOf<String?>(null) }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    AppSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
             Text("Опрос", style = MaterialTheme.typography.titleLarge)
             OutlinedTextField(
@@ -324,7 +324,7 @@ fun ScheduleSheet(model: ChatViewModel, onDismiss: () -> Unit) {
     val draft = model.state.collectAsStateWithLifecycle().value.draft
     val scheduled by model.scheduled.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { model.loadScheduled() }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    AppSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
             Text("Отложить", style = MaterialTheme.typography.titleLarge)
             Text(

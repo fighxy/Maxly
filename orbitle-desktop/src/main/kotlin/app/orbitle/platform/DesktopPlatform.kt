@@ -3,8 +3,6 @@ package app.orbitle.platform
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import java.awt.Desktop
-import java.awt.FileDialog
-import java.awt.Frame
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.io.File
@@ -63,7 +61,7 @@ class FilePrefs(private val file: File) {
     }
 }
 
-/** Открыть ссылку, скопировать текст, выбрать файлы. Камеры у окна нет: QR читается из текста или картинки. */
+/** Открыть ссылку или файл, скопировать текст. Камеры у окна нет: QR читается из текста или картинки. */
 object DesktopActions {
     fun open(uri: String) {
         runCatching { Desktop.getDesktop().browse(java.net.URI(uri)) }
@@ -82,25 +80,6 @@ object DesktopActions {
         Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
     }
 
-    /** Диалог системы. [imageOnly] сужает фильтр до картинок. */
-    fun pickFiles(imageOnly: Boolean): List<File> {
-        val dialog = FileDialog(null as Frame?, if (imageOnly) "Выберите изображение" else "Выберите файлы", FileDialog.LOAD)
-        dialog.isMultipleMode = !imageOnly
-        if (imageOnly) dialog.setFilenameFilter { _, name -> name.substringAfterLast('.').lowercase() in IMAGE_EXT }
-        dialog.isVisible = true
-        val files = dialog.files?.toList().orEmpty().filter { it.isFile }
-        return if (imageOnly) files.take(1) else files
-    }
-
-    /** Одно фото или видео: новая история. `null` — ничего не выбрали. */
-    fun pickMedia(): File? {
-        val dialog = FileDialog(null as Frame?, "Фото или видео для истории", FileDialog.LOAD)
-        dialog.isMultipleMode = false
-        dialog.setFilenameFilter { _, name -> name.substringAfterLast('.').lowercase() in IMAGE_EXT + VIDEO_EXT }
-        dialog.isVisible = true
-        return dialog.files?.firstOrNull { it.isFile }
-    }
-
     private fun playExternal(file: File) {
         runCatching {
             ProcessBuilder("ffplay", "-autoexit", "-loglevel", "quiet", file.absolutePath)
@@ -108,9 +87,6 @@ object DesktopActions {
                 .start()
         }
     }
-
-    private val IMAGE_EXT = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp")
-    private val VIDEO_EXT = setOf("mp4", "m4v", "mov", "webm")
 }
 
 /**

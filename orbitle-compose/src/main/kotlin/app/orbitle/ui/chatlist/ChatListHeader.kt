@@ -56,8 +56,11 @@ import app.orbitle.ui.components.clickCursor
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -226,14 +229,21 @@ fun ChatListHeader(
 
 /** Поиск в шапке: капсула с подсказкой по центру, нажатие открывает поиск. */
 @Composable
-fun SearchCapsule(placeholder: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun SearchCapsule(
+    placeholder: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    height: Dp = 36.dp,
+    containerColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+    labelStyle: TextStyle = TextStyle(fontSize = 16.sp),
+) {
     Box(
         modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
-            .height(36.dp)
+            .height(height)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+            .background(containerColor)
             .clickCursor()
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -241,7 +251,7 @@ fun SearchCapsule(placeholder: String, onClick: () -> Unit, modifier: Modifier =
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.Search, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.width(6.dp))
-            Text(placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 16.sp)
+            Text(placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant, style = labelStyle)
         }
     }
 }
@@ -257,6 +267,8 @@ fun FolderCapsule(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
     pageOffset: Float = 0f,
+    pillColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+    selectedColor: Color = MaterialTheme.colorScheme.onSurface,
 ) {
     val scroll = rememberScrollState()
     val bounds = remember { mutableStateMapOf<Int, Pair<Float, Float>>() }
@@ -311,7 +323,7 @@ fun FolderCapsule(
                         .width(with(density) { pillWidth.value.toDp() })
                         .height(32.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+                        .background(pillColor),
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(0.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -333,7 +345,7 @@ fun FolderCapsule(
                             fontSize = 15.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            color = if (index == selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (index == selected) selectedColor else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         folder.badge?.let { badge ->
                             Spacer(Modifier.width(6.dp))

@@ -60,7 +60,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
-import androidx.compose.material.icons.outlined.InsertDriveFile
+import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -102,6 +102,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.orbitle.domain.ChatAttachment
+import app.orbitle.platform.DesktopActions
 import app.orbitle.domain.PollContent
 import app.orbitle.domain.FileContent
 import app.orbitle.domain.Message
@@ -398,13 +399,16 @@ private fun BubbleContent(
         content.voices.forEach {
             PlayableVoice(message, it, colors, maxWidth, footer = if (voiceOnly) ({ TimeRow(item, colors.secondary) }) else null)
         }
-        content.files.forEach { file -> FileRow(message, file, colors) }
+        content.files.forEach { file -> FileRow(message, file, colors, onLongPress) }
         content.attachments.filterIsInstance<ChatAttachment.Contact>().forEach { contact ->
+            val phone = contact.contact.phone.takeIf { it.isNotEmpty() }?.let { if (it.startsWith("+")) it else "+$it" }
             AttachmentRow(
                 icon = { Icon(Icons.Outlined.Person, null, tint = colors.container, modifier = Modifier.size(22.dp)) },
                 title = contact.contact.name.ifEmpty { "Контакт" },
-                subtitle = contact.contact.phone.takeIf { it.isNotEmpty() }?.let { if (it.startsWith("+")) it else "+$it" } ?: "контакт MAX",
+                subtitle = phone ?: "контакт MAX",
                 colors = colors,
+                onMenu = onLongPress,
+                onClick = phone?.let { { DesktopActions.copy(it) } },
             )
         }
         content.call?.let { call ->
@@ -423,6 +427,8 @@ private fun BubbleContent(
                 subtitle = CallBubbleText.duration(call) ?: if (call.isVideo) "Видео" else "Аудио",
                 colors = colors,
                 circle = if (alert) MissedRed else null,
+                onMenu = onLongPress,
+                onClick = call.joinLink?.takeIf { it.isNotEmpty() }?.let { link -> { DesktopActions.open(link) } },
             )
         }
         content.poll?.let { poll -> PollChoices(poll, colors) { onVote(message, it) } }
@@ -565,14 +571,24 @@ fun ReplyQuote(author: String, preview: String, colors: BubbleColors, modifier: 
 private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modifier = Modifier, shape: Shape, onLongPress: () -> Unit = {}, onDoubleTap: () -> Unit = {}, onOpen: (ChatAttachment) -> Unit) {
     if (visuals.size == 1) {
         val frame = singleFrame(visuals.first(), maxWidth)
-        Box(modifier.size(frame.width.dp, frame.height.dp).clip(shape).combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(visuals.first()) }) { VisualCell(visuals.first()) }
+        Box(
+            modifier.size(frame.width.dp, frame.height.dp).clip(shape)
+                .contextMenu(onLongPress)
+                .combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(visuals.first()) },
+        ) { VisualCell(visuals.first()) }
         return
     }
     val cell = (maxWidth - 2.dp) / 2
     Column(modifier.clip(shape), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         visuals.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                row.forEach { Box(Modifier.size(if (row.size == 1) maxWidth else cell, cell).combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(it) }) { VisualCell(it) } }
+                row.forEach {
+                    Box(
+                        Modifier.size(if (row.size == 1) maxWidth else cell, cell)
+                            .contextMenu(onLongPress)
+                            .combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(it) },
+                    ) { VisualCell(it) }
+                }
             }
         }
     }
@@ -815,13 +831,20 @@ private fun TranscribeMark(color: Color) {
     }
 }
 
+/** Правая кнопка открывает меню сообщения, как долгое нажатие на телефоне. */
+@OptIn(ExperimentalComposeUiApi::class)
+private fun Modifier.contextMenu(onMenu: () -> Unit): Modifier =
+    onPointerEvent(PointerEventType.Press) {
+        if (it.buttons.isSecondaryPressed) onMenu()
+    }
+
 /** Файл: нажатие скачивает и открывает, во время загрузки — кольцо прогресса. */
 @Composable
-private fun FileRow(message: Message, file: FileContent, colors: BubbleColors) {
+private fun FileRow(message: Message, file: FileContent, colors: BubbleColors, onMenu: () -> Unit) {
     val media = LocalBubbleMedia.current
     val progress = media.media.value.downloads[file.id]
     Row(
-        Modifier.clip(RoundedCornerShape(12.dp)).clickable { media.onFile(message, file) }
+        Modifier.clip(RoundedCornerShape(12.dp)).contextMenu(onMenu).clickable { media.onFile(message, file) }
             .padding(start = 8.dp, end = 12.dp, top = 8.dp, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -836,7 +859,7 @@ private fun FileRow(message: Message, file: FileContent, colors: BubbleColors) {
                 )
                 Icon(Icons.Filled.Close, "Отменить", tint = colors.container, modifier = Modifier.size(18.dp))
             } else {
-                Icon(Icons.Outlined.InsertDriveFile, null, tint = colors.container, modifier = Modifier.size(22.dp))
+                Icon(Icons.AutoMirrored.Outlined.InsertDriveFile, null, tint = colors.container, modifier = Modifier.size(22.dp))
             }
         }
         Spacer(Modifier.width(10.dp))
@@ -872,8 +895,22 @@ fun Waveform(samples: List<Int>, progress: Float, colors: BubbleColors, modifier
 }
 
 @Composable
-private fun AttachmentRow(icon: @Composable () -> Unit, title: String, subtitle: String, colors: BubbleColors, circle: Color? = null) {
-    Row(Modifier.padding(start = 8.dp, end = 12.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun AttachmentRow(
+    icon: @Composable () -> Unit,
+    title: String,
+    subtitle: String,
+    colors: BubbleColors,
+    circle: Color? = null,
+    onMenu: () -> Unit = {},
+    onClick: (() -> Unit)? = null,
+) {
+    Row(
+        Modifier
+            .contextMenu(onMenu)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(start = 8.dp, end = 12.dp, top = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Box(Modifier.size(42.dp).clip(CircleShape).background(circle ?: colors.accent), contentAlignment = Alignment.Center) { icon() }
         Spacer(Modifier.width(10.dp))
         Column {

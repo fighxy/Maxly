@@ -2,8 +2,8 @@ package app.orbitle.ui.chat
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,10 +15,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
+import app.orbitle.ui.components.AppSheet
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,14 +37,13 @@ import app.orbitle.ui.components.privateBlur
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ForwardPicker(targets: List<ChatListItem>, onPick: (String) -> Unit, onDismiss: () -> Unit) {
-    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var query by remember { mutableStateOf("") }
     val privacy = app.orbitle.ui.components.LocalPrivateMode.current
     val shown = remember(targets, query) {
         val text = query.trim()
         if (text.isEmpty()) targets else targets.filter { it.title.contains(text, ignoreCase = true) }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
+    AppSheet(onDismissRequest = onDismiss, wide = true) {
         Text(
             "Переслать",
             style = MaterialTheme.typography.titleLarge,
@@ -69,7 +67,7 @@ fun ForwardPicker(targets: List<ChatListItem>, onPick: (String) -> Unit, onDismi
                 )
             }
         }
-        LazyColumn(Modifier.fillMaxWidth().fillMaxHeight(0.85f)) {
+        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
             items(shown, key = { it.id }) { original ->
                 val item = if (privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER) app.orbitle.presentation.settings.PrivateModeMask.item(original) else original
                 ListItem(

@@ -110,6 +110,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.blur.hazeBlur
+import dev.chrisbanes.haze.blur.materials.HazeMaterials
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -248,10 +254,20 @@ fun ChatScreen(
     // Уход из чата обрывает запись: ничего не уходит.
     androidx.compose.runtime.DisposableEffect(recording) { onDispose { recording.cancel() } }
     val importScope = rememberCoroutineScope()
-    val importPicked: (Boolean) -> Unit = { images ->
-        val files = DesktopActions.pickFiles(imageOnly = images)
+    val importImages = app.orbitle.platform.rememberDesktopFilePicker(
+        title = "Фото или видео",
+        imageOnly = true,
+        multiple = true,
+    ) { files ->
         if (files.isNotEmpty()) importScope.launch { model.addAttachments(AttachmentImporter.import(files.take(OutgoingFile.LIMIT))) }
     }
+    val importAny = app.orbitle.platform.rememberDesktopFilePicker(
+        title = "Выберите файлы",
+        multiple = true,
+    ) { files ->
+        if (files.isNotEmpty()) importScope.launch { model.addAttachments(AttachmentImporter.import(files.take(OutgoingFile.LIMIT))) }
+    }
+    val importPicked: (Boolean) -> Unit = { images -> if (images) importImages() else importAny() }
     val requestViewerSave: () -> Unit = { model.media.saveViewed() }
     val requestSave: (Message, SaveTarget) -> Unit = { message, target -> model.media.save(message, target) }
     val openFile = mediaState.value.openFile
@@ -374,9 +390,13 @@ fun ChatScreen(
         }
         onActionHandled()
     }
+    val chatHaze = rememberHazeState()
     CompositionLocalProvider(LocalBubbleMedia provides bubbleMedia) { Box(Modifier.fillMaxSize()) {
     // Обои на весь экран: не прокручиваются с лентой и не двигаются за клавиатурой.
-    ChatWallpaperBackground(LocalChatBackdrop.current)
+    ChatWallpaperBackground(
+        LocalChatBackdrop.current,
+        Modifier.hazeSource(chatHaze),
+    )
     Scaffold(
         topBar = {
             if (selection.isNotEmpty()) {
@@ -399,7 +419,16 @@ fun ChatScreen(
                 )
             } else {
                 // Поиск и «Ещё» переехали в профиль чата: справа в шапке кнопок нет.
-                ChatTopBar(state, onBack, onOpenProfile, privacy)
+                ChatTopBar(
+                    state,
+                    onBack,
+                    onOpenProfile,
+                    privacy,
+                    modifier = Modifier.hazeBlur(
+                        input = HazeInput.Sources(chatHaze),
+                        style = HazeMaterials.thin(),
+                    ),
+                )
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -679,8 +708,11 @@ private fun ChatTopBar(
     onBack: () -> Unit,
     onOpenProfile: () -> Unit,
     privacy: app.orbitle.domain.PrivateModeDisplay = app.orbitle.domain.PrivateModeDisplay.VISIBLE,
+    modifier: Modifier = Modifier,
 ) {
     TopAppBar(
+        modifier = modifier,
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад") } },
         title = {
             val real = state.header ?: return@TopAppBar

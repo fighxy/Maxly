@@ -54,6 +54,8 @@ class HotkeysTest {
         assertEquals(Hotkey(HotkeyAction.TO_LATEST), chord(KeyEvent.VK_END, ctrl = true))
         assertEquals(Hotkey(HotkeyAction.VIEWER_PREVIOUS), chord(KeyEvent.VK_LEFT))
         assertEquals(Hotkey(HotkeyAction.VIEWER_NEXT), chord(KeyEvent.VK_RIGHT))
+        assertEquals(Hotkey(HotkeyAction.VIEWER_PAUSE), chord(KeyEvent.VK_SPACE))
+        assertNull(chord(KeyEvent.VK_SPACE, ctrl = true))
         assertEquals(Hotkey(HotkeyAction.ROTATE), chord(KeyEvent.VK_R, 'r'))
         assertEquals(Hotkey(HotkeyAction.ROTATE), russian('к'))
     }

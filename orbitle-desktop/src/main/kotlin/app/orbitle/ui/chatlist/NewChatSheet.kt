@@ -24,11 +24,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
+import app.orbitle.ui.components.AppSheet
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,10 +44,7 @@ import app.orbitle.presentation.chatlist.NewChatUiState
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewChatSheet(state: NewChatUiState, model: NewChatModel) {
-    ModalBottomSheet(
-        onDismissRequest = model::dismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-    ) {
+    AppSheet(onDismissRequest = model::dismiss) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (state.step != NewChatStep.MENU) {

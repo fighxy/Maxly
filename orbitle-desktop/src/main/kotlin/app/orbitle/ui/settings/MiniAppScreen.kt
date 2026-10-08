@@ -233,8 +233,9 @@ private fun MiniAppHost(app: MiniApp, page: MiniAppPage, model: MiniAppViewModel
     }
     // Белый фон панели: прозрачная дырка Compose на Windows остаётся чёрной, пока Chromium не нарисовал кадр.
     SwingPanel(
-        background = Color.White,
-        factory = { session.component },
+        factory = {
+            session.component.apply { background = java.awt.Color.WHITE }
+        },
         modifier = Modifier.fillMaxSize(),
         update = { session.refit() },
     )

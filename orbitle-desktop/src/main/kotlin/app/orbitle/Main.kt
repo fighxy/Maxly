@@ -18,12 +18,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
-import androidx.compose.ui.window.rememberWindowState
+import androidx.compose.ui.window.v2.Window
+import androidx.compose.ui.window.v2.WindowBoundsProvider
+import androidx.compose.ui.window.v2.WindowPositionProvider
+import androidx.compose.ui.window.v2.WindowSizeProvider
+import androidx.compose.ui.window.v2.rememberWindowState
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -50,6 +54,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import app.orbitle.ui.res.painterResource
 import app.orbitle.ui.theme.OrbitleTheme
+import com.mohamedrejeb.calf.picker.ProvideFilePickerParentWindow
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.disk.DiskCache
@@ -60,6 +65,7 @@ import kotlinx.coroutines.swing.Swing
 import okio.Path.Companion.toOkioPath
 import java.io.File
 
+@OptIn(ExperimentalComposeUiApi::class)
 fun main() {
     // Swing-диспетчер становится Dispatchers.Main до первого обращения к сессии.
     Dispatchers.Swing
@@ -86,12 +92,18 @@ fun main() {
             container.window.looking.collect { owner.moveTo(DesktopOwner.stateOf(it)) }
         }
         LaunchedEffect(container) { container.session.restoreSession() }
-        val windowState = rememberWindowState(size = DpSize(1100.dp, 760.dp))
+        val windowState = rememberWindowState(
+            initialBoundsProvider = WindowBoundsProvider(
+                positionProvider = WindowPositionProvider.CenteredOnScreen,
+                sizeProvider = WindowSizeProvider.Fixed(DpSize(1100.dp, 760.dp)),
+            ),
+        )
         Window(
             onCloseRequest = ::exitApplication,
             title = "Orbitle",
             icon = painterResource(R.drawable.app_icon),
             state = windowState,
+            minSize = DpSize(840.dp, 600.dp),
         ) {
             // Свёрнуто ли окно и в фокусе ли оно: от этого зависят флаг активности для ядра
             // и опрос своего статуса (свёрнутое окно — фон).
@@ -116,7 +128,7 @@ fun main() {
                     .distinctUntilChanged()
                     .collect { ringing ->
                         if (!ringing) return@collect
-                        windowState.isMinimized = false
+                        windowState.requestMinimized(false)
                         window.toFront()
                         window.requestFocus()
                     }
@@ -130,11 +142,13 @@ fun main() {
                     false
                 }
             }
+            ProvideFilePickerParentWindow {
             CompositionLocalProvider(
                 LocalLifecycleOwner provides owner,
                 LocalViewModelStoreOwner provides owner,
             ) {
                 AppRoot(container)
+            }
             }
         }
     }

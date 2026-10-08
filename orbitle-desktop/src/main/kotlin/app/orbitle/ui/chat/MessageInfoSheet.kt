@@ -14,9 +14,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
+import app.orbitle.ui.components.AppSheet
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -36,10 +35,9 @@ import app.orbitle.ui.components.Avatar
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessageInfoSheet(model: MessageInfoModel, onDismiss: () -> Unit) {
-    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val state by model.state.collectAsStateWithLifecycle()
     val colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
+    AppSheet(onDismissRequest = onDismiss) {
         Text(
             model.title,
             style = MaterialTheme.typography.titleLarge,
@@ -53,7 +51,7 @@ fun MessageInfoSheet(model: MessageInfoModel, onDismiss: () -> Unit) {
                 colors = colors,
             )
         }
-        if (state.phase == MessageInfoState.Phase.Unavailable) return@ModalBottomSheet
+        if (state.phase == MessageInfoState.Phase.Unavailable) return@AppSheet
         HorizontalDivider(Modifier.padding(vertical = 4.dp))
         Text(
             "Кем прочитано",

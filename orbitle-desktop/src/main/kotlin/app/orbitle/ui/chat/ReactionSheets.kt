@@ -24,9 +24,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
+import app.orbitle.ui.components.AppSheet
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -47,9 +46,8 @@ import app.orbitle.ui.components.Avatar
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReactionUsersSheet(model: ReactionUsersModel, onDismiss: () -> Unit) {
-    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val state by model.state.collectAsStateWithLifecycle()
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
+    AppSheet(onDismissRequest = onDismiss, wide = true) {
         Text(
             model.title,
             style = MaterialTheme.typography.titleLarge,

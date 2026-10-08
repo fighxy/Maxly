@@ -22,10 +22,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import app.orbitle.ui.components.AppSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,10 +48,9 @@ import app.orbitle.presentation.settings.ProfileLink
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileQrSheet(link: String, title: String, invite: Boolean, onDismiss: () -> Unit) {
-    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var notice by remember { mutableStateOf<String?>(null) }
     val modules = remember(link) { runCatching { ProfileLink.qr(link) }.getOrNull() }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
+    AppSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 24.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

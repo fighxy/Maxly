@@ -1,59 +1,93 @@
 package app.orbitle.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialExpressiveTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-/** Пузырь своих сообщений (как `orbitleOutgoing` в iOS-версии). */
+/** Пузырь своих сообщений. Тот же индиго, что у акцента темы, но без затемнения под белый текст. */
 val OrbitleOutgoing = Color(0xFF5C6BF5)
 
-/**
- * Подсветка системных кнопок и надписей (`primary`): глубокий графит в светлой теме, серебро
- * в тёмной — как `orbitleAccent` в iOS-версии.
- */
-val OrbitleGraphite = Color(0xFF212327)
-val OrbitleSilver = Color(0xFFCCD0D6)
+private val Indigo = Color(0xFF3E4AD8)
+private val IndigoLight = Color(0xFFBDC2FF)
 
 private val LightColors = lightColorScheme(
-    primary = OrbitleGraphite,
+    primary = Indigo,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFE3E4E7),
-    onPrimaryContainer = Color(0xFF17181B),
-    secondary = Color(0xFF5D5F65),
-    secondaryContainer = Color(0xFFE3E4E7),
-    onSecondaryContainer = Color(0xFF17181B),
-    tertiary = Color(0xFF2EA66B),
-    background = Color(0xFFFBF8FF),
-    surface = Color(0xFFFBF8FF),
-    surfaceContainerLowest = Color.White,
-    surfaceContainerLow = Color(0xFFF5F2FA),
-    surfaceContainer = Color(0xFFEFEDF4),
-    surfaceContainerHigh = Color(0xFFE9E7EF),
-    surfaceContainerHighest = Color(0xFFE3E1E9),
+    primaryContainer = Color(0xFFE0E2FF),
+    onPrimaryContainer = Color(0xFF0E1460),
+    inversePrimary = IndigoLight,
+    secondary = Color(0xFF5C5E6A),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFE2E3EA),
+    onSecondaryContainer = Color(0xFF191B22),
+    tertiary = Color(0xFF1F7A4D),
+    onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFC4EED6),
+    onTertiaryContainer = Color(0xFF06331C),
+    background = Color(0xFFF7F7F8),
+    onBackground = Color(0xFF1B1B1F),
+    surface = Color(0xFFF7F7F8),
+    onSurface = Color(0xFF1B1B1F),
+    surfaceVariant = Color(0xFFE2E2E6),
+    onSurfaceVariant = Color(0xFF45464D),
+    surfaceTint = Color.Transparent,
+    outline = Color(0xFF76777E),
+    outlineVariant = Color(0xFFC6C6CC),
     error = Color(0xFFBA1A1A),
+    onError = Color.White,
+    errorContainer = Color(0xFFFFDAD6),
+    onErrorContainer = Color(0xFF410002),
+    inverseSurface = Color(0xFF303034),
+    inverseOnSurface = Color(0xFFF3F0F4),
+    scrim = Color.Black,
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color(0xFFF2F2F4),
+    surfaceContainer = Color(0xFFECECEF),
+    surfaceContainerHigh = Color(0xFFE6E6EA),
+    surfaceContainerHighest = Color(0xFFE0E1E5),
 )
 
 private val DarkColors = darkColorScheme(
-    primary = OrbitleSilver,
-    onPrimary = Color(0xFF15171A),
-    primaryContainer = Color(0xFF3A3D43),
-    onPrimaryContainer = Color(0xFFE4E6EA),
-    secondary = Color(0xFFC3C6CC),
-    secondaryContainer = Color(0xFF3A3D43),
-    onSecondaryContainer = Color(0xFFE4E6EA),
-    tertiary = Color(0xFF6FDBA0),
+    primary = IndigoLight,
+    onPrimary = Color(0xFF12164A),
+    primaryContainer = Color(0xFF2C3696),
+    onPrimaryContainer = Color(0xFFE0E2FF),
+    inversePrimary = Indigo,
+    secondary = Color(0xFFC6C6D0),
+    onSecondary = Color(0xFF2F3038),
+    secondaryContainer = Color(0xFF45464E),
+    onSecondaryContainer = Color(0xFFE2E3EA),
+    tertiary = Color(0xFF8FD7B0),
+    onTertiary = Color(0xFF003821),
+    tertiaryContainer = Color(0xFF0E5133),
+    onTertiaryContainer = Color(0xFFC4EED6),
     background = Color(0xFF0C0E14),
+    onBackground = Color(0xFFE4E2E8),
     surface = Color(0xFF0C0E14),
+    onSurface = Color(0xFFE4E2E8),
+    surfaceVariant = Color(0xFF2D2F37),
+    onSurfaceVariant = Color(0xFFC6C6CC),
+    surfaceTint = Color.Transparent,
+    outline = Color(0xFF909098),
+    outlineVariant = Color(0xFF45464D),
+    error = Color(0xFFFFB4AB),
+    onError = Color(0xFF690005),
+    errorContainer = Color(0xFF93000A),
+    onErrorContainer = Color(0xFFFFDAD6),
+    inverseSurface = Color(0xFFE4E2E8),
+    inverseOnSurface = Color(0xFF303034),
+    scrim = Color.Black,
     surfaceContainerLowest = Color(0xFF08090E),
     surfaceContainerLow = Color(0xFF14161D),
     surfaceContainer = Color(0xFF181A21),
     surfaceContainerHigh = Color(0xFF22242C),
     surfaceContainerHighest = Color(0xFF2D2F37),
-    error = Color(0xFFFFB4AB),
 )
 
 /** Градиенты аватаров без фото: те же семь тонов, что в iOS-версии. */
@@ -74,10 +108,12 @@ object AvatarPalette {
     fun nameColor(index: Int): Color = pair(index).second
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun OrbitleTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    MaterialTheme(
+    MaterialExpressiveTheme(
         colorScheme = if (darkTheme) DarkColors else LightColors,
+        motionScheme = MotionScheme.expressive(),
         typography = Typography(),
         content = content,
     )

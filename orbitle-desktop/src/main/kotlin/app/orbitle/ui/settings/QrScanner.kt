@@ -77,13 +77,16 @@ fun QrScannerDialog(
                     Text(it, color = MaterialTheme.colorScheme.error)
                 }
                 Spacer(Modifier.height(16.dp))
+                val pickQr = app.orbitle.platform.rememberDesktopFilePicker(
+                    title = "Выберите изображение",
+                    imageOnly = true,
+                ) { files ->
+                    val file = files.firstOrNull() ?: return@rememberDesktopFilePicker
+                    val decoded = decodeQr(file)
+                    if (decoded == null) error = "На картинке нет QR-кода" else onResult(decoded)
+                }
                 Row {
-                    OutlinedButton(onClick = {
-                        val file = DesktopActions.pickFiles(imageOnly = true).firstOrNull()
-                        if (file == null) return@OutlinedButton
-                        val decoded = decodeQr(file)
-                        if (decoded == null) error = "На картинке нет QR-кода" else onResult(decoded)
-                    }) {
+                    OutlinedButton(onClick = pickQr) {
                         Icon(Icons.Outlined.Image, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
                         Text("Из картинки")

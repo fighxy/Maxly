@@ -85,6 +85,8 @@ import androidx.compose.runtime.collectAsState
 import app.orbitle.ui.media.VideoFrame
 import app.orbitle.ui.media.rememberVideoPlayer
 import app.orbitle.platform.BackHandler
+import app.orbitle.ui.keys.HotkeyAction
+import app.orbitle.ui.keys.HotkeyHandler
 import kotlinx.coroutines.launch
 import app.orbitle.domain.StoryAudience
 import app.orbitle.domain.StoryRing
@@ -275,6 +277,7 @@ fun StoryViewer(
         val previousOwner by rememberUpdatedState(onPreviousOwner)
         val close by rememberUpdatedState(onClose)
         var pressed by remember { mutableStateOf(false) }
+        var paused by remember { mutableStateOf(false) }
         var dragging by remember { mutableStateOf(false) }
         var confirmDelete by remember { mutableStateOf(false) }
         var dragX by remember { mutableFloatStateOf(0f) }
@@ -286,7 +289,17 @@ fun StoryViewer(
         val video by player.state.collectAsState()
         val timer = remember { Animatable(0f) }
         var timerEpoch by remember { mutableIntStateOf(-1) }
-        val holding = pressed || dragging || confirmDelete || viewer.isDeleting
+        val holding = pressed || paused || dragging || confirmDelete || viewer.isDeleting
+        LaunchedEffect(viewer.epoch) { paused = false }
+        HotkeyHandler { hotkey ->
+            when (hotkey.action) {
+                HotkeyAction.VIEWER_PREVIOUS -> true.also { previous() }
+                HotkeyAction.VIEWER_NEXT -> true.also { next() }
+                HotkeyAction.VIEWER_PAUSE -> true.also { paused = !paused }
+                HotkeyAction.QUIT -> false
+                else -> true
+            }
+        }
         // Фото, а также видео, которое не открылось (нет ffmpeg): идёт таймер по обложке.
         val asPhoto = media != null && (!media.isVideo || video.failed)
         LaunchedEffect(viewer.epoch, media) {
@@ -309,19 +322,24 @@ fun StoryViewer(
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black)
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onPress = {
-                            pressed = true
-                            tryAwaitRelease()
-                            pressed = false
-                        },
-                        onTap = { point -> if (point.x < size.width * 0.32f) previous() else next() },
-                    )
-                }
-                .pointerInput(Unit) {
-                    detectDragGestures(
+                .background(Color.Black),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(top = 88.dp)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = {
+                                pressed = true
+                                tryAwaitRelease()
+                                pressed = false
+                            },
+                            onTap = { point -> if (point.x < size.width * 0.32f) previous() else next() },
+                        )
+                    }
+                    .pointerInput(Unit) {
+                        detectDragGestures(
                         onDragStart = { dragging = true },
                         onDragEnd = {
                             val down = dragY > 140.dp.toPx()
@@ -371,6 +389,7 @@ fun StoryViewer(
                         if (video.frame == null) CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
                     }
                 }
+            }
             }
             Column(
                 Modifier

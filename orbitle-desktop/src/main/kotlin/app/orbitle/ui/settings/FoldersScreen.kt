@@ -9,7 +9,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -39,13 +39,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import app.orbitle.ui.components.AppSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
@@ -365,7 +364,6 @@ private fun FolderChatPicker(
     onDismiss: () -> Unit,
     onDone: (String, List<String>) -> Unit,
 ) {
-    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val selection = remember { mutableStateListOf<String>().apply { addAll(chats.map { it.id }.filter { it in initial }) } }
     var name by remember { mutableStateOf("") }
     var query by remember { mutableStateOf("") }
@@ -374,7 +372,7 @@ private fun FolderChatPicker(
         if (text.isEmpty()) chats else chats.filter { it.title.contains(text, ignoreCase = true) }
     }
     val canSave = !askTitle || name.isNotBlank()
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
+    AppSheet(onDismissRequest = onDismiss, wide = true) {
         Column(Modifier.fillMaxWidth()) {
             androidx.compose.foundation.layout.Row(
                 Modifier.fillMaxWidth().padding(start = 24.dp, end = 8.dp),
@@ -408,7 +406,7 @@ private fun FolderChatPicker(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 24.dp),
             )
-            LazyColumn(Modifier.fillMaxWidth().fillMaxHeight(0.8f)) {
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
                 items(shown, key = { it.id }) { item ->
                     val checked = item.id in selection
                     val toggle = { if (checked) selection.remove(item.id) else selection.add(item.id) }

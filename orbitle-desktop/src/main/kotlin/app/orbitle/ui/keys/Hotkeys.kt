@@ -39,9 +39,11 @@ enum class HotkeyAction {
     PAGE_DOWN,
     /** Ctrl+End: к последнему сообщению. */
     TO_LATEST,
-    /** ← / →: соседнее фото или видео в просмотре. */
+    /** ← / →: соседнее фото, видео или история. */
     VIEWER_PREVIOUS,
     VIEWER_NEXT,
+    /** Пробел: пауза видео или истории, у фото — показать или спрятать шапку. */
+    VIEWER_PAUSE,
     /** R: повернуть фото в просмотре. */
     ROTATE,
     /** Ctrl+S: сохранить открытое в просмотре. */
@@ -130,6 +132,7 @@ object KeyChords {
             KeyEvent.VK_END -> if (ctrl) HotkeyAction.TO_LATEST else null
             KeyEvent.VK_LEFT -> if (plain) HotkeyAction.VIEWER_PREVIOUS else null
             KeyEvent.VK_RIGHT -> if (plain) HotkeyAction.VIEWER_NEXT else null
+            KeyEvent.VK_SPACE -> if (plain) HotkeyAction.VIEWER_PAUSE else null
             else -> null
         }
         if (action != null) return Hotkey(action)

@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -42,14 +44,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import app.orbitle.ui.components.AppSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -115,10 +116,11 @@ fun AuthScreen(viewModel: AuthViewModel) {
             // Свой экран у каждого шага: поля и фокус не переносятся между шагами.
             key(step) {
                 Column(
-                    Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 24.dp, vertical = 8.dp),
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                Column(
+                    Modifier.widthIn(max = 440.dp).fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     when (state.step) {
@@ -131,6 +133,7 @@ fun AuthScreen(viewModel: AuthViewModel) {
                         Spacer(Modifier.height(16.dp))
                         Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
                     }
+                }
                 }
             }
         }
@@ -357,7 +360,7 @@ private fun PrimaryButton(text: String, enabled: Boolean, busy: Boolean, onClick
 private fun CountryPicker(onDismiss: () -> Unit, onSelect: (PhoneCountry) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     val countries = remember(query) { PhoneCountry.search(query) }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    AppSheet(onDismissRequest = onDismiss) {
         Text(
             stringResource(R.string.country_picker_title),
             style = MaterialTheme.typography.titleLarge,
@@ -378,7 +381,7 @@ private fun CountryPicker(onDismiss: () -> Unit, onSelect: (PhoneCountry) -> Uni
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        LazyColumn(Modifier.fillMaxWidth().height(480.dp)) {
+        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
             items(countries, key = { it.id }) { country ->
                 ListItem(
                     headlineContent = { Text(country.name) },

@@ -27,7 +27,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.InsertDriveFile
+import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.ui.layout.ContentScale
 import app.orbitle.domain.OutgoingFile
@@ -108,8 +108,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import app.orbitle.ui.components.AppSheet
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -117,7 +117,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -450,7 +449,7 @@ internal fun AttachmentStrip(items: List<OutgoingFile>, onRemove: (OutgoingFile)
                     OutgoingFile.Kind.PHOTO -> AsyncImage(File(item.path), "Редактировать фото: ${item.name}", Modifier.fillMaxSize().clickable { onEditPhoto(item) }, contentScale = ContentScale.Crop)
                     OutgoingFile.Kind.VIDEO -> Icon(Icons.Filled.Videocam, item.name, Modifier.align(Alignment.Center), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutgoingFile.Kind.FILE -> Column(Modifier.align(Alignment.Center).padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Outlined.InsertDriveFile, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(Icons.AutoMirrored.Outlined.InsertDriveFile, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(item.name, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
                     }
                 }
@@ -478,7 +477,7 @@ internal fun AttachSheet(
     onPoll: () -> Unit,
     onSchedule: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    AppSheet(onDismissRequest = onDismiss) {
         val colors = ListItemDefaults.colors(containerColor = Color.Transparent)
         ListItem(
             headlineContent = { Text("Фото или видео") },
@@ -490,7 +489,7 @@ internal fun AttachSheet(
         ListItem(
             headlineContent = { Text("Файл") },
             supportingContent = { Text("Документ любого типа") },
-            leadingContent = { Icon(Icons.Outlined.InsertDriveFile, null, tint = MaterialTheme.colorScheme.primary) },
+            leadingContent = { Icon(Icons.AutoMirrored.Outlined.InsertDriveFile, null, tint = MaterialTheme.colorScheme.primary) },
             colors = colors,
             modifier = Modifier.clickable(onClick = onFile),
         )

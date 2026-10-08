@@ -2,13 +2,18 @@ package app.orbitle.ui.main
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Call
@@ -17,6 +22,7 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationRail
@@ -148,9 +154,12 @@ fun MainScreen(
     var composingStory by remember { mutableStateOf<OutgoingStory?>(null) }
     val storyScope = rememberCoroutineScope()
     val storySnack = remember { SnackbarHostState() }
-    val addStory: () -> Unit = {
+    val addStory = app.orbitle.platform.rememberDesktopFilePicker(
+        title = "Фото или видео для истории",
+        media = true,
+    ) { files ->
+        val file = files.firstOrNull() ?: return@rememberDesktopFilePicker
         storyScope.launch {
-            val file = withContext(Dispatchers.IO) { DesktopActions.pickMedia() } ?: return@launch
             val picked = AttachmentImporter.import(listOf(file)).firstOrNull()
             composingStory = when (picked?.kind) {
                 OutgoingFile.Kind.PHOTO -> OutgoingStory(picked.path, isVideo = false)
@@ -237,8 +246,23 @@ fun MainScreen(
         LocalSendKey provides sendKey,
     ) {
         Box(Modifier.fillMaxSize()) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+        val expanded = maxWidth >= 900.dp
         Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            NavigationRail {
+            NavigationRail(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                header = {
+                    FloatingActionButton(
+                        onClick = {
+                            tab = Tab.CHATS
+                            newChat.show()
+                        },
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    ) {
+                        Icon(Icons.Filled.Edit, contentDescription = "Новое сообщение")
+                    }
+                },
+            ) {
                 Tab.entries.forEach { item ->
                     val selected = tab == item
                     NavigationRailItem(
@@ -258,7 +282,10 @@ fun MainScreen(
             }
             when (tab) {
                 Tab.CHATS -> Row(Modifier.weight(1f).fillMaxHeight()) {
-                    Box(Modifier.width(360.dp).fillMaxHeight()) {
+                    val showList = expanded || chatId == null
+                    val showChat = expanded || chatId != null
+                    if (showList) {
+                    Box(Modifier.then(if (expanded) Modifier.width(360.dp) else Modifier.weight(1f)).fillMaxHeight()) {
                         val selfAvatar = StoryText.avatar(account?.id ?: container.messages.currentUserId.orEmpty(), account?.displayName.orEmpty(), account?.avatarUrl)
                         val stackItems = listOfNotNull(stories.own?.let { selfAvatar to it }) + stories.rings.map { StoryText.avatar(it) to it }
                         ChatListScreen(
@@ -287,7 +314,9 @@ fun MainScreen(
                             onLogout = onLogout,
                         )
                     }
-                    VerticalDivider()
+                    if (expanded) VerticalDivider()
+                    }
+                    if (showChat) {
                     Box(Modifier.weight(1f).fillMaxHeight()) {
                         ChatPane(
                             container = container,
@@ -306,8 +335,10 @@ fun MainScreen(
                             onMessageOpened = { openMessage = null },
                         )
                     }
+                    }
                 }
-                Tab.CALLS -> Box(Modifier.weight(1f).fillMaxHeight()) {
+                Tab.CALLS -> Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    Box(Modifier.widthIn(max = 720.dp).fillMaxWidth().fillMaxHeight()) {
                     CallsScreen(
                         callsModel,
                         onOpenChat = { openChat(it) },
@@ -317,12 +348,16 @@ fun MainScreen(
                             container.scope.launch { container.callCenter.startCall(peer, video) }
                         },
                     )
+                    }
                 }
-                Tab.CONTACTS -> Box(Modifier.weight(1f).fillMaxHeight()) {
+                Tab.CONTACTS -> Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    Box(Modifier.widthIn(max = 720.dp).fillMaxWidth().fillMaxHeight()) {
                     ContactsScreen(contactsModel, onOpen = { row -> contactsModel.prepare(row.id, row.title)?.let { openChat(it, row.title) } })
+                    }
                 }
                 Tab.SETTINGS -> Box(Modifier.weight(1f).fillMaxHeight()) {
                     SettingsPane(
+                        expanded = expanded,
                         container = container,
                         chatList = chatList,
                         account = account,
@@ -355,6 +390,7 @@ fun MainScreen(
                     )
                 }
             }
+        }
         }
         SnackbarHost(storySnack, Modifier.align(Alignment.BottomCenter))
         }
@@ -515,32 +551,67 @@ private fun SettingsPane(
     miniAppKey: Int,
     miniKind: String,
     onOpenMiniApp: (MiniApp.Kind) -> Unit,
+    expanded: Boolean,
 ) {
     val securityModel = viewModel { SecurityViewModel(container.account) }
     val ghostModel = viewModel { GhostModeViewModel(container.ghostMode, container.ownPresence, foreground = container.windowShown) }
     val limits by container.accountLimits.state.collectAsStateWithLifecycle()
+    // Мини-приложение занимает всю область: рядом со списком настроек ему тесно.
+    val immersive = page == SettingsPage.MiniApp
+    val showList = !immersive && (expanded || page == SettingsPage.Home)
+    val showDetail = immersive || expanded || page != SettingsPage.Home
+    val selected = when (page) {
+        SettingsPage.Home -> null
+        SettingsPage.About -> "about"
+        SettingsPage.Devices -> "devices"
+        SettingsPage.Appearance -> "appearance"
+        SettingsPage.Profile -> "profile"
+        SettingsPage.Privacy, SettingsPage.Blocked -> "privacy"
+        SettingsPage.Security, SettingsPage.RecoveryEmail -> "security"
+        SettingsPage.Storage -> "storage"
+        SettingsPage.Folders -> "folders"
+        SettingsPage.MiniApp -> if (miniKind == MiniApp.Kind.SFERUM.wire) "sferum" else "digital-id"
+        SettingsPage.Messages -> "messages"
+        SettingsPage.Keyboard -> "keyboard"
+    }
+    Row(Modifier.fillMaxSize()) {
+        if (showList) {
+            Box(Modifier.then(if (expanded) Modifier.width(360.dp) else Modifier.weight(1f)).fillMaxHeight()) {
+                SettingsScreen(
+                    account,
+                    onAbout = { onOpen(SettingsPage.About) },
+                    onLogout = onLogout,
+                    onSaved = onSaved,
+                    onContacts = onContacts,
+                    onDevices = { onOpen(SettingsPage.Devices) },
+                    onAppearance = { onOpen(SettingsPage.Appearance) },
+                    onEditProfile = { onOpen(SettingsPage.Profile) },
+                    onPrivacy = { onOpen(SettingsPage.Privacy) },
+                    onSecurity = { onOpen(SettingsPage.Security) },
+                    onDigitalId = { onOpenMiniApp(MiniApp.Kind.DIGITAL_ID) },
+                    onSferum = { onOpenMiniApp(MiniApp.Kind.SFERUM) },
+                    onStorage = { onOpen(SettingsPage.Storage) },
+                    onFolders = { onOpen(SettingsPage.Folders) },
+                    onMessages = { onOpen(SettingsPage.Messages) },
+                    onKeyboard = { onOpen(SettingsPage.Keyboard) },
+                    profileLink = profileLink,
+                    accountLimits = limits,
+                    ghost = ghostModel,
+                    selected = selected,
+                )
+            }
+            if (expanded) VerticalDivider()
+        }
+        if (showDetail) {
+            Box(Modifier.weight(1f).fillMaxHeight()) {
     when (page) {
-        SettingsPage.Home -> SettingsScreen(
-            account,
-            onAbout = { onOpen(SettingsPage.About) },
-            onLogout = onLogout,
-            onSaved = onSaved,
-            onContacts = onContacts,
-            onDevices = { onOpen(SettingsPage.Devices) },
-            onAppearance = { onOpen(SettingsPage.Appearance) },
-            onEditProfile = { onOpen(SettingsPage.Profile) },
-            onPrivacy = { onOpen(SettingsPage.Privacy) },
-            onSecurity = { onOpen(SettingsPage.Security) },
-            onDigitalId = { onOpenMiniApp(MiniApp.Kind.DIGITAL_ID) },
-            onSferum = { onOpenMiniApp(MiniApp.Kind.SFERUM) },
-            onStorage = { onOpen(SettingsPage.Storage) },
-            onFolders = { onOpen(SettingsPage.Folders) },
-            onMessages = { onOpen(SettingsPage.Messages) },
-            onKeyboard = { onOpen(SettingsPage.Keyboard) },
-            profileLink = profileLink,
-            accountLimits = limits,
-            ghost = ghostModel,
-        )
+        SettingsPage.Home -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                "Выберите раздел",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         SettingsPage.Messages -> MessagesScreen(
             accountModel,
             loadCatalog = { container.messages.reactionCatalog() },
@@ -576,6 +647,9 @@ private fun SettingsPane(
             val kind = MiniApp.Kind.fromWire(miniKind) ?: MiniApp.Kind.DIGITAL_ID
             val miniModel = viewModel(key = "mini-$miniAppKey") { MiniAppViewModel(kind, container.account) }
             MiniAppScreen(miniModel, onBack)
+        }
+    }
+            }
         }
     }
 }

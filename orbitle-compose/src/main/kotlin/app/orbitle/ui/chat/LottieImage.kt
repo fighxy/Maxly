@@ -10,10 +10,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import coil3.compose.AsyncImage
-import io.github.alexzhirkevich.compottie.LottieAnimation
+import io.github.alexzhirkevich.compottie.Compottie
+import io.github.alexzhirkevich.compottie.Lottie
 import io.github.alexzhirkevich.compottie.LottieCompositionSpec
-import io.github.alexzhirkevich.compottie.LottieConstants
 import io.github.alexzhirkevich.compottie.rememberLottieComposition
+import io.github.alexzhirkevich.compottie.rememberLottiePainter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -30,18 +31,25 @@ fun LottieOrStill(lottieUrl: String?, stillUrl: String?, modifier: Modifier = Mo
         if (!stillUrl.isNullOrBlank()) {
             AsyncImage(stillUrl, description, Modifier.matchParentSize(), contentScale = ContentScale.Fit)
         }
-        if (json != null) {
-            val composition = rememberLottieComposition(LottieCompositionSpec.JsonString(json)).value
-            if (composition != null) {
-                LottieAnimation(
-                    composition = composition,
-                    modifier = Modifier.matchParentSize(),
-                    iterations = LottieConstants.IterateForever,
-                    contentScale = ContentScale.Fit,
-                )
-            }
-        }
+        if (json != null) LottieJson(json, description, Modifier.matchParentSize())
     }
+}
+
+/** Отдельный вызов: `remember` появляется вместе с JSON и больше не меняет число слотов. */
+@Composable
+private fun LottieJson(json: String, description: String, modifier: Modifier) {
+    val composition by rememberLottieComposition(LottieCompositionSpec.JsonString(json))
+    val painter = rememberLottiePainter(
+        composition = composition,
+        iterations = Compottie.IterateForever,
+    )
+    if (composition == null) return
+    Lottie(
+        painter = painter,
+        contentDescription = description,
+        modifier = modifier,
+        contentScale = ContentScale.Fit,
+    )
 }
 
 private val lottieJson = java.util.concurrent.ConcurrentHashMap<String, String>()

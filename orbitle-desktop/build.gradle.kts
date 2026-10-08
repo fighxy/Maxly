@@ -2,10 +2,10 @@ import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
-    kotlin("multiplatform") version "2.1.10"
-    kotlin("plugin.compose") version "2.1.10"
-    kotlin("plugin.serialization") version "2.1.10"
-    id("org.jetbrains.compose") version "1.7.3"
+    kotlin("multiplatform") version "2.4.20"
+    kotlin("plugin.compose") version "2.4.20"
+    kotlin("plugin.serialization") version "2.4.20"
+    id("org.jetbrains.compose") version "1.12.1"
 }
 
 // Исходники ядра: по умолчанию .build/max-kmp-core в корне репозитория (ревизия из core.lock),
@@ -76,7 +76,7 @@ kotlin {
         }
     }
     sourceSets {
-        val commonMain by getting {
+        getByName("commonMain") {
             kotlin.setSrcDirs(
                 listOf(
                     coreDir.resolve("core/src/commonMain/kotlin"),
@@ -84,12 +84,12 @@ kotlin {
                 ),
             )
             dependencies {
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
-                implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.0")
-                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+                implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.11.0")
+                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
             }
         }
-        val jvmMain by getting {
+        getByName("jvmMain") {
             kotlin.setSrcDirs(
                 listOf(
                     coreDir.resolve("core/src/jvmMain/kotlin"),
@@ -106,15 +106,20 @@ kotlin {
             dependencies {
                 implementation("com.squareup.okhttp3:okhttp:4.12.0")
                 implementation(compose.desktop.currentOs)
-                implementation(compose.material3)
-                implementation(compose.materialIconsExtended)
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.1")
-                implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
-                implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
-                implementation("io.coil-kt.coil3:coil-compose:3.0.4")
-                // Lottie 1.1.x собирается с Compose 1.6 и подходит к 1.7. Ветка 2.x требует Compose 1.10.
-                implementation("io.github.alexzhirkevich:compottie:1.1.2")
-                implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
+                // Версия Material3 у плагина 1.12 больше не совпадает с compose.material3 (там осталась 1.9.0).
+                implementation("org.jetbrains.compose.material3:material3:1.12.0-alpha03")
+                implementation("org.jetbrains.compose.material:material-icons-extended:1.7.3")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0")
+                implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
+                implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
+                implementation("io.coil-kt.coil3:coil-compose:3.6.3")
+                // Compottie 2.3 собран под Compose 1.12.
+                implementation("io.github.alexzhirkevich:compottie:2.3.1")
+                implementation("dev.chrisbanes.haze:haze:2.0.1")
+                implementation("dev.chrisbanes.haze:haze-blur:2.0.1")
+                implementation("dev.chrisbanes.haze:haze-blur-materials:2.0.1")
+                implementation("com.mohamedrejeb.calf:calf-file-picker:0.14.0")
+                implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.3")
                 implementation("com.google.zxing:core:3.5.3")
                 // Встроенный Chromium для мини-приложений. Наборы CEF качаются при первом открытии.
                 implementation("dev.datlag:kcef:2024.04.20.4")
@@ -123,7 +128,7 @@ kotlin {
                 implementation("dev.onvoid.webrtc:webrtc-java:0.18.0:$webrtcNatives")
             }
         }
-        val jvmTest by getting {
+        getByName("jvmTest") {
             kotlin.setSrcDirs(
                 listOf(
                     // Тесты общего кода: здесь они проверяют его на версиях библиотек десктопа.
@@ -134,8 +139,8 @@ kotlin {
             dependencies {
                 implementation(kotlin("test-junit"))
                 implementation("junit:junit:4.13.2")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.1")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.1")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0")
             }
         }
     }

@@ -242,26 +242,17 @@ fun ChatListScreen(
         },
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
-            // При поиске кнопок нет. Глаз — приватный режим, карандаш — новое сообщение.
-            if (!state.isSearchActive && !state.isReorderingPins && (privateMode.quickToggle || newChat != null)) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.End) {
-                    if (privateMode.quickToggle) {
-                        androidx.compose.material3.SmallFloatingActionButton(
-                            onClick = onTogglePrivateMode,
-                            containerColor = if (privateMode.enabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-                        ) {
-                            Icon(
-                                if (privateMode.enabled) Icons.Filled.VisibilityOff else Icons.Outlined.Visibility,
-                                if (privateMode.enabled) "Выключить приватный режим" else "Включить приватный режим",
-                                tint = if (privateMode.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                    if (newChat != null) {
-                        FloatingActionButton(onClick = newChat::show) {
-                            Icon(Icons.Filled.Edit, "Новое сообщение")
-                        }
-                    }
+            // При поиске кнопки нет. Новое сообщение — на рельсе. Здесь остаётся только приватный режим.
+            if (!state.isSearchActive && !state.isReorderingPins && privateMode.quickToggle) {
+                androidx.compose.material3.SmallFloatingActionButton(
+                    onClick = onTogglePrivateMode,
+                    containerColor = if (privateMode.enabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                ) {
+                    Icon(
+                        if (privateMode.enabled) Icons.Filled.VisibilityOff else Icons.Outlined.Visibility,
+                        if (privateMode.enabled) "Выключить приватный режим" else "Включить приватный режим",
+                        tint = if (privateMode.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         },
@@ -275,7 +266,15 @@ fun ChatListScreen(
                 ChatListHeader(
                     header,
                     stories = storiesHeader,
-                    search = { SearchCapsule(stringResource(R.string.chats_search), onClick = { viewModel.setSearchActive(true) }) },
+                    search = {
+                        SearchCapsule(
+                            stringResource(R.string.chats_search),
+                            onClick = { viewModel.setSearchActive(true) },
+                            height = 48.dp,
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            labelStyle = MaterialTheme.typography.bodyLarge,
+                        )
+                    },
                     folders = if (state.showsFolders) {
                         {
                             FolderCapsule(
@@ -283,6 +282,8 @@ fun ChatListScreen(
                                 selected = if (paged) pagerState.currentPage else selectedPage,
                                 onSelect = viewModel::selectFolder,
                                 pageOffset = if (paged) pagerState.currentPageOffsetFraction else 0f,
+                                pillColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedColor = MaterialTheme.colorScheme.onPrimaryContainer,
                             )
                         }
                     } else {

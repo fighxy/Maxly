@@ -120,9 +120,12 @@ fun ProfileEditScreen(model: AccountSettingsViewModel, onBack: () -> Unit, onLog
             about = account.description.orEmpty()
         }
     }
-    val pickPhoto = {
-        val file = DesktopActions.pickFiles(imageOnly = true).firstOrNull()
-        if (file != null) scope.launch {
+    val pickPhoto = app.orbitle.platform.rememberDesktopFilePicker(
+        title = "Выберите изображение",
+        imageOnly = true,
+    ) { files ->
+        val file = files.firstOrNull() ?: return@rememberDesktopFilePicker
+        scope.launch {
             val jpeg = AvatarImage.jpeg(file)
             if (jpeg != null) model.uploadPhoto(jpeg) else model.photoUnreadable()
         }
