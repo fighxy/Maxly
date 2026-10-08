@@ -337,8 +337,16 @@ internal class DesktopCallPeer(
         connection.setRemoteDescription(rtc(description), applied(continuation))
     }
 
+    /**
+     * Без `sdpMid` — пустая строка, как `nil` на iOS и на Android: тогда WebRTC берёт секцию по номеру строки.
+     * Прежнее `"0"` уводило кандидата в чужую секцию, если у той другой mid.
+     */
     override suspend fun add(candidate: IceCandidate) {
-        runCatching { connection.addIceCandidate(RTCIceCandidate(candidate.sdpMid ?: "0", candidate.sdpMLineIndex, candidate.sdp)) }
+        runCatching {
+            connection.addIceCandidate(RTCIceCandidate(candidate.sdpMid.orEmpty(), candidate.sdpMLineIndex, candidate.sdp))
+        }.onFailure {
+            CallLog.warning("WebRTC: кандидат собеседника не принят (mid ${candidate.sdpMid}, $it)")
+        }
     }
 
     /** Дорожки приёмников, которые по согласованному SDP действительно принимают. */
