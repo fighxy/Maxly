@@ -45,7 +45,7 @@ class MemberListTest {
         ChatPerson("5", "Анатолий"),
     )
     private val source = PagedMembers(people)
-    private val list = MemberList(scope, source, "7", searchDelayMs = 300)
+    private val list = MemberList(scope, source, "7")
 
     @Test
     fun pagesFollowTheMarkerUntilTheLast() {
@@ -113,6 +113,54 @@ class MemberListTest {
         scope.advanceTimeBy(400)
         scope.runCurrent()
         assertEquals("Никого не нашлось", list.state.value.emptyText)
+    }
+
+    @Test
+    fun fullyLoadedListIsSearchedOnlyLocally() {
+        list.load()
+        scope.runCurrent()
+        list.loadMore()
+        scope.runCurrent()
+        list.loadMore()
+        scope.runCurrent()
+        assertFalse(list.state.value.hasMore)
+        list.search("ан")
+        assertFalse(list.state.value.searching)
+        assertEquals(listOf("1", "2", "5"), list.state.value.visible.map { it.id })
+        scope.advanceTimeBy(1_000)
+        scope.runCurrent()
+        assertTrue(source.queries.isEmpty())
+        assertEquals(listOf("1", "2", "5"), list.state.value.visible.map { it.id })
+    }
+
+    @Test
+    fun partlyLoadedListAsksTheServer200msAfterTheLastKey() {
+        list.load()
+        scope.runCurrent()
+        list.search("а")
+        scope.advanceTimeBy(100)
+        list.search("ан")
+        scope.advanceTimeBy(100)
+        list.search("ана")
+        scope.advanceTimeBy(199)
+        scope.runCurrent()
+        assertTrue(source.queries.isEmpty())
+        assertTrue(list.state.value.searching)
+        scope.advanceTimeBy(2)
+        scope.runCurrent()
+        // Быстрый ввод — один запрос, с последним текстом.
+        assertEquals(listOf("ана"), source.queries)
+        assertEquals(listOf("5"), list.state.value.visible.map { it.id })
+        assertFalse(list.state.value.searching)
+    }
+
+    @Test
+    fun searchBeforeTheFirstPageAsksTheServer() {
+        list.search("пётр")
+        scope.advanceTimeBy(250)
+        scope.runCurrent()
+        assertEquals(listOf("пётр"), source.queries)
+        assertEquals(listOf("3"), list.state.value.visible.map { it.id })
     }
 
     @Test

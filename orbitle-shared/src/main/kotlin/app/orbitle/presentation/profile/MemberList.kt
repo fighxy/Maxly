@@ -15,8 +15,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * Участники чата на экране: страницы по `marker` и поиск. [found] — ответ поиска по [query];
- * пока он не пришёл, видны совпадения среди уже загруженных.
+ * Участники чата на экране: страницы по `marker` и поиск. Поиск сначала среди загруженных; пока
+ * загружены не все страницы, ещё и на сервере — [found], его ответ по [query].
  */
 data class MemberListState(
     val members: List<ChatPerson> = emptyList(),
@@ -61,6 +61,8 @@ class MemberList(
     val state: StateFlow<MemberListState> = _state.asStateFlow()
 
     private var next: Long? = null
+    /** Загружены все страницы: искать на сервере незачем. */
+    private var complete = false
     private var paging: Job? = null
     private var search: Job? = null
 
@@ -68,6 +70,7 @@ class MemberList(
     fun load() {
         paging?.cancel()
         next = null
+        complete = false
         paging = scope.launch { page(reset = true) }
         val query = _state.value.query
         if (query.isNotBlank()) search(query)
@@ -80,11 +83,16 @@ class MemberList(
         paging = scope.launch { page(reset = false) }
     }
 
+    /**
+     * Поиск, как в вебе: совпадения среди загруженных видны сразу; сервер (`{chatId, type, query}`,
+     * без страниц) спрашивается после паузы [searchDelayMs] и только если загружены не все.
+     */
     fun search(query: String) {
         search?.cancel()
-        _state.update { it.copy(query = query, found = null, searching = query.isNotBlank(), error = null) }
         val term = query.trim()
-        if (term.isEmpty()) return
+        val remote = term.isNotEmpty() && !complete
+        _state.update { it.copy(query = query, found = null, searching = remote, error = null) }
+        if (!remote) return
         search = scope.launch {
             delay(searchDelayMs)
             try {
@@ -105,6 +113,7 @@ class MemberList(
         try {
             val page = source.memberPage(chatId, marker)
             next = page.next
+            complete = page.next == null
             _state.update {
                 val members = if (reset) page.members else (it.members + page.members).distinctBy { p -> p.id }
                 it.copy(members = members, loading = false, loaded = true, hasMore = page.next != null)
@@ -119,6 +128,7 @@ class MemberList(
     private fun message(e: Exception, fallback: String): String = CoreErrors.map(e).userMessage ?: fallback
 
     companion object {
-        const val SEARCH_DELAY_MS = 350L
+        /** Пауза после последней буквы перед поиском на сервере (как в вебе). */
+        const val SEARCH_DELAY_MS = 200L
     }
 }
