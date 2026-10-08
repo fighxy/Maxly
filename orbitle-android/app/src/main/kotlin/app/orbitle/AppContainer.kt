@@ -98,6 +98,13 @@ class AppContainer(context: Context) {
 
     val appearance = AppearanceSettings(preferenceStore)
 
+    /** Телефонная книга устройства: только чтение, по нажатию на экране контактов. */
+    val addressBook: app.orbitle.data.AddressBook = app.orbitle.contacts.AndroidAddressBook(context.applicationContext)
+
+    /** Модель доступа к телефонной книге; помнит в настройках, что системный запрос уже был. */
+    fun phoneBookModel(): app.orbitle.presentation.contacts.PhoneBookViewModel =
+        app.orbitle.presentation.contacts.PhoneBookViewModel(addressBook, contacts, { messages.currentUserId }, preferenceStore)
+
     /** Приватный режим: только на этом устройстве. */
     val privateMode = app.orbitle.data.PrivateModeSettings(preferenceStore)
 

@@ -19,6 +19,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- «Найти друзей из контактов»: телефонная книга читается только по нажатию, после пояснения. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
     <!-- До Android 10 сохранение в галерею и «Загрузки» идёт файлом в общую папку. -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 

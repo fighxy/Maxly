@@ -128,6 +128,7 @@ fun MainScreen(
     val securityModel = viewModel { SecurityViewModel(container.account) }
     val accountState by accountModel.state.collectAsStateWithLifecycle()
     val contactsModel = viewModel { ContactsViewModel(container.contacts, { container.messages.currentUserId }, chats = container.chats) }
+    val phoneBookModel = viewModel { container.phoneBookModel() }
     val newChat = viewModel(key = "new-chat") { NewChatModel(container.contacts, container.chats) { container.messages.currentUserId } }
     val privatePrefs by container.privateMode.state.collectAsStateWithLifecycle()
     val privateDisplay = app.orbitle.data.PrivateModeSettings.display(privatePrefs, canBlur = android.os.Build.VERSION.SDK_INT >= 31)
@@ -233,7 +234,11 @@ fun MainScreen(
                 )
             }
             composable(Tab.CONTACTS.route) {
-                ContactsScreen(contactsModel, onOpen = { row -> contactsModel.prepare(row.id, row.title)?.let { openChat(it, row.title) } })
+                ContactsScreen(
+                    contactsModel,
+                    onOpen = { row -> contactsModel.prepare(row.id, row.title)?.let { openChat(it, row.title) } },
+                    phoneBook = phoneBookModel,
+                )
             }
             composable(Tab.SETTINGS.route) {
                 val limits by container.accountLimits.state.collectAsStateWithLifecycle()

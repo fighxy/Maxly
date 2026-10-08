@@ -48,16 +48,27 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.orbitle.presentation.contacts.ContactRow
 import app.orbitle.presentation.contacts.ContactsUiState
 import app.orbitle.presentation.contacts.ContactsViewModel
+import app.orbitle.presentation.contacts.PhoneBookViewModel
 import app.orbitle.ui.chatlist.Placeholder
 import app.orbitle.ui.components.Avatar
 import app.orbitle.ui.components.privateBlur
 
-/** Вкладка «Контакты»: разделы по буквам, поиск, «в сети». Нажатие открывает диалог. */
+/**
+ * Вкладка «Контакты»: разделы по буквам, поиск, «в сети». Нажатие открывает диалог.
+ * [phoneBook] — вход «Найти друзей из контактов» над списком; `null` — без него.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ContactsScreen(model: ContactsViewModel, onOpen: (ContactRow) -> Unit) {
+fun ContactsScreen(model: ContactsViewModel, onOpen: (ContactRow) -> Unit, phoneBook: PhoneBookViewModel? = null) {
     val state by model.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { model.appeared() }
+    phoneBook?.let { PhoneBookAccess(it) }
+    val book = phoneBook?.state?.collectAsStateWithLifecycle()?.value
+    val bookRow: (androidx.compose.foundation.lazy.LazyListScope.() -> Unit) = {
+        if (phoneBook != null && book != null && book.isAvailable) {
+            item(key = "phone-book") { PhoneBookRow(book, onClick = phoneBook::findFriends, onRefresh = phoneBook::refresh) }
+        }
+    }
     Scaffold(
         topBar = {
             if (state.isSearching) {
@@ -105,6 +116,7 @@ fun ContactsScreen(model: ContactsViewModel, onOpen: (ContactRow) -> Unit) {
                 }
                 state.content == ContactsUiState.Content.LOADING -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 state.content == ContactsUiState.Content.EMPTY -> LazyColumn(Modifier.fillMaxSize()) {
+                    bookRow()
                     item {
                         Box(Modifier.fillParentMaxSize()) {
                             Placeholder(
@@ -116,6 +128,7 @@ fun ContactsScreen(model: ContactsViewModel, onOpen: (ContactRow) -> Unit) {
                     }
                 }
                 else -> LazyColumn(Modifier.fillMaxSize()) {
+                    bookRow()
                     state.sections.forEach { section ->
                         item(key = "h-${section.letter}") {
                             Text(
