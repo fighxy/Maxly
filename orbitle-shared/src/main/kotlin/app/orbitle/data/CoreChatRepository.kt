@@ -35,11 +35,9 @@ class CoreChatRepository(
     /** Закрепление и перестановка по очереди: каждый запрос строится от списка, принятого сервером. */
     private val pinLock = Mutex()
     private var usersRequested = mutableSetOf<Long>()
+    private val mutes = ChatMutes.of(client)
 
-    override val chats: Flow<List<Chat>?> =
-        combine(client.store.state, client.accountConfig, loaded) { state, config, ready ->
-            if (!ready && state.chats.isEmpty()) null else ChatMapping.chats(state, config, clock())
-        }.distinctUntilChanged()
+    override val chats: Flow<List<Chat>?> = ChatMutes.chatList(client.store.state, client.accountConfig, loaded, mutes, clock)
 
     override val folders: Flow<List<ServerFolder>> = client.store.state
         .map { it.chatFolders }
@@ -285,6 +283,7 @@ class CoreChatRepository(
     override fun clear() {
         loaded.value = false
         usersRequested = mutableSetOf()
+        mutes.clear()
     }
 
     companion object {

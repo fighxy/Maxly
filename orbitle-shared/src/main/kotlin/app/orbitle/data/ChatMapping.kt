@@ -16,9 +16,9 @@ import com.max.core.api.Chat as CoreChat
 object ChatMapping {
 
     /** Список чатов без тех, где аккаунт больше не участвует ([isActive]), как в Komet. */
-    fun chats(state: MaxState, config: AccountConfig?, nowMs: Long): List<Chat> {
+    fun chats(state: MaxState, config: AccountConfig?, nowMs: Long, mutes: ChatMutes? = null): List<Chat> {
         val pins = state.pinnedChatIds.orEmpty().withIndex().associate { (i, id) -> id to i }
-        return state.chats.values.filter(::isActive).map { chat(it, state, config, nowMs, pins[it.id]) }
+        return state.chats.values.filter(::isActive).map { chat(it, state, config, nowMs, pins[it.id], mutes) }
     }
 
     /**
@@ -31,7 +31,7 @@ object ChatMapping {
         return status.isNullOrEmpty() || status == "ACTIVE"
     }
 
-    fun chat(chat: CoreChat, state: MaxState, config: AccountConfig?, nowMs: Long, pinOrder: Int? = null): Chat {
+    fun chat(chat: CoreChat, state: MaxState, config: AccountConfig?, nowMs: Long, pinOrder: Int? = null, mutes: ChatMutes? = null): Chat {
         val last = chat.lastMessage
         val updated = when {
             chat.lastEventTime > 0 -> chat.lastEventTime
@@ -80,7 +80,7 @@ object ChatMapping {
             lastMessage = lastMessage,
             avatarUrl = avatar,
             pinOrder = pinOrder,
-            isMuted = config?.isMuted(chat.id, nowMs) ?: false,
+            isMuted = mutes?.isMuted(chat.id, config, nowMs) ?: (config?.isMuted(chat.id, nowMs) ?: false),
             isBot = "BOT" in peerOptions,
             isVerified = "OFFICIAL" in peerOptions || options?.get("OFFICIAL") == true,
             isOnline = presence?.status == 1,

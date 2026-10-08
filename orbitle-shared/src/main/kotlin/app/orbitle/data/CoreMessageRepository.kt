@@ -78,7 +78,7 @@ class CoreMessageRepository(
         val id = chatId.toLongOrNull() ?: 0L
         return combine(client.store.state, client.accountConfig, ticks) { state, config, now ->
             val raw = state.chats[id] ?: return@combine null
-            val chat = ChatMapping.chat(raw, state, config, now)
+            val chat = ChatMapping.chat(raw, state, config, now, mutes = ChatMutes.of(client))
             val peer = ChatMapping.dialogPeer(raw, state.me)
             val seen = peer?.let { state.presence[it]?.seen }?.let { if (it < 100_000_000_000L) it * 1000 else it } ?: 0L
             val typing = typists.typists(state, id, now) { state.users[it]?.displayName?.takeIf(String::isNotBlank) }
