@@ -1,7 +1,7 @@
 [versions]
 agp = "9.4.1"
 kotlin = "2.4.20"
-compose-bom = "2026.09.00"
+compose-bom = "2026.10.00"
 activity-compose = "1.13.0"
 core-ktx = "1.19.1"
 lifecycle = "2.11.0"
@@ -34,12 +34,16 @@ androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 androidx-lifecycle-process = { module = "androidx.lifecycle:lifecycle-process", version.ref = "lifecycle" }
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+compose-bom = { module = "androidx.compose:compose-bom-beta", version.ref = "compose-bom" }
 compose-ui = { module = "androidx.compose.ui:ui" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
 compose-material3 = { module = "androidx.compose.material3:material3" }
 compose-material-icons = { module = "androidx.compose.material:material-icons-extended" }
+compose-material3-adaptive-navigation-suite = { module = "androidx.compose.material3:material3-adaptive-navigation-suite" }
+compose-adaptive = { module = "androidx.compose.material3.adaptive:adaptive" }
+compose-adaptive-layout = { module = "androidx.compose.material3.adaptive:adaptive-layout" }
+compose-adaptive-navigation = { module = "androidx.compose.material3.adaptive:adaptive-navigation" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }

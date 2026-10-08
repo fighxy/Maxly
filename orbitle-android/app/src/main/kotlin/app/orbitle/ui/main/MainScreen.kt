@@ -15,12 +15,20 @@ import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.material3.adaptive.layout.AnimatedPane
+import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
+import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
+import androidx.compose.material3.adaptive.layout.ThreePaneScaffoldDestinationItem
+import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
+import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaffoldNavigator
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -111,7 +119,7 @@ enum class Tab(val route: String, val title: Int, val icon: ImageVector, val sel
 }
 
 /** Главный экран после входа: вкладки «Чаты», «Звонки», «Контакты», «Настройки». */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun MainScreen(
     container: AppContainer,
@@ -167,63 +175,94 @@ fun MainScreen(
             restoreState = true
         }
     }
-    Scaffold(
-        bottomBar = {
-            if (showsBar) {
-                NavigationBar {
-                    Tab.entries.forEach { tab ->
-                        val selected = route == tab.route
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = { openTab(tab) },
-                            icon = {
-                                BadgedBox(badge = {
-                                    if (tab == Tab.CHATS && chats.tabBadge > 0) Badge { Text(ChatListFormatter.compactCount(chats.tabBadge)) }
-                                    if (tab == Tab.CALLS && calls.unseenMissed > 0) Badge { Text(ChatListFormatter.compactCount(calls.unseenMissed)) }
-                                }) {
-                                    Icon(if (selected) tab.selectedIcon else tab.icon, contentDescription = null)
-                                }
-                            },
-                            label = { Text(stringResource(tab.title)) },
-                        )
-                    }
+    // Широкое окно: список чатов остаётся слева, пока открыты чат, профиль или управление.
+    val paneDirective = calculatePaneScaffoldDirective(currentWindowAdaptiveInfo())
+    val chatSection = route == null || route == Tab.CHATS.route ||
+        route.startsWith("chat/") || route.startsWith("profile/") || route.startsWith("manage/")
+    val chatSplit = chatSection && paneDirective.maxHorizontalPartitions > 1
+    val suiteType = if (showsBar || chatSplit) {
+        NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(currentWindowAdaptiveInfo())
+    } else {
+        NavigationSuiteType.None
+    }
+    @Composable
+    fun ChatsPane() {
+        val selfAvatar = StoryText.avatar(account?.id ?: container.messages.currentUserId.orEmpty(), account?.displayName.orEmpty(), account?.avatarUrl)
+        val stackItems = listOfNotNull(stories.own?.let { selfAvatar to it }) + stories.rings.map { StoryText.avatar(it) to it }
+        ChatListScreen(
+            chatList,
+            onOpenChat = { openChat(it.id) },
+            onOpenFound = { openChat(it.id, it.title) },
+            onOpenMessage = {
+                openMessage = Triple(it.chatId, it.messageId, it.timeMs)
+                openChat(it.chatId)
+            },
+            privateMode = privatePrefs,
+            onTogglePrivateMode = container.privateMode::toggle,
+            newChat = newChat,
+            onOpenCreated = { id, title -> openChat(id, title) },
+            storiesHeader = {
+                StoriesStrip(
+                    stories,
+                    self = selfAvatar,
+                    onOpen = storiesModel::open,
+                    onAdd = addStory,
+                )
+            },
+            storyStack = if (stackItems.isEmpty()) null else ({ StoryStack(stackItems) }),
+            onAddStory = addStory,
+            onRetryLogin = { container.scope.launch { container.session.retryLogin() } },
+            onLogout = onLogout,
+        )
+    }
+    NavigationSuiteScaffold(
+        modifier = Modifier.fillMaxSize(),
+        layoutType = suiteType,
+        navigationSuiteItems = {
+            Tab.entries.forEach { tab ->
+                val selected = when (tab) {
+                    Tab.CHATS -> chatSplit || route == null || route == Tab.CHATS.route
+                    else -> route == tab.route
                 }
+                val count = when {
+                    tab == Tab.CHATS && chats.tabBadge > 0 -> chats.tabBadge
+                    tab == Tab.CALLS && calls.unseenMissed > 0 -> calls.unseenMissed
+                    else -> 0
+                }
+                item(
+                    selected = selected,
+                    onClick = { openTab(tab) },
+                    icon = { Icon(if (selected) tab.selectedIcon else tab.icon, contentDescription = null) },
+                    label = { Text(stringResource(tab.title)) },
+                    badge = if (count > 0) {
+                        { Badge { Text(ChatListFormatter.compactCount(count)) } }
+                    } else {
+                        null
+                    },
+                )
             }
         },
-    ) { padding ->
+    ) {
+    // Внутренний Scaffold оставляет прежние отступы статус-бара: экраны сами их обнуляют.
+    Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
         androidx.compose.runtime.CompositionLocalProvider(
             app.orbitle.ui.components.LocalPrivateMode provides privateDisplay,
             LocalStoryRings provides StoryRings(stories, storiesModel::open, storiesModel::loadRing, storiesModel::loadOwner),
         ) {
-        NavHost(nav, startDestination = Tab.CHATS.route, modifier = Modifier.padding(padding).consumeWindowInsets(padding)) {
+        ChatListDetail(
+            split = chatSplit,
+            list = { ChatsPane() },
+            detail = {
+        NavHost(nav, startDestination = Tab.CHATS.route, modifier = Modifier.padding(padding).consumeWindowInsets(padding).fillMaxSize()) {
             composable(Tab.CHATS.route) {
-                val selfAvatar = StoryText.avatar(account?.id ?: container.messages.currentUserId.orEmpty(), account?.displayName.orEmpty(), account?.avatarUrl)
-                val stackItems = listOfNotNull(stories.own?.let { selfAvatar to it }) + stories.rings.map { StoryText.avatar(it) to it }
-                ChatListScreen(
-                    chatList,
-                    onOpenChat = { openChat(it.id) },
-                    onOpenFound = { openChat(it.id, it.title) },
-                    onOpenMessage = {
-                        openMessage = Triple(it.chatId, it.messageId, it.timeMs)
-                        openChat(it.chatId)
-                    },
-                    privateMode = privatePrefs,
-                    onTogglePrivateMode = container.privateMode::toggle,
-                    newChat = newChat,
-                    onOpenCreated = { id, title -> openChat(id, title) },
-                    storiesHeader = {
-                        StoriesStrip(
-                            stories,
-                            self = selfAvatar,
-                            onOpen = storiesModel::open,
-                            onAdd = addStory,
-                        )
-                    },
-                    storyStack = if (stackItems.isEmpty()) null else ({ StoryStack(stackItems) }),
-                    onAddStory = addStory,
-                    onRetryLogin = { container.scope.launch { container.session.retryLogin() } },
-                    onLogout = onLogout,
-                )
+                if (chatSplit) {
+                    Placeholder(
+                        icon = { Icon(Icons.Outlined.ChatBubbleOutline, null, Modifier.size(56.dp)) },
+                        title = "Выберите чат",
+                    )
+                } else {
+                    ChatsPane()
+                }
             }
             composable(Tab.CALLS.route) {
                 val context = androidx.compose.ui.platform.LocalContext.current
@@ -398,7 +437,10 @@ fun MainScreen(
                 )
             }
         }
+            },
+        )
         }
+    }
     }
     stories.viewer?.let { viewer ->
         StoryViewer(
@@ -437,6 +479,40 @@ private fun Soon(title: Int) {
         }
     }
 }
+
+/**
+ * На широком окне список и открытый раздел стоят рядом. На узком видна только правая часть,
+ * где живёт прежний NavHost. Назад по-прежнему обрабатывает он, а не навигатор панелей.
+ */
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
+@Composable
+private fun ChatListDetail(
+    split: Boolean,
+    list: @Composable () -> Unit,
+    detail: @Composable () -> Unit,
+) {
+    val base = calculatePaneScaffoldDirective(currentWindowAdaptiveInfo())
+    val directive = if (split) base else base.copy(maxHorizontalPartitions = 1)
+    val navigator = rememberListDetailPaneScaffoldNavigator<String>(
+        scaffoldDirective = directive,
+        initialDestinationHistory = listOf(
+            ThreePaneScaffoldDestinationItem(ListDetailPaneScaffoldRole.Detail, DetailKey),
+        ),
+    )
+    LaunchedEffect(navigator.currentDestination?.pane) {
+        if (navigator.currentDestination?.pane != ListDetailPaneScaffoldRole.Detail) {
+            navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, DetailKey)
+        }
+    }
+    ListDetailPaneScaffold(
+        directive = navigator.scaffoldDirective,
+        scaffoldState = navigator.scaffoldState,
+        listPane = { AnimatedPane { if (split) list() } },
+        detailPane = { AnimatedPane { detail() } },
+    )
+}
+
+private const val DetailKey = "detail"
 
 /** Действия профиля, открытого из чата: каждое закрывает профиль и открывается в чате. */
 internal fun profileChatActions(listed: Boolean = true, request: (ChatAction) -> Unit) = ProfileChatActions(
