@@ -94,7 +94,7 @@ fun ContactNameDialog(
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
-        confirmButton = { TextButton(onClick = { onDone(first, last) }, enabled = !busy && first.isNotBlank()) { Text("Сохранить") } },
+        confirmButton = { TextButton(onClick = { onDone(first, last) }, enabled = !busy) { Text("Сохранить") } },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Отмена") } },
     )
 }

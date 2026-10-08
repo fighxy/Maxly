@@ -60,8 +60,6 @@ class ContactActionsTest {
     fun renameChecksTheNameAndClosesOnSuccess() {
         model.askRename("2")
         assertEquals(ContactDialog.Rename("2", "Анна", "Смирнова"), model.actions.state.value.dialog)
-        model.actions.rename("  ", "Смирнова")
-        assertEquals("Введите имя", model.actions.state.value.error)
         model.actions.rename("А".repeat(65), "")
         assertEquals("Имя и фамилия — не длиннее 64 символов", model.actions.state.value.error)
         assertTrue(repo.renames.isEmpty())
@@ -70,6 +68,15 @@ class ContactActionsTest {
         assertNull(model.actions.state.value.dialog)
         assertEquals("Имя контакта изменено", model.actions.state.value.notice)
         assertEquals("Аня", model.state.value.sections.single().rows.single().title)
+    }
+
+    @Test
+    fun renameSendsAnEmptyFirstNameAsTheCoreAllows() {
+        model.askRename("2")
+        model.actions.rename("  ", " Смирнова ")
+        assertEquals(listOf(Triple("2", "", "Смирнова" as String?)), repo.renames)
+        assertNull(model.actions.state.value.dialog)
+        assertNull(model.actions.state.value.error)
     }
 
     @Test

@@ -34,13 +34,15 @@ data class ContactActionsState(
     val notice: String? = null,
 )
 
-/** Проверка имени контакта до запроса: те же правила, что у сервера. */
+/**
+ * Проверка имени контакта до запроса: те же правила, что у сервера. Пустое имя допустимо, как в
+ * веб-клиенте: с фамилией сервер показывает собственное имя человека, без обоих — исходное имя.
+ */
 object ContactNameRules {
     const val MAX = UsersApi.CONTACT_NAME_MAX
 
     /** Текст ошибки или `null`, если имя годится. */
     fun error(firstName: String, lastName: String): String? = when {
-        firstName.isBlank() -> "Введите имя"
         firstName.trim().length > MAX || lastName.trim().length > MAX -> "Имя и фамилия — не длиннее $MAX символов"
         else -> null
     }
