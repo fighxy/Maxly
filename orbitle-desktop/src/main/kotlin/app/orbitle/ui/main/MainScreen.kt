@@ -550,7 +550,7 @@ private fun SettingsPane(
         SettingsPage.Appearance -> AppearanceScreen(container.appearance, onBack)
         SettingsPage.Profile -> ProfileEditScreen(accountModel, onBack, onLogout)
         SettingsPage.Privacy -> PrivacyScreen(accountModel, onBack, onBlocked = { onOpen(SettingsPage.Blocked) }, privateMode = container.privateMode, ghost = ghostModel)
-        SettingsPage.Security -> SecurityScreen(securityModel, onBack, onChangeEmail = onOpenRecovery)
+        SettingsPage.Security -> SecurityScreen(securityModel, onBack, onChangeEmail = onOpenRecovery, account = accountModel)
         SettingsPage.RecoveryEmail -> {
             val flow = viewModel(key = "recovery-$recoveryKey") { RecoveryEmailViewModel(container.account) }
             RecoveryEmailScreen(
