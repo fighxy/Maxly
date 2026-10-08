@@ -20,6 +20,18 @@ enum class PrivacyAccess(val wire: String, val title: String) {
     }
 }
 
+/**
+ * Семейная защита (`FAMILY_PROTECTION`). Включается и выключается только в мини-приложении MAX;
+ * здесь — только статус. [MANAGEABLE]: аккаунт под защитой, безопасным режимом и пунктами под ним
+ * управляет тот, кто защищает.
+ */
+enum class FamilyProtection(val title: String) {
+    OFF("Выключена"),
+    ADMIN("Вы защищаете близкого"),
+    MANAGEABLE("Включена — настройками управляет тот, кто вас защищает"),
+    UNKNOWN("Неизвестно"),
+}
+
 /** Через сколько месяцев без входа аккаунт удаляется. */
 enum class InactiveTtl(val wire: String, val title: String) {
     ONE_MONTH("1M", "1 месяц"),
@@ -42,7 +54,7 @@ data class AccountSettings(
     val phonePrivacy: PrivacyAccess = PrivacyAccess.CONTACTS,
     /** `true` — статус «в сети» не видит никто, `false` — видят контакты (`HIDDEN`). */
     val onlineHidden: Boolean = false,
-    /** Безопасный режим (`SAFE_MODE`): пока включён, четыре пункта ниже заперты, см. [lockedBySafeMode]. */
+    /** Безопасный режим (`SAFE_MODE`): пока включён, четыре пункта ниже заперты, см. [privacyLocked]. */
     val safeMode: Boolean = false,
     /** «Найти меня по номеру» (`SEARCH_BY_PHONE`). */
     val searchByPhone: PrivacyAccess = PrivacyAccess.ALL,
@@ -58,9 +70,23 @@ data class AccountSettings(
     val quickReaction: String = DEFAULT_QUICK_REACTION,
     /** `false`, когда сервер прислал `DOUBLE_TAP_REACTION_DISABLED`. */
     val quickReactionEnabled: Boolean = true,
+    /** Семейная защита: только статус, см. [managedByFamily]. */
+    val familyProtection: FamilyProtection = FamilyProtection.OFF,
 ) {
     /** Пункты «Найти меня по номеру», «Позвонить», «Пригласить в чат» и «Показывать контент» не меняются. */
     val lockedBySafeMode: Boolean get() = safeMode
+
+    /**
+     * Аккаунт под семейной защитой: безопасный режим и четыре пункта под ним меняет только тот,
+     * кто защищает (как `PrivacyConfig.isReadOnly` ядра).
+     */
+    val managedByFamily: Boolean get() = familyProtection == FamilyProtection.MANAGEABLE
+
+    /** Четыре пункта под безопасным режимом заперты: им или семейной защитой. */
+    val privacyLocked: Boolean get() = safeMode || managedByFamily
+
+    /** Сам безопасный режим не переключается: им управляет семейная защита. */
+    val safeModeLocked: Boolean get() = managedByFamily
 
     /** Что показывать в пунктах: при безопасном режиме — его значения, иначе свои. */
     val shownSearchByPhone: PrivacyAccess get() = if (safeMode) PrivacyAccess.CONTACTS else searchByPhone

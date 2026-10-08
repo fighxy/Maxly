@@ -6,12 +6,15 @@ import app.orbitle.data.CoreAccountRepository
 import app.orbitle.domain.Account
 import app.orbitle.domain.AccountSettings
 import app.orbitle.domain.BlockedUser
+import app.orbitle.domain.FamilyProtection
 import app.orbitle.domain.MiniApp
 import app.orbitle.domain.OrbitleError
 import app.orbitle.domain.PrivacyAccess
 import app.orbitle.domain.PrivacyChange
 import app.orbitle.domain.TwoFactorStatus
 import com.max.core.api.AccountConfig
+import com.max.core.api.PrivacyConfig
+import com.max.core.api.PrivacyAccess as CoreAccess
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
@@ -21,7 +24,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
-/** Пункты приватности MAX: значения по умолчанию, ключи и замок безопасного режима. */
+/** Пункты приватности MAX: значения по умолчанию, ключи, сеттеры ядра, замки безопасного режима и семейной защиты. */
 class MaxPrivacySettingsTest {
     @get:Rule val main = MainDispatcherRule()
 
@@ -103,6 +106,108 @@ class MaxPrivacySettingsTest {
         assertEquals(mapOf("CHATS_INVITE" to "CONTACTS"), CoreAccountRepository.valuesOf(PrivacyChange.ChatInvites(PrivacyAccess.CONTACTS)))
         assertEquals(mapOf("CONTENT_LEVEL_ACCESS" to true), CoreAccountRepository.valuesOf(PrivacyChange.SafeContent(true)))
         assertEquals(mapOf("PHONE_NUMBER_PRIVACY" to "NOBODY"), CoreAccountRepository.valuesOf(PrivacyChange.PhonePrivacy(PrivacyAccess.NOBODY)))
+    }
+
+    @Test
+    fun `privacy changes go to the checked core setter under their keys`() {
+        assertEquals(PrivacyConfig.SEARCH_BY_PHONE to CoreAccess.CONTACTS, CoreAccountRepository.privacyOf(PrivacyChange.SearchByPhone(PrivacyAccess.CONTACTS)))
+        assertEquals(PrivacyConfig.INCOMING_CALL to CoreAccess.ALL, CoreAccountRepository.privacyOf(PrivacyChange.IncomingCalls(PrivacyAccess.ALL)))
+        assertEquals(PrivacyConfig.CHATS_INVITE to CoreAccess.CONTACTS, CoreAccountRepository.privacyOf(PrivacyChange.ChatInvites(PrivacyAccess.CONTACTS)))
+        assertEquals(PrivacyConfig.CONTENT_LEVEL_ACCESS to true, CoreAccountRepository.privacyOf(PrivacyChange.SafeContent(true)))
+        assertEquals(PrivacyConfig.PHONE_NUMBER_PRIVACY to CoreAccess.NOBODY, CoreAccountRepository.privacyOf(PrivacyChange.PhonePrivacy(PrivacyAccess.NOBODY)))
+        assertEquals(PrivacyConfig.HIDDEN to true, CoreAccountRepository.privacyOf(PrivacyChange.OnlineHidden(true)))
+        assertEquals(PrivacyConfig.SAFE_MODE to false, CoreAccountRepository.privacyOf(PrivacyChange.SafeMode(false)))
+        // Не приватность: общий updateUserSettings.
+        assertNull(CoreAccountRepository.privacyOf(PrivacyChange.Inactive(app.orbitle.domain.InactiveTtl.ONE_MONTH)))
+        assertNull(CoreAccountRepository.privacyOf(PrivacyChange.QuickReaction("🔥")))
+    }
+
+    @Test
+    fun `access maps to the core and back, nobody included`() {
+        for (access in PrivacyAccess.entries) {
+            assertEquals(access, CoreAccountRepository.accessOf(CoreAccountRepository.coreAccess(access)))
+            assertEquals(access.wire, CoreAccountRepository.coreAccess(access).wire)
+        }
+        assertEquals(PrivacyAccess.NOBODY, CoreAccountRepository.accessOf(CoreAccess.NOBODY))
+    }
+
+    @Test
+    fun `safe mode from the server reports its forced values`() {
+        val s = CoreAccountRepository.settingsOf(
+            AccountConfig(user = mapOf("SAFE_MODE" to true, "SEARCH_BY_PHONE" to "ALL", "INCOMING_CALL" to "ALL", "CHATS_INVITE" to "ALL")),
+        )
+        assertTrue(s.safeMode)
+        assertTrue(s.privacyLocked)
+        assertFalse(s.safeModeLocked)
+        assertEquals(PrivacyAccess.CONTACTS, s.searchByPhone)
+        assertEquals(PrivacyAccess.CONTACTS, s.incomingCalls)
+        assertEquals(PrivacyAccess.CONTACTS, s.chatInvites)
+        assertTrue(s.safeContentOnly)
+    }
+
+    @Test
+    fun `family protection status is read from the config`() {
+        fun family(raw: Any?) = CoreAccountRepository.settingsOf(AccountConfig(user = if (raw == null) emptyMap() else mapOf("FAMILY_PROTECTION" to raw))).familyProtection
+        assertEquals(FamilyProtection.OFF, family(null))
+        assertEquals(FamilyProtection.OFF, family("OFF"))
+        assertEquals(FamilyProtection.ADMIN, family("ADMIN"))
+        assertEquals(FamilyProtection.MANAGEABLE, family("manageable"))
+        assertEquals(FamilyProtection.UNKNOWN, family("SOMETHING"))
+        assertEquals("Выключена", FamilyProtection.OFF.title)
+        assertEquals("Неизвестно", FamilyProtection.UNKNOWN.title)
+    }
+
+    @Test
+    fun `locks match the read-only keys of the core`() {
+        val locked = listOf(PrivacyConfig.SEARCH_BY_PHONE, PrivacyConfig.INCOMING_CALL, PrivacyConfig.CHATS_INVITE, PrivacyConfig.CONTENT_LEVEL_ACCESS)
+        for (family in listOf("OFF", "ADMIN", "MANAGEABLE", "X")) {
+            for (safe in listOf(false, true)) {
+                val config = AccountConfig(user = mapOf("FAMILY_PROTECTION" to family, "SAFE_MODE" to safe))
+                val core = PrivacyConfig.from(config)
+                val ours = CoreAccountRepository.settingsOf(config)
+                for (key in locked) assertEquals("$family/$safe $key", core.isReadOnly(key), ours.privacyLocked)
+                assertEquals("$family/$safe", core.isReadOnly(PrivacyConfig.SAFE_MODE), ours.safeModeLocked)
+                assertFalse(core.isReadOnly(PrivacyConfig.HIDDEN))
+                assertFalse(core.isReadOnly(PrivacyConfig.PHONE_NUMBER_PRIVACY))
+            }
+        }
+    }
+
+    @Test
+    fun `the core refuses a locked key as well`() {
+        val managed = PrivacyConfig.from(AccountConfig(user = mapOf("FAMILY_PROTECTION" to "MANAGEABLE")))
+        val (key, value) = CoreAccountRepository.privacyOf(PrivacyChange.IncomingCalls(PrivacyAccess.ALL))!!
+        assertTrue(runCatching { PrivacyConfig.payload(key, value, managed) }.exceptionOrNull() is IllegalStateException)
+        assertEquals(mapOf("HIDDEN" to true), PrivacyConfig.payload(PrivacyConfig.HIDDEN, true, managed))
+    }
+
+    @Test
+    fun `family protection locks safe mode and the four items, information stays open`() {
+        val repo = PrivacyAccount(AccountSettings(known = true, familyProtection = FamilyProtection.MANAGEABLE))
+        val model = AccountSettingsViewModel(repo)
+        val s = model.state.value.settings
+        assertTrue(s.privacyLocked)
+        assertTrue(s.safeModeLocked)
+        assertFalse(s.lockedBySafeMode)
+        model.setSafeMode(true)
+        model.setSearchByPhone(PrivacyAccess.CONTACTS)
+        model.setIncomingCalls(PrivacyAccess.CONTACTS)
+        model.setChatInvites(PrivacyAccess.CONTACTS)
+        model.setSafeContentOnly(true)
+        assertTrue(repo.changes.isEmpty())
+        assertFalse(model.state.value.settings.safeMode)
+        model.setOnlineHidden(true)
+        model.setPhonePrivacy(PrivacyAccess.NOBODY)
+        assertEquals(listOf(PrivacyChange.OnlineHidden(true), PrivacyChange.PhonePrivacy(PrivacyAccess.NOBODY)), repo.changes)
+        assertEquals(PrivacyText.FAMILY_LOCK, PrivacyText.lockNote(model.state.value.settings))
+    }
+
+    @Test
+    fun `lock note names what holds the lock`() {
+        assertNull(PrivacyText.lockNote(AccountSettings(known = true)))
+        assertNull(PrivacyText.lockNote(AccountSettings(known = true, familyProtection = FamilyProtection.ADMIN)))
+        assertEquals(PrivacyText.SAFE_MODE_LOCK, PrivacyText.lockNote(AccountSettings(known = true, safeMode = true)))
+        assertEquals(PrivacyText.FAMILY_LOCK, PrivacyText.lockNote(AccountSettings(known = true, safeMode = true, familyProtection = FamilyProtection.MANAGEABLE)))
     }
 
     @Test

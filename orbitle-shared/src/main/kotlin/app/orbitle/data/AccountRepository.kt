@@ -3,6 +3,7 @@ package app.orbitle.data
 import app.orbitle.domain.Account
 import app.orbitle.domain.AccountSettings
 import app.orbitle.domain.BlockedUser
+import app.orbitle.domain.FamilyProtection
 import app.orbitle.domain.InactiveTtl
 import app.orbitle.domain.MiniApp
 import app.orbitle.domain.OrbitleError
@@ -12,8 +13,11 @@ import app.orbitle.domain.TwoFactorStatus
 import com.max.core.api.AccountConfig
 import com.max.core.api.EntryApp
 import com.max.core.api.MaxUser
+import com.max.core.api.PrivacyConfig
 import com.max.core.api.TwoFactorDetails
 import com.max.core.api.WebAppInitData
+import com.max.core.api.FamilyProtection as CoreFamily
+import com.max.core.api.PrivacyAccess as CoreAccess
 import com.max.shared.MaxClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -40,7 +44,8 @@ interface AccountRepository {
 
     /**
      * Отправляет изменение и возвращает настройки из ответа сервера. Пункты, запертые безопасным
-     * режимом ([AccountSettings.lockedBySafeMode]), модель сюда не шлёт.
+     * режимом или семейной защитой ([AccountSettings.privacyLocked], [AccountSettings.safeModeLocked]),
+     * модель сюда не шлёт.
      */
     suspend fun change(change: PrivacyChange): AccountSettings
 
@@ -131,10 +136,18 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
     override suspend fun requestDeletion(): Long? =
         deletionMillis(MaxCoreGateway.call { client.api.account.requestProfileDeletion(true) })
 
-    // TODO(core setPrivacy): когда ядро даст `setPrivacy(key, value)` (ветка feat/ghost-mode),
-    //  писать через него; пока ключи `config.user` уходят общим `updateUserSettings` ядра.
-    override suspend fun change(change: PrivacyChange): AccountSettings =
-        settingsOf(MaxCoreGateway.call { client.updateUserSettings(valuesOf(change)) })
+    /**
+     * Настройки приватности — проверенным сеттером ядра [MaxClient.setPrivacy] (на нём же стоят
+     * `setSearchByPhone`, `setSafeMode` и другие): ключ, значение и замок безопасного режима
+     * и семейной защиты проверяет ядро, ответ сервера оно кладёт в `accountConfig`. Остальное
+     * (срок неактивности, быстрая реакция) уходит общим `updateUserSettings`.
+     */
+    override suspend fun change(change: PrivacyChange): AccountSettings = settingsOf(
+        MaxCoreGateway.call {
+            val privacy = privacyOf(change)
+            if (privacy != null) client.setPrivacy(privacy.first, privacy.second) else client.updateUserSettings(valuesOf(change))
+        },
+    )
 
     override suspend fun blockedUsers(): List<BlockedUser> = MaxCoreGateway.call {
         val all = ArrayList<MaxUser>()
@@ -238,24 +251,63 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
             else -> timestamp
         }
 
-        /** Настройки из `config.user`; без ключа — значение по умолчанию веб-клиента MAX. */
+        /**
+         * Настройки из `config.user`. Приватность читает ядро ([PrivacyConfig.from], то же, что
+         * [MaxClient.privacy]): без ключа — значение по умолчанию веб-клиента MAX (номер видят
+         * контакты; найти, позвонить и пригласить могут все), при безопасном режиме — его значения.
+         */
         fun settingsOf(config: AccountConfig?): AccountSettings {
             val c = config ?: return AccountSettings()
-            val defaults = AccountSettings()
+            val privacy = PrivacyConfig.from(c)
             return AccountSettings(
                 known = true,
-                phonePrivacy = PrivacyAccess.of(c.userString("PHONE_NUMBER_PRIVACY"), defaults.phonePrivacy),
-                onlineHidden = c.userFlag("HIDDEN") ?: defaults.onlineHidden,
-                safeMode = c.userFlag("SAFE_MODE") ?: defaults.safeMode,
-                searchByPhone = PrivacyAccess.of(c.userString("SEARCH_BY_PHONE"), defaults.searchByPhone),
-                incomingCalls = PrivacyAccess.of(c.userString("INCOMING_CALL"), defaults.incomingCalls),
-                chatInvites = PrivacyAccess.of(c.userString("CHATS_INVITE"), defaults.chatInvites),
-                safeContentOnly = c.userFlag("CONTENT_LEVEL_ACCESS") ?: defaults.safeContentOnly,
+                phonePrivacy = accessOf(privacy.phoneNumber),
+                onlineHidden = privacy.onlineHidden,
+                safeMode = privacy.safeMode,
+                searchByPhone = accessOf(privacy.searchByPhone),
+                incomingCalls = accessOf(privacy.incomingCalls),
+                chatInvites = accessOf(privacy.chatInvites),
+                safeContentOnly = privacy.safeContentOnly,
                 inactiveTtl = InactiveTtl.of(c.userString("INACTIVE_TTL")),
                 inviteLink = c.inviteLink?.takeIf { it.isNotBlank() },
                 quickReaction = quickReactionOf(c),
                 quickReactionEnabled = c.userFlag("DOUBLE_TAP_REACTION_DISABLED") != true,
+                familyProtection = familyOf(privacy.familyProtection),
             )
+        }
+
+        fun accessOf(access: CoreAccess): PrivacyAccess = when (access) {
+            CoreAccess.ALL -> PrivacyAccess.ALL
+            CoreAccess.CONTACTS -> PrivacyAccess.CONTACTS
+            CoreAccess.NOBODY -> PrivacyAccess.NOBODY
+        }
+
+        fun coreAccess(access: PrivacyAccess): CoreAccess = when (access) {
+            PrivacyAccess.ALL -> CoreAccess.ALL
+            PrivacyAccess.CONTACTS -> CoreAccess.CONTACTS
+            PrivacyAccess.NOBODY -> CoreAccess.NOBODY
+        }
+
+        fun familyOf(value: CoreFamily): FamilyProtection = when (value) {
+            CoreFamily.OFF -> FamilyProtection.OFF
+            CoreFamily.ADMIN -> FamilyProtection.ADMIN
+            CoreFamily.MANAGEABLE -> FamilyProtection.MANAGEABLE
+            CoreFamily.UNKNOWN -> FamilyProtection.UNKNOWN
+        }
+
+        /**
+         * Ключ и значение [MaxClient.setPrivacy] для [change]; `null` — не настройка приватности,
+         * она уходит `updateUserSettings`.
+         */
+        fun privacyOf(change: PrivacyChange): Pair<String, Any>? = when (change) {
+            is PrivacyChange.PhonePrivacy -> PrivacyConfig.PHONE_NUMBER_PRIVACY to coreAccess(change.access)
+            is PrivacyChange.OnlineHidden -> PrivacyConfig.HIDDEN to change.hidden
+            is PrivacyChange.SafeMode -> PrivacyConfig.SAFE_MODE to change.enabled
+            is PrivacyChange.SearchByPhone -> PrivacyConfig.SEARCH_BY_PHONE to coreAccess(change.access)
+            is PrivacyChange.IncomingCalls -> PrivacyConfig.INCOMING_CALL to coreAccess(change.access)
+            is PrivacyChange.ChatInvites -> PrivacyConfig.CHATS_INVITE to coreAccess(change.access)
+            is PrivacyChange.SafeContent -> PrivacyConfig.CONTENT_LEVEL_ACCESS to change.safeOnly
+            is PrivacyChange.Inactive, is PrivacyChange.QuickReaction -> null
         }
 
         /**
@@ -273,30 +325,18 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
         }
 
         /**
-         * Поля `CONFIG` для изменения. Безопасный режим, как в Max: включение заодно
-         * ограничивает поиск по номеру, звонки и приглашения контактами и скрывает
-         * нежелательный контент; выключение снимает только сам режим.
+         * Поля `CONFIG`, которые уходят для [change]. Приватность собирает ядро
+         * ([PrivacyConfig.payload], как в [MaxClient.setPrivacy]): безопасный режим, как в MAX,
+         * при включении заодно ограничивает поиск по номеру, звонки и приглашения контактами
+         * и скрывает нежелательный контент, выключение снимает только сам режим.
          */
         fun valuesOf(change: PrivacyChange): Map<String, Any?> = when (change) {
-            is PrivacyChange.PhonePrivacy -> mapOf("PHONE_NUMBER_PRIVACY" to change.access.wire)
-            is PrivacyChange.OnlineHidden -> mapOf("HIDDEN" to change.hidden)
-            is PrivacyChange.SearchByPhone -> mapOf("SEARCH_BY_PHONE" to change.access.wire)
-            is PrivacyChange.IncomingCalls -> mapOf("INCOMING_CALL" to change.access.wire)
-            is PrivacyChange.ChatInvites -> mapOf("CHATS_INVITE" to change.access.wire)
-            is PrivacyChange.SafeContent -> mapOf("CONTENT_LEVEL_ACCESS" to change.safeOnly)
             is PrivacyChange.Inactive -> mapOf("INACTIVE_TTL" to change.ttl.wire)
             is PrivacyChange.QuickReaction -> linkedMapOf(
                 "DOUBLE_TAP_REACTION_VALUE" to change.emoji,
                 "DOUBLE_TAP_REACTION_DISABLED" to false,
             )
-            is PrivacyChange.SafeMode -> if (change.enabled) {
-                linkedMapOf(
-                    "INCOMING_CALL" to "CONTACTS", "SEARCH_BY_PHONE" to "CONTACTS", "SAFE_MODE_NO_PIN" to true,
-                    "CONTENT_LEVEL_ACCESS" to true, "CHATS_INVITE" to "CONTACTS", "SAFE_MODE" to true,
-                )
-            } else {
-                linkedMapOf("SAFE_MODE_NO_PIN" to false, "SAFE_MODE" to false)
-            }
+            else -> privacyOf(change)!!.let { (key, value) -> PrivacyConfig.payload(key, value) }
         }
 
         fun blockedOf(user: MaxUser): BlockedUser = BlockedUser(

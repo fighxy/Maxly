@@ -1,5 +1,6 @@
 package app.orbitle.presentation.settings
 
+import app.orbitle.domain.AccountSettings
 import app.orbitle.domain.PrivacyAccess
 
 /** Подписи «Конфиденциальности» — как в разделе «Безопасность» MAX. */
@@ -11,6 +12,23 @@ object PrivacyText {
     /** Под запертыми пунктами, пока включён безопасный режим. */
     const val SAFE_MODE_LOCK =
         "Пока включён безопасный режим, эти пункты не меняются. Чтобы выбрать другое, выключите безопасный режим."
+
+    /** Под запертыми пунктами и безопасным режимом, пока аккаунт под семейной защитой. */
+    const val FAMILY_LOCK =
+        "Аккаунт под семейной защитой: безопасный режим и эти пункты меняет только тот, кто вас защищает."
+
+    const val FAMILY_PROTECTION = "Семейная защита"
+
+    /** Под статусом семейной защиты в «Безопасности». */
+    const val FAMILY_PROTECTION_NOTE =
+        "Включить или выключить защиту здесь нельзя: мини-приложение семейной защиты ещё не открыто для сторонних клиентов MAX."
+
+    /** Пояснение под запертыми пунктами: семейная защита главнее безопасного режима. */
+    fun lockNote(settings: AccountSettings): String? = when {
+        settings.managedByFamily -> FAMILY_LOCK
+        settings.lockedBySafeMode -> SAFE_MODE_LOCK
+        else -> null
+    }
 
     const val SEARCH_BY_PHONE = "Найти меня по номеру"
     const val SEARCH_BY_PHONE_DESCRIPTION = "Кто может найти меня по номеру телефона"

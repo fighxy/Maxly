@@ -143,7 +143,12 @@ class AccountSettingsViewModel(private val repository: AccountRepository) : View
 
     fun setPhonePrivacy(access: PrivacyAccess) = change(PrivacyChange.PhonePrivacy(access))
     fun setOnlineHidden(hidden: Boolean) = change(PrivacyChange.OnlineHidden(hidden))
-    fun setSafeMode(enabled: Boolean) = change(PrivacyChange.SafeMode(enabled))
+    /** Под семейной защитой безопасный режим не переключается: им управляет тот, кто защищает. */
+    fun setSafeMode(enabled: Boolean) {
+        val settings = _state.value.settings
+        if (settings.safeModeLocked) return
+        change(PrivacyChange.SafeMode(enabled))
+    }
     fun setSearchByPhone(access: PrivacyAccess) = changeUnlocked(PrivacyChange.SearchByPhone(access))
     fun setIncomingCalls(access: PrivacyAccess) = changeUnlocked(PrivacyChange.IncomingCalls(access))
     fun setChatInvites(access: PrivacyAccess) = changeUnlocked(PrivacyChange.ChatInvites(access))
@@ -157,10 +162,13 @@ class AccountSettingsViewModel(private val repository: AccountRepository) : View
         change(PrivacyChange.QuickReaction(clean))
     }
 
-    /** Пункт, запертый безопасным режимом: пока он включён или конфиг не пришёл, ничего не уходит. */
+    /**
+     * Пункт, запертый безопасным режимом или семейной защитой: пока замок стоит или конфиг
+     * не пришёл, ничего не уходит.
+     */
     private fun changeUnlocked(change: PrivacyChange) {
         val settings = _state.value.settings
-        if (!settings.known || settings.lockedBySafeMode) return
+        if (!settings.known || settings.privacyLocked) return
         change(change)
     }
 
