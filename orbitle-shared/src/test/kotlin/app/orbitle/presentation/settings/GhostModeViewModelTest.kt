@@ -63,6 +63,7 @@ class GhostModeViewModelTest {
     private val store = MapStore()
     private val ghost = FakeGhost()
     private val foreground = MutableStateFlow(true)
+    private val poll = GhostModeViewModel.POLL_MS
     private val online = PeerPresence(isOnline = true, lastSeenMs = base, presence = PresenceStatus.ONLINE)
 
     private fun model(merge: Boolean = false) = GhostModeViewModel(
@@ -128,26 +129,31 @@ class GhostModeViewModelTest {
     }
 
     @Test
+    fun `own status is polled once a minute by default`() {
+        assertEquals(60_000L, GhostModeViewModel.POLL_MS)
+    }
+
+    @Test
     fun `nothing is asked until the profile is visible`() {
         val m = model()
-        tick(60_000)
+        tick(2 * poll)
         assertEquals(0, ghost.checks)
         assertNull(m.state.value.ownLine)
     }
 
     @Test
-    fun `visible profile asks at once and then every 15 seconds`() {
+    fun `visible profile asks at once and then once a minute`() {
         ghost.answer = online
         val m = model()
         m.setProfileVisible(true)
         scheduler.runCurrent()
         assertEquals(1, ghost.checks)
         assertEquals("в сети", m.state.value.ownLine)
-        tick(14_999)
+        tick(poll - 1)
         assertEquals(1, ghost.checks)
         tick(1)
         assertEquals(2, ghost.checks)
-        tick(15_000)
+        tick(poll)
         assertEquals(3, ghost.checks)
     }
 
@@ -159,19 +165,19 @@ class GhostModeViewModelTest {
         tick(5_000)
         assertEquals(1, ghost.checks)
         foreground.value = false
-        tick(60_000)
+        tick(2 * poll)
         assertEquals(1, ghost.checks)
         foreground.value = true
         scheduler.runCurrent()
         assertEquals(2, ghost.checks)
         m.setProfileVisible(false)
-        tick(60_000)
+        tick(2 * poll)
         assertEquals(2, ghost.checks)
         m.setProfileVisible(true)
         scheduler.runCurrent()
         assertEquals(3, ghost.checks)
         // Отсчёт начался с возврата.
-        tick(15_000)
+        tick(poll)
         assertEquals(4, ghost.checks)
     }
 
@@ -189,7 +195,7 @@ class GhostModeViewModelTest {
         m.refreshOwnPresence()
         scheduler.runCurrent()
         assertEquals(3, ghost.checks)
-        tick(14_999)
+        tick(poll - 1)
         assertEquals(3, ghost.checks)
         tick(1)
         assertEquals(4, ghost.checks)
@@ -206,7 +212,7 @@ class GhostModeViewModelTest {
         m.setProfileVisible(true)
         scheduler.runCurrent()
         m.set(Toggle.OWN_PRESENCE, false)
-        tick(60_000)
+        tick(2 * poll)
         assertEquals(1, ghost.checks)
         assertNull(m.state.value.own)
         assertNull(m.state.value.ownLine)
@@ -223,17 +229,17 @@ class GhostModeViewModelTest {
         m.setProfileVisible(true)
         scheduler.runCurrent()
         assertEquals("был(а) в 12:35", m.state.value.ownLine)
-        ghost.answer = PeerPresence(isOnline = false, lastSeenMs = base, presence = PresenceStatus.OFFLINE)
-        tick(15_000)
+        ghost.answer = PeerPresence(isOnline = false, lastSeenMs = base + poll, presence = PresenceStatus.OFFLINE)
+        tick(poll)
         assertEquals("был(а) только что", m.state.value.ownLine)
-        tick(60_000)
+        tick(poll)
         // Тот же ответ сервера стареет вместе с часами.
         assertEquals("был(а) 1 минуту назад", m.state.value.ownLine)
         ghost.answer = PeerPresence(isOnline = false, lastSeenMs = 0, presence = PresenceStatus.RECENTLY)
-        tick(15_000)
+        tick(poll)
         assertEquals("был(а) недавно", m.state.value.ownLine)
         ghost.answer = PeerPresence(isOnline = false, lastSeenMs = 0, presence = PresenceStatus.UNKNOWN)
-        tick(15_000)
+        tick(poll)
         assertEquals(GhostModeViewModel.OFFLINE, m.state.value.ownLine)
     }
 
@@ -244,13 +250,13 @@ class GhostModeViewModelTest {
         scheduler.runCurrent()
         assertNull(m.state.value.ownLine)
         ghost.answer = online
-        tick(15_000)
+        tick(poll)
         assertEquals("в сети", m.state.value.ownLine)
         ghost.failure = IllegalStateException("нет связи")
-        tick(15_000)
+        tick(poll)
         assertNull(m.state.value.ownLine)
         ghost.failure = null
-        tick(15_000)
+        tick(poll)
         assertEquals("в сети", m.state.value.ownLine)
     }
 

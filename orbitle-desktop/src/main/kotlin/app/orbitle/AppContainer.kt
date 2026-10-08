@@ -94,6 +94,7 @@ class AppContainer {
     private val preferenceStore = object : PreferenceStore {
         override fun get(key: String): String? = prefs.getString(key, null)
         override fun put(key: String, value: String) = prefs.edit().putString(key, value).apply()
+        override fun remove(key: String) = prefs.edit().remove(key).apply()
     }
 
     val appearance = AppearanceSettings(preferenceStore)
@@ -101,10 +102,10 @@ class AppContainer {
     val privateMode = PrivateModeSettings(preferenceStore)
 
     /**
-     * Режим призрака и отметки о прочтении: пока заглушка, флаги в локальных настройках. Когда ядро даст API, здесь
-     * встанет реализация над ним; глушит активность ядро, не приложение.
+     * Режим призрака и отметки о прочтении — флаги ядра; глушит активность ядро, не приложение.
+     * Флаги прежней локальной заглушки один раз переносятся в ядро.
      */
-    val ghostMode: app.orbitle.data.GhostModeRepository = app.orbitle.data.LocalGhostModeRepository(preferenceStore)
+    val ghostMode: app.orbitle.data.GhostModeRepository = app.orbitle.data.CoreGhostModeRepository(client, scope, preferenceStore)
 
     /** «Показывать мой онлайн» в своём профиле: только на этом устройстве. */
     val ownPresence = app.orbitle.data.OwnPresenceSettings(preferenceStore)

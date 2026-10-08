@@ -13,6 +13,9 @@ import kotlinx.coroutines.flow.update
 interface PreferenceStore {
     fun get(key: String): String?
     fun put(key: String, value: String)
+
+    /** Убрать ключ. Хранилище без удаления пишет пустую строку: её никто не читает как значение. */
+    fun remove(key: String) = put(key, "")
 }
 
 /** Размер текста, тема и обои: общие для всех аккаунтов на устройстве. */

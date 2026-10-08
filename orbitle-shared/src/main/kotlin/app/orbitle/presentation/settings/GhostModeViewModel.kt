@@ -169,8 +169,11 @@ class GhostModeViewModel(
         own?.let { presence.status(it.isOnline, it.lastSeenMs, now(), it.presence) ?: OFFLINE }
 
     companion object {
-        /** Пауза между запросами своего статуса. */
-        const val POLL_MS = 15_000L
+        /**
+         * Пауза между запросами своего статуса: раз в минуту, чтобы не нагружать сервер. Возврат
+         * на экран, смена режима призрака и «Обновить» спрашивают сразу.
+         */
+        const val POLL_MS = 60_000L
 
         /** Статус есть, но без времени и без «недавно» / «давно». */
         const val OFFLINE = "не в сети"
