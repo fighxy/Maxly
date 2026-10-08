@@ -44,7 +44,8 @@ class CoreChatAdminRepository(private val client: MaxClient) : ChatAdminReposito
             if (page.members.isEmpty()) break
             all += page.members
             val next = page.marker
-            if (next == 0L || next == marker || page.members.size < MEMBER_PAGE) break
+            // Без `marker` в ответе — последняя страница.
+            if (next == null || next == 0L || next == marker || page.members.size < MEMBER_PAGE) break
             marker = next
         }
         return all.mapNotNull { person(it, owner, admins) }
