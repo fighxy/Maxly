@@ -25,10 +25,10 @@ struct RequestPacingTests {
     @Test("Ошибка не запоминается: следующий вызов снова спрашивает сервер")
     func failureNotReused() async throws {
         let api = FakeMaxAPI()
-        await api.setHistoryError(.server(code: OrbitleError.rateLimitCode))
+        await api.setHistoryError(.server(code: OrbitleError.rateLimitCode, text: nil))
         let (repository, _) = try await makeMessageStack(api: api, latestReuse: 10)
 
-        await #expect(throws: OrbitleError.server(code: OrbitleError.rateLimitCode)) {
+        await #expect(throws: OrbitleError.server(code: OrbitleError.rateLimitCode, text: nil)) {
             try await repository.fetchLatest(chatId: "c1")
         }
         await api.setHistoryError(nil)
@@ -88,7 +88,7 @@ struct ServerRateLimitTests {
     func key() {
         #expect(ServerRateLimit.isLimit("too.many.requests"))
         #expect(!ServerRateLimit.isLimit("not.found"))
-        #expect(OrbitleError.server(code: "too.many.requests").isRateLimit)
-        #expect(OrbitleError.server(code: "too.many.requests").userMessage == "Сервер просит подождать: слишком много запросов")
+        #expect(OrbitleError.server(code: "too.many.requests", text: nil).isRateLimit)
+        #expect(OrbitleError.server(code: "too.many.requests", text: nil).userMessage == "Сервер просит подождать: слишком много запросов")
     }
 }

@@ -67,7 +67,7 @@ struct CommentsViewModelTests {
 
     @Test("Сервер просит подождать: окно само повторяет загрузку один раз")
     func retriesOnceAfterRateLimit() async {
-        let limit = OrbitleError.server(code: OrbitleError.rateLimitCode)
+        let limit = OrbitleError.server(code: OrbitleError.rateLimitCode, text: nil)
         let repository = FakeComments([comment(0)], loadErrors: [limit])
         let model = CommentsViewModel(chatId: "c", post: post, currentUserId: "me", comments: repository, rateLimitRetry: .zero)
         await model.load()

@@ -231,7 +231,7 @@ struct PrivacyControlsTests {
         }
         #expect(core.calls.isEmpty)
         core.failure = CoreFailure(kind: "SERVER", key: "privacy.locked")
-        await #expect(throws: OrbitleError.server(code: "privacy.locked")) {
+        await #expect(throws: OrbitleError.server(code: "privacy.locked", text: nil)) {
             try await controls.setPrivacy(.searchByPhone, .access(.contacts))
         }
     }

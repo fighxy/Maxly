@@ -70,7 +70,7 @@ struct ChatListStateTests {
     func refreshErrors() async {
         let (model, repository) = makeList()
         repository.emit([])
-        await repository.set(refreshError: .server(code: "500"))
+        await repository.set(refreshError: .server(code: "500", text: nil))
         await model.refresh()
         // Снимок из потока может прийти позже ответа обновления.
         #expect(await eventually { model.content == .failed("Ошибка сервера (500). Попробуйте позже") })

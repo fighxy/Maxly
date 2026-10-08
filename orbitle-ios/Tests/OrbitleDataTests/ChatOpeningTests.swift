@@ -45,7 +45,7 @@ struct ChatOpeningTests {
         let api = FakeMaxAPI()
         let (repository, _) = try await makeMessageStack(api: api)
         try await repository.upsert([message("1")])
-        await api.setHistoryError(.server(code: OrbitleError.rateLimitCode))
+        await api.setHistoryError(.server(code: OrbitleError.rateLimitCode, text: nil))
         let model = ChatViewModel(chatId: "c1", currentUserId: "me", messages: repository)
         model.activate()
         await model.loadLatest()

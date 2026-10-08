@@ -42,14 +42,14 @@ struct OrbitleErrorMessageTests {
     func userMessage() {
         #expect(OrbitleError.cancelled.userMessage == nil)
         #expect(OrbitleError.authExpired.userMessage == "Сессия истекла, войдите снова")
-        #expect(OrbitleError.server(code: "proto.bad").userMessage == "Ошибка сервера (proto.bad). Попробуйте позже")
+        #expect(OrbitleError.server(code: "proto.bad", text: nil).userMessage == "Ошибка сервера (proto.bad). Попробуйте позже")
         #expect(OrbitleError.unknown.userMessage == "Что-то пошло не так")
     }
 
     @Test("Временные ошибки отличаются от постоянных")
     func transient() {
         #expect(OrbitleError.networkUnavailable.isTransient)
-        #expect(OrbitleError.server(code: "x").isTransient)
+        #expect(OrbitleError.server(code: "x", text: nil).isTransient)
         #expect(!OrbitleError.rejected("Неверный код").isTransient)
         #expect(!OrbitleError.authExpired.isTransient)
         #expect(!OrbitleError.cancelled.isTransient)

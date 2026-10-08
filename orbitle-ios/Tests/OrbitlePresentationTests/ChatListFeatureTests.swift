@@ -68,10 +68,10 @@ struct ChatListPinTests {
         let (model, repository) = makeFeatureList()
         repository.emit([chat("a", at: 900), chat("b", at: 100)])
         #expect(await eventually { model.items.count == 2 })
-        await repository.set(actionError: .server(code: "pin.limit"))
+        await repository.set(actionError: .server(code: "pin.limit", text: nil))
         await model.togglePin(chatId: "b")
         #expect(model.items.map(\.id) == ["a", "b"])
-        #expect(model.error == .server(code: "pin.limit"))
+        #expect(model.error == .server(code: "pin.limit", text: nil))
     }
 
     @Test("Лимит закреплённых проверяется до запроса")

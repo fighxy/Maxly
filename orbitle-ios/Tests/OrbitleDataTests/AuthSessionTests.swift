@@ -24,6 +24,8 @@ struct AuthErrorsTests {
         let server = CoreFailure(kind: "SERVER", key: "error.wrong")
         #expect(AuthErrors.map(server, during: .requestCode) == .rejected("Не удалось отправить код. Проверьте номер телефона"))
         #expect(AuthErrors.map(server, during: .verifyCode) == .rejected("Неверный код"))
+        let worded = CoreFailure(kind: "SERVER", key: "error.wrong", serverText: "Свой текст сервера")
+        #expect(AuthErrors.map(worded, during: .verifyCode) == .rejected("Неверный код"))
         #expect(AuthErrors.map(CoreFailure(kind: "SERVER", key: "code.expired"), during: .verifyCode) == .rejected("Код устарел. Запросите новый"))
         #expect(AuthErrors.map(CoreFailure(kind: "AUTH", key: nil), during: .password) == .rejected("Неверный пароль"))
         #expect(AuthErrors.map(server, during: .register) == .rejected("Не удалось создать аккаунт. Проверьте имя и попробуйте снова"))

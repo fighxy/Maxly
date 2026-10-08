@@ -45,7 +45,7 @@ struct ChatViewModelTests {
     @Test("Новый диалог: пустая история не ошибка, экран предлагает первое сообщение")
     func newDialog() async {
         let repository = FakeMessageRepository()
-        await repository.set(latestError: .server(code: "chat.not.found"))
+        await repository.set(latestError: .server(code: "chat.not.found", text: nil))
         let model = ChatViewModel(chatId: "13", currentUserId: "10", messages: repository, isNewDialog: true)
         await model.loadLatest()
         #expect(model.error == nil)
@@ -56,16 +56,16 @@ struct ChatViewModelTests {
         #expect(model.error == .networkUnavailable)
 
         let existing = ChatViewModel(chatId: "13", currentUserId: "10", messages: repository)
-        await repository.set(latestError: .server(code: "x"))
+        await repository.set(latestError: .server(code: "x", text: nil))
         await existing.loadLatest()
-        #expect(existing.error == .server(code: "x"))
+        #expect(existing.error == .server(code: "x", text: nil))
         #expect(existing.emptyHint == nil)
     }
 
     @Test("too.many.requests: без красной строки, пустой экран объясняет паузу")
     func rateLimitOnEmptyScreen() async {
         let repository = FakeMessageRepository()
-        await repository.set(latestError: .server(code: OrbitleError.rateLimitCode))
+        await repository.set(latestError: .server(code: OrbitleError.rateLimitCode, text: nil))
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
         await model.loadLatest()
         #expect(model.error == nil)

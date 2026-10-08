@@ -236,8 +236,8 @@ struct OutboxQueueTests {
     func retryThenClear() async throws {
         let api = FakeMaxAPI()
         await api.setSendResults([
-            .failure(.server(code: "500")),
-            .failure(.server(code: "503")),
+            .failure(.server(code: "500", text: nil)),
+            .failure(.server(code: "503", text: nil)),
             .success(SentMessage(serverId: "srv-1", timestamp: .now)),
         ])
         let (repository, outbox) = try await makeMessageStack(api: api)
@@ -256,7 +256,7 @@ struct OutboxQueueTests {
     @Test("После исчерпания попыток сообщение становится failed и уходит из очереди")
     func exhaustedAttempts() async throws {
         let api = FakeMaxAPI()
-        await api.setSendResults([.failure(.server(code: "500"))])
+        await api.setSendResults([.failure(.server(code: "500", text: nil))])
         let (repository, outbox) = try await makeMessageStack(api: api)
 
         try await repository.send(text: "Два", chatId: "c1")
@@ -272,7 +272,7 @@ struct OutboxQueueTests {
     @Test("Повтор неотправленного: failed снова уходит в очередь и становится sent")
     func retryFailed() async throws {
         let api = FakeMaxAPI()
-        await api.setSendResults([.failure(.server(code: "500"))])
+        await api.setSendResults([.failure(.server(code: "500", text: nil))])
         let (repository, outbox) = try await makeMessageStack(api: api)
         try await repository.send(text: "Три", chatId: "c1")
         let failed = try #require(try await repository.loadMore(chatId: "c1", before: nil).first)
