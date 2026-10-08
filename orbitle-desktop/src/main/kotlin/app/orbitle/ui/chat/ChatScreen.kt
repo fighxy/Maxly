@@ -243,6 +243,8 @@ fun ChatScreen(
     }
     recording.onRecorded = model::sendRecorded
     recording.onStart = model.media::stopVoice
+    // Пока идёт запись, собеседники видят «записывает аудио» или «записывает видеосообщение».
+    LaunchedEffect(recording) { model.watchRecording(recording.state) }
     // Уход из чата обрывает запись: ничего не уходит.
     androidx.compose.runtime.DisposableEffect(recording) { onDispose { recording.cancel() } }
     val importScope = rememberCoroutineScope()

@@ -165,7 +165,7 @@ private class DemoChats : app.orbitle.data.ChatRepository {
         app.orbitle.domain.Chat("14", "Новости Max", app.orbitle.domain.ChatType.CHANNEL, updatedAtMs = now - 86_400_000, preview = "Обновление уже доступно", isVerified = true),
     ))
     override val folders = kotlinx.coroutines.flow.MutableStateFlow<List<app.orbitle.domain.ServerFolder>>(emptyList())
-    override val typing = kotlinx.coroutines.flow.MutableStateFlow<Map<String, List<String>>>(emptyMap())
+    override val typing = kotlinx.coroutines.flow.MutableStateFlow<Map<String, List<app.orbitle.domain.Typist>>>(emptyMap())
     override suspend fun refresh() = Unit
     override suspend fun setPinned(chatId: String, pinned: Boolean) {
         chats.value = chats.value?.map { if (it.id == chatId) it.copy(pinOrder = if (pinned) 1 else null) else it }

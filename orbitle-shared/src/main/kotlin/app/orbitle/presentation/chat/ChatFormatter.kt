@@ -37,13 +37,8 @@ class ChatFormatter(private val zone: ZoneId = ZoneId.systemDefault()) {
     /** Вторая строка шапки и подсвечивать ли её акцентом («в сети», «печатает…»). */
     fun subtitle(info: ChatHeaderInfo, nowMs: Long): Pair<String, Boolean> {
         val chat = info.chat
-        if (info.typing.isNotEmpty() && !chat.isSavedMessages) {
-            val text = if (chat.type == ChatType.GROUP && info.typing.size == 1) {
-                "${info.typing.first()} печатает…"
-            } else {
-                ChatListFormatter.typingText(info.typing.size, chat.type)
-            }
-            return text to true
+        if (!chat.isSavedMessages) {
+            app.orbitle.presentation.common.TypingText.of(info.typing, chat.type)?.let { return it to true }
         }
         if (chat.isSavedMessages) return "ваши сообщения и заметки" to false
         if (chat.isBot) return "бот" to false

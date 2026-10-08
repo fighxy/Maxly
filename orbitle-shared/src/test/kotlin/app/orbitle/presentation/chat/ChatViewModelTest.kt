@@ -48,6 +48,11 @@ class FakeMessages : MessageRepository {
 
     override fun messages(chatId: String) = list
     override fun header(chatId: String) = headerInfo.map { it }
+    val typed = mutableListOf<app.orbitle.domain.TypingKind>()
+    override suspend fun sendTyping(chatId: String, kind: app.orbitle.domain.TypingKind): Boolean {
+        typed += kind
+        return true
+    }
     var latestFailure: Exception? = null
     var olderFailure: Exception? = null
     var latestCalls = 0
@@ -330,8 +335,57 @@ class ChatViewModelTest {
         repo.headerInfo.value = ChatHeaderInfo(chat())
         assertEquals("в сети", model.state.value.header!!.subtitle)
         assertTrue(model.state.value.header!!.subtitleAccent)
-        repo.headerInfo.value = ChatHeaderInfo(chat(), typing = listOf("Анна"))
+        repo.headerInfo.value = ChatHeaderInfo(chat(), typing = listOf(app.orbitle.domain.Typist("Анна")))
         assertEquals("печатает…", model.state.value.header!!.subtitle)
+    }
+
+    @Test
+    fun typingSignalGoesOutAtMostOnceInSixSeconds() {
+        var clock = now
+        val model = ChatViewModel("10", repo, ChatFormatter(ZoneOffset.UTC), now = { clock })
+        repo.headerInfo.value = ChatHeaderInfo(chat())
+        model.setDraft("п")
+        model.setDraft("пр")
+        clock += 5_999
+        model.setDraft("при")
+        assertEquals(listOf(app.orbitle.domain.TypingKind.TEXT), repo.typed)
+        clock += 1
+        model.setDraft("прив")
+        assertEquals(2, repo.typed.size)
+        // Тот же текст (черновик вернули в поле) — не набор.
+        clock += 10_000
+        model.setDraft("прив")
+        assertEquals(2, repo.typed.size)
+    }
+
+    @Test
+    fun noTypingSignalInChannelsOrSavedMessages() {
+        val model = vm()
+        repo.headerInfo.value = ChatHeaderInfo(chat(type = ChatType.CHANNEL))
+        model.setDraft("а")
+        val saved = ChatViewModel(Chat.SAVED_MESSAGES_ID, repo, ChatFormatter(ZoneOffset.UTC), now = { now })
+        repo.headerInfo.value = ChatHeaderInfo(chat().copy(id = Chat.SAVED_MESSAGES_ID))
+        saved.setDraft("б")
+        assertTrue(repo.typed.isEmpty())
+    }
+
+    @Test
+    fun recordingSignalsUntilItEnds() {
+        val scheduler = (main.dispatcher as kotlinx.coroutines.test.TestDispatcher).scheduler
+        val model = ChatViewModel("10", repo, ChatFormatter(ZoneOffset.UTC), now = { now + scheduler.currentTime })
+        repo.headerInfo.value = ChatHeaderInfo(chat(type = ChatType.GROUP))
+        val recording = MutableStateFlow(RecordingController.State())
+        model.watchRecording(recording)
+        recording.value = RecordingController.State(phase = RecordingController.Phase.RECORDING, recording = RecordingMode.VOICE)
+        assertEquals(listOf(app.orbitle.domain.TypingKind.AUDIO), repo.typed)
+        scheduler.advanceTimeBy(6_500)
+        assertEquals(2, repo.typed.size)
+        recording.value = RecordingController.State()
+        scheduler.advanceTimeBy(30_000)
+        assertEquals(2, repo.typed.size)
+        recording.value = RecordingController.State(phase = RecordingController.Phase.LOCKED, recording = RecordingMode.VIDEO)
+        assertEquals(app.orbitle.domain.TypingKind.VIDEO_MSG, repo.typed.last())
+        recording.value = RecordingController.State()
     }
 
     @Test
@@ -813,7 +867,7 @@ class ChatViewModelTest {
 private class FakeChats : ChatRepository {
     override val chats: Flow<List<Chat>?> = MutableStateFlow(emptyList())
     override val folders: Flow<List<ServerFolder>> = MutableStateFlow(emptyList())
-    override val typing: Flow<Map<String, List<String>>> = MutableStateFlow(emptyMap())
+    override val typing: Flow<Map<String, List<app.orbitle.domain.Typist>>> = MutableStateFlow(emptyMap())
     override suspend fun refresh() = Unit
     override suspend fun setPinned(chatId: String, pinned: Boolean) = Unit
     override fun clear() = Unit

@@ -91,7 +91,7 @@ data class ChatListItem(
 /** Строки списка чатов: время, превью, отправитель, бейджи — как в iOS-версии. */
 class ChatListFormatter(private val zone: ZoneId = ZoneId.systemDefault()) {
 
-    fun item(chat: Chat, nowMs: Long, typing: List<String> = emptyList(), showDraft: Boolean = true): ChatListItem {
+    fun item(chat: Chat, nowMs: Long, typing: List<app.orbitle.domain.Typist> = emptyList(), showDraft: Boolean = true): ChatListItem {
         val title = title(chat)
         var style = ChatListItem.PreviewStyle.MESSAGE
         var sender: String? = null
@@ -99,9 +99,10 @@ class ChatListFormatter(private val zone: ZoneId = ZoneId.systemDefault()) {
         var thumbnail: String? = null
         val draftText = if (showDraft) chat.draft?.let { singleLine(it.text) }.orEmpty() else ""
         val text: String
-        if (typing.isNotEmpty() && chat.type != ChatType.CHANNEL) {
+        val typingLine = if (chat.isSavedMessages) null else TypingText.of(typing, chat.type)
+        if (typingLine != null) {
             style = ChatListItem.PreviewStyle.TYPING
-            text = typingText(typing.size, chat.type)
+            text = typingLine
         } else if (draftText.isNotEmpty()) {
             style = ChatListItem.PreviewStyle.DRAFT
             text = draftText

@@ -15,8 +15,8 @@ data class ChatHeaderInfo(
     val participants: Int? = null,
     /** Когда собеседник был в сети (мс), 0 — неизвестно. */
     val lastSeenMs: Long = 0,
-    /** Кто печатает прямо сейчас (имена). */
-    val typing: List<String> = emptyList(),
+    /** Кто сейчас печатает, записывает или отправляет, по времени начала. */
+    val typing: List<app.orbitle.domain.Typist> = emptyList(),
     /** Бот с мини-приложением: его id для кнопки «Открыть приложение», иначе `null`. */
     val botAppId: String? = null,
     /** Своя отметка прочтения (мс, `participants[свой id]`): первое непрочитанное — новее неё. `0` — неизвестна. */
@@ -115,6 +115,12 @@ interface MessageRepository {
         throw OrbitleError.Rejected("Видеосообщения недоступны")
 
     /** Отправить стикер каталога. */
+    /**
+     * Сигнал собеседникам, что пользователь [kind] (команда 65). Без ответа и без ограничения
+     * частоты: её держит [app.orbitle.presentation.chat.TypingSignal]. `false` — сигнал не ушёл.
+     */
+    suspend fun sendTyping(chatId: String, kind: app.orbitle.domain.TypingKind): Boolean = false
+
     suspend fun sendSticker(chatId: String, sticker: app.orbitle.domain.Sticker, replyTo: String?): Unit =
         throw OrbitleError.Rejected("Стикеры недоступны")
 

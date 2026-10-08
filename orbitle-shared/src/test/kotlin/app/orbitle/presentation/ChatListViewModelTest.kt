@@ -33,7 +33,7 @@ import java.time.ZoneOffset
 class FakeChats : ChatRepository {
     override val chats = MutableStateFlow<List<Chat>?>(null)
     override val folders = MutableStateFlow<List<ServerFolder>>(emptyList())
-    override val typing = MutableStateFlow<Map<String, List<String>>>(emptyMap())
+    override val typing = MutableStateFlow<Map<String, List<app.orbitle.domain.Typist>>>(emptyMap())
     var refreshFailure: Throwable? = null
     var pinFailure: Throwable? = null
     val pins = mutableListOf<Pair<String, Boolean>>()
@@ -453,7 +453,7 @@ class ChatListViewModelTest {
     @Test
     fun typingShownInPreview() {
         repo.chats.value = listOf(chat("1"))
-        repo.typing.value = mapOf("1" to listOf("5"))
+        repo.typing.value = mapOf("1" to listOf(app.orbitle.domain.Typist(null)))
         assertEquals("печатает…", vm.state.value.items.single().preview)
     }
 

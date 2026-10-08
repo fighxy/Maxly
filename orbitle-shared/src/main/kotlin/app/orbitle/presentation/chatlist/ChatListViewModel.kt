@@ -105,7 +105,7 @@ class ChatListViewModel(
     private var hasSnapshot = false
     private var hasRefreshed = false
     private var serverFolders: List<ChatFolder> = emptyList()
-    private var typing: Map<String, List<String>> = emptyMap()
+    private var typing: Map<String, List<app.orbitle.domain.Typist>> = emptyMap()
     private var connection = ConnectionState.CONNECTING
     private var refreshError: OrbitleError? = null
     private var pendingPins: MutableMap<String, Int?> = mutableMapOf()

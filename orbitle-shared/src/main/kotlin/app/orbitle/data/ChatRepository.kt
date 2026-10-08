@@ -13,7 +13,7 @@ interface ChatRepository {
     /** Папки сервера без системной «Все». */
     val folders: Flow<List<ServerFolder>>
     /** Кто печатает: id чата → id пользователей. */
-    val typing: Flow<Map<String, List<String>>>
+    val typing: Flow<Map<String, List<app.orbitle.domain.Typist>>>
     /** Первая загрузка после входа берёт все страницы и папки. */
     suspend fun refresh()
     suspend fun setPinned(chatId: String, pinned: Boolean)

@@ -23,6 +23,7 @@ import app.orbitle.domain.FoundMessage
 import app.orbitle.domain.PinNotice
 import app.orbitle.domain.Sticker
 import app.orbitle.domain.TextSpan
+import app.orbitle.domain.TypingKind
 import app.orbitle.data.RecentStickerStore
 import app.orbitle.data.StickerRepository
 import app.orbitle.presentation.stickers.AnimojiDraft
@@ -36,6 +37,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 /** Строка ленты. Лента идёт от новых к старым: экран рисует её перевёрнутой. */
@@ -204,8 +207,14 @@ class ChatViewModel(
     /** Голосовые, расшифровка, просмотр фото и видео, файлы. */
     val media = ChatMedia(chatId, repository, viewModelScope, voicePlayer, files, mediaSaver, onNotice = { _messages.value = it }, onError = { show(it) })
 
+    /** «Печатает…», запись и загрузка для собеседников: не чаще раза в 6 с на чат. */
+    private val typingSignal = TypingSignal(viewModelScope, now) { kind -> repository.sendTyping(chatId, kind) }
+    private var recordingWatch: Job? = null
+
     /** Панель эмодзи и стикеров. */
-    val stickers: StickerPanel? = stickerRecents?.let { StickerPanel(stickerRepository, it, viewModelScope, emojiSupported) }
+    val stickers: StickerPanel? = stickerRecents?.let {
+        StickerPanel(stickerRepository, it, viewModelScope, emojiSupported, onStickers = { signalTyping(TypingKind.STICKER) })
+    }
 
     private var history: List<Message> = emptyList()
     /** Что из [history] видит лента: живая лента или окно перехода ([jumpTime]). */
@@ -617,6 +626,7 @@ class ChatViewModel(
     }
 
     fun setDraft(text: String) {
+        val typed = text.isNotEmpty() && text != _state.value.draft && _state.value.editing == null
         if (text.isEmpty()) {
             animojiDraft.clear()
             mentionDraft.clear()
@@ -626,6 +636,36 @@ class ChatViewModel(
         _state.update { it.copy(draft = text) }
         if (_state.value.editing == null) drafts?.put(chatId, text)
         refreshHints(text)
+        if (typed) signalTyping(TypingKind.TEXT)
+    }
+
+    /** Собеседникам видно, что пользователь что-то делает: в личке и группе, не в канале и не в «Избранном». */
+    private fun canSignalTyping(): Boolean {
+        val chat = header?.chat ?: return false
+        return chat.type != ChatType.CHANNEL && !chat.isSavedMessages && _state.value.canWrite
+    }
+
+    private fun signalTyping(kind: TypingKind) {
+        if (canSignalTyping()) typingSignal.ping(kind)
+    }
+
+    private fun beginTyping(key: Any, kind: TypingKind) {
+        if (canSignalTyping()) typingSignal.begin(key, kind)
+    }
+
+    /** Запись голосового или кружка из поля ввода: пока она идёт, собеседники видят «записывает…». */
+    fun watchRecording(recording: StateFlow<RecordingController.State>) {
+        recordingWatch?.cancel()
+        recordingWatch = viewModelScope.launch {
+            try {
+                recording.map { if (it.isActive) it.recording else null }.distinctUntilChanged().collect { mode ->
+                    typingSignal.end(RECORDING_ACTIVITY)
+                    if (mode != null) beginTyping(RECORDING_ACTIVITY, if (mode == RecordingMode.VIDEO) TypingKind.VIDEO_MSG else TypingKind.AUDIO)
+                }
+            } finally {
+                typingSignal.end(RECORDING_ACTIVITY)
+            }
+        }
     }
 
     /** Вставить упоминание вместо хвоста `@запрос`. */
@@ -754,6 +794,8 @@ class ChatViewModel(
         val reply = _state.value.replyTo
         _state.update { it.copy(draft = "", replyTo = null, attachments = emptyList(), uploadProgress = 0f) }
         drafts?.put(chatId, "")
+        val upload = Any()
+        beginTyping(upload, uploadKind(items))
         viewModelScope.launch {
             try {
                 repository.sendMedia(chatId, items, caption, reply?.id) { fraction ->
@@ -764,9 +806,16 @@ class ChatViewModel(
             } catch (e: Exception) {
                 show(e)
             } finally {
+                typingSignal.end(upload)
                 _state.update { it.copy(uploadProgress = null) }
             }
         }
+    }
+
+    private fun uploadKind(items: List<OutgoingFile>): TypingKind = when {
+        items.any { it.kind == OutgoingFile.Kind.FILE } -> TypingKind.FILE
+        items.any { it.kind == OutgoingFile.Kind.VIDEO } -> TypingKind.VIDEO
+        else -> TypingKind.PHOTO
     }
 
     /** Своё сообщение с вложениями, которое ещё грузится: загрузку можно отменить. */
@@ -1768,6 +1817,8 @@ class ChatViewModel(
     }
 
     companion object {
+        /** Ключ записи из поля ввода среди долгих действий [TypingSignal]. */
+        private val RECORDING_ACTIVITY = Any()
         /** Сообщений в одном запросе реакций. */
         const val REACTIONS_BATCH = 100
         /** Пауза перед повтором реакций и счётчиков после ошибки сервера. */

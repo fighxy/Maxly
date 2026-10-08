@@ -82,6 +82,8 @@ class StickerPanel(
     private val scope: CoroutineScope,
     /** Эмодзи, которые шрифт устройства умеет рисовать. */
     private val supported: (String) -> Boolean = { true },
+    /** Открыты стикеры: собеседники увидят «выбирает стикер». */
+    private val onStickers: () -> Unit = {},
 ) {
     private val _state = MutableStateFlow(StickerPanelState())
     val state: StateFlow<StickerPanelState> = _state.asStateFlow()
@@ -94,6 +96,7 @@ class StickerPanel(
     }
 
     fun prepare() {
+        if (_state.value.mode == StickerPanelState.Mode.STICKERS) onStickers()
         rebuildEmoji()
         recents.recentStickers.forEach { sticker -> _state.update { it.copy(stickers = it.stickers + (sticker.id to sticker)) } }
         rebuildStickers()
@@ -124,7 +127,10 @@ class StickerPanel(
         }
     }
 
-    fun setMode(mode: StickerPanelState.Mode) = _state.update { it.copy(mode = mode) }
+    fun setMode(mode: StickerPanelState.Mode) {
+        _state.update { it.copy(mode = mode) }
+        if (mode == StickerPanelState.Mode.STICKERS) onStickers()
+    }
 
     /** Раздел стал виден: догрузить его стикеры. */
     fun load(section: StickerSection) {

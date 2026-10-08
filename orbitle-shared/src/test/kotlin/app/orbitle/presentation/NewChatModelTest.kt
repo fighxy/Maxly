@@ -41,7 +41,7 @@ private class PhoneContacts : ContactRepository {
 private class RecordingChats : ChatRepository {
     override val chats = MutableStateFlow<List<Chat>?>(emptyList())
     override val folders = MutableStateFlow<List<ServerFolder>>(emptyList())
-    override val typing = MutableStateFlow<Map<String, List<String>>>(emptyMap())
+    override val typing = MutableStateFlow<Map<String, List<app.orbitle.domain.Typist>>>(emptyMap())
     override suspend fun refresh() = Unit
     override suspend fun setPinned(chatId: String, pinned: Boolean) = Unit
     override fun clear() = Unit

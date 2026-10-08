@@ -67,6 +67,13 @@ class CoreMessageRepository(
         }
     }
 
+    private val typists = TypingTracker()
+
+    override suspend fun sendTyping(chatId: String, kind: app.orbitle.domain.TypingKind): Boolean {
+        val id = chatId.toLongOrNull() ?: return false
+        return client.sendTyping(id, kind.raw)
+    }
+
     override fun header(chatId: String): Flow<ChatHeaderInfo?> {
         val id = chatId.toLongOrNull() ?: 0L
         return combine(client.store.state, client.accountConfig, ticks) { state, config, now ->
@@ -74,8 +81,7 @@ class CoreMessageRepository(
             val chat = ChatMapping.chat(raw, state, config, now)
             val peer = ChatMapping.dialogPeer(raw, state.me)
             val seen = peer?.let { state.presence[it]?.seen }?.let { if (it < 100_000_000_000L) it * 1000 else it } ?: 0L
-            val typing = state.typingUsers(id, now).filter { it != state.me }
-                .map { state.users[it]?.displayName?.takeIf(String::isNotBlank) ?: "Кто-то" }
+            val typing = typists.typists(state, id, now) { state.users[it]?.displayName?.takeIf(String::isNotBlank) }
             val bot = peer?.let { state.users[it] }?.takeIf { "BOT" in it.options && com.max.core.api.hasWebApp(it.options) }
             ChatHeaderInfo(chat, participants(raw.raw), seen, typing, botAppId = bot?.id?.toString(), readMarkMs = ReadMarks.own(raw, state))
         }.distinctUntilChanged()

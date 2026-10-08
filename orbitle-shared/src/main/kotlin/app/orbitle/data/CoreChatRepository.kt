@@ -53,10 +53,12 @@ class CoreChatRepository(
         }
     }
 
-    override val typing: Flow<Map<String, List<String>>> = combine(client.store.state, ticks) { state, now ->
+    private val typists = TypingTracker()
+
+    override val typing: Flow<Map<String, List<app.orbitle.domain.Typist>>> = combine(client.store.state, ticks) { state, now ->
         state.typing.keys.mapNotNull { chatId ->
-            val users = state.typingUsers(chatId, now).filter { it != state.me }
-            if (users.isEmpty()) null else chatId.toString() to users.map { it.toString() }
+            val list = typists.typists(state, chatId, now) { state.users[it]?.displayName?.takeIf(String::isNotBlank) }
+            if (list.isEmpty()) null else chatId.toString() to list
         }.toMap()
     }.distinctUntilChanged()
 

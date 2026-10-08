@@ -135,7 +135,7 @@ class ChatListFormatterTest {
         val draft = formatter.item(withDraft, now)
         assertEquals(ChatListItem.PreviewStyle.DRAFT, draft.previewStyle)
         assertEquals("Черновик текста", draft.preview)
-        val typing = formatter.item(chat(type = ChatType.GROUP), now, typing = listOf("1", "2", "3"))
+        val typing = formatter.item(chat(type = ChatType.GROUP), now, typing = listOf(app.orbitle.domain.Typist(null), app.orbitle.domain.Typist(null), app.orbitle.domain.Typist(null)))
         assertEquals("3 участника печатают…", typing.preview)
         assertEquals("21 участник печатает…", ChatListFormatter.typingText(21, ChatType.GROUP))
         assertEquals("11 участников печатают…", ChatListFormatter.typingText(11, ChatType.GROUP))
