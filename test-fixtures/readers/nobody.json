@@ -1,0 +1,28 @@
+{
+  "kind": "readers",
+  "name": "nobody",
+  "description": "Никто не прочитал и не отреагировал: пустой список (экран показывает «Пока никто не прочитал»).",
+  "me": "1",
+  "chat": {
+    "id": "c1",
+    "type": "CHAT",
+    "videoConversation": false,
+    "participantsCount": 5,
+    "participants": {
+      "1": 9000,
+      "2": 4000,
+      "3": 0
+    }
+  },
+  "pushedMarks": {},
+  "message": {
+    "time": 5000,
+    "author": "1",
+    "state": "sent"
+  },
+  "reactions": [],
+  "expect": {
+    "available": true,
+    "readers": []
+  }
+}

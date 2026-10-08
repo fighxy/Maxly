@@ -1,0 +1,27 @@
+{
+  "kind": "readers",
+  "name": "not-private",
+  "description": "Личный чат (DIALOG): списка нет, запрос 181 не нужен.",
+  "me": "1",
+  "chat": {
+    "id": "c1",
+    "type": "DIALOG",
+    "videoConversation": false,
+    "participantsCount": 2,
+    "participants": {
+      "1": 9000,
+      "2": 9000
+    }
+  },
+  "pushedMarks": {},
+  "message": {
+    "time": 5000,
+    "author": "1",
+    "state": "sent"
+  },
+  "reactions": [],
+  "expect": {
+    "available": false,
+    "readers": []
+  }
+}

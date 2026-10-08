@@ -1,0 +1,28 @@
+{
+  "kind": "readers",
+  "name": "group-size-server-lower",
+  "description": "Сервер прислал max-readmarks 50: в чате на 60 участников списка нет.",
+  "me": "1",
+  "serverMaxReadmarks": 50,
+  "chat": {
+    "id": "c1",
+    "type": "CHAT",
+    "videoConversation": false,
+    "participantsCount": 60,
+    "participants": {
+      "1": 9000,
+      "2": 6000
+    }
+  },
+  "pushedMarks": {},
+  "message": {
+    "time": 5000,
+    "author": "1",
+    "state": "sent"
+  },
+  "reactions": [],
+  "expect": {
+    "available": false,
+    "readers": []
+  }
+}

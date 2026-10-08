@@ -1,0 +1,33 @@
+{
+  "kind": "readers",
+  "name": "mark-equals-time",
+  "description": "Отметка, равная времени сообщения, — прочитано; на 1 мс раньше — нет.",
+  "me": "1",
+  "chat": {
+    "id": "c1",
+    "type": "CHAT",
+    "videoConversation": false,
+    "participantsCount": 5,
+    "participants": {
+      "1": 9000,
+      "2": 5000,
+      "3": 4999
+    }
+  },
+  "pushedMarks": {},
+  "message": {
+    "time": 5000,
+    "author": "1",
+    "state": "sent"
+  },
+  "reactions": [],
+  "expect": {
+    "available": true,
+    "readers": [
+      {
+        "userId": "2",
+        "reaction": null
+      }
+    ]
+  }
+}

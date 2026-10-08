@@ -1,0 +1,172 @@
+{
+  "kind": "info",
+  "name": "info-private-status",
+  "description": "Строка «Прочитано»/«Доставлено» на экране сведений: только своё отправленное сообщение в личном чате, по отметке собеседника.",
+  "cases": [
+    {
+      "name": "read-equal",
+      "chat": {
+        "id": "c1",
+        "type": "DIALOG"
+      },
+      "own": true,
+      "state": "sent",
+      "messageTime": 5000,
+      "peerMark": 5000,
+      "expect": {
+        "status": "read",
+        "text": "Прочитано"
+      }
+    },
+    {
+      "name": "read-later",
+      "chat": {
+        "id": "c1",
+        "type": "DIALOG"
+      },
+      "own": true,
+      "state": "sent",
+      "messageTime": 5000,
+      "peerMark": 9000,
+      "expect": {
+        "status": "read",
+        "text": "Прочитано"
+      }
+    },
+    {
+      "name": "delivered-earlier",
+      "chat": {
+        "id": "c1",
+        "type": "DIALOG"
+      },
+      "own": true,
+      "state": "sent",
+      "messageTime": 5000,
+      "peerMark": 4999,
+      "expect": {
+        "status": "delivered",
+        "text": "Доставлено"
+      }
+    },
+    {
+      "name": "delivered-no-mark",
+      "chat": {
+        "id": "c1",
+        "type": "DIALOG"
+      },
+      "own": true,
+      "state": "sent",
+      "messageTime": 5000,
+      "peerMark": 0,
+      "expect": {
+        "status": "delivered",
+        "text": "Доставлено"
+      }
+    },
+    {
+      "name": "incoming",
+      "chat": {
+        "id": "c1",
+        "type": "DIALOG"
+      },
+      "own": false,
+      "state": "sent",
+      "messageTime": 5000,
+      "peerMark": 9000,
+      "expect": {
+        "status": null,
+        "text": null
+      }
+    },
+    {
+      "name": "sending",
+      "chat": {
+        "id": "c1",
+        "type": "DIALOG"
+      },
+      "own": true,
+      "state": "sending",
+      "messageTime": 5000,
+      "peerMark": 9000,
+      "expect": {
+        "status": null,
+        "text": null
+      }
+    },
+    {
+      "name": "failed",
+      "chat": {
+        "id": "c1",
+        "type": "DIALOG"
+      },
+      "own": true,
+      "state": "failed",
+      "messageTime": 5000,
+      "peerMark": 9000,
+      "expect": {
+        "status": null,
+        "text": null
+      }
+    },
+    {
+      "name": "scheduled",
+      "chat": {
+        "id": "c1",
+        "type": "DIALOG"
+      },
+      "own": true,
+      "state": "scheduled",
+      "messageTime": 5000,
+      "peerMark": 9000,
+      "expect": {
+        "status": null,
+        "text": null
+      }
+    },
+    {
+      "name": "saved-messages",
+      "chat": {
+        "id": "0",
+        "type": "DIALOG"
+      },
+      "own": true,
+      "state": "sent",
+      "messageTime": 5000,
+      "peerMark": 9000,
+      "expect": {
+        "status": null,
+        "text": null
+      }
+    },
+    {
+      "name": "group",
+      "chat": {
+        "id": "c1",
+        "type": "CHAT"
+      },
+      "own": true,
+      "state": "sent",
+      "messageTime": 5000,
+      "peerMark": 9000,
+      "expect": {
+        "status": null,
+        "text": null
+      }
+    },
+    {
+      "name": "channel",
+      "chat": {
+        "id": "c1",
+        "type": "CHANNEL"
+      },
+      "own": true,
+      "state": "sent",
+      "messageTime": 5000,
+      "peerMark": 9000,
+      "expect": {
+        "status": null,
+        "text": null
+      }
+    }
+  ]
+}

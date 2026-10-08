@@ -1,0 +1,33 @@
+{
+  "kind": "readers",
+  "name": "group-size-server-higher",
+  "description": "Сервер прислал max-readmarks 200: в чате на 150 участников список есть.",
+  "me": "1",
+  "serverMaxReadmarks": 200,
+  "chat": {
+    "id": "c1",
+    "type": "CHAT",
+    "videoConversation": false,
+    "participantsCount": 150,
+    "participants": {
+      "1": 9000,
+      "2": 6000
+    }
+  },
+  "pushedMarks": {},
+  "message": {
+    "time": 5000,
+    "author": "1",
+    "state": "sent"
+  },
+  "reactions": [],
+  "expect": {
+    "available": true,
+    "readers": [
+      {
+        "userId": "2",
+        "reaction": null
+      }
+    ]
+  }
+}

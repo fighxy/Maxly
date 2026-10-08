@@ -1,0 +1,27 @@
+{
+  "kind": "readers",
+  "name": "message-sending",
+  "description": "Сообщение ещё отправляется: списка нет.",
+  "me": "1",
+  "chat": {
+    "id": "c1",
+    "type": "CHAT",
+    "videoConversation": false,
+    "participantsCount": 5,
+    "participants": {
+      "1": 9000,
+      "2": 9000
+    }
+  },
+  "pushedMarks": {},
+  "message": {
+    "time": 5000,
+    "author": "1",
+    "state": "sending"
+  },
+  "reactions": [],
+  "expect": {
+    "available": false,
+    "readers": []
+  }
+}

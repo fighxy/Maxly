@@ -1,0 +1,34 @@
+{
+  "kind": "readers",
+  "name": "pushed-mark-older",
+  "description": "Устаревший пуш не опускает отметку из карточки: побеждает большая.",
+  "me": "1",
+  "chat": {
+    "id": "c1",
+    "type": "CHAT",
+    "videoConversation": false,
+    "participantsCount": 5,
+    "participants": {
+      "1": 9000,
+      "2": 7000
+    }
+  },
+  "pushedMarks": {
+    "2": 1000
+  },
+  "message": {
+    "time": 5000,
+    "author": "1",
+    "state": "sent"
+  },
+  "reactions": [],
+  "expect": {
+    "available": true,
+    "readers": [
+      {
+        "userId": "2",
+        "reaction": null
+      }
+    ]
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "kind": "readers",
+  "name": "reactions-error",
+  "description": "Запрос 181 не удался: только прочитавшие, без ошибки.",
+  "me": "1",
+  "chat": {
+    "id": "c1",
+    "type": "CHAT",
+    "videoConversation": false,
+    "participantsCount": 5,
+    "participants": {
+      "1": 9000,
+      "2": 6000,
+      "3": 7000
+    }
+  },
+  "pushedMarks": {},
+  "message": {
+    "time": 5000,
+    "author": "1",
+    "state": "sent"
+  },
+  "reactionsError": true,
+  "expect": {
+    "available": true,
+    "readers": [
+      {
+        "userId": "3",
+        "reaction": null
+      },
+      {
+        "userId": "2",
+        "reaction": null
+      }
+    ]
+  }
+}

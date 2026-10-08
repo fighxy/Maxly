@@ -1,0 +1,47 @@
+{
+  "kind": "readers",
+  "name": "readers-order-ties",
+  "description": "Прочитавшие по убыванию отметки, при равной — по id как числу по возрастанию (9 раньше 10).",
+  "me": "1",
+  "chat": {
+    "id": "c1",
+    "type": "CHAT",
+    "videoConversation": false,
+    "participantsCount": 5,
+    "participants": {
+      "1": 9000,
+      "10": 6000,
+      "9": 6000,
+      "100": 8000,
+      "11": 5000
+    }
+  },
+  "pushedMarks": {},
+  "message": {
+    "time": 5000,
+    "author": "1",
+    "state": "sent"
+  },
+  "reactions": [],
+  "expect": {
+    "available": true,
+    "readers": [
+      {
+        "userId": "100",
+        "reaction": null
+      },
+      {
+        "userId": "9",
+        "reaction": null
+      },
+      {
+        "userId": "10",
+        "reaction": null
+      },
+      {
+        "userId": "11",
+        "reaction": null
+      }
+    ]
+  }
+}

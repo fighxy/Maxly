@@ -1,0 +1,39 @@
+{
+  "kind": "readers",
+  "name": "pushed-mark-newer",
+  "description": "Пуш NOTIF_MARK новее карточки чата делает участника прочитавшим.",
+  "me": "1",
+  "chat": {
+    "id": "c1",
+    "type": "CHAT",
+    "videoConversation": false,
+    "participantsCount": 5,
+    "participants": {
+      "1": 9000,
+      "2": 3000,
+      "3": 6000
+    }
+  },
+  "pushedMarks": {
+    "2": 8000
+  },
+  "message": {
+    "time": 5000,
+    "author": "1",
+    "state": "sent"
+  },
+  "reactions": [],
+  "expect": {
+    "available": true,
+    "readers": [
+      {
+        "userId": "2",
+        "reaction": null
+      },
+      {
+        "userId": "3",
+        "reaction": null
+      }
+    ]
+  }
+}

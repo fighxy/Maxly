@@ -1,0 +1,32 @@
+{
+  "kind": "readers",
+  "name": "group-size-100",
+  "description": "100 участников при пороге по умолчанию (100): список есть.",
+  "me": "1",
+  "chat": {
+    "id": "c1",
+    "type": "CHAT",
+    "videoConversation": false,
+    "participantsCount": 100,
+    "participants": {
+      "1": 9000,
+      "2": 6000
+    }
+  },
+  "pushedMarks": {},
+  "message": {
+    "time": 5000,
+    "author": "1",
+    "state": "sent"
+  },
+  "reactions": [],
+  "expect": {
+    "available": true,
+    "readers": [
+      {
+        "userId": "2",
+        "reaction": null
+      }
+    ]
+  }
+}

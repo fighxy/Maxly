@@ -1,0 +1,105 @@
+{
+  "kind": "readers",
+  "name": "live-push",
+  "description": "Открытый список обновляется пушами 130: каждый шаг добавляет отметку (большая побеждает) и сверяет список.",
+  "me": "1",
+  "chat": {
+    "id": "c1",
+    "type": "CHAT",
+    "videoConversation": false,
+    "participantsCount": 5,
+    "participants": {
+      "1": 9000,
+      "2": 3000,
+      "3": 3000
+    }
+  },
+  "pushedMarks": {},
+  "message": {
+    "time": 5000,
+    "author": "1",
+    "state": "sent"
+  },
+  "reactions": [
+    {
+      "userId": "4",
+      "reaction": "👍"
+    }
+  ],
+  "expect": {
+    "available": true,
+    "readers": [
+      {
+        "userId": "4",
+        "reaction": "👍"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "push": {
+        "userId": "3",
+        "mark": 5000
+      },
+      "expect": {
+        "available": true,
+        "readers": [
+          {
+            "userId": "4",
+            "reaction": "👍"
+          },
+          {
+            "userId": "3",
+            "reaction": null
+          }
+        ]
+      }
+    },
+    {
+      "push": {
+        "userId": "2",
+        "mark": 6000
+      },
+      "expect": {
+        "available": true,
+        "readers": [
+          {
+            "userId": "4",
+            "reaction": "👍"
+          },
+          {
+            "userId": "2",
+            "reaction": null
+          },
+          {
+            "userId": "3",
+            "reaction": null
+          }
+        ]
+      }
+    },
+    {
+      "push": {
+        "userId": "2",
+        "mark": 1000
+      },
+      "expect": {
+        "available": true,
+        "readers": [
+          {
+            "userId": "4",
+            "reaction": "👍"
+          },
+          {
+            "userId": "2",
+            "reaction": null
+          },
+          {
+            "userId": "3",
+            "reaction": null
+          }
+        ]
+      }
+    }
+  ]
+}

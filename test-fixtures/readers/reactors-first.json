@@ -1,0 +1,56 @@
+{
+  "kind": "readers",
+  "name": "reactors-first",
+  "description": "Сначала отреагировавшие в порядке сервера (с эмодзи), затем прочитавшие без реакции по убыванию отметки.",
+  "me": "1",
+  "chat": {
+    "id": "c1",
+    "type": "CHAT",
+    "videoConversation": false,
+    "participantsCount": 5,
+    "participants": {
+      "1": 9000,
+      "2": 6000,
+      "3": 7000,
+      "4": 4000,
+      "5": 5500
+    }
+  },
+  "pushedMarks": {},
+  "message": {
+    "time": 5000,
+    "author": "1",
+    "state": "sent"
+  },
+  "reactions": [
+    {
+      "userId": "4",
+      "reaction": "❤️"
+    },
+    {
+      "userId": "2",
+      "reaction": "👍"
+    }
+  ],
+  "expect": {
+    "available": true,
+    "readers": [
+      {
+        "userId": "4",
+        "reaction": "❤️"
+      },
+      {
+        "userId": "2",
+        "reaction": "👍"
+      },
+      {
+        "userId": "3",
+        "reaction": null
+      },
+      {
+        "userId": "5",
+        "reaction": null
+      }
+    ]
+  }
+}

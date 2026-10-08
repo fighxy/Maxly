@@ -1,0 +1,26 @@
+{
+  "kind": "readers",
+  "name": "not-saved-messages",
+  "description": "«Избранное» (DIALOG с id 0): списка нет.",
+  "me": "1",
+  "chat": {
+    "id": "0",
+    "type": "DIALOG",
+    "videoConversation": false,
+    "participantsCount": 1,
+    "participants": {
+      "1": 9000
+    }
+  },
+  "pushedMarks": {},
+  "message": {
+    "time": 5000,
+    "author": "1",
+    "state": "sent"
+  },
+  "reactions": [],
+  "expect": {
+    "available": false,
+    "readers": []
+  }
+}

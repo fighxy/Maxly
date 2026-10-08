@@ -1,0 +1,27 @@
+{
+  "kind": "readers",
+  "name": "not-video-conversation",
+  "description": "Чат видеоконференции (CHAT с videoConversation): списка нет.",
+  "me": "1",
+  "chat": {
+    "id": "c1",
+    "type": "CHAT",
+    "videoConversation": true,
+    "participantsCount": 5,
+    "participants": {
+      "1": 9000,
+      "2": 9000
+    }
+  },
+  "pushedMarks": {},
+  "message": {
+    "time": 5000,
+    "author": "1",
+    "state": "sent"
+  },
+  "reactions": [],
+  "expect": {
+    "available": false,
+    "readers": []
+  }
+}

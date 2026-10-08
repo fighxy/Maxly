@@ -1,0 +1,62 @@
+{
+  "kind": "readers",
+  "name": "ids-string-and-number",
+  "description": "id и отметки бывают числами и строками: результат тот же. Мусорные записи пропускаются.",
+  "me": "1",
+  "chat": {
+    "id": "c1",
+    "type": "CHAT",
+    "videoConversation": false,
+    "participantsCount": 5,
+    "participants": {
+      "1": "9000",
+      "2": 6000,
+      "3": "7000",
+      "4": "abc",
+      "x": 8000
+    }
+  },
+  "pushedMarks": {
+    "5": "8000"
+  },
+  "message": {
+    "time": 5000,
+    "author": 1,
+    "state": "sent"
+  },
+  "reactions": [
+    {
+      "userId": 6,
+      "reaction": "👍"
+    },
+    {
+      "userId": "",
+      "reaction": "😂"
+    },
+    {
+      "userId": "7",
+      "reaction": ""
+    }
+  ],
+  "expect": {
+    "available": true,
+    "readers": [
+      {
+        "userId": "6",
+        "reaction": "👍"
+      },
+      {
+        "userId": "5",
+        "reaction": null
+      },
+      {
+        "userId": "3",
+        "reaction": null
+      },
+      {
+        "userId": "2",
+        "reaction": null
+      }
+    ]
+  }
+}

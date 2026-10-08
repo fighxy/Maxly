@@ -1,0 +1,27 @@
+{
+  "kind": "readers",
+  "name": "not-channel",
+  "description": "Канал: списка нет.",
+  "me": "1",
+  "chat": {
+    "id": "c1",
+    "type": "CHANNEL",
+    "videoConversation": false,
+    "participantsCount": 50,
+    "participants": {
+      "1": 9000,
+      "2": 9000
+    }
+  },
+  "pushedMarks": {},
+  "message": {
+    "time": 5000,
+    "author": "1",
+    "state": "sent"
+  },
+  "reactions": [],
+  "expect": {
+    "available": false,
+    "readers": []
+  }
+}
