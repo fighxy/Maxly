@@ -53,7 +53,8 @@ public actor CoreProfileActions: ProfileActionsRepository {
             avatarURL: member.avatarURL.isEmpty ? nil : URL(string: member.avatarURL),
             role: ChatMemberRole(rawValue: member.role) ?? .member,
             alias: member.alias.isEmpty ? nil : member.alias,
-            mentionName: member.mentionName.isEmpty ? nil : member.mentionName
+            mentionName: member.mentionName.isEmpty ? nil : member.mentionName,
+            presence: CoreMapping.presence(status: member.presence, online: member.online, seenMs: member.lastSeenMs)
         )
     }
 

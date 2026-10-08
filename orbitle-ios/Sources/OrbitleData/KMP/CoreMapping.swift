@@ -73,8 +73,7 @@ enum CoreMapping {
     }
 
     static func contact(_ contact: CoreContact, now: Date = Date()) -> Contact {
-        // Мост пока отдаёт только «в сети» и время: остальные коды статуса не доходят.
-        let presence = Contact.Presence.server(status: contact.online ? 1 : Contact.Presence.noStatus, seenMs: contact.lastSeenMs)
+        let presence = Self.presence(status: contact.presence, online: contact.online, seenMs: contact.lastSeenMs)
         return Contact(
             id: contact.id,
             firstName: contact.firstName,
@@ -88,9 +87,14 @@ enum CoreMapping {
         )
     }
 
+    /// Код статуса ядра (`presence`, `-1` — не прислан); без кода — «в сети» и время, как раньше.
+    static func presence(status: Int, online: Bool, seenMs: Int64) -> Contact.Presence {
+        if status >= 0 { return Contact.Presence.server(status: status, seenMs: seenMs) }
+        return Contact.Presence.server(status: online ? 1 : Contact.Presence.noStatus, seenMs: seenMs)
+    }
+
     static func profile(_ core: CoreProfile) -> ChatProfile {
-        // Мост пока отдаёт только «в сети» и время: остальные коды статуса не доходят.
-        let presence = Contact.Presence.server(status: core.online ? 1 : Contact.Presence.noStatus, seenMs: core.lastSeenMs)
+        let presence = Self.presence(status: core.presence, online: core.online, seenMs: core.lastSeenMs)
         func text(_ value: String) -> String? {
             let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? nil : trimmed

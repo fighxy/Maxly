@@ -18,14 +18,18 @@ public struct ChatMemberEntry: Identifiable, Hashable, Sendable {
     public var alias: String?
     /// Имя для упоминаний (ник без «@»), если известно.
     public var mentionName: String?
+    /// Статус «в сети» из ответа списка; живой — в `PresenceProvider`.
+    public var presence: Contact.Presence
 
-    public init(id: String, name: String, avatarURL: URL? = nil, role: ChatMemberRole = .member, alias: String? = nil, mentionName: String? = nil) {
+    public init(id: String, name: String, avatarURL: URL? = nil, role: ChatMemberRole = .member, alias: String? = nil, mentionName: String? = nil,
+                presence: Contact.Presence = .unknown) {
         self.id = id
         self.name = name
         self.avatarURL = avatarURL
         self.role = role
         self.alias = alias
         self.mentionName = mentionName
+        self.presence = presence
     }
 
     /// Значок у имени: «владелец», подпись админа или «админ»; у остальных нет.

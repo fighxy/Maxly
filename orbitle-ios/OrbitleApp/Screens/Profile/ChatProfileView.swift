@@ -158,6 +158,7 @@ struct ChatProfileView: View {
                 ChatManageView(model: manageModel, contacts: manageContacts)
             }
         }
+        .task { await viewModel.watchPresence() }
         .task {
             await viewModel.loadIfStale()
             await viewModel.loadExtras()

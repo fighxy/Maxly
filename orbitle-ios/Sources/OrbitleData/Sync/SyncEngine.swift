@@ -17,6 +17,8 @@ public actor SyncEngine {
     private let pollInterval: Duration
     /// Черновики, сверенные с сервером: им уходят события `draft`.
     private var draftStore: ServerSyncedDraftStore?
+    /// Общие статусы «в сети»: им уходят события `presence`.
+    private var presenceSink: (any PresenceSink)?
 
     private var pollTask: Task<Void, Never>?
     private var eventTask: Task<Void, Never>?
@@ -56,6 +58,11 @@ public actor SyncEngine {
     /// Куда отдавать изменения черновиков сервера (события `draft`).
     public func attachDrafts(_ store: ServerSyncedDraftStore?) {
         draftStore = store
+    }
+
+    /// Куда отдавать статусы людей (события `presence`).
+    public func attachPresence(_ sink: (any PresenceSink)?) {
+        presenceSink = sink
     }
 
     /// Чаты, история которых сейчас опрашивается.
@@ -254,6 +261,10 @@ public actor SyncEngine {
         case .draft:
             guard !event.chatId.isEmpty else { return }
             await draftStore?.serverDraftChanged(chatId: event.chatId)
+        case .presence:
+            guard !event.authorId.isEmpty else { return }
+            let presence = Contact.Presence.server(status: event.presence, seenMs: event.timeMs)
+            await presenceSink?.record([event.authorId: presence], at: Date())
         case .transcription:
             guard !event.messageId.isEmpty, event.unread == 1 else { return }
             await messages.applyTranscription(chatId: event.chatId, messageId: event.messageId, text: event.text)

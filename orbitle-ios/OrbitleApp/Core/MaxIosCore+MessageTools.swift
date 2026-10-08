@@ -154,11 +154,36 @@ extension MaxIosCore {
         )
     }
 
+    func loadPresence(userIds: [String]) async throws -> [CorePresence] {
+        try await call("loadPresence") { done in
+            self.client.loadPresence(userIds: userIds) { list, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success((list ?? []).map(Self.presence)))
+                }
+            }
+        }
+    }
+
+    func presenceOf(userId: String) async -> CorePresence {
+        Self.presence(client.presenceOf(userId: userId))
+    }
+
+    func setAppActive(_ active: Bool) async {
+        client.setAppActive(active: active)
+    }
+
+    private static func presence(_ presence: IosPresence) -> CorePresence {
+        CorePresence(userId: presence.userId, status: Int(presence.status), seenMs: presence.seenMs)
+    }
+
     private static func member(_ member: IosGroupMember) -> CoreGroupMember {
         MemberCache.shared.keep(member)
         return CoreGroupMember(
             id: member.id, name: member.name, avatarURL: member.avatarUrl, role: member.role,
-            alias: member.alias, lastSeenMs: member.lastSeenMs, online: member.online, mentionName: member.mentionName
+            alias: member.alias, lastSeenMs: member.lastSeenMs, online: member.online, mentionName: member.mentionName,
+            presence: Int(member.presence)
         )
     }
 

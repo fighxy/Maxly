@@ -40,6 +40,10 @@ public final class ChatProfileViewModel {
     @ObservationIgnored private let actions: (any ProfileActionsRepository)?
     @ObservationIgnored private let formatter: ContactsFormatter
     @ObservationIgnored private let now: () -> Date
+    /// Живые статусы «в сети». `nil` — статус только из карточки.
+    @ObservationIgnored private let presence: (any PresenceProvider)?
+    /// Последний статус собеседника из `presence`; `nil` — берётся из карточки.
+    public private(set) var livePresence: Contact.Presence?
 
     /// `title` и `avatarURL` — то, что уже известно из списка чатов: шапка видна сразу.
     public init(
@@ -50,12 +54,14 @@ public final class ChatProfileViewModel {
         repository: any ChatProfileRepository,
         actions: (any ProfileActionsRepository)? = nil,
         formatter: ContactsFormatter = ContactsFormatter(),
+        presence: (any PresenceProvider)? = nil,
         now: @escaping () -> Date = { Date() }
     ) {
         self.chatId = chatId
         self.repository = repository
         self.actions = actions
         self.formatter = formatter
+        self.presence = presence
         self.now = now
         placeholder = ChatProfile(kind: kind ?? .user, chatId: chatId, title: title, avatarURL: avatarURL)
     }
@@ -82,6 +88,7 @@ public final class ChatProfileViewModel {
             profile = recent
             loadedAt = now()
             state = .loaded
+            await refreshPresence()
             return
         }
         await load()
@@ -100,10 +107,39 @@ public final class ChatProfileViewModel {
             profile = try await repository.profile(chatId: chatId)
             loadedAt = now()
             state = .loaded
+            await refreshPresence()
         } catch {
             guard error != .cancelled else { return }
             // Уже показанная карточка остаётся, ошибка видна только без неё.
             if profile == nil { state = .failed(error.userMessage ?? "Не удалось загрузить профиль") }
+        }
+    }
+
+    // MARK: Статус
+
+    /// Собеседник, чей статус показывается: только у профиля человека.
+    private var peerUserId: String? { shown.kind == .user ? shown.peerId : nil }
+
+    /// Статус для строк: живой, если известен, иначе из карточки.
+    public var currentPresence: Contact.Presence { livePresence ?? shown.presence }
+
+    /// Спросить статус собеседника (`loadPresence` ядра) и взять уже известный.
+    public func refreshPresence() async {
+        guard let presence, let peer = peerUserId else { return }
+        if let known = await presence.presence(of: peer) { livePresence = known }
+        await presence.refresh([peer])
+        if let known = await presence.presence(of: peer) { livePresence = known }
+    }
+
+    /// Следить за статусом, пока экран открыт (`.task` вида): события `presence` ядра и
+    /// ответы `loadPresence` приходят через `PresenceProvider.changes()`.
+    public func watchPresence() async {
+        guard let presence else { return }
+        let stream = presence.changes()
+        await refreshPresence()
+        for await ids in stream {
+            guard let peer = peerUserId, ids.contains(peer) else { continue }
+            if let known = await presence.presence(of: peer) { livePresence = known }
         }
     }
 
@@ -130,7 +166,7 @@ public final class ChatProfileViewModel {
         let profile = shown
         switch profile.kind {
         case .user:
-            return formatter.status(profile.presence, now: date)
+            return formatter.status(currentPresence, now: date)
         case .bot:
             return "бот"
         case .saved:
@@ -144,7 +180,7 @@ public final class ChatProfileViewModel {
         }
     }
 
-    public var isOnline: Bool { shown.presence == .online }
+    public var isOnline: Bool { currentPresence == .online }
     public var isOfficial: Bool { shown.isOfficial }
 
     /// Кнопка «Написать» нужна там, где профиль открыт не из самого чата (например, из контактов).
@@ -371,7 +407,7 @@ public final class ChatProfileViewModel {
     /// Экран «Участники» группы: страницы, роли, поиск. `nil` — не группа или нет источника.
     public func membersList(currentUserId: String) -> ChatMembersListModel? {
         guard let actions, shown.kind == .group else { return nil }
-        return ChatMembersListModel(chatId: chatId, currentUserId: currentUserId, actions: actions)
+        return ChatMembersListModel(chatId: chatId, currentUserId: currentUserId, actions: actions, presence: presence)
     }
 
     /// «12 участников», «1 200 подписчиков» — подпись общего чата.

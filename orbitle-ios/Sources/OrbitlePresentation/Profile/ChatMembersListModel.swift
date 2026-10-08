@@ -13,6 +13,12 @@ public final class ChatMembersListModel: Identifiable {
     public nonisolated var id: String { chatId }
     public let currentUserId: String
     @ObservationIgnored private let actions: any ProfileActionsRepository
+    /// Живые статусы «в сети»; `nil` — статусы только из страниц.
+    @ObservationIgnored private let presence: (any PresenceProvider)?
+    @ObservationIgnored private let formatter: ContactsFormatter
+    @ObservationIgnored private let now: () -> Date
+    /// Статусы, пришедшие после страниц (`loadPresence`, события ядра), по id.
+    private var live: [String: Contact.Presence] = [:]
 
     public private(set) var members: [ChatMemberEntry] = []
     public private(set) var isLoading = false
@@ -32,10 +38,64 @@ public final class ChatMembersListModel: Identifiable {
     /// Пауза перед запросом поиска, пока печатают.
     @ObservationIgnored var searchDelay: Duration = .milliseconds(200)
 
-    public init(chatId: String, currentUserId: String, actions: any ProfileActionsRepository) {
+    public init(
+        chatId: String,
+        currentUserId: String,
+        actions: any ProfileActionsRepository,
+        presence: (any PresenceProvider)? = nil,
+        formatter: ContactsFormatter = ContactsFormatter(),
+        now: @escaping () -> Date = { Date() }
+    ) {
         self.chatId = chatId
         self.currentUserId = currentUserId
         self.actions = actions
+        self.presence = presence
+        self.formatter = formatter
+        self.now = now
+    }
+
+    // MARK: Статус
+
+    /// Статус участника: живой, если известен, иначе из страницы.
+    public func presence(of member: ChatMemberEntry) -> Contact.Presence {
+        live[member.id] ?? member.presence
+    }
+
+    /// Строка под именем на момент `date`; пустая — статус неизвестен. Себе статус не пишется.
+    public func status(of member: ChatMemberEntry, at date: Date) -> String {
+        guard member.id != currentUserId else { return "" }
+        return formatter.status(presence(of: member), now: date)
+    }
+
+    public func isOnline(_ member: ChatMemberEntry) -> Bool {
+        member.id != currentUserId && presence(of: member) == .online
+    }
+
+    /// Следить за статусами, пока список открыт (`.task` вида).
+    public func watchPresence() async {
+        guard let presence else { return }
+        for await ids in presence.changes() {
+            await applyPresence(ids, from: presence)
+        }
+    }
+
+    /// Живые статусы этих участников из общего хранилища.
+    func applyPresence(_ ids: Set<String>, from presence: any PresenceProvider) async {
+        let known = Set(members.map(\.id))
+        for id in ids where known.contains(id) {
+            if let value = await presence.presence(of: id), live[id] != value { live[id] = value }
+        }
+    }
+
+    private func requestPresence(_ page: [ChatMemberEntry]) {
+        guard let presence else { return }
+        let ids = page.map(\.id).filter { $0 != currentUserId }
+        guard !ids.isEmpty else { return }
+        Task { [weak self] in
+            await presence.refresh(ids)
+            // Уже известные статусы не приходят как изменения: читаем их сами.
+            await self?.applyPresence(Set(ids), from: presence)
+        }
     }
 
     /// Что показывать: загруженные по порядку ролей или результаты поиска.
@@ -62,6 +122,7 @@ public final class ChatMembersListModel: Identifiable {
             let page = try await actions.membersPage(chatId: chatId, marker: requested)
             let merged = ChatMembersRules.append(page.members, to: members)
             members = merged.list
+            requestPresence(page.members)
             errorMessage = nil
             filterLoaded()
             if let next = ChatMembersRules.nextMarker(requested: requested, received: page.marker, newMembers: merged.added) {

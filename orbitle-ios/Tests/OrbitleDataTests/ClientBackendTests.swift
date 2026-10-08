@@ -9,6 +9,26 @@ actor FakeMaxCore: MaxCore {
     func setMute(chatId: String, code: Int, until: Int64) { mutes[chatId] = (code, until) }
     func isChatMuted(chatId: String) async -> Int { mutes[chatId]?.code ?? -1 }
     func chatMuteUntil(chatId: String) async -> Int64 { mutes[chatId]?.until ?? Int64.min }
+    /// Статусы ядра: ответ `loadPresence`, синхронный `presenceOf` и вкл/выкл приложения.
+    var presenceAnswer: [CorePresence] = []
+    var presenceHeld: [String: CorePresence] = [:]
+    var presenceError: CoreFailure?
+    private(set) var presenceRequests: [[String]] = []
+    private(set) var appActive: [Bool] = []
+    func setPresence(answer: [CorePresence], held: [String: CorePresence] = [:], error: CoreFailure? = nil) {
+        presenceAnswer = answer
+        presenceHeld = held
+        presenceError = error
+    }
+    func loadPresence(userIds: [String]) async throws -> [CorePresence] {
+        presenceRequests.append(userIds)
+        if let presenceError { throw presenceError }
+        return presenceAnswer.filter { userIds.contains($0.userId) }
+    }
+    func presenceOf(userId: String) async -> CorePresence {
+        presenceHeld[userId] ?? CorePresence(userId: userId, status: -1)
+    }
+    func setAppActive(_ active: Bool) async { appActive.append(active) }
     var phase: CorePhase = .idle
     var userId = ""
     var storedToken = false

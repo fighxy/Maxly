@@ -66,9 +66,11 @@ public struct CoreGroupMember: Sendable, Equatable {
     public var online: Bool
     /// Имя для упоминаний без «@»; пусто — нет.
     public var mentionName: String
+    /// Код статуса (`-1` неизвестно, `0`–`3` как у `CorePresence`).
+    public var presence: Int
 
     public init(id: String, name: String, avatarURL: String = "", role: String = "member", alias: String = "", lastSeenMs: Int64 = 0,
-                online: Bool = false, mentionName: String = "") {
+                online: Bool = false, mentionName: String = "", presence: Int = -1) {
         self.id = id
         self.name = name
         self.avatarURL = avatarURL
@@ -77,6 +79,7 @@ public struct CoreGroupMember: Sendable, Equatable {
         self.lastSeenMs = lastSeenMs
         self.online = online
         self.mentionName = mentionName
+        self.presence = presence
     }
 }
 

@@ -49,6 +49,7 @@ struct ChatMembersView: View {
                 }
             }
             .task { if model.members.isEmpty { await model.loadMore() } }
+            .task { await model.watchPresence() }
         }
     }
 
@@ -58,11 +59,23 @@ struct ChatMembersView: View {
             if let dialog { onOpenDialog?(dialog) }
         } label: {
             HStack(spacing: 12) {
-                AvatarView(title: member.name, id: member.id, url: member.avatarURL, size: 40)
-                PrivateText(member.name, placeholder: "Участник")
-                    .font(.body)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+                AvatarView(title: member.name, id: member.id, url: member.avatarURL, size: 40, isOnline: model.isOnline(member))
+                VStack(alignment: .leading, spacing: 2) {
+                    PrivateText(member.name, placeholder: "Участник")
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    // Раз в минуту: «был(а) N минут назад» не застывает.
+                    TimelineView(.everyMinute) { context in
+                        let status = model.status(of: member, at: context.date)
+                        if !status.isEmpty {
+                            Text(status)
+                                .font(.caption)
+                                .foregroundStyle(model.isOnline(member) ? AnyShapeStyle(Color.orbitleAccent) : AnyShapeStyle(.secondary))
+                                .lineLimit(1)
+                        }
+                    }
+                }
                 Spacer(minLength: 8)
                 if let badge = member.badge {
                     Text(badge)

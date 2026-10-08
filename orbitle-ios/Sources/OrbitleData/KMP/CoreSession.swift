@@ -176,10 +176,12 @@ public struct CoreContact: Sendable, Equatable {
     public var isBot: Bool
     public var isOfficial: Bool
     public var isServiceAccount: Bool
+    /// Код статуса (`-1` неизвестно, `0` не в сети, `1` в сети, `2` недавно, `3` давно).
+    public var presence: Int
 
     public init(
         id: String, firstName: String, lastName: String, phone: String, avatarURL: String, lastSeenMs: Int64, online: Bool,
-        accountStatus: Int? = nil, isBot: Bool = false, isOfficial: Bool = false, isServiceAccount: Bool = false
+        accountStatus: Int? = nil, isBot: Bool = false, isOfficial: Bool = false, isServiceAccount: Bool = false, presence: Int = -1
     ) {
         self.id = id
         self.firstName = firstName
@@ -192,6 +194,7 @@ public struct CoreContact: Sendable, Equatable {
         self.isBot = isBot
         self.isOfficial = isOfficial
         self.isServiceAccount = isServiceAccount
+        self.presence = presence
     }
 }
 
@@ -227,12 +230,14 @@ public struct CoreProfile: Sendable, Equatable {
     public var hasWebApp: Bool
     /// Опция канала `COMMENTS`: `nil`, если карточка не сказала.
     public var commentsEnabled: Bool?
+    /// Код статуса человека (`-1` неизвестно или не человек, `0`–`3` как у `CorePresence`).
+    public var presence: Int
 
     public init(
         kind: String, chatId: String, peerId: String = "", title: String = "", avatarURL: String = "",
         description: String = "", link: String = "", phone: String = "", participants: Int = 0,
         lastSeenMs: Int64 = 0, online: Bool = false, official: Bool = false, isPublic: Bool = false,
-        commands: [Command] = [], hasWebApp: Bool = false, commentsEnabled: Bool? = nil
+        commands: [Command] = [], hasWebApp: Bool = false, commentsEnabled: Bool? = nil, presence: Int = -1
     ) {
         self.kind = kind
         self.chatId = chatId
@@ -250,6 +255,7 @@ public struct CoreProfile: Sendable, Equatable {
         self.commands = commands
         self.hasWebApp = hasWebApp
         self.commentsEnabled = commentsEnabled
+        self.presence = presence
     }
 }
 
@@ -385,6 +391,8 @@ public struct CoreEvent: Sendable, Equatable {
         /// Черновик сервера чата `chatId` изменился (другое устройство, пуши 152/153, вход,
         /// отправка): сам он в `draft`, `nil` — черновика больше нет.
         case draft
+        /// Статус человека `authorId` изменился: код в `presence`, время визита (мс) в `timeMs`.
+        case presence
     }
 
     public var kind: Kind
@@ -410,6 +418,8 @@ public struct CoreEvent: Sendable, Equatable {
     public var muted: Int
     /// Черновик у `draft`; `nil` — его стёрли или отправили.
     public var draft: CoreDraft?
+    /// Код статуса у `presence` (`-1` у остальных).
+    public var presence: Int
 
     public init(
         kind: Kind,
@@ -427,7 +437,8 @@ public struct CoreEvent: Sendable, Equatable {
         reactionsJSON: String = "",
         updateTimeMs: Int64 = 0,
         muted: Int = -1,
-        draft: CoreDraft? = nil
+        draft: CoreDraft? = nil,
+        presence: Int = -1
     ) {
         self.kind = kind
         self.chatId = chatId
@@ -445,6 +456,7 @@ public struct CoreEvent: Sendable, Equatable {
         self.updateTimeMs = updateTimeMs
         self.muted = muted
         self.draft = draft
+        self.presence = presence
     }
 }
 
@@ -710,6 +722,12 @@ public protocol MaxCore: Sendable {
     /// Участники из `members`, подходящие под `query`, по общему правилу ядра (имя или имя для
     /// упоминаний, «@» — только оно). `nil` — ядро не может (участники не из него).
     func filterMembers(_ members: [CoreGroupMember], query: String) async -> [CoreGroupMember]?
+    /// Спросить статусы людей (`CONTACT_PRESENCE` 35); изменения приходят и событиями `presence`.
+    func loadPresence(userIds: [String]) async throws -> [CorePresence]
+    /// Статус, который ядро держит для человека (с `presence-ttl` сервера).
+    func presenceOf(userId: String) async -> CorePresence
+    /// Приложение на экране (`true`) или в фоне: от этого сервер решает «в сети».
+    func setAppActive(_ active: Bool) async
     /// Что показать в поле ввода: свой черновик против черновика сервера и метки стирания.
     /// `nil` — поле пустое.
     func reconcileDraft(chatId: String, text: String, elementsJSON: String, replyTo: String, updateTime: Int64) async -> CoreDraft?

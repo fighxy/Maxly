@@ -133,6 +133,9 @@ struct MainTabView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             let calls = container.callsViewModel()
+            // «В сети» решает сервер по флагу из `PING`: на экране — да, в фоне — нет.
+            if phase == .active { container.setAppActive(true) }
+            if phase == .background { container.setAppActive(false) }
             switch phase {
             case .active:
                 // Звонки могли пропустить или удалить на другом устройстве, пока приложение спало.

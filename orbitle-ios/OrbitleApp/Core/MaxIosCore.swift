@@ -712,7 +712,8 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             accountStatus: Int(contact.accountStatus),
             isBot: contact.isBot,
             isOfficial: contact.isOfficial,
-            isServiceAccount: contact.isServiceAccount
+            isServiceAccount: contact.isServiceAccount,
+            presence: Int(contact.presence)
         )
     }
 
@@ -733,7 +734,8 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             isPublic: profile.isPublic,
             commands: profile.commands.map { CoreProfile.Command(name: $0.name, description: $0.description_) },
             hasWebApp: profile.hasWebApp,
-            commentsEnabled: profile.comments < 0 ? nil : profile.comments == 1
+            commentsEnabled: profile.comments < 0 ? nil : profile.comments == 1,
+            presence: Int(profile.presence)
         )
     }
 
@@ -787,7 +789,8 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             reactionsJSON: event.reactionsJson,
             updateTimeMs: event.updateTime,
             muted: Int(event.muted),
-            draft: event.draft.map(Self.draft)
+            draft: event.draft.map(Self.draft),
+            presence: Int(event.presence)
         )
     }
 }

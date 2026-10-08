@@ -26,6 +26,23 @@ struct ChatProfileViewModelTests {
         #expect(model.infoRows.isEmpty)
     }
 
+    @Test("Живой статус собеседника важнее карточки и меняется по событию")
+    func livePresence() async {
+        let presence = FakePresence()
+        await presence.store.record(.longAgo, userId: "3")
+        let profile = ChatProfile(kind: .user, chatId: "13", peerId: "3", title: "Анна", presence: .recently)
+        let model = ChatProfileViewModel(chatId: "13", title: "Анна", repository: FakeProfiles(result: .success(profile)), presence: presence)
+        await model.load()
+        let asked = await presence.refreshed
+        #expect(!asked.isEmpty && asked.allSatisfy { $0 == ["3"] })
+        #expect(model.subtitle == "Был(а) давно")
+        let watch = Task { await model.watchPresence() }
+        await presence.push(.online, userId: "3")
+        #expect(await eventually { model.isOnline })
+        #expect(model.subtitle == "В сети")
+        watch.cancel()
+    }
+
     @Test("Пользователь: статус, телефон, о себе, имя пользователя")
     func user() async {
         let profile = ChatProfile(

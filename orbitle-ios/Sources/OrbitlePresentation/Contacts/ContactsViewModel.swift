@@ -78,17 +78,24 @@ public final class ContactsViewModel {
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let formatter: ContactsFormatter
     @ObservationIgnored private var watch: Task<Void, Never>?
+    @ObservationIgnored private var presenceWatch: Task<Void, Never>?
     @ObservationIgnored private var contacts: [Contact] = []
+    /// Живые статусы «в сети»; `nil` — статусы только из списка контактов.
+    @ObservationIgnored private let presence: (any PresenceProvider)?
+    /// Статусы, пришедшие после списка (`loadPresence`, события ядра), по id.
+    @ObservationIgnored private var live: [String: Contact.Presence] = [:]
 
     public init(
         contacts: any ContactRepository,
         currentUserId: String,
         formatter: ContactsFormatter = ContactsFormatter(),
+        presence: (any PresenceProvider)? = nil,
         now: @escaping () -> Date = { Date() }
     ) {
         self.repository = contacts
         self.currentUserId = currentUserId
         self.formatter = formatter
+        self.presence = presence
         self.now = now
     }
 
@@ -104,6 +111,16 @@ public final class ContactsViewModel {
                 guard let self else { return }
                 self.contacts = list.filter { $0.id != self.currentUserId }
                 self.rebuild()
+                self.requestPresence()
+            }
+        }
+        if let presence {
+            let changes = presence.changes()
+            presenceWatch = Task { [weak self] in
+                for await ids in changes {
+                    guard let self else { return }
+                    await self.applyPresence(ids, from: presence)
+                }
             }
         }
     }
@@ -111,6 +128,31 @@ public final class ContactsViewModel {
     public func deactivate() {
         watch?.cancel()
         watch = nil
+        presenceWatch?.cancel()
+        presenceWatch = nil
+    }
+
+    /// Спросить статусы контактов, не задерживая показ списка.
+    private func requestPresence() {
+        guard let presence, !contacts.isEmpty else { return }
+        let ids = contacts.map(\.id)
+        Task { [weak self] in
+            await presence.refresh(ids)
+            // Уже известные статусы не приходят как изменения: читаем их сами.
+            await self?.applyPresence(Set(ids), from: presence)
+        }
+    }
+
+    /// Статусы изменились: строки этих контактов пересчитываются.
+    func applyPresence(_ ids: Set<String>, from presence: any PresenceProvider) async {
+        let known = Set(contacts.map(\.id))
+        var changed = false
+        for id in ids where known.contains(id) {
+            guard let value = await presence.presence(of: id), live[id] != value else { continue }
+            live[id] = value
+            changed = true
+        }
+        if changed { rebuild() }
     }
 
     /// Пересчитать «был(а) 5 минут назад» и подобное: экран зовёт раз в минуту,
@@ -281,9 +323,10 @@ public final class ContactsViewModel {
     }
 
     private func row(for contact: Contact, now: Date) -> ContactRow {
-        let seen = formatter.status(contact.presence, now: now)
+        let presence = live[contact.id] ?? contact.presence
+        let seen = formatter.status(presence, now: now)
         let status: String
-        if contact.presence == .online {
+        if presence == .online {
             status = seen
         } else if contact.isServiceAccount {
             status = "Служебный аккаунт"
@@ -296,7 +339,7 @@ public final class ContactsViewModel {
             id: contact.id,
             title: contact.displayName,
             status: status,
-            isOnline: contact.presence == .online,
+            isOnline: presence == .online,
             avatarURL: contact.avatarURL,
             isOfficial: contact.isOfficial
         )

@@ -46,6 +46,10 @@ final class AppContainer {
     @ObservationIgnored private let profileCache = ChatProfileCache.standard()
     /// Статус «в сети» по id человека: пишут контакты и карточки, позже — пуш присутствия ядра.
     @ObservationIgnored let presence = PresenceStore()
+    /// Статусы через ядро: `loadPresence` для видимых людей, ответы и события — в `presence`.
+    @ObservationIgnored private var presenceService: CorePresenceService?
+    /// Ядро для `setAppActive`: от него сервер решает, «в сети» ли аккаунт.
+    @ObservationIgnored private var activityCore: (any MaxCore)?
     @ObservationIgnored private var chatModels: [String: ChatViewModel] = [:]
     /// Диалоги, открытые из контактов: по ним экран знает имя собеседника, пока чата нет в списке.
     @ObservationIgnored private var dialogDrafts: [String: DialogDraft] = [:]
@@ -197,6 +201,8 @@ final class AppContainer {
                 media: media
             )
             let coreContacts = CoreContactRepository(core: core, presence: self.presence)
+            self.presenceService = CorePresenceService(core: core, store: self.presence)
+            self.activityCore = core
             let coreCalls = CoreCallHistoryRepository(core: core)
             typingReporter = TypingReporter(sender: CoreTypingSender(core: core))
             // Правило имён ядра живёт до перезапуска: задаётся при каждом старте.
@@ -243,6 +249,9 @@ final class AppContainer {
             self.draftStore = draftStore
             // Черновики с других устройств (события `draft`) — в базу и в открытое поле.
             await sync.attachDrafts(draftStore)
+            // Статусы людей: события `presence` и ответы `loadPresence` — в общий `presence`.
+            await sync.attachPresence(self.presence)
+            await core.setAppActive(true)
             self.messages = messages
             self.media = media
             self.mediaLinks = CoreMediaLinkResolver(core: core)
@@ -322,6 +331,8 @@ final class AppContainer {
         guard let chats else { return nil }
         if let listModel { return listModel }
         let model = ChatListViewModel(chats: chats, connection: session, recentSearches: recentSearches)
+        model.presence = presenceService
+        model.currentUserId = currentUserId
         listModel = model
         return model
     }
@@ -354,7 +365,8 @@ final class AppContainer {
             avatarURL: chat?.avatarURL ?? dialogDrafts[chatId]?.avatarURL,
             kind: kind,
             repository: profiles,
-            actions: profileActions
+            actions: profileActions,
+            presence: presenceService
         )
     }
 
@@ -387,7 +399,8 @@ final class AppContainer {
             avatarURL: dialog.avatarURL,
             kind: .user,
             repository: profiles,
-            actions: profileActions
+            actions: profileActions,
+            presence: presenceService
         )
     }
 
@@ -490,7 +503,7 @@ final class AppContainer {
 
     func contactsViewModel() -> ContactsViewModel {
         if let contactsModel { return contactsModel }
-        let model = ContactsViewModel(contacts: contacts, currentUserId: currentUserId)
+        let model = ContactsViewModel(contacts: contacts, currentUserId: currentUserId, presence: presenceService)
         contactsModel = model
         return model
     }
@@ -680,6 +693,12 @@ final class AppContainer {
     }
 
     /// Приложение вернулось на экран: сверка с сервером того, что могло прийти без пушей.
+    /// Приложение на экране или в фоне (`scenePhase`): ядро передаёт это серверу в `PING`.
+    func setAppActive(_ active: Bool) {
+        guard let core = activityCore else { return }
+        Task { await core.setAppActive(active) }
+    }
+
     func appBecameActive() async {
         await sync?.appBecameActive()
         // Разрешение на контакты могли выдать или забрать в настройках.
@@ -701,6 +720,7 @@ final class AppContainer {
         await recentSearches.clear()
         await profileCache.removeAll()
         await presence.removeAll()
+        await presenceService?.reset()
         await stickerRepository?.removeAll()
         recentStickers.clear()
         LottieStore.shared.removeAll()

@@ -225,6 +225,8 @@ struct ChatView: View {
             // Стеклянная капсула названия над лентой, под статус-баром мягкое размытие.
             .chatHeaderBlur()
             .navigationDestination(isPresented: $profileShown) { profileDestination }
+            // Статус собеседника в шапке: события `presence` ядра, пока чат открыт.
+            .task(id: profile == nil) { await profile?.watchPresence() }
             .task {
                 // Шапка: статус и аватар из карточки чата, она же открывается профилем.
                 if profile == nil { profile = makeProfile?() }

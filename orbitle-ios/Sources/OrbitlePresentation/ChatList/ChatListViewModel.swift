@@ -158,6 +158,15 @@ public final class ChatListViewModel {
     @ObservationIgnored private var catchUpTask: Task<Void, Never>?
     @ObservationIgnored private var serverSearchTask: Task<Void, Never>?
     @ObservationIgnored private var foundMessages: [FoundMessage] = []
+    /// Живые статусы «в сети»: точка у аватара личного чата. Ставится до `activate`.
+    @ObservationIgnored public var presence: (any PresenceProvider)?
+    /// Свой id: собеседник личного чата — `id чата ^ свой id`.
+    @ObservationIgnored public var currentUserId = ""
+    /// Собеседники с известным статусом: `true` — «в сети». Неизвестных не трогаем.
+    @ObservationIgnored private var peerOnline: [String: Bool] = [:]
+    /// Кого из видимых уже спрашивали и когда (чтобы не спрашивать на каждую перестройку).
+    @ObservationIgnored private var askedPeers: Set<String> = []
+    @ObservationIgnored private var askedAt: Date?
 
     public init(
         chats: any ChatRepository,
@@ -309,6 +318,15 @@ public final class ChatListViewModel {
                 guard let self else { return }
                 self.recentIds = ids
                 self.rebuildSearch()
+            })
+        }
+        if let presence {
+            let changes = presence.changes()
+            watches.append(Task { [weak self] in
+                for await ids in changes {
+                    guard let self else { return }
+                    await self.applyPresence(ids, from: presence)
+                }
             })
         }
         if let status {
@@ -662,6 +680,44 @@ public final class ChatListViewModel {
         }
     }
 
+    /// Собеседник личного чата: `id чата ^ свой id`. У групп, ботов и «Избранного» нет.
+    func peer(of chat: Chat) -> String? {
+        guard chat.type == .private, !chat.isBot, !chat.isSavedMessages,
+              let id = Int64(chat.id), let me = Int64(currentUserId), me != 0 else { return nil }
+        let peer = id ^ me
+        return peer > 0 ? String(peer) : nil
+    }
+
+    /// Статусы изменились: точки у аватаров этих собеседников пересчитываются.
+    func applyPresence(_ ids: Set<String>, from presence: any PresenceProvider) async {
+        var next = peerOnline
+        for id in ids {
+            next[id] = await presence.presence(of: id).map { $0 == .online }
+        }
+        guard next != peerOnline else { return }
+        peerOnline = next
+        reorder()
+    }
+
+    /// Спросить статусы собеседников видимых личных чатов; тех же — не чаще раза в минуту.
+    private func requestPresence(_ visible: some Sequence<Chat>) {
+        guard let presence else { return }
+        let date = now()
+        if let askedAt, date.timeIntervalSince(askedAt) >= 60 {
+            askedPeers = []
+            self.askedAt = nil
+        }
+        let peers = visible.compactMap(peer(of:)).filter { !askedPeers.contains($0) }
+        guard !peers.isEmpty else { return }
+        askedPeers.formUnion(peers)
+        if askedAt == nil { askedAt = date }
+        Task { [weak self] in
+            await presence.refresh(peers)
+            // Уже известные статусы не приходят как изменения: читаем их сами.
+            await self?.applyPresence(Set(peers), from: presence)
+        }
+    }
+
     /// Накладывает ожидающие правки и сортирует.
     private func reorder() {
         var sorted = snapshot
@@ -669,6 +725,7 @@ public final class ChatListViewModel {
             let id = sorted[index].id
             if let order = pendingPins[id] { sorted[index].pinOrder = order }
             if let marked = pendingUnreadMarks[id] { sorted[index].isMarkedUnread = marked }
+            if let peer = peer(of: sorted[index]), let online = peerOnline[peer] { sorted[index].isOnline = online }
         }
         chats = sorted.sorted(by: Chat.listOrder)
         rebuildItems()
@@ -707,6 +764,7 @@ public final class ChatListViewModel {
         let visible = filteredChats().prefix(visibleLimit)
         let next = visible.map { item($0, at: date) }
         if next != items { items = next }
+        requestPresence(visible)
         let archived = chats.filter(\.isArchived)
         let nextArchive: ChatArchiveSummary? = archived.first.map { latest in
             ChatArchiveSummary(

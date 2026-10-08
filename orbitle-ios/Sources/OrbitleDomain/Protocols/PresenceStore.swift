@@ -6,6 +6,17 @@ public protocol PresenceSink: Sendable {
     func record(_ batch: [String: Contact.Presence], at date: Date) async
 }
 
+/// Статус «в сети» для экранов: спросить сервер о видимых людях и узнать об изменениях.
+public protocol PresenceProvider: Sendable {
+    /// Спросить статусы этих людей (видимые диалоги, контакты, участники, профиль). Тех, кого
+    /// спрашивали недавно, источник пропускает сам. Ответ приходит через `changes()`.
+    func refresh(_ userIds: [String]) async
+    /// Последний известный статус; `nil` — о человеке ничего не известно.
+    func presence(of userId: String) async -> Contact.Presence?
+    /// Id людей, чей статус изменился.
+    func changes() -> AsyncStream<Set<String>>
+}
+
 /// Последний известный статус «в сети» по id пользователя, общий для экранов.
 ///
 /// Правила:
