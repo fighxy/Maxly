@@ -41,6 +41,8 @@ dependencies {
     api(libs.androidx.lifecycle.viewmodel)
     api(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
+    // Сокет ws2 сервера звонков.
+    implementation(libs.okhttp)
     implementation(libs.zxing.core)
 
     testImplementation(libs.junit)
