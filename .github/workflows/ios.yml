@@ -7,11 +7,13 @@ on:
     paths:
       - "orbitle-ios/**"
       - "scripts/**"
+      - "test-fixtures/calls/**"
       - ".github/workflows/ios.yml"
   pull_request:
     paths:
       - "orbitle-ios/**"
       - "scripts/**"
+      - "test-fixtures/calls/**"
       - ".github/workflows/ios.yml"
 
 permissions:
