@@ -52,6 +52,7 @@ import org.webrtc.VideoTrack
 import org.webrtc.audio.JavaAudioDeviceModule
 import java.nio.ByteBuffer
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import org.webrtc.IceCandidate as RtcIceCandidate
@@ -329,6 +330,12 @@ internal class AndroidCallPeer(
 ) : CallPeer {
     override var onEvent: ((PeerEvent) -> Unit)? = null
     private val senders = HashMap<LocalVideo, RtpSender>()
+
+    /** Видео, отданное в слот сервера, по mid секции. Отправителя слота не храним: см. [withTransceivers]. */
+    private val slots = HashMap<LocalVideo, String>()
+
+    /** Дорожки собеседника из `onTrack`, по id. Их обёртки живут до конца соединения, в отличие от списка секций. */
+    private val remote = ConcurrentHashMap<String, MediaStreamTrack>()
     private val channels = mutableListOf<AndroidDataChannel>()
 
     @Volatile
@@ -378,6 +385,7 @@ internal class AndroidCallPeer(
 
         override fun onTrack(transceiver: RtpTransceiver) {
             val track = transceiver.receiver?.track() ?: return
+            runCatching { track.id() }.getOrNull()?.let { remote[it] = track }
             CallLog.info("WebRTC: дорожка собеседника ${runCatching { track.kind() }.getOrNull()}")
             onMain { register(track)?.let { emit(PeerEvent.Track(it)) } }
         }
@@ -427,6 +435,10 @@ internal class AndroidCallPeer(
 
     override fun sendVideo(video: LocalVideo): Boolean {
         val track = media.videoTrack(video) ?: return false
+        slots[video]?.let { mid ->
+            setSlotTrack(mid, track)
+            return false
+        }
         senders[video]?.let {
             it.setTrack(track, false)
             return false
@@ -437,19 +449,39 @@ internal class AndroidCallPeer(
     }
 
     override fun stopVideo(video: LocalVideo) {
+        slots[video]?.let { mid ->
+            setSlotTrack(mid, null)
+            return
+        }
         senders[video]?.setTrack(null, false)
     }
 
     override fun fillVideoSlot(mids: Set<String>, video: LocalVideo): Boolean {
         val track = media.videoTrack(video) ?: return false
-        val transceiver = connection.transceivers.firstOrNull {
-            it.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO && it.mid in mids
+        val mid = withTransceivers { list ->
+            val transceiver = list.firstOrNull {
+                it.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO && it.mid in mids
+            } ?: return@withTransceivers null
+            transceiver.sender.setTrack(track, false)
+            transceiver.setDirection(RtpTransceiver.RtpTransceiverDirection.SEND_ONLY)
+            transceiver.mid
         } ?: return false
-        transceiver.sender.setTrack(track, false)
-        transceiver.setDirection(RtpTransceiver.RtpTransceiverDirection.SEND_ONLY)
-        senders[video] = transceiver.sender
+        slots[video] = mid
         return true
     }
+
+    private fun setSlotTrack(mid: String, track: VideoTrack?) {
+        runCatching {
+            withTransceivers { list -> list.firstOrNull { it.mid == mid }?.sender?.setTrack(track, false) }
+        }.onFailure { CallLog.warning("WebRTC: слот $mid не обновлён ($it)") }
+    }
+
+    /**
+     * Секции соединения — только внутри [block]. Каждый `getTransceivers` освобождает обёртки
+     * прошлого вызова вместе с их отправителями, приёмниками и дорожками, поэтому ничего из списка
+     * не сохраняем: запомненный отправитель слота падал с «RtpSender has been disposed».
+     */
+    private inline fun <T> withTransceivers(block: (List<RtpTransceiver>) -> T): T = block(connection.transceivers)
 
     override suspend fun makeOffer(iceRestart: Boolean): SessionDescription = suspendCancellableCoroutine { continuation ->
         val constraints = MediaConstraints().apply {
@@ -484,12 +516,16 @@ internal class AndroidCallPeer(
     }
 
     /** Дорожки приёмников, которые по согласованному SDP действительно принимают. */
-    override fun remoteTracks(): List<RemoteTrack> = connection.transceivers.mapNotNull { transceiver ->
-        val direction = runCatching { transceiver.currentDirection }.getOrNull()
-        if (direction != RtpTransceiver.RtpTransceiverDirection.SEND_RECV && direction != RtpTransceiver.RtpTransceiverDirection.RECV_ONLY) {
-            return@mapNotNull null
+    override fun remoteTracks(): List<RemoteTrack> = withTransceivers { list ->
+        list.mapNotNull { transceiver ->
+            val direction = runCatching { transceiver.currentDirection }.getOrNull()
+            if (direction != RtpTransceiver.RtpTransceiverDirection.SEND_RECV && direction != RtpTransceiver.RtpTransceiverDirection.RECV_ONLY) {
+                return@mapNotNull null
+            }
+            // Регистрируем обёртку из onTrack: обёртка из списка умрёт при следующем вызове.
+            val id = runCatching { transceiver.receiver?.track()?.id() }.getOrNull() ?: return@mapNotNull null
+            remote[id]?.let(::register)
         }
-        transceiver.receiver?.track()?.let(::register)
     }
 
     override fun openChannel(label: String): CallDataChannel? {
@@ -525,6 +561,8 @@ internal class AndroidCallPeer(
         channels.forEach { it.close() }
         channels.clear()
         senders.clear()
+        slots.clear()
+        remote.clear()
         runCatching { connection.dispose() }
     }
 
