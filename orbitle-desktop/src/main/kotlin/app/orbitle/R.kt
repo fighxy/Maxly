@@ -63,8 +63,6 @@ object R {
         const val about_core = 55
         const val about_text = 56
         const val about_source = 57
-        const val auth_retry = 61
-        const val auth_logout = 62
     }
 
     object drawable {
@@ -105,8 +103,6 @@ internal val STRING_TABLE: Map<Int, String> = mapOf(
     R.string.auth_back to "Назад",
     R.string.auth_show_password to "Показать пароль",
     R.string.auth_hide_password to "Скрыть пароль",
-    R.string.auth_retry to "Повторить",
-    R.string.auth_logout to "Выйти из аккаунта",
     R.string.country_picker_title to "Выберите страну",
     R.string.country_search to "Поиск страны",
     R.string.country_not_found to "Ничего не нашлось",

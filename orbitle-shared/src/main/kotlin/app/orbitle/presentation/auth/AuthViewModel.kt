@@ -29,8 +29,8 @@ data class AuthUiState(
     val errorMessage: String? = null,
     val sessionExpired: Boolean = false,
     /**
-     * Отказ сервера во входе по токену: над формой входа или, если [LoginNotice.blocking], вместо
-     * неё (временный отказ: «Повторить» и «Выйти»).
+     * Отказ сервера во входе по токену, когда токен стёрт: текст над формой входа. Временный отказ
+     * сюда не попадает — он остаётся баннером над списком чатов.
      */
     val notice: LoginNotice? = null,
     val country: PhoneCountry? = PhoneCountry.russia,
@@ -267,18 +267,6 @@ class AuthViewModel(
         perform({ auth.register(first, last) }) {}
     }
 
-    /** Временный отказ сервера: снова войти сохранённым токеном. */
-    fun retryLogin() {
-        if (isBusy || notice?.blocking != true) return
-        perform({ auth.retryLogin() }) {}
-    }
-
-    /** Временный отказ сервера: выйти из аккаунта и войти по номеру. */
-    fun logout() {
-        if (isBusy) return
-        perform({ auth.logout() }) { ok -> if (ok) notice = null }
-    }
-
     /** Назад к номеру: текущая попытка входа забывается. */
     fun backToPhone() {
         if (step == AuthStep.Phone) return
@@ -300,25 +288,14 @@ class AuthViewModel(
     internal fun apply(phase: AuthPhase) {
         when (phase) {
             AuthPhase.Restoring -> Unit
-            AuthPhase.SignedOut -> {
-                // Выход после временного отказа: ждать больше нечего, дальше вход по номеру.
-                if (notice?.blocking == true) notice = null
-                if (step != AuthStep.Phone) {
-                    resetSecrets()
-                    resendAvailableAt = null
-                    step = AuthStep.Phone
-                }
-            }
-            is AuthPhase.Expired -> {
-                sessionExpired = true
-                notice = LoginNotices.of(phase.rejection)
+            AuthPhase.SignedOut -> if (step != AuthStep.Phone) {
                 resetSecrets()
                 resendAvailableAt = null
                 step = AuthStep.Phone
             }
-            is AuthPhase.Throttled -> {
-                sessionExpired = false
-                notice = LoginNotices.of(phase.rejection)
+            is AuthPhase.Expired -> {
+                sessionExpired = true
+                notice = LoginNotices.of(phase.rejection).takeIf { it.placement == LoginNotice.Placement.LOGIN_FORM }
                 resetSecrets()
                 resendAvailableAt = null
                 step = AuthStep.Phone

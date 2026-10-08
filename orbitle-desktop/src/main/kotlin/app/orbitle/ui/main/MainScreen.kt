@@ -283,6 +283,8 @@ fun MainScreen(
                             },
                             storyStack = if (stackItems.isEmpty()) null else ({ StoryStack(stackItems) }),
                             onAddStory = addStory,
+                            onRetryLogin = { container.scope.launch { container.session.retryLogin() } },
+                            onLogout = onLogout,
                         )
                     }
                     VerticalDivider()

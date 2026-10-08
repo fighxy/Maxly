@@ -11,6 +11,8 @@ import app.orbitle.domain.FoundMessage
 import app.orbitle.presentation.chatlist.FoundMessageItem
 import app.orbitle.domain.ChatType
 import app.orbitle.domain.ConnectionState
+import app.orbitle.domain.SessionRejection
+import app.orbitle.presentation.auth.LoginNotice
 import app.orbitle.domain.ServerFolder
 import app.orbitle.presentation.chatlist.ChatListContent
 import app.orbitle.presentation.chatlist.ChatListFormatter
@@ -130,6 +132,34 @@ class ChatListViewModelTest {
         assertEquals("Нет соединения", vm.state.value.banner)
         connection.value = ConnectionState.CONNECTING
         assertEquals("Подключение…", vm.state.value.banner)
+    }
+
+    @Test
+    fun floodShowsABannerOverTheSavedList() {
+        val throttled = MutableStateFlow<SessionRejection?>(null)
+        val vm = ChatListViewModel(repo, connection, ChatListFormatter(ZoneOffset.UTC), now = { now }, local = marks, throttled = throttled)
+        repo.chats.value = listOf(chat("a"))
+        assertNull(vm.state.value.loginNotice)
+        connection.value = ConnectionState.OFFLINE
+        throttled.value = SessionRejection(SessionRejection.Reason.FLOOD, title = "Подождите", localizedMessage = "Вход через 5 минут")
+        // Список из сохранённого остаётся, сверху текст сервера.
+        assertEquals(listOf("a"), vm.state.value.items.map { it.id })
+        assertEquals(ChatListContent.List, vm.state.value.content)
+        assertEquals(LoginNotice("Подождите", "Вход через 5 минут", LoginNotice.Placement.CHAT_LIST_BANNER), vm.state.value.loginNotice)
+        // Без текста сервера — свой.
+        throttled.value = SessionRejection(SessionRejection.Reason.FLOOD)
+        assertEquals("Слишком много входов", vm.state.value.loginNotice?.title)
+        // Снова подключились — баннера нет.
+        throttled.value = null
+        connection.value = ConnectionState.ONLINE
+        assertNull(vm.state.value.loginNotice)
+    }
+
+    @Test
+    fun clearedTokenIsNeverAChatListBanner() {
+        val throttled = MutableStateFlow<SessionRejection?>(SessionRejection(SessionRejection.Reason.BLOCKED))
+        val vm = ChatListViewModel(repo, connection, ChatListFormatter(ZoneOffset.UTC), now = { now }, local = marks, throttled = throttled)
+        assertNull(vm.state.value.loginNotice)
     }
 
     @Test

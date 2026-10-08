@@ -9,6 +9,9 @@ import app.orbitle.domain.ChatDraft
 import app.orbitle.data.ServerDrafts
 import app.orbitle.domain.ChatFolder
 import app.orbitle.domain.ConnectionState
+import app.orbitle.domain.SessionRejection
+import app.orbitle.presentation.auth.LoginNotice
+import app.orbitle.presentation.auth.LoginNotices
 import app.orbitle.domain.OrbitleError
 import app.orbitle.domain.ChatSearchResult
 import kotlinx.coroutines.CancellationException
@@ -56,6 +59,11 @@ data class ChatListUiState(
     val content: ChatListContent = ChatListContent.Loading,
     /** Плашка над списком: «Подключение…», «Нет сети». `null` — всё хорошо. */
     val banner: String? = null,
+    /**
+     * Сервер временно не пускает (`login.flood`): баннер вверху списка с его текстом,
+     * «Повторить» и «Выйти из аккаунта». Список при этом без сети. `null` — отказа нет.
+     */
+    val loginNotice: LoginNotice? = null,
     val isRefreshing: Boolean = false,
     val searchQuery: String = "",
     val isSearchActive: Boolean = false,
@@ -99,6 +107,8 @@ class ChatListViewModel(
     private val searchDelayMs: Long = SEARCH_DELAY_MS,
     /** Черновики на сервере: из двух черновиков чата показывается более поздний, стирание побеждает. */
     private val serverDrafts: ServerDrafts = ServerDrafts.NONE,
+    /** Временный отказ сервера во входе ([app.orbitle.domain.AuthService.throttled]). */
+    throttled: Flow<SessionRejection?> = flowOf(null),
 ) : ViewModel() {
 
     private var serverSearch: Job? = null
@@ -110,6 +120,7 @@ class ChatListViewModel(
     private var serverFolders: List<ChatFolder> = emptyList()
     private var typing: Map<String, List<app.orbitle.domain.Typist>> = emptyMap()
     private var connection = ConnectionState.CONNECTING
+    private var loginNotice: LoginNotice? = null
     private var refreshError: OrbitleError? = null
     private var pendingPins: MutableMap<String, Int?> = mutableMapOf()
     /** Порядок закреплённых после перетаскивания, пока снимок стора его не показал. */
@@ -169,6 +180,12 @@ class ChatListViewModel(
                 this@ChatListViewModel.connection = it
                 rebuild()
                 if (it == ConnectionState.ONLINE && wasOffline && hasRefreshed) refresh()
+            }
+        }
+        viewModelScope.launch {
+            throttled.collect { rejection ->
+                loginNotice = rejection?.let(LoginNotices::of)?.takeIf { it.placement == LoginNotice.Placement.CHAT_LIST_BANNER }
+                rebuild()
             }
         }
         // Время в строках («сегодня» → «вчера») обновляется раз в минуту.
@@ -560,6 +577,7 @@ class ChatListViewModel(
             selectedFolderId = selected,
             content = content,
             banner = banner,
+            loginNotice = loginNotice,
             tabBadge = sorted.count { it.isUnread && !it.isMuted && !it.isArchived },
             error = refreshError?.userMessage?.takeIf { hasSnapshot },
             pages = pages,

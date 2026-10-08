@@ -121,11 +121,7 @@ fun AuthScreen(viewModel: AuthViewModel) {
                         .padding(horizontal = 24.dp, vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    val blocking = state.notice?.takeIf { it.blocking }
-                    if (blocking != null) {
-                        // Временный отказ сервера: форма входа не нужна, сеанс сохранён.
-                        BlockingNotice(blocking, state.isBusy, viewModel)
-                    } else when (state.step) {
+                    when (state.step) {
                         AuthStep.Phone -> PhoneStep(state, viewModel)
                         is AuthStep.Code -> CodeStep(state, viewModel)
                         is AuthStep.Password -> PasswordStep(state, viewModel)
@@ -343,21 +339,6 @@ private fun RegistrationStep(state: AuthUiState, viewModel: AuthViewModel) {
     )
     Spacer(Modifier.height(24.dp))
     PrimaryButton(stringResource(R.string.auth_create_account), enabled = state.canRegister, busy = state.isBusy) { viewModel.register() }
-}
-
-/** Сервер временно не пускает: его текст, «Повторить» и «Выйти из аккаунта». */
-@Composable
-private fun BlockingNotice(notice: app.orbitle.presentation.auth.LoginNotice, busy: Boolean, viewModel: AuthViewModel) {
-    Spacer(Modifier.height(48.dp))
-    Text(notice.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-    notice.message?.let {
-        Spacer(Modifier.height(12.dp))
-        Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-    }
-    Spacer(Modifier.height(28.dp))
-    PrimaryButton(stringResource(R.string.auth_retry), enabled = true, busy = busy) { viewModel.retryLogin() }
-    Spacer(Modifier.height(8.dp))
-    TextButton(onClick = viewModel::logout, enabled = !busy) { Text(stringResource(R.string.auth_logout)) }
 }
 
 @Composable

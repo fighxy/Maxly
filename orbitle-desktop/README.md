@@ -63,13 +63,15 @@ The core is pinned to max-kmp-core `33cca05` in `core.lock`. Everything below ru
   to `oneme.ru` hosts) and backs off reconnects from 3 s to 96 s with ±10 % jitter. Neither
   server `PING` nor `RECONNECT` reaches `pushes`; the app has no ping or reconnect code of its own.
 - **Login rejection:** when the server refuses the stored token (`ClientState.TokenRejected`),
-  the app goes to the login screen, never to an empty chat list. `login.token` and
-  `login.blocked`: the core has cleared the token, so the app also clears its own session state
-  (chats, caches, last user id, feed positions) and shows the notice above the phone number field.
-  `login.flood`: the token is kept and nothing is cleared; a blocking notice replaces the login
-  form with "Retry" (log in again with the same token) and "Log out". The notice shows the
-  server's `title` and `localizedMessage` (or `description`) first and falls back to our own
-  Russian text per reason (`LoginNotices`, `SessionRejection`).
+  the app never shows an empty chat list. `login.token` and `login.blocked`: the core has cleared
+  the token, so the app also clears its own session state (chats, caches, last user id, feed
+  positions) and goes to the login screen with the notice above the phone number field.
+  `login.flood`: the token is kept and nothing is cleared; the app stays signed in and shows the
+  saved chat list offline with a banner at the top: "Retry" (log in again with the same token,
+  `AuthService.retryLogin`) and "Log out". The banner goes away once the client is online again;
+  an open chat behaves as offline meanwhile. The notice shows the server's `title` and
+  `localizedMessage` (or `description`) first and falls back to our own Russian text per reason
+  (`LoginNotices`, `SessionRejection`, `AuthService.throttled`).
 - **Server error texts:** when an error reply carries text for the user, the app shows it:
   `title`, else `localizedMessage` (the core's `MaxError.serverText` /
   `ServerErrorException.displayText`). It reaches the screen through `CoreFailure.serverText`,

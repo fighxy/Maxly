@@ -58,7 +58,6 @@ class AccountLimitsTest {
         assertNull(AuthPhase.Restoring.freshEntry())
         assertNull(AuthPhase.SignedOut.freshEntry())
         assertNull(AuthPhase.Expired().freshEntry())
-        assertNull(AuthPhase.Throttled(app.orbitle.domain.SessionRejection(app.orbitle.domain.SessionRejection.Reason.FLOOD)).freshEntry())
         assertNull(AuthPhase.SignedIn("1").freshEntry())
     }
 

@@ -1,6 +1,8 @@
 package app.orbitle.domain
 
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /** Шаг входа. Экран читает его из потока, а не из исключения. */
 sealed interface AuthPhase {
@@ -15,11 +17,6 @@ sealed interface AuthPhase {
      * Ядро токен стёрло, данные прежнего сеанса стёрты: вход заново по номеру.
      */
     data class Expired(val rejection: SessionRejection = SessionRejection(SessionRejection.Reason.TOKEN)) : AuthPhase
-    /**
-     * Сервер временно не пускает (`login.flood`): токен цел, сеанс не стёрт. Вход можно повторить
-     * позже или выйти из аккаунта.
-     */
-    data class Throttled(val rejection: SessionRejection) : AuthPhase
 }
 
 /**
@@ -51,7 +48,7 @@ data class SessionRejection(
 fun AuthPhase.freshEntry(): AccountLimits.Entry? = when (this) {
     is AuthPhase.CodeSent, is AuthPhase.Password -> AccountLimits.Entry.LOGIN
     AuthPhase.Registration -> AccountLimits.Entry.REGISTRATION
-    AuthPhase.Restoring, AuthPhase.SignedOut, is AuthPhase.SignedIn, is AuthPhase.Expired, is AuthPhase.Throttled -> null
+    AuthPhase.Restoring, AuthPhase.SignedOut, is AuthPhase.SignedIn, is AuthPhase.Expired -> null
 }
 
 /** Соединение с сервером для баннера «Подключение…». */
@@ -64,6 +61,12 @@ enum class ConnectionState { CONNECTING, ONLINE, OFFLINE }
 interface AuthService {
     val phase: StateFlow<AuthPhase>
     val connection: StateFlow<ConnectionState>
+    /**
+     * Временный отказ сервера во входе (`login.flood`), пока он в силе: токен цел, фаза остаётся
+     * [AuthPhase.SignedIn], список чатов работает без сети и показывает баннер. `null` — отказа нет
+     * или клиент снова подключился.
+     */
+    val throttled: StateFlow<SessionRejection?> get() = NotThrottled
     suspend fun restoreSession()
     suspend fun requestCode(phone: String)
     suspend fun resendCode()
@@ -73,6 +76,8 @@ interface AuthService {
     /** Вернуться к вводу номера. После входа ничего не делает. */
     suspend fun cancelLogin()
     suspend fun logout()
-    /** Повторить вход сохранённым токеном после временного отказа ([AuthPhase.Throttled]). */
-    suspend fun retryLogin() = restoreSession()
+    /** Повторить вход сохранённым токеном после временного отказа ([throttled]). */
+    suspend fun retryLogin() = Unit
 }
+
+private val NotThrottled: StateFlow<SessionRejection?> = MutableStateFlow<SessionRejection?>(null).asStateFlow()

@@ -2,10 +2,9 @@ package app.orbitle.presentation.auth
 
 import app.orbitle.domain.SessionRejection
 import app.orbitle.domain.SessionRejection.Reason
+import app.orbitle.presentation.auth.LoginNotice.Placement
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LoginNoticesTest {
@@ -15,18 +14,18 @@ class LoginNoticesTest {
         val token = LoginNotices.of(SessionRejection(Reason.TOKEN))
         assertEquals("Сессия завершена", token.title)
         assertEquals("Сервер больше не принимает этот вход. Войдите снова по номеру телефона", token.message)
-        assertFalse(token.blocking)
+        assertEquals(Placement.LOGIN_FORM, token.placement)
 
         val blocked = LoginNotices.of(SessionRejection(Reason.BLOCKED))
         assertEquals("Аккаунт заблокирован", blocked.title)
         assertEquals("Сервер не пускает в этот аккаунт. Войти можно будет, когда блокировку снимут", blocked.message)
-        assertFalse(blocked.blocking)
+        assertEquals(Placement.LOGIN_FORM, blocked.placement)
 
         val flood = LoginNotices.of(SessionRejection(Reason.FLOOD))
         assertEquals("Слишком много входов", flood.title)
-        assertEquals("Сервер временно ограничил вход. Попробуйте позже: сеанс сохранён", flood.message)
-        // Токен цел: экран ожидания вместо формы входа.
-        assertTrue(flood.blocking)
+        assertEquals("Сервер временно ограничил вход. Сохранённые чаты доступны без сети, повторите позже", flood.message)
+        // Токен цел: баннер над списком чатов, а не экран входа.
+        assertEquals(Placement.CHAT_LIST_BANNER, flood.placement)
     }
 
     @Test
@@ -35,7 +34,8 @@ class LoginNoticesTest {
             val notice = LoginNotices.of(SessionRejection(reason, title = "Вход недоступен", localizedMessage = "Подождите 10 минут", description = "Подробнее"))
             assertEquals(reason.name, "Вход недоступен", notice.title)
             assertEquals(reason.name, "Подождите 10 минут", notice.message)
-            assertEquals(reason.name, reason == Reason.FLOOD, notice.blocking)
+            val expected = if (reason == Reason.FLOOD) Placement.CHAT_LIST_BANNER else Placement.LOGIN_FORM
+            assertEquals(reason.name, expected, notice.placement)
         }
     }
 
@@ -66,9 +66,15 @@ class LoginNoticesTest {
     }
 
     @Test
-    fun keptTokenDecidesBlockingNotTheReason() {
+    fun floodWithServerTextIsABannerWithIt() {
+        val notice = LoginNotices.of(SessionRejection(Reason.FLOOD, title = "Подождите", localizedMessage = "Вход будет доступен через 5 минут"))
+        assertEquals(LoginNotice("Подождите", "Вход будет доступен через 5 минут", Placement.CHAT_LIST_BANNER), notice)
+    }
+
+    @Test
+    fun keptTokenDecidesThePlacementNotTheReason() {
         // Ядро решает, стирать ли токен; экран смотрит на это, а не на код.
-        assertTrue(LoginNotices.of(SessionRejection(Reason.TOKEN, tokenCleared = false)).blocking)
-        assertFalse(LoginNotices.of(SessionRejection(Reason.FLOOD, tokenCleared = true)).blocking)
+        assertEquals(Placement.CHAT_LIST_BANNER, LoginNotices.of(SessionRejection(Reason.TOKEN, tokenCleared = false)).placement)
+        assertEquals(Placement.LOGIN_FORM, LoginNotices.of(SessionRejection(Reason.FLOOD, tokenCleared = true)).placement)
     }
 }

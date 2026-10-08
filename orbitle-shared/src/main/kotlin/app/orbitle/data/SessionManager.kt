@@ -44,6 +44,9 @@ class SessionManager(
     private val _connection = MutableStateFlow(ConnectionState.CONNECTING)
     override val connection: StateFlow<ConnectionState> = _connection.asStateFlow()
 
+    private val _throttled = MutableStateFlow<SessionRejection?>(null)
+    override val throttled: StateFlow<SessionRejection?> = _throttled.asStateFlow()
+
     private var phone = ""
     private var codeToken: String? = null
     private var trackId: String? = null
@@ -51,10 +54,41 @@ class SessionManager(
     private var attempt = 0
     private var logouts = 0
     private var isLoggingOut = false
+    private var isRetrying = false
     private var coreWatch: Job? = null
 
     private val isAuthorized: Boolean get() = _phase.value is AuthPhase.SignedIn
     private val signedInUserId: String? get() = (_phase.value as? AuthPhase.SignedIn)?.userId
+
+    /**
+     * «Повторить» в баннере временного отказа: ядро снова входит сохранённым токеном. Фаза не
+     * меняется, список чатов остаётся на экране; успешный вход снимает баннер, новый отказ его
+     * обновляет. Повтор, пока идёт прежний, ничего не делает.
+     */
+    override suspend fun retryLogin() {
+        if (_throttled.value == null || !isAuthorized || isRetrying) return
+        val epoch = logouts
+        isRetrying = true
+        try {
+            watchCore()
+            _connection.value = ConnectionState.CONNECTING
+            val started = try {
+                core.start()
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                null
+            }
+            if (epoch != logouts || !isAuthorized) return
+            when (started) {
+                null, CorePhase.FAILED, CorePhase.IDLE -> _connection.value = ConnectionState.OFFLINE
+                // Поток ядра мог уже показать вход: тогда баннера нет и повторять нечего.
+                CorePhase.READY -> if (_throttled.value != null) observe(started)
+                else -> observe(started)
+            }
+        } finally {
+            isRetrying = false
+        }
+    }
 
     override suspend fun restoreSession() {
         val epoch = logouts
@@ -185,6 +219,7 @@ class SessionManager(
         attempt += 1
         logouts += 1
         isLoggingOut = true
+        _throttled.value = null
         try {
             runCatching { core.logout() }
             onSignedOut()
@@ -239,6 +274,7 @@ class SessionManager(
         }
         if (id.isNotEmpty()) userIds.lastUserId = id
         forgetLoginAttempt()
+        _throttled.value = null
         _phase.value = AuthPhase.SignedIn(id)
         runCatching { onSignedIn(id) }
         if (fresh != null) runCatching { onFreshSession(fresh) }
@@ -247,15 +283,22 @@ class SessionManager(
     /**
      * Сервер отказал во входе по токену. Токен стёрт (недействителен, аккаунт заблокирован) —
      * экран входа, данные прежнего сеанса стираются. Временный отказ (`login.flood`) токен не
-     * трогает: экран ожидания с повтором и выходом, данные остаются.
+     * трогает: список чатов остаётся, офлайн и с баннером, данные не стираются.
      */
     private suspend fun reject() {
         forgetLoginAttempt()
         val rejection = core.rejection() ?: SessionRejection(SessionRejection.Reason.TOKEN)
         if (!rejection.tokenCleared) {
-            _phase.value = AuthPhase.Throttled(rejection)
+            // Во время входа по номеру списка чатов ещё нет: ждать негде, остаётся шаг входа.
+            if (_phase.value is AuthPhase.SignedIn || _phase.value == AuthPhase.Restoring) {
+                _throttled.value = rejection
+                _connection.value = ConnectionState.OFFLINE
+                val id = signedInUserId ?: userIds.lastUserId.orEmpty()
+                if (_phase.value == AuthPhase.Restoring) _phase.value = AuthPhase.SignedIn(id)
+            }
             return
         }
+        _throttled.value = null
         val epoch = logouts
         _phase.value = AuthPhase.Expired(rejection)
         userIds.lastUserId = null
@@ -277,6 +320,8 @@ class SessionManager(
             }
             CorePhase.READY -> {
                 _connection.value = ConnectionState.ONLINE
+                // Временный отказ снят: сервер снова пустил, баннер уходит.
+                _throttled.value = null
                 val current = signedInUserId ?: return
                 val id = core.currentUserId()
                 if (id.isNotEmpty() && id != current) {

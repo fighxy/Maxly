@@ -13,6 +13,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -32,7 +33,11 @@ class FakeCore : CoreGateway {
 
     override fun rejection() = rejected
     override fun hasStoredToken() = stored
-    override suspend fun start() = startPhase
+    var startFailure: CoreFailure? = null
+    override suspend fun start(): CorePhase {
+        startFailure?.let { throw it }
+        return startPhase
+    }
     override fun currentUserId() = userId
     override suspend fun requestCode(phone: String, resend: Boolean): CoreCode {
         requests += phone to resend
@@ -309,7 +314,7 @@ class SessionManagerTest {
     }
 
     @Test
-    fun floodKeepsTheSessionAndCanRetry() = runTest(UnconfinedTestDispatcher()) {
+    fun floodKeepsTheChatListWithABannerAndCanRetry() = runTest(UnconfinedTestDispatcher()) {
         core.startPhase = CorePhase.READY
         core.userId = "100"
         val s = session()
@@ -317,14 +322,89 @@ class SessionManagerTest {
         val flood = SessionRejection(SessionRejection.Reason.FLOOD, localizedMessage = "Попробуйте позже")
         core.rejected = flood
         core.phases.emit(CorePhase.TOKEN_REJECTED)
-        assertEquals(AuthPhase.Throttled(flood), s.phase.value)
+        // Не экран входа: список чатов остаётся, без сети и с баннером.
+        assertEquals(AuthPhase.SignedIn("100"), s.phase.value)
+        assertEquals(flood, s.throttled.value)
+        assertEquals(ConnectionState.OFFLINE, s.connection.value)
         // Токен цел: ничего не стирается, id остаётся.
         assertEquals(0, cleared)
         assertEquals("100", ids.lastUserId)
-        // Повтор входа тем же токеном.
+        // Повтор входа тем же токеном: сервер пустил — баннер уходит, чаты обновляются.
+        signedIn.clear()
         core.rejected = null
         s.retryLogin()
         assertEquals(AuthPhase.SignedIn("100"), s.phase.value)
+        assertNull(s.throttled.value)
+        assertEquals(ConnectionState.ONLINE, s.connection.value)
+        assertEquals(listOf("100"), signedIn)
+    }
+
+    @Test
+    fun floodAtStartOpensTheSavedChatList() = runTest(UnconfinedTestDispatcher()) {
+        core.stored = true
+        ids.lastUserId = "100"
+        core.startPhase = CorePhase.TOKEN_REJECTED
+        core.rejected = SessionRejection(SessionRejection.Reason.FLOOD)
+        val s = session()
+        s.restoreSession()
+        assertEquals(AuthPhase.SignedIn("100"), s.phase.value)
+        assertEquals(SessionRejection(SessionRejection.Reason.FLOOD), s.throttled.value)
+        assertEquals(ConnectionState.OFFLINE, s.connection.value)
+        assertEquals(0, cleared)
+        // Сеть не трогали до ответа сервера: загрузка чатов с сервера не начиналась.
+        assertTrue(signedIn.isEmpty())
+    }
+
+    @Test
+    fun repeatedFloodUpdatesTheBanner() = runTest(UnconfinedTestDispatcher()) {
+        core.stored = true
+        ids.lastUserId = "100"
+        core.startPhase = CorePhase.TOKEN_REJECTED
+        core.rejected = SessionRejection(SessionRejection.Reason.FLOOD)
+        val s = session()
+        s.restoreSession()
+        val again = SessionRejection(SessionRejection.Reason.FLOOD, title = "Подождите ещё")
+        core.rejected = again
+        s.retryLogin()
+        assertEquals(AuthPhase.SignedIn("100"), s.phase.value)
+        assertEquals(again, s.throttled.value)
+        assertEquals(ConnectionState.OFFLINE, s.connection.value)
+        // Без сети повтор оставляет баннер.
+        core.startFailure = CoreFailure("network", null)
+        s.retryLogin()
+        assertEquals(again, s.throttled.value)
+        assertEquals(ConnectionState.OFFLINE, s.connection.value)
+    }
+
+    @Test
+    fun reconnectByTheCoreRemovesTheBanner() = runTest(UnconfinedTestDispatcher()) {
+        core.stored = true
+        ids.lastUserId = "100"
+        core.startPhase = CorePhase.TOKEN_REJECTED
+        core.rejected = SessionRejection(SessionRejection.Reason.FLOOD)
+        val s = session()
+        s.restoreSession()
+        core.phases.emit(CorePhase.READY)
+        assertNull(s.throttled.value)
+        assertEquals(ConnectionState.ONLINE, s.connection.value)
+        assertEquals(AuthPhase.SignedIn("100"), s.phase.value)
+    }
+
+    @Test
+    fun clearedTokenAfterFloodGoesToLogin() = runTest(UnconfinedTestDispatcher()) {
+        core.startPhase = CorePhase.READY
+        core.userId = "100"
+        val s = session()
+        s.restoreSession()
+        core.rejected = SessionRejection(SessionRejection.Reason.FLOOD)
+        core.phases.emit(CorePhase.TOKEN_REJECTED)
+        val token = SessionRejection(SessionRejection.Reason.TOKEN)
+        core.rejected = token
+        core.startPhase = CorePhase.TOKEN_REJECTED
+        s.retryLogin()
+        assertEquals(AuthPhase.Expired(token), s.phase.value)
+        assertNull(s.throttled.value)
+        assertEquals(1, cleared)
     }
 
     @Test
@@ -335,11 +415,27 @@ class SessionManagerTest {
         core.rejected = SessionRejection(SessionRejection.Reason.FLOOD)
         val s = session()
         s.restoreSession()
-        assertTrue(s.phase.value is AuthPhase.Throttled)
+        assertTrue(s.throttled.value != null)
         s.logout()
         assertEquals(AuthPhase.SignedOut, s.phase.value)
+        assertNull(s.throttled.value)
         assertEquals(1, core.logouts)
         assertEquals(null, ids.lastUserId)
+    }
+
+    @Test
+    fun floodDuringSmsLoginKeepsTheStep() = runTest(UnconfinedTestDispatcher()) {
+        core.startPhase = CorePhase.AWAITING_AUTH
+        val s = session()
+        s.restoreSession()
+        s.requestCode("+79991234567")
+        core.rejected = SessionRejection(SessionRejection.Reason.FLOOD)
+        core.phases.emit(CorePhase.TOKEN_REJECTED)
+        assertTrue(s.phase.value is AuthPhase.CodeSent)
+        assertNull(s.throttled.value)
+        // Без временного отказа повторять нечего.
+        s.retryLogin()
+        assertTrue(s.phase.value is AuthPhase.CodeSent)
     }
 
     @Test

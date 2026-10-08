@@ -153,6 +153,10 @@ fun ChatListScreen(
     /** Аватары историй у заголовка, пока полоса спрятана; `null` — историй нет. */
     storyStack: (@Composable () -> Unit)? = null,
     onAddStory: (() -> Unit)? = null,
+    /** Баннер временного отказа во входе: «Повторить» — снова войти тем же токеном. */
+    onRetryLogin: () -> Unit = {},
+    /** Баннер временного отказа во входе: «Выйти из аккаунта». */
+    onLogout: () -> Unit = {},
 ) {
     LifecycleResumeEffect(viewModel) {
         viewModel.reloadLocal()
@@ -232,6 +236,8 @@ fun ChatListScreen(
                         },
                     )
                 }
+                // Сервер временно не пускает: список из сохранённого, без сети, а сверху его текст.
+                state.loginNotice?.let { LoginNoticeBanner(it, onRetry = onRetryLogin, onLogout = onLogout) }
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },

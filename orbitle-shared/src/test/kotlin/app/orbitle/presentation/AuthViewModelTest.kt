@@ -53,14 +53,8 @@ class FakeAuth : AuthService {
         cancels += 1
         phase.value = AuthPhase.SignedOut
     }
-    var logouts = 0
-    var retries = 0
     override suspend fun logout() {
-        logouts += 1
         phase.value = AuthPhase.SignedOut
-    }
-    override suspend fun retryLogin() {
-        retries += 1
     }
 }
 
@@ -222,7 +216,7 @@ class AuthViewModelTest {
         val notice = vm.state.value.notice!!
         assertEquals("Аккаунт заблокирован", notice.title)
         assertEquals("Обратитесь в поддержку", notice.message)
-        assertFalse(notice.blocking)
+        assertEquals(app.orbitle.presentation.auth.LoginNotice.Placement.LOGIN_FORM, notice.placement)
         assertEquals(AuthStep.Phone, vm.state.value.step)
         // Новый вход по номеру убирает надпись.
         vm.setPhone("+7 999 123-45-67")
@@ -231,16 +225,9 @@ class AuthViewModelTest {
     }
 
     @Test
-    fun floodBlocksTheFormUntilRetryOrLogout() {
-        auth.phase.value = AuthPhase.Throttled(SessionRejection(SessionRejection.Reason.FLOOD))
-        val notice = vm.state.value.notice!!
-        assertTrue(notice.blocking)
-        assertFalse(vm.state.value.sessionExpired)
-        vm.retryLogin()
-        assertEquals(1, auth.retries)
-        vm.logout()
-        assertEquals(1, auth.logouts)
-        assertEquals(AuthPhase.SignedOut, auth.phase.value)
+    fun floodNeverReachesTheLoginForm() {
+        // Временный отказ — баннер списка чатов: даже если он пришёл как Expired, над формой его нет.
+        auth.phase.value = AuthPhase.Expired(SessionRejection(SessionRejection.Reason.FLOOD))
         assertNull(vm.state.value.notice)
     }
 }
