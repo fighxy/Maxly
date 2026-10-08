@@ -275,6 +275,41 @@ class MessageSelectionTest {
     }
 
     @Test
+    fun partialDeleteSaysHowManyStayed() {
+        repo.list.value = listOf(msg("1", author = "1"), msg("2", author = "1"), msg("3", author = "1"))
+        repo.deleteFailed = setOf("2")
+        val model = vm()
+        model.startSelection(msg("1", author = "1"))
+        model.toggleSelection(msg("2", author = "1"))
+        model.toggleSelection(msg("3", author = "1"))
+        model.deleteSelection(forEveryone = true)
+        assertEquals(listOf(listOf("1", "2", "3") to true), repo.deletes)
+        assertEquals("Не удалось удалить 1 из 3", model.messages.value)
+    }
+
+    @Test
+    fun failedSingleDeleteIsReported() {
+        repo.list.value = listOf(msg("1", author = "1"))
+        repo.deleteFailed = setOf("1")
+        val model = vm()
+        model.delete(msg("1", author = "1"), forEveryone = true)
+        assertEquals("Не удалось удалить сообщение", model.messages.value)
+    }
+
+    @Test
+    fun forwardStoppingHalfwaySaysHowManyWent() {
+        repo.list.value = listOf(msg("1"), msg("2", at = now + minute), msg("3", at = now + 2 * minute))
+        repo.forwardFailAfter = 2
+        val model = vm()
+        model.startSelection(msg("3", at = now + 2 * minute))
+        model.toggleSelection(msg("1"))
+        model.toggleSelection(msg("2", at = now + minute))
+        model.forwardSelection("20")
+        assertEquals(listOf("1", "2"), repo.forwards.map { it.second })
+        assertEquals("Переслано 2 из 3. Сервер не ответил", model.messages.value)
+    }
+
+    @Test
     fun deleteOfSeveralDiscardsLocalOnesAndSendsTheRest() {
         val failed = msg("local-1", author = "1", status = MessageStatus.FAILED)
         repo.list.value = listOf(msg("1", author = "1"), failed)

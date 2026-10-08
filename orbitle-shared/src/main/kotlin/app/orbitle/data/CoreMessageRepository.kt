@@ -219,12 +219,19 @@ class CoreMessageRepository(
     }
 
     override suspend fun forward(chatId: String, messageId: String, targetChatId: String) {
-        val target = targetChatId.toLong()
-        MaxCoreGateway.call {
-            // Свои сообщения сервер не присылает обратно: копию в целевом чате кладём сами.
-            val sent = client.api.messages.forwardMessage(target, messageId.toLong(), sourceChatId = chatId.toLong())
-            client.store.putSentMessage(target, sent)
-        }
+        val outcome = forwardMessages(chatId, listOf(messageId), targetChatId)
+        outcome.error?.let { throw CoreErrors.map(it) }
+    }
+
+    /**
+     * Пересылка выбранного ([MaxClient.forwardMessages]): ядро шлёт по одному, от старых к новым,
+     * кладёт ушедшие копии в стор и останавливается на первой ошибке.
+     */
+    override suspend fun forwardMessages(chatId: String, messageIds: List<String>, targetChatId: String): ForwardOutcome {
+        val ids = messageIds.mapNotNull { it.toLongOrNull() }
+        if (ids.isEmpty()) return ForwardOutcome(0, 0, null)
+        val batch = MaxCoreGateway.call { client.forwardMessages(targetChatId.toLong(), chatId.toLong(), ids) }
+        return ForwardOutcome(batch.sent.size, ids.size, batch.error?.let(CoreErrors::map))
     }
 
     /** Идущие загрузки вложений по id своего сообщения: их можно отменить. */
@@ -479,11 +486,21 @@ class CoreMessageRepository(
     }
 
     override suspend fun delete(chatId: String, messageIds: List<String>, forEveryone: Boolean) {
+        deleteMessages(chatId, messageIds, forEveryone)
+    }
+
+    /**
+     * Весь выбор одним `MSG_DELETE` ([MaxClient.deleteMessages]): стор ядра убирает только то, что
+     * сервер удалил, оставленные им id приходят в [DeleteOutcome.failed]. Не ушедшие сообщения
+     * убираются локально и считаются удалёнными.
+     */
+    override suspend fun deleteMessages(chatId: String, messageIds: List<String>, forEveryone: Boolean): DeleteOutcome {
+        val local = messageIds.filter { it.startsWith("local-") }
+        local.forEach { remove(chatId, it) }
         val ids = messageIds.mapNotNull { it.toLongOrNull() }
-        messageIds.filter { it.startsWith("local-") }.forEach { remove(chatId, it) }
-        if (ids.isEmpty()) return
-        MaxCoreGateway.call { client.api.messages.deleteMessages(chatId.toLong(), ids, forMe = !forEveryone) }
-        client.store.apply(MaxEvent.MessagesDeleted(chatId.toLong(), ids, null, null, false, 0, null))
+        if (ids.isEmpty()) return DeleteOutcome(local, emptyList())
+        val result = MaxCoreGateway.call { client.deleteMessages(chatId.toLong(), ids, forMe = !forEveryone) }
+        return DeleteOutcome(local + result.deleted.map { it.toString() }, result.failed.map { it.toString() })
     }
 
     /** Отметка уходит временем самого сообщения ([ReadMarks.send]), а не часами устройства. */

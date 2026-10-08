@@ -19,6 +19,10 @@ object MessageSelection {
     fun deleteTitle(count: Int): String =
         if (count == 1) "Удалить сообщение?" else "Удалить ${countLabel(count)}?"
 
+    /** Снекбар, если сервер удалил не всё: [failed] из [total] остались. */
+    fun deleteFailedNotice(failed: Int, total: Int): String =
+        if (total == 1) "Не удалось удалить сообщение" else "Не удалось удалить $failed из $total"
+
     /** Снекбар после пересылки. */
     fun forwardedNotice(count: Int): String =
         if (count == 1) "Сообщение переслано" else "Переслано: ${countLabel(count)}"

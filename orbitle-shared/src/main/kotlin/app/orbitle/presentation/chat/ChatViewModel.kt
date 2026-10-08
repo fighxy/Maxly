@@ -1125,7 +1125,9 @@ class ChatViewModel(
         if (server.isEmpty()) return
         viewModelScope.launch {
             try {
-                repository.delete(chatId, server.map { it.id }, forEveryone || deletesWithoutChoice)
+                val outcome = repository.deleteMessages(chatId, server.map { it.id }, forEveryone || deletesWithoutChoice)
+                // Оставленные сервером сообщения остаются в ленте: сказать, сколько их.
+                if (outcome.failed.isNotEmpty()) _messages.value = MessageSelection.deleteFailedNotice(outcome.failed.size, server.size)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1181,28 +1183,29 @@ class ChatViewModel(
     }
 
     /**
-     * Переслать выбранное в [targetChatId] и выйти из режима выбора. Ядро пересылает по одному
-     * сообщению, поэтому они уходят по очереди, от старых к новым; ошибка останавливает остальные.
+     * Переслать выбранное в [targetChatId] и выйти из режима выбора. Сообщения уходят по очереди,
+     * от старых к новым ([MessageRepository.forwardMessages]); ошибка останавливает остальные.
      */
     fun forwardSelection(targetChatId: String) {
         val targets = selectedMessages().filter(::canForward)
         clearSelection()
         if (targets.isEmpty()) return
         viewModelScope.launch {
-            var done = 0
             try {
-                for (message in targets) {
-                    repository.forward(chatId, message.id, targetChatId)
-                    done++
+                val outcome = repository.forwardMessages(chatId, targets.map { it.id }, targetChatId)
+                val error = outcome.error
+                if (error == null) {
+                    _messages.value = MessageSelection.forwardedNotice(outcome.sent)
+                    return@launch
                 }
-                _messages.value = MessageSelection.forwardedNotice(done)
+                val reason = app.orbitle.data.CoreErrors.map(error).userMessage
+                // Часть уже ушла: сказать сколько, иначе показалось бы, что не ушло ничего.
+                _messages.value = if (outcome.sent == 0) reason ?: return@launch
+                else listOfNotNull("Переслано ${outcome.sent} из ${targets.size}", reason).joinToString(". ")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                val reason = app.orbitle.data.CoreErrors.map(e).userMessage
-                // Часть уже ушла: сказать сколько, иначе показалось бы, что не ушло ничего.
-                _messages.value = if (done == 0) reason ?: return@launch
-                else listOfNotNull("Переслано $done из ${targets.size}", reason).joinToString(". ")
+                show(e)
             }
         }
     }

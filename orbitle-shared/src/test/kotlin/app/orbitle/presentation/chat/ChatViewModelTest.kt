@@ -71,8 +71,11 @@ class FakeMessages : MessageRepository {
     }
     val forwards = mutableListOf<Triple<String, String, String>>()
     var forwardFailure: Exception? = null
+    /** Пересылка падает после стольких удачных. */
+    var forwardFailAfter: Int? = null
     override suspend fun forward(chatId: String, messageId: String, targetChatId: String) {
         forwardFailure?.let { throw it }
+        forwardFailAfter?.let { if (forwards.size >= it) throw app.orbitle.domain.OrbitleError.Rejected("Сервер не ответил") }
         forwards += Triple(chatId, messageId, targetChatId)
     }
     override suspend fun retry(chatId: String, localId: String) = Unit
@@ -90,6 +93,12 @@ class FakeMessages : MessageRepository {
     }
     override suspend fun delete(chatId: String, messageIds: List<String>, forEveryone: Boolean) {
         deletes += messageIds to forEveryone
+    }
+    /** Id, которые «сервер» удалить не смог. */
+    var deleteFailed: Set<String> = emptySet()
+    override suspend fun deleteMessages(chatId: String, messageIds: List<String>, forEveryone: Boolean): app.orbitle.data.DeleteOutcome {
+        delete(chatId, messageIds, forEveryone)
+        return app.orbitle.data.DeleteOutcome(messageIds - deleteFailed, messageIds.filter { it in deleteFailed })
     }
     override suspend fun markRead(chatId: String, messageId: String) {
         reads += messageId

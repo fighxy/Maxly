@@ -146,6 +146,15 @@ interface MessageRepository {
 
     suspend fun delete(chatId: String, messageIds: List<String>, forEveryone: Boolean)
 
+    /**
+     * Удалить выбранное одним запросом и узнать, что сервер удалить не смог
+     * ([DeleteOutcome.failed]). По умолчанию — [delete], и удалённым считается всё.
+     */
+    suspend fun deleteMessages(chatId: String, messageIds: List<String>, forEveryone: Boolean): DeleteOutcome {
+        delete(chatId, messageIds, forEveryone)
+        return DeleteOutcome(messageIds, emptyList())
+    }
+
     /** Отметить прочитанным всё до [messageId] включительно. */
     suspend fun markRead(chatId: String, messageId: String)
 
@@ -191,6 +200,26 @@ interface MessageRepository {
     /** Пересылает сообщение [messageId] из [chatId] в чат [targetChatId]. */
     suspend fun forward(chatId: String, messageId: String, targetChatId: String): Unit = throw OrbitleError.Rejected("Пересылка недоступна")
 
+    /**
+     * Переслать несколько сообщений из [chatId] в [targetChatId] по порядку [messageIds] (от
+     * старых к новым); первая ошибка останавливает остальные и возвращается в [ForwardOutcome.error].
+     * По умолчанию — [forward] по одному.
+     */
+    suspend fun forwardMessages(chatId: String, messageIds: List<String>, targetChatId: String): ForwardOutcome {
+        var sent = 0
+        for (id in messageIds) {
+            try {
+                forward(chatId, id, targetChatId)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                return ForwardOutcome(sent, messageIds.size, e)
+            }
+            sent++
+        }
+        return ForwardOutcome(sent, messageIds.size, null)
+    }
+
     /** Закрепить сообщение. `"0"` снимает закреп (`pinMessageId` 0). */
     suspend fun pin(chatId: String, messageId: String) {}
 
@@ -210,4 +239,12 @@ interface MessageRepository {
     suspend fun searchInChat(chatId: String, query: String): List<app.orbitle.domain.FoundMessage> = emptyList()
 
     suspend fun mediaLink(chatId: String, messageId: String, attachment: ChatAttachment): String = throw OrbitleError.Rejected("Вложение недоступно")
+}
+
+/** Итог удаления выбранного: [failed] — id, которые сервер оставил. */
+data class DeleteOutcome(val deleted: List<String>, val failed: List<String>)
+
+/** Итог пересылки выбранного: ушло [sent] из [total]; [error] — почему остановилась. */
+data class ForwardOutcome(val sent: Int, val total: Int, val error: Throwable?) {
+    val complete: Boolean get() = error == null && sent == total
 }
