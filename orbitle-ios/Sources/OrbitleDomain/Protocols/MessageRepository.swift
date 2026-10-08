@@ -30,6 +30,10 @@ public protocol MessageRepository: Sendable {
     func send(text: String, chatId: String, replyTo: String?) async throws(OrbitleError)
     /// Текст с разметкой, которую ставит само поле ввода (анимодзи из панели эмодзи).
     func send(text: String, chatId: String, replyTo: String?, formatting: [TextSpan]) async throws(OrbitleError)
+    /// Правка текста и всей разметки (`MSG_EDIT` 67 несёт полный список, пустой снимает её).
+    func edit(messageId: String, chatId: String, text: String, formatting: [TextSpan]) async throws(OrbitleError)
+    /// Удалить выбранное одним запросом. Ответ — id, которые сервер не удалил (они остаются).
+    func deleteSelection(messageIds: [String], chatId: String, forEveryone: Bool) async throws(OrbitleError) -> [String]
     /// Повторная отправка сообщения со статусом `failed`.
     func retry(messageId: String) async throws(OrbitleError)
     /// Поставить реакцию `emoji` или снять её, если она уже своя. Другая своя реакция
@@ -105,6 +109,17 @@ extension MessageRepository {
 
     public func send(text: String, chatId: String, replyTo: String?, formatting: [TextSpan]) async throws(OrbitleError) {
         try await send(text: text, chatId: chatId, replyTo: replyTo)
+    }
+
+    /// Источник без разметки при правке: уходит только текст.
+    public func edit(messageId: String, chatId: String, text: String, formatting: [TextSpan]) async throws(OrbitleError) {
+        try await edit(messageId: messageId, chatId: chatId, text: text)
+    }
+
+    /// Источник без ответа по каждому id: удалилось всё или ничего.
+    public func deleteSelection(messageIds: [String], chatId: String, forEveryone: Bool) async throws(OrbitleError) -> [String] {
+        try await delete(messageIds: messageIds, chatId: chatId, forEveryone: forEveryone)
+        return []
     }
 
     public func pin(chatId: String, messageId: String) async throws(OrbitleError) { throw .invalidRequest }

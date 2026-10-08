@@ -78,8 +78,14 @@ public protocol MaxAPI: Sendable {
     func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?, animoji: [CoreAnimojiMark]) async -> Result<SentMessage, MaxAPIError>
     /// Текст с анимодзи и упоминаниями.
     func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?, animoji: [CoreAnimojiMark], mentions: [CoreMentionMark]) async -> Result<SentMessage, MaxAPIError>
+    /// Текст с любой разметкой поля ввода (жирный, курсив, ссылки, анимодзи, упоминания).
+    func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?, formatting: [TextSpan]) async -> Result<SentMessage, MaxAPIError>
     /// Заменить текст отправленного сообщения (по серверному id).
     func editMessage(chatId: String, messageId: String, text: String) async -> Result<MessageRecord, MaxAPIError>
+    /// Заменить текст и всю разметку (пустой список снимает её).
+    func editMessage(chatId: String, messageId: String, text: String, formatting: [TextSpan]) async -> Result<MessageRecord, MaxAPIError>
+    /// Удалить выбранное одним запросом: какие id сервер удалил, какие нет.
+    func deleteSelection(chatId: String, messageIds: [String], forEveryone: Bool) async -> Result<CoreDeleteResult, MaxAPIError>
     /// Удалить сообщения по серверным id: у себя или у всех.
     func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async -> Result<Void, MaxAPIError>
     /// Переслать сообщение. Ответ — новое сообщение в целевом чате.
@@ -197,6 +203,21 @@ public extension MaxAPI {
     }
     func forwardMessage(toChatId: String, fromChatId: String, messageId: String) async -> Result<MessageRecord, MaxAPIError> {
         .failure(.invalidResponse)
+    }
+    /// Источник без общей разметки: уходят только анимодзи и упоминания.
+    func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?, formatting: [TextSpan]) async -> Result<SentMessage, MaxAPIError> {
+        await sendMessage(
+            chatId: chatId, text: text, clientId: clientId, replyTo: replyTo,
+            animoji: CoreAnimojiMark.marks(formatting), mentions: CoreMentionMark.marks(formatting)
+        )
+    }
+    /// Источник без разметки при правке: уходит только текст.
+    func editMessage(chatId: String, messageId: String, text: String, formatting: [TextSpan]) async -> Result<MessageRecord, MaxAPIError> {
+        await editMessage(chatId: chatId, messageId: messageId, text: text)
+    }
+    /// Источник без ответа по каждому id: удалилось всё или ничего.
+    func deleteSelection(chatId: String, messageIds: [String], forEveryone: Bool) async -> Result<CoreDeleteResult, MaxAPIError> {
+        await deleteMessages(chatId: chatId, messageIds: messageIds, forEveryone: forEveryone).map { CoreDeleteResult(deleted: messageIds) }
     }
     /// Источник без реакций: изменения откатываются, каталог пуст.
     func setReaction(chatId: String, messageId: String, postId: String, emoji: String?) async -> Result<ReactionUpdate?, MaxAPIError> {
@@ -369,6 +390,21 @@ public final class MaxAPIClient: MaxAPI, Sendable {
         }
     }
 
+    /// Только анимодзи и упоминания уходят прежним вызовом; остальная разметка — списком
+    /// элементов сервера.
+    public func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?, formatting: [TextSpan]) async -> Result<SentMessage, MaxAPIError> {
+        let animoji = CoreAnimojiMark.marks(formatting)
+        let mentions = CoreMentionMark.marks(formatting)
+        guard formatting.contains(where: { $0.kind != .animoji && $0.kind != .mention }) else {
+            return await sendMessage(chatId: chatId, text: text, clientId: clientId, replyTo: replyTo, animoji: animoji, mentions: mentions)
+        }
+        let elements = MessageMarkup.json(MessageMarkup.elements(formatting, text: text))
+        return await catching {
+            let sent = try await core.sendFormattedText(chatId: chatId, text: text, elementsJSON: elements, replyTo: replyTo ?? "")
+            return SentMessage(serverId: sent.id, timestamp: Date(unixMillis: sent.timeMs))
+        }
+    }
+
     public func pinMessage(chatId: String, messageId: String) async -> Result<Void, MaxAPIError> {
         await catching { try await core.pinMessage(chatId: chatId, messageId: messageId) }
     }
@@ -428,6 +464,19 @@ public final class MaxAPIClient: MaxAPI, Sendable {
     public func editMessage(chatId: String, messageId: String, text: String) async -> Result<MessageRecord, MaxAPIError> {
         await catching {
             CoreMapping.message(try await core.editMessage(chatId: chatId, messageId: messageId, text: text))
+        }
+    }
+
+    public func editMessage(chatId: String, messageId: String, text: String, formatting: [TextSpan]) async -> Result<MessageRecord, MaxAPIError> {
+        let elements = MessageMarkup.json(MessageMarkup.elements(formatting, text: text))
+        return await catching {
+            CoreMapping.message(try await core.editMessage(chatId: chatId, messageId: messageId, text: text, elementsJSON: elements))
+        }
+    }
+
+    public func deleteSelection(chatId: String, messageIds: [String], forEveryone: Bool) async -> Result<CoreDeleteResult, MaxAPIError> {
+        await catching {
+            try await core.deleteMessages(chatId: chatId, messageIds: messageIds, forEveryone: forEveryone, postId: "")
         }
     }
 

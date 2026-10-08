@@ -142,8 +142,12 @@ public final class MessageSelectionModel {
             || (request.options.showsForEveryone && forEveryone)
         cancel()
         do {
-            try await repository.delete(messageIds: request.messageIds, chatId: chatId, forEveryone: everywhere)
-            onDeleted?(request.messageIds)
+            let failed = try await repository.deleteSelection(messageIds: request.messageIds, chatId: chatId, forEveryone: everywhere)
+            onDeleted?(request.messageIds.filter { !failed.contains($0) })
+            // Сервер отказал части выбранного: они остаются в ленте.
+            if !failed.isEmpty {
+                onNotice?("Не удалось удалить: \(Self.countLabel(failed.count))")
+            }
         } catch {
             if error != .cancelled { onError?(error) }
         }

@@ -752,16 +752,32 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// Удаление: сначала сервер (для сообщений с серверным id), потом база. Если сервер
     /// отказал, сообщения остаются на месте и ошибка уходит на экран.
     public func delete(messageIds: [String], chatId: String, forEveryone: Bool) async throws(OrbitleError) {
+        _ = try await deleteSelection(messageIds: messageIds, chatId: chatId, forEveryone: forEveryone)
+    }
+
+    /// Одним `MSG_DELETE` 66. Из ленты уходят только удалённые сервером; отклонённые остаются
+    /// и возвращаются (их локальные id).
+    public func deleteSelection(messageIds: [String], chatId: String, forEveryone: Bool) async throws(OrbitleError) -> [String] {
         let found = messageIds.compactMap { id in (try? message(id: id)) ?? (try? message(serverId: id)) }
-        let localIds = found.map(\.id)
-        let serverIds = found.compactMap { message -> String? in
+        var localIds = found.map(\.id)
+        var serverIds = found.compactMap { message -> String? in
             guard let serverId = message.serverId, Int64(serverId) != nil else { return nil }
             return serverId
         }
+        var failedLocal: [String] = []
         if !serverIds.isEmpty {
-            if case .failure(let error) = await api.deleteMessages(chatId: chatId, messageIds: serverIds, forEveryone: forEveryone) {
+            switch await api.deleteSelection(chatId: chatId, messageIds: serverIds, forEveryone: forEveryone) {
+            case .failure(let error):
                 Log.warning(.messages, "Сообщения не удалены: \(error)")
                 throw error.orbitleError
+            case .success(let result):
+                let refused = Set(result.failed)
+                if !refused.isEmpty {
+                    failedLocal = found.filter { $0.serverId.map(refused.contains) == true }.map(\.id)
+                    localIds.removeAll { failedLocal.contains($0) }
+                    serverIds.removeAll { refused.contains($0) }
+                    Log.warning(.messages, "Сервер не удалил сообщений: \(refused.count)")
+                }
             }
         }
         do {
@@ -776,6 +792,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         Log.info(.messages, "Удалено сообщений: \(localIds.count)\(forEveryone ? " у всех" : " у себя")")
         notify(chatId: chatId)
         await outgoingHandler?(.deleted(chatId: chatId, ids: localIds + serverIds))
+        return failedLocal
     }
 
     /// Локальная лента чата после очистки переписки. Сервер уже ответил в репозитории чатов.
@@ -834,6 +851,17 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
 
     /// Правка текста: сначала сервер, затем база (текст, пометка «изменено», разметка сервера).
     public func edit(messageId: String, chatId: String, text: String) async throws(OrbitleError) {
+        try await edit(messageId: messageId, chatId: chatId, text: text, formatting: nil)
+    }
+
+    /// Текст и весь список разметки: сервер заменяет её целиком, пустой список снимает.
+    public func edit(messageId: String, chatId: String, text: String, formatting: [TextSpan]) async throws(OrbitleError) {
+        try await edit(messageId: messageId, chatId: chatId, text: text, formatting: Optional(formatting))
+    }
+
+    /// `formatting` `nil` — прежняя правка только текста: ядро сохраняет разметку, где она
+    /// ещё ложится на новый текст.
+    private func edit(messageId: String, chatId: String, text: String, formatting: [TextSpan]?) async throws(OrbitleError) {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { throw .invalidRequest }
         let stored = (try? message(id: messageId)) ?? (try? message(serverId: messageId))
@@ -841,7 +869,12 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             throw .rejected("Сообщение ещё не отправлено")
         }
         let localId = stored.id
-        switch await api.editMessage(chatId: chatId, messageId: serverId, text: body) {
+        let result = if let formatting {
+            await api.editMessage(chatId: chatId, messageId: serverId, text: body, formatting: formatting)
+        } else {
+            await api.editMessage(chatId: chatId, messageId: serverId, text: body)
+        }
+        switch result {
         case .success(let record):
             do {
                 guard let message = try message(id: localId) else { return }

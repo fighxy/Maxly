@@ -668,6 +668,35 @@ public protocol MaxCore: Sendable {
     func deleteStories(ids: [String]) async throws
     /// Пуши колец (`NOTIF_STORIES_UPDATE` 216). Пустое кольцо — историй у владельца не осталось.
     func storyUpdates() -> AsyncStream<StoryRing>
+
+    // MARK: Разметка, выбор, черновики, участники и контакты (CoreMessageTools.swift)
+
+    /// Текст с разметкой (`MSG_SEND` 64 с `elements`). `elementsJSON` — массив элементов
+    /// сервера `{type, from, length, entityId?, attributes?}`, смещения UTF-16 по `text`.
+    func sendFormattedText(chatId: String, text: String, elementsJSON: String, replyTo: String) async throws -> CoreMessage
+    /// Правка текста и всей разметки (`MSG_EDIT` 67). `[]` снимает разметку.
+    func editMessage(chatId: String, messageId: String, text: String, elementsJSON: String) async throws -> CoreMessage
+    /// Удалить выбранное одним `MSG_DELETE` 66. Ответ — какие id сервер удалил и какие нет.
+    func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool, postId: String) async throws -> CoreDeleteResult
+    /// Черновик на сервере (`DRAFT_SAVE` 176). Ответ — время черновика на сервере.
+    func saveDraft(chatId: String, text: String, elementsJSON: String, replyTo: String) async throws -> Int64
+    /// Убрать черновик (`DRAFT_DISCARD` 177). `time` 0 — время сохранённого в ядре.
+    func discardDraft(chatId: String, time: Int64) async throws
+    /// Черновики сервера, которые держит ядро (из `LOGIN` и `saveDraft`), новые первыми.
+    func serverDrafts() async -> [CoreDraft]
+    /// Переименовать контакт (`CONTACT_UPDATE` 34, `UPDATE`). Имя до 64 символов.
+    func renameContact(userId: String, firstName: String, lastName: String) async throws -> CoreContact
+    /// Удалить контакт (`CONTACT_UPDATE` 34, `REMOVE`). Чат с человеком остаётся.
+    func removeContact(userId: String) async throws -> CoreContact?
+    /// Контакт по номеру (`CONTACT_ADD_BY_PHONE` 41). Ответ — контакт и новый ли он.
+    func addContactByPhone(phone: String, firstName: String, lastName: String) async throws -> CoreAddedContact
+    /// Адресная книга устройства для имён: заменяет прежнюю целиком, на сервер не уходит.
+    func setAddressBook(_ entries: [CorePhoneContact]) async
+    /// Страница участников с ролями (`CHAT_MEMBERS` 59). Пустой `marker` — с начала;
+    /// пустой `nextMarker` ответа — страниц больше нет.
+    func loadChatMembers(chatId: String, marker: String, count: Int) async throws -> CoreMembersPage
+    /// Поиск участников по имени (`CHAT_MEMBERS` 59 с `query`).
+    func searchChatMembers(chatId: String, query: String) async throws -> [CoreGroupMember]
 }
 
 public extension MaxCore {

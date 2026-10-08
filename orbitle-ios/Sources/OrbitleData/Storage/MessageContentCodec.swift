@@ -32,11 +32,11 @@ enum MessageContentCodec {
     private static func decodeServer(_ object: [String: Any]) -> MessageContent {
         let forwarded = forward(object["link"])
         var attaches = attachments(object["attaches"])
-        var elements = spans(object["elements"])
+        var elements = spans(object["elements"], text: object["text"] as? String)
         // У пересылки свои вложения и разметка пустые: берутся из оригинала.
         if let original = forwarded?.message {
             if attaches.isEmpty { attaches = attachments(original["attaches"]) }
-            if elements.isEmpty { elements = spans(original["elements"]) }
+            if elements.isEmpty { elements = spans(original["elements"], text: original["text"] as? String) }
         }
         return MessageContent(
             reply: reply(object["link"]),
@@ -116,45 +116,11 @@ enum MessageContentCodec {
         return (MessageForward(authorName: name.isEmpty ? "Неизвестно" : name, text: text), message)
     }
 
-    /// `elements` сервера: `{type, from, length, attributes?, entityId?}`. Незнакомые типы пропускаются.
-    static func spans(_ value: Any?) -> [TextSpan] {
-        guard let list = value as? [Any] else { return [] }
-        return list.compactMap { item in
-            guard let map = item as? [String: Any] else { return nil }
-            let kind: TextSpan.Kind
-            switch (map["type"] as? String)?.uppercased() {
-            case "STRONG": kind = .strong
-            case "EMPHASIZED": kind = .emphasized
-            case "UNDERLINE": kind = .underline
-            case "STRIKETHROUGH": kind = .strikethrough
-            case "MONOSPACED", "CODE": kind = .monospaced
-            case "HEADING": kind = .heading
-            case "QUOTE": kind = .quote
-            case "LINK": kind = .link
-            case "USER_MENTION": kind = .mention
-            case "ANIMOJI": kind = .animoji
-            default: return nil
-            }
-            guard let from = integer(map["from"]), let length = integer(map["length"]), from >= 0, length > 0 else { return nil }
-            let attributes = map["attributes"] as? [String: Any]
-            if kind == .animoji {
-                // Анимодзи поверх эмодзи текста: id и его Lottie (KometTeam/Komet `RichMessageController`).
-                // Без id отметка ничего не даёт и пропускается.
-                guard stringId(map["entityId"]) != nil else { return nil }
-                return TextSpan(
-                    kind: .animoji, from: from, length: length,
-                    url: (attributes?["animojiLottieUrl"] as? String) ?? (attributes?["lottieUrl"] as? String),
-                    entityId: stringId(map["entityId"])
-                )
-            }
-            return TextSpan(
-                kind: kind,
-                from: from,
-                length: length,
-                url: attributes?["url"] as? String,
-                userId: stringId(map["entityId"]) ?? stringId(attributes?["userId"])
-            )
-        }
+    /// `elements` сервера: `{type, from, length, attributes?, entityId?}` по общим правилам
+    /// (`MessageMarkup.parse`, test-fixtures/formatting). Незнакомые типы пропускаются; с текстом
+    /// `length` без значения — до конца, вышедшее за конец обрезается.
+    static func spans(_ value: Any?, text: String? = nil) -> [TextSpan] {
+        MessageMarkup.parse(value, text: text)
     }
 
     private static func reply(_ value: Any?) -> MessageReply? {

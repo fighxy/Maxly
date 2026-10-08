@@ -13,8 +13,11 @@ private actor SelectionMessages: MessageRepository {
     private(set) var deletions: [Deletion] = []
     private(set) var log: [String] = []
     var failForwardAt: Int?
+    /// id, которые «сервер» отказался удалить.
+    var refused: Set<String> = []
 
     func setFailForward(at index: Int?) { failForwardAt = index }
+    func setRefused(_ ids: Set<String>) { refused = ids }
 
     nonisolated func messages(chatId: String) -> AsyncStream<[Message]> { AsyncStream { $0.finish() } }
     func loadOlder(chatId: String) async throws(OrbitleError) {}
@@ -28,6 +31,11 @@ private actor SelectionMessages: MessageRepository {
 
     func delete(messageIds: [String], chatId: String, forEveryone: Bool) async throws(OrbitleError) {
         deletions.append(Deletion(ids: messageIds, forEveryone: forEveryone))
+    }
+
+    func deleteSelection(messageIds: [String], chatId: String, forEveryone: Bool) async throws(OrbitleError) -> [String] {
+        deletions.append(Deletion(ids: messageIds, forEveryone: forEveryone))
+        return messageIds.filter(refused.contains)
     }
 
     func forward(messageId: String, from chatId: String, to targetChatId: String) async throws(OrbitleError) {
@@ -90,6 +98,26 @@ struct MessageSelectionModelTests {
         await model.confirmDelete(request, forEveryone: true)
         #expect(await repo.deletions == [.init(ids: ["10", "11"], forEveryone: false)])
         #expect(!model.isActive)
+    }
+
+    @Test("Сервер удалил не всё: отказанные остаются, об этом плашка")
+    func partialDelete() async {
+        let repo = SelectionMessages()
+        await repo.setRefused(["11"])
+        let model = MessageSelectionModel(chatId: "5", currentUserId: "1", repository: repo)
+        var notices: [String] = []
+        var deleted: [String] = []
+        model.onNotice = { notices.append($0) }
+        model.onDeleted = { deleted = $0 }
+        let a = message("10", offset: 0)
+        let b = message("11", offset: 1)
+        model.begin(with: a)
+        model.toggle(b)
+        model.requestDelete(in: [a, b])
+        guard let request = model.deleteRequest else { Issue.record("нет подтверждения"); return }
+        await model.confirmDelete(request, forEveryone: false)
+        #expect(deleted == ["10"])
+        #expect(notices == ["Не удалось удалить: 1 сообщение"])
     }
 
     @Test("«Избранное» стирается целиком, канал с правами — только у всех, подписчик — нельзя")
