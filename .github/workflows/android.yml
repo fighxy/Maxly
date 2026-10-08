@@ -102,6 +102,11 @@ jobs:
           apk="app/build/outputs/apk/release/app-release.apk"
           "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --print-certs "$apk" | head -n 3
           "$ANDROID_HOME/build-tools/37.0.0/aapt2" dump badging "$apk" | head -n 1
+          # JNI_OnLoad WebRTC зовёт org.jni_zero.JniInit: без него релиз падает на первом звонке.
+          unzip -p "$apk" 'classes*.dex' > "$RUNNER_TEMP/classes.dex"
+          for class in Lorg/jni_zero/JniInit\; Lorg/webrtc/PeerConnectionFactory\;; do
+            grep -aq "$class" "$RUNNER_TEMP/classes.dex" || { echo "::error::R8 выкинул $class из APK"; exit 1; }
+          done
           mkdir -p ../build && cp "$apk" ../build/Orbitle.apk
           ls -lh ../build/Orbitle.apk
       - name: Upload APK
