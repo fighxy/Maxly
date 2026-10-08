@@ -7,26 +7,28 @@ import app.orbitle.domain.TypingKind
 /**
  * Строка индикатора «печатает…» и его родни. В группе берётся вид действия того, кто начал
  * раньше всех, и показываются только люди с этим же видом: «Иван печатает…», «Иван и Петя
- * печатают…», «Иван, Петя и Маша печатают…», с четырёх — «Иван и ещё 3 печатают…». Нет имени
- * у кого-то из них — вместо имён число участников. В личке — без имени, в канале — ничего.
+ * печатают…», «Иван, Петя и Маша печатают…», с четырёх — «Иван и ещё 3 печатают…». Нет нужного
+ * имени (до трёх — всех, с четырёх — первого) — вместо имён число участников. В личке — без
+ * имени, в канале — ничего. Правила общие с iOS: `test-fixtures/typing`, `texts-*`.
  */
 object TypingText {
 
     fun of(typists: List<Typist>, chatType: ChatType): String? {
         if (typists.isEmpty() || chatType == ChatType.CHANNEL) return null
-        val kind = typists.minBy { it.sinceMs }.kind
-        val same = typists.filter { it.kind == kind }.sortedBy { it.sinceMs }
+        val sorted = typists.sortedWith(Typist.ORDER)
+        val kind = sorted.first().kind
+        val same = sorted.filter { it.kind == kind }
         if (chatType != ChatType.GROUP) return "${verb(kind, plural = false)}…"
         val names = same.map { it.name?.takeIf(String::isNotBlank) }
-        if (names.any { it == null }) return counted(same.size, kind)
-        val known = names.filterNotNull()
-        val who = when (known.size) {
-            1 -> known[0]
-            2 -> "${known[0]} и ${known[1]}"
-            3 -> "${known[0]}, ${known[1]} и ${known[2]}"
-            else -> "${known[0]} и ещё ${known.size - 1}"
+        val needed = if (names.size >= 4) names.take(1) else names
+        if (needed.any { it == null }) return counted(same.size, kind)
+        val who = when (names.size) {
+            1 -> names[0]
+            2 -> "${names[0]} и ${names[1]}"
+            3 -> "${names[0]}, ${names[1]} и ${names[2]}"
+            else -> "${names[0]} и ещё ${names.size - 1}"
         }
-        return "$who ${verb(kind, plural = known.size > 1)}…"
+        return "$who ${verb(kind, plural = names.size > 1)}…"
     }
 
     /** «3 участника печатают…»: когда имён нет. Один — просто «печатает…». */

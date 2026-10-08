@@ -15,11 +15,20 @@ class TypingTrackerTest {
         val tracker = TypingTracker()
         val names = mapOf(2L to "Анна", 3L to "Пётр")
         val first = tracker.typists(state(mapOf(1L to 0, 2L to 1_000, 3L to 2_000), mapOf(3L to "AUDIO")), 10, 2_000) { names[it] }
-        assertEquals(listOf(Typist("Анна", TypingKind.TEXT, 1_000), Typist("Пётр", TypingKind.AUDIO, 2_000)), first)
+        assertEquals(listOf(Typist("Анна", TypingKind.TEXT, 1_000, "2"), Typist("Пётр", TypingKind.AUDIO, 2_000, "3")), first)
         // Анна повторила сигнал позже Петра, но начала раньше.
         val later = tracker.typists(state(mapOf(2L to 7_500, 3L to 2_000), mapOf(3L to "AUDIO")), 10, 8_000) { names[it] }
         assertEquals(listOf("Анна", "Пётр"), later.map { it.name })
         assertEquals(1_000L, later.first().sinceMs)
+    }
+
+    @Test
+    fun signalAfterExpiryStartsAgainEvenUnobserved() {
+        val tracker = TypingTracker()
+        tracker.typists(state(mapOf(2L to 0, 3L to 1_000)), 10, 1_000) { null }
+        // Между запросами отметка Анны истекла и пришла новая: она встаёт за Петром.
+        val again = tracker.typists(state(mapOf(2L to 9_000, 3L to 8_500)), 10, 9_000) { null }
+        assertEquals(listOf("3", "2"), again.map { it.userId })
     }
 
     @Test

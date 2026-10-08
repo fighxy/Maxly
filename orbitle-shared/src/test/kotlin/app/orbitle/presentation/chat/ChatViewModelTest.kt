@@ -49,7 +49,7 @@ class FakeMessages : MessageRepository {
     override fun messages(chatId: String) = list
     override fun header(chatId: String) = headerInfo.map { it }
     val typed = mutableListOf<app.orbitle.domain.TypingKind>()
-    override suspend fun sendTyping(chatId: String, kind: app.orbitle.domain.TypingKind): Boolean {
+    override suspend fun sendTyping(chatId: String, kind: app.orbitle.domain.TypingKind, postId: String?): Boolean {
         typed += kind
         return true
     }
@@ -378,7 +378,10 @@ class ChatViewModelTest {
         model.watchRecording(recording)
         recording.value = RecordingController.State(phase = RecordingController.Phase.RECORDING, recording = RecordingMode.VOICE)
         assertEquals(listOf(app.orbitle.domain.TypingKind.AUDIO), repo.typed)
-        scheduler.advanceTimeBy(6_500)
+        // Повтор каждые 5 с от начала записи, но не чаще порога 6 с: кадры в 0 и 10 с.
+        scheduler.advanceTimeBy(9_500)
+        assertEquals(1, repo.typed.size)
+        scheduler.advanceTimeBy(1_000)
         assertEquals(2, repo.typed.size)
         recording.value = RecordingController.State()
         scheduler.advanceTimeBy(30_000)

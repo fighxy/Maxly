@@ -207,13 +207,14 @@ class ChatViewModel(
     /** Голосовые, расшифровка, просмотр фото и видео, файлы. */
     val media = ChatMedia(chatId, repository, viewModelScope, voicePlayer, files, mediaSaver, onNotice = { _messages.value = it }, onError = { show(it) })
 
-    /** «Печатает…», запись и загрузка для собеседников: не чаще раза в 6 с на чат. */
-    private val typingSignal = TypingSignal(viewModelScope, now) { kind -> repository.sendTyping(chatId, kind) }
+    /** «Печатает…», запись и загрузка для собеседников: правила в [TypingSendPolicy]. */
+    private val typingPolicy = TypingSendPolicy()
     private var recordingWatch: Job? = null
+    private var recordingTicks: Job? = null
 
     /** Панель эмодзи и стикеров. */
     val stickers: StickerPanel? = stickerRecents?.let {
-        StickerPanel(stickerRepository, it, viewModelScope, emojiSupported, onStickers = { signalTyping(TypingKind.STICKER) })
+        StickerPanel(stickerRepository, it, viewModelScope, emojiSupported, onStickers = { sendTyping(typingPolicy.openStickers(chatId, now(), canWrite = canSignalTyping())) })
     }
 
     private var history: List<Message> = emptyList()
@@ -636,7 +637,7 @@ class ChatViewModel(
         _state.update { it.copy(draft = text) }
         if (_state.value.editing == null) drafts?.put(chatId, text)
         refreshHints(text)
-        if (typed) signalTyping(TypingKind.TEXT)
+        if (typed) sendTyping(typingPolicy.editText(chatId, now(), canWrite = canSignalTyping()))
     }
 
     /** Собеседникам видно, что пользователь что-то делает: в личке и группе, не в канале и не в «Избранном». */
@@ -645,12 +646,17 @@ class ChatViewModel(
         return chat.type != ChatType.CHANNEL && !chat.isSavedMessages && _state.value.canWrite
     }
 
-    private fun signalTyping(kind: TypingKind) {
-        if (canSignalTyping()) typingSignal.ping(kind)
-    }
-
-    private fun beginTyping(key: Any, kind: TypingKind) {
-        if (canSignalTyping()) typingSignal.begin(key, kind)
+    private fun sendTyping(frame: TypingSendPolicy.Frame?) {
+        frame ?: return
+        viewModelScope.launch {
+            try {
+                repository.sendTyping(frame.chatId, frame.kind, frame.postId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Сигнал необязателен: следующий уйдёт с очередным действием.
+            }
+        }
     }
 
     /** Запись голосового или кружка из поля ввода: пока она идёт, собеседники видят «записывает…». */
@@ -659,13 +665,29 @@ class ChatViewModel(
         recordingWatch = viewModelScope.launch {
             try {
                 recording.map { if (it.isActive) it.recording else null }.distinctUntilChanged().collect { mode ->
-                    typingSignal.end(RECORDING_ACTIVITY)
-                    if (mode != null) beginTyping(RECORDING_ACTIVITY, if (mode == RecordingMode.VIDEO) TypingKind.VIDEO_MSG else TypingKind.AUDIO)
+                    stopRecordingTyping()
+                    if (mode == null) return@collect
+                    val kind = if (mode == RecordingMode.VIDEO) TypingKind.VIDEO_MSG else TypingKind.AUDIO
+                    val canWrite = canSignalTyping()
+                    sendTyping(typingPolicy.startRecording(chatId, kind, now(), canWrite = canWrite))
+                    if (canWrite) recordingTicks = viewModelScope.launch {
+                        while (true) {
+                            val next = typingPolicy.nextTickAt() ?: break
+                            delay((next - now()).coerceAtLeast(0))
+                            typingPolicy.tick(now()).forEach(::sendTyping)
+                        }
+                    }
                 }
             } finally {
-                typingSignal.end(RECORDING_ACTIVITY)
+                stopRecordingTyping()
             }
         }
+    }
+
+    private fun stopRecordingTyping() {
+        typingPolicy.stopRecording(chatId)
+        recordingTicks?.cancel()
+        recordingTicks = null
     }
 
     /** Вставить упоминание вместо хвоста `@запрос`. */
@@ -794,11 +816,14 @@ class ChatViewModel(
         val reply = _state.value.replyTo
         _state.update { it.copy(draft = "", replyTo = null, attachments = emptyList(), uploadProgress = 0f) }
         drafts?.put(chatId, "")
-        val upload = Any()
-        beginTyping(upload, uploadKind(items))
+        val uploadKind = uploadKind(items)
+        val canSignal = canSignalTyping()
+        val signalUpload = { sendTyping(typingPolicy.uploadProgress(chatId, uploadKind, now(), canWrite = canSignal)) }
+        signalUpload()
         viewModelScope.launch {
             try {
                 repository.sendMedia(chatId, items, caption, reply?.id) { fraction ->
+                    signalUpload()
                     _state.update { it.copy(uploadProgress = fraction) }
                 }
             } catch (e: CancellationException) {
@@ -806,7 +831,6 @@ class ChatViewModel(
             } catch (e: Exception) {
                 show(e)
             } finally {
-                typingSignal.end(upload)
                 _state.update { it.copy(uploadProgress = null) }
             }
         }
@@ -1817,8 +1841,6 @@ class ChatViewModel(
     }
 
     companion object {
-        /** Ключ записи из поля ввода среди долгих действий [TypingSignal]. */
-        private val RECORDING_ACTIVITY = Any()
         /** Сообщений в одном запросе реакций. */
         const val REACTIONS_BATCH = 100
         /** Пауза перед повтором реакций и счётчиков после ошибки сервера. */

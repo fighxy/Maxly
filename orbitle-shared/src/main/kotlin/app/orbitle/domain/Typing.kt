@@ -19,5 +19,10 @@ enum class TypingKind(val raw: String) {
     }
 }
 
-/** Один собеседник с индикатором: имя (если известно), вид действия и когда он начал. */
-data class Typist(val name: String?, val kind: TypingKind = TypingKind.TEXT, val sinceMs: Long = 0)
+/** Один собеседник с индикатором: имя (если известно), вид действия, когда он начал и его id. */
+data class Typist(val name: String?, val kind: TypingKind = TypingKind.TEXT, val sinceMs: Long = 0, val userId: String = "") {
+    companion object {
+        /** По началу действия, при равенстве — по id. */
+        val ORDER: Comparator<Typist> = compareBy<Typist> { it.sinceMs }.thenBy { it.userId }
+    }
+}

@@ -69,9 +69,9 @@ class CoreMessageRepository(
 
     private val typists = TypingTracker()
 
-    override suspend fun sendTyping(chatId: String, kind: app.orbitle.domain.TypingKind): Boolean {
+    override suspend fun sendTyping(chatId: String, kind: app.orbitle.domain.TypingKind, postId: String?): Boolean {
         val id = chatId.toLongOrNull() ?: return false
-        return client.sendTyping(id, kind.raw)
+        return client.sendTyping(id, kind.raw, postId?.toLongOrNull())
     }
 
     override fun header(chatId: String): Flow<ChatHeaderInfo?> {

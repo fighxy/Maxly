@@ -117,9 +117,9 @@ interface MessageRepository {
     /** Отправить стикер каталога. */
     /**
      * Сигнал собеседникам, что пользователь [kind] (команда 65). Без ответа и без ограничения
-     * частоты: её держит [app.orbitle.presentation.chat.TypingSignal]. `false` — сигнал не ушёл.
+     * частоты: её держит [app.orbitle.presentation.chat.TypingSendPolicy]. `false` — сигнал не ушёл.
      */
-    suspend fun sendTyping(chatId: String, kind: app.orbitle.domain.TypingKind): Boolean = false
+    suspend fun sendTyping(chatId: String, kind: app.orbitle.domain.TypingKind, postId: String? = null): Boolean = false
 
     suspend fun sendSticker(chatId: String, sticker: app.orbitle.domain.Sticker, replyTo: String?): Unit =
         throw OrbitleError.Rejected("Стикеры недоступны")
