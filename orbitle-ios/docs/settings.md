@@ -76,7 +76,7 @@
 | Найти по номеру, позвонить, пригласить, контент | — | чтение `config.user` с умолчаниями веб-клиента; `setPrivacy`, `setPrivacyFlag`, `isPrivacyReadOnly` | `CONFIG` 22 `{SEARCH_BY_PHONE / INCOMING_CALL / CHATS_INVITE / CONTENT_LEVEL_ACCESS}` | готово (docs/privacy.md) |
 | Статус «в сети» | `PrivacySettings.hideOnlineStatus` | чтение `config.user` | `CONFIG` 22 `{HIDDEN: bool}` | готово |
 | Кто видит номер | `PrivacySettings.phoneNumberVisibility` (писал `_NONE_`) | значение «Никто»: `NOBODY` | `CONFIG` 22 `{PHONE_NUMBER_PRIVACY: ALL/CONTACTS/NOBODY}` | готово |
-| Режим призрака, отметки о прочтении, свой онлайн | — | `setGhostMode`, `setHideReadReceipts`, `localReadMarkOf`, `checkOwnPresence`, события `ghostMode` / `hideReadReceipts` (ядро `2655af9`) | `PING` 1, `LOGIN` 19 `interactive`; `MSG_TYPING` 65; `CHAT_MARK` 50; `CONTACT_PRESENCE` 35 | готово (docs/privacy.md) |
+| Режим призрака, отметки о прочтении, свой онлайн | — | `setGhostMode`, `setHideReadReceipts`, `localReadMarkOf`, `checkOwnPresence`, события `ghostMode` / `hideReadReceipts` (ядро `ac9c7fb`) | `PING` 1, `LOGIN` 19 `interactive`; `MSG_TYPING` 65; `CHAT_MARK` 50; `CONTACT_PRESENCE` 35 | готово (docs/privacy.md) |
 | Чёрный список | нет | `UsersApi.blockedContacts`, `setBlocked`; мост | `CONTACT_LIST` 36 `{status:"BLOCKED", count, from}` → `{contacts}`; `CONTACT_UPDATE` 34 `{contactId, action:"UNBLOCK"}` | готово |
 | Сеансы | `UsersApi.getSessions` без полей `client`, `info`, `time` | поля `client`, `info`, `time` и `lastSeen` в `SessionInfo`; `MaxClient.loadSessions`; мост | `SESSIONS_INFO` 96 `{}` → `{sessions:[…]}` | готово |
 | Завершить остальные | `MaxClient.closeOtherSessions` (новый токен сохраняется) | мост | `SESSIONS_CLOSE` 97 `{}` | готово |

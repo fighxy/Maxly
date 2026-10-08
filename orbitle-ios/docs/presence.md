@@ -23,7 +23,7 @@
 | `loadPresence(userIds)` | `CONTACT_PRESENCE` пачками по 100; кого сервер не вернул — статус `3` |
 | `presenceOf(userId)` | то, что ядро уже знает, без запроса |
 | `setAppActive(active)` | приложение на экране / в фоне, ответа нет |
-| `checkOwnPresence()` | свой статус: свежий `CONTACT_PRESENCE` 35 со своим id, мимо кэша (ядро `2655af9`, [`privacy.md`](privacy.md)) |
+| `checkOwnPresence()` | свой статус: свежий `CONTACT_PRESENCE` 35 со своим id, мимо кэша (ядро `ac9c7fb`, [`privacy.md`](privacy.md)) |
 | поле `presence: Int` | у `IosContact`, `IosProfile`, `IosGroupMember` |
 | событие `presence` | `authorId` — человек, `presence` — код, `timeMs` — последний визит, мс |
 
