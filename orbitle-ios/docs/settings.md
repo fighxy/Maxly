@@ -27,7 +27,7 @@
 │   ├── Уведомления и звук ›     заглушка
 │   ├── Безопасность ›
 │   │   ├── Пароль для входа (вкл/выкл), почта для восстановления
-│   │   ├── Семейная защита: статус (Отключена / Вы администратор / Профиль под защитой)
+│   │   ├── Семейная защита: статус (Отключена / Вы администратор / Профиль под защитой / Неизвестно)
 │   │   ├── Конфиденциальность — Дополнительно: режим призрака, отметки о прочтении, мой онлайн
 │   │   ├── Безопасный режим, найти по номеру, позвонить, пригласить в чат, контент
 │   │   ├── Информация: статус «в сети», номер телефона (docs/privacy.md)
@@ -71,12 +71,12 @@
 | Уведомления и звук | — | — | — | заглушка по постановке |
 | Пароль для входа | `TwoFactorApi`: трек 112, 113, 109, 110, 111; `isEnabled` по `profileOptions` | `TwoFactorApi.details(trackId)` и `status()`; `commitEmail`; мост `twoFactorStatus`, шаги смены почты | `AUTH_CREATE_TRACK` 112 `{type:0}`, `AUTH_2FA_DETAILS` 104 `{trackId}` → `{password:{enabled, email, hint}}` | готово |
 | Почта для восстановления | шаги 109 и 110 были | `commitEmail`, мост | 112 → `AUTH_CHECK_PASSWORD` 113 `{trackId, password}` → `AUTH_VERIFY_EMAIL` 109 `{trackId, email}` → `AUTH_CHECK_EMAIL` 110 `{trackId, verifyCode}` → `AUTH_SET_2FA` 111 `{expectedCapabilities:[4], trackId}` | готово |
-| Семейная защита | — | `FAMILY_PROTECTION` читается флагом (`ON`/`OFF`), строкой — в `feat/ghost-mode` | `LOGIN` 19, `config.user` | частично: статус, мини-приложения нет |
+| Семейная защита | — | `FAMILY_PROTECTION` строкой: `OFF` / `ADMIN` / `MANAGEABLE` / `UNKNOWN`, сырое значение в `familyProtectionRaw`, блокировка в `privacyLocked` | `LOGIN` 19, `config.user` | частично: статус, мини-приложения нет |
 | Безопасный режим | `PrivacySettings` без этих ключей | `updateUserSettings` | `CONFIG` 22, ключи ниже (раздел 6.3) | готово |
-| Найти по номеру, позвонить, пригласить, контент | — | чтение `config.user`; сеттера в мосте нет (`setPrivacy` в `feat/ghost-mode`) | `CONFIG` 22 `{SEARCH_BY_PHONE / INCOMING_CALL / CHATS_INVITE / CONTENT_LEVEL_ACCESS}` | частично: выбор пока на устройстве (docs/privacy.md) |
+| Найти по номеру, позвонить, пригласить, контент | — | чтение `config.user` с умолчаниями веб-клиента; `setPrivacy`, `setPrivacyFlag`, `isPrivacyReadOnly` | `CONFIG` 22 `{SEARCH_BY_PHONE / INCOMING_CALL / CHATS_INVITE / CONTENT_LEVEL_ACCESS}` | готово (docs/privacy.md) |
 | Статус «в сети» | `PrivacySettings.hideOnlineStatus` | чтение `config.user` | `CONFIG` 22 `{HIDDEN: bool}` | готово |
 | Кто видит номер | `PrivacySettings.phoneNumberVisibility` (писал `_NONE_`) | значение «Никто»: `NOBODY` | `CONFIG` 22 `{PHONE_NUMBER_PRIVACY: ALL/CONTACTS/NOBODY}` | готово |
-| Режим призрака, отметки о прочтении, свой онлайн | — | ожидается `feat/ghost-mode` | `PING` 1, `LOGIN` 19 `interactive`; `MSG_TYPING` 65; `CHAT_MARK` 50; `CONTACT_PRESENCE` 35 | частично: экран и опрос готовы, режим на заглушке (docs/privacy.md) |
+| Режим призрака, отметки о прочтении, свой онлайн | — | `setGhostMode`, `setHideReadReceipts`, `localReadMarkOf`, `checkOwnPresence`, события `ghostMode` / `hideReadReceipts` (ядро `85b5aa6`) | `PING` 1, `LOGIN` 19 `interactive`; `MSG_TYPING` 65; `CHAT_MARK` 50; `CONTACT_PRESENCE` 35 | готово (docs/privacy.md) |
 | Чёрный список | нет | `UsersApi.blockedContacts`, `setBlocked`; мост | `CONTACT_LIST` 36 `{status:"BLOCKED", count, from}` → `{contacts}`; `CONTACT_UPDATE` 34 `{contactId, action:"UNBLOCK"}` | готово |
 | Сеансы | `UsersApi.getSessions` без полей `client`, `info`, `time` | поля `client`, `info`, `time` и `lastSeen` в `SessionInfo`; `MaxClient.loadSessions`; мост | `SESSIONS_INFO` 96 `{}` → `{sessions:[…]}` | готово |
 | Завершить остальные | `MaxClient.closeOtherSessions` (новый токен сохраняется) | мост | `SESSIONS_CLOSE` 97 `{}` | готово |
@@ -139,7 +139,7 @@
 
 ### 6.2. Семейная защита
 
-Строка под паролем показывает `FAMILY_PROTECTION` из `config.user`: «Отключена» (`OFF`), «Вы администратор» (`ADMIN`), «Профиль под защитой» (`MANAGEABLE`). При `MANAGEABLE` четыре строки под безопасным режимом заблокированы. Мини-приложение защиты не открывается. Подробнее — [`privacy.md`](privacy.md), раздел 5.
+Строка под паролем показывает `FAMILY_PROTECTION` из `config.user`: «Отключена» (`OFF`), «Вы администратор» (`ADMIN`), «Профиль под защитой» (`MANAGEABLE`), «Неизвестно» (`UNKNOWN`, незнакомое значение сервера). При `MANAGEABLE` четыре строки под безопасным режимом и сам безопасный режим заблокированы. Мини-приложение защиты не открывается. Подробнее — [`privacy.md`](privacy.md), раздел 5.
 
 ### 6.3. Безопасный режим
 
@@ -151,7 +151,7 @@
 
 ### 6.4. Конфиденциальность
 
-Блок «Дополнительно» (режим призрака, отметки о прочтении, «Показывать мой онлайн»), затем безопасный режим и строки MAX в порядке MAX: «Найти меня по номеру», «Позвонить», «Пригласить в чат», «Показывать контент»; секция «Информация»: «Видеть статус «в сети»», «Видеть мой номер». Каждая строка открывает список вариантов с подзаголовком-вопросом («Кто может мне звонить»). Ключи, варианты, блокировки, заглушка до ядра — в [`privacy.md`](privacy.md).
+Блок «Дополнительно» (режим призрака, отметки о прочтении, «Показывать мой онлайн»), затем безопасный режим и строки MAX в порядке MAX: «Найти меня по номеру», «Позвонить», «Пригласить в чат», «Показывать контент»; секция «Информация»: «Видеть статус «в сети»», «Видеть мой номер». Каждая строка открывает список вариантов с подзаголовком-вопросом («Кто может мне звонить»). Ключи, варианты, блокировки и подключение к мосту ядра (`CoreGhostPrivacyControls`) — в [`privacy.md`](privacy.md).
 
 Перед «Никто» для статуса — подтверждение: «Вы тоже перестанете видеть, кто в сети». Изменение применяется оптимистично и откатывается при ошибке. Значения «Никто» у сервера два: `NOBODY` и `_NONE_` (PyMax); Orbitle отправляет `NOBODY`, а читает оба.
 
@@ -272,7 +272,7 @@
 | Ядро `shared` | `MaxClient.accountConfig`, `updateUserSettings`, `uploadAvatar`, `removeAvatar`, `syncContacts`, папки, подготовка QR-входа |
 | Мост `ios` | `IosMyProfile`, `IosAccountSettings`, `IosSession`, `IosBlockedUser`, `IosTwoFactor`, `IosMiniApp`, `IosFolder` и методы `MaxIosClient` к ним |
 | Orbitle Domain | модели `MyProfile`, `PhoneFormatting`, `AccountSettings` (конфиденциальность, безопасный режим, `FamilyProtection`, `InactiveTTL`), `PrivacyKey`, `PrivacyValue`, `DeviceSession`, `BlockedUser`, `TwoFactorStatus`, `MiniApp`, `ServerFolder`, `ChatFolderRules` (фильтры сервера); протоколы `AccountRepository`, `GhostControls`, `PrivacyControls`, `SelfCheckStore`, `FolderRepository`, `ContactRepository.sync()` |
-| Orbitle Data | `CoreAccountRepository`, `CoreFolderRepository` поверх `MaxCore`; `StubPrivacyControls` и `UserDefaultsSelfCheckStore` (docs/privacy.md); `CoreContactRepository.sync()`; `MaxAPI.folderUpdates()` — серверные папки для полосы над списком чатов |
+| Orbitle Data | `CoreAccountRepository`, `CoreFolderRepository` поверх `MaxCore`; `CoreGhostPrivacyControls` поверх моста (`GhostPrivacyCore`), `UserDefaultsSelfCheckStore` и `GhostDefaultsMigration` (docs/privacy.md); `CoreContactRepository.sync()`; `MaxAPI.folderUpdates()` — серверные папки для полосы над списком чатов |
 | Orbitle Presentation | модели экранов: `AccountSettingsModel` (шапка, профиль, настройки конфига), `GhostSettingsModel` (блок «Дополнительно», свой статус), `PrivacySettingsModel` (строки MAX, блокировки), `SecuritySettingsModel`, `RecoveryEmailFlow`, `DevicesModel`, `FoldersModel`, `MiniAppModel`, `MiniAppBridge` (разбор событий страницы), `AppearanceSettings` |
 | Orbitle App | экраны `OrbitleApp/Screens/Settings/*` (`SettingsView`, `EditProfileView`, `AvatarActions`, `SecurityView`, `PrivacyViews`, `DevicesView` со сканером, `FoldersView`, `MiniAppSheet`, `AppearanceView`, `AboutView`), `MaxIosCore+Settings` (обёртки моста), `Info.plist`: `NSCameraUsageDescription`, `NSPhotoLibraryAddUsageDescription` |
 

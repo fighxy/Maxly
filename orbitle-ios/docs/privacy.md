@@ -5,10 +5,10 @@
 переключателями, ниже — настройки приватности MAX в порядке MAX и секция «Информация». В шапке
 настроек под номером — свой статус так, как его видит сервер.
 
-Режим призрака, отметки о прочтении и свой статус делает ядро `max-kmp-core` (ветка
-`feat/ghost-mode`). Пока её нет в `main` ядра, приложение работает на заглушке
-`StubPrivacyControls` (раздел 7): экраны, логика блокировок и опрос уже настоящие, а сеть
-не меняется.
+Режим призрака, отметки о прочтении, свой статус и настройки приватности делает ядро
+`max-kmp-core` (ревизия из `core.lock`, `85b5aa6`). Приложение подключено к нему одним
+адаптером `CoreGhostPrivacyControls` (раздел 7): флаги и настройки живут в ядре и на сервере,
+приложение их не хранит и сеть само не трогает.
 
 ## 1. Где на экране
 
@@ -17,7 +17,7 @@
 ├── Шапка: аватар, имя, номер, ● в сети / был(а) …      свой статус (раздел 3)
 └── Безопасность ›
     ├── Пароль для входа, почта для восстановления
-    ├── Семейная защита: Отключена / Вы администратор / Профиль под защитой
+    ├── Семейная защита: Отключена / Вы администратор / Профиль под защитой / Неизвестно
     ├── КОНФИДЕНЦИАЛЬНОСТЬ — Дополнительно
     │   ├── Режим призрака                         переключатель
     │   ├── Не отправлять отметки о прочтении      переключатель
@@ -40,12 +40,14 @@
 
 | Переключатель | Что делает ядро | Что делает приложение |
 |---|---|---|
-| **Режим призрака** | `PING` 1 и `LOGIN` 19 с `interactive: false` (в том числе первый `LOGIN` после запуска и при возврате из фона); не шлёт `MSG_TYPING` 65 никакого вида: текст, запись голосового и кружка, загрузка фото, видео и файлов, стикеры | хранит флаг через `GhostControls.setGhostMode`, сразу спрашивает свой статус |
-| **Не отправлять отметки о прочтении** | не шлёт `CHAT_MARK` 50 `READ_MESSAGE`, но отвечает локальным состоянием «прочитано»; `SET_AS_UNREAD` уходит как обычно | ничего сверх обычного: чат и так обнуляет непрочитанное локально (`markReadLocally`) |
+| **Режим призрака** | `setGhostMode` / `ghostMode()`: `PING` 1 и `LOGIN` 19 с `interactive: false` (в том числе первый `LOGIN` после запуска и при возврате из фона), один `PING` сразу при переключении; не шлёт `MSG_TYPING` 65 никакого вида: текст, запись голосового и кружка, загрузка фото, видео и файлов, стикеры (`sendTyping` молча ничего не делает). Флаг хранится в ядре и переживает выход и перезапуск | `GhostControls.setGhostMode` → мост; сразу спрашивает свой статус |
+| **Не отправлять отметки о прочтении** | `setHideReadReceipts` / `hideReadReceipts()`: `markRead` / `markReadAt` идут через `MaxClient.markRead` и без сети читают чат на устройстве — ответ несёт локальный счётчик и отметку; счётчик чата в сторе ядра остаётся нулём и после переподключения, пока отметка сервера не догонит (`localReadMarkOf`). Просмотры историй тоже не уходят; `SET_AS_UNREAD` — как обычно | ничего сверх обычного: чат и так обнуляет непрочитанное локально (`markReadLocally`), ответ `markReadAt` применяется как раньше |
 | **Показывать мой онлайн** | — | строка в шапке настроек (раздел 3); настройка устройства (`SelfCheckStore`) |
 
 Приложение **не дублирует** логику ядра: не трогает `setAppActive`, `TypingReporter` и
-`markRead`. Всё, что гасится, гасится в ядре.
+`markRead`. Всё, что гасится, гасится в ядре. Изменения флагов приходят событиями моста
+`ghostMode` / `hideReadReceipts` (`text` — `on` / `off`), так экран видит и переключение с
+другого места.
 
 Подпись под блоком (коротко и честно):
 
@@ -54,10 +56,7 @@
 - выключение отметок ничего не отправляет задним числом: уже прочитанное на этом устройстве у
   собеседника останется непрочитанным, пока не придёт новое сообщение и его не прочитают.
 
-Пока работает заглушка, к подписи добавляется «Пока это только сохраняется на устройстве:
-режим заработает с обновлением ядра».
-
-Флаги — настройка устройства, как приватный режим: выход из аккаунта их не сбрасывает.
+Флаги — настройка устройства в ядре: выход из аккаунта и вход другим их не сбрасывают.
 
 ## 3. Свой статус в шапке
 
@@ -66,8 +65,11 @@
 - **Текст.** Правила `test-fixtures/presence` для шапки чата, со строчной: «в сети»,
   «был(а) 5 минут назад», «был(а) в 12:40», «был(а) вчера в 09:05», «был(а) недавно» и т. д.
   Пересчитывается раз в минуту (`TimelineView(.everyMinute)`).
-- **Запрос.** `GhostControls.checkOwnPresence()`: один `CONTACT_PRESENCE` 35 со своим id в
-  обход кэша статусов (`PresenceStore` и `CorePresenceService` не участвуют).
+- **Запрос.** `GhostControls.checkOwnPresence()` → `checkOwnPresence` моста: один свежий
+  `CONTACT_PRESENCE` 35 со своим id в обход кэша статусов (`PresenceStore` и
+  `CorePresenceService` не участвуют). Код и время визита переводятся тем же
+  `Contact.Presence.server`, что и у остальных людей. Сервер промолчал о себе — статус
+  неизвестен, строка не показывается. Ядро само не опрашивает: расписание — в приложении.
 - **Когда спрашивать** (`GhostSettingsModel`):
   - каждые 15 с, пока шапка на экране, приложение не в фоне и строка включена;
   - сразу — при появлении шапки, при возврате приложения из фона и при включении строки;
@@ -79,9 +81,11 @@
 
 ## 4. Настройки MAX
 
-Изменение — `CONFIG` 22 `{settings:{user:{<ключ>: <значение>}}}`, чтение — `config.user` из
-`LOGIN`. Каждая строка открывает список вариантов с галочкой; подзаголовок списка — вопрос
-настройки. Выбор применяется сразу и откатывается при отказе (ошибка — под списком).
+Изменение — `setPrivacy(key, value)` (доступ строкой) или `setPrivacyFlag(key, enabled)` (флаги)
+моста, то есть `CONFIG` 22 `{settings:{user:{<ключ>: <значение>}}}`; чтение — `config.user`
+(`watchAccountSettings`, поля `IosAccountSettings`). Каждая строка открывает список вариантов
+с галочкой; подзаголовок списка — вопрос настройки. Выбор применяется сразу и откатывается при
+отказе (ошибка — под списком).
 
 | Строка | Подзаголовок списка | Ключ | Варианты → значение |
 |---|---|---|---|
@@ -95,27 +99,36 @@
 
 - Значение вне списка (сервер допускает `NOBODY` у звонков и приглашений) показывается
   строгим вариантом списка — «Могут контакты».
+- «Никто» уходит как `NOBODY`; `_NONE_` сервера ядро читает как `NOBODY`.
+- **Значения по умолчанию** (ключа нет в `config.user`) — как у веб-клиента MAX, их
+  подставляет ядро (`PrivacyConfig`): номер — `CONTACTS`, поиск, звонки и приглашения — `ALL`.
+  `AccountSettings.unknown` в приложении такой же.
 - **Блокировка.** Пока включён безопасный режим, четыре строки под ним (поиск по номеру,
   звонки, приглашения, контент) не открываются, под секцией: «Отключите безопасный режим, чтобы
-  изменить эту настройку». То же при семейной защите `MANAGEABLE`: «Этой настройкой управляет
-  семейная защита». «Информация» не блокируется.
-- Безопасный режим включается тем же набором, что и раньше (ядро: `SAFE_MODE`,
-  `SAFE_MODE_NO_PIN`, `CONTENT_LEVEL_ACCESS` и три `CONTACTS`), выключается двумя флагами.
+  изменить эту настройку». При семейной защите `MANAGEABLE`: «Этой настройкой управляет
+  семейная защита», и безопасный режим тоже не переключается. Остальное решает ядро:
+  `privacyLocked` из настроек и `isPrivacyReadOnly(key)` — «Эту настройку сейчас нельзя
+  изменить». «Информация» блокируется, только если так скажет ядро.
+- Безопасный режим — `setPrivacyFlag("SAFE_MODE", …)`: включение ядро шлёт набором
+  (`SAFE_MODE`, `SAFE_MODE_NO_PIN`, `CONTENT_LEVEL_ACCESS` и три `CONTACTS`), выключение — двумя
+  флагами. Пока он включён, ядро отдаёт для четырёх строк принудительные значения.
 
 ## 5. Семейная защита
 
 Строка сразу под паролем показывает `FAMILY_PROTECTION`: `OFF` — «Отключена», `ADMIN` — «Вы
-администратор», `MANAGEABLE` — «Профиль под защитой». Мини-приложение защиты не открывается.
-Значение читается строкой (`FamilyProtection(wire:)`); незнакомое — «Отключена».
+администратор», `MANAGEABLE` — «Профиль под защитой», `UNKNOWN` — «Неизвестно» (сервер прислал
+другое; само значение — `familyProtectionRaw`). Мост отдаёт имя перечисления
+`FamilyProtection` ядра, приложение берёт его как есть (`FamilyProtection(rawValue:)`).
+Мини-приложение защиты не открывается.
 
 ## 6. Устройство кода
 
 | Слой | Что |
 |---|---|
-| Domain | `FamilyProtection`, `PrivacyKey` (`guarded` — четыре блокируемых ключа), `PrivacyValue`; `AccountSettings`: `searchByPhone`, `incomingCall`, `chatsInvite`, `safeContentOnly`, `familyProtection`, `value(for:)` / `set(_:_:)`; протоколы `GhostControls`, `PrivacyControls`, `SelfCheckStore` (`Protocols/PrivacyControls.swift`) |
-| Data | `StubPrivacyControls` (обе стороны, заглушка), `StubPrivacyControls.corePresence` (свой статус через `loadPresence`), `UserDefaultsSelfCheckStore` |
+| Domain | `FamilyProtection` (с `unknown`), `PrivacyKey` (`guarded` — четыре блокируемых ключа), `PrivacyValue`; `AccountSettings`: `searchByPhone`, `incomingCall`, `chatsInvite`, `safeContentOnly`, `familyProtection`, `familyProtectionRaw`, `privacyLocked`, `showReadMark`, `value(for:)` / `set(_:_:)`; протоколы `GhostControls`, `PrivacyControls`, `SelfCheckStore` (`Protocols/PrivacyControls.swift`) |
+| Data | `GhostPrivacyCore` (узкий вход в мост, `KMP/CoreGhostPrivacy.swift`), `CoreGhostPrivacyControls` (адаптер, обе стороны), `UserDefaultsSelfCheckStore` и `GhostDefaultsMigration` (`Storage/SelfCheckDefaults.swift`), `UnavailablePrivacyControls` (до сборки зависимостей); события `CoreEvent.Kind.ghostMode` / `.hideReadReceipts` |
 | Presentation | `GhostSettingsModel` (переключатели, опрос, текст шапки), `PrivacySettingsModel` (блокировки, выбор с откатом), `PrivacyRow` и `PrivacyOption` (порядок, подписи, значения) |
-| App | `SecurityView` (секции), `PrivacyViews.swift` (`PrivacyRowLink`, `PrivacyChoiceView`, `PrivacyPartHeader`, `OwnPresenceLine`), `SettingsView` (строка в шапке, видимость), `AppContainer` (сборка, фон), `MaxIosCore+Settings` (новые поля `IosAccountSettings`) |
+| App | `SecurityView` (секции), `PrivacyViews.swift` (`PrivacyRowLink`, `PrivacyChoiceView`, `PrivacyPartHeader`, `OwnPresenceLine`), `SettingsView` (строка в шапке, видимость), `AppContainer` (сборка, фон, разовая чистка), `MaxIosCore+Settings` (методы моста и поля `IosAccountSettings`, `extension MaxIosCore: GhostPrivacyCore`) |
 
 Протоколы приложения:
 
@@ -125,52 +138,53 @@ protocol GhostControls: Sendable {
     func setGhostMode(_ enabled: Bool) async
     func hideReadReceipts() -> Bool
     func setHideReadReceipts(_ hidden: Bool) async
-    func ghostChanges() -> AsyncStream<GhostState>        // событие ядра об изменении
+    func ghostChanges() -> AsyncStream<GhostState>        // события ядра ghostMode / hideReadReceipts
     func checkOwnPresence() async throws(OrbitleError) -> Contact.Presence
+    func localReadMark(chatId: String) -> Int64            // 0 — чат не читали только локально
 }
 
 protocol PrivacyControls: Sendable {
     func privacySettings() -> AsyncStream<AccountSettings>
     func setPrivacy(_ key: PrivacyKey, _ value: PrivacyValue) async throws(OrbitleError) -> AccountSettings
+    func isPrivacyReadOnly(_ key: PrivacyKey) -> Bool
 }
 ```
 
-## 7. Заглушка и переход на ядро
+## 7. Мост ядра
 
-`StubPrivacyControls` (OrbitleData) до появления API в ядре:
+`CoreGhostPrivacyControls` (OrbitleData) реализует оба протокола поверх `GhostPrivacyCore`;
+в приложении это `MaxIosCore` (`MaxIosClient` из `MaxIos`). Адаптер ничего не хранит:
 
-- флаги режима и отметок — `UserDefaults` (`orbitle.ghost.enabled`,
-  `orbitle.ghost.hideReadReceipts`), событие — свой поток; **сеть не меняется**;
-- свой статус — `loadPresence([свой id])` нынешнего моста (это тоже `CONTACT_PRESENCE` 35);
-- `HIDDEN`, `PHONE_NUMBER_PRIVACY`, `SAFE_MODE` — через `AccountRepository` на сервер, как
-  раньше;
-- `SEARCH_BY_PHONE`, `INCOMING_CALL`, `CHATS_INVITE`, `CONTENT_LEVEL_ACCESS` ядро только
-  читает: выбор хранится на устройстве (`orbitle.privacy.local.<КЛЮЧ>`) поверх значения
-  сервера и **на сервер не уходит**. Отметка исчезает, когда сервер присылает то же значение,
-  при безопасном режиме и при выходе из аккаунта. Под секцией — пометка об этом.
-- `isLocalOnly: true` у обеих моделей включает пометки в подписях.
+| Протокол приложения | Мост `MaxIosClient` |
+|---|---|
+| `ghostMode()` / `setGhostMode(_:)` | `ghostMode()` / `setGhostMode(enabled:)` |
+| `hideReadReceipts()` / `setHideReadReceipts(_:)` | `hideReadReceipts()` / `setHideReadReceipts(enabled:)` |
+| `ghostChanges()` | текущие флаги, затем `watchEvents` → `ghostMode` / `hideReadReceipts` (`text` `on` / `off`; незнакомый текст — флаг перечитывается). Подписка открывается раньше чтения флагов |
+| `checkOwnPresence()` | `checkOwnPresence(onResult:)` → `IosPresence?` → `CorePresence` → `Contact.Presence`; `nil` — «неизвестно»; ошибка ядра — `OrbitleError` (`CoreMapping`) |
+| `localReadMark(chatId:)` | `localReadMarkOf(chatId:)` |
+| `setPrivacy(_:_:)` | доступ — `setPrivacy(key:value:)` (`ALL` / `CONTACTS` / `NOBODY`), флаг — `setPrivacyFlag(key:enabled:)`; значение не того вида в ядро не уходит (`invalidRequest`) |
+| `isPrivacyReadOnly(_:)` | `isPrivacyReadOnly(key:)` |
+| `privacySettings()` | `accountSettings()` (`watchAccountSettings`) |
 
-Переход на настоящий мост — один адаптер (например `CorePrivacyControls` поверх `MaxIosCore`),
-реализующий оба протокола, и одна строка в `AppContainer` вместо заглушки; `isLocalOnly`
-становится `false`. Что ожидается от ядра (`feat/ghost-mode`):
+Отметки о прочтении приложение шлёт как раньше — `markRead(chatId:messageId:mark:)` →
+`markReadAt`, который в ядре идёт через `MaxClient.markRead`: при скрытых отметках сеть не
+трогается, а ответ — локальный. Счётчики чатов, которые приходят из ядра (список, события
+`chat`), уже учитывают локальное прочтение. Прежние `setPhonePrivacy` / `setOnlineHidden` /
+`setSafeMode` (`AccountSettingsModel`) в ядре тоже идут через `setPrivacy`.
 
-1. `setGhostMode(Bool)` / `ghostMode()`; флаг читается до первого `LOGIN`, `interactive =
-   appActive && !ghost` и для `PING`, и для `LOGIN` (иначе `setAppActive(true)` из приложения
-   перетрёт режим); один `PING` при переключении.
-2. `hideReadReceipts` (set/get): `markRead` / `markReadAt` без сети, с локальным ответом.
-3. `MSG_TYPING` не уходит в режиме призрака ни одного вида.
-4. Событие об изменении флагов (для `ghostChanges`).
-5. `checkOwnPresence()`: один запрос 35 со своим id мимо кэша. Если сервер свой id не вернёт,
-   нынешний `loadPresence` отдаёт код `3` («был(а) давно») — это надо проверить на сервере.
-6. `setPrivacy(key, value)` поверх `CONFIG` 22 и чтение всех ключей из `config.user`;
-   `FAMILY_PROTECTION` строкой (`OFF` / `ADMIN` / `MANAGEABLE`) — сейчас ядро читает его как
-   флаг и всегда отдаёт `OFF`.
-7. Значения по умолчанию без ключа: у ядра `INCOMING_CALL` и `CHATS_INVITE` — `CONTACTS`,
-   `PHONE_NUMBER_PRIVACY` — `ALL`; у веба MAX — `ALL`, `ALL`, `CONTACTS`.
-8. Решить, шлёт ли подтверждение входа по QR `PING {interactive:true}` в режиме призрака.
+**Разовая чистка.** До ядра флаги и выбор приватности лежали в `UserDefaults`
+(`orbitle.ghost.*`, `orbitle.privacy.local.*`). `GhostDefaultsMigration.run()` при запуске
+(`AppContainer.init`) один раз удаляет эти ключи; «Показывать мой онлайн» переезжает на
+`orbitle.settings.showsOwnPresence`. Отметка выполнения — `orbitle.migrations.ghostCore`.
 
-`core.lock` не меняется, пока `feat/ghost-mode` не в `main` ядра. Имена протоколов выбраны по
-ожидаемому API; если в ветке ядра они выйдут иначе, меняется только адаптер.
+Что ещё открыто:
+
+1. Подтверждение входа по QR шлёт `PING {interactive:true}` — проверить, как это сочетается с
+   режимом призрака.
+2. `SHOW_READ_MARK` ядро только читает (`showReadMark`), переключателя для него нет.
+3. Если сервер не вернёт запись о себе в ответе 35, строка в шапке скрыта — проверить на
+   сервере, бывает ли так.
+4. Мини-приложение семейной защиты не открывается.
 
 ## 8. Тесты
 
@@ -178,12 +192,16 @@ protocol PrivacyControls: Sendable {
   (`ManualSleeper`), остановка вне экрана и в фоне, запрос при возврате, при переключении
   режима и при включении строки, текст шапки, флаги из события.
 - `PrivacySettingsTests`: порядок строк и ключи, подписи и значения вариантов, значение вне
-  списка, подтверждение «Никто», `FamilyProtection(wire:)`, блокировка безопасным режимом и
-  `MANAGEABLE`, выбор с откатом, ошибки.
-- `PrivacyControlsTests` (OrbitleData): флаги в `UserDefaults` и событие, свой статус и ошибка,
-  серверные ключи через `AccountRepository`, отметки устройства поверх сервера и их очистка.
+  списка, подтверждение «Никто», имена `FamilyProtection` и `NOBODY`, значения по умолчанию,
+  блокировка безопасным режимом, `MANAGEABLE`, `privacyLocked` и `isPrivacyReadOnly`,
+  безопасный режим под семейной защитой, выбор с откатом, ошибки.
+- `PrivacyControlsTests` (OrbitleData, фейк моста `GhostPrivacyCore`): флаги уходят в ядро,
+  поток флагов из событий (чужие события, незнакомый текст), свой статус (в сети, был(а),
+  молчание сервера, ошибка), `setPrivacy` / `setPrivacyFlag` со строками ключей, значение не
+  того вида и отказ ядра, `isPrivacyReadOnly` и `localReadMark`, поток настроек;
+  `GhostDefaultsTests` — «Показывать мой онлайн» и разовая чистка ключей.
 
-## 9. Проверка на устройстве (после ядра)
+## 9. Проверка на устройстве
 
 1. Режим призрака включён: второй аккаунт не видит «в сети», набор, запись, загрузку и
    стикеры; строка в шапке через 15 с — «был(а) …». Выключен — «в сети» сразу.
