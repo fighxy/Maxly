@@ -316,6 +316,10 @@ struct MainTabView: View {
                 onOpenChat: { other in
                     if other != id { router.chatId = other }
                 },
+                onOpenDialog: { draft in
+                    container.openDialog(draft)
+                    if draft.chatId != id { router.chatId = draft.chatId }
+                },
                 onMarkUnread: { date in
                     Task {
                         if await container.markUnread(id: id, from: date), router.chatId == id { router.chatId = nil }

@@ -38,6 +38,8 @@ struct ChatView: View {
     var onLeave: (() -> Void)? = nil
     /// Открыть другой чат из профиля (общий чат собеседника).
     var onOpenChat: ((String) -> Void)? = nil
+    /// Открыть личный диалог (из «Кем прочитано»): черновик запоминается, чат открывается.
+    var onOpenDialog: ((DialogDraft) -> Void)? = nil
     /// Пометка «непрочитано» с сообщения, отправленного в эту дату. Экран закрывает тот, кто
     /// открыл чат, когда сервер принял пометку.
     var onMarkUnread: ((Date) -> Void)? = nil
@@ -330,6 +332,24 @@ struct ChatView: View {
                 ReactionUsersView(model: model) { viewModel.reactionUsers = nil }
                     .environment(\.privateMode, .visible)
             }
+            .sheet(item: $viewModel.messageInfo) { model in
+                messageInfoSheet(model)
+            }
+    }
+
+    /// «Сведения» о сообщении. Касание читателя открывает личный диалог с ним.
+    private func messageInfoSheet(_ model: MessageInfoViewModel) -> some View {
+        let openReader: ((MessageReader) -> Void)? = onOpenDialog.map { open in
+            { reader in
+                let name = MessageInfoViewModel.name(of: reader)
+                guard let draft = DialogDraft.with(peerId: reader.userId, me: viewModel.currentUserId, title: name, avatarURL: reader.avatarURL) else { return }
+                viewModel.messageInfo = nil
+                open(draft)
+            }
+        }
+        // Открывается из открытого пузыря — значит, смотреть его хотят.
+        return MessageInfoView(model: model, onOpenReader: openReader) { viewModel.messageInfo = nil }
+            .environment(\.privateMode, .visible)
     }
 
     private var searchSheet: some View {

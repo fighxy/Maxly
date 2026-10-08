@@ -38,6 +38,10 @@ struct TranscriptBubble: View, Equatable {
         var canTranscribe: Bool
         /// Эмодзи двойного нажатия. В сравнении снимка, иначе смена реакции не перерисует пузырь.
         var quickReaction: String?
+        /// Тип чата для «Сведений»: в группе там «Кем прочитано», в личном — «Прочитано».
+        var chatType: ChatType
+        /// Пункт «Сведения»: сообщение принято сервером.
+        var showsInfo: Bool
     }
 
     let state: Snapshot
@@ -135,6 +139,7 @@ struct TranscriptBubble: View, Equatable {
                 ? { Task { await viewModel.pin(message) } }
                 : nil,
             onMarkUnread: viewModel.canMarkUnread(message) ? { viewModel.requestMarkUnread(message) } : nil,
+            onInfo: state.showsInfo ? { [chatType = state.chatType] in viewModel.showMessageInfo(message, chatType: chatType) } : nil,
             onVote: { answerId in Task { await viewModel.vote(message, answerId: answerId) } },
             onButton: { button in press(button) }
         )

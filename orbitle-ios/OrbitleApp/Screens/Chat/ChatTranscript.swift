@@ -438,7 +438,9 @@ struct ChatTranscript: View {
             roundPlayback: round,
             transcript: message.content.voices.first.map { viewModel.transcriptPhase(for: $0) } ?? .collapsed,
             canTranscribe: viewModel.canTranscribe(message),
-            quickReaction: quickReaction
+            quickReaction: quickReaction,
+            chatType: chatType,
+            showsInfo: viewModel.canShowInfo(message)
         )
     }
 

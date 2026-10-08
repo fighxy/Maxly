@@ -164,6 +164,8 @@ public final class ChatViewModel {
     public var reactionPickerTarget: Message?
     /// Открытый список «Кто отреагировал».
     public var reactionUsers: ReactionUsersViewModel?
+    /// Открытые «Сведения» о сообщении.
+    public var messageInfo: MessageInfoViewModel?
     @ObservationIgnored private var catalogRequested = false
     /// Ход загрузки вложений своих сообщений: id сообщения → доля 0…1.
     public private(set) var uploadProgress: [String: Double] = [:]
@@ -812,6 +814,17 @@ public final class ChatViewModel {
     public func showReactionUsers(_ message: Message) {
         guard canReact(message), !message.content.reactions.isEmpty else { return }
         reactionUsers = ReactionUsersViewModel(message: message, repository: repository)
+    }
+
+    /// «Сведения» о сообщении: у любого сообщения, принятого сервером (своего и чужого).
+    /// Тип чата знает экран, модель ленты его не хранит.
+    public func canShowInfo(_ message: Message) -> Bool {
+        MessageInfoViewModel.isAvailable(for: message)
+    }
+
+    public func showMessageInfo(_ message: Message, chatType: ChatType) {
+        guard canShowInfo(message) else { return }
+        messageInfo = MessageInfoViewModel(message: message, chatType: chatType, isOwn: isOutgoing(message), repository: repository)
     }
 
     /// Сверить реакции показанных сообщений с сервером: при возврате в приложение пуши
