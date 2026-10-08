@@ -138,40 +138,35 @@ class FormattingFixtureTest {
 
     /**
      * Отрезки поля из сценария. Незнакомый тип — как его держит клиент: [TextSpan.Kind.UNKNOWN] с
-     * элементом ([TextSpan.foreign]: тип как есть, `entityId`, `entityName`, `attributes`).
+     * элементом ядра ([TextSpan.foreign], прочитан [TextElement.parse]: тип как есть, все прочие
+     * ключи — в полях и `extra`).
      */
     private fun spans(value: JsonElement?): List<TextSpan> = value.array.map {
         it as JsonObject
-        val type = it["type"].str!!
-        val kind = kindOf(type)
-        val foreign = if (kind != TextSpan.Kind.UNKNOWN) null else TextElement(
-            type = type,
-            from = 0,
-            length = 0,
-            entityId = it["entityId"].long,
-            entityName = it["entityName"].str,
-            attributes = (it["attributes"]?.raw() as? Map<*, *>).orEmpty().mapKeys { (k, _) -> k.toString() },
-        )
-        TextSpan(kind, it["from"].long!!.toInt(), it["length"].long!!.toInt(), url = it["url"].str, foreign = foreign)
+        val kind = kindOf(it["type"].str!!)
+        val foreign = if (kind == TextSpan.Kind.UNKNOWN) foreignOf(it) else null
+        TextSpan(kind, it["from"].long!!.toInt(), it["length"].long!!.toInt(), url = it["url"].str.takeIf { foreign == null }, foreign = foreign)
     }
 
-    /** Отрезок для сравнения: вид (у незнакомого — тип и его данные), смещения, адрес. */
+    /** Элемент незнакомого типа из отрезка сценария (без поля `text` — это кусок текста), смещения нулевые, как у клиента. */
+    private fun foreignOf(span: JsonObject): TextElement {
+        val raw = (span.raw() as Map<*, *>).filterKeys { it != "text" }
+        return TextElement.parse(raw)!!.copy(from = 0, length = 0)
+    }
+
+    /** Отрезок для сравнения: вид (у незнакомого — тип и все его ключи, как уйдут), смещения, адрес. */
     private fun spanKey(span: TextSpan): String {
-        val head = span.foreign?.let { "${it.type}${foreignKeys(it.entityId, it.entityName, it.attributes)}" } ?: span.kind.toString()
+        val head = span.foreign?.let { foreignKey(it) } ?: span.kind.toString()
         return "$head ${span.from}+${span.length}" + (span.url?.let { " $it" } ?: "")
     }
 
     private fun spanKey(span: JsonObject): String {
-        val type = span["type"].str!!
-        val kind = kindOf(type)
-        val attributes = (span["attributes"]?.raw() as? Map<*, *>).orEmpty().mapKeys { (k, _) -> k.toString() }
-        val head = if (kind == TextSpan.Kind.UNKNOWN) "$type${foreignKeys(span["entityId"].long, span["entityName"].str, attributes)}" else kind.toString()
-        return "$head ${span["from"].long}+${span["length"].long}" + (span["url"].str?.let { " $it" } ?: "")
+        val kind = kindOf(span["type"].str!!)
+        val head = if (kind == TextSpan.Kind.UNKNOWN) foreignKey(foreignOf(span)) else kind.toString()
+        return "$head ${span["from"].long}+${span["length"].long}" + (span["url"].str?.takeIf { kind != TextSpan.Kind.UNKNOWN }?.let { " $it" } ?: "")
     }
 
-    private fun foreignKeys(entityId: Long?, entityName: String?, attributes: Map<String, Any?>) =
-        listOfNotNull(entityId?.let { "entityId=$it" }, entityName?.let { "entityName=$it" }, attributes.takeIf { it.isNotEmpty() }?.let { "attributes=${canon(it)}" })
-            .joinToString(",", prefix = "{", postfix = "}").takeIf { it != "{}" }.orEmpty()
+    private fun foreignKey(element: TextElement) = "${element.type}${canon(element.toPayload() - setOf("type", "from", "length"))}"
 
     /** Вид отрезка сценария; известный тип — без учёта регистра, остальное — [TextSpan.Kind.UNKNOWN]. */
     private fun kindOf(type: String): TextSpan.Kind = when (val upper = type.uppercase()) {

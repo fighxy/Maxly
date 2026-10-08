@@ -83,6 +83,14 @@ class TextMarksTest {
     }
 
     @Test
+    fun unknownTypeKeepsEveryKeyOfTheReceivedElement() {
+        val received = TextElement.parse(mapOf("type" to "Spoiler", "from" to 0L, "length" to 6L, "style" to mapOf("blur" to 3L), "rev" to 2L), 6)!!
+        val span = TextMarks.fromElements(listOf(received), 6).single()
+        val sent = TextMarks.toElements("abc hidden", listOf(span.copy(from = 4))).single().toPayload()
+        assertEquals(mapOf("type" to "Spoiler", "from" to 4, "length" to 6, "style" to mapOf("blur" to 3L), "rev" to 2L), sent)
+    }
+
+    @Test
     fun unknownTypeGoesBackOnEditWithItsKeysAtTheNewOffsets() {
         val foreign = TextElement("Spoiler", 0, 0, entityId = 7, entityName = "x", attributes = mapOf("level" to 2))
         val elements = TextMarks.toElements("ab hidden", listOf(TextSpan(TextSpan.Kind.UNKNOWN, 3, 6, foreign = foreign)))

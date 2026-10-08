@@ -165,8 +165,9 @@ data class TextSpan(
     val entityId: String? = null,
     /**
      * Элемент незнакомого типа ([Kind.UNKNOWN], разметка другого клиента): тип как пришёл и все
-     * его данные (`entityId`, `entityName`, `attributes`); смещения в нём нулевые — они в [from] и
-     * [length]. Такой отрезок не рисуется, но хранится и при правке уходит обратно как был.
+     * его ключи (`entityId`, `entityName`, `attributes`, остальное — `TextElement.extra` ядра);
+     * смещения в нём нулевые — они в [from] и [length]. Такой отрезок не рисуется, но хранится и
+     * при правке уходит обратно со всеми ключами и новыми смещениями.
      */
     val foreign: com.max.core.api.TextElement? = null,
 ) {
