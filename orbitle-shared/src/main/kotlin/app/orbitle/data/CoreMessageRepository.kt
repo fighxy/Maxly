@@ -356,8 +356,8 @@ class CoreMessageRepository(
                 } else if (note != null) {
                     MaxCoreGateway.call { uploadVideoNote(chatId, note, replyTo, progress) }
                 } else if (media == null) {
-                    val elements = elements(local.text, local.content.formatting)
-                    MaxCoreGateway.call { client.sendText(chatId.toLong(), local.text, replyTo?.toLongOrNull(), elements) }
+                    val elements = TextMarks.toElements(local.text, local.content.formatting)
+                    MaxCoreGateway.call { client.sendFormattedText(chatId.toLong(), local.text, elements, replyTo?.toLongOrNull()) }
                 } else {
                     val outgoing = media.map { OutgoingMedia(it.path, coreKind(it.kind), it.name) }
                     val work = uploadScope.async {
@@ -479,10 +479,8 @@ class CoreMessageRepository(
     override suspend fun edit(chatId: String, messageId: String, text: String) = editFormatted(chatId, messageId, text, emptyList())
 
     override suspend fun editFormatted(chatId: String, messageId: String, text: String, marks: List<TextSpan>) {
-        val elements = elements(text, marks)
-        val edited = MaxCoreGateway.call { client.api.messages.editMessage(chatId.toLong(), messageId.toLong(), text, elements) }
-        // Своя правка сервером обратно не присылается.
-        client.store.apply(MaxEvent.MessageEdited(edited.copy(chatId = edited.chatId ?: chatId.toLong()), 0, null))
+        // Весь список разом: пустой снимает разметку. Свою правку ядро само кладёт в стор.
+        MaxCoreGateway.call { client.editText(chatId.toLong(), messageId.toLong(), text, TextMarks.toElements(text, marks)) }
     }
 
     override suspend fun delete(chatId: String, messageIds: List<String>, forEveryone: Boolean) {
@@ -599,25 +597,6 @@ class CoreMessageRepository(
 
     /** User-Agent сессии: адреса видео и файлов CDN выдаёт под Android-клиента. */
     val mediaUserAgent: String get() = client.config.userAgent.httpUserAgent
-
-    /** Все отметки текста для `elements`: анимодзи, упоминания и разметка, по порядку в тексте. */
-    private fun elements(text: String, spans: List<TextSpan>): List<Map<String, Any?>> =
-        (animojiElements(text, spans) + LockPayloads.mentionElements(text, spans) + LockPayloads.formatElements(text, spans))
-            .sortedBy { it["from"] as Int }
-
-    /** Отметки `ANIMOJI`: `{type, from, length, entityId, attributes.animojiLottieUrl}`, смещения UTF-16. */
-    private fun animojiElements(text: String, spans: List<TextSpan>): List<Map<String, Any?>> = spans.mapNotNull { span ->
-        if (span.kind != TextSpan.Kind.ANIMOJI) return@mapNotNull null
-        val id = span.entityId?.toLongOrNull() ?: return@mapNotNull null
-        if (span.from < 0 || span.length <= 0 || span.from + span.length > text.length) return@mapNotNull null
-        linkedMapOf<String, Any?>(
-            "type" to "ANIMOJI",
-            "from" to span.from,
-            "length" to span.length,
-            "entityId" to id,
-            "attributes" to linkedMapOf("animojiLottieUrl" to span.url.orEmpty()),
-        )
-    }
 
     private companion object {
         const val PAGE = 40

@@ -1,6 +1,5 @@
 package app.orbitle.data
 
-import app.orbitle.domain.TextSpan
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -47,25 +46,6 @@ class LockPayloadsTest {
         assertEquals("wss://x", LockPayloads.endpointOf("""{"endpoint":"wss://x"}"""))
         assertNull(LockPayloads.endpointOf("""{"endpoint":""}"""))
         assertNull(LockPayloads.endpointOf(null))
-    }
-
-    @Test
-    fun mentionsSkipBadSpans() {
-        val text = "@anna"
-        val elements = LockPayloads.mentionElements(
-            text,
-            listOf(
-                TextSpan(TextSpan.Kind.MENTION, 0, 5, userId = "12"),
-                TextSpan(TextSpan.Kind.ANIMOJI, 0, 2, userId = "1"),
-                TextSpan(TextSpan.Kind.MENTION, 0, 3, userId = "no"),
-                TextSpan(TextSpan.Kind.MENTION, 8, 1, userId = "3"),
-            ),
-        )
-        assertEquals(1, elements.size)
-        assertEquals("USER_MENTION", elements[0]["type"])
-        assertEquals(12L, elements[0]["entityId"])
-        assertEquals(0, elements[0]["from"])
-        assertEquals(5, elements[0]["length"])
     }
 
     @Test

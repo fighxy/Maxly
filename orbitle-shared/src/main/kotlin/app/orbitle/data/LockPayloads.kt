@@ -152,45 +152,6 @@ object LockPayloads {
         }
     }
 
-    /** Отметки `USER_MENTION`, как их присылает сервер: `{type, from, length, entityId}`. */
-    fun mentionElements(text: String, spans: List<app.orbitle.domain.TextSpan>): List<Map<String, Any?>> =
-        spans.mapNotNull { span ->
-            if (span.kind != app.orbitle.domain.TextSpan.Kind.MENTION) return@mapNotNull null
-            val id = span.userId?.toLongOrNull() ?: return@mapNotNull null
-            if (span.from < 0 || span.length <= 0 || span.from + span.length > text.length) return@mapNotNull null
-            linkedMapOf("type" to "USER_MENTION", "from" to span.from, "length" to span.length, "entityId" to id)
-        }
-
-    /**
-     * Разметка текста в той же схеме `elements`, что разбирает [MessageMapping.spans]:
-     * `{type, from, length}`, у ссылки ещё `attributes.url`. Упоминания и анимодзи сюда не входят:
-     * у них свои поля ([mentionElements]). Отрезки за пределами текста и ссылки без адреса
-     * пропускаются.
-     */
-    fun formatElements(text: String, spans: List<app.orbitle.domain.TextSpan>): List<Map<String, Any?>> =
-        spans.mapNotNull { span ->
-            val type = FORMAT_TYPES[span.kind] ?: return@mapNotNull null
-            if (span.from < 0 || span.length <= 0 || span.from + span.length > text.length) return@mapNotNull null
-            val element = linkedMapOf<String, Any?>("type" to type, "from" to span.from, "length" to span.length)
-            if (span.kind == app.orbitle.domain.TextSpan.Kind.LINK) {
-                val url = span.url?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                element["attributes"] = linkedMapOf("url" to url)
-            }
-            element
-        }
-
-    /** Имена видов разметки в `elements`: те же, что принимает [MessageMapping.spans]. */
-    private val FORMAT_TYPES: Map<app.orbitle.domain.TextSpan.Kind, String> = mapOf(
-        app.orbitle.domain.TextSpan.Kind.STRONG to "STRONG",
-        app.orbitle.domain.TextSpan.Kind.EMPHASIZED to "EMPHASIZED",
-        app.orbitle.domain.TextSpan.Kind.UNDERLINE to "UNDERLINE",
-        app.orbitle.domain.TextSpan.Kind.STRIKETHROUGH to "STRIKETHROUGH",
-        app.orbitle.domain.TextSpan.Kind.MONOSPACED to "MONOSPACED",
-        app.orbitle.domain.TextSpan.Kind.HEADING to "HEADING",
-        app.orbitle.domain.TextSpan.Kind.QUOTE to "QUOTE",
-        app.orbitle.domain.TextSpan.Kind.LINK to "LINK",
-    )
-
     private fun jsonString(value: String): String = buildString {
         append('"')
         for (c in value) {
