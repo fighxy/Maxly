@@ -469,6 +469,9 @@ internal class AndroidCallPeer(
             transceiver.setDirection(RtpTransceiver.RtpTransceiverDirection.SEND_ONLY)
             transceiver.mid
         } ?: return false
+        // Слот один: камера и экран сменяют друг друга в одном отправителе. Прежнее видео больше
+        // не держит его, иначе его `stopVideo` снял бы из слота новое.
+        slots.entries.removeAll { (other, known) -> other != video && known == mid }
         slots[video] = mid
         return true
     }

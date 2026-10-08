@@ -317,7 +317,11 @@ internal class DesktopCallPeer(
         } ?: return false
         transceiver.sender.replaceTrack(track)
         transceiver.direction = RTCRtpTransceiverDirection.SEND_ONLY
-        senders[video] = transceiver.sender
+        // Слот один: камера и экран сменяют друг друга в одном отправителе. Прежнее видео больше
+        // не держит его, иначе его `stopVideo` снял бы из слота новое.
+        val sender = transceiver.sender
+        senders.entries.removeAll { (other, known) -> other != video && known === sender }
+        senders[video] = sender
         return true
     }
 

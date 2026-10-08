@@ -148,6 +148,14 @@ class CallSession(
     private val sfuChannels = mutableListOf<CallDataChannel>()
     private var sfuCommand: CallDataChannel? = null
     private val sfuAliases = HashMap<Int, String>()
+    /** SFU: `mid` слота своего видео из последнего офера сервера, если ответ отдал в него видео. Пусто — слот не согласован на отправку, видео попадёт в него со следующим офером. */
+    private var slotMids: Set<String> = emptySet()
+    /** Что сейчас в слоте: экран, камера или ничего. */
+    private var slotVideo: LocalVideo? = null
+    /** Под какой подписью сервер знает видео слота (последний `accept-producer`). */
+    private var slotLabel: LocalVideo? = null
+    /** Номера ssrc из последнего офера сервера: они повторяются в каждом `accept-producer`. */
+    private var producerSsrcs: List<String> = emptyList()
     private val slotOwners = HashMap<Int, TrackOwner>()
     private var layoutSequence = 1
     private var lastLayout: List<String>? = null
@@ -261,9 +269,10 @@ class CallSession(
             }
             current = current.copy(screenSharing = true)
             try {
-                peer?.let { peer ->
-                    val added = peer.sendVideo(LocalVideo.SCREEN)
-                    if (topology == CallTopology.DIRECT && added) sendOffer()
+                if (topology == CallTopology.SERVER) {
+                    refillSlot()
+                } else {
+                    peer?.let { peer -> if (peer.sendVideo(LocalVideo.SCREEN)) sendOffer() }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -273,9 +282,11 @@ class CallSession(
                 current = current.copy(screenSharing = false, notice = "Не удалось показать экран")
             }
         } else {
-            detachVideo(LocalVideo.SCREEN)
+            if (topology != CallTopology.SERVER || slotMids.isEmpty()) detachVideo(LocalVideo.SCREEN)
             media.stopScreen()
             current = current.copy(screenSharing = false)
+            // SFU: в освободившийся слот возвращается камера.
+            if (topology == CallTopology.SERVER) refillSlot()
         }
         updateLocalTrack()
         sendMediaSettings()
@@ -582,8 +593,8 @@ class CallSession(
         current = current.copy(phase = if (wasConnected) CallPhase.Reconnecting else CallPhase.Connecting)
         val peer = makePeer() ?: return
         peer.addMicrophone()
-        if (current.cameraOn) peer.sendVideo(LocalVideo.CAMERA)
-        if (current.screenSharing) peer.sendVideo(LocalVideo.SCREEN)
+        // Слот своего видео у сервера один: в него идёт экран, иначе камера.
+        outgoingVideo?.let { peer.sendVideo(it) }
         openSfuChannels(peer)
         try {
             signaling?.send("allocate-consumer", Ws2Command.allocateConsumer)
@@ -603,8 +614,7 @@ class CallSession(
             closePeer()
             val fresh = makePeer() ?: return
             fresh.addMicrophone()
-            if (current.cameraOn) fresh.sendVideo(LocalVideo.CAMERA)
-            if (current.screenSharing) fresh.sendVideo(LocalVideo.SCREEN)
+            outgoingVideo?.let { fresh.sendVideo(it) }
             openSfuChannels(fresh)
         }
         if (session != null) sfuSession = session
@@ -631,7 +641,15 @@ class CallSession(
             remoteSet = true
             flushCandidates()
             for (candidate in CallSdp.candidates(sdp)) peer.add(candidate)
-            outgoingVideo?.let { peer.fillVideoSlot(CallSdp.receiveOnlyVideoMids(sdp), it) }
+            val mids = CallSdp.receiveOnlyVideoMids(sdp)
+            slotMids = emptySet()
+            slotVideo = null
+            val outgoing = outgoingVideo
+            if (outgoing != null && peer.fillVideoSlot(mids, outgoing)) {
+                slotMids = mids
+                slotVideo = outgoing
+            }
+            producerSsrcs = ssrcs
             val answer = peer.makeAnswer()
             if (peer !== this.peer) return
             peer.setLocal(answer)
@@ -639,11 +657,8 @@ class CallSession(
             waitForGathering(peer)
             if (peer !== this.peer) return
             val local = peer.localDescription?.sdp ?: answer.sdp
-            val body = LinkedHashMap<String, JsonElement>()
-            body["description"] = JsonPrimitive(labeled(SessionDescription(SdpType.ANSWER, local)).sdp)
-            if (ssrcs.isNotEmpty()) body["ssrcs"] = element(ssrcs)
-            sfuSession?.let { body["sessionId"] = it }
-            signaling?.send("accept-producer", body)
+            slotLabel = slotVideo
+            signaling?.send("accept-producer", producerAnswer(local))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -653,6 +668,47 @@ class CallSession(
         if (acceptSent) sendMediaSettings()
         collectRemoteTracks()
         publishLayout(force = true)
+    }
+
+    /** Тело `accept-producer`: свой ответ с подписями, ssrc и сессия из офера сервера. */
+    private fun producerAnswer(sdp: String): Map<String, JsonElement> {
+        val body = LinkedHashMap<String, JsonElement>()
+        body["description"] = JsonPrimitive(labeled(SessionDescription(SdpType.ANSWER, sdp)).sdp)
+        if (producerSsrcs.isNotEmpty()) body["ssrcs"] = element(producerSsrcs)
+        sfuSession?.let { body["sessionId"] = it }
+        return body
+    }
+
+    /**
+     * SFU: в единственный слот своего видео кладётся то, что сейчас главное (экран, иначе камера).
+     * Новый отправитель не добавляется: дорожка меняется в отправителе слота, согласование не нужно.
+     * Но сервер узнаёт видео по подписи в SDP (`u<id>:sCAMERA` / `u<id>:sSCREEN`), а она осталась от
+     * прежней дорожки, поэтому тот же ответ уходит ещё раз `accept-producer` с новой подписью. Слот
+     * не согласован на отправку — видео ляжет в него со следующим офером сервера.
+     */
+    private suspend fun refillSlot() {
+        val peer = peer ?: return
+        if (topology != CallTopology.SERVER || slotMids.isEmpty()) return
+        val wanted = outgoingVideo
+        if (wanted != slotVideo) {
+            if (wanted != null) {
+                peer.fillVideoSlot(slotMids, wanted)
+            } else {
+                slotVideo?.let(::detachVideo)
+            }
+            slotVideo = wanted
+        }
+        val local = peer.localDescription
+        if (wanted == null || wanted == slotLabel || local == null || local.type != SdpType.ANSWER) return
+        slotLabel = wanted
+        CallLog.info("SFU: в слоте своего видео теперь $wanted, шлю новую подпись")
+        try {
+            signaling?.send("accept-producer", producerAnswer(local.sdp))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            CallLog.warning("accept-producer с новой подписью: $e")
+        }
     }
 
     private val outgoingVideo: LocalVideo?
@@ -745,6 +801,10 @@ class CallSession(
 
     private fun closePeer() {
         closeSfuChannels()
+        slotMids = emptySet()
+        slotVideo = null
+        slotLabel = null
+        producerSsrcs = emptyList()
         resumeGathering()
         peer?.onEvent = null
         peer?.close()
@@ -851,12 +911,20 @@ class CallSession(
         waiter?.complete(Unit)
     }
 
-    /** Свои видеодорожки в SDP подписываются так, как их ищет сервер. */
+    /**
+     * Свои видеодорожки в SDP подписываются так, как их ищет сервер. В SFU слот своего видео
+     * подписывается по `mid` тем, что в нём сейчас: id дорожки в SDP мог остаться от прежней.
+     */
     private fun labeled(description: SessionDescription): SessionDescription {
         val names = HashMap<String, String>()
         media.trackId(LocalVideo.CAMERA)?.let { names[it] = CallSdp.layoutKey(connection.selfId, screen = false) }
         media.trackId(LocalVideo.SCREEN)?.let { names[it] = CallSdp.layoutKey(connection.selfId, screen = true) }
-        return description.copy(sdp = CallSdp.label(description.sdp, names))
+        var sdp = CallSdp.label(description.sdp, names)
+        val video = slotVideo
+        if (topology == CallTopology.SERVER && video != null) {
+            sdp = CallSdp.label(sdp, slotMids, CallSdp.layoutKey(connection.selfId, screen = video == LocalVideo.SCREEN))
+        }
+        return description.copy(sdp = sdp)
     }
 
     private fun collectRemoteTracks() {
@@ -1088,9 +1156,10 @@ class CallSession(
             }
             current = current.copy(cameraOn = true)
             try {
-                peer?.let { peer ->
-                    val added = peer.sendVideo(LocalVideo.CAMERA)
-                    if (topology == CallTopology.DIRECT && added) sendOffer()
+                if (topology == CallTopology.SERVER) {
+                    refillSlot()
+                } else {
+                    peer?.let { peer -> if (peer.sendVideo(LocalVideo.CAMERA)) sendOffer() }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -1100,9 +1169,10 @@ class CallSession(
                 current = current.copy(cameraOn = false, notice = "Не удалось включить камеру")
             }
         } else {
-            detachVideo(LocalVideo.CAMERA)
+            if (topology != CallTopology.SERVER || slotMids.isEmpty()) detachVideo(LocalVideo.CAMERA)
             media.stopCamera()
             current = current.copy(cameraOn = false)
+            if (topology == CallTopology.SERVER) refillSlot()
         }
         updateLocalTrack()
         publish()
@@ -1133,8 +1203,16 @@ class CallSession(
         publish()
     }
 
+    /**
+     * В SFU слот своего видео один, и при показе экрана в нём экран: камера тогда только своё
+     * превью, и серверу говорится `video: false`, иначе другие ждут камеру, которой нет.
+     */
     private val mediaSettings: JsonObject
-        get() = Ws2Command.mediaSettings(audio = !current.muted, video = current.cameraOn, screen = current.screenSharing)
+        get() {
+            val screen = current.screenSharing
+            val video = current.cameraOn && !(topology == CallTopology.SERVER && screen)
+            return Ws2Command.mediaSettings(audio = !current.muted, video = video, screen = screen)
+        }
 
     private suspend fun sendMediaSettings() {
         val signaling = signaling ?: return

@@ -79,6 +79,36 @@ object CallSdp {
     }
 
     /**
+     * Подписывает видео в секциях SFU с этими `mid` (слот своего видео) ключом [name], какой бы id
+     * дорожки там ни стоял. Замена дорожки в отправителе SDP не меняет: в нём остаётся id дорожки,
+     * с которой слот согласовали (камера), а сервер ищет видео по подписи.
+     */
+    fun label(sdp: String, mids: Set<String>, name: String): String {
+        if (mids.isEmpty()) return sdp
+        val separator = if ("\r\n" in sdp) "\r\n" else "\n"
+        val parts = sdp.split(separator).toMutableList()
+        val starts = parts.indices.filter { parts[it].startsWith("m=") }
+        starts.forEachIndexed { number, start ->
+            val end = if (number + 1 < starts.size) starts[number + 1] else parts.size
+            val mid = (start until end).map { parts[it] }.firstOrNull { it.startsWith("a=mid:") }?.removePrefix("a=mid:")
+            if (mid == null || mid !in mids) return@forEachIndexed
+            for (index in start until end) parts[index] = relabeled(parts[index], name)
+        }
+        return parts.joinToString(separator)
+    }
+
+    /** Строка `a=msid` или `a=ssrc … msid/label` с новым id дорожки; остальные — как есть. */
+    private fun relabeled(line: String, name: String): String {
+        val fields = line.split(' ')
+        return when {
+            line.startsWith("a=msid:") && fields.size == 2 -> "${fields[0]} $name"
+            line.startsWith("a=ssrc:") && fields.size == 3 && fields[1].startsWith("msid:") -> "${fields[0]} ${fields[1]} $name"
+            line.startsWith("a=ssrc:") && fields.size == 2 && fields[1].startsWith("label:") -> "${fields[0]} label:$name"
+            else -> line
+        }
+    }
+
+    /**
      * Номер участника из `participantId`: число или строка вида `u123:d0` (`u` — пользователь,
      * `g` — группа, `d` — номер устройства).
      */

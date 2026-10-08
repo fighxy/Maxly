@@ -88,6 +88,14 @@ class CallProtocolTest {
 
         val labeled = CallSdp.label("a=msid:stream cam\r\na=ssrc:1 msid:stream cam\r\na=ssrc:1 label:cam\r\na=msid:stream mic", mapOf("cam" to "u10:sCAMERA"))
         assertEquals("a=msid:stream u10:sCAMERA\r\na=ssrc:1 msid:stream u10:sCAMERA\r\na=ssrc:1 label:u10:sCAMERA\r\na=msid:stream mic", labeled)
+
+        val slot = "m=audio 9 X 111\r\na=mid:0\r\na=msid:o mic\r\nm=video 9 X 96\r\na=mid:1\r\na=msid:o cam\r\na=ssrc:2 msid:o cam\r\na=ssrc:2 label:cam"
+        assertEquals(
+            "m=audio 9 X 111\r\na=mid:0\r\na=msid:o mic\r\nm=video 9 X 96\r\na=mid:1\r\na=msid:o u10:sSCREEN\r\n" +
+                "a=ssrc:2 msid:o u10:sSCREEN\r\na=ssrc:2 label:u10:sSCREEN",
+            CallSdp.label(slot, setOf("1"), "u10:sSCREEN"),
+        )
+        assertEquals(slot, CallSdp.label(slot, emptySet(), "u10:sSCREEN"))
     }
 
     @Test

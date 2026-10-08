@@ -48,12 +48,14 @@ class Ws2FixtureTest {
 
     @Test fun conversationClosed() = play("conversation-closed")
 
+    @Test fun screenShareSfu() = play("screen-share-sfu")
+
     /** Новый файл без теста здесь — ошибка: сценарий должен проигрываться. */
     @Test
     fun everyFixtureIsPlayed() {
         val played = setOf(
             "outgoing-direct", "outgoing-canceled", "outgoing-declined", "incoming-answered", "incoming-rejected",
-            "incoming-missed", "ice", "errors", "conversation-closed",
+            "incoming-missed", "ice", "errors", "conversation-closed", "screen-share-sfu",
         )
         val files = fixtures().listFiles { file -> file.extension == "json" }.orEmpty().map { it.nameWithoutExtension }.toSet()
         assertEquals(played, files)
@@ -66,7 +68,8 @@ class Ws2FixtureTest {
 
     private inner class Player(private val name: String, private val fixture: JsonObject) {
         private val server = FakeWs2Server()
-        private val media = FakeCallMedia()
+        // Сбор кандидатов фикстуры не описывают: ответ SFU уходит сразу, без ожидания по таймеру.
+        private val media = FakeCallMedia().apply { gatheringComplete = true }
         private var seenFrames = 0
         private var seenTexts = 0
         private var stepIndex = 0
@@ -91,11 +94,18 @@ class Ws2FixtureTest {
                         "start" -> call.start()
                         "accept" -> call.accept(obj["video"].bool == true)
                         "hangUp" -> call.hangUp()
+                        "setCamera" -> call.setCamera(flag(obj))
+                        "setScreenSharing" -> call.setScreenSharing(flag(obj))
                         else -> fail(where("неизвестное действие $action"))
                     }
                     obj.containsKey("receive") -> server.deliver(obj["receive"]!!)
                     obj.containsKey("receiveText") -> server.deliver(obj["receiveText"].str!!)
                     obj.containsKey("peerEvent") -> peerEvent(obj["peerEvent"] as JsonObject)
+                    obj.containsKey("peerAnswer") -> {
+                        runCurrent()
+                        val peer = media.peer ?: return@runIn fail(where("peerAnswer без соединения"))
+                        peer.answerSdp = obj["peerAnswer"].str ?: return@runIn fail(where("peerAnswer — не строка"))
+                    }
                     obj.containsKey("expect") -> {
                         runCurrent()
                         check(call, obj["expect"] as JsonObject)
@@ -104,6 +114,20 @@ class Ws2FixtureTest {
                 }
                 runCurrent()
             }
+        }
+
+        /** `"on": true/false` действий `setCamera` и `setScreenSharing`. */
+        private fun flag(step: JsonObject): Boolean = step["on"].bool ?: error(where("действие без \"on\""))
+
+        /** SDP последней команды клиента, которая его несёт: `accept-producer` или `transmit-data`. */
+        private fun lastSentSdp(): String {
+            for (frame in server.frames.asReversed()) {
+                when (frame["command"].str) {
+                    "accept-producer" -> frame["description"].str?.let { return it }
+                    "transmit-data" -> ((frame["data"] as? JsonObject)?.get("sdp") as? JsonObject)?.get("sdp").str?.let { return it }
+                }
+            }
+            return ""
         }
 
         private fun peerEvent(event: JsonObject) {
@@ -137,6 +161,10 @@ class Ws2FixtureTest {
                 assertEquals(where("текстовые кадры"), expected.arr.orEmpty().map { it.str }, fresh)
                 seenTexts = server.texts.size
             }
+            expect["sdpLabels"]?.let { expected ->
+                val actual = Regex("u[0-9]+:s[A-Z]+").findAll(lastSentSdp()).map { it.value }.distinct().toList()
+                assertEquals(where("подписи своего SDP"), expected.arr.orEmpty().map { it.str }, actual)
+            }
             if (expect.containsKey("peer")) checkPeer(expect["peer"]!!)
         }
 
@@ -152,6 +180,12 @@ class Ws2FixtureTest {
             expected["iceServers"].long?.let { assertEquals(where("ICE-серверы"), it.toInt(), peer.iceServers.size) }
             expected["remotes"].arr?.let { remotes ->
                 assertEquals(where("удалённые SDP"), remotes.map { it.str }, peer.remotes.map { it.type.raw })
+            }
+            expected["sendVideo"].arr?.let { videos ->
+                assertEquals(where("sendVideo"), videos.map { it.str }, peer.sending.map { it.name.lowercase() })
+            }
+            if (expected is JsonObject && expected.containsKey("slot")) {
+                assertEquals(where("слот SFU"), expected["slot"].str, peer.slotVideo?.name?.lowercase())
             }
             expected["candidates"].arr?.let { candidates ->
                 val actual = peer.candidates.map {

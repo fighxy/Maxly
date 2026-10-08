@@ -87,6 +87,8 @@ class FakeCallPeer(val iceServers: List<CallIceServer>) : CallPeer {
     val sending = mutableListOf<LocalVideo>()
     val stopped = mutableListOf<LocalVideo>()
     val slots = mutableListOf<Pair<Set<String>, LocalVideo>>()
+    /** Что сейчас в слоте SFU: последнее `fillVideoSlot`, пока его не сняли `stopVideo`. */
+    var slotVideo: LocalVideo? = null
     val offers = mutableListOf<Boolean>()
     val locals = mutableListOf<SessionDescription>()
     val remotes = mutableListOf<SessionDescription>()
@@ -117,11 +119,14 @@ class FakeCallPeer(val iceServers: List<CallIceServer>) : CallPeer {
     override fun stopVideo(video: LocalVideo) {
         videoError?.let { throw it }
         stopped += video
+        if (slotVideo == video) slotVideo = null
     }
 
     override fun fillVideoSlot(mids: Set<String>, video: LocalVideo): Boolean {
         slots += mids to video
-        return mids.isNotEmpty()
+        if (mids.isEmpty()) return false
+        slotVideo = video
+        return true
     }
 
     override suspend fun makeOffer(iceRestart: Boolean): SessionDescription {
@@ -191,10 +196,15 @@ class FakeCallMedia : CallMedia {
     var speakerOn = false
     var shutDown = false
     var cameraError: CallMediaException.Kind? = null
+    /** Новые соединения сразу с собранными кандидатами: SFU не ждёт `timing.gathering`. */
+    var gatheringComplete = false
 
     val peer: FakeCallPeer? get() = peers.lastOrNull()
 
-    override fun makePeer(iceServers: List<CallIceServer>): CallPeer = FakeCallPeer(iceServers).also { peers += it }
+    override fun makePeer(iceServers: List<CallIceServer>): CallPeer = FakeCallPeer(iceServers).also {
+        it.isGatheringComplete = gatheringComplete
+        peers += it
+    }
 
     override fun trackId(video: LocalVideo): String? = when (video) {
         LocalVideo.CAMERA -> if (camera == null) null else "cam-track"
