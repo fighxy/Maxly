@@ -112,7 +112,7 @@ class ProfileViewModelTest {
         scheduler.advanceTimeBy(31_000)
         assertEquals("был(а) 1 минуту назад", model.state.value.subtitle)
         scheduler.advanceTimeBy(60 * 60_000)
-        assertEquals("был(а) 1 ч назад", model.state.value.subtitle)
+        assertEquals("был(а) в 11:59", model.state.value.subtitle)
     }
 
     @Test

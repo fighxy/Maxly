@@ -191,7 +191,7 @@ class ContactsViewModelTest {
         repo.contacts.value = listOf(Contact("2", "Борис"), Contact("3", "Вера", lastSeenMs = now - 3 * 3_600_000L))
         val rows = model.state.value.sections.flatMap { it.rows }.associateBy { it.id }
         assertEquals("", rows["2"]!!.status)
-        assertEquals("Был(а) 3 ч назад", rows["3"]!!.status)
+        assertEquals("Был(а) в 09:00", rows["3"]!!.status)
     }
 
     @Test

@@ -27,7 +27,7 @@ class PresenceText(private val zone: ZoneId = ZoneId.systemDefault()) {
         val time = "%02d:%02d".format(date.hour, date.minute)
         val days = ChronoUnit.DAYS.between(date.toLocalDate(), now.toLocalDate())
         return when {
-            days == 0L -> "был(а) ${seconds / 3600} ч назад"
+            days == 0L -> "был(а) в $time"
             days == 1L -> "был(а) вчера в $time"
             date.year == now.year -> "был(а) ${date.dayOfMonth} ${MONTHS_GENITIVE[date.monthValue - 1]}"
             else -> "был(а) %02d.%02d.%04d".format(date.dayOfMonth, date.monthValue, date.year)
@@ -35,8 +35,9 @@ class PresenceText(private val zone: ZoneId = ZoneId.systemDefault()) {
     }
 
     /**
-     * Когда подпись [status] сменится сама: следующая минута, час или полночь. `null` — не
-     * сменится (в сети, ничего не известно, или уже дата).
+     * Когда подпись [status] сменится сама: следующая минута в первый час, потом полночь
+     * («в 14:00» → «вчера в 14:00» → дата). `null` — не сменится (в сети, ничего не известно,
+     * или уже дата).
      */
     fun nextChange(online: Boolean, lastSeenMs: Long, nowMs: Long): Long? {
         if (online || lastSeenMs <= 0) return null
@@ -47,9 +48,7 @@ class PresenceText(private val zone: ZoneId = ZoneId.systemDefault()) {
         val now = Instant.ofEpochMilli(nowMs).atZone(zone)
         val days = ChronoUnit.DAYS.between(date.toLocalDate(), now.toLocalDate())
         if (days > 1) return null
-        val midnight = now.toLocalDate().plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
-        if (days == 1L) return midnight
-        return minOf(seen + (elapsed / HOUR_MS + 1) * HOUR_MS, midnight)
+        return now.toLocalDate().plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
     }
 
     companion object {

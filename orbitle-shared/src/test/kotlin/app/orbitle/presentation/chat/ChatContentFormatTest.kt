@@ -95,9 +95,15 @@ class ChatContentFormatTest {
         assertEquals("был(а) 5 минут назад", text.status(false, now - 5 * 60_000, now))
         assertEquals("был(а) 1 минуту назад", text.status(false, now - 61_000, now))
         assertEquals("был(а) 59 минут назад", text.status(false, now - 59 * 60_000 - 59_000, now))
-        assertEquals("был(а) 1 ч назад", text.status(false, now - 61 * 60_000, now))
-        assertEquals("был(а) 8 ч назад", text.status(false, ms(2026, 10, 2, 9, 30), now))
-        assertEquals("был(а) 18 ч назад", text.status(false, ms(2026, 10, 2, 0, 0), now))
+        assertEquals("был(а) 2 минуты назад", text.status(false, now - 2 * 60_000, now))
+        assertEquals("был(а) 11 минут назад", text.status(false, now - 11 * 60_000, now))
+        assertEquals("был(а) 21 минуту назад", text.status(false, now - 21 * 60_000, now))
+        assertEquals("был(а) 22 минуты назад", text.status(false, now - 22 * 60_000, now))
+        // С часа — время суток (24 часа, ведущий ноль), а не «N ч назад».
+        assertEquals("был(а) в 17:00", text.status(false, now - 60 * 60_000, now))
+        assertEquals("был(а) в 09:30", text.status(false, ms(2026, 10, 2, 9, 30), now))
+        assertEquals("был(а) в 00:05", text.status(false, ms(2026, 10, 2, 0, 5), now))
+        assertEquals("был(а) вчера в 23:59", text.status(false, ms(2026, 10, 1, 23, 59), now))
         assertEquals("был(а) вчера в 22:00", text.status(false, ms(2026, 10, 1, 22), now))
         assertEquals("был(а) 5 марта", text.status(false, ms(2026, 3, 5), now))
         assertEquals("был(а) 05.03.2024", text.status(false, ms(2024, 3, 5), now))
@@ -119,9 +125,10 @@ class ChatContentFormatTest {
         assertNull(text.nextChange(false, 0, now))
         assertEquals(now - 30_000 + 60_000, text.nextChange(false, now - 30_000, now))
         assertEquals(now - 5 * 60_000 + 6 * 60_000, text.nextChange(false, now - 5 * 60_000, now))
-        // «8 ч назад» → «9 ч назад»: в 18:30.
-        assertEquals(ms(2026, 10, 2, 18, 30), text.nextChange(false, ms(2026, 10, 2, 9, 30), now))
-        // Час сменился бы позже полуночи: подпись сменит «вчера».
+        // «59 минут назад» → «в 17:01» ровно через час.
+        assertEquals(now + 60_000, text.nextChange(false, now - 59 * 60_000, now))
+        // После часа «в 09:30» меняется только в полночь («вчера в 09:30»).
+        assertEquals(ms(2026, 10, 3, 0), text.nextChange(false, ms(2026, 10, 2, 9, 30), now))
         assertEquals(ms(2026, 10, 3, 0), text.nextChange(false, ms(2026, 10, 2, 0, 45), ms(2026, 10, 2, 23, 50)))
         assertEquals(ms(2026, 10, 3, 0), text.nextChange(false, ms(2026, 10, 1, 22), now))
         assertNull(text.nextChange(false, ms(2026, 3, 5), now))
