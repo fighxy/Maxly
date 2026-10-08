@@ -103,11 +103,11 @@ object MessageMapping {
         val link = message.link
         val forwarded = forward(link, names)
         var attaches = attachments(message.attaches)
-        var elements = spans(message.elements)
+        var elements = spans(message.elements, message.text)
         // У пересылки свои вложения и разметка пустые: берутся из оригинала.
         forwarded?.second?.let { original ->
             if (attaches.isEmpty()) attaches = attachments(original["attaches"] as? List<*>)
-            if (elements.isEmpty()) elements = spans(original["elements"] as? List<*>)
+            if (elements.isEmpty()) elements = spans(original["elements"] as? List<*>, original["text"] as? String ?: "")
         }
         return MessageContent(
             reply = reply(link, names),
@@ -206,32 +206,12 @@ object MessageMapping {
         return MessageForward(name.ifEmpty { "Неизвестно" }, text) to message
     }
 
-    /** `elements` сервера: `{type, from, length, attributes?, entityId?}`. Незнакомые типы пропускаются. */
-    fun spans(value: List<*>?): List<TextSpan> = value.orEmpty().mapNotNull { item ->
-        val map = item as? Map<*, *> ?: return@mapNotNull null
-        val kind = when ((map["type"] as? String)?.uppercase()) {
-            "STRONG" -> TextSpan.Kind.STRONG
-            "EMPHASIZED" -> TextSpan.Kind.EMPHASIZED
-            "UNDERLINE" -> TextSpan.Kind.UNDERLINE
-            "STRIKETHROUGH" -> TextSpan.Kind.STRIKETHROUGH
-            "MONOSPACED", "CODE" -> TextSpan.Kind.MONOSPACED
-            "HEADING" -> TextSpan.Kind.HEADING
-            "QUOTE" -> TextSpan.Kind.QUOTE
-            "LINK" -> TextSpan.Kind.LINK
-            "USER_MENTION" -> TextSpan.Kind.MENTION
-            "ANIMOJI" -> TextSpan.Kind.ANIMOJI
-            else -> return@mapNotNull null
-        }
-        val from = integer(map["from"]) ?: return@mapNotNull null
-        val length = integer(map["length"]) ?: return@mapNotNull null
-        if (from < 0 || length <= 0) return@mapNotNull null
-        val attributes = map["attributes"] as? Map<*, *>
-        if (kind == TextSpan.Kind.ANIMOJI) {
-            val entity = stringId(map["entityId"]) ?: return@mapNotNull null
-            return@mapNotNull TextSpan(kind, from, length, url = (attributes?.get("animojiLottieUrl") ?: attributes?.get("lottieUrl")) as? String, entityId = entity)
-        }
-        TextSpan(kind, from, length, url = attributes?.get("url") as? String, userId = stringId(map["entityId"]) ?: stringId(attributes?.get("userId")))
-    }
+    /**
+     * `elements` сервера по тексту [text] ([TextMarks.fromRaw], правила `test-fixtures/formatting`):
+     * нет `from` — 0, нет `length` — до конца текста, хвост за концом обрезается, незнакомые типы и
+     * ссылки без адреса пропускаются, порядок сервера.
+     */
+    fun spans(value: List<*>?, text: String? = null): List<TextSpan> = TextMarks.fromRaw(value, text)
 
     private fun reply(link: Map<*, *>?, names: (Long) -> String?): MessageReply? {
         link ?: return null

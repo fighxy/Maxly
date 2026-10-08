@@ -1,6 +1,7 @@
 package app.orbitle.presentation.chat
 
 import app.orbitle.domain.TextSpan
+import app.orbitle.domain.TextSpans
 
 /**
  * Разметка текста в поле ввода: жирный, курсив, подчёркнутый, зачёркнутый, моноширинный и
@@ -81,18 +82,9 @@ class FormatDraft {
 
     /**
      * Что уйдёт на сервер: текст поля без пробелов по краям и отрезки по нему (начало сдвинуто
-     * на срезанные пробелы, вышедшее за края обрезано).
+     * на срезанные пробелы, вышедшее за края обрезано, один вид слит) — [TextSpans.serialize].
      */
-    fun trimmed(draft: String): Pair<String, List<TextSpan>> {
-        val lead = draft.length - draft.trimStart().length
-        val text = draft.trim()
-        val spans = ranges.mapNotNull { span ->
-            val from = (span.from - lead).coerceAtLeast(0)
-            val end = (span.from + span.length - lead).coerceAtMost(text.length)
-            if (end > from) span.copy(from = from, length = end - from) else null
-        }
-        return text to spans
-    }
+    fun trimmed(draft: String): Pair<String, List<TextSpan>> = TextSpans.serialize(draft, ranges)
 
     companion object {
         /** Виды кнопок панели форматирования, по порядку. */
@@ -195,25 +187,6 @@ class FormatDraft {
         }
 
         /** Пересекающиеся и смежные отрезки одного вида сливаются (ссылки — только с тем же адресом). */
-        private fun normalize(spans: List<TextSpan>): List<TextSpan> {
-            val merged = ArrayList<TextSpan>()
-            // Анимодзи — отдельные знаки со своими данными: не сливаются.
-            val (single, mergeable) = spans.filter { it.length > 0 && it.from >= 0 }.partition { it.kind == TextSpan.Kind.ANIMOJI }
-            merged += single
-            for ((_, group) in mergeable.groupBy { it.kind to it.url }) {
-                var current: TextSpan? = null
-                for (span in group.sortedBy { it.from }) {
-                    val open = current
-                    current = if (open != null && span.from <= open.from + open.length) {
-                        open.copy(length = maxOf(open.from + open.length, span.from + span.length) - open.from)
-                    } else {
-                        open?.let(merged::add)
-                        span
-                    }
-                }
-                current?.let(merged::add)
-            }
-            return merged.sortedWith(compareBy({ it.from }, { it.kind.ordinal }, { it.length }))
-        }
+        private fun normalize(spans: List<TextSpan>): List<TextSpan> = TextSpans.normalize(spans)
     }
 }

@@ -811,7 +811,7 @@ class ChatViewModel(
         if (text.isBlank()) return reply?.let { ChatDraft("", now(), emptyList(), it) }
         val marks = (animojiDraft.spans(text) + mentionDraft.spans(text) + formatDraft.spans)
             .distinctBy { Triple(it.kind, it.from, it.length) }
-            .sortedWith(compareBy({ it.from }, { it.kind.ordinal }))
+            .sortedWith(app.orbitle.domain.TextSpans.ORDER)
         return ChatDraft(text, now(), marks, reply)
     }
 
@@ -979,7 +979,7 @@ class ChatViewModel(
         val formats = formatDraft.trimmed(_state.value.draft).second
         return (animojiDraft.spans(text) + mentionDraft.spans(text) + formats)
             .distinctBy { Triple(it.kind, it.from, it.length) }
-            .sortedWith(compareBy({ it.from }, { it.kind.ordinal }))
+            .sortedWith(app.orbitle.domain.TextSpans.ORDER)
     }
 
     private fun sendAttachments(items: List<OutgoingFile>, caption: String) {
@@ -1173,7 +1173,7 @@ class ChatViewModel(
         formatDraft.restore(restoreFormats, restore.length)
         restoreMentions(restore, restoreMentionSpans)
         _state.update { it.copy(editing = null, draft = restore, formatting = formatDraft.spans) }
-        if (text == target.text.trim() && sameMarks(marks, target)) return
+        if (app.orbitle.domain.TextSpans.unchanged(target.text, target.content.formatting, text, marks)) return
         viewModelScope.launch {
             try {
                 repository.editFormatted(chatId, target.id, text, marks)
@@ -1190,14 +1190,6 @@ class ChatViewModel(
                 show(e)
             }
         }
-    }
-
-    /** Разметка правки та же, что у сообщения (текст не менялся): отправлять нечего. */
-    private fun sameMarks(marks: List<TextSpan>, target: Message): Boolean {
-        val lead = target.text.length - target.text.trimStart().length
-        fun key(span: TextSpan) = listOf(span.kind, span.from, span.length, span.url, span.userId)
-        val before = target.content.formatting.map { it.copy(from = it.from - lead) }.map(::key).toSet()
-        return marks.map(::key).toSet() == before
     }
 
     // Удаление

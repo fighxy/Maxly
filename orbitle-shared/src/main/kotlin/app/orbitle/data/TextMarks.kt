@@ -1,6 +1,7 @@
 package app.orbitle.data
 
 import app.orbitle.domain.TextSpan
+import app.orbitle.domain.TextSpans
 import com.max.core.api.TextElement
 import com.max.core.api.TextElementType
 
@@ -10,16 +11,32 @@ import com.max.core.api.TextElementType
  */
 object TextMarks {
     /**
-     * Отметки [text] как элементы ядра, по порядку в тексте. Отрезки за пределами текста,
+     * Отметки [text] как элементы ядра, по порядку в тексте ([TextSpans.ORDER]). Отрезки за пределами текста,
      * ссылки без адреса, упоминания и анимодзи без числового id пропускаются.
      */
     fun toElements(text: String, spans: List<TextSpan>): List<TextElement> = spans
+        .sortedWith(TextSpans.ORDER)
         .mapNotNull { element(it) }
         .filter { it.fits(text.length) }
-        .sortedBy { it.from }
 
-    /** Элементы ядра обратно в отметки (черновики с сервера). Незнакомые типы пропускаются. */
-    fun fromElements(elements: List<TextElement>): List<TextSpan> = elements.mapNotNull { span(it) }
+    /**
+     * Элементы ядра обратно в отметки (входящие сообщения, черновики с сервера), в порядке
+     * сервера, без слияния. Тип не зависит от регистра; незнакомые типы и ссылки без адреса
+     * пропускаются. С длиной текста [textLength] хвост за концом обрезается, а начатые за концом
+     * отрезки выпадают.
+     */
+    fun fromElements(elements: List<TextElement>, textLength: Int? = null): List<TextSpan> =
+        elements.mapNotNull { span(it, textLength) }
+
+    /**
+     * `elements` сервера как есть (`{type, from, length, attributes?, entityId?}`) в отметки по
+     * тексту [text]: разбор ядра ([TextElement.parseAll]: нет `from` — 0, нет `length` — до конца
+     * текста, числа строками), затем [fromElements]. Без текста элементы без `length` выпадают.
+     */
+    fun fromRaw(raw: List<*>?, text: String?): List<TextSpan> {
+        if (text != null && text.isEmpty()) return emptyList()
+        return fromElements(TextElement.parseAll(raw, text?.length), text?.length)
+    }
 
     private fun element(span: TextSpan): TextElement? = when (span.kind) {
         TextSpan.Kind.STRONG -> TextElement.strong(span.from, span.length)
@@ -34,17 +51,30 @@ object TextMarks {
         TextSpan.Kind.ANIMOJI -> span.entityId?.toLongOrNull()?.let { TextElement.animoji(span.from, span.length, it, span.url.orEmpty()) }
     }
 
-    private fun span(element: TextElement): TextSpan? {
-        val kind = KINDS[element.type] ?: return null
-        if (element.from < 0 || element.length <= 0) return null
+    private fun span(element: TextElement, textLength: Int?): TextSpan? {
+        val kind = KINDS[element.type.uppercase()] ?: return null
+        val from = element.from
+        if (from < 0 || element.length <= 0) return null
+        val length = if (textLength == null) element.length else minOf(element.length, textLength - from)
+        if (length <= 0) return null
+        val attributes = element.attributes
         return when (kind) {
-            TextSpan.Kind.MENTION -> element.entityId?.let { TextSpan(kind, element.from, element.length, userId = it.toString()) }
-            TextSpan.Kind.ANIMOJI -> element.entityId?.let {
-                TextSpan(kind, element.from, element.length, url = element.animojiLottieUrl, entityId = it.toString())
+            TextSpan.Kind.MENTION -> (element.entityId ?: number(attributes["userId"]))?.let {
+                TextSpan(kind, from, length, userId = it.toString())
             }
-            TextSpan.Kind.LINK -> element.url?.let { TextSpan(kind, element.from, element.length, url = it) }
-            else -> TextSpan(kind, element.from, element.length)
+            TextSpan.Kind.ANIMOJI -> element.entityId?.let {
+                val lottie = element.animojiLottieUrl ?: (attributes["lottieUrl"] as? String)?.takeIf { url -> url.isNotEmpty() }
+                TextSpan(kind, from, length, url = lottie, entityId = it.toString())
+            }
+            TextSpan.Kind.LINK -> element.url?.let { TextSpan(kind, from, length, url = it) }
+            else -> TextSpan(kind, from, length)
         }
+    }
+
+    private fun number(value: Any?): Long? = when (value) {
+        is Number -> value.toLong()
+        is String -> value.toLongOrNull()
+        else -> null
     }
 
     private val KINDS: Map<String, TextSpan.Kind> = mapOf(
