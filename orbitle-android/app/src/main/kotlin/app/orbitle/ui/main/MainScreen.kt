@@ -220,7 +220,18 @@ fun MainScreen(
                     onAddStory = addStory,
                 )
             }
-            composable(Tab.CALLS.route) { CallsScreen(callsModel, onOpenChat = { openChat(it) }) }
+            composable(Tab.CALLS.route) {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                CallsScreen(
+                    callsModel,
+                    onOpenChat = { openChat(it) },
+                    onJoin = { app.orbitle.calls.AndroidCalls.join(container, it) },
+                    onCall = { row, video ->
+                        app.orbitle.calls.AndroidCalls.start(container, app.orbitle.presentation.calls.CallPeerInfo(row.peerId, row.name, row.avatarUrl), video)
+                    },
+                    onShareLink = { app.orbitle.calls.AndroidCalls.share(context, it) },
+                )
+            }
             composable(Tab.CONTACTS.route) {
                 ContactsScreen(contactsModel, onOpen = { row -> contactsModel.prepare(row.id, row.title)?.let { openChat(it, row.title) } })
             }
@@ -318,6 +329,7 @@ fun MainScreen(
                     onBlockComment = { postId, comment ->
                         container.chatAdmin.blockCommentAuthor(chatId, postId, comment.authorId, comment.id)
                     },
+                    onStartCall = { peer, video -> app.orbitle.calls.AndroidCalls.start(container, peer, video) },
                     botApp = { request, onClose ->
                         val app = viewModel(key = "bot-app-${request.botId}-${request.startParam}-${request.title}") {
                             MiniAppViewModel(null, container.account, request.title) {

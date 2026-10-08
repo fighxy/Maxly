@@ -38,6 +38,7 @@ import com.max.shared.MaxClientConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /** Зависимости приложения: одно ядро, одна сессия, репозитории над стором ядра. */
 class AppContainer(context: Context) {
@@ -165,6 +166,47 @@ class AppContainer(context: Context) {
 
     val recentSearches = PreferenceRecentSearches(preferenceStore)
 
+    /** Звонки: один на приложение. Разговор — WebRTC, сигналы — ws2 сервера звонков. */
+    val callCenter = app.orbitle.presentation.calls.CallCenter(
+        service = app.orbitle.data.calls.CoreCallService(client),
+        engine = { connection, role, isGroup, expiresAtMs ->
+            app.orbitle.data.calls.CallSession(
+                connection, role, isGroup,
+                media = app.orbitle.calls.AndroidCallMedia(context.applicationContext),
+                connector = { app.orbitle.data.calls.OkHttpWs2Socket.connect(it) },
+                scope = scope,
+                expiresAtMs = expiresAtMs,
+            )
+        },
+        scope = scope,
+        lookup = ::callPeer,
+    ).also { center ->
+        app.orbitle.calls.AndroidWebRtc.init(context.applicationContext)
+        app.orbitle.calls.CallPermissions.init(context.applicationContext)
+        app.orbitle.data.calls.CallLog.sink = { level, message ->
+            if (level == 'W') android.util.Log.w("OrbitleCalls", message) else android.util.Log.i("OrbitleCalls", message)
+        }
+        // Журнал звонков читается заново, когда сервер успел записать звонок.
+        center.onCallEnded = {
+            scope.launch {
+                kotlinx.coroutines.delay(2_000)
+                runCatching { calls.refresh() }
+            }
+        }
+    }
+
+    /** Уведомление входящего, служба идущего звонка и датчик приближения. */
+    val callSystem = app.orbitle.calls.AndroidCallSystem(context.applicationContext, callCenter, scope)
+
+    /** Имя и аватар пользователя Max для экрана звонка: из стора ядра или с сервера. */
+    private suspend fun callPeer(userId: String): app.orbitle.presentation.calls.CallPeerInfo? {
+        val id = userId.toLongOrNull() ?: return null
+        val user = client.store.state.value.users[id]
+            ?: runCatching { MaxCoreGateway.read { client.loadUsers(listOf(id)) } }.getOrNull()?.firstOrNull()
+            ?: return null
+        return app.orbitle.presentation.calls.CallPeerInfo(userId, user.displayName.orEmpty(), user.baseUrl?.takeIf { it.isNotBlank() })
+    }
+
     /** Ограничения нового сеанса: отметка входа для панели на главном экране и строки в настройках. */
     val accountLimits = app.orbitle.data.AccountLimitsStore(preferenceStore)
 
@@ -185,6 +227,7 @@ class AppContainer(context: Context) {
             runCatching { account.reload() }
         },
         onSignedOut = {
+            scope.launch { callCenter.deactivate() }
             chats.clear()
             calls.clear()
             recentSearches.clear()

@@ -43,6 +43,13 @@ import app.orbitle.ui.auth.AccountLimitsNotice
 import app.orbitle.ui.components.ChatBackdrop
 import app.orbitle.ui.components.LocalChatBackdrop
 import app.orbitle.ui.main.MainScreen
+import app.orbitle.calls.DesktopCallSounds
+import app.orbitle.calls.DesktopCallVideo
+import app.orbitle.ui.calls.CallHost
+import app.orbitle.ui.calls.CenterCallActions
+import app.orbitle.ui.calls.LocalCallVideo
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import app.orbitle.ui.res.painterResource
 import app.orbitle.ui.theme.OrbitleTheme
 import coil3.ImageLoader
@@ -76,12 +83,25 @@ fun main() {
             onDispose { owner.destroy() }
         }
         LaunchedEffect(container) { container.session.restoreSession() }
+        val windowState = rememberWindowState(size = DpSize(1100.dp, 760.dp))
         Window(
             onCloseRequest = ::exitApplication,
             title = "Orbitle",
             icon = painterResource(R.drawable.app_icon),
-            state = rememberWindowState(size = DpSize(1100.dp, 760.dp)),
+            state = windowState,
         ) {
+            // Входящий звонок поднимает окно поверх остальных, даже свёрнутое.
+            LaunchedEffect(container) {
+                container.callCenter.state
+                    .map { it.call?.isRinging == true }
+                    .distinctUntilChanged()
+                    .collect { ringing ->
+                        if (!ringing) return@collect
+                        windowState.isMinimized = false
+                        window.toFront()
+                        window.requestFocus()
+                    }
+            }
             // Ctrl+Q (⌘Q) — выход, как в Telegram Desktop.
             app.orbitle.ui.keys.HotkeyHandler { hotkey ->
                 if (hotkey.action == app.orbitle.ui.keys.HotkeyAction.QUIT) {
@@ -145,12 +165,19 @@ private fun Root(container: AppContainer) {
         is AuthPhase.SignedIn -> {
             val chats = viewModel { ChatListViewModel(container.chats, container.session.connection, local = container.chatMarks, recents = container.recentSearches) }
             val account by container.account.account.collectAsStateWithLifecycle(initialValue = null)
-            MainScreen(container, chats, account, onLogout = {
-                // Места в лентах и куски истории — прежнего аккаунта.
-                app.orbitle.presentation.chat.HistoryRanges.clear()
-                app.orbitle.presentation.chat.ScrollMemory.clear()
-                scope.launch { container.session.logout() }
-            })
+            LaunchedEffect(container) { container.callCenter.activate() }
+            val callActions = remember { CenterCallActions(container.callCenter, scope, hasSpeaker = false) }
+            val callSounds = remember { DesktopCallSounds() }
+            CompositionLocalProvider(LocalCallVideo provides DesktopCallVideo) {
+                CallHost(container.callCenter, callActions, callSounds) {
+                    MainScreen(container, chats, account, onLogout = {
+                        // Места в лентах и куски истории — прежнего аккаунта.
+                        app.orbitle.presentation.chat.HistoryRanges.clear()
+                        app.orbitle.presentation.chat.ScrollMemory.clear()
+                        scope.launch { container.session.logout() }
+                    })
+                }
+            }
         }
         else -> {
             val auth = viewModel { AuthViewModel(container.session) }

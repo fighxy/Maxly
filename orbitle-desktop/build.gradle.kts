@@ -19,6 +19,21 @@ if (!coreDir.resolve("core/src/commonMain/kotlin").isDirectory) {
     )
 }
 
+/**
+ * Нативная часть WebRTC (webrtc-java) под ОС и процессор сборки: установщик каждой ОС
+ * собирается на ней самой, поэтому в него попадает только своя библиотека.
+ */
+val webrtcNatives: String = run {
+    val os = System.getProperty("os.name").lowercase()
+    val arch = System.getProperty("os.arch").lowercase()
+    val cpu = if ("aarch64" in arch || "arm64" in arch) "aarch64" else "x86_64"
+    when {
+        "win" in os -> "windows-$cpu"
+        "mac" in os -> "macos-$cpu"
+        else -> "linux-$cpu"
+    }
+}
+
 /** Ревизия ядра из core.lock: короткий хеш для экрана «О приложении». */
 val coreRevision: String = file("core.lock").readLines()
     .firstOrNull { it.startsWith("revision=") }?.substringAfter('=')?.trim()?.take(7)
@@ -103,6 +118,9 @@ kotlin {
                 implementation("com.google.zxing:core:3.5.3")
                 // Встроенный Chromium для мини-приложений. Наборы CEF качаются при первом открытии.
                 implementation("dev.datlag:kcef:2024.04.20.4")
+                // Звонки: WebRTC (Apache 2.0) с нативной библиотекой своей ОС.
+                implementation("dev.onvoid.webrtc:webrtc-java:0.18.0")
+                implementation("dev.onvoid.webrtc:webrtc-java:0.18.0:$webrtcNatives")
             }
         }
         val jvmTest by getting {
@@ -169,6 +187,15 @@ compose.desktop {
             macOS {
                 bundleID = "app.orbitle.desktop"
                 iconFile.set(project.file("icons/orbitle.icns"))
+                // Без этих строк macOS не даст звонку микрофон и камеру.
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>NSMicrophoneUsageDescription</key>
+                        <string>Orbitle uses the microphone for calls.</string>
+                        <key>NSCameraUsageDescription</key>
+                        <string>Orbitle uses the camera for video calls.</string>
+                    """.trimIndent()
+                }
             }
             linux {
                 shortcut = true

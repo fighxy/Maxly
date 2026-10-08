@@ -305,7 +305,15 @@ fun MainScreen(
                     }
                 }
                 Tab.CALLS -> Box(Modifier.weight(1f).fillMaxHeight()) {
-                    CallsScreen(callsModel, onOpenChat = { openChat(it) })
+                    CallsScreen(
+                        callsModel,
+                        onOpenChat = { openChat(it) },
+                        onJoin = { link -> container.scope.launch { container.callCenter.join(link) } },
+                        onCall = { row, video ->
+                            val peer = app.orbitle.presentation.calls.CallPeerInfo(row.peerId, row.name, row.avatarUrl)
+                            container.scope.launch { container.callCenter.startCall(peer, video) }
+                        },
+                    )
                 }
                 Tab.CONTACTS -> Box(Modifier.weight(1f).fillMaxHeight()) {
                     ContactsScreen(contactsModel, onOpen = { row -> contactsModel.prepare(row.id, row.title)?.let { openChat(it, row.title) } })
@@ -461,6 +469,7 @@ private fun ChatPane(
                 onBlockComment = { postId, comment ->
                     container.chatAdmin.blockCommentAuthor(chatId, postId, comment.authorId, comment.id)
                 },
+                onStartCall = { peer, video -> container.scope.launch { container.callCenter.startCall(peer, video) } },
                 botApp = { request, onClose ->
                     val app = viewModel(key = "bot-app-${request.botId}-${request.startParam}-${request.title}") {
                         MiniAppViewModel(null, container.account, request.title) {
