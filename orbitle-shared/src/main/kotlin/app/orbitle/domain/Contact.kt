@@ -1,5 +1,8 @@
 package app.orbitle.domain
 
+import com.max.core.api.ContactNames
+import com.max.core.api.PhoneNumbers
+
 /** Контакт аккаунта с последним известным присутствием. */
 data class Contact(
     val id: String,
@@ -24,8 +27,9 @@ data class Contact(
             label?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
             val name = listOf(firstName.trim(), lastName.trim()).filter { it.isNotEmpty() }.joinToString(" ")
             if (name.isNotEmpty()) return name
-            val digits = phone.filter { it.isDigit() }
-            if (digits.isNotEmpty()) return "+$digits"
-            return "Без имени"
+            // Дальше — как у ядра (ContactNames): номер «+79131234567» (не приводится — как есть), «Участник».
+            PhoneNumbers.normalize(phone)?.let { return it }
+            phone.trim().takeIf { it.isNotEmpty() }?.let { return it }
+            return ContactNames.FALLBACK
         }
 }
