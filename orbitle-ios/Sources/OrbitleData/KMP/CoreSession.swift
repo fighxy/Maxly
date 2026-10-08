@@ -382,6 +382,9 @@ public struct CoreEvent: Sendable, Equatable {
         /// Конфиг аккаунта стал известен или пропал (вход, выход): звук известных чатов
         /// перечитывается (`isChatMuted`).
         case config
+        /// Черновик сервера чата `chatId` изменился (другое устройство, пуши 152/153, вход,
+        /// отправка): сам он в `draft`, `nil` — черновика больше нет.
+        case draft
     }
 
     public var kind: Kind
@@ -405,6 +408,8 @@ public struct CoreEvent: Sendable, Equatable {
     public var updateTimeMs: Int64
     /// Звук у `chatMute`: `1` без звука, `0` со звуком, `-1` неизвестно (у остальных `-1`).
     public var muted: Int
+    /// Черновик у `draft`; `nil` — его стёрли или отправили.
+    public var draft: CoreDraft?
 
     public init(
         kind: Kind,
@@ -421,7 +426,8 @@ public struct CoreEvent: Sendable, Equatable {
         authorAvatarURL: String = "",
         reactionsJSON: String = "",
         updateTimeMs: Int64 = 0,
-        muted: Int = -1
+        muted: Int = -1,
+        draft: CoreDraft? = nil
     ) {
         self.kind = kind
         self.chatId = chatId
@@ -438,6 +444,7 @@ public struct CoreEvent: Sendable, Equatable {
         self.reactionsJSON = reactionsJSON
         self.updateTimeMs = updateTimeMs
         self.muted = muted
+        self.draft = draft
     }
 }
 
@@ -692,6 +699,9 @@ public protocol MaxCore: Sendable {
     func addContactByPhone(phone: String, firstName: String, lastName: String) async throws -> CoreAddedContact
     /// Адресная книга устройства для имён: заменяет прежнюю целиком, на сервер не уходит.
     func setAddressBook(_ entries: [CorePhoneContact]) async
+    /// Правило имён ядра: `true` (по умолчанию) — имя из адресной книги важнее своего имени
+    /// контакта, `false` — наоборот. Ядро помнит его до перезапуска: задаётся при старте.
+    func setPreferAddressBookNames(_ prefer: Bool) async
     /// Страница участников с ролями (`CHAT_MEMBERS` 59). Пустой `marker` — с начала;
     /// пустой `nextMarker` ответа — страниц больше нет.
     func loadChatMembers(chatId: String, marker: String, count: Int) async throws -> CoreMembersPage

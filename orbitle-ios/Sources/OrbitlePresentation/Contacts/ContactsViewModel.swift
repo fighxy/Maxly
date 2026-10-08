@@ -196,8 +196,10 @@ public final class ContactsViewModel {
             let saved = try await repository.rename(userId: id, firstName: first, lastName: last)
             if let index = contacts.firstIndex(where: { $0.id == id }) {
                 var updated = contacts[index]
-                updated.firstName = saved.firstName.isEmpty ? first : saved.firstName
-                updated.lastName = saved.firstName.isEmpty ? last : saved.lastName
+                // Ответ без имени — сервер вернул прежние имена или их ещё нет в ответе.
+                let answered = !saved.firstName.isEmpty || !saved.lastName.isEmpty
+                updated.firstName = answered ? saved.firstName : first
+                updated.lastName = answered ? saved.lastName : last
                 contacts[index] = updated
                 rebuild()
             }

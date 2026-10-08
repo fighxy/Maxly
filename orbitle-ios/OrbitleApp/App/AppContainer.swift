@@ -197,6 +197,8 @@ final class AppContainer {
             let coreContacts = CoreContactRepository(core: core)
             let coreCalls = CoreCallHistoryRepository(core: core)
             typingReporter = TypingReporter(sender: CoreTypingSender(core: core))
+            // Правило имён ядра живёт до перезапуска: задаётся при каждом старте.
+            await core.setPreferAddressBookNames(Self.prefersAddressBookNames)
             let addressBook = AddressBookNamesSync(read: { await AddressBookReader.read() }, send: AddressBookReader.sender(core: core))
             self.addressBook = addressBook
             // Книга изменилась — ядро получает её заново целиком.
@@ -235,7 +237,10 @@ final class AppContainer {
             self.folderRepository = CoreFolderRepository(core: core)
             self.session = session
             self.chats = chats
-            self.draftStore = ServerSyncedDraftStore(local: chats, core: core)
+            let draftStore = ServerSyncedDraftStore(local: chats, core: core)
+            self.draftStore = draftStore
+            // Черновики с других устройств (события `draft`) — в базу и в открытое поле.
+            await sync.attachDrafts(draftStore)
             self.messages = messages
             self.media = media
             self.mediaLinks = CoreMediaLinkResolver(core: core)
@@ -664,6 +669,12 @@ final class AppContainer {
             }
             await center.answer(video: video)
         }
+    }
+
+    /// Имя из адресной книги важнее своего имени контакта (`preferAddressBookNames` ядра).
+    /// Так по умолчанию; ключ настроек позволит поменять правило без новой сборки.
+    static var prefersAddressBookNames: Bool {
+        UserDefaults.standard.object(forKey: "preferAddressBookNames") as? Bool ?? true
     }
 
     /// Приложение вернулось на экран: сверка с сервером того, что могло прийти без пушей.

@@ -87,15 +87,35 @@ struct ServerSyncedDraftStoreTests {
         #expect(await fresh.draftReply(chatId: "-7") == "44")
     }
 
-    @Test("После отправки черновик сервера стирается один раз")
-    func discardAfterSend() async {
+    @Test("Черновик с другого устройства новее — встаёт на устройство, экран узнаёт об этом")
+    func remoteDraft() async {
+        let core = FakeMaxCore()
+        let device = DeviceDrafts()
+        await device.put("старый", chatId: "-7", at: Date(timeIntervalSince1970: 2))
+        let store = ServerSyncedDraftStore(local: device, core: core, replies: .memory())
+        let changes = await store.draftChanges()
+        await store.serverDraftChanged(chatId: "-7", draft: CoreDraft(chatId: "-7", text: "с телефона", replyTo: "5", updateTime: 8_000))
+        #expect(await device.texts["-7"] == "с телефона")
+        #expect(await store.draftReply(chatId: "-7") == "5")
+        var iterator = changes.makeAsyncIterator()
+        #expect(await iterator.next() == "-7")
+    }
+
+    @Test("Черновик стёрли на сервере: устройство стирает свой, если он не новее")
+    func remoteDiscard() async {
         let core = FakeMaxCore()
         await core.setServerDrafts([CoreDraft(chatId: "-7", text: "было", updateTime: 1_000)])
-        let store = ServerSyncedDraftStore(local: DeviceDrafts(), core: core, replies: .memory())
-        await store.messageSent(chatId: "-7")
-        await store.messageSent(chatId: "-7")
+        let device = DeviceDrafts()
+        await device.put("было", chatId: "-7", at: Date(timeIntervalSince1970: 0.5))
+        await device.put("своё", chatId: "-8", at: Date(timeIntervalSince1970: 3))
+        let store = ServerSyncedDraftStore(local: device, core: core, replies: .memory())
+        #expect(await store.draft(chatId: "-7") == "было")
+        await core.setServerDrafts([])
+        await store.serverDraftChanged(chatId: "-7", draft: nil)
+        await store.serverDraftChanged(chatId: "-8", draft: nil)
+        #expect(await device.texts["-7"] == nil)
+        #expect(await device.texts["-8"] == "своё")
         await store.commitDraft(chatId: "-7")
-        #expect(await core.draftCalls == ["discard -7 1000"])
-        #expect(await store.draft(chatId: "-7") == nil)
+        #expect(await core.draftCalls.isEmpty)
     }
 }

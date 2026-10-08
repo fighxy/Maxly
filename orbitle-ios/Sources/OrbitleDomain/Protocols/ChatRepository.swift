@@ -195,8 +195,8 @@ public protocol ChatDraftStore: Sendable {
     func draftReply(chatId: String) async -> String?
     /// `nil` снимает ответ.
     func saveDraftReply(_ messageId: String?, chatId: String) async
-    /// Сообщение из поля отправлено.
-    func messageSent(chatId: String) async
+    /// Id чатов, черновик которых поменялся не из этого поля (другое устройство, сервер).
+    func draftChanges() async -> AsyncStream<String>
 }
 
 public extension ChatDraftStore {
@@ -204,7 +204,7 @@ public extension ChatDraftStore {
     func commitDraft(chatId: String) async {}
     func draftReply(chatId: String) async -> String? { nil }
     func saveDraftReply(_ messageId: String?, chatId: String) async {}
-    func messageSent(chatId: String) async {}
+    func draftChanges() async -> AsyncStream<String> { AsyncStream { $0.finish() } }
 }
 
 /// Недавние чаты из поиска, новые первыми.

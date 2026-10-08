@@ -57,11 +57,15 @@ actor FakeMaxCore: MaxCore {
 
     func saveDraft(chatId: String, text: String, elementsJSON: String, replyTo: String) async throws -> Int64 {
         draftCalls.append(replyTo.isEmpty ? "save \(chatId) \(text)" : "save \(chatId) \(text) ↩\(replyTo)")
+        // Как ядро: сохранённый черновик сразу в списке черновиков сервера.
+        serverDraftList.removeAll { $0.chatId == chatId }
+        serverDraftList.insert(CoreDraft(chatId: chatId, text: text, elementsJSON: elementsJSON, replyTo: replyTo, updateTime: 9_000), at: 0)
         return 9_000
     }
 
     func discardDraft(chatId: String, time: Int64) async throws {
         draftCalls.append("discard \(chatId) \(time)")
+        serverDraftList.removeAll { $0.chatId == chatId }
     }
 
     func serverDrafts() async -> [CoreDraft] { serverDraftList }

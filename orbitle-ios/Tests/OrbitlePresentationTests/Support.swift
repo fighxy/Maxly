@@ -291,7 +291,7 @@ actor FakeDrafts: ChatDraftStore {
     private(set) var drafts: [String: String] = [:]
     private(set) var replies: [String: String] = [:]
     private(set) var saves = 0
-    private(set) var sentChats: [String] = []
+    private var listeners: [AsyncStream<String>.Continuation] = []
 
     init(_ drafts: [String: String] = [:], replies: [String: String] = [:]) {
         self.drafts = drafts
@@ -305,7 +305,18 @@ actor FakeDrafts: ChatDraftStore {
     }
     func draftReply(chatId: String) async -> String? { replies[chatId] }
     func saveDraftReply(_ messageId: String?, chatId: String) async { replies[chatId] = messageId }
-    func messageSent(chatId: String) async { sentChats.append(chatId) }
+    func draftChanges() async -> AsyncStream<String> {
+        let (stream, continuation) = AsyncStream.makeStream(of: String.self)
+        listeners.append(continuation)
+        return stream
+    }
+
+    /// Черновик поменяли «на другом устройстве».
+    func changeRemotely(_ text: String?, reply: String? = nil, chatId: String) {
+        drafts[chatId] = text
+        replies[chatId] = reply
+        for listener in listeners { listener.yield(chatId) }
+    }
 }
 
 /// Источник состояния соединения, которым управляет тест.

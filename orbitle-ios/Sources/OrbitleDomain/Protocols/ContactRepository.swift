@@ -19,11 +19,11 @@ public struct ContactCapabilities: OptionSet, Sendable {
 public enum ContactNameRules {
     public static let limit = 64
 
-    /// Почему имя не подходит; `nil` — подходит.
+    /// Почему имя не подходит; `nil` — подходит. Пустое имя можно (как в веб-клиенте): с
+    /// фамилией сервер покажет имя, которое человек указал сам, а без обоих вернутся его имена.
     public static func problem(firstName: String, lastName: String) -> String? {
         let first = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
         let last = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if first.isEmpty { return "Введите имя" }
         if first.count > limit || last.count > limit { return "Не длиннее \(limit) символов" }
         return nil
     }

@@ -117,6 +117,8 @@ public extension MaxCore {
         throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
     }
     func setAddressBook(_ entries: [CorePhoneContact]) async {}
+
+    func setPreferAddressBookNames(_ prefer: Bool) async {}
     func loadChatMembers(chatId: String, marker: String, count: Int) async throws -> CoreMembersPage {
         // Прежний вызов отдаёт только первую страницу без ролей.
         guard marker.isEmpty || marker == "0" else { return CoreMembersPage(members: [], nextMarker: "") }

@@ -58,7 +58,7 @@ struct ContactEditTests {
 
     @Test("Имя обязательно и не длиннее 64 символов")
     func nameRules() {
-        #expect(ContactNameRules.problem(firstName: "  ", lastName: "") == "Введите имя")
+        #expect(ContactNameRules.problem(firstName: "  ", lastName: "") == nil)
         #expect(ContactNameRules.problem(firstName: String(repeating: "а", count: 65), lastName: "") == "Не длиннее 64 символов")
         #expect(ContactNameRules.problem(firstName: "Аня", lastName: String(repeating: "б", count: 65)) == "Не длиннее 64 символов")
         #expect(ContactNameRules.problem(firstName: String(repeating: "а", count: 64), lastName: "") == nil)
@@ -71,10 +71,13 @@ struct ContactEditTests {
         let saved = await model.rename(id: "5", firstName: " Анна ", lastName: "Петрова")
         #expect(saved)
         #expect(model.contact(id: "5")?.displayName == "Анна Петрова")
+        // Пустое имя уходит как есть: сервер вернёт имена, которые человек указал сам.
         let empty = await model.rename(id: "5", firstName: "", lastName: "")
-        #expect(!empty)
-        #expect(model.errorMessage == "Введите имя")
-        #expect(await repo.log == ["rename 5 Анна Петрова"])
+        #expect(empty)
+        let tooLong = await model.rename(id: "5", firstName: String(repeating: "а", count: 65), lastName: "")
+        #expect(!tooLong)
+        #expect(model.errorMessage == "Не длиннее 64 символов")
+        #expect(await repo.log == ["rename 5 Анна Петрова", "rename 5  "])
     }
 
     @Test("Удаление убирает строку и предлагает «Отменить», отмена возвращает контакт")

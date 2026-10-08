@@ -221,6 +221,8 @@ public final class ChatViewModel {
     @ObservationIgnored private var savedDraft: String?
     /// Ответ, записанный в черновик (серверный id).
     @ObservationIgnored private var savedReply: String?
+    /// Подписка на черновики, изменённые не из этого поля.
+    @ObservationIgnored private var draftWatch: Task<Void, Never>?
     @ObservationIgnored private var activeVoiceId: String?
     @ObservationIgnored private var voiceTask: Task<Void, Never>?
     @ObservationIgnored private var voiceToggle: Task<Void, Never>?
@@ -472,6 +474,14 @@ public final class ChatViewModel {
                     self.resolveDraftReply()
                 }
             }
+            draftWatch?.cancel()
+            draftWatch = Task { [weak self] in
+                let changes = await drafts.draftChanges()
+                for await changed in changes where changed == chatId {
+                    guard let self, !Task.isCancelled else { return }
+                    await self.reloadDraft()
+                }
+            }
         }
     }
 
@@ -517,6 +527,8 @@ public final class ChatViewModel {
         loadingMediaId = nil
         openedFile = nil
         selection.cancel()
+        draftWatch?.cancel()
+        draftWatch = nil
         flushDraft()
     }
 
@@ -584,15 +596,24 @@ public final class ChatViewModel {
         isRestoringDraft = false
     }
 
-    /// Сообщение ушло: черновик сервера больше не нужен (`ChatDraftStore.messageSent`).
-    private func noteMessageSent() {
-        guard let drafts else { return }
-        let chatId = chatId
-        let previous = saveChain
-        saveChain = Task {
-            await previous?.value
-            await drafts.messageSent(chatId: chatId)
-        }
+    /// Черновик поменяли на другом устройстве: поле берёт его, если своих незаписанных правок нет.
+    private func reloadDraft() async {
+        guard let drafts, editTarget == nil else { return }
+        let current = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let currentReply = replyTarget?.serverId ?? pendingDraftReply
+        guard current == (savedDraft ?? ""), currentReply == savedReply else { return }
+        let text = await drafts.draft(chatId: chatId) ?? ""
+        let reply = await drafts.draftReply(chatId: chatId)
+        // Пока ждали хранилище, поле могли начать править.
+        guard editTarget == nil, draft.trimmingCharacters(in: .whitespacesAndNewlines) == current else { return }
+        savedDraft = text
+        savedReply = reply
+        isRestoringDraft = true
+        draft = text
+        if reply != replyTarget?.serverId { replyTarget = nil }
+        isRestoringDraft = false
+        pendingDraftReply = replyTarget == nil ? reply : nil
+        resolveDraftReply()
     }
 
     public func loadLatest() async {
@@ -693,7 +714,6 @@ public final class ChatViewModel {
                 try await repository.send(text: plan.trailingText, chatId: chatId, replyTo: nil)
             }
             error = nil
-            noteMessageSent()
         } catch {
             show(error)
         }
@@ -757,7 +777,6 @@ public final class ChatViewModel {
         do {
             try await repository.send(text: text, chatId: chatId, replyTo: reply?.id, formatting: spans)
             error = nil
-            noteMessageSent()
         } catch {
             draft = text
             format = ComposerFormat(spans: marked.spans)

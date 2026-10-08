@@ -555,11 +555,25 @@ struct ChatDraftTests {
         #expect(await eventually { await drafts.drafts["c"] == "привет, как дела" })
         await model.send()
         #expect(await eventually { await drafts.drafts["c"] == nil })
-        #expect(await eventually { await drafts.sentChats == ["c"] })
     }
 
     private func reply(_ id: String) -> Message {
         Message(id: "l\(id)", serverId: id, chatId: "c", authorId: "2", text: "вопрос", timestamp: Date(timeIntervalSince1970: 100), status: .sent)
+    }
+
+    @Test("Черновик с другого устройства встаёт в поле, если своих правок нет")
+    func remoteDraft() async {
+        let drafts = FakeDrafts()
+        let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository(), drafts: drafts, draftDelay: .seconds(60))
+        model.activate()
+        try? await Task.sleep(for: .milliseconds(30))
+        await drafts.changeRemotely("с ноутбука", chatId: "c")
+        #expect(await eventually { model.draft == "с ноутбука" })
+        model.draft = "своё"
+        await drafts.changeRemotely(nil, chatId: "c")
+        try? await Task.sleep(for: .milliseconds(30))
+        #expect(model.draft == "своё")
+        model.deactivate()
     }
 
     @Test("Черновик из одного ответа сохраняется без текста")

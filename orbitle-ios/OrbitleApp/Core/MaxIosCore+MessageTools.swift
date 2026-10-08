@@ -51,9 +51,11 @@ extension MaxIosCore {
     }
 
     func serverDrafts() async -> [CoreDraft] {
-        client.drafts().map {
-            CoreDraft(chatId: $0.chatId, text: $0.text, elementsJSON: $0.elementsJson, replyTo: $0.replyTo, updateTime: $0.updateTime)
-        }
+        client.drafts().map(Self.draft)
+    }
+
+    static func draft(_ draft: IosDraft) -> CoreDraft {
+        CoreDraft(chatId: draft.chatId, text: draft.text, elementsJSON: draft.elementsJson, replyTo: draft.replyTo, updateTime: draft.updateTime)
     }
 
     func renameContact(userId: String, firstName: String, lastName: String) async throws -> CoreContact {
@@ -89,6 +91,10 @@ extension MaxIosCore {
         client.setAddressBook(entries: entries.map {
             IosPhoneContact(phone: $0.phone, firstName: $0.firstName, lastName: $0.lastName)
         })
+    }
+
+    func setPreferAddressBookNames(_ prefer: Bool) async {
+        client.setPreferAddressBookNames(prefer: prefer)
     }
 
     func loadChatMembers(chatId: String, marker: String, count: Int) async throws -> CoreMembersPage {

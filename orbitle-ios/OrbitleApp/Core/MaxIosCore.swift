@@ -781,7 +781,8 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             authorAvatarURL: event.authorAvatarUrl,
             reactionsJSON: event.reactionsJson,
             updateTimeMs: event.updateTime,
-            muted: Int(event.muted)
+            muted: Int(event.muted),
+            draft: event.draft.map(Self.draft)
         )
     }
 }

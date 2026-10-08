@@ -15,6 +15,8 @@ public actor SyncEngine {
     private let chats: ChatRepositoryImpl
     private let messages: MessageRepositoryImpl
     private let pollInterval: Duration
+    /// Черновики, сверенные с сервером: им уходят события `draft`.
+    private var draftStore: ServerSyncedDraftStore?
 
     private var pollTask: Task<Void, Never>?
     private var eventTask: Task<Void, Never>?
@@ -50,6 +52,11 @@ public actor SyncEngine {
     }
 
     public var isPolling: Bool { pollTask != nil }
+
+    /// Куда отдавать изменения черновиков сервера (события `draft`).
+    public func attachDrafts(_ store: ServerSyncedDraftStore?) {
+        draftStore = store
+    }
 
     /// Чаты, история которых сейчас опрашивается.
     public var watched: Set<String> { watchedChats }
@@ -244,6 +251,9 @@ public actor SyncEngine {
             await chats.applyMute(chatId: event.chatId, muted: event.muted, untilMs: event.timeMs)
         case .config:
             await chats.reloadMutes()
+        case .draft:
+            guard !event.chatId.isEmpty else { return }
+            await draftStore?.serverDraftChanged(chatId: event.chatId, draft: event.draft)
         case .transcription:
             guard !event.messageId.isEmpty, event.unread == 1 else { return }
             await messages.applyTranscription(chatId: event.chatId, messageId: event.messageId, text: event.text)

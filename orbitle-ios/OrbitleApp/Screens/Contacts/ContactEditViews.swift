@@ -31,6 +31,10 @@ struct ContactRenameSheet: View {
                         Text(problem).foregroundStyle(.red)
                     } else if let error = viewModel.errorMessage {
                         Text(error).foregroundStyle(.red)
+                    } else if firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                             ? "Без имени и фамилии вернутся имена, которые человек указал сам"
+                             : "Без имени будет видно имя, которое человек указал сам")
                     } else {
                         Text("Имя видно только вам")
                     }
@@ -61,10 +65,9 @@ struct ContactRenameSheet: View {
         .presentationDetents([.medium])
     }
 
-    /// Пусто или длиннее 64 — «Готово» неактивно. Пустое имя без подсказки: поле и так пустое.
+    /// Длиннее 64 — «Готово» неактивно. Пустое имя можно.
     private var problem: String? {
-        guard !firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-        return ContactNameRules.problem(firstName: firstName, lastName: lastName)
+        ContactNameRules.problem(firstName: firstName, lastName: lastName)
     }
 
     private func field(_ title: String, text: Binding<String>, content: UITextContentType) -> some View {
