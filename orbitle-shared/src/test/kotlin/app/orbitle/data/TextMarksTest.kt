@@ -64,15 +64,28 @@ class TextMarksTest {
     }
 
     @Test
-    fun codeReadsAsMonospaceAndUnknownTypesAreDropped() {
+    fun codeReadsAsMonospaceAndUnknownTypesAreKept() {
         val spans = TextMarks.fromElements(
             listOf(
                 TextElement(TextElementType.CODE, 0, 3),
-                TextElement("SPOILER", 0, 3),
+                TextElement("Spoiler", 0, 3, entityId = 7, attributes = mapOf("level" to 2)),
                 TextElement(TextElementType.LINK, 0, 3),
                 TextElement(TextElementType.USER_MENTION, 0, 3),
             ),
         )
-        assertEquals(listOf(TextSpan(TextSpan.Kind.MONOSPACED, 0, 3)), spans)
+        assertEquals(
+            listOf(
+                TextSpan(TextSpan.Kind.MONOSPACED, 0, 3),
+                TextSpan(TextSpan.Kind.UNKNOWN, 0, 3, foreign = TextElement("Spoiler", 0, 0, entityId = 7, attributes = mapOf("level" to 2))),
+            ),
+            spans,
+        )
+    }
+
+    @Test
+    fun unknownTypeGoesBackOnEditWithItsKeysAtTheNewOffsets() {
+        val foreign = TextElement("Spoiler", 0, 0, entityId = 7, entityName = "x", attributes = mapOf("level" to 2))
+        val elements = TextMarks.toElements("ab hidden", listOf(TextSpan(TextSpan.Kind.UNKNOWN, 3, 6, foreign = foreign)))
+        assertEquals(listOf(foreign.copy(from = 3, length = 6)), elements)
     }
 }

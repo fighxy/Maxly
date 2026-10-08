@@ -39,7 +39,8 @@ object MessageText {
                     addLink(LinkAnnotation.Url(normalized(url), linkStyle), start, end)
                     covered += start until end
                 }
-                TextSpan.Kind.ANIMOJI -> Unit
+                // Анимодзи рисуется отдельно; разметка другого клиента не рисуется, но хранится.
+                TextSpan.Kind.ANIMOJI, TextSpan.Kind.UNKNOWN -> Unit
             }
         }
         for (match in urlPattern.findAll(text)) {

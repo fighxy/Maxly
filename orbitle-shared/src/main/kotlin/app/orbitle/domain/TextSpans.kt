@@ -9,7 +9,8 @@ object TextSpans {
      * Текст поля и его отметки в том виде, в каком они уходят: текст без пробелов и переводов
      * строк по краям, отметки сдвинуты на срезанное начало и обрезаны по новым краям, пустые
      * выпадают. Пересекающиеся и смежные отметки одного вида сливаются (ссылки — только с тем
-     * же адресом); упоминания и анимодзи — отдельные знаки со своими данными, не сливаются.
+     * же адресом); упоминания, анимодзи и незнакомые типы — отдельные знаки со своими данными,
+     * не сливаются.
      * Порядок — по началу, затем по виду ([TextSpan.Kind]), затем по длине.
      */
     fun serialize(draft: String, spans: List<TextSpan>): Pair<String, List<TextSpan>> {
@@ -36,7 +37,7 @@ object TextSpans {
     /** Слияние одного вида и порядок, как в [serialize]; отрицательные и пустые отрезки выпадают. */
     fun normalize(spans: List<TextSpan>): List<TextSpan> {
         val valid = spans.filter { it.length > 0 && it.from >= 0 }
-        val (single, mergeable) = valid.partition { it.kind == TextSpan.Kind.ANIMOJI || it.kind == TextSpan.Kind.MENTION }
+        val (single, mergeable) = valid.partition { it.kind in SINGLE }
         val merged = ArrayList<TextSpan>(single.distinct())
         for ((_, group) in mergeable.groupBy { it.kind to it.url }) {
             var current: TextSpan? = null
@@ -54,6 +55,9 @@ object TextSpans {
         return merged.sortedWith(ORDER)
     }
 
-    /** Порядок отметок: по началу, по виду, по длине. */
+    /** Знаки со своими данными: не сливаются (упоминания, анимодзи, чужая разметка). */
+    private val SINGLE = setOf(TextSpan.Kind.MENTION, TextSpan.Kind.ANIMOJI, TextSpan.Kind.UNKNOWN)
+
+    /** Порядок отметок: по началу, по виду (незнакомые — после известных), по длине. */
     val ORDER: Comparator<TextSpan> = compareBy({ it.from }, { it.kind.ordinal }, { it.length })
 }

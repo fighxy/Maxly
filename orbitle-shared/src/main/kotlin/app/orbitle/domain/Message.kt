@@ -163,8 +163,15 @@ data class TextSpan(
     val url: String? = null,
     val userId: String? = null,
     val entityId: String? = null,
+    /**
+     * Элемент незнакомого типа ([Kind.UNKNOWN], разметка другого клиента): тип как пришёл и все
+     * его данные (`entityId`, `entityName`, `attributes`); смещения в нём нулевые — они в [from] и
+     * [length]. Такой отрезок не рисуется, но хранится и при правке уходит обратно как был.
+     */
+    val foreign: com.max.core.api.TextElement? = null,
 ) {
-    enum class Kind { STRONG, EMPHASIZED, UNDERLINE, STRIKETHROUGH, MONOSPACED, HEADING, QUOTE, LINK, MENTION, ANIMOJI }
+    /** Виды разметки; [UNKNOWN] — незнакомый тип сервера, всегда последний. */
+    enum class Kind { STRONG, EMPHASIZED, UNDERLINE, STRIKETHROUGH, MONOSPACED, HEADING, QUOTE, LINK, MENTION, ANIMOJI, UNKNOWN }
 }
 
 data class MessageForward(val authorName: String, val text: String)

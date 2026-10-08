@@ -137,8 +137,9 @@ class MessageMappingTest {
             mapOf("type" to "EMPHASIZED", "from" to 0, "length" to 0),
         )
         val spans = MessageMapping.spans(elements)
-        assertEquals(listOf(TextSpan.Kind.STRONG, TextSpan.Kind.LINK), spans.map { it.kind })
+        assertEquals(listOf(TextSpan.Kind.STRONG, TextSpan.Kind.LINK, TextSpan.Kind.UNKNOWN), spans.map { it.kind })
         assertEquals("https://x", spans[1].url)
+        assertEquals("UNKNOWN", spans[2].foreign?.type)
     }
 
     @Test
