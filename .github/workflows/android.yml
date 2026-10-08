@@ -8,6 +8,7 @@ on:
       - "orbitle-android/**"
       - "orbitle-shared/**"
       - "orbitle-compose/**"
+      - "test-fixtures/calls/**"
       - "scripts/publish-latest.sh"
       - ".github/workflows/android.yml"
   pull_request:
@@ -15,6 +16,7 @@ on:
       - "orbitle-android/**"
       - "orbitle-shared/**"
       - "orbitle-compose/**"
+      - "test-fixtures/calls/**"
       - "scripts/publish-latest.sh"
       - ".github/workflows/android.yml"
 
