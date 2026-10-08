@@ -6,32 +6,89 @@ import OrbitleDomain
 /// При открытии чата побеждает более новый из двух (`DraftSync.merge`, test-fixtures/drafts);
 /// черновик сервера записывается на устройство. Пока печатают, черновик живёт только на
 /// устройстве; серверу он уходит, когда из чата ушли (`commitDraft`): непустой — сохраняется,
-/// пустой при черновике на сервере — стирается там. Ядро не хранит черновики между запусками,
-/// поэтому их память на устройстве — локальная база.
+/// пустой при черновике на сервере — стирается там. Черновик из одного ответа (без текста) —
+/// тоже черновик. Вложения в черновик не попадают никогда.
 ///
-/// На сервер уходит только текст: разметку и цитату черновика база устройства пока не хранит.
+/// Текст хранит база устройства, ответ — `replies` (серверный id сообщения и время). Разметку
+/// черновика база пока не хранит: на сервер уходят текст и ответ.
 public actor ServerSyncedDraftStore: ChatDraftStore {
+    /// Ответ черновика на устройстве.
+    public struct ReplyMark: Codable, Hashable, Sendable {
+        public var messageId: String
+        /// Когда ответ выбрали, мс.
+        public var time: Int64
+
+        public init(messageId: String, time: Int64) {
+            self.messageId = messageId
+            self.time = time
+        }
+    }
+
+    /// Где лежат ответы черновиков: по умолчанию `UserDefaults`.
+    public struct ReplyStorage: Sendable {
+        public var load: @Sendable () -> [String: ReplyMark]
+        public var store: @Sendable ([String: ReplyMark]) -> Void
+
+        public init(load: @escaping @Sendable () -> [String: ReplyMark], store: @escaping @Sendable ([String: ReplyMark]) -> Void) {
+            self.load = load
+            self.store = store
+        }
+
+        public static let userDefaults = ReplyStorage(
+            load: {
+                guard let data = UserDefaults.standard.data(forKey: "draftReplies") else { return [:] }
+                return (try? JSONDecoder().decode([String: ReplyMark].self, from: data)) ?? [:]
+            },
+            store: { replies in
+                UserDefaults.standard.set(try? JSONEncoder().encode(replies), forKey: "draftReplies")
+            }
+        )
+
+        public static func memory() -> ReplyStorage {
+            let box = ReplyBox()
+            return ReplyStorage(load: { box.value }, store: { box.value = $0 })
+        }
+    }
+
     private let local: any ChatDraftStore
     private let core: any MaxCore
+    private let storage: ReplyStorage
+    private let now: @Sendable () -> Date
+    private var replies: [String: ReplyMark]
     /// Последний известный черновик сервера по чату (из ядра или своего сохранения).
     private var known: [String: SyncedDraft] = [:]
+    /// Время черновика сервера, который стёрли отсюда: ядро может ещё помнить его.
+    private var discarded: [String: Int64] = [:]
 
-    public init(local: any ChatDraftStore, core: any MaxCore) {
+    public init(
+        local: any ChatDraftStore,
+        core: any MaxCore,
+        replies storage: ReplyStorage = .userDefaults,
+        now: @escaping @Sendable () -> Date = { Date() }
+    ) {
         self.local = local
         self.core = core
+        self.storage = storage
+        self.now = now
+        self.replies = storage.load()
     }
 
     public func draft(chatId: String) async -> String? {
         let mine = await local.draft(chatId: chatId)
         guard Self.syncs(chatId) else { return mine }
-        let time = await local.draftTime(chatId: chatId)
-        let device = mine.map { SyncedDraft(text: $0, updateTime: time.map(Self.millis) ?? 0) }
+        let device = await deviceDraft(chatId)
         let server = await serverDraft(chatId)
-        guard let winner = DraftSync.merge(local: device, server: server, discardedAt: nil) else { return mine }
-        if winner.text != mine {
+        guard let winner = DraftSync.merge(local: device, server: server, discardedAt: discarded[chatId]) else {
+            return mine
+        }
+        let text = winner.text.isEmpty ? nil : winner.text
+        if text != mine {
             await local.saveDraft(winner.text, chatId: chatId)
         }
-        return winner.text
+        if winner.replyTo != replies[chatId]?.messageId {
+            setReply(winner.replyTo.map { ReplyMark(messageId: $0, time: winner.updateTime) }, chatId: chatId)
+        }
+        return text
     }
 
     public func saveDraft(_ text: String, chatId: String) async {
@@ -42,11 +99,17 @@ public actor ServerSyncedDraftStore: ChatDraftStore {
         await local.draftTime(chatId: chatId)
     }
 
+    public func draftReply(chatId: String) async -> String? {
+        replies[chatId]?.messageId
+    }
+
+    public func saveDraftReply(_ messageId: String?, chatId: String) async {
+        setReply(messageId.map { ReplyMark(messageId: $0, time: Self.millis(now())) }, chatId: chatId)
+    }
+
     public func commitDraft(chatId: String) async {
         guard Self.syncs(chatId) else { return }
-        let text = await local.draft(chatId: chatId) ?? ""
-        let time = await local.draftTime(chatId: chatId).map(Self.millis) ?? 0
-        let device = SyncedDraft(text: text, updateTime: time)
+        let device = await deviceDraft(chatId) ?? SyncedDraft(text: "", updateTime: 0)
         let server = await serverDraft(chatId)
         switch DraftSync.request(local: device, server: server, address: .chat(chatId)) {
         case let .save(_, text, elements, replyTo):
@@ -54,30 +117,61 @@ public actor ServerSyncedDraftStore: ChatDraftStore {
                 let saved = try await core.saveDraft(
                     chatId: chatId, text: text, elementsJSON: MessageMarkup.json(elements), replyTo: replyTo ?? ""
                 )
-                known[chatId] = SyncedDraft(text: text, replyTo: replyTo, updateTime: saved > 0 ? saved : time)
+                known[chatId] = SyncedDraft(text: text, replyTo: replyTo, updateTime: saved > 0 ? saved : device.updateTime)
             } catch {
                 Log.warning(.messages, "Черновик не сохранён на сервере: \(error)")
             }
         case let .discard(_, serverTime):
-            do {
-                try await core.discardDraft(chatId: chatId, time: serverTime)
-                known[chatId] = nil
-            } catch {
-                Log.warning(.messages, "Черновик не стёрт на сервере: \(error)")
-            }
+            await discard(chatId: chatId, time: serverTime)
         case nil:
             break
         }
     }
 
+    /// Сообщение отправлено — черновик сервера стирается.
+    /// Remove when core discards after send: тогда ядро само шлёт `DRAFT_DISCARD` 177.
+    public func messageSent(chatId: String) async {
+        guard Self.syncs(chatId), let server = await serverDraft(chatId) else { return }
+        await discard(chatId: chatId, time: server.updateTime)
+    }
+
+    private func discard(chatId: String, time: Int64) async {
+        do {
+            try await core.discardDraft(chatId: chatId, time: time)
+            known[chatId] = nil
+            discarded[chatId] = max(discarded[chatId] ?? 0, time)
+        } catch {
+            Log.warning(.messages, "Черновик не стёрт на сервере: \(error)")
+        }
+    }
+
+    /// Черновик устройства: текст из базы и ответ; время — позднее из двух.
+    private func deviceDraft(_ chatId: String) async -> SyncedDraft? {
+        let text = await local.draft(chatId: chatId) ?? ""
+        let reply = replies[chatId]
+        guard !text.isEmpty || reply != nil else { return nil }
+        let textTime = await local.draftTime(chatId: chatId).map(Self.millis) ?? 0
+        return SyncedDraft(text: text, replyTo: reply?.messageId, updateTime: max(textTime, reply?.time ?? 0))
+    }
+
     /// Черновик сервера: из ядра (вход и пуши) или своё последнее сохранение — что новее.
+    /// Стёртый отсюда не возвращается, даже если ядро ещё помнит его.
     private func serverDraft(_ chatId: String) async -> SyncedDraft? {
-        let fromCore = await core.serverDrafts().first { $0.chatId == chatId }.map(Self.synced)
+        let cut = discarded[chatId] ?? Int64.min
+        let fromCore = await core.serverDrafts()
+            .first { $0.chatId == chatId }
+            .map(Self.synced)
+            .flatMap { $0.updateTime > cut ? $0 : nil }
         switch (fromCore, known[chatId]) {
         case let (core?, mine?): return core.updateTime >= mine.updateTime ? core : mine
         case let (core?, nil): return core
         case let (nil, mine): return mine
         }
+    }
+
+    private func setReply(_ mark: ReplyMark?, chatId: String) {
+        replies[chatId] = mark
+        storage.store(replies)
     }
 
     static func synced(_ draft: CoreDraft) -> SyncedDraft {
@@ -97,5 +191,16 @@ public actor ServerSyncedDraftStore: ChatDraftStore {
 
     static func millis(_ date: Date) -> Int64 {
         Int64((date.timeIntervalSince1970 * 1000).rounded())
+    }
+}
+
+/// Ответы черновиков в памяти (тесты и запасной вариант).
+private final class ReplyBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [String: ServerSyncedDraftStore.ReplyMark] = [:]
+
+    var value: [String: ServerSyncedDraftStore.ReplyMark] {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
     }
 }

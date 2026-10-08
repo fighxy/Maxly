@@ -121,8 +121,16 @@ public final class ChatViewModel {
     @ObservationIgnored private var searchGeneration = 0
     public private(set) var error: OrbitleError?
     public private(set) var stickToBottom = true
-    /// Цитата над полем ввода.
-    public private(set) var replyTarget: Message?
+    /// Цитата над полем ввода. Входит в черновик: черновик из одного ответа тоже сохраняется.
+    public private(set) var replyTarget: Message? {
+        didSet {
+            guard replyTarget?.id != oldValue?.id, !isRestoringDraft, editTarget == nil else { return }
+            pendingDraftReply = nil
+            scheduleDraftSave()
+        }
+    }
+    /// Ответ из черновика, сообщение которого ещё не в ленте (серверный id).
+    @ObservationIgnored private var pendingDraftReply: String?
     /// Сообщение, текст которого сейчас правится в поле ввода.
     public private(set) var editTarget: Message?
     /// Черновик, отложенный на время правки.
@@ -211,6 +219,8 @@ public final class ChatViewModel {
     @ObservationIgnored private var saveChain: Task<Void, Never>?
     /// Последний текст, отданный хранилищу: не пишем одно и то же дважды.
     @ObservationIgnored private var savedDraft: String?
+    /// Ответ, записанный в черновик (серверный id).
+    @ObservationIgnored private var savedReply: String?
     @ObservationIgnored private var activeVoiceId: String?
     @ObservationIgnored private var voiceTask: Task<Void, Never>?
     @ObservationIgnored private var voiceToggle: Task<Void, Never>?
@@ -448,11 +458,19 @@ public final class ChatViewModel {
             let chatId = chatId
             Task { [weak self] in
                 let saved = await drafts.draft(chatId: chatId)
-                guard let self, let saved, self.draft.isEmpty else { return }
-                self.savedDraft = saved
-                self.isRestoringDraft = true
-                self.draft = saved
-                self.isRestoringDraft = false
+                let reply = await drafts.draftReply(chatId: chatId)
+                guard let self else { return }
+                if let saved, self.draft.isEmpty {
+                    self.savedDraft = saved
+                    self.isRestoringDraft = true
+                    self.draft = saved
+                    self.isRestoringDraft = false
+                }
+                if let reply, self.replyTarget == nil, self.editTarget == nil {
+                    self.savedReply = reply
+                    self.pendingDraftReply = reply
+                    self.resolveDraftReply()
+                }
             }
         }
     }
@@ -467,6 +485,7 @@ public final class ChatViewModel {
             for await page in stream {
                 guard let self, !Task.isCancelled, self.watchGeneration == generation else { return }
                 self.receiveLive(page)
+                self.resolveDraftReply()
                 if first, finishesRestoration {
                     self.messagesChange = .reload
                     if loaded { self.latestLoaded = true }
@@ -534,14 +553,45 @@ public final class ChatViewModel {
     private func persistDraft() {
         guard let drafts else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard text != (savedDraft ?? "") else { return }
+        // Ответ, чьё сообщение ещё не загружено, остаётся в черновике как был.
+        let reply = replyTarget?.serverId ?? pendingDraftReply
+        let textChanged = text != (savedDraft ?? "")
+        let replyChanged = reply != savedReply
+        guard textChanged || replyChanged else { return }
         savedDraft = text
+        savedReply = reply
         let chatId = chatId
         // Записи идут цепочкой: иначе поздний пустой черновик мог бы лечь раньше раннего.
         let previous = saveChain
         saveChain = Task {
             await previous?.value
-            await drafts.saveDraft(text, chatId: chatId)
+            if replyChanged { await drafts.saveDraftReply(reply, chatId: chatId) }
+            if textChanged { await drafts.saveDraft(text, chatId: chatId) }
+        }
+    }
+
+    /// Ответ из черновика встаёт над полем, как только его сообщение появилось в ленте.
+    private func resolveDraftReply() {
+        guard let id = pendingDraftReply else { return }
+        guard replyTarget == nil, editTarget == nil else {
+            pendingDraftReply = nil
+            return
+        }
+        guard let message = messages.first(where: { $0.serverId == id }) ?? live.first(where: { $0.serverId == id }) else { return }
+        pendingDraftReply = nil
+        isRestoringDraft = true
+        replyTarget = message
+        isRestoringDraft = false
+    }
+
+    /// Сообщение ушло: черновик сервера больше не нужен (`ChatDraftStore.messageSent`).
+    private func noteMessageSent() {
+        guard let drafts else { return }
+        let chatId = chatId
+        let previous = saveChain
+        saveChain = Task {
+            await previous?.value
+            await drafts.messageSent(chatId: chatId)
         }
     }
 
@@ -643,6 +693,7 @@ public final class ChatViewModel {
                 try await repository.send(text: plan.trailingText, chatId: chatId, replyTo: nil)
             }
             error = nil
+            noteMessageSent()
         } catch {
             show(error)
         }
@@ -706,6 +757,7 @@ public final class ChatViewModel {
         do {
             try await repository.send(text: text, chatId: chatId, replyTo: reply?.id, formatting: spans)
             error = nil
+            noteMessageSent()
         } catch {
             draft = text
             format = ComposerFormat(spans: marked.spans)

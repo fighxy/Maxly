@@ -555,6 +555,34 @@ struct ChatDraftTests {
         #expect(await eventually { await drafts.drafts["c"] == "привет, как дела" })
         await model.send()
         #expect(await eventually { await drafts.drafts["c"] == nil })
+        #expect(await eventually { await drafts.sentChats == ["c"] })
+    }
+
+    private func reply(_ id: String) -> Message {
+        Message(id: "l\(id)", serverId: id, chatId: "c", authorId: "2", text: "вопрос", timestamp: Date(timeIntervalSince1970: 100), status: .sent)
+    }
+
+    @Test("Черновик из одного ответа сохраняется без текста")
+    func replyOnlyDraft() async {
+        let drafts = FakeDrafts()
+        let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository(), drafts: drafts, draftDelay: .seconds(60))
+        model.activate()
+        model.beginReply(to: reply("12"))
+        model.deactivate()
+        #expect(await eventually { await drafts.replies["c"] == "12" })
+        #expect(await drafts.saves == 0)
+    }
+
+    @Test("Ответ из черновика встаёт над полем, когда сообщение пришло в ленту")
+    func replyRestored() async {
+        let drafts = FakeDrafts(replies: ["c": "12"])
+        let messages = FakeMessageRepository()
+        let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: messages, drafts: drafts, draftDelay: .milliseconds(10))
+        model.activate()
+        messages.emit([reply("12")])
+        #expect(await eventually { model.replyTarget?.serverId == "12" })
+        try? await Task.sleep(for: .milliseconds(30))
+        #expect(await drafts.replies["c"] == "12")
     }
 
     @Test("Уход с экрана сохраняет сразу")

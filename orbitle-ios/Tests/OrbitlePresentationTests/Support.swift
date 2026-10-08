@@ -289,15 +289,23 @@ actor FakeRecentSearches: RecentSearchStore {
 /// Черновики в памяти.
 actor FakeDrafts: ChatDraftStore {
     private(set) var drafts: [String: String] = [:]
+    private(set) var replies: [String: String] = [:]
     private(set) var saves = 0
+    private(set) var sentChats: [String] = []
 
-    init(_ drafts: [String: String] = [:]) { self.drafts = drafts }
+    init(_ drafts: [String: String] = [:], replies: [String: String] = [:]) {
+        self.drafts = drafts
+        self.replies = replies
+    }
 
     func draft(chatId: String) async -> String? { drafts[chatId] }
     func saveDraft(_ text: String, chatId: String) async {
         saves += 1
         drafts[chatId] = text.isEmpty ? nil : text
     }
+    func draftReply(chatId: String) async -> String? { replies[chatId] }
+    func saveDraftReply(_ messageId: String?, chatId: String) async { replies[chatId] = messageId }
+    func messageSent(chatId: String) async { sentChats.append(chatId) }
 }
 
 /// Источник состояния соединения, которым управляет тест.

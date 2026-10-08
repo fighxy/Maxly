@@ -190,11 +190,21 @@ public protocol ChatDraftStore: Sendable {
     func draftTime(chatId: String) async -> Date?
     /// Из поля ушли (закрыли чат): черновик можно отдать серверу или стереть там.
     func commitDraft(chatId: String) async
+    /// Ответ черновика — серверный id сообщения; `nil` — без ответа. Один ответ без текста —
+    /// тоже черновик.
+    func draftReply(chatId: String) async -> String?
+    /// `nil` снимает ответ.
+    func saveDraftReply(_ messageId: String?, chatId: String) async
+    /// Сообщение из поля отправлено.
+    func messageSent(chatId: String) async
 }
 
 public extension ChatDraftStore {
     func draftTime(chatId: String) async -> Date? { nil }
     func commitDraft(chatId: String) async {}
+    func draftReply(chatId: String) async -> String? { nil }
+    func saveDraftReply(_ messageId: String?, chatId: String) async {}
+    func messageSent(chatId: String) async {}
 }
 
 /// Недавние чаты из поиска, новые первыми.

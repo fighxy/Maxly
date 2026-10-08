@@ -56,7 +56,7 @@ actor FakeMaxCore: MaxCore {
     func setServerDrafts(_ list: [CoreDraft]) { serverDraftList = list }
 
     func saveDraft(chatId: String, text: String, elementsJSON: String, replyTo: String) async throws -> Int64 {
-        draftCalls.append("save \(chatId) \(text)")
+        draftCalls.append(replyTo.isEmpty ? "save \(chatId) \(text)" : "save \(chatId) \(text) ↩\(replyTo)")
         return 9_000
     }
 
