@@ -90,6 +90,10 @@ fun main() {
             icon = painterResource(R.drawable.app_icon),
             state = windowState,
         ) {
+            // Свёрнутое окно — фон: опрос своего статуса стоит.
+            LaunchedEffect(container) {
+                androidx.compose.runtime.snapshotFlow { !windowState.isMinimized }.collect { container.windowShown.value = it }
+            }
             // Входящий звонок поднимает окно поверх остальных, даже свёрнутое.
             LaunchedEffect(container) {
                 container.callCenter.state

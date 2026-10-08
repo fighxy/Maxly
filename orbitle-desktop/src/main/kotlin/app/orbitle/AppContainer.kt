@@ -99,6 +99,18 @@ class AppContainer {
     val appearance = AppearanceSettings(preferenceStore)
     val keyboard = app.orbitle.ui.keys.KeyboardSettings(preferenceStore)
     val privateMode = PrivateModeSettings(preferenceStore)
+
+    /**
+     * Режим призрака и отметки о прочтении: пока заглушка, флаги в локальных настройках. Когда ядро даст API, здесь
+     * встанет реализация над ним; глушит активность ядро, не приложение.
+     */
+    val ghostMode: app.orbitle.data.GhostModeRepository = app.orbitle.data.LocalGhostModeRepository(preferenceStore)
+
+    /** «Показывать мой онлайн» в своём профиле: только на этом устройстве. */
+    val ownPresence = app.orbitle.data.OwnPresenceSettings(preferenceStore)
+
+    /** Окно не свёрнуто: пока свёрнуто, свой статус не опрашивается. Пишет Main.kt. */
+    val windowShown = kotlinx.coroutines.flow.MutableStateFlow(true)
     val stickers: StickerRepository = CoreStickerRepository(client)
     val comments = CoreCommentsRepository(client)
 

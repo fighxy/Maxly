@@ -77,6 +77,7 @@ import app.orbitle.domain.PrivacyAccess
 import app.orbitle.presentation.auth.PhoneNumber
 import app.orbitle.presentation.chatlist.ChatAvatar
 import app.orbitle.presentation.settings.AccountSettingsViewModel
+import app.orbitle.presentation.settings.GhostModeViewModel
 import app.orbitle.ui.components.Avatar
 import kotlinx.coroutines.launch
 
@@ -323,7 +324,10 @@ private fun DeleteProfileDialogs(
     }
 }
 
-/** «Конфиденциальность»: номер, статус «в сети», безопасный режим, срок неактивности, чёрный список. */
+/**
+ * «Конфиденциальность»: вверху блок «Дополнительно» с режимом призрака ([ghost], `null` — без него),
+ * дальше настройки MAX: номер, статус «в сети», безопасный режим, срок неактивности, чёрный список.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PrivacyScreen(
@@ -331,6 +335,7 @@ fun PrivacyScreen(
     onBack: () -> Unit,
     onBlocked: () -> Unit,
     privateMode: app.orbitle.data.PrivateModeSettings? = null,
+    ghost: GhostModeViewModel? = null,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val settings = state.settings
@@ -345,6 +350,10 @@ fun PrivacyScreen(
         contentWindowInsets = WindowInsets(0),
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())) {
+            ghost?.let {
+                GhostModeSection(it)
+                HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            }
             if (!settings.known) {
                 Text(
                     "Настройки загрузятся после подключения к серверу",

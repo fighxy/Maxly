@@ -79,6 +79,7 @@ import app.orbitle.presentation.settings.ProfileLink
 import app.orbitle.domain.MiniApp
 import app.orbitle.presentation.settings.MiniAppViewModel
 import app.orbitle.presentation.settings.RecoveryEmailViewModel
+import app.orbitle.presentation.settings.GhostModeViewModel
 import app.orbitle.presentation.settings.SecurityViewModel
 import app.orbitle.presentation.settings.StorageViewModel
 import app.orbitle.ui.calls.CallsScreen
@@ -514,6 +515,7 @@ private fun SettingsPane(
     onOpenMiniApp: (MiniApp.Kind) -> Unit,
 ) {
     val securityModel = viewModel { SecurityViewModel(container.account) }
+    val ghostModel = viewModel { GhostModeViewModel(container.ghostMode, container.ownPresence, foreground = container.windowShown) }
     val limits by container.accountLimits.state.collectAsStateWithLifecycle()
     when (page) {
         SettingsPage.Home -> SettingsScreen(
@@ -535,6 +537,7 @@ private fun SettingsPane(
             onKeyboard = { onOpen(SettingsPage.Keyboard) },
             profileLink = profileLink,
             accountLimits = limits,
+            ghost = ghostModel,
         )
         SettingsPage.Messages -> MessagesScreen(
             accountModel,
@@ -546,7 +549,7 @@ private fun SettingsPane(
         SettingsPage.Devices -> DevicesScreen(container.sessions, onBack)
         SettingsPage.Appearance -> AppearanceScreen(container.appearance, onBack)
         SettingsPage.Profile -> ProfileEditScreen(accountModel, onBack, onLogout)
-        SettingsPage.Privacy -> PrivacyScreen(accountModel, onBack, onBlocked = { onOpen(SettingsPage.Blocked) }, privateMode = container.privateMode)
+        SettingsPage.Privacy -> PrivacyScreen(accountModel, onBack, onBlocked = { onOpen(SettingsPage.Blocked) }, privateMode = container.privateMode, ghost = ghostModel)
         SettingsPage.Security -> SecurityScreen(securityModel, onBack, onChangeEmail = onOpenRecovery)
         SettingsPage.RecoveryEmail -> {
             val flow = viewModel(key = "recovery-$recoveryKey") { RecoveryEmailViewModel(container.account) }
