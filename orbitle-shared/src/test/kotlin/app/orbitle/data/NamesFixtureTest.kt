@@ -31,8 +31,6 @@ class NamesFixtureTest {
     private val fixtures = SharedFixtures(
         "names",
         disagreements = mapOf(
-            "phone-normalize / nbsp-and-dash-variants" to
-                "ядро: PhoneNumbers.normalize убирает пробелы (и неразрывные), '-', скобки и точки, но не U+2011 и U+2013",
             "display-name / phone-fallback-8" to
                 "ядро: MaxUser.phone — только число (asLong), строка «8 913 123-45-67» даёт null, номера для имени нет",
         ),
