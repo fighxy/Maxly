@@ -54,6 +54,33 @@
   кружок — картинка и звук прямо в ленте с кольцом прогресса. Без ffmpeg видео открывается внешней программой.
 - «Поделиться» копирует ссылку в буфер обмена.
 
+## Ghost mode, privacy and activity
+
+The core is pinned to max-kmp-core `85b5aa6` in `core.lock`. Everything below runs through it.
+
+- **Ghost mode and hidden read receipts** are two independent core flags (`MaxClient.ghostMode`,
+  `MaxClient.hideReadReceipts`). The core stores them, applies them and publishes them in
+  `MaxState.ghostMode` / `MaxState.hideReadReceipts`; chats read under hidden receipts are kept
+  locally by the core (`MaxState.localReads`). The old local keys `ghostMode.enabled` and
+  `ghostMode.hideReadReceipts` are moved into the core once at startup and then deleted
+  (`CoreGhostModeRepository.migrate`).
+- **Read marks and story views** go only through `client.markRead` and `client.markStorySeen`.
+  Sending those opcodes directly is stopped by the core's `OutboundGuard` with
+  `OutboundBlockedException`.
+- **Own presence:** `client.checkOwnPresence` (opcode 35, always a fresh request). It throws
+  before login (the app returns `null` without asking); `null` means the server has no record.
+  The own profile asks once a minute (60 s) while it is visible and the app is in the foreground.
+- **Privacy:** writes go through `client.setPrivacy(key, value)`. Search by phone, calls and
+  chat invites accept only `ALL` or `CONTACTS`; `NOBODY` is allowed only for phone number
+  privacy. The Security screen shows the family protection status; while it is `MANAGEABLE` the
+  privacy items are read-only.
+- **Transport:** TCP + TLS through the core, no WebSocket. Default host `api.oneme.ru`
+  (`api2.oneme.ru` is a CNAME of it with a Russian Trusted CA certificate; we keep `api`).
+- **App activity** is reported with `client.setInteractive`: active while the window is visible,
+  focused and had input within the last 60 s (`WindowActivity`).
+- **No read marks in the background:** the window lifecycle is `RESUMED` only while the window is
+  shown and focused, `STARTED` otherwise, so a minimized or unfocused window marks nothing read.
+
 ## Устройство
 
 Один модуль, точка входа `app.orbitle.MainKt`.
