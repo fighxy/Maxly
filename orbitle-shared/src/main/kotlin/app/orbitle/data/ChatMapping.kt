@@ -15,7 +15,7 @@ import com.max.core.api.Chat as CoreChat
 /** Чаты и папки ядра в моделях приложения. */
 object ChatMapping {
 
-    /** Список чатов без тех, где аккаунт больше не участвует ([isActive]), как в Komet. */
+    /** Список чатов без тех, где аккаунт больше не участвует ([isActive]). */
     fun chats(state: MaxState, config: AccountConfig?, nowMs: Long, mutes: ChatMutes? = null): List<Chat> {
         val pins = state.pinnedChatIds.orEmpty().withIndex().associate { (i, id) -> id to i }
         return state.chats.values.filter(::isActive).map { chat(it, state, config, nowMs, pins[it.id], mutes) }
@@ -23,8 +23,8 @@ object ChatMapping {
 
     /**
      * Аккаунт участвует в чате: `status` пуст или `ACTIVE`. Покинутый или закрытый чат сервер не
-     * даёт ни покинуть, ни удалить (`chat.denied`), а историю отдаёт отказом `too.many.requests`;
-     * Komet (`feature/FullStack`) такие чаты в списке не показывает.
+     * даёт ни покинуть, ни удалить (`chat.denied`), а историю отдаёт отказом `too.many.requests`,
+     * поэтому в списке такого чата нет.
      */
     fun isActive(chat: CoreChat): Boolean {
         val status = chat.raw["status"] as? String
