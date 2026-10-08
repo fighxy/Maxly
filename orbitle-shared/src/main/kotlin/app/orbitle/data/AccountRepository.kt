@@ -38,7 +38,10 @@ interface AccountRepository {
      */
     suspend fun requestDeletion(): Long?
 
-    /** Отправляет изменение и возвращает настройки из ответа сервера. */
+    /**
+     * Отправляет изменение и возвращает настройки из ответа сервера. Пункты, запертые безопасным
+     * режимом ([AccountSettings.lockedBySafeMode]), модель сюда не шлёт.
+     */
     suspend fun change(change: PrivacyChange): AccountSettings
 
     suspend fun blockedUsers(): List<BlockedUser>
@@ -128,6 +131,8 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
     override suspend fun requestDeletion(): Long? =
         deletionMillis(MaxCoreGateway.call { client.api.account.requestProfileDeletion(true) })
 
+    // TODO(core setPrivacy): когда ядро даст `setPrivacy(key, value)` (ветка feat/ghost-mode),
+    //  писать через него; пока ключи `config.user` уходят общим `updateUserSettings` ядра.
     override suspend fun change(change: PrivacyChange): AccountSettings =
         settingsOf(MaxCoreGateway.call { client.updateUserSettings(valuesOf(change)) })
 
@@ -233,13 +238,19 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
             else -> timestamp
         }
 
+        /** Настройки из `config.user`; без ключа — значение по умолчанию веб-клиента MAX. */
         fun settingsOf(config: AccountConfig?): AccountSettings {
             val c = config ?: return AccountSettings()
+            val defaults = AccountSettings()
             return AccountSettings(
                 known = true,
-                phonePrivacy = PrivacyAccess.of(c.userString("PHONE_NUMBER_PRIVACY"), PrivacyAccess.ALL),
-                onlineHidden = c.userFlag("HIDDEN") ?: false,
-                safeMode = c.userFlag("SAFE_MODE") ?: false,
+                phonePrivacy = PrivacyAccess.of(c.userString("PHONE_NUMBER_PRIVACY"), defaults.phonePrivacy),
+                onlineHidden = c.userFlag("HIDDEN") ?: defaults.onlineHidden,
+                safeMode = c.userFlag("SAFE_MODE") ?: defaults.safeMode,
+                searchByPhone = PrivacyAccess.of(c.userString("SEARCH_BY_PHONE"), defaults.searchByPhone),
+                incomingCalls = PrivacyAccess.of(c.userString("INCOMING_CALL"), defaults.incomingCalls),
+                chatInvites = PrivacyAccess.of(c.userString("CHATS_INVITE"), defaults.chatInvites),
+                safeContentOnly = c.userFlag("CONTENT_LEVEL_ACCESS") ?: defaults.safeContentOnly,
                 inactiveTtl = InactiveTtl.of(c.userString("INACTIVE_TTL")),
                 inviteLink = c.inviteLink?.takeIf { it.isNotBlank() },
                 quickReaction = quickReactionOf(c),
@@ -269,6 +280,10 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
         fun valuesOf(change: PrivacyChange): Map<String, Any?> = when (change) {
             is PrivacyChange.PhonePrivacy -> mapOf("PHONE_NUMBER_PRIVACY" to change.access.wire)
             is PrivacyChange.OnlineHidden -> mapOf("HIDDEN" to change.hidden)
+            is PrivacyChange.SearchByPhone -> mapOf("SEARCH_BY_PHONE" to change.access.wire)
+            is PrivacyChange.IncomingCalls -> mapOf("INCOMING_CALL" to change.access.wire)
+            is PrivacyChange.ChatInvites -> mapOf("CHATS_INVITE" to change.access.wire)
+            is PrivacyChange.SafeContent -> mapOf("CONTENT_LEVEL_ACCESS" to change.safeOnly)
             is PrivacyChange.Inactive -> mapOf("INACTIVE_TTL" to change.ttl.wire)
             is PrivacyChange.QuickReaction -> linkedMapOf(
                 "DOUBLE_TAP_REACTION_VALUE" to change.emoji,

@@ -144,6 +144,10 @@ class AccountSettingsViewModel(private val repository: AccountRepository) : View
     fun setPhonePrivacy(access: PrivacyAccess) = change(PrivacyChange.PhonePrivacy(access))
     fun setOnlineHidden(hidden: Boolean) = change(PrivacyChange.OnlineHidden(hidden))
     fun setSafeMode(enabled: Boolean) = change(PrivacyChange.SafeMode(enabled))
+    fun setSearchByPhone(access: PrivacyAccess) = changeUnlocked(PrivacyChange.SearchByPhone(access))
+    fun setIncomingCalls(access: PrivacyAccess) = changeUnlocked(PrivacyChange.IncomingCalls(access))
+    fun setChatInvites(access: PrivacyAccess) = changeUnlocked(PrivacyChange.ChatInvites(access))
+    fun setSafeContentOnly(safeOnly: Boolean) = changeUnlocked(PrivacyChange.SafeContent(safeOnly))
     fun setInactiveTtl(ttl: InactiveTtl) = change(PrivacyChange.Inactive(ttl))
 
     /** Быстрая реакция двойного нажатия. Пустую строку сервер не получает. */
@@ -151,6 +155,13 @@ class AccountSettingsViewModel(private val repository: AccountRepository) : View
         val clean = emoji.trim()
         if (clean.isEmpty() || clean.length > 32) return
         change(PrivacyChange.QuickReaction(clean))
+    }
+
+    /** Пункт, запертый безопасным режимом: пока он включён или конфиг не пришёл, ничего не уходит. */
+    private fun changeUnlocked(change: PrivacyChange) {
+        val settings = _state.value.settings
+        if (!settings.known || settings.lockedBySafeMode) return
+        change(change)
     }
 
     /** Сразу показывает новое значение; при ошибке откатывает только его поле. */
@@ -181,6 +192,20 @@ class AccountSettingsViewModel(private val repository: AccountRepository) : View
                 throw e
             } catch (e: Exception) {
                 _state.update { it.copy(blocked = it.blocked ?: emptyList(), error = message(e)) }
+            }
+        }
+    }
+
+    /** Счётчик чёрного списка в «Конфиденциальности»: без окна ошибки, если список не загрузился. */
+    fun countBlocked() {
+        viewModelScope.launch {
+            try {
+                val users = repository.blockedUsers()
+                _state.update { it.copy(blocked = users) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Без счётчика: строка «Чёрный список» остаётся, список откроется по нажатию.
             }
         }
     }
