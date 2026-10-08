@@ -17,6 +17,7 @@ zxing = "3.5.3"
 camerax = "1.5.0"
 webkit = "1.12.1"
 compottie = "2.3.1"
+splashscreen = "1.2.0"
 
 [libraries]
 camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
@@ -25,6 +26,7 @@ camera-view = { module = "androidx.camera:camera-view", version.ref = "camerax" 
 camera-video = { module = "androidx.camera:camera-video", version.ref = "camerax" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core-ktx" }
+androidx-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "splashscreen" }
 androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
 androidx-lifecycle-viewmodel = { module = "androidx.lifecycle:lifecycle-viewmodel", version.ref = "lifecycle" }
