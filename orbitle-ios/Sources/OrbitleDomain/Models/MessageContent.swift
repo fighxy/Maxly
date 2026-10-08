@@ -163,9 +163,12 @@ public struct TextSpan: Hashable, Sendable, Codable {
     public var type: String?
     /// Остальные ключи незнакомого элемента (`attributes`, `entityId`…) объектом JSON.
     public var extra: String?
+    /// Элемент сервера текстом JSON, как пришёл: нетронутый уходит при правке байт в байт,
+    /// у сдвинутого сохраняются все ключи. В сравнение не входит.
+    public var raw: String?
 
     public init(kind: Kind, from: Int, length: Int, url: String? = nil, userId: String? = nil, entityId: String? = nil,
-                type: String? = nil, extra: String? = nil) {
+                type: String? = nil, extra: String? = nil, raw: String? = nil) {
         self.kind = kind
         self.from = from
         self.length = length
@@ -174,6 +177,23 @@ public struct TextSpan: Hashable, Sendable, Codable {
         self.entityId = entityId
         self.type = type
         self.extra = extra
+        self.raw = raw
+    }
+
+    public static func == (lhs: TextSpan, rhs: TextSpan) -> Bool {
+        lhs.kind == rhs.kind && lhs.from == rhs.from && lhs.length == rhs.length && lhs.url == rhs.url
+            && lhs.userId == rhs.userId && lhs.entityId == rhs.entityId && lhs.type == rhs.type && lhs.extra == rhs.extra
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(kind)
+        hasher.combine(from)
+        hasher.combine(length)
+        hasher.combine(url)
+        hasher.combine(userId)
+        hasher.combine(entityId)
+        hasher.combine(type)
+        hasher.combine(extra)
     }
 }
 

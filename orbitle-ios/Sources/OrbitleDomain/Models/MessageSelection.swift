@@ -92,6 +92,13 @@ public enum MessageSelectionRules {
         public var forcesForEveryone: Bool
         /// Начальное положение переключателя (включён, как в веб-клиенте).
         public var forEveryoneByDefault: Bool
+
+        public init(canDelete: Bool, showsForEveryone: Bool, forcesForEveryone: Bool, forEveryoneByDefault: Bool) {
+            self.canDelete = canDelete
+            self.showsForEveryone = showsForEveryone
+            self.forcesForEveryone = forcesForEveryone
+            self.forEveryoneByDefault = forEveryoneByDefault
+        }
     }
 
     public static func deleteOptions(_ items: [Item], in chat: ChatContext, timeout: EditTimeout, now: Date) -> DeleteOptions {

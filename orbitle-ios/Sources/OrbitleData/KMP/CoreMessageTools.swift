@@ -64,8 +64,11 @@ public struct CoreGroupMember: Sendable, Equatable {
     public var alias: String
     public var lastSeenMs: Int64
     public var online: Bool
+    /// Имя для упоминаний без «@»; пусто — нет.
+    public var mentionName: String
 
-    public init(id: String, name: String, avatarURL: String = "", role: String = "member", alias: String = "", lastSeenMs: Int64 = 0, online: Bool = false) {
+    public init(id: String, name: String, avatarURL: String = "", role: String = "member", alias: String = "", lastSeenMs: Int64 = 0,
+                online: Bool = false, mentionName: String = "") {
         self.id = id
         self.name = name
         self.avatarURL = avatarURL
@@ -73,6 +76,41 @@ public struct CoreGroupMember: Sendable, Equatable {
         self.alias = alias
         self.lastSeenMs = lastSeenMs
         self.online = online
+        self.mentionName = mentionName
+    }
+}
+
+/// Свои права в чате (`chatRights`): владелец, админ, биты прав админа (`-1` — нет или
+/// неизвестно) и право удалять любые сообщения.
+public struct CoreChatRights: Sendable, Equatable {
+    public var isOwner: Bool
+    public var isAdmin: Bool
+    public var permissions: Int64
+    public var canDeleteAnyMessage: Bool
+
+    public init(isOwner: Bool = false, isAdmin: Bool = false, permissions: Int64 = -1, canDeleteAnyMessage: Bool = false) {
+        self.isOwner = isOwner
+        self.isAdmin = isAdmin
+        self.permissions = permissions
+        self.canDeleteAnyMessage = canDeleteAnyMessage
+    }
+}
+
+/// Диалог удаления выбранного (`deletePlan`): область на каждое сообщение (`all`, `self`,
+/// `none`) и как показать переключатель «Удалить у всех».
+public struct CoreDeletePlan: Sendable, Equatable {
+    public var scopes: [String]
+    public var canDelete: Bool
+    public var showsForEveryone: Bool
+    public var forEveryoneByDefault: Bool
+    public var forcesForEveryone: Bool
+
+    public init(scopes: [String], canDelete: Bool, showsForEveryone: Bool, forEveryoneByDefault: Bool, forcesForEveryone: Bool) {
+        self.scopes = scopes
+        self.canDelete = canDelete
+        self.showsForEveryone = showsForEveryone
+        self.forEveryoneByDefault = forEveryoneByDefault
+        self.forcesForEveryone = forcesForEveryone
     }
 }
 
@@ -131,4 +169,20 @@ public extension MaxCore {
     func searchChatMembers(chatId: String, query: String) async throws -> [CoreGroupMember] {
         throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
     }
+    func filterMembers(_ members: [CoreGroupMember], query: String) async -> [CoreGroupMember]? { nil }
+
+    /// Без ядра — то же общее правило (`drafts/merge.json`) по черновикам сервера и метке.
+    func reconcileDraft(chatId: String, text: String, elementsJSON: String, replyTo: String, updateTime: Int64) async -> CoreDraft? {
+        let server = await serverDrafts().first { $0.chatId == chatId }
+        let mark = await draftDiscardedAt(chatId: chatId)
+        let local = SyncedDraft(text: text, replyTo: replyTo.isEmpty ? nil : replyTo, updateTime: updateTime)
+        let theirs = server.map { SyncedDraft(text: $0.text, replyTo: $0.replyTo.isEmpty ? nil : $0.replyTo, updateTime: $0.updateTime) }
+        guard let winner = DraftSync.merge(local: local, server: theirs, discardedAt: mark > 0 ? mark : nil) else { return nil }
+        if winner != local, let server { return server }
+        return CoreDraft(chatId: chatId, text: winner.text, elementsJSON: elementsJSON, replyTo: winner.replyTo ?? "", updateTime: winner.updateTime)
+    }
+    func draftDiscardedAt(chatId: String) async -> Int64 { 0 }
+    func chatRights(chatId: String) async -> CoreChatRights { CoreChatRights() }
+    func editTimeoutSeconds() async -> Int64 { 0 }
+    func deletePlan(chatId: String, messageIds: [String]) async -> CoreDeletePlan? { nil }
 }

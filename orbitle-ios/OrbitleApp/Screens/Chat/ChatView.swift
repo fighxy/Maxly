@@ -612,17 +612,29 @@ struct ChatView: View {
             Button("Удалить", role: .destructive) {
                 Task { await viewModel.confirmDelete(message, forEveryone: viewModel.deletesEverywhere(message)) }
             }
+        } else if viewModel.deletionForcesEveryone {
+            Button("Удалить", role: .destructive) {
+                Task { await viewModel.confirmDelete(message, forEveryone: true) }
+            }
         } else {
-            if viewModel.canDeleteForEveryone(message) {
-                Button(kind == .private ? "Удалить у меня и у собеседника" : "Удалить у всех", role: .destructive) {
-                    Task { await viewModel.confirmDelete(message, forEveryone: true) }
-                }
+            // Вариант по умолчанию от ядра (`forEveryoneByDefault`) — первым.
+            if viewModel.deletionShowsEveryone, viewModel.deletionPrefersEveryone {
+                deleteForEveryoneButton(message)
             }
             Button("Удалить у меня", role: .destructive) {
                 Task { await viewModel.confirmDelete(message, forEveryone: false) }
             }
+            if viewModel.deletionShowsEveryone, !viewModel.deletionPrefersEveryone {
+                deleteForEveryoneButton(message)
+            }
         }
         Button("Отмена", role: .cancel) { viewModel.deletionCandidate = nil }
+    }
+
+    private func deleteForEveryoneButton(_ message: Message) -> some View {
+        Button(kind == .private ? "Удалить у меня и у собеседника" : "Удалить у всех", role: .destructive) {
+            Task { await viewModel.confirmDelete(message, forEveryone: true) }
+        }
     }
 
     private var headerStatus: ChatHeaderStatus {

@@ -16,7 +16,7 @@ enum MessageContentCodec {
         }
         if object["attaches"] != nil || object["reactionInfo"] != nil || object["link"] != nil
             || object["commentsCount"] != nil || object["commentsInfo"] != nil || object["elements"] != nil || object["edited"] != nil {
-            return decodeServer(object)
+            return decodeServer(object, json: trimmed)
         }
         return (try? JSONDecoder().decode(MessageContent.self, from: data)) ?? .empty
     }
@@ -29,14 +29,20 @@ enum MessageContentCodec {
         return text
     }
 
-    private static func decodeServer(_ object: [String: Any]) -> MessageContent {
+    /// [json] — тот же объект текстом: элементы разметки запоминают себя как пришли (`raw`).
+    private static func decodeServer(_ object: [String: Any], json: String) -> MessageContent {
         let forwarded = forward(object["link"])
         var attaches = attachments(object["attaches"])
-        var elements = spans(object["elements"], text: object["text"] as? String)
+        var elements = spans(object["elements"], text: object["text"] as? String, raw: RawJSON.value("elements", in: json))
         // У пересылки свои вложения и разметка пустые: берутся из оригинала.
         if let original = forwarded?.message {
             if attaches.isEmpty { attaches = attachments(original["attaches"]) }
-            if elements.isEmpty { elements = spans(original["elements"], text: original["text"] as? String) }
+            if elements.isEmpty {
+                let raw = RawJSON.value("link", in: json)
+                    .flatMap { RawJSON.value("message", in: $0) }
+                    .flatMap { RawJSON.value("elements", in: $0) }
+                elements = spans(original["elements"], text: original["text"] as? String, raw: raw)
+            }
         }
         return MessageContent(
             reply: reply(object["link"]),
@@ -119,8 +125,8 @@ enum MessageContentCodec {
     /// `elements` сервера: `{type, from, length, attributes?, entityId?}` по общим правилам
     /// (`MessageMarkup.parse`, test-fixtures/formatting). Незнакомые типы пропускаются; с текстом
     /// `length` без значения — до конца, вышедшее за конец обрезается.
-    static func spans(_ value: Any?, text: String? = nil) -> [TextSpan] {
-        MessageMarkup.parse(value, text: text)
+    static func spans(_ value: Any?, text: String? = nil, raw: String? = nil) -> [TextSpan] {
+        MessageMarkup.parse(value, text: text, raw: raw.flatMap(RawJSON.items))
     }
 
     private static func reply(_ value: Any?) -> MessageReply? {

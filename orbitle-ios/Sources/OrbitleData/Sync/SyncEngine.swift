@@ -253,7 +253,7 @@ public actor SyncEngine {
             await chats.reloadMutes()
         case .draft:
             guard !event.chatId.isEmpty else { return }
-            await draftStore?.serverDraftChanged(chatId: event.chatId, draft: event.draft)
+            await draftStore?.serverDraftChanged(chatId: event.chatId)
         case .transcription:
             guard !event.messageId.isEmpty, event.unread == 1 else { return }
             await messages.applyTranscription(chatId: event.chatId, messageId: event.messageId, text: event.text)

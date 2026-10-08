@@ -18,6 +18,15 @@ private actor SelectionMessages: MessageRepository {
 
     func setFailForward(at index: Int?) { failForwardAt = index }
     func setRefused(_ ids: Set<String>) { refused = ids }
+    /// Ответ «ядра» на `deletePlan`; `nil` — не умеет.
+    var plan: MessageSelectionRules.DeleteOptions?
+    private(set) var planRequests: [[String]] = []
+    func setPlan(_ options: MessageSelectionRules.DeleteOptions?) { plan = options }
+
+    func deletePlan(messageIds: [String], chatId: String) async -> MessageSelectionRules.DeleteOptions? {
+        planRequests.append(messageIds)
+        return plan
+    }
 
     nonisolated func messages(chatId: String) -> AsyncStream<[Message]> { AsyncStream { $0.finish() } }
     func loadOlder(chatId: String) async throws(OrbitleError) {}
@@ -88,16 +97,34 @@ struct MessageSelectionModelTests {
         let own = message("10", offset: 0)
         let peer = message("11", author: "5", offset: 1)
         model.begin(with: own)
-        model.requestDelete(in: [own])
+        await model.requestDelete(in: [own])
         #expect(model.deleteRequest?.options.showsForEveryone == true)
         model.toggle(peer)
-        model.requestDelete(in: [own, peer])
+        await model.requestDelete(in: [own, peer])
         guard let request = model.deleteRequest else { Issue.record("нет подтверждения"); return }
         #expect(request.options.showsForEveryone == false)
         #expect(request.title == "Удалить 2 сообщения?")
         await model.confirmDelete(request, forEveryone: true)
         #expect(await repo.deletions == [.init(ids: ["10", "11"], forEveryone: false)])
         #expect(!model.isActive)
+    }
+
+    @Test("Диалог удаления строит ядро: его положение переключателя вместо своего")
+    func corePlan() async {
+        let repo = SelectionMessages()
+        await repo.setPlan(.init(canDelete: true, showsForEveryone: true, forcesForEveryone: false, forEveryoneByDefault: false))
+        let model = MessageSelectionModel(chatId: "5", currentUserId: "1", repository: repo)
+        let peer = message("11", author: "5", offset: 1)
+        model.begin(with: peer)
+        await model.requestDelete(in: [peer])
+        #expect(await repo.planRequests.last == ["11"])
+        #expect(model.deleteRequest?.options.showsForEveryone == true)
+        #expect(model.deleteRequest?.options.forEveryoneByDefault == false)
+
+        await repo.setPlan(.init(canDelete: false, showsForEveryone: false, forcesForEveryone: false, forEveryoneByDefault: false))
+        model.deleteRequest = nil
+        await model.requestDelete(in: [peer])
+        #expect(model.deleteRequest == nil)
     }
 
     @Test("Сервер удалил не всё: отказанные остаются, об этом плашка")
@@ -113,7 +140,7 @@ struct MessageSelectionModelTests {
         let b = message("11", offset: 1)
         model.begin(with: a)
         model.toggle(b)
-        model.requestDelete(in: [a, b])
+        await model.requestDelete(in: [a, b])
         guard let request = model.deleteRequest else { Issue.record("нет подтверждения"); return }
         await model.confirmDelete(request, forEveryone: false)
         #expect(deleted == ["10"])
@@ -126,7 +153,7 @@ struct MessageSelectionModelTests {
         let saved = MessageSelectionModel(chatId: Chat.savedMessagesId, currentUserId: "1", repository: repo)
         let note = message("10", offset: 0)
         saved.begin(with: note)
-        saved.requestDelete(in: [note])
+        await saved.requestDelete(in: [note])
         if let request = saved.deleteRequest { await saved.confirmDelete(request, forEveryone: false) }
         #expect(await repo.deletions.last?.forEveryone == true)
 

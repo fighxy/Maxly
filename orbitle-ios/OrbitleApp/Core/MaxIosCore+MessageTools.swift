@@ -118,10 +118,47 @@ extension MaxIosCore {
         }
     }
 
+    /// Фильтр ядра работает с его участниками: берутся последние полученные от него объекты.
+    /// Хоть одного нет — `nil`, приложение фильтрует само по тому же правилу.
+    func filterMembers(_ members: [CoreGroupMember], query: String) async -> [CoreGroupMember]? {
+        let known = members.compactMap { MemberCache.shared.member($0.id) }
+        guard known.count == members.count else { return nil }
+        return client.filterMembers(members: known, query: query).map(Self.member)
+    }
+
+    func reconcileDraft(chatId: String, text: String, elementsJSON: String, replyTo: String, updateTime: Int64) async -> CoreDraft? {
+        client.reconcileDraft(chatId: chatId, text: text, elementsJson: elementsJSON, replyTo: replyTo, updateTime: updateTime).map(Self.draft)
+    }
+
+    func draftDiscardedAt(chatId: String) async -> Int64 {
+        client.draftDiscardedAt(chatId: chatId)
+    }
+
+    func chatRights(chatId: String) async -> CoreChatRights {
+        let rights = client.chatRights(chatId: chatId)
+        return CoreChatRights(
+            isOwner: rights.isOwner, isAdmin: rights.isAdmin, permissions: rights.permissions,
+            canDeleteAnyMessage: rights.canDeleteAnyMessage
+        )
+    }
+
+    func editTimeoutSeconds() async -> Int64 {
+        client.editTimeoutSeconds()
+    }
+
+    func deletePlan(chatId: String, messageIds: [String]) async -> CoreDeletePlan? {
+        let plan = client.deletePlan(chatId: chatId, messageIds: messageIds)
+        return CoreDeletePlan(
+            scopes: plan.scopes, canDelete: plan.canDelete, showsForEveryone: plan.showsForEveryone,
+            forEveryoneByDefault: plan.forEveryoneByDefault, forcesForEveryone: plan.forcesForEveryone
+        )
+    }
+
     private static func member(_ member: IosGroupMember) -> CoreGroupMember {
-        CoreGroupMember(
+        MemberCache.shared.keep(member)
+        return CoreGroupMember(
             id: member.id, name: member.name, avatarURL: member.avatarUrl, role: member.role,
-            alias: member.alias, lastSeenMs: member.lastSeenMs, online: member.online
+            alias: member.alias, lastSeenMs: member.lastSeenMs, online: member.online, mentionName: member.mentionName
         )
     }
 
@@ -129,5 +166,20 @@ extension MaxIosCore {
         if let kind { return .failure(CoreFailure(kind: kind, key: key)) }
         guard let value else { return .failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)) }
         return .success(value)
+    }
+}
+
+/// Последние участники от ядра по id: `filterMembers` моста принимает только его объекты.
+private final class MemberCache: @unchecked Sendable {
+    static let shared = MemberCache()
+    private let lock = NSLock()
+    private var members: [String: IosGroupMember] = [:]
+
+    func keep(_ member: IosGroupMember) {
+        lock.withLock { members[member.id] = member }
+    }
+
+    func member(_ id: String) -> IosGroupMember? {
+        lock.withLock { members[id] }
     }
 }

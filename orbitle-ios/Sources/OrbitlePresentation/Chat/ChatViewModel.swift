@@ -146,6 +146,11 @@ public final class ChatViewModel {
     public private(set) var commentCounts: [String: Int] = [:]
     /// Сообщение, для которого открыт выбор «удалить у себя / у всех».
     public var deletionCandidate: Message?
+    /// Варианты удаления открытого сообщения (`deletePlan` ядра, как у выбора нескольких).
+    public private(set) var deletionOptions: MessageSelectionRules.DeleteOptions?
+    /// `edit-timeout` сервера в секундах; `nil` — неизвестен, срок правки не проверяется.
+    @ObservationIgnored private var editTimeoutSeconds: Int?
+    @ObservationIgnored private var rulesLoaded = false
     /// Сообщение, для которого открыт выбор чата пересылки.
     public var forwardCandidate: Message?
     /// Сообщение, с которого чат помечают непрочитанным: экран забирает его и закрывается.
@@ -625,6 +630,7 @@ public final class ChatViewModel {
         historyError = nil
         isRestoringHistory = true
         var loaded = false
+        await loadMessageRules()
         do {
             // Открытие чата: страница уходит и во время паузы чтений. Тихий повтор ниже её ждёт.
             try await repository.openLatest(chatId: chatId)
@@ -861,11 +867,24 @@ public final class ChatViewModel {
 
     // MARK: Правка
 
-    /// Править можно свой отправленный текст (не пересланный).
+    /// Править можно свой отправленный текст (не пересланный), пока не вышел `edit-timeout`
+    /// сервера (если ядро его знает).
     public func canEdit(_ message: Message) -> Bool {
         isOutgoing(message) && message.status == .sent && message.serverId != nil
             && message.content.forward == nil
             && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && editTimeoutSeconds.map { Date().timeIntervalSince(message.timestamp) <= TimeInterval($0) } ?? true
+    }
+
+    /// Срок правки и права в чате от ядра — один раз при открытии чата.
+    private func loadMessageRules() async {
+        guard !rulesLoaded else { return }
+        rulesLoaded = true
+        if let seconds = await repository.editTimeoutSeconds() {
+            editTimeoutSeconds = seconds
+            selection.editTimeout = .seconds(seconds)
+        }
+        selection.coreAdmin = await repository.canDeleteOthers(chatId: chatId)
     }
 
     /// Текст сообщения переходит в поле ввода; прежний черновик откладывается.
@@ -1961,8 +1980,19 @@ public final class ChatViewModel {
 
     // MARK: Удаление и пересылка
 
+    /// Меню сообщения → «Удалить»: варианты решает ядро (`deletePlan`), как и для выбора
+    /// нескольких. Нельзя удалить вовсе — плашка вместо диалога.
     public func requestDelete(_ message: Message) {
-        deletionCandidate = message
+        Task { [weak self] in
+            guard let self else { return }
+            let options = await selection.deletePlan(for: [message])
+            guard options.canDelete || deletesWithoutChoice else {
+                showNotice("Это сообщение нельзя удалить")
+                return
+            }
+            deletionOptions = options
+            deletionCandidate = message
+        }
     }
 
     /// «Удалить у всех» — только для своих сообщений, уже принятых сервером.
@@ -1973,9 +2003,12 @@ public final class ChatViewModel {
         message.serverId.map { Int64($0) != nil } ?? false
     }
 
-    public func canDeleteForEveryone(_ message: Message) -> Bool {
-        isOutgoing(message) && message.status == .sent && message.serverId != nil
-    }
+    /// Только «удалить у всех», без выбора (канал с правами).
+    public var deletionForcesEveryone: Bool { deletionOptions?.forcesForEveryone == true }
+
+    /// Вариант «удалить у всех» есть; `deletionPrefersEveryone` — он идёт первым.
+    public var deletionShowsEveryone: Bool { deletionOptions?.showsForEveryone == true }
+    public var deletionPrefersEveryone: Bool { deletionOptions?.forEveryoneByDefault == true }
 
     /// Удаление из «Избранного»: собеседника нет, поэтому один вариант без выбора.
     public var deletesWithoutChoice: Bool { chatId == Chat.savedMessagesId }

@@ -755,6 +755,33 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         _ = try await deleteSelection(messageIds: messageIds, chatId: chatId, forEveryone: forEveryone)
     }
 
+    /// Диалог удаления от ядра: сообщения ищутся по локальному или серверному id, ядру уходит
+    /// серверный (у неотправленных — локальный: ядро считает их своими «только у себя»).
+    public func deletePlan(messageIds: [String], chatId: String) async -> MessageSelectionRules.DeleteOptions? {
+        let ids = messageIds.map { id in
+            let found = (try? message(id: id)) ?? (try? message(serverId: id))
+            return found?.serverId ?? found?.id ?? id
+        }
+        guard !ids.isEmpty, let plan = await api.deletePlan(chatId: chatId, messageIds: ids) else { return nil }
+        return MessageSelectionRules.DeleteOptions(
+            canDelete: plan.canDelete,
+            showsForEveryone: plan.showsForEveryone,
+            forcesForEveryone: plan.forcesForEveryone,
+            forEveryoneByDefault: plan.forEveryoneByDefault
+        )
+    }
+
+    public func editTimeoutSeconds() async -> Int? {
+        let seconds = await api.editTimeoutSeconds()
+        return seconds > 0 ? Int(seconds) : nil
+    }
+
+    /// Права из карточки чата ядра (`chatRights`).
+    public func canDeleteOthers(chatId: String) async -> Bool? {
+        guard let rights = await api.chatRights(chatId: chatId) else { return nil }
+        return rights.isOwner || rights.canDeleteAnyMessage
+    }
+
     /// Одним `MSG_DELETE` 66. Из ленты уходят только удалённые сервером; отклонённые остаются
     /// и возвращаются (их локальные id).
     public func deleteSelection(messageIds: [String], chatId: String, forEveryone: Bool) async throws(OrbitleError) -> [String] {

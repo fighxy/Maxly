@@ -23,7 +23,7 @@ struct MessageSelectionBar: View {
                     selection.requestForward(in: messages)
                 }
                 action("Удалить", systemImage: "trash", role: .destructive, enabled: canDelete) {
-                    selection.requestDelete(in: messages)
+                    Task { await selection.requestDelete(in: messages) }
                 }
             }
             .padding(.horizontal, 8)

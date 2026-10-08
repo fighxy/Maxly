@@ -4,7 +4,9 @@ import OrbitleDomain
 
 /// Режим выбора нескольких сообщений ленты: «Выбрать» в меню сообщения, касания отмечают,
 /// внизу «Копировать», «Переслать», «Удалить». Правила удаления, порядок пересылки и формат
-/// копирования — `MessageSelectionRules` (общие сценарии `test-fixtures/selection`).
+/// копирования — `MessageSelectionRules` (общие сценарии `test-fixtures/selection`). Диалог
+/// удаления строит ядро (`deletePlan`, то же правило); своё правило — пока ядро не ответило
+/// или если источник его не умеет.
 @MainActor
 @Observable
 public final class MessageSelectionModel {
@@ -32,12 +34,17 @@ public final class MessageSelectionModel {
 
     /// Тип чата и права — экран ставит их, когда узнаёт.
     @ObservationIgnored public var chatType: ChatType = .private
-    /// Аккаунт — владелец или админ. Мост ядра роли пока не отдаёт: в канале право писать
-    /// значит админа, в группе роль неизвестна (`false`).
+    /// Аккаунт — владелец или админ. Без прав от ядра (`canDeleteOthers`): в канале право
+    /// писать значит админа, в группе роль неизвестна (`false`).
     @ObservationIgnored public var isAdmin = false
-    /// `edit-timeout` сервера. Мост его пока не отдаёт: `.unknown` — своё отправленное
-    /// удаляется у всех без срока, как и одиночное удаление.
+    /// Права от ядра (`chatRights`); `nil` — не пришли, решает `isAdmin`.
+    @ObservationIgnored public var coreAdmin: Bool?
+    /// `edit-timeout` сервера. Пока ядро его не отдало — `.unknown`: своё отправленное
+    /// удаляется у всех без срока.
     @ObservationIgnored public var editTimeout: MessageSelectionRules.EditTimeout = .unknown
+    /// Диалог удаления от ядра для набора выбранных id.
+    private var corePlan: (ids: Set<String>, options: MessageSelectionRules.DeleteOptions)?
+    @ObservationIgnored private var planTask: Task<Void, Never>?
     /// Имя собеседника личного чата (для копирования его сообщений, если автор неизвестен).
     @ObservationIgnored public var peerName: String?
     @ObservationIgnored public var timeZone: TimeZone = .current
@@ -72,6 +79,7 @@ public final class MessageSelectionModel {
         guard canSelect(message) else { return }
         isActive = true
         if !selectedIds.contains(message.id) { selectedIds.append(message.id) }
+        refreshPlan()
     }
 
     /// Касание пузыря в режиме выбора.
@@ -82,6 +90,7 @@ public final class MessageSelectionModel {
         } else {
             selectedIds.append(message.id)
         }
+        refreshPlan()
     }
 
     public func isSelected(_ id: String) -> Bool {
@@ -92,6 +101,8 @@ public final class MessageSelectionModel {
     public func cancel() {
         isActive = false
         selectedIds = []
+        planTask?.cancel()
+        corePlan = nil
         deleteRequest = nil
         forwardBatch = nil
     }
@@ -110,7 +121,7 @@ public final class MessageSelectionModel {
     // MARK: Удаление
 
     public var context: MessageSelectionRules.ChatContext {
-        MessageSelectionRules.ChatContext(id: chatId, type: chatType, isAdmin: isAdmin)
+        MessageSelectionRules.ChatContext(id: chatId, type: chatType, isAdmin: coreAdmin ?? isAdmin)
     }
 
     func item(_ message: Message) -> MessageSelectionRules.Item {
@@ -122,16 +133,48 @@ public final class MessageSelectionModel {
         )
     }
 
+    /// Для панели внизу: ответ ядра на текущий выбор, пока его нет — своё правило.
     public func deleteOptions(in messages: [Message]) -> MessageSelectionRules.DeleteOptions {
-        MessageSelectionRules.deleteOptions(selected(in: messages).map(item), in: context, timeout: editTimeout, now: now())
+        let chosen = selected(in: messages)
+        if let corePlan, corePlan.ids == Set(chosen.map(\.id)) { return corePlan.options }
+        return localOptions(chosen)
     }
 
-    /// «Удалить» внизу: открыть подтверждение, если удалить можно.
-    public func requestDelete(in messages: [Message]) {
+    /// Диалог удаления этих сообщений: правило ядра, источник без него — своё.
+    public func deletePlan(for chosen: [Message]) async -> MessageSelectionRules.DeleteOptions {
+        guard !chosen.isEmpty,
+              let options = await repository.deletePlan(messageIds: chosen.map(\.id), chatId: chatId)
+        else { return localOptions(chosen) }
+        return options
+    }
+
+    func localOptions(_ chosen: [Message]) -> MessageSelectionRules.DeleteOptions {
+        MessageSelectionRules.deleteOptions(chosen.map(item), in: context, timeout: editTimeout, now: now())
+    }
+
+    /// «Удалить» внизу: открыть подтверждение, если удалить можно. Начальное положение
+    /// переключателя «у всех» — от ядра (`forEveryoneByDefault`).
+    public func requestDelete(in messages: [Message]) async {
         let chosen = selected(in: messages)
-        let options = deleteOptions(in: messages)
-        guard options.canDelete, !chosen.isEmpty else { return }
+        guard !chosen.isEmpty else { return }
+        let options = await deletePlan(for: chosen)
+        guard options.canDelete, Set(selected(in: messages).map(\.id)) == Set(chosen.map(\.id)) else { return }
         deleteRequest = DeleteRequest(messageIds: chosen.map(\.id), options: options)
+    }
+
+    /// Выбор изменился: спросить ядро заново (панель включает «Удалить» по его ответу).
+    private func refreshPlan() {
+        planTask?.cancel()
+        let ids = selectedIds
+        guard !ids.isEmpty else {
+            corePlan = nil
+            return
+        }
+        planTask = Task { [weak self, repository, chatId] in
+            let options = await repository.deletePlan(messageIds: ids, chatId: chatId)
+            guard !Task.isCancelled, let self, self.selectedIds == ids else { return }
+            self.corePlan = options.map { (Set(ids), $0) }
+        }
     }
 
     /// Удалить одним запросом. «Избранное» стирается на сервере целиком (как одиночное

@@ -707,6 +707,20 @@ public protocol MaxCore: Sendable {
     func loadChatMembers(chatId: String, marker: String, count: Int) async throws -> CoreMembersPage
     /// Поиск участников по имени (`CHAT_MEMBERS` 59 с `query`).
     func searchChatMembers(chatId: String, query: String) async throws -> [CoreGroupMember]
+    /// Участники из `members`, подходящие под `query`, по общему правилу ядра (имя или имя для
+    /// упоминаний, «@» — только оно). `nil` — ядро не может (участники не из него).
+    func filterMembers(_ members: [CoreGroupMember], query: String) async -> [CoreGroupMember]?
+    /// Что показать в поле ввода: свой черновик против черновика сервера и метки стирания.
+    /// `nil` — поле пустое.
+    func reconcileDraft(chatId: String, text: String, elementsJSON: String, replyTo: String, updateTime: Int64) async -> CoreDraft?
+    /// Метка стирания черновика чата (время сервера, мс); `0` — метки нет.
+    func draftDiscardedAt(chatId: String) async -> Int64
+    /// Свои права в чате по карточке ядра.
+    func chatRights(chatId: String) async -> CoreChatRights
+    /// `edit-timeout` конфига сервера в секундах; `0` — неизвестно.
+    func editTimeoutSeconds() async -> Int64
+    /// Как удалять выбранное (общее правило `selection/delete.json`). `nil` — ядро не умеет.
+    func deletePlan(chatId: String, messageIds: [String]) async -> CoreDeletePlan?
 }
 
 public extension MaxCore {

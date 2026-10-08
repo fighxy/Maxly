@@ -53,7 +53,10 @@ actor FakeMaxCore: MaxCore {
     var serverDraftList: [CoreDraft] = []
     private(set) var draftCalls: [String] = []
 
+    var discardMarks: [String: Int64] = [:]
     func setServerDrafts(_ list: [CoreDraft]) { serverDraftList = list }
+    func setDiscardMark(_ time: Int64, chatId: String) { discardMarks[chatId] = time }
+    func draftDiscardedAt(chatId: String) async -> Int64 { discardMarks[chatId] ?? 0 }
 
     func saveDraft(chatId: String, text: String, elementsJSON: String, replyTo: String) async throws -> Int64 {
         draftCalls.append(replyTo.isEmpty ? "save \(chatId) \(text)" : "save \(chatId) \(text) ↩\(replyTo)")
@@ -66,6 +69,7 @@ actor FakeMaxCore: MaxCore {
     func discardDraft(chatId: String, time: Int64) async throws {
         draftCalls.append("discard \(chatId) \(time)")
         serverDraftList.removeAll { $0.chatId == chatId }
+        discardMarks[chatId] = 9_500
     }
 
     func serverDrafts() async -> [CoreDraft] { serverDraftList }

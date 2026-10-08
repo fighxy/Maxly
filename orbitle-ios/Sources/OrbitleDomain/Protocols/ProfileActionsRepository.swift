@@ -74,6 +74,8 @@ public protocol ProfileActionsRepository: Sendable {
     func membersPage(chatId: String, marker: Int64) async throws(OrbitleError) -> ChatMembersPage
     /// Поиск участников на сервере по имени.
     func searchMembers(chatId: String, query: String) async throws(OrbitleError) -> [ChatMemberEntry]
+    /// Совпадения среди загруженных: имя или имя для упоминаний, «@» — только оно.
+    func filterMembers(_ members: [ChatMemberEntry], query: String) async -> [ChatMemberEntry]
 }
 
 public extension ProfileActionsRepository {
@@ -87,5 +89,9 @@ public extension ProfileActionsRepository {
     /// Источник без поиска на сервере: экран ищет среди загруженных.
     func searchMembers(chatId: String, query: String) async throws(OrbitleError) -> [ChatMemberEntry] {
         throw .invalidRequest
+    }
+
+    func filterMembers(_ members: [ChatMemberEntry], query: String) async -> [ChatMemberEntry] {
+        ChatMembersRules.filter(members, query: query)
     }
 }

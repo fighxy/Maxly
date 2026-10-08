@@ -7,6 +7,8 @@ import OrbitleDomain
 private actor PagedMembers: ProfileActionsRepository {
     private let pages: [Int64: ChatMembersPage]
     private let found: [ChatMemberEntry]?
+    /// Ответ «ядра» на фильтр загруженных: id по порядку; `nil` — общее правило.
+    var filtered: [String]?
     private(set) var requested: [Int64] = []
     private(set) var searches: [String] = []
 
@@ -26,6 +28,13 @@ private actor PagedMembers: ProfileActionsRepository {
         requested.append(marker)
         guard let page = pages[marker] else { throw .networkUnavailable }
         return page
+    }
+
+    func setFiltered(_ ids: [String]?) { filtered = ids }
+
+    func filterMembers(_ members: [ChatMemberEntry], query: String) async -> [ChatMemberEntry] {
+        guard let filtered else { return ChatMembersRules.filter(members, query: query) }
+        return filtered.compactMap { id in members.first { $0.id == id } }
     }
 
     func searchMembers(chatId: String, query: String) async throws(OrbitleError) -> [ChatMemberEntry] {
@@ -105,6 +114,18 @@ struct ChatMembersListModelTests {
         try await Task.sleep(for: .milliseconds(50))
         #expect(model.visible.map(\.id) == ["2"])
         #expect(await repo.searches.isEmpty)
+    }
+
+    @Test("Совпадения среди загруженных даёт фильтр источника (ядра)")
+    func sourceFilter() async throws {
+        let repo = PagedMembers(pages: [0: ChatMembersPage(members: [member("1", "Аня"), member("2", "Анна")], marker: nil)])
+        await repo.setFiltered(["2"])
+        let model = ChatMembersListModel(chatId: "-5", currentUserId: "9", actions: repo)
+        await model.loadMore()
+        model.query = "Ан"
+        #expect(model.visible.map(\.id).count == 2)
+        for _ in 0..<50 where model.visible.count != 1 { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(model.visible.map(\.id) == ["2"])
     }
 
     @Test("Касание открывает диалог; себя не открыть")

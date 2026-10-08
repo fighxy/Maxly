@@ -86,6 +86,12 @@ public protocol MaxAPI: Sendable {
     func editMessage(chatId: String, messageId: String, text: String, formatting: [TextSpan]) async -> Result<MessageRecord, MaxAPIError>
     /// Удалить выбранное одним запросом: какие id сервер удалил, какие нет.
     func deleteSelection(chatId: String, messageIds: [String], forEveryone: Bool) async -> Result<CoreDeleteResult, MaxAPIError>
+    /// Диалог удаления по серверным id (`deletePlan` ядра); `nil` — источник не умеет.
+    func deletePlan(chatId: String, messageIds: [String]) async -> CoreDeletePlan?
+    /// `edit-timeout` сервера в секундах; `0` — неизвестно.
+    func editTimeoutSeconds() async -> Int64
+    /// Свои права в чате; `nil` — источник не знает.
+    func chatRights(chatId: String) async -> CoreChatRights?
     /// Удалить сообщения по серверным id: у себя или у всех.
     func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async -> Result<Void, MaxAPIError>
     /// Переслать сообщение. Ответ — новое сообщение в целевом чате.
@@ -219,6 +225,9 @@ public extension MaxAPI {
     func deleteSelection(chatId: String, messageIds: [String], forEveryone: Bool) async -> Result<CoreDeleteResult, MaxAPIError> {
         await deleteMessages(chatId: chatId, messageIds: messageIds, forEveryone: forEveryone).map { _ in CoreDeleteResult(deleted: messageIds) }
     }
+    func deletePlan(chatId: String, messageIds: [String]) async -> CoreDeletePlan? { nil }
+    func editTimeoutSeconds() async -> Int64 { 0 }
+    func chatRights(chatId: String) async -> CoreChatRights? { nil }
     /// Источник без реакций: изменения откатываются, каталог пуст.
     func setReaction(chatId: String, messageId: String, postId: String, emoji: String?) async -> Result<ReactionUpdate?, MaxAPIError> {
         .failure(.invalidResponse)
@@ -478,6 +487,18 @@ public final class MaxAPIClient: MaxAPI, Sendable {
         await catching {
             try await core.deleteMessages(chatId: chatId, messageIds: messageIds, forEveryone: forEveryone, postId: "")
         }
+    }
+
+    public func deletePlan(chatId: String, messageIds: [String]) async -> CoreDeletePlan? {
+        await core.deletePlan(chatId: chatId, messageIds: messageIds)
+    }
+
+    public func editTimeoutSeconds() async -> Int64 {
+        await core.editTimeoutSeconds()
+    }
+
+    public func chatRights(chatId: String) async -> CoreChatRights? {
+        await core.chatRights(chatId: chatId)
     }
 
     public func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async -> Result<Void, MaxAPIError> {

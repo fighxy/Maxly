@@ -7,6 +7,8 @@ import Foundation
 ///   отрезки выпадают, хвост за концом обрезается. `CODE` читается как моноширинный.
 ///   Незнакомые типы сохраняются как есть (`unknown`: тип и остальные ключи) и при правке
 ///   уходят обратно; показ их не рисует. `LINK` без адреса и элемент без типа пропускаются.
+///   С текстом JSON ([RawJSON]) каждый элемент помнит себя как пришёл (`raw`): нетронутый
+///   уходит обратно байт в байт, у изменённого сохраняются все ключи, которых приложение не знает.
 /// - Запись: отрезки одного вида, которые пересекаются или стоят вплотную, сливаются
 ///   (ссылки — только с одинаковым адресом); порядок — по началу, затем по виду ([order]),
 ///   затем по длине. Правка всегда шлёт весь список, пустой `[]` снимает разметку.
@@ -60,46 +62,60 @@ public enum MessageMarkup {
 
     /// `elements` сервера в отрезки. [text] — текст сообщения: по нему `length` без значения
     /// становится «до конца», а отрезки обрезаются. Без текста (`nil`) — [toEnd] и без обрезки.
-    public static func parse(_ value: Any?, text: String?) -> [TextSpan] {
+    /// [raw] — те же элементы текстом JSON (`RawJSON.items`), по одному на элемент списка.
+    public static func parse(_ value: Any?, text: String?, raw: [String]? = nil) -> [TextSpan] {
         guard let list = value as? [Any] else { return [] }
+        let raws = raw.flatMap { $0.count == list.count ? $0 : nil }
+        return list.enumerated().compactMap { index, item -> TextSpan? in
+            var span = parseOne(item, text: text)
+            span?.raw = raws?[index]
+            return span
+        }
+    }
+
+    /// `elements` текстом JSON (мост ядра, черновик).
+    public static func parse(json: String, text: String?) -> [TextSpan] {
+        guard let data = json.data(using: .utf8), let value = try? JSONSerialization.jsonObject(with: data) else { return [] }
+        return parse(value, text: text, raw: RawJSON.items(json))
+    }
+
+    private static func parseOne(_ item: Any, text: String?) -> TextSpan? {
         let total = text.map { $0.utf16.count }
-        return list.compactMap { item -> TextSpan? in
-            guard let map = item as? [String: Any], let type = map["type"] as? String,
-                  !type.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-            let kind = kind(type: type) ?? .unknown
-            let from = number(map["from"]) ?? 0
-            guard from >= 0 else { return nil }
-            let rawLength: Int
-            if let given = number(map["length"]) {
-                rawLength = given
-            } else if let total {
-                rawLength = total - from
-            } else {
-                rawLength = toEnd
-            }
-            guard rawLength > 0 else { return nil }
-            var length = rawLength
-            if let total {
-                guard from < total else { return nil }
-                length = min(length, total - from)
-            }
-            let attributes = map["attributes"] as? [String: Any]
-            switch kind {
-            case .link:
-                guard let url = attributes?["url"] as? String, !url.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-                return TextSpan(kind: .link, from: from, length: length, url: url)
-            case .animoji:
-                guard let id = identifier(map["entityId"]) else { return nil }
-                let lottie = (attributes?["animojiLottieUrl"] as? String) ?? (attributes?["lottieUrl"] as? String)
-                return TextSpan(kind: .animoji, from: from, length: length, url: lottie, entityId: id)
-            case .mention:
-                return TextSpan(kind: .mention, from: from, length: length,
-                                userId: identifier(map["entityId"]) ?? identifier(attributes?["userId"]))
-            case .unknown:
-                return TextSpan(kind: .unknown, from: from, length: length, type: type, extra: extraJSON(map))
-            default:
-                return TextSpan(kind: kind, from: from, length: length)
-            }
+        guard let map = item as? [String: Any], let type = map["type"] as? String,
+              !type.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        let kind = kind(type: type) ?? .unknown
+        let from = number(map["from"]) ?? 0
+        guard from >= 0 else { return nil }
+        let rawLength: Int
+        if let given = number(map["length"]) {
+            rawLength = given
+        } else if let total {
+            rawLength = total - from
+        } else {
+            rawLength = toEnd
+        }
+        guard rawLength > 0 else { return nil }
+        var length = rawLength
+        if let total {
+            guard from < total else { return nil }
+            length = min(length, total - from)
+        }
+        let attributes = map["attributes"] as? [String: Any]
+        switch kind {
+        case .link:
+            guard let url = attributes?["url"] as? String, !url.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+            return TextSpan(kind: .link, from: from, length: length, url: url)
+        case .animoji:
+            guard let id = identifier(map["entityId"]) else { return nil }
+            let lottie = (attributes?["animojiLottieUrl"] as? String) ?? (attributes?["lottieUrl"] as? String)
+            return TextSpan(kind: .animoji, from: from, length: length, url: lottie, entityId: id)
+        case .mention:
+            return TextSpan(kind: .mention, from: from, length: length,
+                            userId: identifier(map["entityId"]) ?? identifier(attributes?["userId"]))
+        case .unknown:
+            return TextSpan(kind: .unknown, from: from, length: length, type: type, extra: extraJSON(map))
+        default:
+            return TextSpan(kind: kind, from: from, length: length)
         }
     }
 
@@ -166,22 +182,66 @@ public enum MessageMarkup {
         public var entityId: String?
         /// Остальные ключи незнакомого типа объектом JSON — уходят как пришли.
         public var extra: String?
+        /// Элемент сервера текстом JSON, как пришёл (`TextSpan.raw`). В сравнение не входит.
+        public var raw: String?
 
-        public init(type: String, from: Int, length: Int, url: String? = nil, entityId: String? = nil, extra: String? = nil) {
+        public init(type: String, from: Int, length: Int, url: String? = nil, entityId: String? = nil, extra: String? = nil,
+                    raw: String? = nil) {
             self.type = type
             self.from = from
             self.length = length
             self.url = url
             self.entityId = entityId
             self.extra = extra
+            self.raw = raw
+        }
+
+        public static func == (lhs: Element, rhs: Element) -> Bool {
+            lhs.type == rhs.type && lhs.from == rhs.from && lhs.length == rhs.length && lhs.url == rhs.url
+                && lhs.entityId == rhs.entityId && lhs.extra == rhs.extra
+        }
+
+        public func hash(into hasher: inout Hasher) {
+            hasher.combine(type)
+            hasher.combine(from)
+            hasher.combine(length)
+            hasher.combine(url)
+            hasher.combine(entityId)
+            hasher.combine(extra)
+        }
+
+        /// [raw] говорит то же, что поля: элемент не трогали, он уходит текстом как пришёл.
+        public var rawIsCurrent: Bool {
+            guard let raw, let data = raw.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data),
+                  let span = MessageMarkup.parse([object], text: nil).first else { return false }
+            return MessageMarkup.element(span) == self
+        }
+
+        /// Объект из [raw]: его ключи — основа, поля приложения пишутся поверх.
+        private var rawObject: [String: Any] {
+            guard let raw, let data = raw.data(using: .utf8),
+                  let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return [:] }
+            return object
         }
 
         /// JSON-объект в форме сервера: `{type, from, length}` и `attributes.url` у ссылки,
-        /// `entityId` у упоминания и анимодзи.
+        /// `entityId` у упоминания и анимодзи. Ключи пришедшего элемента ([raw]), которых
+        /// приложение не знает, сохраняются.
         public var json: [String: Any] {
-            var map: [String: Any] = ["type": type, "from": from, "length": length]
-            if type == "LINK", let url { map["attributes"] = ["url": url] }
-            if type == "ANIMOJI", let url { map["attributes"] = ["animojiLottieUrl": url] }
+            var map = rawObject
+            map["type"] = type
+            map["from"] = from
+            map["length"] = length
+            var attributes = map["attributes"] as? [String: Any] ?? [:]
+            if type == "LINK", let url {
+                attributes["url"] = url
+                map["attributes"] = attributes
+            }
+            if type == "ANIMOJI", let url {
+                attributes["animojiLottieUrl"] = url
+                map["attributes"] = attributes
+            }
             if let entityId { map["entityId"] = Int64(entityId).map { $0 as Any } ?? entityId }
             if let extra, let data = extra.data(using: .utf8),
                let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
@@ -195,15 +255,20 @@ public enum MessageMarkup {
     /// Пустой список — разметки нет (при правке его и нужно слать, чтобы снять разметку).
     public static func elements(_ spans: [TextSpan], text: String) -> [Element] {
         let total = text.utf16.count
-        return normalize(spans.compactMap { clip($0, length: total) }).map { span in
-            switch span.kind {
-            case .link: Element(type: "LINK", from: span.from, length: span.length, url: span.url)
-            case .mention: Element(type: "USER_MENTION", from: span.from, length: span.length, entityId: span.userId)
-            case .animoji: Element(type: "ANIMOJI", from: span.from, length: span.length, url: span.url, entityId: span.entityId)
-            case .unknown: Element(type: span.type ?? "UNKNOWN", from: span.from, length: span.length, extra: span.extra)
-            default: Element(type: type(of: span.kind), from: span.from, length: span.length)
-            }
+        return normalize(spans.compactMap { clip($0, length: total) }).map(element)
+    }
+
+    /// Элемент сервера для одного отрезка; `raw` переходит с отрезка.
+    public static func element(_ span: TextSpan) -> Element {
+        var element = switch span.kind {
+        case .link: Element(type: "LINK", from: span.from, length: span.length, url: span.url)
+        case .mention: Element(type: "USER_MENTION", from: span.from, length: span.length, entityId: span.userId)
+        case .animoji: Element(type: "ANIMOJI", from: span.from, length: span.length, url: span.url, entityId: span.entityId)
+        case .unknown: Element(type: span.type ?? "UNKNOWN", from: span.from, length: span.length, extra: span.extra)
+        default: Element(type: type(of: span.kind), from: span.from, length: span.length)
         }
+        element.raw = span.raw
+        return element
     }
 
     /// Ключи элемента, кроме `type`, `from` и `length`, объектом JSON с упорядоченными ключами;
@@ -215,12 +280,16 @@ public enum MessageMarkup {
         return String(data: data, encoding: .utf8)
     }
 
-    /// [elements] строкой JSON (для моста ядра). Пустой список — `[]`.
+    /// [elements] строкой JSON (для моста ядра). Пустой список — `[]`. Нетронутый элемент
+    /// сервера — текстом как пришёл (`raw`), остальные — объектом с упорядоченными ключами.
     public static func json(_ elements: [Element]) -> String {
-        let objects = elements.map(\.json)
-        guard let data = try? JSONSerialization.data(withJSONObject: objects, options: [.sortedKeys]),
-              let string = String(data: data, encoding: .utf8) else { return "[]" }
-        return string
+        let parts = elements.compactMap { element -> String? in
+            if let raw = element.raw, element.rawIsCurrent { return raw }
+            guard JSONSerialization.isValidJSONObject(element.json),
+                  let data = try? JSONSerialization.data(withJSONObject: element.json, options: [.sortedKeys]) else { return nil }
+            return String(data: data, encoding: .utf8)
+        }
+        return "[" + parts.joined(separator: ",") + "]"
     }
 
     /// Текст поля без пробелов и переводов строк по краям и отрезки по нему: начало сдвинуто

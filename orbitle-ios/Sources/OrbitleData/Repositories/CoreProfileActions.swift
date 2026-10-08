@@ -36,13 +36,24 @@ public actor CoreProfileActions: ProfileActionsRepository {
         try await run { try await core.searchChatMembers(chatId: chatId, query: query).map(Self.entry) }
     }
 
+    /// Фильтр ядра (`filterMembers`); ядро не может — то же правило в приложении.
+    public func filterMembers(_ members: [ChatMemberEntry], query: String) async -> [ChatMemberEntry] {
+        let wire = members.map { CoreGroupMember(id: $0.id, name: $0.name, mentionName: $0.mentionName ?? "") }
+        guard let found = await core.filterMembers(wire, query: query) else {
+            return ChatMembersRules.filter(members, query: query)
+        }
+        let byId = Dictionary(members.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return found.compactMap { byId[$0.id] }
+    }
+
     static func entry(_ member: CoreGroupMember) -> ChatMemberEntry {
         ChatMemberEntry(
             id: member.id,
             name: member.name,
             avatarURL: member.avatarURL.isEmpty ? nil : URL(string: member.avatarURL),
             role: ChatMemberRole(rawValue: member.role) ?? .member,
-            alias: member.alias.isEmpty ? nil : member.alias
+            alias: member.alias.isEmpty ? nil : member.alias,
+            mentionName: member.mentionName.isEmpty ? nil : member.mentionName
         )
     }
 

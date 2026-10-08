@@ -4,7 +4,7 @@ import OrbitleDomain
 
 /// Экран «Участники»: список страницами по 50, значки ролей и поиск. Пока строка поиска
 /// пуста — загруженные страницы; с запросом — сразу совпадения среди загруженных (имя или
-/// имя для упоминаний). Сервер спрашивается, только если загружены не все: через 200 мс после
+/// имя для упоминаний, «@» — только оно; фильтр ядра `filterMembers`). Сервер спрашивается, только если загружены не все: через 200 мс после
 /// последней правки запроса, одной страницей (test-fixtures/members).
 @MainActor
 @Observable
@@ -24,6 +24,9 @@ public final class ChatMembersListModel: Identifiable {
     }
     /// Ответ сервера на текущий запрос; `nil` — ещё не пришёл или поиск не поддерживается.
     public private(set) var serverMatches: [ChatMemberEntry]?
+    /// Совпадения среди загруженных от фильтра источника и для какого запроса и списка.
+    private var localMatches: (query: String, count: Int, list: [ChatMemberEntry])?
+    @ObservationIgnored private var filterTask: Task<Void, Never>?
     @ObservationIgnored private var marker = ChatMembersRules.firstMarker
     @ObservationIgnored private var searchTask: Task<Void, Never>?
     /// Пауза перед запросом поиска, пока печатают.
@@ -39,7 +42,12 @@ public final class ChatMembersListModel: Identifiable {
     public var visible: [ChatMemberEntry] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return ChatMembersRules.ranked(members) }
-        let local = ChatMembersRules.filter(members, query: trimmed)
+        // Пока фильтр источника не ответил — то же правило здесь, без пустого кадра.
+        let local = if let localMatches, localMatches.query == trimmed, localMatches.count == members.count {
+            localMatches.list
+        } else {
+            ChatMembersRules.filter(members, query: trimmed)
+        }
         guard let serverMatches else { return local }
         return ChatMembersRules.append(serverMatches, to: local).list
     }
@@ -55,6 +63,7 @@ public final class ChatMembersListModel: Identifiable {
             let merged = ChatMembersRules.append(page.members, to: members)
             members = merged.list
             errorMessage = nil
+            filterLoaded()
             if let next = ChatMembersRules.nextMarker(requested: requested, received: page.marker, newMembers: merged.added) {
                 marker = next
             } else {
@@ -77,9 +86,22 @@ public final class ChatMembersListModel: Identifiable {
         DialogDraft.with(peerId: member.id, me: currentUserId, title: member.name, avatarURL: member.avatarURL)
     }
 
+    private func filterLoaded() {
+        filterTask?.cancel()
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let snapshot = members
+        filterTask = Task { [weak self, actions] in
+            let found = await actions.filterMembers(snapshot, query: text)
+            guard !Task.isCancelled, let self else { return }
+            self.localMatches = (text, snapshot.count, found)
+        }
+    }
+
     private func scheduleSearch() {
         searchTask?.cancel()
         serverMatches = nil
+        filterLoaded()
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
         // Загружены все — хватает поиска по списку.
         guard !text.isEmpty, hasMore else { return }

@@ -16,6 +16,11 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         IosDiagnostics.shared.installErrorLogger { text in
             Log.warning(.core, "Причина: \(text)")
         }
+        // Строки «DIAG …» ядра (форма пушей 152/153 и т. п.) — в журнал приложения: он
+        // выгружается в «О приложении» вместе с журналом сбоев.
+        IosDiagnostics.shared.installDiagnosticLogger { line in
+            Log.info(.core, line)
+        }
     }
 
     func phaseName() async -> CorePhase {

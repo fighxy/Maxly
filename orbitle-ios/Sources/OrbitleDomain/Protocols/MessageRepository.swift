@@ -34,6 +34,15 @@ public protocol MessageRepository: Sendable {
     func edit(messageId: String, chatId: String, text: String, formatting: [TextSpan]) async throws(OrbitleError)
     /// Удалить выбранное одним запросом. Ответ — id, которые сервер не удалил (они остаются).
     func deleteSelection(messageIds: [String], chatId: String, forEveryone: Bool) async throws(OrbitleError) -> [String]
+    /// Как удалять эти сообщения (локальные или серверные id) по правилу ядра. `nil` — источник
+    /// не умеет, экран решает сам (`MessageSelectionRules`).
+    func deletePlan(messageIds: [String], chatId: String) async -> MessageSelectionRules.DeleteOptions?
+    /// Сколько секунд после отправки можно править и удалять у всех (`edit-timeout` сервера).
+    /// `nil` — неизвестно.
+    func editTimeoutSeconds() async -> Int?
+    /// Может ли аккаунт удалять чужие сообщения чата (владелец, админ с правом удаления).
+    /// `nil` — неизвестно.
+    func canDeleteOthers(chatId: String) async -> Bool?
     /// Повторная отправка сообщения со статусом `failed`.
     func retry(messageId: String) async throws(OrbitleError)
     /// Поставить реакцию `emoji` или снять её, если она уже своя. Другая своя реакция
@@ -121,6 +130,12 @@ extension MessageRepository {
         try await delete(messageIds: messageIds, chatId: chatId, forEveryone: forEveryone)
         return []
     }
+
+    public func deletePlan(messageIds: [String], chatId: String) async -> MessageSelectionRules.DeleteOptions? { nil }
+
+    public func editTimeoutSeconds() async -> Int? { nil }
+
+    public func canDeleteOthers(chatId: String) async -> Bool? { nil }
 
     public func pin(chatId: String, messageId: String) async throws(OrbitleError) { throw .invalidRequest }
     public func schedule(chatId: String, text: String, sendAt: Date) async throws(OrbitleError) { throw .invalidRequest }
