@@ -109,7 +109,15 @@ public struct AccountSettings: Sendable, Hashable {
     /// Статус «в сети» не видит никто. Иначе его видят контакты.
     public var onlineHidden: Bool
     public var safeMode: Bool
-    public var familyProtection: Bool
+    /// «Найти меня по номеру» (`SEARCH_BY_PHONE`): все или контакты.
+    public var searchByPhone: PrivacyAccess
+    /// «Позвонить» (`INCOMING_CALL`).
+    public var incomingCall: PrivacyAccess
+    /// «Пригласить в чат» (`CHATS_INVITE`).
+    public var chatsInvite: PrivacyAccess
+    /// «Показывать контент» (`CONTENT_LEVEL_ACCESS`): `true` — только безопасный.
+    public var safeContentOnly: Bool
+    public var familyProtection: FamilyProtection
     public var inactiveTTL: InactiveTTL
     /// Ссылка-приглашение сервера. `nil`, если её нет.
     public var inviteLink: URL?
@@ -124,7 +132,9 @@ public struct AccountSettings: Sendable, Hashable {
 
     public init(
         isKnown: Bool = false, phonePrivacy: PrivacyAccess = .everybody, onlineHidden: Bool = false,
-        safeMode: Bool = false, familyProtection: Bool = false, inactiveTTL: InactiveTTL = .sixMonths,
+        safeMode: Bool = false, searchByPhone: PrivacyAccess = .everybody, incomingCall: PrivacyAccess = .everybody,
+        chatsInvite: PrivacyAccess = .everybody, safeContentOnly: Bool = false,
+        familyProtection: FamilyProtection = .off, inactiveTTL: InactiveTTL = .sixMonths,
         inviteLink: URL? = nil, sferumBotId: Int64 = 2_340_831, digitalIdBotId: Int64 = 8_250_447,
         quickReaction: String = AccountSettings.defaultQuickReaction, quickReactionEnabled: Bool = true
     ) {
@@ -132,6 +142,10 @@ public struct AccountSettings: Sendable, Hashable {
         self.phonePrivacy = phonePrivacy
         self.onlineHidden = onlineHidden
         self.safeMode = safeMode
+        self.searchByPhone = searchByPhone
+        self.incomingCall = incomingCall
+        self.chatsInvite = chatsInvite
+        self.safeContentOnly = safeContentOnly
         self.familyProtection = familyProtection
         self.inactiveTTL = inactiveTTL
         self.inviteLink = inviteLink

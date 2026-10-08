@@ -82,6 +82,13 @@ final class AppContainer {
     @ObservationIgnored private var folderRepository: any FolderRepository = UnavailableFolderRepository()
     @ObservationIgnored private var accountModel: AccountSettingsModel?
     @ObservationIgnored private var securityModel: SecuritySettingsModel?
+    /// Режим призрака и приватность MAX (docs/privacy.md). Пока в ядре нет своего API — заглушка
+    /// в `UserDefaults`; настоящий мост заменит её одним адаптером.
+    @ObservationIgnored private var privacyStub: StubPrivacyControls?
+    @ObservationIgnored private var ghostScreenModel: GhostSettingsModel?
+    @ObservationIgnored private var privacyScreenModel: PrivacySettingsModel?
+    /// Приложение на экране (`scenePhase`): шапка настроек спрашивает свой статус только так.
+    @ObservationIgnored private var isAppForeground = true
     @ObservationIgnored private var devicesScreenModel: DevicesModel?
     @ObservationIgnored private var foldersScreenModel: FoldersModel?
     @ObservationIgnored private var phaseTask: Task<Void, Never>?
@@ -242,6 +249,12 @@ final class AppContainer {
             self.chatAdmin = CoreChatAdminRepository(core: core)
             self.stickerRepository = CoreStickerRepository(core: core)
             self.accounts = CoreAccountRepository(core: core)
+            self.privacyStub = StubPrivacyControls(
+                accounts: self.accounts,
+                ownPresence: StubPrivacyControls.corePresence(core: core, userId: { [weak self] in
+                    await self?.currentUserId ?? ""
+                })
+            )
             self.folderRepository = CoreFolderRepository(core: core)
             self.session = session
             self.chats = chats
@@ -556,6 +569,35 @@ final class AppContainer {
         return model
     }
 
+    private func privacyControls() -> StubPrivacyControls {
+        if let privacyStub { return privacyStub }
+        let stub = StubPrivacyControls(accounts: accounts, ownPresence: { .unknown })
+        privacyStub = stub
+        return stub
+    }
+
+    /// «Дополнительно» в «Безопасности» и свой статус в шапке настроек. Одна модель на вход.
+    func ghostSettingsModel() -> GhostSettingsModel {
+        if let ghostScreenModel { return ghostScreenModel }
+        let model = GhostSettingsModel(
+            controls: privacyControls(),
+            store: UserDefaultsSelfCheckStore(),
+            isLocalOnly: true,
+            isAppForeground: isAppForeground
+        )
+        model.activate()
+        ghostScreenModel = model
+        return model
+    }
+
+    /// Безопасный режим и строки приватности MAX.
+    func privacySettingsModel() -> PrivacySettingsModel {
+        if let privacyScreenModel { return privacyScreenModel }
+        let model = PrivacySettingsModel(controls: privacyControls(), isLocalOnly: true)
+        privacyScreenModel = model
+        return model
+    }
+
     func securitySettingsModel() -> SecuritySettingsModel {
         if let securityModel { return securityModel }
         let model = SecuritySettingsModel(repository: accounts)
@@ -695,6 +737,8 @@ final class AppContainer {
     /// Приложение вернулось на экран: сверка с сервером того, что могло прийти без пушей.
     /// Приложение на экране или в фоне (`scenePhase`): ядро передаёт это серверу в `PING`.
     func setAppActive(_ active: Bool) {
+        isAppForeground = active
+        ghostScreenModel?.setAppForeground(active)
         guard let core = activityCore else { return }
         Task { await core.setAppActive(active) }
     }
@@ -721,6 +765,7 @@ final class AppContainer {
         await profileCache.removeAll()
         await presence.removeAll()
         await presenceService?.reset()
+        privacyStub?.reset()
         await stickerRepository?.removeAll()
         recentStickers.clear()
         LottieStore.shared.removeAll()
@@ -757,6 +802,10 @@ final class AppContainer {
         accountModel?.deactivate()
         accountModel = nil
         securityModel = nil
+        ghostScreenModel?.deactivate()
+        ghostScreenModel = nil
+        privacyScreenModel?.deactivate()
+        privacyScreenModel = nil
         devicesScreenModel = nil
         foldersScreenModel?.deactivate()
         foldersScreenModel = nil

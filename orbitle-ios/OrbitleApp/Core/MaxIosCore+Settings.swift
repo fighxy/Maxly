@@ -355,7 +355,13 @@ extension MaxIosCore {
             phonePrivacy: PrivacyAccess(rawValue: value.phonePrivacy) ?? .everybody,
             onlineHidden: value.onlineHidden,
             safeMode: value.safeMode,
-            familyProtection: value.familyProtection == "ON",
+            searchByPhone: PrivacyAccess(rawValue: value.searchByPhone) ?? .everybody,
+            incomingCall: PrivacyAccess(rawValue: value.incomingCalls) ?? .everybody,
+            chatsInvite: PrivacyAccess(rawValue: value.chatInvites) ?? .everybody,
+            safeContentOnly: value.safeContentOnly,
+            // Ядро 84a9ffc читает ключ как флаг и отдаёт `ON` / `OFF`; строки сервера
+            // (`ADMIN`, `MANAGEABLE`) придут с ядром режима призрака (docs/privacy.md).
+            familyProtection: FamilyProtection(wire: value.familyProtection),
             inactiveTTL: InactiveTTL(rawValue: value.inactiveTtl) ?? .sixMonths,
             inviteLink: value.inviteLink.isEmpty ? nil : URL(string: value.inviteLink),
             sferumBotId: value.sferumBotId,

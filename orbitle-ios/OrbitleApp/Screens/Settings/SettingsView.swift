@@ -81,6 +81,8 @@ struct SettingsView: View {
                     SecurityView(
                         account: account,
                         model: container.securitySettingsModel(),
+                        privacy: container.privacySettingsModel(),
+                        ghost: container.ghostSettingsModel(),
                         privateMode: container.privateMode,
                         makeEmailFlow: container.recoveryEmailFlow
                     )
@@ -162,7 +164,12 @@ struct SettingsView: View {
             }
         }
         .task { await account.activate() }
-        .onDisappear { account.isPhoneRevealed = false }
+        // Свой статус спрашивается, только пока шапка на экране (docs/privacy.md).
+        .onAppear { container.ghostSettingsModel().setScreenVisible(true) }
+        .onDisappear {
+            account.isPhoneRevealed = false
+            container.ghostSettingsModel().setScreenVisible(false)
+        }
         .sheet(item: $sheet) { sheet in
             switch sheet {
             case .profileQR:
@@ -236,6 +243,12 @@ struct SettingsView: View {
                     .buttonStyle(.borderless)
                     .accessibilityLabel(account.isPhoneRevealed ? "Скрыть номер" : "Показать номер")
                 }
+            }
+
+            // Свой статус глазами сервера: виден, пока «Показывать мой онлайн» включено.
+            let ghost = container.ghostSettingsModel()
+            if ghost.showsOwnPresence, let presence = ghost.ownPresence, presence != .unknown {
+                OwnPresenceLine(model: ghost)
             }
         }
         .frame(maxWidth: .infinity)

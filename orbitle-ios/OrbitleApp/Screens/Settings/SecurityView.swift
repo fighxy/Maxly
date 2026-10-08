@@ -3,16 +3,18 @@ import OrbitleDomain
 import OrbitlePresentation
 import OrbitleUI
 
-/// «Безопасность»: пароль и почта, семейная защита, безопасный режим, конфиденциальность,
-/// чёрный список. Настройки конфига меняются сразу и откатываются при отказе сервера.
+/// «Безопасность»: пароль и почта, семейная защита, конфиденциальность (блок «Дополнительно»,
+/// безопасный режим и настройки MAX, секция «Информация»), приватный режим, чёрный список
+/// (docs/privacy.md). Настройки конфига меняются сразу и откатываются при отказе сервера.
 /// Приватный режим — локальная настройка устройства, сервер о нём не знает.
 struct SecurityView: View {
     @Bindable var account: AccountSettingsModel
     @Bindable var model: SecuritySettingsModel
+    @Bindable var privacy: PrivacySettingsModel
+    @Bindable var ghost: GhostSettingsModel
     @Bindable var privateMode: PrivateModeSettings
     let makeEmailFlow: @MainActor () -> RecoveryEmailFlow
     @State private var emailFlow: RecoveryEmailFlow?
-    @State private var confirmHideOnline = false
     @State private var passwordDraft = ""
     @State private var passwordHint = ""
     /// «Имена из адресной книги» (настройка устройства).
@@ -21,60 +23,10 @@ struct SecurityView: View {
     var body: some View {
         List {
             passwordSection
-
-            Section {
-                LabeledContent {
-                    SoonBadge()
-                } label: {
-                    SettingsRowLabel("Семейная защита", systemImage: "figure.and.child.holdinghands", tint: .pink)
-                }
-            } footer: {
-                Text("Мини-приложение семейной защиты ещё не открыто для сторонних клиентов MAX.")
-            }
-
-            Section {
-                if account.settings.isKnown {
-                    Toggle(isOn: Binding(
-                        get: { account.settings.safeMode },
-                        set: { value in Task { await account.setSafeMode(value) } }
-                    )) {
-                        SettingsRowLabel("Безопасный режим", systemImage: "checkmark.shield.fill", tint: .green)
-                    }
-                } else {
-                    LabeledContent {
-                        ProgressView()
-                    } label: {
-                        SettingsRowLabel("Безопасный режим", systemImage: "checkmark.shield.fill", tint: .green)
-                    }
-                }
-            } footer: {
-                Text("Никто не найдёт вас по номеру, не позвонит и не пригласит в чаты, кроме ваших контактов. Показывается только безопасный контент.")
-            }
-
-            Section {
-                Picker("Кто видит статус «в сети»", selection: Binding(
-                    get: { account.settings.onlineHidden },
-                    set: { hidden in
-                        if hidden { confirmHideOnline = true } else { Task { await account.setOnlineHidden(false) } }
-                    }
-                )) {
-                    Text(PrivacyAccess.contacts.title).tag(false)
-                    Text(PrivacyAccess.nobody.title).tag(true)
-                }
-                Picker("Кто видит мой номер", selection: Binding(
-                    get: { account.settings.phonePrivacy },
-                    set: { value in Task { await account.setPhonePrivacy(value) } }
-                )) {
-                    ForEach(PrivacyAccess.allCases, id: \.self) { access in
-                        Text(access.title).tag(access)
-                    }
-                }
-            } header: {
-                Text("Конфиденциальность")
-            }
-            .pickerStyle(.menu)
-            .disabled(!account.settings.isKnown)
-
+            familySection
+            ghostSection
+            privacySection
+            informationSection
             privateModeSection
             addressBookSection
 
@@ -88,14 +40,11 @@ struct SecurityView: View {
         }
         .navigationTitle("Безопасность")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await model.loadTwoFactor() }
-        .refreshable { await model.loadTwoFactor() }
-        .confirmationDialog("Скрыть статус «в сети»?", isPresented: $confirmHideOnline, titleVisibility: .visible) {
-            Button("Скрыть от всех") { Task { await account.setOnlineHidden(true) } }
-            Button("Отмена", role: .cancel) {}
-        } message: {
-            Text("Вы тоже перестанете видеть, кто в сети.")
+        .task {
+            privacy.activate()
+            await model.loadTwoFactor()
         }
+        .refreshable { await model.loadTwoFactor() }
         .sheet(isPresented: Binding(get: { emailFlow != nil }, set: { if !$0 { emailFlow = nil } })) {
             if let emailFlow {
                 RecoveryEmailView(flow: emailFlow) { status in model.apply(status) }
@@ -104,13 +53,115 @@ struct SecurityView: View {
         .alert(
             "Не получилось",
             isPresented: Binding(
-                get: { account.errorMessage != nil || model.errorMessage != nil },
-                set: { if !$0 { account.errorMessage = nil; model.errorMessage = nil } }
+                get: { account.errorMessage != nil || model.errorMessage != nil || privacy.errorMessage != nil },
+                set: { if !$0 { account.errorMessage = nil; model.errorMessage = nil; privacy.errorMessage = nil } }
             )
         ) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(account.errorMessage ?? model.errorMessage ?? "")
+            Text(account.errorMessage ?? model.errorMessage ?? privacy.errorMessage ?? "")
+        }
+    }
+
+    /// Статус семейной защиты из `FAMILY_PROTECTION`. Мини-приложение защиты пока не открывается.
+    private var familySection: some View {
+        Section {
+            LabeledContent {
+                if privacy.settings.isKnown {
+                    Text(privacy.familyProtection.title)
+                } else {
+                    ProgressView()
+                }
+            } label: {
+                SettingsRowLabel("Семейная защита", systemImage: "figure.and.child.holdinghands", tint: .pink)
+            }
+        } footer: {
+            switch privacy.familyProtection {
+            case .off: Text("Мини-приложение семейной защиты ещё не открыто для сторонних клиентов MAX.")
+            case .admin: Text("Вы управляете защитой другого профиля в официальном приложении MAX.")
+            case .manageable: Text("Поиск по номеру, звонки, приглашения и контент меняет администратор защиты.")
+            }
+        }
+    }
+
+    /// «Дополнительно»: режим призрака, отметки о прочтении, свой онлайн в шапке настроек.
+    private var ghostSection: some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { ghost.ghostMode },
+                set: { value in Task { await ghost.setGhostMode(value) } }
+            )) {
+                SettingsRowLabel("Режим призрака", systemImage: "eye.slash.circle.fill", tint: .purple)
+            }
+            Toggle(isOn: Binding(
+                get: { ghost.hideReadReceipts },
+                set: { value in Task { await ghost.setHideReadReceipts(value) } }
+            )) {
+                SettingsRowLabel("Не отправлять отметки о прочтении", systemImage: "text.badge.checkmark", tint: .blue)
+            }
+            Toggle(isOn: Binding(
+                get: { ghost.showsOwnPresence },
+                set: { ghost.setShowsOwnPresence($0) }
+            )) {
+                SettingsRowLabel("Показывать мой онлайн", systemImage: "antenna.radiowaves.left.and.right", tint: .green)
+            }
+        } header: {
+            PrivacyPartHeader()
+        } footer: {
+            Text(ghostFooter)
+        }
+    }
+
+    private var ghostFooter: String {
+        var text = "Режим призрака скрывает ваш онлайн и то, что вы печатаете, записываете или отправляете файлы. Отправленные сообщения и реакции видны как обычно. Без отметок о прочтении у собеседника сообщения остаются непрочитанными и после выключения такими и останутся."
+        if ghost.isLocalOnly {
+            text += " Пока это только сохраняется на устройстве: режим заработает с обновлением ядра."
+        }
+        return text
+    }
+
+    /// Безопасный режим и четыре настройки MAX под ним, в порядке MAX.
+    private var privacySection: some View {
+        Section {
+            if privacy.settings.isKnown {
+                Toggle(isOn: Binding(
+                    get: { privacy.settings.safeMode },
+                    set: { value in Task { await privacy.setSafeMode(value) } }
+                )) {
+                    SettingsRowLabel("Безопасный режим", systemImage: "checkmark.shield.fill", tint: .green)
+                }
+            } else {
+                LabeledContent {
+                    ProgressView()
+                } label: {
+                    SettingsRowLabel("Безопасный режим", systemImage: "checkmark.shield.fill", tint: .green)
+                }
+            }
+            ForEach(PrivacyRow.main) { row in
+                PrivacyRowLink(row: row, model: privacy)
+            }
+        } footer: {
+            Text(privacyFooter)
+        }
+    }
+
+    private var privacyFooter: String {
+        var text = privacy.mainLockReason
+            ?? "Безопасный режим: никто, кроме ваших контактов, не найдёт вас по номеру, не позвонит и не пригласит в чаты. Показывается только безопасный контент."
+        if privacy.isLocalOnly {
+            text += " Поиск по номеру, звонки, приглашения и контент пока сохраняются только на устройстве."
+        }
+        return text
+    }
+
+    /// «Информация»: кто видит статус «в сети» и номер.
+    private var informationSection: some View {
+        Section {
+            ForEach(PrivacyRow.information) { row in
+                PrivacyRowLink(row: row, model: privacy)
+            }
+        } header: {
+            Text("Информация")
         }
     }
 
