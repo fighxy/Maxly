@@ -19,6 +19,8 @@ public actor SyncEngine {
     private var draftStore: ServerSyncedDraftStore?
     /// Общие статусы «в сети»: им уходят события `presence`.
     private var presenceSink: (any PresenceSink)?
+    /// Пуши закрепов сообщений. В базу не пишутся.
+    private var pinHub: PinHub?
 
     private var pollTask: Task<Void, Never>?
     private var eventTask: Task<Void, Never>?
@@ -63,6 +65,11 @@ public actor SyncEngine {
     /// Куда отдавать статусы людей (события `presence`).
     public func attachPresence(_ sink: (any PresenceSink)?) {
         presenceSink = sink
+    }
+
+    /// Куда отдавать пуши закрепов. База их не хранит.
+    public func attachPins(_ hub: PinHub?) {
+        pinHub = hub
     }
 
     /// Чаты, история которых сейчас опрашивается.
@@ -271,6 +278,10 @@ public actor SyncEngine {
         case .ghostMode, .hideReadReceipts:
             // Флаги устройства: их слушают настройки (`CoreGhostPrivacyControls`), базе они не нужны.
             return
+        case .pinned:
+            // Список закрепов живёт в открытом чате. Строку сообщения и превью чата пуш не меняет.
+            guard !event.chatId.isEmpty else { return }
+            pinHub?.publish(PinPush(chatId: event.chatId, action: event.text, messageId: event.messageId, count: event.unread))
         case .typing:
             let mine = await messages.currentUser()
             guard !event.authorId.isEmpty, event.authorId != mine else { return }

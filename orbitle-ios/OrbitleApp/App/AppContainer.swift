@@ -41,6 +41,8 @@ final class AppContainer {
     @ObservationIgnored private var storiesModel: StoriesViewModel?
     @ObservationIgnored private let voicePlayer = SystemVoicePlayer()
     @ObservationIgnored private var sync: SyncEngine?
+    /// Пуши закрепов сообщений: в базу не пишутся, их слушает открытый чат.
+    @ObservationIgnored private let pinHub = PinHub()
     private let recentSearches = RecentSearchesStore()
     @ObservationIgnored private var authModel: AuthViewModel?
     @ObservationIgnored private var listModel: ChatListViewModel?
@@ -207,6 +209,7 @@ final class AppContainer {
             // Правила кэша (срок и предел) — при каждом запуске, в фоне.
             Task.detached(priority: .utility) { await storage.trim() }
             let sync = SyncEngine(outbox: outbox, chats: chats, messages: messages)
+            await sync.attachPins(pinHub)
             await sync.connectOutgoing()
             let session = SessionManager(
                 core: core,
@@ -512,6 +515,7 @@ final class AppContainer {
             chats: chats
         )
         model.typingReporter = typingReporter
+        model.attachPins(pinHub)
         chatModels[id] = model
         return model
     }

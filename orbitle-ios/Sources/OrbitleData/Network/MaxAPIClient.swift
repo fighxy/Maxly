@@ -151,6 +151,10 @@ public protocol MaxAPI: Sendable {
     /// Очистить переписку (`CHAT_CLEAR` 54). Те же три поля, что у удаления чата.
     func clearHistory(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async -> Result<Void, MaxAPIError>
     func pinMessage(chatId: String, messageId: String) async -> Result<Void, MaxAPIError>
+    /// Закрепы чата (`241`), от новых к старым.
+    func pinnedMessages(chatId: String) async -> Result<[ChatPin], MaxAPIError>
+    /// `pin` / `unpin` / `unpinAll` (`242`).
+    func updatePinned(chatId: String, action: String, messageIds: [String], forMe: Bool, notify: Bool) async -> Result<Void, MaxAPIError>
     func scheduleMessage(chatId: String, text: String, sendAtMs: Int64) async -> Result<Void, MaxAPIError>
     func scheduledMessages(chatId: String) async -> Result<[FoundMessage], MaxAPIError>
     func sendPoll(chatId: String, title: String, answers: [String]) async -> Result<Void, MaxAPIError>
@@ -284,6 +288,10 @@ public extension MaxAPI {
         await sendMessage(chatId: chatId, text: text, clientId: clientId, replyTo: replyTo, animoji: animoji)
     }
     func pinMessage(chatId: String, messageId: String) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
+    func pinnedMessages(chatId: String) async -> Result<[ChatPin], MaxAPIError> { .failure(.invalidResponse) }
+    func updatePinned(chatId: String, action: String, messageIds: [String], forMe: Bool, notify: Bool) async -> Result<Void, MaxAPIError> {
+        .failure(.invalidResponse)
+    }
     func scheduleMessage(chatId: String, text: String, sendAtMs: Int64) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
     func scheduledMessages(chatId: String) async -> Result<[FoundMessage], MaxAPIError> { .failure(.invalidResponse) }
     func sendPoll(chatId: String, title: String, answers: [String]) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
@@ -427,6 +435,24 @@ public final class MaxAPIClient: MaxAPI, Sendable {
 
     public func pinMessage(chatId: String, messageId: String) async -> Result<Void, MaxAPIError> {
         await catching { try await core.pinMessage(chatId: chatId, messageId: messageId) }
+    }
+
+    public func pinnedMessages(chatId: String) async -> Result<[ChatPin], MaxAPIError> {
+        await catching {
+            let messages = try await core.pinnedMessages(chatId: chatId, from: "", backward: -1)
+            return messages.reversed().compactMap { message in
+                let id = message.id.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !id.isEmpty else { return nil }
+                let text = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                return ChatPin(messageId: id, text: text.isEmpty ? "Сообщение" : text)
+            }
+        }
+    }
+
+    public func updatePinned(chatId: String, action: String, messageIds: [String], forMe: Bool, notify: Bool) async -> Result<Void, MaxAPIError> {
+        await catching {
+            try await core.updatePinned(chatId: chatId, action: action, messageIds: messageIds, forMe: forMe, notify: notify)
+        }
     }
 
     public func scheduleMessage(chatId: String, text: String, sendAtMs: Int64) async -> Result<Void, MaxAPIError> {

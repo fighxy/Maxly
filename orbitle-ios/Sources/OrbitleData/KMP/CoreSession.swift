@@ -402,6 +402,10 @@ public struct CoreEvent: Sendable, Equatable {
         case ghostMode
         /// «Не отправлять отметки о прочтении» (`setHideReadReceipts`): `text` — `on` или `off`.
         case hideReadReceipts
+        /// Закрепы чата (`NOTIF_CHAT_MESSAGE_PINNED` 243). `text` — `pin`, `unpin` или `unpinAll`.
+        /// `messageId` — сообщение, `unread` — сколько закрепов осталось (`-1` неизвестно).
+        /// В базу не пишется: плашку обновляет открытый чат.
+        case pinned
     }
 
     public var kind: Kind
@@ -655,8 +659,14 @@ public protocol MaxCore: Sendable {
     func clearHistory(chatId: String, lastEventTimeMs: Int64, forEveryone: Bool) async throws
     /// Текст с анимодзи и упоминаниями. Смещения UTF-16 по `text`.
     func sendRichText(chatId: String, text: String, replyTo: String, animoji: [CoreAnimojiMark], mentions: [CoreMentionMark]) async throws -> CoreMessage
-    /// Закрепить сообщение. `messageId` `0` снимает закреп.
+    /// Закрепить сообщение. `messageId` `0` снимает закреп (`CHAT_UPDATE` 55). Один закреп.
     func pinMessage(chatId: String, messageId: String) async throws
+    /// Закреплённые сообщения чата (`PINNED_MESSAGES_GET` 241), от старых к новым.
+    /// Пустой `from` и `backward` меньше нуля на сервер не уходят.
+    func pinnedMessages(chatId: String, from: String, backward: Int) async throws -> [CoreMessage]
+    /// `pin`, `unpin` или `unpinAll` (`PINNED_MESSAGE_UPDATE` 242).
+    /// `forMe` уходит только когда true, `notify` — только когда false.
+    func updatePinned(chatId: String, action: String, messageIds: [String], forMe: Bool, notify: Bool) async throws
     func scheduleMessage(chatId: String, text: String, sendAtMs: Int64) async throws
     func scheduledMessages(chatId: String) async throws -> [CoreFoundMessage]
     func sendPoll(chatId: String, title: String, answers: [String]) async throws -> CoreMessage
@@ -911,6 +921,8 @@ public extension MaxCore {
         throw unsupported
     }
     func pinMessage(chatId: String, messageId: String) async throws { throw unsupported }
+    func pinnedMessages(chatId: String, from: String, backward: Int) async throws -> [CoreMessage] { throw unsupported }
+    func updatePinned(chatId: String, action: String, messageIds: [String], forMe: Bool, notify: Bool) async throws { throw unsupported }
     func scheduleMessage(chatId: String, text: String, sendAtMs: Int64) async throws { throw unsupported }
     func scheduledMessages(chatId: String) async throws -> [CoreFoundMessage] { throw unsupported }
     func sendPoll(chatId: String, title: String, answers: [String]) async throws -> CoreMessage { throw unsupported }

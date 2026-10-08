@@ -32,6 +32,32 @@ extension MaxIosCore {
         }
     }
 
+    func pinnedMessages(chatId: String, from: String, backward: Int) async throws -> [CoreMessage] {
+        try await call("pinnedMessages") { done in
+            self.client.pinnedMessages(chatId: chatId, from: from, backward: Int32(backward)) { messages, kind, key in
+                if let kind {
+                    done(.failure(Self.failed(kind: kind, key: key)))
+                } else {
+                    done(.success((messages ?? []).map(Self.message)))
+                }
+            }
+        }
+    }
+
+    func updatePinned(chatId: String, action: String, messageIds: [String], forMe: Bool, notify: Bool) async throws {
+        let _: Void = try await call("updatePinned") { done in
+            self.client.updatePinned(chatId: chatId, action: action, messageIds: messageIds, forMe: forMe, notify: notify) { state, kind, key in
+                if let kind {
+                    done(.failure(Self.failed(kind: kind, key: key)))
+                } else if state != nil {
+                    done(.success(()))
+                } else {
+                    done(.failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)))
+                }
+            }
+        }
+    }
+
     func scheduleMessage(chatId: String, text: String, sendAtMs: Int64) async throws {
         let _: Void = try await call("scheduleMessage") { done in
             self.client.scheduleMessage(chatId: chatId, text: text, sendAt: sendAtMs) { _, kind, key in

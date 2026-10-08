@@ -91,8 +91,12 @@ public protocol MessageRepository: Sendable {
     func cancelUpload(messageId: String) async
     /// Ход загрузок: локальный id сообщения → доля 0…1. Сразу при подписке и после каждого шага.
     func uploadProgress() -> AsyncStream<[String: Double]>
-    /// Закрепить сообщение. `messageId` `0` снимает закреп.
+    /// Закрепить сообщение. `messageId` `0` снимает закреп (`CHAT_UPDATE` 55).
     func pin(chatId: String, messageId: String) async throws(OrbitleError)
+    /// Закрепы чата от новых к старым (`PINNED_MESSAGES_GET` 241).
+    func loadPins(chatId: String) async throws(OrbitleError) -> [ChatPin]
+    /// `pin`, `unpin` или `unpinAll` (`PINNED_MESSAGE_UPDATE` 242).
+    func updatePin(chatId: String, action: String, messageIds: [String], forMe: Bool, notify: Bool) async throws(OrbitleError)
     func schedule(chatId: String, text: String, sendAt: Date) async throws(OrbitleError)
     func scheduled(chatId: String) async throws(OrbitleError) -> [FoundMessage]
     func sendPoll(chatId: String, title: String, answers: [String]) async throws(OrbitleError)
@@ -138,6 +142,10 @@ extension MessageRepository {
     public func canDeleteOthers(chatId: String) async -> Bool? { nil }
 
     public func pin(chatId: String, messageId: String) async throws(OrbitleError) { throw .invalidRequest }
+    public func loadPins(chatId: String) async throws(OrbitleError) -> [ChatPin] { throw .invalidRequest }
+    public func updatePin(chatId: String, action: String, messageIds: [String], forMe: Bool, notify: Bool) async throws(OrbitleError) {
+        throw .invalidRequest
+    }
     public func schedule(chatId: String, text: String, sendAt: Date) async throws(OrbitleError) { throw .invalidRequest }
     public func scheduled(chatId: String) async throws(OrbitleError) -> [FoundMessage] { throw .invalidRequest }
     public func sendPoll(chatId: String, title: String, answers: [String]) async throws(OrbitleError) { throw .invalidRequest }

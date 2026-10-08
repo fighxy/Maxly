@@ -39,4 +39,19 @@ struct PinBarTests {
         bar.apply(action: "other", messageId: "9", text: "нет")
         #expect(bar.pins.isEmpty)
     }
+
+    @Test("Пуш закрепа доходит до слушателя")
+    func hubDelivers() async {
+        let hub = PinHub()
+        let stream = hub.pins()
+        let push = PinPush(chatId: "c", action: "pin", messageId: "m", count: 2)
+        let task = Task { () -> PinPush? in
+            for await item in stream { return item }
+            return nil
+        }
+        try? await Task.sleep(for: .milliseconds(30))
+        hub.publish(push)
+        let got = await task.value
+        #expect(got == push)
+    }
 }

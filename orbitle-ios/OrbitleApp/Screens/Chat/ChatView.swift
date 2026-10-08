@@ -149,8 +149,8 @@ struct ChatView: View {
     private var topBanners: some View {
         VStack(spacing: 0) {
             if privateMode.isMasked { privateModeBanner }
-            if let pinned = viewModel.pinned {
-                pinBanner(id: pinned.id, text: pinned.text)
+            if let pinned = viewModel.bannerPin {
+                pinBanner(id: pinned.id, text: pinned.text, counter: pinned.counter)
             }
         }
         // Низ шапки с плашками: выше него лента закрыта, сообщение там не прочитано.
@@ -382,6 +382,10 @@ struct ChatView: View {
             }
             .sheet(isPresented: $searchShown) { searchSheet }
             .sheet(isPresented: $pollShown) { pollSheet }
+            .sheet(isPresented: $viewModel.pinListShown) { pinList }
+            .confirmationDialog("Закрепить сообщение", isPresented: pinPromptShown, titleVisibility: .visible) {
+                pinPromptButtons
+            }
             .sheet(isPresented: $scheduleShown) { scheduleSheet }
             .sheet(item: $viewModel.botAppRequest) { request in
                 if let makeBotApp {
@@ -850,22 +854,95 @@ struct ChatView: View {
         PrivateModeMask.chatTitle(type: kind, isSavedMessages: viewModel.isSavedMessages)
     }
 
-    /// Верх ленты в приватном режиме: стеклянная капсула «Отключить приватный режим»
-    /// и подсказка, что сообщение открывается касанием.
-    private func pinBanner(id: String, text: String) -> some View {
+    private var pinPromptShown: Binding<Bool> {
+        Binding(
+            get: { viewModel.pinPrompt != nil },
+            set: { if !$0 { viewModel.pinPrompt = nil } }
+        )
+    }
+
+    @ViewBuilder
+    private var pinPromptButtons: some View {
+        if kind == .private {
+            Button("Только у меня") { Task { await viewModel.confirmPin(forMe: true, notify: true) } }
+            Button("Закрепить") { Task { await viewModel.confirmPin(forMe: false, notify: true) } }
+        } else if kind == .group {
+            Button("Уведомить участников") { Task { await viewModel.confirmPin(forMe: false, notify: true) } }
+            Button("Закрепить без уведомления") { Task { await viewModel.confirmPin(forMe: false, notify: false) } }
+        } else {
+            Button("Закрепить") { Task { await viewModel.confirmPin(forMe: false, notify: true) } }
+        }
+        Button("Отмена", role: .cancel) {}
+    }
+
+    private var pinList: some View {
+        NavigationStack {
+            List {
+                if viewModel.pinBar.pins.isEmpty {
+                    Text("Закрепов нет")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(viewModel.pinBar.pins, id: \.messageId) { pin in
+                    Button {
+                        viewModel.pinListShown = false
+                        viewModel.focusReply(pin.messageId)
+                    } label: {
+                        Text(pin.text)
+                            .lineLimit(2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .swipeActions {
+                        Button("Снять", role: .destructive) {
+                            Task { await viewModel.unpin(messageId: pin.messageId) }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Закреплённые")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Закрыть") { viewModel.pinListShown = false }
+                }
+                if viewModel.pinBar.pins.count > 1 {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Снять все") { Task { await viewModel.unpinAll() } }
+                    }
+                }
+            }
+        }
+    }
+
+    private func pinBanner(id: String, text: String, counter: String?) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "pin.fill")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Color.orbitleAccent)
             Button {
-                viewModel.focusReply(id)
+                viewModel.cyclePin()
             } label: {
-                Text(text)
-                    .font(.subheadline)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 1) {
+                    if let counter {
+                        Text(counter)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color.orbitleAccent)
+                    }
+                    Text(text)
+                        .font(.subheadline)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
             .buttonStyle(.plain)
+            if viewModel.pinBar.pins.count > 1 {
+                Button {
+                    viewModel.pinListShown = true
+                } label: {
+                    Image(systemName: "list.bullet")
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Все закреплённые")
+            }
             Button("Снять") { Task { await viewModel.unpin() } }
                 .font(.caption.weight(.semibold))
         }

@@ -75,7 +75,16 @@ public final class ChatViewModel {
     /// чужим сообщением новее неё. `0` — неизвестна, разделитель ставится по счётчику.
     @ObservationIgnored private var openReadMark: Int64 = 0
     /// Закреп, который видит шапка чата. `nil` — закрепа нет.
+    /// Пока список 241 не пришёл, это служебное сообщение `pin` в ленте.
     public private(set) var pinned: (id: String, text: String)?
+    /// Список закрепов 241, от нового к старому. Пустой, пока его не загрузили.
+    public private(set) var pinBar = PinBar()
+    /// Список 241 уже ответил: шапка смотрит на `pinBar`, а не на служебное сообщение.
+    public private(set) var pinsFromList = false
+    /// Лист со всеми закрепами.
+    public var pinListShown = false
+    /// Сообщение, которое спрашивают, как закрепить.
+    public var pinPrompt: Message?
     /// Голосовые (id вложения), чья расшифровка идёт: текст ещё не пришёл.
     public private(set) var transcribing: Set<String> = []
     /// Голосовые, у которых расшифровка раскрыта.
@@ -228,6 +237,8 @@ public final class ChatViewModel {
     @ObservationIgnored private var commandsAsked = false
     @ObservationIgnored private var pinOverride: PinNotice?
     @ObservationIgnored private var pinBaselineId: String?
+    @ObservationIgnored private var pinHub: PinHub?
+    @ObservationIgnored private var pinWatch: Task<Void, Never>?
     /// Собеседник личного чата: команды бота и сигнал звонка.
     @ObservationIgnored public var peerId: String?
     @ObservationIgnored public var peerIsBot = false
@@ -292,6 +303,21 @@ public final class ChatViewModel {
         readMarks = ReadMarkScheduler(sleep: readMarkSleep) { [weak self] mark in
             await self?.sendReadMark(mark) ?? false
         }
+    }
+
+    /// Пуши закрепов. База их не хранит, поэтому чат слушает их сам.
+    public func attachPins(_ hub: PinHub?) {
+        pinHub = hub
+    }
+
+    /// Шапка: текущий закреп и «2 из 5», когда их несколько.
+    public var bannerPin: (id: String, text: String, counter: String?)? {
+        if pinsFromList {
+            guard let current = pinBar.current else { return nil }
+            return (current.messageId, current.text, pinBar.counter)
+        }
+        guard let pinned else { return nil }
+        return (pinned.id, pinned.text, nil)
     }
 
     public var errorMessage: String? { error?.userMessage }
@@ -479,6 +505,8 @@ public final class ChatViewModel {
         guard watch == nil else { return }
         loadReactionCatalog()
         startMessagesWatch()
+        startPinWatch()
+        Task { [weak self] in await self?.reloadPins() }
         let progress = repository.uploadProgress()
         progressWatch = Task { [weak self] in
             for await snapshot in progress {
@@ -561,6 +589,8 @@ public final class ChatViewModel {
         selection.cancel()
         draftWatch?.cancel()
         draftWatch = nil
+        pinWatch?.cancel()
+        pinWatch = nil
         flushDraft()
     }
 
@@ -2209,13 +2239,45 @@ public final class ChatViewModel {
         commandHints = []
     }
 
-    public func pin(_ message: Message) async {
+    /// Меню закрепа: в диалоге «Только у меня», в группе «Уведомить участников».
+    public func requestPin(_ message: Message) {
         guard message.status == .sent, Int64(message.id) != nil, message.content.pin == nil else { return }
+        pinPrompt = message
+    }
+
+    public func confirmPin(forMe: Bool, notify: Bool) async {
+        let message = pinPrompt
+        pinPrompt = nil
+        guard let message else { return }
+        await pin(message, forMe: forMe, notify: notify)
+    }
+
+    public func pin(_ message: Message, forMe: Bool = false, notify: Bool = true) async {
+        guard message.status == .sent, Int64(message.id) != nil, message.content.pin == nil else { return }
+        let preview = message.replySnippet.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = preview.isEmpty ? "Сообщение" : preview
+        do {
+            try await repository.updatePin(chatId: chatId, action: "pin", messageIds: [message.id], forMe: forMe, notify: notify)
+            var bar = pinBar
+            bar.apply(action: "pin", messageId: message.id, text: title)
+            pinBar = bar
+            pinsFromList = true
+            showNotice("Сообщение закреплено")
+        } catch let failure as OrbitleError where failure == .invalidRequest && !forMe && notify {
+            await pinLegacy(message, title: title)
+        } catch let failure as OrbitleError {
+            show(failure)
+        } catch {
+            show(.unknown)
+        }
+    }
+
+    /// Opcode 55: один закреп, если список 242 источнику недоступен.
+    private func pinLegacy(_ message: Message, title: String) async {
         pinBaselineId = live.reversed().first { $0.content.pin != nil }?.id
         do {
             try await repository.pin(chatId: chatId, messageId: message.id)
-            let preview = message.replySnippet.trimmingCharacters(in: .whitespacesAndNewlines)
-            pinOverride = PinNotice(messageId: message.id, preview: preview.isEmpty ? "Сообщение" : preview)
+            pinOverride = PinNotice(messageId: message.id, preview: title)
             applyPinState()
             showNotice("Сообщение закреплено")
         } catch {
@@ -2224,6 +2286,10 @@ public final class ChatViewModel {
     }
 
     public func unpin() async {
+        if pinsFromList, let id = pinBar.current?.messageId {
+            await unpin(messageId: id)
+            return
+        }
         pinBaselineId = live.reversed().first { $0.content.pin != nil }?.id
         do {
             try await repository.pin(chatId: chatId, messageId: "0")
@@ -2233,6 +2299,81 @@ public final class ChatViewModel {
         } catch {
             show(error)
         }
+    }
+
+    public func unpin(messageId: String) async {
+        let id = messageId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty else { return }
+        do {
+            try await repository.updatePin(chatId: chatId, action: "unpin", messageIds: [id], forMe: false, notify: true)
+            var bar = pinBar
+            bar.apply(action: "unpin", messageId: id)
+            pinBar = bar
+            pinsFromList = true
+            showNotice("Закреп снят")
+        } catch {
+            show(error)
+        }
+    }
+
+    public func unpinAll() async {
+        do {
+            try await repository.updatePin(chatId: chatId, action: "unpinAll", messageIds: [], forMe: false, notify: true)
+            pinBar = PinBar()
+            pinsFromList = true
+            showNotice("Закрепы сняты")
+        } catch {
+            show(error)
+        }
+    }
+
+    /// Касание плашки: открыть текущий закреп и показать следующий более старый.
+    public func cyclePin() {
+        if pinsFromList {
+            var bar = pinBar
+            guard let id = bar.advance() else { return }
+            pinBar = bar
+            focusReply(id)
+            return
+        }
+        if let pinned { focusReply(pinned.id) }
+    }
+
+    public func reloadPins() async {
+        do {
+            let pins = try await repository.loadPins(chatId: chatId)
+            var bar = pinBar
+            bar.replace(pins)
+            pinBar = bar
+            pinsFromList = true
+        } catch {
+            // Служебное сообщение в ленте остаётся запасным закрепом.
+        }
+    }
+
+    private func startPinWatch() {
+        pinWatch?.cancel()
+        guard let pinHub else { return }
+        let stream = pinHub.pins()
+        pinWatch = Task { [weak self] in
+            for await push in stream {
+                guard let self, !Task.isCancelled, push.chatId == self.chatId else { continue }
+                await self.applyPinPush(push)
+            }
+        }
+    }
+
+    private func applyPinPush(_ push: PinPush) async {
+        if push.count == 0 || push.action == "unpinAll" {
+            pinBar = PinBar()
+            pinsFromList = true
+            return
+        }
+        var bar = pinBar
+        bar.apply(action: push.action, messageId: push.messageId)
+        pinBar = bar
+        pinsFromList = true
+        await reloadPins()
     }
 
     public func vote(_ message: Message, answerId: String) async {
@@ -2298,6 +2439,8 @@ public final class ChatViewModel {
     }
 
     private func applyPinState() {
+        // Список 241 уже на экране: служебное сообщение его не затирает.
+        guard !pinsFromList else { return }
         let latestId = live.reversed().first { $0.content.pin != nil }?.id
         if pinOverride != nil, latestId != pinBaselineId {
             pinOverride = nil

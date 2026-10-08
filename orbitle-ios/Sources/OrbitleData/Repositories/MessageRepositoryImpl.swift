@@ -840,6 +840,19 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         }
     }
 
+    public func loadPins(chatId: String) async throws(OrbitleError) -> [ChatPin] {
+        switch await api.pinnedMessages(chatId: chatId) {
+        case .success(let pins): return pins
+        case .failure(let error): throw error.orbitleError
+        }
+    }
+
+    public func updatePin(chatId: String, action: String, messageIds: [String], forMe: Bool, notify: Bool) async throws(OrbitleError) {
+        if case .failure(let error) = await api.updatePinned(chatId: chatId, action: action, messageIds: messageIds, forMe: forMe, notify: notify) {
+            throw error.orbitleError
+        }
+    }
+
     public func schedule(chatId: String, text: String, sendAt: Date) async throws(OrbitleError) {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { throw .invalidRequest }

@@ -69,3 +69,50 @@ public struct PinBar: Equatable, Sendable {
         index = pins.isEmpty ? 0 : min(index, pins.count - 1)
     }
 }
+
+/// Пуш `pinned`. База его не пишет: открытый чат обновляет плашку.
+public struct PinPush: Equatable, Sendable {
+    public var chatId: String
+    public var action: String
+    public var messageId: String
+    /// Сколько закрепов осталось. `-1` — пуш число не принёс.
+    public var count: Int
+
+    public init(chatId: String, action: String, messageId: String, count: Int) {
+        self.chatId = chatId
+        self.action = action
+        self.messageId = messageId
+        self.count = count
+    }
+}
+
+/// Раздаёт пуши закрепов всем открытым чатам. Поток ядра один, слушателей много.
+public final class PinHub: @unchecked Sendable {
+    private let lock = NSLock()
+    private var listeners: [UUID: AsyncStream<PinPush>.Continuation] = [:]
+
+    public init() {}
+
+    public func pins() -> AsyncStream<PinPush> {
+        AsyncStream { continuation in
+            let id = UUID()
+            lock.lock()
+            listeners[id] = continuation
+            lock.unlock()
+            continuation.onTermination = { [weak self] _ in
+                self?.lock.lock()
+                self?.listeners[id] = nil
+                self?.lock.unlock()
+            }
+        }
+    }
+
+    public func publish(_ push: PinPush) {
+        lock.lock()
+        let current = Array(listeners.values)
+        lock.unlock()
+        for continuation in current {
+            continuation.yield(push)
+        }
+    }
+}
