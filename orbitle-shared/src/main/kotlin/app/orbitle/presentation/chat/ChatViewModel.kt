@@ -664,6 +664,26 @@ class ChatViewModel(
         }
     }
 
+    fun sendVideoNote(recording: app.orbitle.domain.VideoNoteRecording) {
+        val reply = _state.value.replyTo
+        _state.update { it.copy(replyTo = null) }
+        viewModelScope.launch {
+            try {
+                repository.sendVideoNote(chatId, recording, reply?.id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                show(e)
+            }
+        }
+    }
+
+    /** Готовая запись из поля ввода: голосовое или кружок. */
+    fun sendRecorded(draft: RecordedDraft) = when (draft) {
+        is RecordedDraft.Voice -> sendVoice(draft.recording)
+        is RecordedDraft.Note -> sendVideoNote(draft.recording)
+    }
+
     fun sendSticker(sticker: Sticker) {
         val reply = _state.value.replyTo
         _state.update { it.copy(replyTo = null) }

@@ -120,6 +120,8 @@ dependencies {
     implementation(libs.camera.camera2)
     implementation(libs.camera.lifecycle)
     implementation(libs.camera.view)
+    // Кружки: запись видео камерой.
+    implementation(libs.camera.video)
     // Звонки: WebRTC (BSD), сборка webrtc-sdk с аппаратными кодеками.
     implementation(libs.webrtc.android)
     debugImplementation(libs.compose.ui.tooling)

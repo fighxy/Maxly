@@ -229,6 +229,22 @@ fun ChatScreen(
     val photoSessions = remember(model) { mutableMapOf<String,app.orbitle.ui.photo.PhotoEditorSession>() }
     val recorderScope = rememberCoroutineScope()
     val voiceRecorder = remember { DesktopVoiceRecorder(recorderScope) }
+    val composerRecorder = remember {
+        app.orbitle.media.DesktopComposerRecorder(voiceRecorder, app.orbitle.media.DesktopVideoNoteRecorder(recorderScope), recorderScope)
+    }
+    // Голосовое или кружок: режим кнопки запоминается на устройстве.
+    val recording = remember {
+        val prefs = java.util.prefs.Preferences.userRoot().node("app/orbitle/chat")
+        val store = object : app.orbitle.data.PreferenceStore {
+            override fun get(key: String): String? = prefs.get(key, null)
+            override fun put(key: String, value: String) = prefs.put(key, value)
+        }
+        app.orbitle.presentation.chat.RecordingController(composerRecorder, recorderScope, app.orbitle.presentation.chat.RecordingModeSettings(store))
+    }
+    recording.onRecorded = model::sendRecorded
+    recording.onStart = model.media::stopVoice
+    // Уход из чата обрывает запись: ничего не уходит.
+    androidx.compose.runtime.DisposableEffect(recording) { onDispose { recording.cancel() } }
     val importScope = rememberCoroutineScope()
     val importPicked: (Boolean) -> Unit = { images ->
         val files = DesktopActions.pickFiles(imageOnly = images)
@@ -391,9 +407,21 @@ fun ChatScreen(
                     onSticker = model::sendSticker,
                     onAnimoji = model::noteAnimoji,
                     onCancelUpload = { model.cancelUpload() },
-                    recorder = voiceRecorder,
-                    onVoice = model::sendVoice,
-                    onRecordingStart = model.media::stopVoice,
+                    recording = recording,
+                    recordingLive = composerRecorder.live,
+                    videoPreview = { modifier ->
+                        val frame by composerRecorder.note.preview.collectAsStateWithLifecycle()
+                        androidx.compose.foundation.layout.Box(modifier.background(androidx.compose.ui.graphics.Color.Black)) {
+                            frame?.let {
+                                androidx.compose.foundation.Image(
+                                    it, null,
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                    // Своя камера — как в зеркале.
+                                    modifier = Modifier.matchParentSize().graphicsLayer { scaleX = -1f },
+                                )
+                            }
+                        }
+                    },
                     onMention = model::insertMention,
                     onCommand = model::insertCommand,
                     onEditLast = model::editLast,
