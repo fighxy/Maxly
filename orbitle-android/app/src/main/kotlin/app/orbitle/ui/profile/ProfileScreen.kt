@@ -140,6 +140,7 @@ fun ProfileScreen(
         )
     }
 
+    model.contactActions?.let { app.orbitle.ui.contacts.ContactActionsHost(it, model::notify) }
     LaunchedEffect(notice) {
         val text = notice ?: return@LaunchedEffect
         snackbar.showSnackbar(text)
@@ -247,6 +248,24 @@ fun ProfileScreen(
                                 }
                             }
                         }
+                    }
+                }
+            }
+            if (state.contact != null && model.contactActions != null) {
+                item(key = "contact") {
+                    Card {
+                        Text(
+                            "Переименовать контакт",
+                            Modifier.fillMaxWidth().clickable(onClick = model::askRenameContact).padding(horizontal = 16.dp, vertical = 14.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        Text(
+                            "Удалить из контактов",
+                            Modifier.fillMaxWidth().clickable(onClick = model::askRemoveContact).padding(horizontal = 16.dp, vertical = 14.dp),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
                     }
                 }
             }

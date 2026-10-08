@@ -3,11 +3,13 @@ package app.orbitle.data
 import app.orbitle.domain.Contact
 import com.max.core.api.MaxUser
 import com.max.core.api.UserName
+import com.max.core.events.MaxEvent
 import com.max.core.protocol.Opcode
 import com.max.core.state.MaxState
 import com.max.shared.MaxClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
 
 /** Контакты аккаунта из стора ядра. */
@@ -29,11 +31,26 @@ interface ContactRepository {
      */
     suspend fun add(userId: String, firstName: String): Contact? = add(userId)
 
+    /** Своё имя контакта, видное только этому аккаунту (`CUSTOM`). Пустая фамилия — без неё. */
+    suspend fun rename(userId: String, firstName: String, lastName: String?): Contact? = null
+
+    /** Убрать из контактов. `false` — не вышло или не поддерживается. */
+    suspend fun remove(userId: String): Boolean = false
+
+    /** В контакты по номеру, с именем, если оно задано. `null` — не поддерживается. */
+    suspend fun addByPhone(phone: String, firstName: String?, lastName: String?): AddedContact? = null
+
+    /** Контакты, изменённые на другом устройстве (пуш `NOTIF_CONTACT`). */
+    val changes: Flow<Contact> get() = emptyFlow()
+
     companion object {
         /** Короче форма на iOS не отправляет запрос. */
         const val MIN_PHONE_DIGITS = 7
     }
 }
+
+/** Контакт после добавления по номеру; [isNew] — раньше его в списке не было. */
+data class AddedContact(val contact: Contact, val isNew: Boolean)
 
 class CoreContactRepository(private val client: MaxClient) : ContactRepository {
     override val contacts: Flow<List<Contact>> = client.store.state
@@ -62,6 +79,27 @@ class CoreContactRepository(private val client: MaxClient) : ContactRepository {
     }
 
     override suspend fun add(userId: String): Contact? = add(userId, "")
+
+    override suspend fun rename(userId: String, firstName: String, lastName: String?): Contact? {
+        val id = userId.toLongOrNull() ?: return null
+        val user = MaxCoreGateway.call { client.renameContact(id, firstName, lastName) }
+        return contact(user, client.store.state.value)
+    }
+
+    override suspend fun remove(userId: String): Boolean {
+        val id = userId.toLongOrNull() ?: return false
+        MaxCoreGateway.call { client.removeContact(id) }
+        return true
+    }
+
+    override suspend fun addByPhone(phone: String, firstName: String?, lastName: String?): AddedContact? {
+        val added = MaxCoreGateway.call { client.addContactByPhone(phone, firstName, lastName) }
+        return AddedContact(contact(added.user, client.store.state.value), added.isNew)
+    }
+
+    // Пуш стор ядра применяет сам; здесь — чтобы открытые экраны обновили имя.
+    override val changes: Flow<Contact> = client.events.of<MaxEvent.ContactUpdated>()
+        .map { contact(it.user, client.store.state.value) }
 
     override suspend fun add(userId: String, firstName: String): Contact? {
         val id = userId.toLongOrNull() ?: return null

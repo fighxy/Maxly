@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -52,6 +53,8 @@ data class ProfileUiState(
     val blocked: Boolean? = null,
     /** Идёт блокировка или разблокировка. */
     val blocking: Boolean = false,
+    /** Собеседник в контактах: его можно переименовать и удалить. `null` — не контакт или неизвестно. */
+    val contact: app.orbitle.domain.Contact? = null,
 )
 
 /** Профиль собеседника, бота, группы или канала с общими медиа. */
@@ -71,6 +74,8 @@ class ProfileViewModel(
     private val sharedPauseMs: Long = 400,
     /** Чёрный список: «Заблокировать» и «Разблокировать» собеседника. `null` — без них. */
     private val account: app.orbitle.data.AccountRepository? = null,
+    /** Контакты: переименовать, удалить, добавить собеседника. `null` — без этих пунктов. */
+    private val contacts: app.orbitle.data.ContactRepository? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(build(profiles.cached(chatId) ?: ChatProfile(ChatProfile.Kind.USER, chatId, title.orEmpty()), loading = true))
@@ -80,6 +85,10 @@ class ProfileViewModel(
     val notice: StateFlow<String?> = _notice.asStateFlow()
 
     val media = ChatMedia(chatId, messages, viewModelScope, player, files, onError = { show(it) })
+
+    /** Диалоги действий с контактом; `null` — без контактов. */
+    val contactActions: app.orbitle.presentation.contacts.ContactActions? =
+        contacts?.let { app.orbitle.presentation.contacts.ContactActions(viewModelScope, it) }
 
     private var window: List<Message> = emptyList()
     private val remote = mutableMapOf<String, Message>()
@@ -95,7 +104,8 @@ class ProfileViewModel(
         viewModelScope.launch {
             try {
                 val fresh = profiles.profile(chatId)
-                _state.update { current -> build(fresh, loading = false).copy(shared = current.shared, tab = current.tab, blocked = current.blocked) }
+                _state.update { current -> build(fresh, loading = false).copy(shared = current.shared, tab = current.tab, blocked = current.blocked, contact = current.contact) }
+                if (_state.value.contact == null) contacts?.let { repo -> findContact(repo, fresh) }
                 askBlocked(fresh)
             } catch (e: CancellationException) {
                 throw e
@@ -116,6 +126,22 @@ class ProfileViewModel(
                 .distinctUntilChanged()
                 .collectLatest { tickPresence() }
         }
+        contacts?.let { repo ->
+            viewModelScope.launch {
+                repo.contacts.collect { list ->
+                    val peer = _state.value.profile.peerId ?: return@collect
+                    val contact = list.firstOrNull { it.id == peer }
+                    if (contact != _state.value.contact) {
+                        _state.update { it.copy(contact = contact) }
+                        refreshTitle()
+                    }
+                }
+            }
+            viewModelScope.launch {
+                // Переименовали на другом устройстве: имя в шапке профиля новое.
+                repo.changes.collect { changed -> if (changed.id == _state.value.profile.peerId) refreshTitle() }
+            }
+        }
         viewModelScope.launch {
             messages.messages(chatId).collect {
                 window = it
@@ -127,6 +153,35 @@ class ProfileViewModel(
                 }
             }
         }
+    }
+
+    /** Профиль пришёл позже списка контактов: собеседник мог в нём уже быть. */
+    private fun findContact(repo: app.orbitle.data.ContactRepository, card: ChatProfile) {
+        val peer = card.peerId ?: return
+        viewModelScope.launch {
+            val list = repo.contacts.first()
+            list.firstOrNull { it.id == peer }?.let { contact -> _state.update { it.copy(contact = contact) } }
+        }
+    }
+
+    /** Имя из стора после правки контакта. */
+    private fun refreshTitle() {
+        val fresh = profiles.cached(chatId) ?: return
+        if (fresh.kind != ChatProfile.Kind.USER && fresh.kind != ChatProfile.Kind.BOT) return
+        _state.update { current ->
+            val profile = current.profile.copy(title = fresh.title)
+            val title = title(profile)
+            current.copy(profile = profile, title = title, avatar = avatarOf(profile, title))
+        }
+    }
+
+    /** «Удалить из контактов» и «Переименовать» в меню профиля. */
+    fun askRenameContact() {
+        _state.value.contact?.let { contactActions?.askRename(it) }
+    }
+
+    fun askRemoveContact() {
+        _state.value.contact?.let { contactActions?.askRemove(it) }
     }
 
     /** Место собеседника в чёрном списке: список спрашивается один раз на профиль. */
@@ -259,12 +314,13 @@ class ProfileViewModel(
     private fun build(profile: ChatProfile, loading: Boolean): ProfileUiState {
         val title = title(profile)
         val (subtitle, accent) = subtitle(profile)
-        val avatar = when {
-            profile.kind == ChatProfile.Kind.SAVED -> ChatAvatar(ChatAvatar.Kind.SavedMessages, 0)
-            profile.avatarUrl != null -> ChatAvatar(ChatAvatar.Kind.Photo(profile.avatarUrl, ChatAvatar.initials(title)), ChatAvatar.colorIndex(chatId))
-            else -> ChatAvatar(ChatAvatar.Kind.Initials(ChatAvatar.initials(title)), ChatAvatar.colorIndex(chatId))
-        }
-        return ProfileUiState(profile, title, subtitle, accent, avatar, rows(profile), profile.commands, isLoading = loading)
+        return ProfileUiState(profile, title, subtitle, accent, avatarOf(profile, title), rows(profile), profile.commands, isLoading = loading)
+    }
+
+    private fun avatarOf(profile: ChatProfile, title: String): ChatAvatar = when {
+        profile.kind == ChatProfile.Kind.SAVED -> ChatAvatar(ChatAvatar.Kind.SavedMessages, 0)
+        profile.avatarUrl != null -> ChatAvatar(ChatAvatar.Kind.Photo(profile.avatarUrl, ChatAvatar.initials(title)), ChatAvatar.colorIndex(chatId))
+        else -> ChatAvatar(ChatAvatar.Kind.Initials(ChatAvatar.initials(title)), ChatAvatar.colorIndex(chatId))
     }
 
     companion object {

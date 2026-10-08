@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.outlined.Person
@@ -45,6 +46,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import app.orbitle.presentation.contacts.ContactRow
 import app.orbitle.presentation.contacts.ContactsUiState
 import app.orbitle.presentation.contacts.ContactsViewModel
@@ -58,6 +60,9 @@ import app.orbitle.ui.components.privateBlur
 fun ContactsScreen(model: ContactsViewModel, onOpen: (ContactRow) -> Unit) {
     val state by model.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { model.appeared() }
+    val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    app.orbitle.ui.contacts.ContactActionsHost(model.actions) { text -> scope.launch { snackbar.showSnackbar(text) } }
     Scaffold(
         topBar = {
             if (state.isSearching) {
@@ -85,10 +90,14 @@ fun ContactsScreen(model: ContactsViewModel, onOpen: (ContactRow) -> Unit) {
             } else {
                 TopAppBar(
                     title = { Text("Контакты") },
-                    actions = { IconButton(onClick = { model.setSearching(true) }) { Icon(Icons.Filled.Search, "Поиск") } },
+                    actions = {
+                        IconButton(onClick = model.actions::askAddByPhone) { Icon(Icons.Filled.PersonAdd, "Добавить по номеру") }
+                        IconButton(onClick = { model.setSearching(true) }) { Icon(Icons.Filled.Search, "Поиск") }
+                    },
                 )
             }
         },
+        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbar) },
         contentWindowInsets = WindowInsets(0),
     ) { padding ->
         PullToRefreshBox(
@@ -101,7 +110,7 @@ fun ContactsScreen(model: ContactsViewModel, onOpen: (ContactRow) -> Unit) {
                     if (state.searchResults.isEmpty()) {
                         item { Text("Ничего не найдено", Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
-                    items(state.searchResults, key = { it.id }) { ContactItem(it) { onOpen(it) } }
+                    items(state.searchResults, key = { it.id }) { ContactItem(it, onRename = { model.askRename(it.id) }, onRemove = { model.askRemove(it.id) }) { onOpen(it) } }
                 }
                 state.content == ContactsUiState.Content.LOADING -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 state.content == ContactsUiState.Content.EMPTY -> LazyColumn(Modifier.fillMaxSize()) {
@@ -126,7 +135,7 @@ fun ContactsScreen(model: ContactsViewModel, onOpen: (ContactRow) -> Unit) {
                                 color = MaterialTheme.colorScheme.primary,
                             )
                         }
-                        items(section.rows, key = { it.id }) { ContactItem(it) { onOpen(it) } }
+                        items(section.rows, key = { it.id }) { ContactItem(it, onRename = { model.askRename(it.id) }, onRemove = { model.askRemove(it.id) }) { onOpen(it) } }
                     }
                     item(key = "count") {
                         Text(
@@ -147,7 +156,7 @@ private fun countText(count: Int): String =
     "$count ${app.orbitle.presentation.common.PresenceText.plural(count, "контакт", "контакта", "контактов")}"
 
 @Composable
-private fun ContactItem(row: ContactRow, onClick: () -> Unit) {
+private fun ContactItem(row: ContactRow, onRename: () -> Unit, onRemove: () -> Unit, onClick: () -> Unit) {
     val privacy = app.orbitle.ui.components.LocalPrivateMode.current
     val hidden = privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER
     val private = privacy != app.orbitle.domain.PrivateModeDisplay.VISIBLE
@@ -172,6 +181,7 @@ private fun ContactItem(row: ContactRow, onClick: () -> Unit) {
         supportingContent = if (row.status.isEmpty()) null else ({
             Text(row.status, color = if (row.isOnline) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }),
+        trailingContent = { app.orbitle.ui.contacts.ContactRowMenu(onRename, onRemove) },
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.clickable(onClick = onClick),
     )

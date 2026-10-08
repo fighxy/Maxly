@@ -57,6 +57,17 @@ class ContactsViewModel(
     private var received = false
     private var synced = false
 
+    /** «Переименовать», «Удалить из контактов» и «Добавить по номеру». */
+    val actions = ContactActions(viewModelScope, repository)
+
+    fun askRename(contactId: String) {
+        contact(contactId)?.let(actions::askRename)
+    }
+
+    fun askRemove(contactId: String) {
+        contact(contactId)?.let(actions::askRemove)
+    }
+
     init {
         viewModelScope.launch {
             repository.contacts.collect { list ->
