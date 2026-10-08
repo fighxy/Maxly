@@ -27,7 +27,9 @@ struct MembersFixtureTests {
     }
 
     static func members(_ value: Any?, _ label: String) throws -> [ChatMemberEntry] {
-        try FixtureValue.objects(value, label).map { ChatMemberEntry(id: FixtureValue.string($0["id"]) ?? "", name: $0["name"] as? String ?? "") }
+        try FixtureValue.objects(value, label).map { 
+            ChatMemberEntry(id: FixtureValue.string($0["id"]) ?? "", name: $0["name"] as? String ?? "", mentionName: $0["mentionName"] as? String)
+        }
     }
 
     static func paging(_ item: [String: Any], _ label: String) throws {

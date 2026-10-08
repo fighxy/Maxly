@@ -1,7 +1,7 @@
 {
   "kind": "search",
   "name": "search",
-  "description": "Поиск по загруженным участникам: подстрока имени без учёта регистра, «ё» = «е», пробелы запроса по краям не важны, пустой запрос — все. Порядок списка сохраняется.",
+  "description": "Поиск по загруженным участникам: подстрока полного имени или имени для упоминаний (mentionName) без учёта регистра, «ё» = «е», пробелы запроса по краям не важны, пустой запрос — все. Запрос с «@» ищет только по mentionName. Порядок списка сохраняется.",
   "cases": [
     {
       "name": "substring",
@@ -101,6 +101,98 @@
       ],
       "query": "зз",
       "expect": []
+    },
+    {
+      "name": "mention-name",
+      "members": [
+        {
+          "id": "1",
+          "name": "Анна Петрова",
+          "mentionName": "anya_p"
+        },
+        {
+          "id": "2",
+          "name": "Иван"
+        }
+      ],
+      "query": "ANYA",
+      "expect": [
+        "1"
+      ]
+    },
+    {
+      "name": "mention-name-with-at",
+      "members": [
+        {
+          "id": "1",
+          "name": "Анна Петрова",
+          "mentionName": "anya_p"
+        },
+        {
+          "id": "2",
+          "name": "anya fan"
+        }
+      ],
+      "query": "@anya",
+      "expect": [
+        "1"
+      ]
+    },
+    {
+      "name": "name-or-mention",
+      "members": [
+        {
+          "id": "1",
+          "name": "Пётр",
+          "mentionName": "ivan_p"
+        },
+        {
+          "id": "2",
+          "name": "Иван"
+        }
+      ],
+      "query": "иван",
+      "expect": [
+        "2"
+      ]
+    },
+    {
+      "name": "name-or-mention-latin",
+      "members": [
+        {
+          "id": "1",
+          "name": "Пётр",
+          "mentionName": "ivan_p"
+        },
+        {
+          "id": "2",
+          "name": "Ivan"
+        }
+      ],
+      "query": "ivan",
+      "expect": [
+        "1",
+        "2"
+      ]
+    },
+    {
+      "name": "at-only",
+      "members": [
+        {
+          "id": "1",
+          "name": "Иван",
+          "mentionName": "ivan"
+        },
+        {
+          "id": "2",
+          "name": "Анна"
+        }
+      ],
+      "query": "@",
+      "expect": [
+        "1",
+        "2"
+      ]
     }
   ]
 }

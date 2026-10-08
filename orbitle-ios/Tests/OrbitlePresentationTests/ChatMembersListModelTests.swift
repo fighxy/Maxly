@@ -63,7 +63,7 @@ struct ChatMembersListModelTests {
     @Test("Поиск: сразу среди загруженных (ё = е), затем ответ сервера без повторов")
     func search() async {
         let repo = PagedMembers(
-            pages: [0: ChatMembersPage(members: [member("1", "Пётр"), member("2", "Анна")], marker: nil)],
+            pages: [0: ChatMembersPage(members: [member("1", "Пётр"), member("2", "Анна")], marker: 1)],
             found: [member("1", "Пётр"), member("9", "Петров")]
         )
         let model = ChatMembersListModel(chatId: "-5", currentUserId: "1", actions: repo)
@@ -75,6 +75,36 @@ struct ChatMembersListModelTests {
         #expect(model.visible.map(\.id) == ["1", "9"])
         model.query = ""
         #expect(model.visible.map(\.id) == ["1", "2"])
+    }
+
+    @Test("Загружены не все — после паузы спрашивается сервер")
+    func serverSearchWhenPartial() async throws {
+        let repo = PagedMembers(pages: [0: ChatMembersPage(members: [member("1", "Пётр")], marker: 1)], found: [member("9", "Петров")])
+        let model = ChatMembersListModel(chatId: "-5", currentUserId: "1", actions: repo)
+        model.searchDelay = .zero
+        await model.loadMore()
+        model.query = "петр"
+        for _ in 0..<200 where model.serverMatches == nil {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(await repo.searches == ["петр"])
+        #expect(model.visible.map(\.id) == ["1", "9"])
+    }
+
+    @Test("Загружены все — только поиск по списку, в том числе по имени для упоминаний")
+    func localSearchWhenComplete() async throws {
+        let repo = PagedMembers(
+            pages: [0: ChatMembersPage(members: [member("1", "Пётр"), ChatMemberEntry(id: "2", name: "Анна", mentionName: "anya")], marker: nil)],
+            found: [member("9", "Петров")]
+        )
+        let model = ChatMembersListModel(chatId: "-5", currentUserId: "1", actions: repo)
+        model.searchDelay = .zero
+        await model.loadMore()
+        #expect(!model.hasMore)
+        model.query = "@any"
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(model.visible.map(\.id) == ["2"])
+        #expect(await repo.searches.isEmpty)
     }
 
     @Test("Касание открывает диалог; себя не открыть")

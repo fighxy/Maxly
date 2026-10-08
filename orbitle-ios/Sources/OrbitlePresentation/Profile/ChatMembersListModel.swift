@@ -3,8 +3,9 @@ import Observation
 import OrbitleDomain
 
 /// Экран «Участники»: список страницами по 50, значки ролей и поиск. Пока строка поиска
-/// пуста — загруженные страницы; с запросом — сразу совпадения среди загруженных, затем ответ
-/// сервера (если источник умеет искать).
+/// пуста — загруженные страницы; с запросом — сразу совпадения среди загруженных (имя или
+/// имя для упоминаний). Сервер спрашивается, только если загружены не все: через 200 мс после
+/// последней правки запроса, одной страницей (test-fixtures/members).
 @MainActor
 @Observable
 public final class ChatMembersListModel: Identifiable {
@@ -26,7 +27,7 @@ public final class ChatMembersListModel: Identifiable {
     @ObservationIgnored private var marker = ChatMembersRules.firstMarker
     @ObservationIgnored private var searchTask: Task<Void, Never>?
     /// Пауза перед запросом поиска, пока печатают.
-    @ObservationIgnored var searchDelay: Duration = .milliseconds(350)
+    @ObservationIgnored var searchDelay: Duration = .milliseconds(200)
 
     public init(chatId: String, currentUserId: String, actions: any ProfileActionsRepository) {
         self.chatId = chatId
@@ -80,7 +81,8 @@ public final class ChatMembersListModel: Identifiable {
         searchTask?.cancel()
         serverMatches = nil
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        // Загружены все — хватает поиска по списку.
+        guard !text.isEmpty, hasMore else { return }
         let delay = searchDelay
         searchTask = Task { [weak self] in
             try? await Task.sleep(for: delay)

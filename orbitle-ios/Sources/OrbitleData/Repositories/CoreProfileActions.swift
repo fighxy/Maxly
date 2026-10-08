@@ -22,6 +22,11 @@ public actor CoreProfileActions: ProfileActionsRepository {
     /// Пустой `nextMarker` ядра — страниц больше нет.
     public func membersPage(chatId: String, marker: Int64) async throws(OrbitleError) -> ChatMembersPage {
         try await run {
+            // Роли — из карточки чата (owner, adminParticipants): перед первой страницей она
+            // обновляется. Не вышло — список всё равно грузится, с ролями из прошлой карточки.
+            if marker == ChatMembersRules.firstMarker {
+                _ = try? await core.loadChat(id: chatId)
+            }
             let page = try await core.loadChatMembers(chatId: chatId, marker: marker == 0 ? "" : String(marker), count: ChatMembersRules.pageSize)
             return ChatMembersPage(members: page.members.map(Self.entry), marker: Int64(page.nextMarker))
         }

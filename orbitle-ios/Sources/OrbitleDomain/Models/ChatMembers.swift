@@ -16,13 +16,16 @@ public struct ChatMemberEntry: Identifiable, Hashable, Sendable {
     public var role: ChatMemberRole
     /// Подпись админа (`alias`), если её задали.
     public var alias: String?
+    /// Имя для упоминаний (ник без «@»), если известно.
+    public var mentionName: String?
 
-    public init(id: String, name: String, avatarURL: URL? = nil, role: ChatMemberRole = .member, alias: String? = nil) {
+    public init(id: String, name: String, avatarURL: URL? = nil, role: ChatMemberRole = .member, alias: String? = nil, mentionName: String? = nil) {
         self.id = id
         self.name = name
         self.avatarURL = avatarURL
         self.role = role
         self.alias = alias
+        self.mentionName = mentionName
     }
 
     /// Значок у имени: «владелец», подпись админа или «админ»; у остальных нет.
@@ -101,9 +104,16 @@ public enum ChatMembersRules {
     /// Поиск по уже загруженным: без учёта регистра, «ё» = «е», пробелы по краям не важны;
     /// пустой запрос — все. Порядок сохраняется.
     public static func filter(_ list: [ChatMemberEntry], query: String) -> [ChatMemberEntry] {
-        let needle = fold(query.trimmingCharacters(in: .whitespacesAndNewlines))
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let needle = fold(trimmed)
         guard !needle.isEmpty else { return list }
-        return list.filter { fold($0.name).contains(needle) }
+        // «@ник» ищется только по имени для упоминаний.
+        let mention = needle.hasPrefix("@") ? String(needle.dropFirst()) : needle
+        return list.filter { member in
+            if !needle.hasPrefix("@"), fold(member.name).contains(needle) { return true }
+            guard !mention.isEmpty, let nick = member.mentionName else { return needle == "@" }
+            return fold(nick).contains(mention)
+        }
     }
 
     static func fold(_ text: String) -> String {
