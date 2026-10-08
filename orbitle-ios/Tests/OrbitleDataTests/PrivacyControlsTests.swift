@@ -16,6 +16,7 @@ private final class FakeGhostPrivacyCore: GhostPrivacyCore, @unchecked Sendable 
     var readOnly: Set<String> = []
     var localMarks: [String: Int64] = [:]
     var failure: CoreFailure?
+    var userId = "7"
 
     init(_ settings: AccountSettings = AccountSettings(isKnown: true)) {
         self.settings = settings
@@ -63,6 +64,8 @@ private final class FakeGhostPrivacyCore: GhostPrivacyCore, @unchecked Sendable 
         record("checkOwnPresence")
         return try ownPresence.get()
     }
+
+    func currentUserId() async -> String { userId }
 
     func setPrivacy(key: String, value: String) async throws -> AccountSettings {
         record("setPrivacy(\(key), \(value))")
@@ -183,6 +186,16 @@ struct PrivacyControlsTests {
         #expect(core.calls.filter { $0 == "checkOwnPresence" }.count == 4)
     }
 
+    @Test("До входа свой статус не спрашивается: неизвестно, без ошибки")
+    func ownPresenceBeforeLogin() async throws {
+        let core = FakeGhostPrivacyCore()
+        core.userId = ""
+        core.ownPresence = .failure(CoreFailure(kind: "UNKNOWN", key: nil))
+        let controls = CoreGhostPrivacyControls(core: core)
+        #expect(try await controls.checkOwnPresence() == .unknown)
+        #expect(core.calls.isEmpty)
+    }
+
     @Test("Доступ уходит строкой ядра (NOBODY), флаги — setPrivacyFlag")
     func setPrivacy() async throws {
         let core = FakeGhostPrivacyCore(AccountSettings(isKnown: true, phonePrivacy: .nobody))
@@ -212,6 +225,10 @@ struct PrivacyControlsTests {
         let controls = CoreGhostPrivacyControls(core: core)
         await #expect(throws: OrbitleError.invalidRequest) { try await controls.setPrivacy(.hidden, .access(.contacts)) }
         await #expect(throws: OrbitleError.invalidRequest) { try await controls.setPrivacy(.incomingCall, .flag(true)) }
+        // NOBODY ядро принимает только для номера.
+        for key in [PrivacyKey.searchByPhone, .incomingCall, .chatsInvite] {
+            await #expect(throws: OrbitleError.invalidRequest) { try await controls.setPrivacy(key, .access(.nobody)) }
+        }
         #expect(core.calls.isEmpty)
         core.failure = CoreFailure(kind: "SERVER", key: "privacy.locked")
         await #expect(throws: OrbitleError.server(code: "privacy.locked")) {

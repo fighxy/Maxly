@@ -465,5 +465,6 @@ extension MaxIosCore {
     }
 }
 
-/// Мост для `CoreGhostPrivacyControls`: методы выше, `accountSettings()` и `events()`.
+/// Мост для `CoreGhostPrivacyControls`: методы выше, `accountSettings()`, `events()` и
+/// `currentUserId()`.
 extension MaxIosCore: GhostPrivacyCore {}

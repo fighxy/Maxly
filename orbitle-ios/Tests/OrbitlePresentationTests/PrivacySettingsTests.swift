@@ -64,6 +64,10 @@ struct PrivacyOptionTests {
         #expect(PrivacyRow.phoneNumber.options.map(\.title) == ["Могут все", "Могут контакты", "Никто"])
         #expect(PrivacyRow.phoneNumber.options.map(\.value.wire) == ["ALL", "CONTACTS", "NOBODY"])
         #expect(PrivacyRow.incomingCall.subtitle == "Кто может мне звонить")
+        // NOBODY ядро принимает только для номера: в остальных списках его нет.
+        for row in PrivacyRow.allCases where row != .phoneNumber {
+            #expect(!row.options.contains { $0.value == .access(.nobody) })
+        }
     }
 
     @Test("Значение вне списка показывается строгим вариантом")

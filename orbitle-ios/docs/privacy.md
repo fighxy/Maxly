@@ -160,9 +160,9 @@ protocol PrivacyControls: Sendable {
 | `ghostMode()` / `setGhostMode(_:)` | `ghostMode()` / `setGhostMode(enabled:)` |
 | `hideReadReceipts()` / `setHideReadReceipts(_:)` | `hideReadReceipts()` / `setHideReadReceipts(enabled:)` |
 | `ghostChanges()` | текущие флаги, затем `watchEvents` → `ghostMode` / `hideReadReceipts` (`text` `on` / `off`; незнакомый текст — флаг перечитывается). Подписка открывается раньше чтения флагов |
-| `checkOwnPresence()` | `checkOwnPresence(onResult:)` → `IosPresence?` → `CorePresence` → `Contact.Presence`; `nil` — «неизвестно»; ошибка ядра — `OrbitleError` (`CoreMapping`) |
+| `checkOwnPresence()` | `checkOwnPresence(onResult:)` → `IosPresence?` → `CorePresence` → `Contact.Presence`; `nil` — «неизвестно»; ошибка ядра — `OrbitleError` (`CoreMapping`). До входа (`currentUserId()` пуст) мост не зовётся: он ждал бы сессию, а `MaxClient` бросает «not logged in»; ответ — «неизвестно» |
 | `localReadMark(chatId:)` | `localReadMarkOf(chatId:)` |
-| `setPrivacy(_:_:)` | доступ — `setPrivacy(key:value:)` (`ALL` / `CONTACTS` / `NOBODY`), флаг — `setPrivacyFlag(key:enabled:)`; значение не того вида в ядро не уходит (`invalidRequest`) |
+| `setPrivacy(_:_:)` | доступ — `setPrivacy(key:value:)`, флаг — `setPrivacyFlag(key:enabled:)`. `NOBODY` ядро (`PrivacyConfig.payload`) принимает только у `PHONE_NUMBER_PRIVACY`; у `SEARCH_BY_PHONE`, `INCOMING_CALL`, `CHATS_INVITE` — только `ALL` / `CONTACTS`, и списки этих строк `NOBODY` не предлагают. Значение не того вида или `NOBODY` не у номера в ядро не уходит (`invalidRequest`) |
 | `isPrivacyReadOnly(_:)` | `isPrivacyReadOnly(key:)` |
 | `privacySettings()` | `accountSettings()` (`watchAccountSettings`) |
 

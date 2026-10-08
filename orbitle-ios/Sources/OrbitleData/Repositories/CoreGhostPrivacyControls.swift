@@ -70,6 +70,8 @@ public final class CoreGhostPrivacyControls: GhostControls, PrivacyControls, Sen
     }
 
     public func checkOwnPresence() async throws(OrbitleError) -> Contact.Presence {
+        // До входа мост ждал бы сессию или ответил ошибкой: статус просто неизвестен.
+        guard await !core.currentUserId().isEmpty else { return .unknown }
         do {
             // Сервер промолчал о себе: статус неизвестен, строка в шапке не показывается.
             return try await core.checkOwnPresence()?.presence ?? .unknown
@@ -89,12 +91,13 @@ public final class CoreGhostPrivacyControls: GhostControls, PrivacyControls, Sen
     }
 
     /// Доступ — `setPrivacy` строкой `ALL` / `CONTACTS` / `NOBODY`, флаг — `setPrivacyFlag`.
-    /// Значение не того вида ядру не отправляется.
+    /// Значение не того вида и `NOBODY` вне `PHONE_NUMBER_PRIVACY` ядру не отправляются: ядро
+    /// их отклоняет.
     public func setPrivacy(_ key: PrivacyKey, _ value: PrivacyValue) async throws(OrbitleError) -> AccountSettings {
         do {
             let result: AccountSettings
             switch value {
-            case .access(let access) where !key.isFlag:
+            case .access(let access) where !key.isFlag && Self.accepts(access, for: key):
                 result = try await core.setPrivacy(key: key.rawValue, value: access.rawValue)
             case .flag(let enabled) where key.isFlag:
                 result = try await core.setPrivacyFlag(key: key.rawValue, enabled: enabled)
@@ -108,6 +111,11 @@ public final class CoreGhostPrivacyControls: GhostControls, PrivacyControls, Sen
         } catch {
             throw CoreMapping.apiError(error).orbitleError
         }
+    }
+
+    /// Какие значения доступа ядро принимает для ключа (`PrivacyConfig.payload`).
+    static func accepts(_ access: PrivacyAccess, for key: PrivacyKey) -> Bool {
+        access != .nobody || key == .phoneNumberPrivacy
     }
 
     public func isPrivacyReadOnly(_ key: PrivacyKey) -> Bool {
