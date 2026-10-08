@@ -6,8 +6,10 @@ import app.orbitle.data.CallRepository
 import app.orbitle.domain.CallOutcome
 import app.orbitle.domain.CallRecord
 import app.orbitle.domain.OrbitleError
+import app.orbitle.domain.ConnectionState
 import app.orbitle.presentation.chatlist.ChatAvatar
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,6 +44,9 @@ data class CallsUiState(
     val error: String? = null,
     /** Бейдж вкладки: пропущенные новее последнего просмотра. */
     val unseenMissed: Int = 0,
+    /** Ссылка на только что созданный звонок: экран предлагает ею поделиться. */
+    val createdLink: String? = null,
+    val isCreatingLink: Boolean = false,
 ) {
     enum class Content { LOADING, EMPTY, READY }
 }
@@ -64,6 +69,7 @@ class CallsViewModel(
     private val repository: CallRepository,
     private val marks: CallMarks = InMemoryCallMarks(),
     private val zone: ZoneId = ZoneId.systemDefault(),
+    connection: Flow<ConnectionState>? = null,
     private val now: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
     private val _state = MutableStateFlow(CallsUiState())
@@ -87,6 +93,15 @@ class CallsViewModel(
                     }
                 }
                 rebuild()
+            }
+        }
+        // После обрыва журнал загружается заново: звонки, пришедшие офлайн, иначе не видны.
+        if (connection != null) viewModelScope.launch {
+            var online: Boolean? = null
+            connection.collect {
+                val now = it == ConnectionState.ONLINE
+                if (now && online == false) refresh()
+                online = now
             }
         }
     }
@@ -118,7 +133,7 @@ class CallsViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.update { it.copy(error = (e as? OrbitleError)?.userMessage ?: OrbitleError.Unknown.userMessage) }
+                _state.update { it.copy(error = message(e)) }
             } finally {
                 _state.update { it.copy(isRefreshing = false) }
                 if (records == null) {
@@ -129,12 +144,50 @@ class CallsViewModel(
         }
     }
 
-    /** Убрать строку из истории на этом устройстве (сервер удалять историю не умеет). */
-    fun hide(row: CallRow) {
-        hidden = hidden + row.callIds
+    /**
+     * Удаляет строку со всеми звонками группы: сразу с экрана, затем на сервере. Ошибка
+     * возвращает строку и показывает сообщение.
+     */
+    fun delete(row: CallRow) {
+        val ids = row.callIds.toSet()
+        hidden = hidden + ids
         marks.hiddenIds = hidden
         rebuild()
+        viewModelScope.launch {
+            try {
+                repository.delete(row.callIds)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                hidden = hidden - ids
+                marks.hiddenIds = hidden
+                _state.update { it.copy(error = message(e)) }
+                rebuild()
+            }
+        }
     }
+
+    /** Создаёт групповой звонок; ссылка появляется в [CallsUiState.createdLink]. */
+    fun createLink() {
+        if (_state.value.isCreatingLink) return
+        _state.update { it.copy(isCreatingLink = true) }
+        viewModelScope.launch {
+            try {
+                val link = repository.createLink()
+                _state.update { it.copy(createdLink = link, error = null) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(error = message(e)) }
+            } finally {
+                _state.update { it.copy(isCreatingLink = false) }
+            }
+        }
+    }
+
+    fun dismissLink() = _state.update { it.copy(createdLink = null) }
+
+    private fun message(e: Exception) = (e as? OrbitleError)?.userMessage ?: OrbitleError.Unknown.userMessage
 
     fun dismissError() = _state.update { it.copy(error = null) }
 

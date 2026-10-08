@@ -17,15 +17,18 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.CallReceived
+import androidx.compose.material.icons.filled.AddLink
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +39,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -48,6 +52,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -77,7 +83,17 @@ fun CallsScreen(model: CallsViewModel, onOpenChat: (String) -> Unit) {
         model.dismissError()
     }
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Звонки") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Звонки") },
+                actions = {
+                    IconButton(onClick = model::createLink, enabled = !state.isCreatingLink) {
+                        if (state.isCreatingLink) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        else Icon(Icons.Filled.AddLink, "Создать ссылку на звонок")
+                    }
+                },
+            )
+        },
         snackbarHost = { SnackbarHost(snackbar) },
         contentWindowInsets = WindowInsets(0),
     ) { padding ->
@@ -106,18 +122,39 @@ fun CallsScreen(model: CallsViewModel, onOpenChat: (String) -> Unit) {
                     }
                     CallsUiState.Content.READY -> LazyColumn(Modifier.fillMaxSize()) {
                         items(state.rows, key = { it.id }) { row ->
-                            CallRowItem(row, onOpen = { row.chatId?.let(onOpenChat) }, onHide = { model.hide(row) })
+                            CallRowItem(row, onOpen = { row.chatId?.let(onOpenChat) }, onDelete = { model.delete(row) })
                         }
                     }
                 }
             }
         }
     }
+    state.createdLink?.let { link -> CallLinkDialog(link, onDismiss = model::dismissLink) }
+}
+
+/** Ссылка на новый групповой звонок: скопировать или отправить. */
+@Composable
+private fun CallLinkDialog(link: String, onDismiss: () -> Unit) {
+    val clipboard = LocalClipboardManager.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Ссылка на звонок") },
+        text = { Text("Отправьте ссылку тем, кого хотите позвать в звонок.\n\n$link") },
+        confirmButton = {
+            TextButton(onClick = {
+                clipboard.setText(AnnotatedString(link))
+                onDismiss()
+            }) { Text("Скопировать") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Готово") }
+        },
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun CallRowItem(row: CallRow, onOpen: () -> Unit, onHide: () -> Unit) {
+private fun CallRowItem(row: CallRow, onOpen: () -> Unit, onDelete: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     val privacy = app.orbitle.ui.components.LocalPrivateMode.current
     val hidden = privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER
@@ -153,11 +190,11 @@ private fun CallRowItem(row: CallRow, onOpen: () -> Unit, onHide: () -> Unit) {
         )
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(
-                text = { Text("Убрать из истории") },
+                text = { Text("Удалить из истории") },
                 leadingIcon = { Icon(Icons.Outlined.DeleteOutline, null) },
                 onClick = {
                     menu = false
-                    onHide()
+                    onDelete()
                 },
             )
         }

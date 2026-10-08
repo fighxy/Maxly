@@ -121,7 +121,7 @@ fun MainScreen(
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
     val chats by chatList.state.collectAsStateWithLifecycle()
-    val callsModel = viewModel { CallsViewModel(container.calls, container.callMarks) }
+    val callsModel = viewModel { CallsViewModel(container.calls, container.callMarks, connection = container.session.connection) }
     val calls by callsModel.state.collectAsStateWithLifecycle()
     val accountModel = viewModel { AccountSettingsViewModel(container.account) }
     val securityModel = viewModel { SecurityViewModel(container.account) }

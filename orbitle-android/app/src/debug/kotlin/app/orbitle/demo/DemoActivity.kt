@@ -328,6 +328,10 @@ private class DemoCalls : CallRepository {
         ),
     )
     override suspend fun refresh() = Unit
+    override suspend fun delete(ids: List<String>) {
+        calls.value = calls.value?.filterNot { it.id in ids }
+    }
+    override suspend fun createLink() = "https://max.ru/call/demo"
     override fun clear() = Unit
 }
 
