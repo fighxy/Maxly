@@ -272,6 +272,40 @@ class CoreMessageRepository(
         deliver(chatId, local, replyTo)
     }
 
+    private val pendingNotes = java.util.concurrent.ConcurrentHashMap<String, app.orbitle.domain.VideoNoteRecording>()
+
+    override suspend fun sendVideoNote(chatId: String, recording: app.orbitle.domain.VideoNoteRecording, replyTo: String?) {
+        val note = app.orbitle.domain.VideoContent(
+            "local-note", "file://${recording.path}",
+            width = recording.side, height = recording.side, durationMs = recording.durationMs, isRound = true,
+        )
+        val local = Message(
+            id = "local-${localIds.incrementAndGet()}",
+            chatId = chatId,
+            authorId = currentUserId.orEmpty(),
+            text = "",
+            timeMs = clock(),
+            status = MessageStatus.SENDING,
+            content = MessageContent(reply = replyTo?.let { replyPreview(chatId, it) }, attachments = listOf(ChatAttachment.Video(note))),
+        )
+        pendingNotes[local.id] = recording
+        put(chatId, local)
+        deliver(chatId, local, replyTo)
+    }
+
+    /** Загрузка кружка (слот видеосообщения) и одно сообщение с ним. */
+    private suspend fun uploadVideoNote(chatId: String, recording: app.orbitle.domain.VideoNoteRecording, replyTo: String?, progress: (Float) -> Unit) {
+        val source = com.max.core.media.fileUploadSource(recording.path)
+        val note = try {
+            client.media.uploadVideoNote(source, recording.fileName, recording.durationMs.takeIf { it > 0 }) { sent, total ->
+                if (total > 0) progress((sent.toFloat() / total).coerceIn(0f, 1f))
+            }
+        } finally {
+            runCatching { source.close() }
+        }
+        client.sendAttachments(chatId.toLong(), listOf(note), null, replyTo?.toLongOrNull())
+    }
+
     /** Загрузка голосового и одно сообщение с ним; волна уходит столбиками 0…120. */
     private suspend fun uploadVoice(chatId: String, recording: app.orbitle.domain.VoiceRecording, replyTo: String?, progress: (Float) -> Unit) {
         val bytes = java.io.File(recording.path).readBytes()
@@ -306,9 +340,12 @@ class CoreMessageRepository(
         try {
             val media = pendingMedia[local.id]
             val recording = pendingVoice[local.id]
+            val note = pendingNotes[local.id]
             withContext(NonCancellable) {
                 if (recording != null) {
                     MaxCoreGateway.call { uploadVoice(chatId, recording, replyTo, progress) }
+                } else if (note != null) {
+                    MaxCoreGateway.call { uploadVideoNote(chatId, note, replyTo, progress) }
                 } else if (media == null) {
                     val elements = animojiElements(local.text, local.content.formatting) +
                         LockPayloads.mentionElements(local.text, local.content.formatting)
@@ -336,6 +373,7 @@ class CoreMessageRepository(
             }
             pendingMedia.remove(local.id)
             pendingVoice.remove(local.id)?.let { java.io.File(it.path).delete() }
+            pendingNotes.remove(local.id)?.let { java.io.File(it.path).delete() }
             remove(chatId, local.id)
         } catch (failure: Exception) {
             put(chatId, local.copy(status = MessageStatus.FAILED))
@@ -353,6 +391,7 @@ class CoreMessageRepository(
     override fun discard(chatId: String, localId: String) {
         pendingMedia.remove(localId)
         pendingVoice.remove(localId)?.let { java.io.File(it.path).delete() }
+        pendingNotes.remove(localId)?.let { java.io.File(it.path).delete() }
         remove(chatId, localId)
     }
 

@@ -232,6 +232,27 @@ fun ChatScreen(
     val photoSessions = remember(model) { mutableMapOf<String,app.orbitle.ui.photo.PhotoEditorSession>() }
     val recorderScope = rememberCoroutineScope()
     val voiceRecorder = remember { app.orbitle.media.AndroidVoiceRecorder(context.applicationContext, recorderScope) }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val composerRecorder = remember {
+        app.orbitle.media.AndroidComposerRecorder(
+            voiceRecorder,
+            app.orbitle.media.AndroidVideoNoteRecorder(context.applicationContext, lifecycleOwner),
+            recorderScope,
+        )
+    }
+    // Голосовое или кружок: режим кнопки запоминается на устройстве.
+    val recording = remember {
+        val prefs = context.getSharedPreferences("orbitle.chat", android.content.Context.MODE_PRIVATE)
+        val store = object : app.orbitle.data.PreferenceStore {
+            override fun get(key: String): String? = prefs.getString(key, null)
+            override fun put(key: String, value: String) = prefs.edit().putString(key, value).apply()
+        }
+        app.orbitle.presentation.chat.RecordingController(composerRecorder, recorderScope, app.orbitle.presentation.chat.RecordingModeSettings(store))
+    }
+    recording.onRecorded = model::sendRecorded
+    recording.onStart = model.media::stopVoice
+    // Уход из чата обрывает запись: ничего не уходит.
+    androidx.compose.runtime.DisposableEffect(recording) { onDispose { recording.cancel() } }
     val importScope = rememberCoroutineScope()
     val importUris: (List<Uri>) -> Unit = { uris ->
         if (uris.isNotEmpty()) importScope.launch { model.addAttachments(AttachmentImporter.import(context, uris.take(OutgoingFile.LIMIT))) }
@@ -390,9 +411,18 @@ fun ChatScreen(
                     onSticker = model::sendSticker,
                     onAnimoji = model::noteAnimoji,
                     onCancelUpload = { model.cancelUpload() },
-                    recorder = voiceRecorder,
-                    onVoice = model::sendVoice,
-                    onRecordingStart = model.media::stopVoice,
+                    recording = recording,
+                    recordingLive = composerRecorder.live,
+                    videoPreview = { modifier ->
+                        androidx.compose.ui.viewinterop.AndroidView(
+                            factory = {
+                                val view = composerRecorder.note.preview
+                                (view.parent as? android.view.ViewGroup)?.removeView(view)
+                                view
+                            },
+                            modifier = modifier,
+                        )
+                    },
                     onMention = model::insertMention,
                     onCommand = model::insertCommand,
                 )

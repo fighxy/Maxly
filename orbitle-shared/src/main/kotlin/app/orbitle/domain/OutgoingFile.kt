@@ -26,6 +26,14 @@ data class OutgoingFile(
 }
 
 /** Записанное голосовое: файл на устройстве, длительность и 80 столбиков волны 0…120. */
+/** Записанный кружок: квадратный MP4 (H.264/AAC), длительность и сторона кадра. */
+data class VideoNoteRecording(
+    val path: String,
+    val durationMs: Long,
+    val side: Int,
+    val fileName: String = "note.mp4",
+)
+
 data class VoiceRecording(
     val path: String,
     val durationMs: Long,

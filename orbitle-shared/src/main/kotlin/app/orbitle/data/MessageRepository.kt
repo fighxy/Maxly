@@ -110,6 +110,10 @@ interface MessageRepository {
     suspend fun sendVoice(chatId: String, recording: app.orbitle.domain.VoiceRecording, replyTo: String?): Unit =
         throw OrbitleError.Rejected("Голосовые недоступны")
 
+    /** Отправить записанный кружок (`videoType` 1). Сообщение сразу встаёт в ленту. */
+    suspend fun sendVideoNote(chatId: String, recording: app.orbitle.domain.VideoNoteRecording, replyTo: String?): Unit =
+        throw OrbitleError.Rejected("Видеосообщения недоступны")
+
     /** Отправить стикер каталога. */
     suspend fun sendSticker(chatId: String, sticker: app.orbitle.domain.Sticker, replyTo: String?): Unit =
         throw OrbitleError.Rejected("Стикеры недоступны")
