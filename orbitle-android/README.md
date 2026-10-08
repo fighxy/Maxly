@@ -132,8 +132,12 @@ adb shell am start -n app.orbitle.android.debug/app.orbitle.demo.DemoActivity --
 
 ## Ghost mode, privacy and activity
 
-The core is pinned to max-kmp-core `85b5aa6` in `core.lock`. Everything below runs through it.
+The core is pinned to max-kmp-core `33cca05` in `core.lock`. Everything below runs through it.
 
+- **Connection:** the core owns the keepalive and reconnects. It sends `PING` every 29 s (the
+  first right after login), answers the server's `PING`, follows a server `RECONNECT` (op 3, only
+  to `oneme.ru` hosts) and backs off reconnects from 3 s to 96 s with ±10 % jitter. Neither
+  server `PING` nor `RECONNECT` reaches `pushes`; the app has no ping or reconnect code of its own.
 - **Ghost mode and hidden read receipts** are two independent core flags (`MaxClient.ghostMode`,
   `MaxClient.hideReadReceipts`). The core stores them, applies them and publishes them in
   `MaxState.ghostMode` / `MaxState.hideReadReceipts`; chats read under hidden receipts are kept
