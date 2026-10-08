@@ -119,13 +119,19 @@ class DraftSyncTest {
     }
 
     @Test
-    fun sentMessageDropsTheDraftRightAway() {
+    fun sentMessageCancelsThePendingSaveAndLeavesTheDiscardToTheCore() {
         server.stored.value = mapOf("1" to ChatDraft("abc", 5))
         sync.changed("1", ChatDraft("abcd", 6))
         sync.sent("1")
+        scope.advanceTimeBy(5_000)
         scope.runCurrent()
+        // Отправленный текст не возвращается на сервер; DRAFT_DISCARD после отправки шлёт ядро.
         assertTrue(server.saves.isEmpty())
-        assertEquals(listOf("1"), server.discards)
+        assertTrue(server.discards.isEmpty())
+        // Уход из чата после отправки ничего не шлёт.
+        sync.flush("1")
+        scope.runCurrent()
+        assertTrue(server.discards.isEmpty())
     }
 }
 
@@ -201,7 +207,7 @@ class ChatDraftsTest {
     }
 
     @Test
-    fun typingReachesTheServerAfterThePauseAndSendDiscards() {
+    fun typingReachesTheServerAfterThePauseAndSendLeavesTheDiscardToTheCore() {
         val model = vm()
         model.setDraft("привет")
         assertTrue(server.saves.isEmpty())
@@ -209,10 +215,12 @@ class ChatDraftsTest {
         scope.runCurrent()
         assertEquals("привет", server.stored.value["10"]?.text)
         model.send()
+        scope.advanceTimeBy(1_600)
         scope.runCurrent()
-        assertNull(server.stored.value["10"])
         assertNull(local.map["10"])
-        assertEquals(listOf("10"), server.discards)
+        // DRAFT_DISCARD после отправки шлёт ядро; клиент ни стирает, ни пересохраняет.
+        assertTrue(server.discards.isEmpty())
+        assertEquals(1, server.saves.size)
     }
 
     @Test
