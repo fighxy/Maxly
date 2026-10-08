@@ -16,7 +16,7 @@
 
 ```
 Настройки (вкладка)                                  [QR]            [✎]
-├── Шапка: аватар, имя и фамилия, номер (скрыт, кнопка-глаз)
+├── Шапка: аватар, имя и фамилия, номер (скрыт, кнопка-глаз), свой статус (docs/privacy.md)
 ├── Аккаунт временно ограничен ›   только первые сутки после входа (docs/account-limits.md)
 ├── Секция «Сервисы»
 │   ├── Цифровой ID ›            мини-приложение в листе
@@ -27,9 +27,10 @@
 │   ├── Уведомления и звук ›     заглушка
 │   ├── Безопасность ›
 │   │   ├── Пароль для входа (вкл/выкл), почта для восстановления
-│   │   ├── Семейная защита (Скоро)
-│   │   ├── Безопасный режим (переключатель с пояснением)
-│   │   ├── Конфиденциальность: статус «в сети», номер телефона
+│   │   ├── Семейная защита: статус (Отключена / Вы администратор / Профиль под защитой)
+│   │   ├── Конфиденциальность — Дополнительно: режим призрака, отметки о прочтении, мой онлайн
+│   │   ├── Безопасный режим, найти по номеру, позвонить, пригласить в чат, контент
+│   │   ├── Информация: статус «в сети», номер телефона (docs/privacy.md)
 │   │   ├── Приватный режим: вид, кнопка в списке чатов (на устройстве)
 │   │   └── Чёрный список ›      список с «Разблокировать»
 │   ├── Устройства ›
@@ -70,10 +71,12 @@
 | Уведомления и звук | — | — | — | заглушка по постановке |
 | Пароль для входа | `TwoFactorApi`: трек 112, 113, 109, 110, 111; `isEnabled` по `profileOptions` | `TwoFactorApi.details(trackId)` и `status()`; `commitEmail`; мост `twoFactorStatus`, шаги смены почты | `AUTH_CREATE_TRACK` 112 `{type:0}`, `AUTH_2FA_DETAILS` 104 `{trackId}` → `{password:{enabled, email, hint}}` | готово |
 | Почта для восстановления | шаги 109 и 110 были | `commitEmail`, мост | 112 → `AUTH_CHECK_PASSWORD` 113 `{trackId, password}` → `AUTH_VERIFY_EMAIL` 109 `{trackId, email}` → `AUTH_CHECK_EMAIL` 110 `{trackId, verifyCode}` → `AUTH_SET_2FA` 111 `{expectedCapabilities:[4], trackId}` | готово |
-| Семейная защита | — | — | в Komet выключена (`FAMILY_PROTECTION` только читается), мини-приложения нет | Скоро |
+| Семейная защита | — | `FAMILY_PROTECTION` читается флагом (`ON`/`OFF`), строкой — в `feat/ghost-mode` | `LOGIN` 19, `config.user` | частично: статус, мини-приложения нет |
 | Безопасный режим | `PrivacySettings` без этих ключей | `updateUserSettings` | `CONFIG` 22, ключи ниже (раздел 6.3) | готово |
+| Найти по номеру, позвонить, пригласить, контент | — | чтение `config.user`; сеттера в мосте нет (`setPrivacy` в `feat/ghost-mode`) | `CONFIG` 22 `{SEARCH_BY_PHONE / INCOMING_CALL / CHATS_INVITE / CONTENT_LEVEL_ACCESS}` | частично: выбор пока на устройстве (docs/privacy.md) |
 | Статус «в сети» | `PrivacySettings.hideOnlineStatus` | чтение `config.user` | `CONFIG` 22 `{HIDDEN: bool}` | готово |
-| Кто видит номер | `PrivacySettings.phoneNumberVisibility` (писал `_NONE_`) | значение «Никто» как в Komet: `NOBODY` | `CONFIG` 22 `{PHONE_NUMBER_PRIVACY: ALL/CONTACTS/NOBODY}` | готово |
+| Кто видит номер | `PrivacySettings.phoneNumberVisibility` (писал `_NONE_`) | значение «Никто»: `NOBODY` | `CONFIG` 22 `{PHONE_NUMBER_PRIVACY: ALL/CONTACTS/NOBODY}` | готово |
+| Режим призрака, отметки о прочтении, свой онлайн | — | ожидается `feat/ghost-mode` | `PING` 1, `LOGIN` 19 `interactive`; `MSG_TYPING` 65; `CHAT_MARK` 50; `CONTACT_PRESENCE` 35 | частично: экран и опрос готовы, режим на заглушке (docs/privacy.md) |
 | Чёрный список | нет | `UsersApi.blockedContacts`, `setBlocked`; мост | `CONTACT_LIST` 36 `{status:"BLOCKED", count, from}` → `{contacts}`; `CONTACT_UPDATE` 34 `{contactId, action:"UNBLOCK"}` | готово |
 | Сеансы | `UsersApi.getSessions` без полей `client`, `info`, `time` | поля `client`, `info`, `time` и `lastSeen` в `SessionInfo`; `MaxClient.loadSessions`; мост | `SESSIONS_INFO` 96 `{}` → `{sessions:[…]}` | готово |
 | Завершить остальные | `MaxClient.closeOtherSessions` (новый токен сохраняется) | мост | `SESSIONS_CLOSE` 97 `{}` | готово |
@@ -136,11 +139,11 @@
 
 ### 6.2. Семейная защита
 
-В Komet пункт скрыт: ключ `FAMILY_PROTECTION` (`OFF`/`ON`) в `config.user` только читается, своего мини-приложения или запроса нет. В Orbitle строка показывает текущее значение ключа и помечена «Скоро».
+Строка под паролем показывает `FAMILY_PROTECTION` из `config.user`: «Отключена» (`OFF`), «Вы администратор» (`ADMIN`), «Профиль под защитой» (`MANAGEABLE`). При `MANAGEABLE` четыре строки под безопасным режимом заблокированы. Мини-приложение защиты не открывается. Подробнее — [`privacy.md`](privacy.md), раздел 5.
 
 ### 6.3. Безопасный режим
 
-`Toggle` и пояснение под ним: «Никто не найдёт вас по номеру, не позвонит и не пригласит в чаты, кроме ваших контактов. Показывается только безопасный контент».
+`Toggle` первой строкой части «Конфиденциальность» под блоком «Дополнительно». Пояснение под секцией: «Безопасный режим: никто, кроме ваших контактов, не найдёт вас по номеру, не позвонит и не пригласит в чаты. Показывается только безопасный контент». Пока режим включён, вместо пояснения: «Отключите безопасный режим, чтобы изменить эту настройку».
 
 - Включение — `CONFIG` 22 с набором: `SAFE_MODE: true`, `SAFE_MODE_NO_PIN: true`, `SEARCH_BY_PHONE: "CONTACTS"`, `INCOMING_CALL: "CONTACTS"`, `CHATS_INVITE: "CONTACTS"`, `CONTENT_LEVEL_ACCESS: true`.
 - Выключение — `SAFE_MODE: false`, `SAFE_MODE_NO_PIN: false`; остальные ключи остаются как были (их меняет пользователь сам).
@@ -148,12 +151,9 @@
 
 ### 6.4. Конфиденциальность
 
-| Строка | Ключ | Варианты | По умолчанию |
-|---|---|---|---|
-| Кто видит статус «в сети» | `HIDDEN` | «Мои контакты» (`false`), «Никто» (`true`) | `false` |
-| Кто видит мой номер | `PHONE_NUMBER_PRIVACY` | «Все» `ALL`, «Мои контакты» `CONTACTS`, «Никто» `NOBODY` | `ALL` |
+Блок «Дополнительно» (режим призрака, отметки о прочтении, «Показывать мой онлайн»), затем безопасный режим и строки MAX в порядке MAX: «Найти меня по номеру», «Позвонить», «Пригласить в чат», «Показывать контент»; секция «Информация»: «Видеть статус «в сети»», «Видеть мой номер». Каждая строка открывает список вариантов с подзаголовком-вопросом («Кто может мне звонить»). Ключи, варианты, блокировки, заглушка до ядра — в [`privacy.md`](privacy.md).
 
-Выбор — `Picker` в виде меню. Перед «Никто» для статуса — подтверждение: «Вы тоже перестанете видеть, кто в сети». Изменение применяется оптимистично и откатывается при ошибке. Значения «Никто» у сервера два: Komet отправляет `NOBODY`, PyMax — `_NONE_`; Orbitle отправляет `NOBODY`, а читает оба.
+Перед «Никто» для статуса — подтверждение: «Вы тоже перестанете видеть, кто в сети». Изменение применяется оптимистично и откатывается при ошибке. Значения «Никто» у сервера два: `NOBODY` и `_NONE_` (PyMax); Orbitle отправляет `NOBODY`, а читает оба.
 
 ### 6.5. Чёрный список
 
@@ -161,7 +161,7 @@
 
 ### 6.6. Приватный режим
 
-Локальная настройка устройства, в протокол не уходит. Секция стоит между «Конфиденциальностью» и «Чёрным списком». В ней переключатель «Приватный режим», меню «Вид» («Заглушки» / «Размытие») и переключатель «Кнопка в списке чатов». Что именно прячется и как открыть сообщение — в [`privacy-mode.md`](privacy-mode.md).
+Локальная настройка устройства, в протокол не уходит. Секция стоит между «Информацией» и «Чёрным списком». В ней переключатель «Приватный режим», меню «Вид» («Заглушки» / «Размытие») и переключатель «Кнопка в списке чатов». Что именно прячется и как открыть сообщение — в [`privacy-mode.md`](privacy-mode.md).
 
 ## 7. «Устройства»
 
@@ -271,10 +271,10 @@
 | Ядро `core` | `AccountConfig`; `AccountApi`: `updateUserSettings`, `sessions`, `setAvatar`, `removePhoto`, `requestProfileDeletion`, `reorderFolders`, `updateFolder` с `favorites`; `UsersApi`: `blockedContacts`, `setBlocked`, `syncContacts`; `TwoFactorApi`: `details`, `status`, `commitEmail`; `BotsApi`: необязательный `queryId`, `externalCallback`, `EntryBannerApps` |
 | Ядро `shared` | `MaxClient.accountConfig`, `updateUserSettings`, `uploadAvatar`, `removeAvatar`, `syncContacts`, папки, подготовка QR-входа |
 | Мост `ios` | `IosMyProfile`, `IosAccountSettings`, `IosSession`, `IosBlockedUser`, `IosTwoFactor`, `IosMiniApp`, `IosFolder` и методы `MaxIosClient` к ним |
-| Orbitle Domain | модели `MyProfile`, `PhoneFormatting`, `AccountSettings` (конфиденциальность, безопасный режим, `InactiveTTL`), `DeviceSession`, `BlockedUser`, `TwoFactorStatus`, `MiniApp`, `ServerFolder`, `ChatFolderRules` (фильтры сервера); протоколы `AccountRepository`, `FolderRepository`, `ContactRepository.sync()` |
-| Orbitle Data | `CoreAccountRepository`, `CoreFolderRepository` поверх `MaxCore`; `CoreContactRepository.sync()`; `MaxAPI.folderUpdates()` — серверные папки для полосы над списком чатов |
-| Orbitle Presentation | модели экранов: `AccountSettingsModel` (шапка, профиль, настройки конфига), `SecuritySettingsModel`, `RecoveryEmailFlow`, `DevicesModel`, `FoldersModel`, `MiniAppModel`, `MiniAppBridge` (разбор событий страницы), `AppearanceSettings` |
-| Orbitle App | экраны `OrbitleApp/Screens/Settings/*` (`SettingsView`, `EditProfileView`, `AvatarActions`, `SecurityView`, `DevicesView` со сканером, `FoldersView`, `MiniAppSheet`, `AppearanceView`, `AboutView`), `MaxIosCore+Settings` (обёртки моста), `Info.plist`: `NSCameraUsageDescription`, `NSPhotoLibraryAddUsageDescription` |
+| Orbitle Domain | модели `MyProfile`, `PhoneFormatting`, `AccountSettings` (конфиденциальность, безопасный режим, `FamilyProtection`, `InactiveTTL`), `PrivacyKey`, `PrivacyValue`, `DeviceSession`, `BlockedUser`, `TwoFactorStatus`, `MiniApp`, `ServerFolder`, `ChatFolderRules` (фильтры сервера); протоколы `AccountRepository`, `GhostControls`, `PrivacyControls`, `SelfCheckStore`, `FolderRepository`, `ContactRepository.sync()` |
+| Orbitle Data | `CoreAccountRepository`, `CoreFolderRepository` поверх `MaxCore`; `StubPrivacyControls` и `UserDefaultsSelfCheckStore` (docs/privacy.md); `CoreContactRepository.sync()`; `MaxAPI.folderUpdates()` — серверные папки для полосы над списком чатов |
+| Orbitle Presentation | модели экранов: `AccountSettingsModel` (шапка, профиль, настройки конфига), `GhostSettingsModel` (блок «Дополнительно», свой статус), `PrivacySettingsModel` (строки MAX, блокировки), `SecuritySettingsModel`, `RecoveryEmailFlow`, `DevicesModel`, `FoldersModel`, `MiniAppModel`, `MiniAppBridge` (разбор событий страницы), `AppearanceSettings` |
+| Orbitle App | экраны `OrbitleApp/Screens/Settings/*` (`SettingsView`, `EditProfileView`, `AvatarActions`, `SecurityView`, `PrivacyViews`, `DevicesView` со сканером, `FoldersView`, `MiniAppSheet`, `AppearanceView`, `AboutView`), `MaxIosCore+Settings` (обёртки моста), `Info.plist`: `NSCameraUsageDescription`, `NSPhotoLibraryAddUsageDescription` |
 
 ## 14. Что есть в Komet и пока не сделано
 
@@ -287,7 +287,6 @@
 - **Свои обои из галереи, цвет и размытие обоев, форма пузырей, меню действий с сообщением.**
 - **Камера и микрофон, облачное хранилище, прокси, монитор трафика.**
 - **Уведомления**: ключи `PUSH_*` в `config.user` уже приходят, экран можно собрать на том же `CONFIG` 22.
-- **Остальная конфиденциальность** из Komet: «Найти меня по номеру» (`SEARCH_BY_PHONE`), «Кто может мне звонить» (`INCOMING_CALL`), «Кто может приглашать в чаты» (`CHATS_INVITE`), «Показывать контент» (`CONTENT_LEVEL_ACCESS`). Протокол тот же, строки легко добавить.
 - **Включение, смена и отключение пароля входа** (107, 108, 111).
 - **Отмена удаления профиля** (`PROFILE_DELETE` 199 `{delete:false}`) и дата удаления (`PROFILE_DELETE_TIME` 200).
 - **Веб-пуши и код-пароль приложения.**
@@ -299,7 +298,7 @@
 1. Шапка: номер скрыт, глаз показывает; фото загружается из галереи и с камеры, сохраняется и удаляется.
 2. QR профиля и «Пригласить друзей» открывают лист, код читается камерой другого телефона.
 3. Редактирование: имя, фамилия, «О себе» сохраняются и видны на другом устройстве; «Удалить при неактивности» меняется.
-4. Безопасность: статус пароля и маска почты верные; безопасный режим, статус «в сети» и номер меняются и совпадают с официальным клиентом; разблокировка из чёрного списка.
+4. Безопасность: статус пароля и маска почты верные; безопасный режим, статус «в сети» и номер меняются и совпадают с официальным клиентом; при безопасном режиме четыре строки под ним заблокированы; разблокировка из чёрного списка. Режим призрака и строка своего статуса — по [`privacy.md`](privacy.md), раздел 9.
 5. Устройства: список совпадает с официальным клиентом; «Завершить остальные» разлогинивает второй телефон, этот остаётся в сети после перезапуска; вход по QR на web.max.ru.
 6. Избранное, Контакты, Папки (создать, переименовать, выбрать чаты, переставить, удалить; изменения видны в официальном клиенте).
 7. Цифровой ID и Сферум открываются; вход через Госуслуги возвращает в Цифровой ID.
