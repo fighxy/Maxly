@@ -53,8 +53,6 @@ class DraftsFixtureTest {
             "merge / discard-newer-clears" to
                 "ядро: MaxState не хранит drafts.*.discarded (StateReducer.putDrafts лишь убирает черновик сервера), " +
                 "клиенту нечем стереть более старый черновик устройства",
-            "outgoing / reply-only-saves" to
-                "ядро: DraftsApi.saveDraft не шлёт пустой text (`text` left out when empty), сценарий ждёт \"text\": \"\"",
         ),
     )
 

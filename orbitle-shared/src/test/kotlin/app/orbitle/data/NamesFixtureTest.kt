@@ -28,13 +28,7 @@ import com.max.core.api.Chat as CoreChat
  * показывает клиент: автор сообщения, название личного чата и контакт (как в [DisplayNamesTest]).
  */
 class NamesFixtureTest {
-    private val fixtures = SharedFixtures(
-        "names",
-        disagreements = mapOf(
-            "display-name / phone-fallback-8" to
-                "ядро: MaxUser.phone — только число (asLong), строка «8 913 123-45-67» даёт null, номера для имени нет",
-        ),
-    )
+    private val fixtures = SharedFixtures("names")
 
     @Test
     fun everyFixtureIsPlayed() {
