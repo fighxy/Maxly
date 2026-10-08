@@ -33,12 +33,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
+import androidx.media3.ui.compose.ContentFrame
+import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import app.orbitle.domain.Message
 import app.orbitle.domain.VideoContent
 import app.orbitle.media.MediaSources
@@ -116,12 +116,13 @@ private fun RoundPlayer(url: String, userAgent: String, onEnded: () -> Unit) {
             delay(100)
         }
     }
-    AndroidView(
-        factory = {
-            (android.view.LayoutInflater.from(it).inflate(app.orbitle.R.layout.round_player, null) as PlayerView).apply { this.player = player }
-        },
-        update = { it.player = player },
+    // TextureView, а не SurfaceView: круглая обрезка и кольцо прогресса рисуются поверх кадра.
+    ContentFrame(
+        player = player,
         modifier = Modifier.fillMaxSize(),
+        surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+        contentScale = ContentScale.Crop,
+        shutter = {},
     )
     CircularProgressIndicator(
         progress = { progress },

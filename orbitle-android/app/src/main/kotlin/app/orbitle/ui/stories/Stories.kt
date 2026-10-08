@@ -79,7 +79,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.MediaItem
@@ -87,8 +86,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
+import androidx.media3.ui.compose.ContentFrame
+import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import app.orbitle.domain.OutgoingStory
 import app.orbitle.domain.StoryAudience
 import app.orbitle.domain.StoryRing
@@ -481,17 +480,13 @@ private fun VideoStory(
             delay(50)
         }
     }
-    AndroidView(
-        factory = {
-            PlayerView(it).apply {
-                useController = false
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
-                this.player = player
-            }
-        },
-        update = { it.player = player },
+    // TextureView: полоса прогресса и кнопки — Compose поверх кадра, SurfaceView их перекрыл бы.
+    ContentFrame(
+        player = player,
         modifier = Modifier.fillMaxSize(),
+        surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+        contentScale = ContentScale.Fit,
+        shutter = {},
     )
 }
 
@@ -518,9 +513,11 @@ fun StoryComposer(story: OutgoingStory, userAgent: String, onPublish: (StoryAudi
                         }
                 }
                 DisposableEffect(player) { onDispose { player.release() } }
-                AndroidView(
-                    factory = { PlayerView(it).apply { useController = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT; this.player = player } },
+                ContentFrame(
+                    player = player,
                     modifier = Modifier.fillMaxSize(),
+                    surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+                    contentScale = ContentScale.Fit,
                 )
             } else {
                 AsyncImage(File(story.path), "Новая история", Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
