@@ -1846,6 +1846,9 @@ public final class ChatViewModel {
                     silentTicks = 0
                     self.voicePhases[id] = .playing(progress)
                 } else if seenPlaying {
+                    // Пауза тоже останавливает плеер. Это не конец записи: фазу паузы
+                    // оставляет кнопка, а слежение её не затирает.
+                    if case .paused = self.voicePhase(for: id) { continue }
                     self.voicePhases[id] = .idle
                     self.activeVoiceId = nil
                     self.voice?.stop()
