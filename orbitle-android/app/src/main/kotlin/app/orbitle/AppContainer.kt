@@ -38,6 +38,8 @@ import com.max.shared.MaxClientConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /** Зависимости приложения: одно ядро, одна сессия, репозитории над стором ядра. */
@@ -284,6 +286,20 @@ class AppContainer(context: Context) {
         },
         onFreshSession = { accountLimits.grant(it) },
     )
+
+    init {
+        // Флаг активности для ядра: приложение на переднем плане при разблокированном экране или
+        // идёт звонок. Режим призрака ядро сводит с ним само.
+        val foreground = androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.currentStateFlow
+            .map { it.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED) }
+        val active = combine(
+            foreground,
+            screenUnlocked(context.applicationContext),
+            callCenter.state.map(app.orbitle.presentation.common.AppActivity::inCall),
+            app.orbitle.presentation.common.AppActivity::android,
+        )
+        app.orbitle.presentation.common.AppActivity.report(scope, active) { client.setInteractive(it) }
+    }
 
     private companion object {
         const val CORE_NAMESPACE = "orbitle"

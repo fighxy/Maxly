@@ -110,8 +110,11 @@ class AppContainer {
     /** «Показывать мой онлайн» в своём профиле: только на этом устройстве. */
     val ownPresence = app.orbitle.data.OwnPresenceSettings(preferenceStore)
 
-    /** Окно не свёрнуто: пока свёрнуто, свой статус не опрашивается. Пишет Main.kt. */
-    val windowShown = kotlinx.coroutines.flow.MutableStateFlow(true)
+    /** Свёрнуто ли окно, в фокусе ли и был ли в нём ввод. Пишет Main.kt. */
+    val window = app.orbitle.platform.WindowActivity()
+
+    /** Окно не свёрнуто: пока свёрнуто, свой статус не опрашивается. */
+    val windowShown: kotlinx.coroutines.flow.StateFlow<Boolean> get() = window.shown
     val stickers: StickerRepository = CoreStickerRepository(client)
     val comments = CoreCommentsRepository(client)
 
@@ -238,6 +241,12 @@ class AppContainer {
         },
         onFreshSession = { accountLimits.grant(it) },
     )
+
+    init {
+        // Флаг активности для ядра: окно видно, в фокусе и в нём недавно был ввод. Режим
+        // призрака ядро сводит с ним само.
+        app.orbitle.presentation.common.AppActivity.report(scope, window.active) { client.setInteractive(it) }
+    }
 
     private companion object {
         const val CORE_NAMESPACE = "orbitle-desktop"

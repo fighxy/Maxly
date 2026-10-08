@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -90,9 +91,21 @@ fun main() {
             icon = painterResource(R.drawable.app_icon),
             state = windowState,
         ) {
-            // Свёрнутое окно — фон: опрос своего статуса стоит.
+            // Свёрнуто ли окно и в фокусе ли оно: от этого зависят флаг активности для ядра
+            // и опрос своего статуса (свёрнутое окно — фон).
+            val windowInfo = LocalWindowInfo.current
             LaunchedEffect(container) {
-                androidx.compose.runtime.snapshotFlow { !windowState.isMinimized }.collect { container.windowShown.value = it }
+                androidx.compose.runtime.snapshotFlow { windowState.isMinimized }.collect { container.window.setMinimized(it) }
+            }
+            LaunchedEffect(container) {
+                androidx.compose.runtime.snapshotFlow { windowInfo.isWindowFocused }.collect { container.window.setFocused(it) }
+            }
+            // Клавиатура и мышь в окне: без них минуту пользователь считается отошедшим.
+            DisposableEffect(container) {
+                val toolkit = java.awt.Toolkit.getDefaultToolkit()
+                val listener = java.awt.event.AWTEventListener { container.window.input() }
+                toolkit.addAWTEventListener(listener, INPUT_EVENTS)
+                onDispose { toolkit.removeAWTEventListener(listener) }
             }
             // Входящий звонок поднимает окно поверх остальных, даже свёрнутое.
             LaunchedEffect(container) {
@@ -124,6 +137,10 @@ fun main() {
         }
     }
 }
+
+/** События ввода, после которых пользователь снова считается у окна. */
+private val INPUT_EVENTS: Long = java.awt.AWTEvent.KEY_EVENT_MASK or java.awt.AWTEvent.MOUSE_EVENT_MASK or
+    java.awt.AWTEvent.MOUSE_MOTION_EVENT_MASK or java.awt.AWTEvent.MOUSE_WHEEL_EVENT_MASK
 
 /** Жизненный цикл окна: чаты перечитывают локальные пометки, когда он в состоянии RESUMED. */
 private class DesktopOwner : LifecycleOwner, ViewModelStoreOwner {
