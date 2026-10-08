@@ -291,6 +291,13 @@ class ChatViewModel(
     private var membersAsked = false
     private var commandsAsked = false
 
+    private val _selection = MutableStateFlow<Set<String>>(emptySet())
+    /**
+     * Выбранные сообщения (id). Пустой набор — режима выбора нет: он начинается с первого
+     * выбранного и кончается, когда снят последний.
+     */
+    val selection: StateFlow<Set<String>> = _selection.asStateFlow()
+
     private val _comments = MutableStateFlow<CommentsModel?>(null)
     /** Открытое обсуждение поста. */
     val commentsModel: StateFlow<CommentsModel?> = _comments.asStateFlow()
@@ -300,6 +307,7 @@ class ChatViewModel(
         viewModelScope.launch {
             repository.messages(chatId).collect {
                 history = it
+                pruneSelection()
                 rebuild()
                 markRead()
                 requestReactions()
@@ -994,21 +1002,114 @@ class ChatViewModel(
 
     val deletesWithoutChoice: Boolean get() = chatId == Chat.SAVED_MESSAGES_ID
 
-    fun delete(message: Message, forEveryone: Boolean) {
-        if (_state.value.replyTo?.id == message.id) cancelReply()
-        if (!isServer(message)) {
-            repository.discard(chatId, message.id)
-            return
-        }
+    fun delete(message: Message, forEveryone: Boolean) = delete(listOf(message), forEveryone)
+
+    /** Удалить несколько сообщений: не ушедшие убираются из ленты, остальные — одним запросом. */
+    fun delete(messages: List<Message>, forEveryone: Boolean) {
+        if (messages.isEmpty()) return
+        if (messages.any { it.id == _state.value.replyTo?.id }) cancelReply()
+        val (server, local) = messages.partition(::isServer)
+        local.forEach { repository.discard(chatId, it.id) }
+        if (server.isEmpty()) return
         viewModelScope.launch {
             try {
-                repository.delete(chatId, listOf(message.id), forEveryone || deletesWithoutChoice)
+                repository.delete(chatId, server.map { it.id }, forEveryone || deletesWithoutChoice)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 show(e)
             }
         }
+    }
+
+    // Выбор нескольких сообщений
+
+    /** Выбрать можно сообщение, уже лежащее на сервере, кроме служебного. */
+    fun canSelect(message: Message): Boolean = isServer(message) && !message.isService
+
+    val isSelecting: Boolean get() = _selection.value.isNotEmpty()
+
+    /** «Выбрать» в меню сообщения: режим выбора начинается с [message]. */
+    fun startSelection(message: Message) {
+        if (!canSelect(message)) return
+        _selection.update { it + message.id }
+    }
+
+    /** Нажатие на сообщение в режиме выбора (или Ctrl+щелчок на десктопе). */
+    fun toggleSelection(message: Message) {
+        if (!canSelect(message)) return
+        _selection.update { if (message.id in it) it - message.id else it + message.id }
+    }
+
+    fun clearSelection() {
+        _selection.value = emptySet()
+    }
+
+    /** Выбранные сообщения от старых к новым. */
+    fun selectedMessages(): List<Message> {
+        val ids = _selection.value
+        if (ids.isEmpty()) return emptyList()
+        return history.filter { it.id in ids }.sortedWith(MessageSelection.chronological)
+    }
+
+    /** Текст выбранного для буфера обмена ([MessageSelection.copyText]). */
+    fun selectionText(): String = MessageSelection.copyText(selectedMessages(), formatter::time, ::authorLabel)
+
+    /** «У всех» — только если так можно удалить каждое выбранное, по правилам одиночного удаления. */
+    fun canDeleteSelectionForEveryone(): Boolean = canDeleteForEveryone(selectedMessages())
+
+    fun canDeleteForEveryone(messages: List<Message>): Boolean =
+        messages.isNotEmpty() && messages.all(::canDeleteForEveryone)
+
+    /** Удалить выбранное одним запросом и выйти из режима выбора. */
+    fun deleteSelection(forEveryone: Boolean) {
+        val targets = selectedMessages()
+        clearSelection()
+        delete(targets, forEveryone)
+    }
+
+    /**
+     * Переслать выбранное в [targetChatId] и выйти из режима выбора. Ядро пересылает по одному
+     * сообщению, поэтому они уходят по очереди, от старых к новым; ошибка останавливает остальные.
+     */
+    fun forwardSelection(targetChatId: String) {
+        val targets = selectedMessages().filter(::canForward)
+        clearSelection()
+        if (targets.isEmpty()) return
+        viewModelScope.launch {
+            var done = 0
+            try {
+                for (message in targets) {
+                    repository.forward(chatId, message.id, targetChatId)
+                    done++
+                }
+                _messages.value = MessageSelection.forwardedNotice(done)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val reason = app.orbitle.data.CoreErrors.map(e).userMessage
+                // Часть уже ушла: сказать сколько, иначе показалось бы, что не ушло ничего.
+                _messages.value = if (done == 0) reason ?: return@launch
+                else listOfNotNull("Переслано $done из ${targets.size}", reason).joinToString(". ")
+            }
+        }
+    }
+
+    /** Имя автора в скопированной переписке. */
+    private fun authorLabel(message: Message): String {
+        message.authorName.takeIf { it.isNotBlank() }?.let { return it }
+        if (isOutgoing(message)) return "Вы"
+        val chat = header?.chat
+        if (chat != null && chat.type == ChatType.PRIVATE && !chat.isSavedMessages) return ChatListFormatter().title(chat)
+        return "Неизвестный"
+    }
+
+    /** Выбранные сообщения пропали из ленты (удалены, в том числе на другом устройстве): снять выбор. */
+    private fun pruneSelection() {
+        val ids = _selection.value
+        if (ids.isEmpty()) return
+        val present = history.filter { it.id in ids && canSelect(it) }.mapTo(HashSet()) { it.id }
+        if (present.size != ids.size) _selection.value = ids intersect present
     }
 
     // Реакции

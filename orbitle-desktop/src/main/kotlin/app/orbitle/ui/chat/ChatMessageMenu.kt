@@ -15,6 +15,7 @@ import androidx.compose.material.icons.outlined.Download
 import app.orbitle.presentation.chat.ReactionPalette
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.CheckCircle
 import app.orbitle.platform.BackHandler
 import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material.icons.outlined.Keyboard
@@ -269,6 +270,14 @@ internal fun MessageActions(
                 },
             )
         }
+        if (model.canSelect(message)) {
+            ListItem(
+                headlineContent = { Text("Выбрать") },
+                leadingContent = { Icon(Icons.Outlined.CheckCircle, null) },
+                colors = colors,
+                modifier = Modifier.clickable { model.startSelection(message); onDismiss() },
+            )
+        }
         if (model.media.canSave(message, SaveTarget.GALLERY)) {
             ListItem(
                 headlineContent = { Text("Сохранить в галерею") },
@@ -328,29 +337,38 @@ internal fun MessageActions(
 }
 
 @Composable
-internal fun DeleteDialog(model: ChatViewModel, message: Message, onDismiss: () -> Unit) {
-    val everyone = model.canDeleteForEveryone(message)
+internal fun DeleteDialog(model: ChatViewModel, message: Message, onDismiss: () -> Unit) =
+    DeleteDialog(model, listOf(message), onDelete = { forEveryone -> model.delete(message, forEveryone) }, onDismiss = onDismiss)
+
+/**
+ * Подтверждение удаления одного или нескольких сообщений. «У всех» — только когда так можно
+ * удалить каждое из [messages] (те же правила, что у одного сообщения).
+ */
+@Composable
+internal fun DeleteDialog(model: ChatViewModel, messages: List<Message>, onDelete: (forEveryone: Boolean) -> Unit, onDismiss: () -> Unit) {
+    val everyone = model.canDeleteForEveryone(messages)
+    val single = messages.size == 1
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Удалить сообщение?") },
+        title = { Text(app.orbitle.presentation.chat.MessageSelection.deleteTitle(messages.size)) },
         text = {
             Text(
                 when {
-                    model.deletesWithoutChoice -> "Сообщение удалится из «Избранного» на всех устройствах."
+                    model.deletesWithoutChoice -> if (single) "Сообщение удалится из «Избранного» на всех устройствах." else "Сообщения удалятся из «Избранного» на всех устройствах."
                     everyone -> "Можно удалить только у себя или у всех участников чата."
-                    else -> "Сообщение удалится только у вас."
+                    else -> if (single) "Сообщение удалится только у вас." else "Сообщения удалятся только у вас."
                 },
             )
         },
         confirmButton = {
             Row {
                 if (everyone) {
-                    TextButton(onClick = { model.delete(message, forEveryone = false); onDismiss() }) { Text("У себя") }
-                    TextButton(onClick = { model.delete(message, forEveryone = true); onDismiss() }) {
+                    TextButton(onClick = { onDelete(false); onDismiss() }) { Text("У себя") }
+                    TextButton(onClick = { onDelete(true); onDismiss() }) {
                         Text("У всех", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
                     }
                 } else {
-                    TextButton(onClick = { model.delete(message, forEveryone = false); onDismiss() }) {
+                    TextButton(onClick = { onDelete(false); onDismiss() }) {
                         Text("Удалить", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
                     }
                 }

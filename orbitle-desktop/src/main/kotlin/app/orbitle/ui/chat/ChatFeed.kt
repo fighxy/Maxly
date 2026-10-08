@@ -78,6 +78,10 @@ import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.input.pointer.isPrimaryPressed
+import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.isMetaPressed
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.foundation.layout.offset
@@ -272,8 +276,11 @@ internal fun ChatFeed(
     onButton: (Message, InlineButton) -> Unit,
     onDisablePrivateMode: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Выбранные сообщения: непустой набор — режим выбора ([ChatViewModel.selection]). */
+    selection: Set<String> = emptySet(),
 ) {
     val listState = rememberLazyListState()
+    val selecting = selection.isNotEmpty()
     val density = LocalDensity.current
     var highlighted by remember { mutableStateOf<String?>(null) }
     val items by rememberUpdatedState(state.items)
@@ -381,7 +388,13 @@ internal fun ChatFeed(
                     is ChatItem.Day -> DayChip(item.label)
                     is ChatItem.Service -> ServiceChip(item.text)
                     ChatItem.Unread -> UnreadDivider()
-                    is ChatItem.Bubble -> if (privacy != app.orbitle.domain.PrivateModeDisplay.VISIBLE && item.key !in revealed) {
+                    is ChatItem.Bubble -> SelectableBubble(
+                        selecting = selecting,
+                        selected = item.key in selection,
+                        selectable = model.canSelect(item.message),
+                        onToggle = { model.toggleSelection(item.message) },
+                        modifier = Modifier.commandClickSelects { model.toggleSelection(item.message) },
+                    ) { if (privacy != app.orbitle.domain.PrivateModeDisplay.VISIBLE && item.key !in revealed) {
                         PrivateBubble(item, privacy) { onReveal(item.key) }
                     } else BubbleRow(
                         item = item,
@@ -396,7 +409,7 @@ internal fun ChatFeed(
                         onVote = model::vote,
                         onDoubleTap = { message -> quickReaction?.let { model.toggleReaction(message, it) } },
                         onButton = onButton,
-                    )
+                    ) }
                 }
             }
             if (state.isLoadingOlder) {
@@ -508,3 +521,17 @@ private const val HIGHLIGHT_MS = 1_500L
 private const val DAY_PILL_LINGER_MS = 1_200L
 /** «Непрочитанные сообщения» встают на столько ниже верха ленты. */
 private val UNREAD_TOP_GAP = 96.dp
+
+/**
+ * Ctrl+щелчок (⌘+щелчок на macOS) по строке ленты выбирает сообщение или снимает выбор, и в
+ * обычном режиме тоже. Нажатие перехватывается до пузыря: фото не открывается, ссылка не идёт.
+ */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+private fun Modifier.commandClickSelects(onToggle: () -> Unit): Modifier =
+    onPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press, androidx.compose.ui.input.pointer.PointerEventPass.Initial) { event ->
+        val command = event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isMetaPressed
+        if (command && event.buttons.isPrimaryPressed) {
+            event.changes.forEach { it.consume() }
+            onToggle()
+        }
+    }

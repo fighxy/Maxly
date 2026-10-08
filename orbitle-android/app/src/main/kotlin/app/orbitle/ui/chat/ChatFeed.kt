@@ -275,8 +275,11 @@ internal fun ChatFeed(
     onButton: (Message, InlineButton) -> Unit,
     onDisablePrivateMode: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Выбранные сообщения: непустой набор — режим выбора ([ChatViewModel.selection]). */
+    selection: Set<String> = emptySet(),
 ) {
     val listState = rememberLazyListState()
+    val selecting = selection.isNotEmpty()
     val density = LocalDensity.current
     var highlighted by remember { mutableStateOf<String?>(null) }
     val items by rememberUpdatedState(state.items)
@@ -368,7 +371,12 @@ internal fun ChatFeed(
                     is ChatItem.Day -> DayChip(item.label)
                     is ChatItem.Service -> ServiceChip(item.text)
                     ChatItem.Unread -> UnreadDivider()
-                    is ChatItem.Bubble -> if (privacy != app.orbitle.domain.PrivateModeDisplay.VISIBLE && item.key !in revealed) {
+                    is ChatItem.Bubble -> SelectableBubble(
+                        selecting = selecting,
+                        selected = item.key in selection,
+                        selectable = model.canSelect(item.message),
+                        onToggle = { model.toggleSelection(item.message) },
+                    ) { if (privacy != app.orbitle.domain.PrivateModeDisplay.VISIBLE && item.key !in revealed) {
                         PrivateBubble(item, privacy) { onReveal(item.key) }
                     } else BubbleRow(
                         item = item,
@@ -383,7 +391,7 @@ internal fun ChatFeed(
                         onVote = model::vote,
                         onDoubleTap = { message -> quickReaction?.let { model.toggleReaction(message, it) } },
                         onButton = onButton,
-                    )
+                    ) }
                 }
             }
             if (state.isLoadingOlder) {

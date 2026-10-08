@@ -284,6 +284,10 @@ fun ChatScreen(
     var actionsFor by remember { mutableStateOf<Message?>(null) }
     var deleting by remember { mutableStateOf<Message?>(null) }
     var forwarding by remember { mutableStateOf<Message?>(null) }
+    // Режим выбора: пересылка и удаление выбранных.
+    val selection by model.selection.collectAsStateWithLifecycle()
+    var forwardingSelection by remember { mutableStateOf(false) }
+    var deletingSelection by remember { mutableStateOf<List<Message>?>(null) }
     var reactionUsers by remember { mutableStateOf<app.orbitle.presentation.chat.ReactionUsersModel?>(null) }
     var messageInfo by remember { mutableStateOf<app.orbitle.presentation.chat.MessageInfoModel?>(null) }
     var searching by remember { mutableStateOf(false) }
@@ -308,6 +312,8 @@ fun ChatScreen(
             }
         }
     }
+    // «Назад» (Esc на десктопе) сначала выходит из режима выбора.
+    BackHandler(enabled = selection.isNotEmpty()) { model.clearSelection() }
     LaunchedEffect(notice) {
         val text = notice ?: return@LaunchedEffect
         snackbar.showSnackbar(text)
@@ -373,8 +379,27 @@ fun ChatScreen(
     ChatWallpaperBackground(LocalChatBackdrop.current)
     Scaffold(
         topBar = {
-            // Поиск и «Ещё» переехали в профиль чата: справа в шапке кнопок нет.
-            ChatTopBar(state, onBack, onOpenProfile, privacy)
+            if (selection.isNotEmpty()) {
+                SelectionTopBar(
+                    count = selection.size,
+                    onClose = model::clearSelection,
+                    onCopy = {
+                        val text = model.selectionText()
+                        if (text.isBlank()) {
+                            model.notify("Нечего копировать")
+                        } else {
+                            buttonClipboard.setText(AnnotatedString(text))
+                            model.clearSelection()
+                            model.notify("Скопировано")
+                        }
+                    },
+                    onForward = { forwardingSelection = true },
+                    onDelete = { deletingSelection = model.selectedMessages() },
+                )
+            } else {
+                // Поиск и «Ещё» переехали в профиль чата: справа в шапке кнопок нет.
+                ChatTopBar(state, onBack, onOpenProfile, privacy)
+            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
         contentWindowInsets = WindowInsets(0),
@@ -396,6 +421,7 @@ fun ChatScreen(
                 onButton = pressButton,
                 onDisablePrivateMode = onDisablePrivateMode,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
+                selection = selection,
             )
             if (state.botAppId != null) {
                 FilledTonalButton(
@@ -562,6 +588,20 @@ fun ChatScreen(
     }
     deleting?.let { message ->
         DeleteDialog(model, message, onDismiss = { deleting = null })
+    }
+    if (forwardingSelection) {
+        val targets = remember { forwardTargets() }
+        ForwardPicker(
+            targets = targets,
+            onPick = { target ->
+                forwardingSelection = false
+                model.forwardSelection(target)
+            },
+            onDismiss = { forwardingSelection = false },
+        )
+    }
+    deletingSelection?.let { messages ->
+        DeleteDialog(model, messages, onDelete = model::deleteSelection, onDismiss = { deletingSelection = null })
     }
     if (searching) {
         InChatSearchSheet(
