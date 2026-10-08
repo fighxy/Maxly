@@ -851,17 +851,17 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
 
     /// Правка текста: сначала сервер, затем база (текст, пометка «изменено», разметка сервера).
     public func edit(messageId: String, chatId: String, text: String) async throws(OrbitleError) {
-        try await edit(messageId: messageId, chatId: chatId, text: text, formatting: nil)
+        try await sendEdit(messageId: messageId, chatId: chatId, text: text, formatting: nil)
     }
 
     /// Текст и весь список разметки: сервер заменяет её целиком, пустой список снимает.
     public func edit(messageId: String, chatId: String, text: String, formatting: [TextSpan]) async throws(OrbitleError) {
-        try await edit(messageId: messageId, chatId: chatId, text: text, formatting: Optional(formatting))
+        try await sendEdit(messageId: messageId, chatId: chatId, text: text, formatting: formatting)
     }
 
     /// `formatting` `nil` — прежняя правка только текста: ядро сохраняет разметку, где она
     /// ещё ложится на новый текст.
-    private func edit(messageId: String, chatId: String, text: String, formatting: [TextSpan]?) async throws(OrbitleError) {
+    private func sendEdit(messageId: String, chatId: String, text: String, formatting: [TextSpan]?) async throws(OrbitleError) {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { throw .invalidRequest }
         let stored = (try? message(id: messageId)) ?? (try? message(serverId: messageId))

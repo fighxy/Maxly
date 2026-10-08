@@ -149,12 +149,7 @@ struct ChatProfileView: View {
         .sheet(item: $membersList) { model in
             ChatMembersView(
                 model: model,
-                onOpenDialog: context?.onOpenDialog.map { open in
-                    { draft in
-                        membersList = nil
-                        open(draft)
-                    }
-                },
+                onOpenDialog: memberDialogOpener,
                 onClose: { membersList = nil }
             )
         }
@@ -509,6 +504,15 @@ struct ChatProfileView: View {
     }
 
     // MARK: Участники и общие чаты
+
+    /// Касание участника: экран «Участники» закрывается, открывается личный чат.
+    private var memberDialogOpener: ((DialogDraft) -> Void)? {
+        guard let open = context?.onOpenDialog else { return nil }
+        return { draft in
+            membersList = nil
+            open(draft)
+        }
+    }
 
     /// Участники группы: первые 50 с аватарами.
     @ViewBuilder

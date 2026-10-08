@@ -217,7 +217,7 @@ public extension MaxAPI {
     }
     /// Источник без ответа по каждому id: удалилось всё или ничего.
     func deleteSelection(chatId: String, messageIds: [String], forEveryone: Bool) async -> Result<CoreDeleteResult, MaxAPIError> {
-        await deleteMessages(chatId: chatId, messageIds: messageIds, forEveryone: forEveryone).map { CoreDeleteResult(deleted: messageIds) }
+        await deleteMessages(chatId: chatId, messageIds: messageIds, forEveryone: forEveryone).map { _ in CoreDeleteResult(deleted: messageIds) }
     }
     /// Источник без реакций: изменения откатываются, каталог пуст.
     func setReaction(chatId: String, messageId: String, postId: String, emoji: String?) async -> Result<ReactionUpdate?, MaxAPIError> {
