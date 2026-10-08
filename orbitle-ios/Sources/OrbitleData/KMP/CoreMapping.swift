@@ -73,14 +73,8 @@ enum CoreMapping {
     }
 
     static func contact(_ contact: CoreContact, now: Date = Date()) -> Contact {
-        let presence: Contact.Presence
-        if contact.online {
-            presence = .online
-        } else if contact.lastSeenMs > 0 {
-            presence = .lastSeen(Date(unixMillis: contact.lastSeenMs))
-        } else {
-            presence = .unknown
-        }
+        // Мост пока отдаёт только «в сети» и время: остальные коды статуса не доходят.
+        let presence = Contact.Presence.server(status: contact.online ? 1 : Contact.Presence.noStatus, seenMs: contact.lastSeenMs)
         return Contact(
             id: contact.id,
             firstName: contact.firstName,
@@ -95,14 +89,8 @@ enum CoreMapping {
     }
 
     static func profile(_ core: CoreProfile) -> ChatProfile {
-        let presence: Contact.Presence
-        if core.online {
-            presence = .online
-        } else if core.lastSeenMs > 0 {
-            presence = .lastSeen(Date(unixMillis: core.lastSeenMs))
-        } else {
-            presence = .unknown
-        }
+        // Мост пока отдаёт только «в сети» и время: остальные коды статуса не доходят.
+        let presence = Contact.Presence.server(status: core.online ? 1 : Contact.Presence.noStatus, seenMs: core.lastSeenMs)
         func text(_ value: String) -> String? {
             let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? nil : trimmed

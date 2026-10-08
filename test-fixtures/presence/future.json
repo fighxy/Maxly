@@ -1,0 +1,41 @@
+{
+  "name": "future",
+  "description": "seen позже now (часы устройства отстают) — «только что».",
+  "timeZone": "Europe/Moscow",
+  "nowMs": 1790683200000,
+  "nowLocal": "2026-09-29 15:00:00 MSK",
+  "cases": [
+    {
+      "id": "1-second-ahead",
+      "status": 0,
+      "seenMs": 1790683201000,
+      "seenLocal": "2026-09-29 15:00:01 MSK",
+      "text": "Был(а) только что",
+      "header": "был(а) только что"
+    },
+    {
+      "id": "59-seconds-ahead",
+      "status": 0,
+      "seenMs": 1790683259000,
+      "seenLocal": "2026-09-29 15:00:59 MSK",
+      "text": "Был(а) только что",
+      "header": "был(а) только что"
+    },
+    {
+      "id": "3-hours-ahead",
+      "status": 0,
+      "seenMs": 1790694000000,
+      "seenLocal": "2026-09-29 18:00:00 MSK",
+      "text": "Был(а) только что",
+      "header": "был(а) только что"
+    },
+    {
+      "id": "2-days-ahead",
+      "status": 0,
+      "seenMs": 1790856000000,
+      "seenLocal": "2026-10-01 15:00:00 MSK",
+      "text": "Был(а) только что",
+      "header": "был(а) только что"
+    }
+  ]
+}

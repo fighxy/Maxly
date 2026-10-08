@@ -1,0 +1,90 @@
+{
+  "name": "status",
+  "description": "Код статуса presence.status и пустое/непустое seen.",
+  "timeZone": "Europe/Moscow",
+  "nowMs": 1790683200000,
+  "nowLocal": "2026-09-29 15:00:00 MSK",
+  "cases": [
+    {
+      "id": "unknown-no-status",
+      "status": -1,
+      "seenMs": 0,
+      "text": "",
+      "header": "",
+      "note": "ядро ничего не прислало: строки нет"
+    },
+    {
+      "id": "offline-no-seen",
+      "status": 0,
+      "seenMs": 0,
+      "text": "",
+      "header": "",
+      "note": "offline без времени — тоже неизвестно"
+    },
+    {
+      "id": "online",
+      "status": 1,
+      "seenMs": 0,
+      "text": "В сети",
+      "header": "в сети"
+    },
+    {
+      "id": "online-with-seen",
+      "status": 1,
+      "seenMs": 1790674800000,
+      "seenLocal": "2026-09-29 12:40:00 MSK",
+      "text": "В сети",
+      "header": "в сети",
+      "note": "online важнее seen"
+    },
+    {
+      "id": "recently",
+      "status": 2,
+      "seenMs": 0,
+      "text": "Был(а) недавно",
+      "header": "был(а) недавно",
+      "note": "время скрыто настройкой приватности"
+    },
+    {
+      "id": "recently-with-seen",
+      "status": 2,
+      "seenMs": 1790674800000,
+      "seenLocal": "2026-09-29 12:40:00 MSK",
+      "text": "Был(а) недавно",
+      "header": "был(а) недавно",
+      "note": "статус 2 важнее seen"
+    },
+    {
+      "id": "long-ago",
+      "status": 3,
+      "seenMs": 0,
+      "text": "Был(а) давно",
+      "header": "был(а) давно"
+    },
+    {
+      "id": "long-ago-with-seen",
+      "status": 3,
+      "seenMs": 1790674800000,
+      "seenLocal": "2026-09-29 12:40:00 MSK",
+      "text": "Был(а) давно",
+      "header": "был(а) давно"
+    },
+    {
+      "id": "offline-with-seen",
+      "status": 0,
+      "seenMs": 1790674800000,
+      "seenLocal": "2026-09-29 12:40:00 MSK",
+      "text": "Был(а) в 12:40",
+      "header": "был(а) в 12:40"
+    },
+    {
+      "id": "no-status-with-seen",
+      "status": -1,
+      "seenMs": 1790674800000,
+      "seenLocal": "2026-09-29 12:40:00 MSK",
+      "text": "Был(а) в 12:40",
+      "header": "был(а) в 12:40",
+      "note": "нет статуса, есть время — как offline"
+    }
+  ]
+}

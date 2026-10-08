@@ -62,3 +62,22 @@ public struct Contact: Identifiable, Hashable, Sendable {
         return "Без имени"
     }
 }
+
+public extension Contact.Presence {
+    /// Код «статус не прислан» для `server(status:seenMs:)`.
+    static let noStatus = -1
+
+    /// Статус из полей протокола (`test-fixtures/presence`): `status` — `-1` не прислан,
+    /// `0` не в сети, `1` в сети, `2` был недавно (время скрыто), `3` был давно, другой код —
+    /// «недавно», как у веб-клиента Max; `seenMs` — время последнего визита в мс, `0` — нет.
+    /// Без статуса и без времени — `.unknown`: показывать нечего.
+    static func server(status: Int, seenMs: Int64) -> Contact.Presence {
+        switch status {
+        case 1: return .online
+        case 3: return .longAgo
+        case noStatus, 0:
+            return seenMs > 0 ? .lastSeen(Date(timeIntervalSince1970: TimeInterval(seenMs) / 1000)) : .unknown
+        default: return .recently
+        }
+    }
+}

@@ -1,0 +1,81 @@
+{
+  "name": "calendar",
+  "description": "Час и больше назад: сегодня, вчера, этот год, прошлые годы (по календарю timeZone).",
+  "timeZone": "Europe/Moscow",
+  "nowMs": 1790683200000,
+  "nowLocal": "2026-09-29 15:00:00 MSK",
+  "cases": [
+    {
+      "id": "today-morning",
+      "status": 0,
+      "seenMs": 1790629500000,
+      "seenLocal": "2026-09-29 00:05:00 MSK",
+      "text": "Был(а) в 00:05",
+      "header": "был(а) в 00:05"
+    },
+    {
+      "id": "today-noon",
+      "status": 0,
+      "seenMs": 1790674800000,
+      "seenLocal": "2026-09-29 12:40:00 MSK",
+      "text": "Был(а) в 12:40",
+      "header": "был(а) в 12:40"
+    },
+    {
+      "id": "yesterday-late",
+      "status": 0,
+      "seenMs": 1790629140000,
+      "seenLocal": "2026-09-28 23:59:00 MSK",
+      "text": "Был(а) вчера в 23:59",
+      "header": "был(а) вчера в 23:59"
+    },
+    {
+      "id": "yesterday-morning",
+      "status": 0,
+      "seenMs": 1790575500000,
+      "seenLocal": "2026-09-28 09:05:00 MSK",
+      "text": "Был(а) вчера в 09:05",
+      "header": "был(а) вчера в 09:05"
+    },
+    {
+      "id": "two-days-ago",
+      "status": 0,
+      "seenMs": 1790492400000,
+      "seenLocal": "2026-09-27 10:00:00 MSK",
+      "text": "Был(а) 27 сен",
+      "header": "был(а) 27 сен"
+    },
+    {
+      "id": "twenty-days-ago",
+      "status": 0,
+      "seenMs": 1788933600000,
+      "seenLocal": "2026-09-09 09:00:00 MSK",
+      "text": "Был(а) 9 сен",
+      "header": "был(а) 9 сен"
+    },
+    {
+      "id": "may-genitive",
+      "status": 0,
+      "seenMs": 1778338800000,
+      "seenLocal": "2026-05-09 18:00:00 MSK",
+      "text": "Был(а) 9 мая",
+      "header": "был(а) 9 мая"
+    },
+    {
+      "id": "new-year",
+      "status": 0,
+      "seenMs": 1767214800000,
+      "seenLocal": "2026-01-01 00:00:00 MSK",
+      "text": "Был(а) 1 янв",
+      "header": "был(а) 1 янв"
+    },
+    {
+      "id": "last-year",
+      "status": 0,
+      "seenMs": 1767214740000,
+      "seenLocal": "2025-12-31 23:59:00 MSK",
+      "text": "Был(а) 31.12.2025",
+      "header": "был(а) 31.12.2025"
+    }
+  ]
+}
