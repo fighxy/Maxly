@@ -113,8 +113,8 @@ Kotlin-проигрыватель пишется отдельно и долже�
   `{}` — никто. `type` — как пришёл: пустая строка и отсутствие — `null`, незнакомое значение
   хранится как есть (показывается как `TEXT`, это проверяют `texts`).
 
-8 с — срок веб-клиента Max. В iOS `ChatRepositoryImpl.typingTTL` (`TypingTracker.defaultTTL`)
-теперь 8 с; ядро (`MaxState.DEFAULT_TYPING_TTL_MS`) пока держит 6 с, его владелец предупреждён.
+8 с — срок веб-клиента Max. Столько же у ядра (`MaxState.DEFAULT_TYPING_TTL_MS`) и в iOS
+(`ChatRepositoryImpl.typingTTL`, `TypingTracker.defaultTTL`).
 
 ### `sending` — когда отправлять свой кадр 65
 
