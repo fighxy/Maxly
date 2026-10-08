@@ -94,6 +94,7 @@ import app.orbitle.presentation.stories.StoriesViewModel
 import app.orbitle.presentation.stories.StoryText
 import app.orbitle.ui.stories.LocalStoryRings
 import app.orbitle.ui.stories.StoriesStrip
+import app.orbitle.ui.stories.StoryStack
 import app.orbitle.ui.stories.StoryComposer
 import app.orbitle.ui.stories.StoryFiles
 import app.orbitle.ui.stories.StoryRings
@@ -193,9 +194,8 @@ fun MainScreen(
         ) {
         NavHost(nav, startDestination = Tab.CHATS.route, modifier = Modifier.padding(padding).consumeWindowInsets(padding)) {
             composable(Tab.CHATS.route) {
-                var storiesCollapsed by androidx.compose.runtime.remember {
-                    androidx.compose.runtime.mutableStateOf(container.storyStrip.isCollapsed())
-                }
+                val selfAvatar = StoryText.avatar(account?.id ?: container.messages.currentUserId.orEmpty(), account?.displayName.orEmpty(), account?.avatarUrl)
+                val stackItems = listOfNotNull(stories.own?.let { selfAvatar to it }) + stories.rings.map { StoryText.avatar(it) to it }
                 ChatListScreen(
                     chatList,
                     onOpenChat = { openChat(it.id) },
@@ -211,17 +211,13 @@ fun MainScreen(
                     storiesHeader = {
                         StoriesStrip(
                             stories,
-                            self = StoryText.avatar(account?.id ?: container.messages.currentUserId.orEmpty(), account?.displayName.orEmpty(), account?.avatarUrl),
+                            self = selfAvatar,
                             onOpen = storiesModel::open,
                             onAdd = addStory,
                         )
                     },
-                    onPullRefresh = storiesModel::refresh,
-                    storiesCollapsed = storiesCollapsed,
-                    onStoriesCollapsed = {
-                        storiesCollapsed = it
-                        container.storyStrip.setCollapsed(it)
-                    },
+                    storyStack = if (stackItems.isEmpty()) null else ({ StoryStack(stackItems) }),
+                    onAddStory = addStory,
                 )
             }
             composable(Tab.CALLS.route) { CallsScreen(callsModel, onOpenChat = { openChat(it) }) }

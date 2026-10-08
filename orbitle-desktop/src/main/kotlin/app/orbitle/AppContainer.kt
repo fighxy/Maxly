@@ -24,7 +24,6 @@ import app.orbitle.data.ProfileRepository
 import app.orbitle.data.RecentStickerStore
 import app.orbitle.data.SessionManager
 import app.orbitle.data.SessionRepository
-import app.orbitle.data.StoryStripSettings
 import app.orbitle.data.StickerRepository
 import app.orbitle.data.UserIdStore
 import app.orbitle.domain.ChatDraft
@@ -93,7 +92,6 @@ class AppContainer {
     }
 
     val appearance = AppearanceSettings(preferenceStore)
-    val storyStrip = StoryStripSettings(preferenceStore)
     val keyboard = app.orbitle.ui.keys.KeyboardSettings(preferenceStore)
     val privateMode = PrivateModeSettings(preferenceStore)
     val stickers: StickerRepository = CoreStickerRepository(client)

@@ -43,6 +43,7 @@ import app.orbitle.presentation.stories.StoriesViewModel
 import app.orbitle.presentation.stories.StoryText
 import app.orbitle.ui.stories.LocalStoryRings
 import app.orbitle.ui.stories.StoriesStrip
+import app.orbitle.ui.stories.StoryStack
 import app.orbitle.ui.stories.StoryComposer
 import app.orbitle.ui.stories.StoryRings
 import app.orbitle.ui.stories.StoryViewer
@@ -257,9 +258,8 @@ fun MainScreen(
             when (tab) {
                 Tab.CHATS -> Row(Modifier.weight(1f).fillMaxHeight()) {
                     Box(Modifier.width(360.dp).fillMaxHeight()) {
-                        var storiesCollapsed by androidx.compose.runtime.remember {
-                            androidx.compose.runtime.mutableStateOf(container.storyStrip.isCollapsed())
-                        }
+                        val selfAvatar = StoryText.avatar(account?.id ?: container.messages.currentUserId.orEmpty(), account?.displayName.orEmpty(), account?.avatarUrl)
+                        val stackItems = listOfNotNull(stories.own?.let { selfAvatar to it }) + stories.rings.map { StoryText.avatar(it) to it }
                         ChatListScreen(
                             chatList,
                             onOpenChat = { openChat(it.id) },
@@ -275,16 +275,13 @@ fun MainScreen(
                             storiesHeader = {
                                 StoriesStrip(
                                     stories,
-                                    self = StoryText.avatar(account?.id ?: container.messages.currentUserId.orEmpty(), account?.displayName.orEmpty(), account?.avatarUrl),
+                                    self = selfAvatar,
                                     onOpen = storiesModel::open,
                                     onAdd = addStory,
                                 )
                             },
-                            storiesCollapsed = storiesCollapsed,
-                            onStoriesCollapsed = {
-                                storiesCollapsed = it
-                                container.storyStrip.setCollapsed(it)
-                            },
+                            storyStack = if (stackItems.isEmpty()) null else ({ StoryStack(stackItems) }),
+                            onAddStory = addStory,
                         )
                     }
                     VerticalDivider()
