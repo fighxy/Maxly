@@ -523,6 +523,24 @@ class CoreMessageRepository(
         }
     }
 
+    override suspend fun messageReaders(chatId: String, messageId: String): List<app.orbitle.domain.MessageReader>? {
+        val id = chatId.toLong()
+        if (!client.isMessageReadersAvailable(id)) return null
+        val readers = MaxCoreGateway.call { client.loadMessageReaders(id, messageId.toLong()) }
+        // Ядро освежило сведения о чате: группа могла вырасти или в ней идёт звонок.
+        if (readers.isEmpty() && !client.isMessageReadersAvailable(id)) return null
+        val known = client.store.state.value.users
+        return readers.map { reader ->
+            val user = known[reader.userId]
+            app.orbitle.domain.MessageReader(
+                userId = reader.userId.toString(),
+                name = user?.displayName.orEmpty(),
+                avatarUrl = user?.baseUrl?.takeIf { it.isNotBlank() },
+                emoji = reader.reaction?.takeIf { it.isNotEmpty() },
+            )
+        }
+    }
+
     override suspend fun reactionUsers(chatId: String, messageId: String): List<app.orbitle.domain.ReactionUser> {
         val users = MaxCoreGateway.call { client.loadReactionUsers(chatId.toLong(), messageId.toLong()) }
         val known = client.store.state.value.users

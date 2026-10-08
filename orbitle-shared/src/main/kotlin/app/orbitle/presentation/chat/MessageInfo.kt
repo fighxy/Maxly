@@ -52,7 +52,8 @@ class MessageInfoModel(
     val rows: List<Row>
         get() = buildList {
             add(Row("Отправлено", dateTime(message.timeMs, zone)))
-            if (message.content.edited) add(Row("Изменено", ""))
+            val editedAt = message.content.editedAtMs
+            if (message.content.edited || editedAt != null) add(Row("Изменено", editedAt?.let { dateTime(it, zone) }.orEmpty()))
             message.content.forward?.let { add(Row("Переслано из", it.authorName)) }
             delivery()?.let { add(Row("Статус", it)) }
         }

@@ -172,7 +172,7 @@ interface MessageRepository {
     /** Кто отреагировал на сообщение. */
     /**
      * «Кем прочитано» в группе, поставившие реакцию — первыми. `null` — сервер список не даёт
-     * (не группа, звонок, участников больше `max-readmarks`). До API ядра — `null`.
+     * (не группа, звонок, участников больше `max-readmarks`).
      */
     suspend fun messageReaders(chatId: String, messageId: String): List<app.orbitle.domain.MessageReader>? = null
 

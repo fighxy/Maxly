@@ -65,6 +65,8 @@ data class MessageContent(
     val formatting: List<TextSpan> = emptyList(),
     val forward: MessageForward? = null,
     val edited: Boolean = false,
+    /** Время правки (мс), если сервер его прислал (`updateTime`). */
+    val editedAtMs: Long? = null,
     /** Закрепление из служебного `CONTROL` `pin` / `unpin`. */
     val pin: PinNotice? = null,
     /** Превью ссылки из текста (вложение `SHARE`). */

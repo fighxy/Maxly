@@ -47,6 +47,12 @@ class MessageInfoModelTest {
     }
 
     @Test
+    fun editTimeIsShownWhenServerSentIt() {
+        val info = model(ChatType.GROUP, message(MessageContent(edited = true, editedAtMs = sent + 3_600_000)))
+        assertEquals(MessageInfoModel.Row("Изменено", "8 октября 2026, 17:44"), info.rows[1])
+    }
+
+    @Test
     fun privateChatShowsDeliveryOfOwnMessageInsteadOfReaders() {
         val repo = Readers { error("не спрашивать") }
         val read = model(ChatType.PRIVATE, message(isRead = true), repo = repo).also { it.load() }

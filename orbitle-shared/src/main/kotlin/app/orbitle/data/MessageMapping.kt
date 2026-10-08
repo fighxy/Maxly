@@ -102,6 +102,7 @@ object MessageMapping {
             formatting = elements,
             forward = forwarded?.first,
             edited = message.status == "EDITED",
+            editedAtMs = message.updateTime?.takeIf { it > 0 },
             pin = pinNotice(message.attaches),
             linkPreview = linkPreview(message.attaches),
             keyboard = keyboard(message.attaches),
