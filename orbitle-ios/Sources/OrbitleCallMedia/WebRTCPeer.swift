@@ -97,9 +97,16 @@ final class WebRTCPeer: CallPeer {
     func fillVideoSlot(mids: Set<String>, with video: LocalVideo) -> Bool {
         guard let track = media?.videoTrack(video) else { return false }
         for transceiver in connection.transceivers where transceiver.mediaType == .video && mids.contains(transceiver.mid) {
-            transceiver.sender.track = track
+            let sender = transceiver.sender
+            sender.track = track
             transceiver.setDirection(.sendOnly, error: nil)
-            senders[video] = transceiver.sender
+            // Слот один: камера и экран сменяют друг друга в одном отправителе. Прежнее видео
+            // больше не держит его, иначе его `stopVideo` снял бы из слота новое.
+            let slotId = sender.senderId
+            for (other, known) in senders where other != video && known.senderId == slotId {
+                senders[other] = nil
+            }
+            senders[video] = sender
             return true
         }
         return false

@@ -86,6 +86,7 @@ public protocol CallPeer: AnyObject {
     /// Перестать отправлять видео: отправитель остаётся, но без дорожки.
     func stopVideo(_ video: LocalVideo)
     /// SFU: отдать видео в слот, который сервер предложил приёмом (`a=recvonly`) с этими `mid`.
+    /// Повторный вызов меняет дорожку в том же отправителе слота: нового отправителя нет.
     @discardableResult
     func fillVideoSlot(mids: Set<String>, with video: LocalVideo) -> Bool
     func makeOffer(iceRestart: Bool) async throws -> SessionDescription

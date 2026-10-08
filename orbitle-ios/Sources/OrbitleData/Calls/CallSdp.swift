@@ -81,6 +81,44 @@ public enum CallSdp {
         return labeled.joined(separator: separator)
     }
 
+    /// Подписывает видео в секциях SFU с этими `mid` (слот своего видео) ключом `name`, какой бы
+    /// id дорожки там ни стоял. Замена дорожки в отправителе SDP не меняет: в нём остаётся id
+    /// дорожки, с которой слот согласовали (камера), а сервер ищет видео по подписи.
+    public static func label(_ sdp: String, mids: Set<String>, as name: String) -> String {
+        guard !mids.isEmpty else { return sdp }
+        let separator = sdp.contains("\r\n") ? "\r\n" : "\n"
+        var parts = sdp.components(separatedBy: separator)
+        let starts = parts.indices.filter { parts[$0].hasPrefix("m=") }
+        for (number, start) in starts.enumerated() {
+            let end = number + 1 < starts.count ? starts[number + 1] : parts.count
+            let section = start..<end
+            guard let midLine = parts[section].first(where: { $0.hasPrefix("a=mid:") }),
+                  mids.contains(String(midLine.dropFirst("a=mid:".count)))
+            else { continue }
+            for index in section {
+                parts[index] = relabeled(parts[index], as: name)
+            }
+        }
+        return parts.joined(separator: separator)
+    }
+
+    /// Строка `a=msid` или `a=ssrc … msid/label` с новым id дорожки; остальные — как есть.
+    private static func relabeled(_ line: String, as name: String) -> String {
+        let fields = line.split(separator: " ", omittingEmptySubsequences: false)
+        if line.hasPrefix("a=msid:"), fields.count == 2 {
+            return "\(fields[0]) \(name)"
+        }
+        if line.hasPrefix("a=ssrc:") {
+            if fields.count == 3, fields[1].hasPrefix("msid:") {
+                return "\(fields[0]) \(fields[1]) \(name)"
+            }
+            if fields.count == 2, fields[1].hasPrefix("label:") {
+                return "\(fields[0]) label:\(name)"
+            }
+        }
+        return line
+    }
+
     /// Номер участника из `participantId`: число или строка вида `u123:d0` (`u` — пользователь,
     /// `g` — группа, `d` — номер устройства).
     public static func participantId(_ raw: JSONValue?) -> Int64? {

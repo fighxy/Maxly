@@ -76,6 +76,15 @@ public final class CallSession: CallControl {
     private var sfuCommand: (any CallDataChannel)?
     private var sfuAliases: [Int: String] = [:]
     private var slotOwners: [Int: TrackOwner] = [:]
+    /// SFU: `mid` слота своего видео из последнего офера сервера, если ответ отдал в него видео.
+    /// Пусто — слот не согласован на отправку, видео попадёт в него со следующим офером.
+    private var slotMids: Set<String> = []
+    /// Что сейчас в слоте: экран, камера или ничего.
+    private var slotVideo: LocalVideo?
+    /// Под какой подписью сервер знает видео слота (последний `accept-producer`).
+    private var slotLabel: LocalVideo?
+    /// Номера ssrc из последнего офера сервера: они повторяются в каждом `accept-producer`.
+    private var producerSsrcs: [String] = []
     private var layoutSequence = 1
     private var lastLayout: [String]?
     private var ended = false
@@ -199,14 +208,18 @@ public final class CallSession: CallControl {
                 return
             }
             state.screenSharing = true
-            if let peer {
+            if topology == .server {
+                await refillSlot()
+            } else if let peer {
                 let added = peer.sendVideo(.screen)
-                if topology == .direct, added { await sendOffer() }
+                if added { await sendOffer() }
             }
         } else {
-            peer?.stopVideo(.screen)
+            if topology != .server || slotMids.isEmpty { peer?.stopVideo(.screen) }
             media.stopScreen()
             state.screenSharing = false
+            // SFU: в освободившийся слот возвращается камера.
+            if topology == .server { await refillSlot() }
         }
         updateLocalTrack()
         await sendMediaSettings()
@@ -508,8 +521,8 @@ public final class CallSession: CallControl {
         state.phase = wasConnected ? .reconnecting : .connecting
         guard let peer = makePeer() else { return }
         peer.addMicrophone()
-        if state.cameraOn { _ = peer.sendVideo(.camera) }
-        if state.screenSharing { _ = peer.sendVideo(.screen) }
+        // Слот своего видео у сервера один: в него идёт экран, иначе камера.
+        if let outgoing = outgoingVideo { _ = peer.sendVideo(outgoing) }
         openSfuChannels(peer)
         do {
             try await signaling?.send("allocate-consumer", Ws2Command.allocateConsumer)
@@ -526,8 +539,7 @@ public final class CallSession: CallControl {
             closePeer()
             guard let fresh = makePeer() else { return }
             fresh.addMicrophone()
-            if state.cameraOn { _ = fresh.sendVideo(.camera) }
-            if state.screenSharing { _ = fresh.sendVideo(.screen) }
+            if let outgoing = outgoingVideo { _ = fresh.sendVideo(outgoing) }
             openSfuChannels(fresh)
         }
         if let session { sfuSession = session }
@@ -557,9 +569,14 @@ public final class CallSession: CallControl {
             for candidate in CallSdp.candidates(in: sdp) {
                 await peer.add(candidate)
             }
-            if let outgoing = outgoingVideo {
-                peer.fillVideoSlot(mids: CallSdp.receiveOnlyVideoMids(in: sdp), with: outgoing)
+            let mids = CallSdp.receiveOnlyVideoMids(in: sdp)
+            slotMids = []
+            slotVideo = nil
+            if let outgoing = outgoingVideo, peer.fillVideoSlot(mids: mids, with: outgoing) {
+                slotMids = mids
+                slotVideo = outgoing
             }
+            producerSsrcs = ssrcs
             let answer = try await peer.makeAnswer()
             guard peer === self.peer else { return }
             try await peer.setLocal(answer)
@@ -567,10 +584,8 @@ public final class CallSession: CallControl {
             await waitForGathering(peer)
             guard peer === self.peer else { return }
             let local = peer.localDescription?.sdp ?? answer.sdp
-            var body: [String: JSONValue] = ["description": .string(labeled(SessionDescription(type: .answer, sdp: local)).sdp)]
-            if !ssrcs.isEmpty { body["ssrcs"] = .array(ssrcs.map { .string($0) }) }
-            if let session = sfuSession { body["sessionId"] = session }
-            try await signaling?.send("accept-producer", body)
+            slotLabel = slotVideo
+            try await signaling?.send("accept-producer", producerAnswer(local))
         } catch {
             Log.warning(.calls, "SFU: офер сервера не принят: \(error)")
             return
@@ -584,6 +599,42 @@ public final class CallSession: CallControl {
         if state.screenSharing { return .screen }
         if state.cameraOn { return .camera }
         return nil
+    }
+
+    /// Тело `accept-producer`: свой ответ с подписями, ssrc и сессия из офера сервера.
+    private func producerAnswer(_ sdp: String) -> [String: JSONValue] {
+        let description = labeled(SessionDescription(type: .answer, sdp: sdp))
+        var body: [String: JSONValue] = ["description": .string(description.sdp)]
+        if !producerSsrcs.isEmpty { body["ssrcs"] = .array(producerSsrcs.map { .string($0) }) }
+        if let session = sfuSession { body["sessionId"] = session }
+        return body
+    }
+
+    /// SFU: в единственный слот своего видео кладётся то, что сейчас главное (экран, иначе
+    /// камера). Новый отправитель не добавляется: дорожка меняется в отправителе слота, а
+    /// согласование не нужно. Но сервер узнаёт видео по подписи в SDP (`u<id>:sCAMERA` /
+    /// `u<id>:sSCREEN`), а она осталась от прежней дорожки, поэтому тот же ответ уходит ещё раз
+    /// `accept-producer` с новой подписью. Слот не согласован на отправку — видео ляжет в него
+    /// со следующим офером сервера.
+    private func refillSlot() async {
+        guard topology == .server, let peer, !slotMids.isEmpty else { return }
+        let wanted = outgoingVideo
+        if wanted != slotVideo {
+            if let wanted {
+                peer.fillVideoSlot(mids: slotMids, with: wanted)
+            } else if let current = slotVideo {
+                peer.stopVideo(current)
+            }
+            slotVideo = wanted
+        }
+        guard let video = wanted, video != slotLabel, let local = peer.localDescription, local.type == .answer else { return }
+        slotLabel = video
+        Log.info(.calls, "SFU: в слоте своего видео теперь \(video.rawValue), шлю новую подпись")
+        do {
+            try await signaling?.send("accept-producer", producerAnswer(local.sdp))
+        } catch {
+            Log.warning(.calls, "accept-producer с новой подписью: \(error)")
+        }
     }
 
     private func openSfuChannels(_ peer: any CallPeer) {
@@ -671,6 +722,10 @@ public final class CallSession: CallControl {
 
     private func closePeer() {
         closeSfuChannels()
+        slotMids = []
+        slotVideo = nil
+        slotLabel = nil
+        producerSsrcs = []
         resumeGathering()
         peer?.onEvent = nil
         peer?.close()
@@ -782,7 +837,8 @@ public final class CallSession: CallControl {
         waiter?.resume()
     }
 
-    /// Свои видеодорожки в SDP подписываются так, как их ищет сервер.
+    /// Свои видеодорожки в SDP подписываются так, как их ищет сервер. В SFU слот своего видео
+    /// подписывается по `mid` тем, что в нём сейчас: id дорожки в SDP мог остаться от прежней.
     private func labeled(_ description: SessionDescription) -> SessionDescription {
         var names: [String: String] = [:]
         if let camera = media.trackId(of: .camera) {
@@ -791,7 +847,12 @@ public final class CallSession: CallControl {
         if let screen = media.trackId(of: .screen) {
             names[screen] = CallSdp.layoutKey(participant: connection.selfId, screen: true)
         }
-        return SessionDescription(type: description.type, sdp: CallSdp.label(description.sdp, names: names))
+        var sdp = CallSdp.label(description.sdp, names: names)
+        if topology == .server, let video = slotVideo {
+            let key = CallSdp.layoutKey(participant: connection.selfId, screen: video == .screen)
+            sdp = CallSdp.label(sdp, mids: slotMids, as: key)
+        }
+        return SessionDescription(type: description.type, sdp: sdp)
     }
 
     private func collectRemoteTracks() {
@@ -1026,14 +1087,17 @@ public final class CallSession: CallControl {
                 return
             }
             state.cameraOn = true
-            if let peer {
+            if topology == .server {
+                await refillSlot()
+            } else if let peer {
                 let added = peer.sendVideo(.camera)
-                if topology == .direct, added { await sendOffer() }
+                if added { await sendOffer() }
             }
         } else {
-            peer?.stopVideo(.camera)
+            if topology != .server || slotMids.isEmpty { peer?.stopVideo(.camera) }
             media.stopCamera()
             state.cameraOn = false
+            if topology == .server { await refillSlot() }
         }
         updateLocalTrack()
         publish()
@@ -1050,8 +1114,12 @@ public final class CallSession: CallControl {
         publish()
     }
 
+    /// В SFU слот своего видео один, и при показе экрана в нём экран: камера тогда только
+    /// своё превью, и серверу говорится `video: false`, иначе другие ждут камеру, которой нет.
     private var mediaSettings: JSONValue {
-        Ws2Command.mediaSettings(audio: !state.muted, video: state.cameraOn, screen: state.screenSharing)
+        let screen = state.screenSharing
+        let video = state.cameraOn && !(topology == .server && screen)
+        return Ws2Command.mediaSettings(audio: !state.muted, video: video, screen: screen)
     }
 
     private func sendMediaSettings() async {

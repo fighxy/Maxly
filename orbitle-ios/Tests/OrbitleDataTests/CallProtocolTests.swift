@@ -144,6 +144,15 @@ struct CallSdpTests {
         #expect(CallSdp.label(sdp, names: [:]) == sdp)
     }
 
+    @Test("Слот SFU подписывается по mid, какой бы id дорожки в нём ни остался")
+    func slotLabels() {
+        let sdp = "v=0\r\nm=audio 9 X 111\r\na=msid:s mic\r\na=mid:0\r\nm=video 9 X 96\r\na=msid:s cam\r\na=mid:1\r\na=ssrc:21 msid:s cam\r\na=ssrc:21 label:cam\r\nm=video 9 X 96\r\na=mid:2\r\na=msid:s other\r\n"
+        let labeled = CallSdp.label(sdp, mids: ["1"], as: "u7:sSCREEN")
+        #expect(labeled == "v=0\r\nm=audio 9 X 111\r\na=msid:s mic\r\na=mid:0\r\nm=video 9 X 96\r\na=msid:s u7:sSCREEN\r\na=mid:1\r\na=ssrc:21 msid:s u7:sSCREEN\r\na=ssrc:21 label:u7:sSCREEN\r\nm=video 9 X 96\r\na=mid:2\r\na=msid:s other\r\n")
+        #expect(CallSdp.label(sdp, mids: [], as: "u7:sSCREEN") == sdp)
+        #expect(CallSdp.label(sdp, mids: ["5"], as: "u7:sSCREEN") == sdp)
+    }
+
     @Test("Номер участника из числа и из строки u/g/d")
     func participantIds() {
         #expect(CallSdp.participantId(.int(5)) == 5)

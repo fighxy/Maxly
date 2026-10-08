@@ -246,6 +246,68 @@ struct CallSessionTests {
         await call.hangUp()
     }
 
+    @Test("SFU: экран встаёт в слот камеры с новой подписью, без экрана в слот возвращается камера")
+    func serverScreenSharing() async throws {
+        let server = FakeWs2Server()
+        let media = FakeCallMedia()
+        let (call, _) = session(role: .joiner, servers: [server], media: media, isGroup: true)
+        await call.start()
+        server.notify("connection", connectionNotice(topology: "SERVER"))
+        #expect(await settle { server.commands("allocate-consumer").count == 1 })
+        let peer = try #require(media.peer)
+        // Как у настоящего WebRTC: замена дорожки SDP не меняет, в слоте остаётся id камеры.
+        peer.answerSdp = "v=0\r\nm=audio 9 X 111\r\na=mid:0\r\na=msid:orbitle mic\r\nm=video 9 X 96\r\na=mid:1\r\na=sendonly\r\na=msid:orbitle cam-track\r\na=ssrc:21 msid:orbitle cam-track\r\n"
+        var answer: String { server.commands("accept-producer").last?["description"]?.string ?? "" }
+        var settings: JSONValue? { server.commands("change-media-settings").last?["mediaSettings"] }
+
+        await call.setCamera(true)
+        // Офера сервера ещё нет: новый отправитель не добавляется, камера ляжет в слот с офером.
+        #expect(peer.sending.isEmpty)
+        let offer = "v=0\r\nm=audio 9 X 111\r\na=mid:0\r\na=ssrc:555 cname:a\r\nm=video 9 X 96\r\na=mid:1\r\na=recvonly\r\n"
+        server.notify("producer-updated", ["sessionId": 7, "description": ["type": "offer", "sdp": .string(offer)]])
+        #expect(await settle { server.commands("accept-producer").count == 1 })
+        // После ответа офер ещё шлёт свои настройки: ждём их, чтобы не перепутать порядок.
+        #expect(await settle { server.commands("change-media-settings").count == 2 })
+        #expect(peer.slotVideo == .camera)
+        #expect(answer.contains("u10:sCAMERA"))
+
+        // Экран при включённой камере: та же дорожка слота, тот же ответ с подписью экрана.
+        await call.setScreenSharing(true)
+        #expect(server.commands("accept-producer").count == 2)
+        #expect(peer.slotVideo == .screen)
+        #expect(peer.sending.isEmpty)
+        #expect(peer.remotes.count == 1)
+        #expect(answer.contains("u10:sSCREEN"))
+        #expect(!answer.contains("u10:sCAMERA"))
+        let resent = try #require(server.commands("accept-producer").last)
+        #expect(resent["sessionId"] == .int(7))
+        #expect(resent["ssrcs"] == ["555"])
+        #expect(settings?["isVideoEnabled"]?.bool == false)
+        #expect(settings?["isScreenSharingEnabled"]?.bool == true)
+        #expect(call.state.cameraOn)
+        #expect(call.state.localTrack == "screen-track")
+        #expect(server.commandNames.suffix(2) == ["accept-producer", "change-media-settings"])
+
+        // Экран выключен: в слот возвращается камера со своей подписью.
+        await call.setScreenSharing(false)
+        #expect(server.commands("accept-producer").count == 3)
+        #expect(peer.slotVideo == .camera)
+        #expect(peer.stopped.isEmpty)
+        #expect(answer.contains("u10:sCAMERA"))
+        #expect(!answer.contains("u10:sSCREEN"))
+        #expect(settings?["isVideoEnabled"]?.bool == true)
+        #expect(settings?["isScreenSharingEnabled"]?.bool == false)
+        #expect(call.state.localTrack == "cam-track")
+
+        // Камера выключена: слот пустеет, подпись не нужна.
+        await call.setCamera(false)
+        #expect(peer.slotVideo == nil)
+        #expect(peer.stopped == [.camera])
+        #expect(server.commands("accept-producer").count == 3)
+        #expect(settings?["isVideoEnabled"]?.bool == false)
+        await call.hangUp()
+    }
+
     @Test("Микрофон, камера, громкая связь и экран: настройки уходят серверу")
     func mediaControls() async throws {
         let server = FakeWs2Server()
@@ -281,6 +343,9 @@ struct CallSessionTests {
         await call.setScreenSharing(true)
         #expect(call.state.localTrack == "screen-track")
         #expect(server.commands("change-media-settings").last?["mediaSettings"]?["isScreenSharingEnabled"]?.bool == true)
+        // Напрямую камера и экран идут разными отправителями: обе отмечены включёнными.
+        #expect(server.commands("change-media-settings").last?["mediaSettings"]?["isVideoEnabled"]?.bool == true)
+        #expect(peer.sending == [.camera, .screen])
 
         await call.setCamera(false)
         #expect(peer.stopped == [.camera])
