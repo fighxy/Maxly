@@ -111,8 +111,6 @@ data class Chat(
     val canWrite: Boolean? = null,
     /** Собеседник личного чата. */
     val peerId: String? = null,
-    /** Я владелец или админ группы или канала (по карточке чата). */
-    val isAdmin: Boolean = false,
 ) {
     val isPinned: Boolean get() = pinOrder != null
     val isSavedMessages: Boolean get() = id == SAVED_MESSAGES_ID

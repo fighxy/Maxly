@@ -91,7 +91,6 @@ object ChatMapping {
             },
             canWrite = canWrite(chat, state),
             peerId = peerId?.toString(),
-            isAdmin = state.me?.let { com.max.core.api.ChatRoles.of(chat).roleOf(it) != com.max.core.api.ChatMemberRole.MEMBER } ?: false,
         )
     }
 

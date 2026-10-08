@@ -50,12 +50,11 @@ class CoreMessageRepository(
 
     override val currentUserId: String? get() = client.store.state.value.me?.toString()
 
-    override val editTimeoutSeconds: Long
-        get() = when (val value = client.accountConfig.value?.server?.get("edit-timeout")) {
-            is Number -> value.toLong()
-            is String -> value.trim().toLongOrNull()
-            else -> null
-        }?.coerceAtLeast(0) ?: 0L
+    /** План ядра ([MaxClient.deletePlan]) для ушедших сообщений, неотправленные — по [MaxClient.chatRights]. */
+    override fun deletePlan(chatId: String, messages: List<Message>): app.orbitle.domain.DeletePlan {
+        val id = chatId.toLongOrNull() ?: return app.orbitle.domain.DeletePlan.NONE
+        return DeletePlans.of(chatId, client.store.state.value.chats[id], client.chatRights(id), messages) { ids -> client.deletePlan(id, ids) }
+    }
 
     override fun messages(chatId: String): Flow<List<Message>> {
         val id = chatId.toLongOrNull() ?: 0L

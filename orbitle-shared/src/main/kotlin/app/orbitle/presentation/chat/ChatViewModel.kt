@@ -13,6 +13,7 @@ import app.orbitle.data.LockPayloads
 import app.orbitle.data.MessageRepository
 import app.orbitle.domain.Chat
 import app.orbitle.domain.ChatDraft
+import app.orbitle.domain.DeletePlan
 import app.orbitle.domain.ChatType
 import app.orbitle.domain.Message
 import app.orbitle.domain.MessageStatus
@@ -1233,20 +1234,10 @@ class ChatViewModel(
     val deletesWithoutChoice: Boolean get() = chatId == Chat.SAVED_MESSAGES_ID
 
     /**
-     * Как можно удалить [messages] ([MessageSelection.deletePlan]): вид чата, мои права в нём и
-     * `edit-timeout` сервера.
+     * Как можно удалить [messages] — план ядра ([MessageRepository.deletePlan]): вид чата, мои
+     * права в нём и `edit-timeout` сервера.
      */
-    fun deletePlan(messages: List<Message>): MessageSelection.DeletePlan {
-        val chat = header?.chat
-        return MessageSelection.deletePlan(
-            messages = messages,
-            me = repository.currentUserId,
-            nowMs = now(),
-            kind = MessageSelection.chatKind(chatId, chat?.type),
-            admin = chat?.isAdmin == true,
-            editTimeoutSec = repository.editTimeoutSeconds,
-        )
-    }
+    fun deletePlan(messages: List<Message>): DeletePlan = repository.deletePlan(chatId, messages)
 
     /** [messages] можно удалить хоть как-то (в канале без прав — нельзя). */
     fun canDelete(messages: List<Message>): Boolean = deletePlan(messages).canDelete

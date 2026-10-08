@@ -6,8 +6,8 @@ import app.orbitle.SharedFixtures.Companion.bool
 import app.orbitle.SharedFixtures.Companion.long
 import app.orbitle.SharedFixtures.Companion.obj
 import app.orbitle.SharedFixtures.Companion.str
+import app.orbitle.data.DeleteStore
 import app.orbitle.data.MessageMapping
-import app.orbitle.domain.ChatType
 import app.orbitle.domain.Message
 import app.orbitle.domain.MessageContent
 import app.orbitle.domain.MessageStatus
@@ -20,8 +20,9 @@ import java.time.ZoneId
 
 /**
  * Общие с iOS сценарии выбора сообщений из `test-fixtures/selection` (правила — в README
- * каталога): удаление — [MessageSelection.deletePlan] (его же спрашивают меню, шапка выбора и
- * диалог через [ChatViewModel]), пересылка — шаги [MessageSelection.forwardPlan], по которым
+ * каталога): удаление — план ядра через [app.orbitle.data.DeletePlans] над стором ядра с чатом,
+ * правами и сообщениями сценария ([DeleteStore]; его же спрашивают меню, шапка выбора и диалог
+ * через [ChatViewModel]), пересылка — шаги [MessageSelection.forwardPlan], по которым
  * идёт `ChatViewModel.forwardSelection`, копирование — [MessageSelection.copyText] над
  * сообщениями из [MessageMapping.message].
  */
@@ -56,9 +57,7 @@ class SelectionFixtureTest {
         val chat = case["chat"].obj!!
         val chatId = chat["id"].str!!
         val type = when (val t = chat["type"].str) {
-            "DIALOG" -> ChatType.PRIVATE
-            "CHAT" -> ChatType.GROUP
-            "CHANNEL" -> ChatType.CHANNEL
+            "DIALOG", "CHAT", "CHANNEL" -> t
             else -> error("незнакомый type $t")
         }
         val messages = case["messages"].array.map {
@@ -71,14 +70,15 @@ class SelectionFixtureTest {
             }
             Message(id = it["id"].str!!, chatId = chatId, authorId = it["author"].str!!, text = "т", timeMs = it["time"].long!!, status = status)
         }
-        val plan = MessageSelection.deletePlan(
-            messages,
+        val plan = DeleteStore.plan(
             me = case["me"].str,
-            nowMs = case["now"].long!!,
-            kind = MessageSelection.chatKind(chatId, type),
+            chatId = chatId,
+            type = type,
             admin = chat["admin"].bool == true,
-            // Как CoreMessageRepository.editTimeoutSeconds: нет edit-timeout — 0.
-            editTimeoutSec = case["editTimeout"].long ?: 0L,
+            messages = messages,
+            // Как MaxClient.editTimeoutSeconds: нет edit-timeout — 0.
+            editTimeoutSeconds = case["editTimeout"].long ?: 0L,
+            nowMs = case["now"].long!!,
         )
         val expect = case["expect"].obj!!
         check("scopes", expect["scopes"].obj!!.mapValues { it.value.str }, plan.scopes.mapValues { it.value.name.lowercase() })

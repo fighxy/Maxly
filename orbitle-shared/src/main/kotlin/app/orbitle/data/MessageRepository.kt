@@ -46,10 +46,11 @@ interface MessageRepository {
     val currentUserId: String?
 
     /**
-     * `edit-timeout` конфига сервера, секунды: столько своё сообщение можно удалить у всех.
-     * Нет поля — 0, как в веб-клиенте.
+     * Как можно удалить [messages] чата [chatId]: правила ядра ([DeletePlans]) — вид чата, свои
+     * права в нём, `edit-timeout` сервера. Без стора ядра — [DeletePlans.withoutStore].
      */
-    val editTimeoutSeconds: Long get() = 0L
+    fun deletePlan(chatId: String, messages: List<Message>): app.orbitle.domain.DeletePlan =
+        DeletePlans.withoutStore(chatId, messages)
 
     /** Лента чата от старых к новым, вместе с ещё не ушедшими своими сообщениями. */
     fun messages(chatId: String): Flow<List<Message>>

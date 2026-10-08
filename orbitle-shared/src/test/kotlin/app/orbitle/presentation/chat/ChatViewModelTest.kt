@@ -34,7 +34,9 @@ import java.time.ZoneOffset
 class FakeMessages : MessageRepository {
     override val currentUserId: String = "1"
     /** `edit-timeout` сервера: сутки, своё свежее удаляется у всех. */
-    override var editTimeoutSeconds: Long = 86_400L
+    var editTimeoutSeconds: Long = 86_400L
+    /** Часы плана удаления — те же, что у экранов в тестах (2026-09-29 12:00 UTC). */
+    var deleteNowMs: Long = 1_790_683_200_000L
     val list = MutableStateFlow<List<Message>>(emptyList())
     val headerInfo = MutableStateFlow<ChatHeaderInfo?>(null)
     val sent = mutableListOf<Pair<String, String?>>()
@@ -49,6 +51,22 @@ class FakeMessages : MessageRepository {
     var catalog = listOf("👍", "❤️")
 
     override fun messages(chatId: String) = list
+    override fun deletePlan(chatId: String, messages: List<Message>) = app.orbitle.data.DeleteStore.plan(
+        me = currentUserId,
+        chatId = chatId,
+        type = headerInfo.value?.chat?.type?.let(::coreType),
+        admin = headerAdmin,
+        messages = messages,
+        editTimeoutSeconds = editTimeoutSeconds,
+        nowMs = deleteNowMs,
+    )
+    /** Свой админ с правом удалять чужое в чате шапки. */
+    var headerAdmin = false
+    private fun coreType(type: ChatType) = when (type) {
+        ChatType.CHANNEL -> "CHANNEL"
+        ChatType.GROUP -> "CHAT"
+        else -> "DIALOG"
+    }
     override fun header(chatId: String) = headerInfo.map { it }
     val typed = mutableListOf<app.orbitle.domain.TypingKind>()
     override suspend fun sendTyping(chatId: String, kind: app.orbitle.domain.TypingKind, postId: String?): Boolean {
