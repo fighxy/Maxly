@@ -1,8 +1,8 @@
 # Orbitle для Android
 
-Нативный Android-клиент Orbitle: Kotlin, Jetpack Compose и Material 3. Экраны и поведение
-повторяют iOS-клиент ([orbitle-ios](../orbitle-ios/README.md)), внешний вид — родной для
-Android. Сеть, протокол, вход и хранение сессии — в общем ядре
+Нативный Android-клиент Orbitle: Kotlin, Jetpack Compose и Material 3. Рабочий клиент с тем же
+набором возможностей, что у [iOS](../orbitle-ios/README.md) и компьютера, внешний вид — родной
+для Android. Сеть, протокол, вход и хранение сессии — в общем ядре
 [max-kmp-core](https://github.com/fighxy/max-kmp-core) (Android-цель), клиент представляется
 сервису Android-устройством (`DeviceProfile.android` ядра).
 
