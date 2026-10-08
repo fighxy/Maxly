@@ -308,6 +308,38 @@ class CallSessionTest {
     }
 
     @Test
+    fun videoFailuresRollBackAndStopStillWorks() = runTest {
+        val server = FakeWs2Server()
+        val media = FakeCallMedia()
+        val (call, _) = session(CallRole.CALLER, listOf(server), media)
+        call.start()
+        server.notify("connection", connectionNotice())
+        runCurrent()
+        val peer = media.peer!!
+
+        // Соединение не приняло дорожку: кнопка откатывается, человек видит сообщение.
+        peer.videoError = IllegalStateException("RtpSender has been disposed.")
+        call.setCamera(true)
+        assertFalse(call.state.value.cameraOn)
+        assertEquals("Не удалось включить камеру", call.state.value.notice)
+        call.setScreenSharing(true)
+        assertFalse(call.state.value.screenSharing)
+        assertFalse(media.screen)
+        assertEquals("Не удалось показать экран", call.state.value.notice)
+
+        // Выключение не застревает, даже если соединение не отпускает дорожку.
+        peer.videoError = null
+        call.setScreenSharing(true)
+        assertTrue(call.state.value.screenSharing)
+        peer.videoError = IllegalStateException("RtpSender has been disposed.")
+        call.setScreenSharing(false)
+        assertFalse(call.state.value.screenSharing)
+        assertFalse(media.screen)
+        assertFalse(call.state.value.isEnded)
+        call.hangUp()
+    }
+
+    @Test
     fun participantsAndTracks() = runTest {
         val server = FakeWs2Server()
         val media = FakeCallMedia()

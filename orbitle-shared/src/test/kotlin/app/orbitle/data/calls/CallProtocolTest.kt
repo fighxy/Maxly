@@ -83,6 +83,8 @@ class CallProtocolTest {
         assertEquals(listOf("555", "777"), CallSdp.ssrcs(sdp))
         assertEquals(listOf(IceCandidate("candidate:1 1 udp 1 1.1.1.1 1 typ host", "0", 0)), CallSdp.candidates(sdp))
         assertEquals(setOf("1"), CallSdp.receiveOnlyVideoMids(sdp))
+        assertEquals("abcd", CallSdp.iceUfrag("v=0\r\na=ice-ufrag:abcd\r\na=ice-pwd:x\r\na=ice-ufrag:efgh"))
+        assertEquals(null, CallSdp.iceUfrag("v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111"))
 
         val labeled = CallSdp.label("a=msid:stream cam\r\na=ssrc:1 msid:stream cam\r\na=ssrc:1 label:cam\r\na=msid:stream mic", mapOf("cam" to "u10:sCAMERA"))
         assertEquals("a=msid:stream u10:sCAMERA\r\na=ssrc:1 msid:stream u10:sCAMERA\r\na=ssrc:1 label:u10:sCAMERA\r\na=msid:stream mic", labeled)

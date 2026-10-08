@@ -122,6 +122,9 @@ class CallSession(
     private var signaling: Ws2Signaling? = null
     private var listener: Job? = null
     private var peer: CallPeer? = null
+
+    /** `ice-ufrag` последнего SDP собеседника: его смена значит перезапуск ICE с той стороны. */
+    private var remoteUfrag: String? = null
     private var target: CallPeerAddress? = null
     private var iceServers: List<CallIceServer> = connection.iceServers
     private var topology = CallTopology.DIRECT
@@ -257,12 +260,20 @@ class CallSession(
                 return
             }
             current = current.copy(screenSharing = true)
-            peer?.let { peer ->
-                val added = peer.sendVideo(LocalVideo.SCREEN)
-                if (topology == CallTopology.DIRECT && added) sendOffer()
+            try {
+                peer?.let { peer ->
+                    val added = peer.sendVideo(LocalVideo.SCREEN)
+                    if (topology == CallTopology.DIRECT && added) sendOffer()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                CallLog.warning("Показ экрана: дорожка не ушла в соединение ($e)")
+                media.stopScreen()
+                current = current.copy(screenSharing = false, notice = "Не удалось показать экран")
             }
         } else {
-            peer?.stopVideo(LocalVideo.SCREEN)
+            detachVideo(LocalVideo.SCREEN)
             media.stopScreen()
             current = current.copy(screenSharing = false)
         }
@@ -495,6 +506,10 @@ class CallSession(
                 CallLog.info("Встречный офер: откатываю свой")
                 runCatching { peer.setLocal(SessionDescription(SdpType.ROLLBACK, "")) }
             }
+            val ufrag = CallSdp.iceUfrag(text)
+            if (ufrag != null && remoteUfrag != null && ufrag != remoteUfrag) {
+                CallLog.info("Собеседник сменил ICE-учётку в $type: транспорт перезапустится")
+            }
             try {
                 peer.setRemote(SessionDescription(type, text))
             } catch (e: CancellationException) {
@@ -503,6 +518,7 @@ class CallSession(
                 CallLog.warning("Удалённый SDP не принят: $e")
                 return
             }
+            if (ufrag != null) remoteUfrag = ufrag
             if (peer !== this.peer) return
             remoteSet = true
             flushCandidates()
@@ -722,6 +738,7 @@ class CallSession(
         peer.onEvent = { event -> handlePeer(event, peer) }
         this.peer = peer
         remoteSet = false
+        remoteUfrag = null
         pendingCandidates = mutableListOf()
         return peer
     }
@@ -733,6 +750,7 @@ class CallSession(
         peer?.close()
         peer = null
         remoteSet = false
+        remoteUfrag = null
         pendingCandidates = mutableListOf()
         cameraTracks.clear()
         screenTracks.clear()
@@ -797,6 +815,7 @@ class CallSession(
         val target = target ?: return
         try {
             val offer = peer.makeOffer(iceRestart)
+            CallLog.info(if (iceRestart) "Офер собеседнику: с перезапуском ICE" else "Офер собеседнику: без перезапуска ICE")
             if (peer !== this.peer) return
             peer.setLocal(offer)
             if (peer !== this.peer) return
@@ -1068,18 +1087,35 @@ class CallSession(
                 return
             }
             current = current.copy(cameraOn = true)
-            peer?.let { peer ->
-                val added = peer.sendVideo(LocalVideo.CAMERA)
-                if (topology == CallTopology.DIRECT && added) sendOffer()
+            try {
+                peer?.let { peer ->
+                    val added = peer.sendVideo(LocalVideo.CAMERA)
+                    if (topology == CallTopology.DIRECT && added) sendOffer()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                CallLog.warning("Камера: дорожка не ушла в соединение ($e)")
+                media.stopCamera()
+                current = current.copy(cameraOn = false, notice = "Не удалось включить камеру")
             }
         } else {
-            peer?.stopVideo(LocalVideo.CAMERA)
+            detachVideo(LocalVideo.CAMERA)
             media.stopCamera()
             current = current.copy(cameraOn = false)
         }
         updateLocalTrack()
         publish()
         if (announce) sendMediaSettings()
+    }
+
+    /** Выключение не должно застревать: сбой соединения пишем в журнал, а захват всё равно останавливаем. */
+    private fun detachVideo(video: LocalVideo) {
+        try {
+            peer?.stopVideo(video)
+        } catch (e: Exception) {
+            CallLog.warning("Видео $video: дорожка не снята с соединения ($e)")
+        }
     }
 
     private fun updateLocalTrack() {

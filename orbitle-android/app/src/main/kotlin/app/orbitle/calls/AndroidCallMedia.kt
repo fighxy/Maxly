@@ -237,6 +237,7 @@ class AndroidCallMedia(private val context: Context) : CallMedia {
     }
 
     override fun stopCamera() {
+        CallLog.info("Камера: выключаю")
         runCatching { cameraCapturer?.stopCapture() }
         cameraTrack?.setEnabled(false)
     }
@@ -267,6 +268,7 @@ class AndroidCallMedia(private val context: Context) : CallMedia {
     }
 
     override fun stopScreen() {
+        CallLog.info("Показ экрана: останавливаю")
         runCatching { screenCapturer?.stopCapture() }
         runCatching { screenCapturer?.dispose() }
         screenCapturer = null
@@ -274,6 +276,7 @@ class AndroidCallMedia(private val context: Context) : CallMedia {
     }
 
     override fun setMicrophone(enabled: Boolean) {
+        CallLog.info(if (enabled) "Микрофон: включаю" else "Микрофон: выключаю")
         audioTrack.setEnabled(enabled)
     }
 

@@ -19,6 +19,10 @@ object CallSdp {
         return result.toList()
     }
 
+    /** Первый `a=ice-ufrag:` в SDP; с BUNDLE он один на все секции. */
+    fun iceUfrag(sdp: String): String? =
+        lines(sdp).firstOrNull { it.startsWith("a=ice-ufrag:") }?.removePrefix("a=ice-ufrag:")?.takeIf { it.isNotEmpty() }
+
     /** Кандидаты прямо в SDP сервера (SFU не шлёт их отдельно) с `mid` первой секции. */
     fun candidates(sdp: String): List<IceCandidate> {
         val all = lines(sdp)

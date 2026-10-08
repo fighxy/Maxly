@@ -95,6 +95,7 @@ class FakeCallPeer(val iceServers: List<CallIceServer>) : CallPeer {
     val channels = mutableListOf<FakeCallChannel>()
     var levels: Pair<Double, Double>? = null
     var closed = false
+    var videoError: Exception? = null
     var offerSdp = "v=0\r\na=msid:stream cam-track\r\na=ssrc:11 msid:stream cam-track\r\n"
     var answerSdp = "v=0\r\na=msid:stream cam-track\r\n"
 
@@ -107,12 +108,14 @@ class FakeCallPeer(val iceServers: List<CallIceServer>) : CallPeer {
     }
 
     override fun sendVideo(video: LocalVideo): Boolean {
+        videoError?.let { throw it }
         val added = video !in sending
         sending += video
         return added
     }
 
     override fun stopVideo(video: LocalVideo) {
+        videoError?.let { throw it }
         stopped += video
     }
 
