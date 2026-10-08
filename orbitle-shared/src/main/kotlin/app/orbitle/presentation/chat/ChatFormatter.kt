@@ -9,7 +9,7 @@ import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
 /** Подписи экрана чата: время пузыря, разделители дней, вторая строка шапки. */
-class ChatFormatter(private val zone: ZoneId = ZoneId.systemDefault()) {
+class ChatFormatter(val zone: ZoneId = ZoneId.systemDefault()) {
     private val presence = PresenceText(zone)
 
     fun time(ms: Long): String {

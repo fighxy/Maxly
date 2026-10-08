@@ -33,6 +33,8 @@ import java.time.ZoneOffset
 
 class FakeMessages : MessageRepository {
     override val currentUserId: String = "1"
+    /** `edit-timeout` сервера: сутки, своё свежее удаляется у всех. */
+    override var editTimeoutSeconds: Long = 86_400L
     val list = MutableStateFlow<List<Message>>(emptyList())
     val headerInfo = MutableStateFlow<ChatHeaderInfo?>(null)
     val sent = mutableListOf<Pair<String, String?>>()
@@ -558,6 +560,15 @@ class ChatViewModelTest {
         assertFalse(model.canDeleteForEveryone(msg("9")))
         model.delete(own, forEveryone = true)
         assertEquals(listOf(listOf("9") to true), repo.deletes)
+        // Старше edit-timeout — только у себя, даже если попросили у всех.
+        val old = msg("8", author = "1", at = now - 86_400_000L)
+        assertFalse(model.canDeleteForEveryone(old))
+        model.delete(old, forEveryone = true)
+        assertEquals(listOf("8") to false, repo.deletes.last())
+        // Без edit-timeout в конфиге своё у всех не удалить, как в веб-клиенте.
+        repo.editTimeoutSeconds = 0
+        assertFalse(model.canDeleteForEveryone(own))
+        repo.editTimeoutSeconds = 86_400L
         val saved = vm(Chat.SAVED_MESSAGES_ID)
         assertFalse(saved.canDeleteForEveryone(own))
         saved.delete(own, forEveryone = false)

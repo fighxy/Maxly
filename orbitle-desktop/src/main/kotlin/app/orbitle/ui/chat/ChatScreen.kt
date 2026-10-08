@@ -382,6 +382,7 @@ fun ChatScreen(
             if (selection.isNotEmpty()) {
                 SelectionTopBar(
                     count = selection.size,
+                    canDelete = model.canDelete(model.selectedMessages()),
                     onClose = model::clearSelection,
                     onCopy = {
                         val text = model.selectionText()

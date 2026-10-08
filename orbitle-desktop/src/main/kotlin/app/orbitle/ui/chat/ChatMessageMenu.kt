@@ -326,12 +326,14 @@ internal fun MessageActions(
                 modifier = Modifier.clickable { model.beginEdit(message); onDismiss() },
             )
         }
-        ListItem(
-            headlineContent = { Text("Удалить", color = MaterialTheme.colorScheme.error) },
-            leadingContent = { Icon(Icons.Outlined.Delete, null, tint = MaterialTheme.colorScheme.error) },
-            colors = colors,
-            modifier = Modifier.clickable { onDismiss(); onDelete() },
-        )
+        if (model.canDelete(listOf(message))) {
+            ListItem(
+                headlineContent = { Text("Удалить", color = MaterialTheme.colorScheme.error) },
+                leadingContent = { Icon(Icons.Outlined.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                colors = colors,
+                modifier = Modifier.clickable { onDismiss(); onDelete() },
+            )
+        }
         Spacer(Modifier.size(16.dp))
     }
 }
@@ -342,11 +344,12 @@ internal fun DeleteDialog(model: ChatViewModel, message: Message, onDismiss: () 
 
 /**
  * Подтверждение удаления одного или нескольких сообщений. «У всех» — только когда так можно
- * удалить каждое из [messages] (те же правила, что у одного сообщения).
+ * удалить каждое из [messages] ([ChatViewModel.deletePlan]); в канале с правами — только у всех.
  */
 @Composable
 internal fun DeleteDialog(model: ChatViewModel, messages: List<Message>, onDelete: (forEveryone: Boolean) -> Unit, onDismiss: () -> Unit) {
     val everyone = model.canDeleteForEveryone(messages)
+    val onlyForEveryone = model.deletesOnlyForEveryone(messages)
     val single = messages.size == 1
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -354,6 +357,7 @@ internal fun DeleteDialog(model: ChatViewModel, messages: List<Message>, onDelet
         text = {
             Text(
                 when {
+                    onlyForEveryone -> if (single) "Сообщение удалится у всех подписчиков канала." else "Сообщения удалятся у всех подписчиков канала."
                     model.deletesWithoutChoice -> if (single) "Сообщение удалится из «Избранного» на всех устройствах." else "Сообщения удалятся из «Избранного» на всех устройствах."
                     everyone -> "Можно удалить только у себя или у всех участников чата."
                     else -> if (single) "Сообщение удалится только у вас." else "Сообщения удалятся только у вас."
@@ -368,7 +372,7 @@ internal fun DeleteDialog(model: ChatViewModel, messages: List<Message>, onDelet
                         Text("У всех", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
                     }
                 } else {
-                    TextButton(onClick = { onDelete(false); onDismiss() }) {
+                    TextButton(onClick = { onDelete(onlyForEveryone); onDismiss() }) {
                         Text("Удалить", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
                     }
                 }

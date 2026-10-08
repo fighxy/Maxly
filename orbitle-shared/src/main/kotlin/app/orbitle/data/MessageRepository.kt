@@ -45,6 +45,12 @@ interface MessageRepository {
     /** Id своего аккаунта, `null` до входа. */
     val currentUserId: String?
 
+    /**
+     * `edit-timeout` конфига сервера, секунды: столько своё сообщение можно удалить у всех.
+     * Нет поля — 0, как в веб-клиенте.
+     */
+    val editTimeoutSeconds: Long get() = 0L
+
     /** Лента чата от старых к новым, вместе с ещё не ушедшими своими сообщениями. */
     fun messages(chatId: String): Flow<List<Message>>
 

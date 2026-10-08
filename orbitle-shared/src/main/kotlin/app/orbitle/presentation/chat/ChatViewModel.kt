@@ -1195,23 +1195,50 @@ class ChatViewModel(
     // Удаление
 
     /** «Удалить у всех» — только свои сообщения на сервере; в «Избранном» удаление одно. */
-    fun canDeleteForEveryone(message: Message): Boolean =
-        isOutgoing(message) && isServer(message) && chatId != Chat.SAVED_MESSAGES_ID
+    fun canDeleteForEveryone(message: Message): Boolean = deletePlan(listOf(message)).showsForEveryone
 
     val deletesWithoutChoice: Boolean get() = chatId == Chat.SAVED_MESSAGES_ID
 
+    /**
+     * Как можно удалить [messages] ([MessageSelection.deletePlan]): вид чата, мои права в нём и
+     * `edit-timeout` сервера.
+     */
+    fun deletePlan(messages: List<Message>): MessageSelection.DeletePlan {
+        val chat = header?.chat
+        return MessageSelection.deletePlan(
+            messages = messages,
+            me = repository.currentUserId,
+            nowMs = now(),
+            kind = MessageSelection.chatKind(chatId, chat?.type),
+            admin = chat?.isAdmin == true,
+            editTimeoutSec = repository.editTimeoutSeconds,
+        )
+    }
+
+    /** [messages] можно удалить хоть как-то (в канале без прав — нельзя). */
+    fun canDelete(messages: List<Message>): Boolean = deletePlan(messages).canDelete
+
+    /** [messages] удаляются только у всех, без выбора (канал с правами). */
+    fun deletesOnlyForEveryone(messages: List<Message>): Boolean = deletePlan(messages).forcesForEveryone
+
     fun delete(message: Message, forEveryone: Boolean) = delete(listOf(message), forEveryone)
 
-    /** Удалить несколько сообщений: не ушедшие убираются из ленты, остальные — одним запросом. */
+    /**
+     * Удалить несколько сообщений: не ушедшие убираются из ленты, остальные — одним запросом.
+     * «У всех» — только если так можно удалить каждое ([deletePlan]); в канале с правами — всегда.
+     */
     fun delete(messages: List<Message>, forEveryone: Boolean) {
         if (messages.isEmpty()) return
+        val plan = deletePlan(messages)
+        if (!plan.canDelete) return
+        val everyone = (forEveryone && plan.showsForEveryone) || plan.forcesForEveryone || deletesWithoutChoice
         if (messages.any { it.id == _state.value.replyTo?.id }) cancelReply()
         val (server, local) = messages.partition(::isServer)
         local.forEach { repository.discard(chatId, it.id) }
         if (server.isEmpty()) return
         viewModelScope.launch {
             try {
-                val outcome = repository.deleteMessages(chatId, server.map { it.id }, forEveryone || deletesWithoutChoice)
+                val outcome = repository.deleteMessages(chatId, server.map { it.id }, everyone)
                 // Оставленные сервером сообщения остаются в ленте: сказать, сколько их.
                 if (outcome.failed.isNotEmpty()) _messages.value = MessageSelection.deleteFailedNotice(outcome.failed.size, server.size)
             } catch (e: CancellationException) {
@@ -1253,13 +1280,12 @@ class ChatViewModel(
     }
 
     /** Текст выбранного для буфера обмена ([MessageSelection.copyText]). */
-    fun selectionText(): String = MessageSelection.copyText(selectedMessages(), formatter::time, ::authorLabel)
+    fun selectionText(): String = MessageSelection.copyText(selectedMessages(), formatter.zone, ::authorLabel)
 
-    /** «У всех» — только если так можно удалить каждое выбранное, по правилам одиночного удаления. */
+    /** «У всех» — только если так можно удалить каждое выбранное ([deletePlan]). */
     fun canDeleteSelectionForEveryone(): Boolean = canDeleteForEveryone(selectedMessages())
 
-    fun canDeleteForEveryone(messages: List<Message>): Boolean =
-        messages.isNotEmpty() && messages.all(::canDeleteForEveryone)
+    fun canDeleteForEveryone(messages: List<Message>): Boolean = deletePlan(messages).showsForEveryone
 
     /** Удалить выбранное одним запросом и выйти из режима выбора. */
     fun deleteSelection(forEveryone: Boolean) {
@@ -1268,26 +1294,54 @@ class ChatViewModel(
         delete(targets, forEveryone)
     }
 
+    /** Переслать выбранное в [targetChatId] и выйти из режима выбора ([forwardSelection]). */
+    fun forwardSelection(targetChatId: String) = forwardSelection(listOf(targetChatId), null)
+
     /**
-     * Переслать выбранное в [targetChatId] и выйти из режима выбора. Сообщения уходят по очереди,
-     * от старых к новым ([MessageRepository.forwardMessages]); ошибка останавливает остальные.
+     * Переслать выбранное в чаты [targetChatIds] и выйти из режима выбора. Порядок —
+     * [MessageSelection.forwardPlan]: комментарий в каждый чат, затем сообщения от старых к новым,
+     * каждое во все чаты. Подряд идущие сообщения в один чат уходят одним
+     * [MessageRepository.forwardMessages]; ошибка останавливает остальные.
      */
-    fun forwardSelection(targetChatId: String) {
+    fun forwardSelection(targetChatIds: List<String>, comment: String?) {
         val targets = selectedMessages().filter(::canForward)
         clearSelection()
-        if (targets.isEmpty()) return
+        val plan = MessageSelection.forwardPlan(targets, targetChatIds, comment)
+        val total = plan.count { it is MessageSelection.ForwardStep.Forward }
+        if (total == 0) return
         viewModelScope.launch {
             try {
-                val outcome = repository.forwardMessages(chatId, targets.map { it.id }, targetChatId)
-                val error = outcome.error
+                var sent = 0
+                var error: Throwable? = null
+                for (batch in forwardBatches(plan)) {
+                    val first = batch.first()
+                    if (first is MessageSelection.ForwardStep.Comment) {
+                        try {
+                            repository.send(first.target, first.text, null)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            error = e
+                            break
+                        }
+                        continue
+                    }
+                    val ids = batch.map { (it as MessageSelection.ForwardStep.Forward).messageId }
+                    val outcome = repository.forwardMessages(chatId, ids, first.target)
+                    sent += outcome.sent
+                    if (outcome.error != null) {
+                        error = outcome.error
+                        break
+                    }
+                }
                 if (error == null) {
-                    _messages.value = MessageSelection.forwardedNotice(outcome.sent)
+                    _messages.value = MessageSelection.forwardedNotice(sent)
                     return@launch
                 }
                 val reason = app.orbitle.data.CoreErrors.map(error).userMessage
                 // Часть уже ушла: сказать сколько, иначе показалось бы, что не ушло ничего.
-                _messages.value = if (outcome.sent == 0) reason ?: return@launch
-                else listOfNotNull("Переслано ${outcome.sent} из ${targets.size}", reason).joinToString(". ")
+                _messages.value = if (sent == 0) reason ?: return@launch
+                else listOfNotNull("Переслано $sent из $total", reason).joinToString(". ")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1296,13 +1350,25 @@ class ChatViewModel(
         }
     }
 
+    /** Шаги пересылки по запросам: комментарий — один, подряд идущие сообщения в один чат — вместе. */
+    private fun forwardBatches(plan: List<MessageSelection.ForwardStep>): List<List<MessageSelection.ForwardStep>> {
+        val batches = ArrayList<MutableList<MessageSelection.ForwardStep>>()
+        for (step in plan) {
+            val last = batches.lastOrNull()
+            val joins = step is MessageSelection.ForwardStep.Forward && last != null &&
+                last.first() is MessageSelection.ForwardStep.Forward && last.first().target == step.target
+            if (joins) last!!.add(step) else batches.add(mutableListOf(step))
+        }
+        return batches
+    }
+
     /** Имя автора в скопированной переписке. */
     private fun authorLabel(message: Message): String {
         message.authorName.takeIf { it.isNotBlank() }?.let { return it }
         if (isOutgoing(message)) return "Вы"
         val chat = header?.chat
         if (chat != null && chat.type == ChatType.PRIVATE && !chat.isSavedMessages) return ChatListFormatter().title(chat)
-        return "Неизвестный"
+        return MessageSelection.NO_NAME
     }
 
     /** Выбранные сообщения пропали из ленты (удалены, в том числе на другом устройстве): снять выбор. */

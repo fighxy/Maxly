@@ -43,6 +43,8 @@ fun SelectionTopBar(
     onCopy: () -> Unit,
     onForward: () -> Unit,
     onDelete: () -> Unit,
+    /** Выбранное можно удалить ([app.orbitle.presentation.chat.ChatViewModel.canDelete]). */
+    canDelete: Boolean = true,
 ) {
     TopAppBar(
         navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Filled.Close, "Отменить выбор") } },
@@ -50,7 +52,7 @@ fun SelectionTopBar(
         actions = {
             IconButton(onClick = onCopy) { Icon(Icons.Filled.ContentCopy, "Копировать") }
             IconButton(onClick = onForward) { Icon(Icons.AutoMirrored.Filled.Forward, "Переслать") }
-            IconButton(onClick = onDelete) { Icon(Icons.Outlined.Delete, "Удалить", tint = MaterialTheme.colorScheme.error) }
+            if (canDelete) IconButton(onClick = onDelete) { Icon(Icons.Outlined.Delete, "Удалить", tint = MaterialTheme.colorScheme.error) }
         },
     )
 }

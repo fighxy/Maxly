@@ -74,7 +74,7 @@ class MessageSelectionTest {
 
     // Текст для копирования
 
-    private val clock: (Long) -> String = { ChatFormatter(ZoneOffset.UTC).time(it) }
+    private val clock = ZoneOffset.UTC
 
     @Test
     fun singleMessageCopiesJustItsText() {
@@ -90,7 +90,7 @@ class MessageSelectionTest {
         // Порядок выбора не важен: копия идёт по времени.
         val text = MessageSelection.copyText(listOf(third, first, second), clock) { it.authorName }
         assertEquals(
-            "Анна, 12:00\nпривет\n\nИван, 12:01\nкак дела?\n\nАнна, 13:05\nхорошо\nа у тебя?",
+            "Анна, [29.09.2026 12:00]\nпривет\n\nИван, [29.09.2026 12:01]\nкак дела?\n\nАнна, [29.09.2026 13:05]\nхорошо\nа у тебя?",
             text,
         )
     }
@@ -99,7 +99,7 @@ class MessageSelectionTest {
     fun sameTimeKeepsServerOrder() {
         val a = msg("100", text = "a")
         val b = msg("99", text = "b")
-        assertEquals("Анна, 12:00\nb\n\nАнна, 12:00\na", MessageSelection.copyText(listOf(a, b), clock) { it.authorName })
+        assertEquals("Анна, [29.09.2026 12:00]\nb\n\nАнна, [29.09.2026 12:00]\na", MessageSelection.copyText(listOf(a, b), clock) { it.authorName })
     }
 
     @Test
@@ -107,7 +107,7 @@ class MessageSelectionTest {
         val photo = msg("1", text = "", content = MessageContent(attachments = listOf(ChatAttachment.Photo(PhotoContent("p", null)))))
         val forwarded = msg("2", at = now + minute, text = "", content = MessageContent(forward = MessageForward("Борис", "новость")))
         assertEquals(
-            "Анна, 12:00\n[Фото]\n\nАнна, 12:01\nновость",
+            "Анна, [29.09.2026 12:00]\nФото\n\nАнна, [29.09.2026 12:01]\nновость",
             MessageSelection.copyText(listOf(photo, forwarded), clock) { it.authorName },
         )
     }
@@ -192,7 +192,7 @@ class MessageSelectionTest {
         assertEquals("ответ", model.selectionText())
         model.toggleSelection(theirs)
         // Без имени автора: своё — «Вы», в личном чате чужое — название чата.
-        assertEquals("Анна, 12:00\nвопрос\n\nВы, 12:01\nответ", model.selectionText())
+        assertEquals("Анна, [29.09.2026 12:00]\nвопрос\n\nВы, [29.09.2026 12:01]\nответ", model.selectionText())
     }
 
     @Test
@@ -315,7 +315,8 @@ class MessageSelectionTest {
         repo.list.value = listOf(msg("1", author = "1"), failed)
         val model = vm()
         model.delete(listOf(msg("1", author = "1"), failed), forEveryone = true)
-        assertEquals(listOf(listOf("1") to true), repo.deletes)
+        // Неотправленное у всех не удалить — значит, и остальное уходит «у себя».
+        assertEquals(listOf(listOf("1") to false), repo.deletes)
         assertEquals(listOf("1"), repo.list.value.map { it.id })
     }
 }
