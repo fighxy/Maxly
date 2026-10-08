@@ -72,7 +72,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * Положение шапки списка чатов (истории, поиск, папки) — как в Telegram и на iOS. Список
+ * Положение шапки списка чатов (истории, поиск, папки) — как на iOS. Список
  * встаёт на поиск, истории спрятаны над ним. Подъём списка сначала уводит поиск, папки
  * остаются; у верха списка палец тянет поиск и истории обратно, инерция встаёт на поиске.
  *
@@ -247,7 +247,7 @@ fun SearchCapsule(placeholder: String, onClick: () -> Unit, modifier: Modifier =
 }
 
 /**
- * Папки капсулой, как в Telegram: выбранную отмечает «таблетка», которая едет за листанием
+ * Папки капсулой: выбранную отмечает «таблетка», которая едет за листанием
  * страниц ([pageOffset] — доля пути к соседней странице).
  */
 @Composable
@@ -286,7 +286,7 @@ fun FolderCapsule(
         val wheelScope = rememberCoroutineScope()
         Box(
             Modifier
-                // Колесо мыши над папками листает их вбок, как в Telegram Desktop.
+                // Колесо мыши над папками листает их вбок.
                 .pointerInput(scroll) {
                     awaitPointerEventScope {
                         while (true) {

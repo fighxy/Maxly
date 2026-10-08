@@ -326,7 +326,7 @@ class RecordingController(
     }
 
     companion object {
-        /** Нажатие короче — смена режима, дольше — запись, как в Telegram. */
+        /** Нажатие короче — смена режима, дольше — запись. */
         const val HOLD_DELAY_MS = 150L
 
         /** Кружок — не длиннее минуты. */

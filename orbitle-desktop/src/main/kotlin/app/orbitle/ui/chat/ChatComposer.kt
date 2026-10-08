@@ -436,7 +436,7 @@ internal fun AttachSheet(
 
 
 /**
- * Клавиши поля ввода, как в Telegram Desktop: отправка выбранной клавишей ([SendKey]: Enter или
+ * Клавиши поля ввода: отправка выбранной клавишей ([SendKey]: Enter или
  * Ctrl+Enter; другая даёт новую строку) и ↑ в пустом поле — правка своего последнего сообщения.
  */
 private fun composerKey(

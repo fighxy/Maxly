@@ -8,7 +8,7 @@ import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 
-/** Под мышью нажимаемое показывает руку, как ссылки и кнопки в Telegram Desktop. */
+/** Под мышью нажимаемое показывает руку, как ссылки и кнопки в браузере. */
 fun Modifier.clickCursor(): Modifier = pointerHoverIcon(PointerIcon.Hand)
 
 /**

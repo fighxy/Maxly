@@ -970,8 +970,8 @@ public final class ChatViewModel {
         if let last = live.last?.timestamp { markSeen(last) }
     }
 
-    /// Экран чата закрывается. Внизу живой ленты место не хранится: чат откроется на свежих,
-    /// как в Telegram. Окно перехода при следующем открытии уже закрыто — его место тоже нет.
+    /// Экран чата закрывается. Внизу живой ленты место не хранится: чат откроется на свежих.
+    /// Окно перехода при следующем открытии уже закрыто — его место тоже нет.
     public func savePlace(_ id: String?, atBottom: Bool) {
         savedPlace = atBottom || isJumped ? nil : id
     }
@@ -994,7 +994,7 @@ public final class ChatViewModel {
         return ChatContentFormat.dayTitle(rows[index].message.timestamp, now: now)
     }
 
-    /// Сколько сообщений окна перехода вокруг цели: чуть больше после неё, как в Telegram.
+    /// Сколько сообщений окна перехода вокруг цели: чуть больше после неё.
     static let aroundBackward = 25
     static let aroundForward = 35
     /// Страница при листании окна перехода.

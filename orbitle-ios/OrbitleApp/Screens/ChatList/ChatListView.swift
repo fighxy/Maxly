@@ -112,7 +112,7 @@ struct ChatListView: View {
         return stories.own != nil || !stories.rings.isEmpty
     }
 
-    /// Шапка — первые строки списка, как в Telegram: истории (спрятаны над поиском), поиск,
+    /// Шапка — первые строки списка: истории (спрятаны над поиском), поиск,
     /// папки. В поиске нет историй и папок, при правке — историй и поиска.
     private var showsStoriesRow: Bool { hasStories && !viewModel.isSearchActive && !viewModel.isEditing }
     private var showsSearchRow: Bool { !viewModel.isEditing }
@@ -145,7 +145,7 @@ struct ChatListView: View {
                     .background { PinnedHeaderBackdrop() }
             }
         }
-        // Потянуть список вниз открывает истории, как в Telegram, поэтому обновления
+        // Потянуть список вниз открывает истории, поэтому обновления
         // потягиванием нет: список и так сверяется сам.
     }
 
@@ -168,7 +168,7 @@ struct ChatListView: View {
             }
         }
         // Истории появились (загрузились или вернулись после поиска), а список у самого
-        // верха — они прячутся над поиском, как в Telegram.
+        // верха — они прячутся над поиском.
         .onAppear { hideStoriesIfAtTop() }
     }
 
@@ -851,7 +851,7 @@ private struct PinnedHeaderBackdrop: View {
     }
 }
 
-/// Значок новой истории, как в Telegram: пунктирный круг с плюсом.
+/// Значок новой истории: пунктирный круг с плюсом.
 private struct AddStoryGlyph: View {
     var body: some View {
         ZStack {

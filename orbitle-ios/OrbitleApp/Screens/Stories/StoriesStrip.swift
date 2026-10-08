@@ -3,7 +3,7 @@ import OrbitleDomain
 import OrbitlePresentation
 import OrbitleUI
 
-/// Раскрытая полоса историй в шапке списка чатов, как в Telegram: своя история первой
+/// Раскрытая полоса историй в шапке списка чатов: своя история первой
 /// (с плюсом), затем непросмотренные, затем просмотренные.
 struct StoriesStrip: View {
     let stories: StoriesViewModel
@@ -78,7 +78,7 @@ struct StoriesStrip: View {
     }
 }
 
-/// Свёрнутая полоса у заголовка «Чаты», как в Telegram: до трёх аватаров внахлёст, каждый
+/// Свёрнутая полоса у заголовка «Чаты»: до трёх аватаров внахлёст, каждый
 /// со своим кольцом. Касание раскрывает полосу.
 struct StoryStack: View {
     let rings: [StoryRing]
@@ -89,7 +89,7 @@ struct StoryStack: View {
             ForEach(Array(rings.prefix(3).enumerated()), id: \.element.owner) { index, ring in
                 StoryRingAvatar(avatar: StoryText.avatar(ring), ring: ring, size: size, reservesRingSpace: true)
                     .background(Circle().fill(Color.orbitleBackground))
-                    // Первый — сверху, как в Telegram.
+                    // Первый — сверху.
                     .zIndex(Double(3 - index))
             }
         }

@@ -318,7 +318,7 @@ private fun BubbleContent(
     val visuals = content.visuals
     val text = message.displayText.trim()
     val pad = if (visuals.isNotEmpty() && text.isEmpty() && item.authorName == null && content.reply == null && content.forward == null) 3.dp else 0.dp
-    // С фото или видео пузырь шириной с медиа, как в Telegram: подпись переносится под картинкой,
+    // С фото или видео пузырь шириной с медиа: подпись переносится под картинкой,
     // а не растягивает пузырь вбок от узкой вертикальной фотографии.
     val mediaWidth = if (visuals.isNotEmpty()) Modifier.width(visualsWidth(visuals, maxWidth - 6.dp) + pad * 2) else Modifier
     Column(mediaWidth.padding(pad)) {

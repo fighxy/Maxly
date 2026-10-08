@@ -41,7 +41,7 @@ import app.orbitle.ui.keys.KeyboardSettings
 import app.orbitle.ui.keys.SendKey
 
 /**
- * «Клавиатура»: чем отправлять сообщение и все горячие клавиши, как в Telegram Desktop.
+ * «Клавиатура»: чем отправлять сообщение и все горячие клавиши.
  * Сочетания работают в любой раскладке — русской и английской.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)

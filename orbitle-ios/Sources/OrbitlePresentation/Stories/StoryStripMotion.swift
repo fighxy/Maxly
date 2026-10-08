@@ -1,7 +1,7 @@
 import Foundation
 import OrbitleDomain
 
-/// Шапка списка чатов внутри самого списка, как в Telegram: первые строки — истории, поиск и
+/// Шапка списка чатов внутри самого списка: первые строки — истории, поиск и
 /// папки. Поиск уезжает вместе со списком, папки, дойдя до панели навигации, закрепляются.
 /// Истории спрятаны над поиском: список встаёт на поиск, истории открывает потягивание вниз.
 ///
@@ -44,7 +44,7 @@ public struct ChatListHeaderGeometry: Equatable, Sendable {
     }
 
     /// Инерция сверху вниз по списку долетела до спрятанных историй: она останавливается на
-    /// поиске, как в Telegram. Истории открывает только палец.
+    /// поиске. Истории открывает только палец.
     public func stopsFling(from previous: CGFloat, to top: CGFloat, dragging: Bool, decelerating: Bool) -> Bool {
         guard let stories, !dragging, decelerating else { return false }
         let hidden = stories.upperBound - 0.5

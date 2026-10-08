@@ -170,7 +170,7 @@ struct ChatView: View {
                 .transition(.move(edge: .bottom))
             }
         }
-        // Без клавиатуры и панели капсулы опускаются в нижний отступ экрана, как в Telegram:
+        // Без клавиатуры и панели капсулы опускаются в нижний отступ экрана:
         // над полоской «домой» и так остаётся место.
         .padding(.bottom, lowersControls ? -Self.controlsLowering : 0)
         // Верх поля ввода — от него лента тает в фон к низу экрана (`ChatBottomBlur`).

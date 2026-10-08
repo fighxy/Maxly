@@ -1,6 +1,6 @@
 package app.orbitle.ui.chat
 
-// Лента чата: строки, прокрутка как в Telegram, кнопка «вниз», плавающая дата.
+// Лента чата: строки, прокрутка, кнопка «вниз», плавающая дата.
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.lazy.LazyListState
@@ -255,7 +255,7 @@ internal fun EmptyHint(text: String, modifier: Modifier) {
 }
 
 /**
- * Лента чата как в Telegram: перевёрнутый список (новые снизу). Куда встать — решает модель
+ * Лента чата: перевёрнутый список (новые снизу). Куда встать — решает модель
  * ([ChatUiState.scroll]): к свежим, к «Непрочитанным» у верха экрана, к сообщению посередине с
  * подсветкой или на прежнее место. Лента сообщает, что видно ([ChatViewModel.onVisible]): чат
  * читается до самого нового увиденного, кнопка «вниз» показывает, сколько пришло ниже. У верха —
@@ -443,7 +443,7 @@ internal object FeedScroll {
     ) {
         when (target) {
             ScrollRequest.Target.Bottom -> {
-                // Далеко — прыжок почти до низа, дальше плавно, как в Telegram.
+                // Далеко — прыжок почти до низа, дальше плавно.
                 if (list.firstVisibleItemIndex > FAR_JUMP) list.scrollToItem(NEAR_BOTTOM)
                 list.animateScrollToItem(0)
             }

@@ -102,7 +102,7 @@ fun main() {
                         window.requestFocus()
                     }
             }
-            // Ctrl+Q (⌘Q) — выход, как в Telegram Desktop.
+            // Ctrl+Q (⌘Q) — выход.
             app.orbitle.ui.keys.HotkeyHandler { hotkey ->
                 if (hotkey.action == app.orbitle.ui.keys.HotkeyAction.QUIT) {
                     exitApplication()
