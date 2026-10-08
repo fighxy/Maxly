@@ -59,6 +59,13 @@ struct ChatView: View {
     @State private var keyboardHeight: CGFloat = 300
     /// Экранная клавиатура на экране: поле ввода стоит над ней, а без неё опускается ниже.
     @State private var keyboardShown = false
+    /// Верх клавиатуры в глобальных координатах, пока она открыта: выше него читается лента.
+    @State private var keyboardTop: CGFloat?
+    /// Низ шапки (панель навигации и плашки) в глобальных координатах.
+    @State private var headerBottom: CGFloat?
+    /// Экран чата показан (между появлением и уходом): отметки прочтения уходят, только пока
+    /// он показан и приложение активно.
+    @State private var onScreen = false
     @State private var searchShown = false
     @State private var pollShown = false
     @State private var scheduleShown = false
@@ -100,7 +107,9 @@ struct ChatView: View {
             focus: $composerFocused,
             bottomControlsTop: bottomControlsTop,
             wallpaperFrame: wallpaperFrame,
-            quickReaction: quickReaction
+            quickReaction: quickReaction,
+            headerBottom: headerBottom,
+            keyboardTop: keyboardTop
         )
         // Обои за лентой: на весь экран, под шапкой, полем ввода и клавиатурой, не
         // прокручиваются с сообщениями.
@@ -125,12 +134,15 @@ struct ChatView: View {
             let height = frame.height - bottom
             // Плавающая и внешняя клавиатуры низкие: панель остаётся обычной высоты.
             if height > 200 { keyboardHeight = height }
+            if keyboardShown { keyboardTop = Self.keyboardTop(note) }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
             setKeyboardShown(true, note)
+            keyboardTop = Self.keyboardTop(note)
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { note in
             setKeyboardShown(false, note)
+            keyboardTop = nil
         }
     }
 
@@ -141,6 +153,20 @@ struct ChatView: View {
                 pinBanner(id: pinned.id, text: pinned.text)
             }
         }
+        // Низ шапки с плашками: выше него лента закрыта, сообщение там не прочитано.
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { headerBottom = $0 }
+    }
+
+    /// Верх клавиатуры в глобальных координатах. Рамка в уведомлении — в координатах экрана,
+    /// окно приложения может быть уже экрана (iPad). Клавиатура ниже окна ничего не закрывает.
+    private static func keyboardTop(_ note: Notification) -> CGFloat? {
+        guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect, frame.height > 0 else { return nil }
+        guard let window = UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.keyWindow }).first,
+              let screen = window.windowScene?.screen else {
+            return frame.minY
+        }
+        let local = window.convert(frame, from: screen.coordinateSpace)
+        return local.minY < window.bounds.maxY ? local.minY : nil
     }
 
     private var bottomControls: some View {
@@ -501,6 +527,8 @@ struct ChatView: View {
     private var lifecycleLayer: some View {
         coversLayer
             .onAppear {
+                onScreen = true
+                viewModel.setScreenActive(scenePhase == .active)
                 recording.onStart = { [viewModel] in viewModel.stopVoice() }
                 recording.onRecordingChange = { [viewModel] mode in
                     let kind: TypingKind?
@@ -516,6 +544,9 @@ struct ChatView: View {
                 }
             }
             .onDisappear {
+                // Ушли из чата (назад, профиль, другой чат): ждущая отметка прочтения снята.
+                onScreen = false
+                viewModel.endReadSession()
                 panelShown = false
                 recording.cancel()
                 reveal.hideAll()
@@ -601,6 +632,9 @@ struct ChatView: View {
                 if id != nil { composerFocused = true }
             }
             .onChange(of: scenePhase) { _, phase in
+                // Фон или неактивное приложение (шторка, переключатель) снимают ждущую отметку:
+                // невидимое не читается. Вернулись — читается то, что на экране.
+                viewModel.setScreenActive(onScreen && phase == .active)
                 if phase != .active {
                     viewModel.flushDraft()
                     // Свернули приложение — открытые сообщения снова закрыты.

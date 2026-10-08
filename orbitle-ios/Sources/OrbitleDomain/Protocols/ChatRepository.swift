@@ -93,6 +93,10 @@ public protocol ChatRepository: Sendable {
     /// Сбросить непрочитанные локально и на сервере. При ошибке сервера
     /// локальное изменение остаётся, а ошибка пробрасывается.
     func markAsRead(chatId: String) async throws(OrbitleError)
+    /// Прочитать чат до сообщения `messageId` (id на сервере), отправленного в `mark` (мс):
+    /// так экран чата отмечает увиденное (`ReadMarkScheduler`). Если читать нечего, сервер не
+    /// дёргается. При скрытых отметках о прочтении ядро читает чат только на устройстве.
+    func markRead(chatId: String, messageId: String, at mark: Int64) async throws(OrbitleError)
 
     /// Что из необязательных действий доступно.
     var capabilities: ChatListCapabilities { get }
@@ -155,6 +159,7 @@ public struct BotButtonAnswer: Sendable, Equatable {
 /// вызовы отклоняются, потоки отдают пустое значение.
 public extension ChatRepository {
     var capabilities: ChatListCapabilities { [] }
+    func markRead(chatId: String, messageId: String, at mark: Int64) async throws(OrbitleError) { throw .invalidRequest }
     func setPinned(_ pinned: Bool, chatId: String) async throws(OrbitleError) { throw .invalidRequest }
     func reorderPinned(_ chatIds: [String]) async throws(OrbitleError) { throw .invalidRequest }
     func setMarkedUnread(_ unread: Bool, chatId: String) async throws(OrbitleError) { throw .invalidRequest }

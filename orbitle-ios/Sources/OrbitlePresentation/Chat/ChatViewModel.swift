@@ -189,6 +189,17 @@ public final class ChatViewModel {
     /// Можно ли писать в чат: экран ставит его по праву на поле ввода. Пока не поставил,
     /// «печатаю» не уходит (канал без прав, чат из поиска).
     @ObservationIgnored public var typingAllowed = false
+    /// Когда уходит отметка прочтения (`ReadMarkRules`): пауза после последней смены
+    /// кандидата, только самое новое, никогда не старее отправленного.
+    @ObservationIgnored private(set) var readMarks: ReadMarkScheduler?
+    /// Экран чата на виду: открыт и приложение активно. Только тогда отметки уходят.
+    @ObservationIgnored private var readScreenActive = false
+    /// Лента у низа живой ленты: читается последнее сообщение.
+    @ObservationIgnored private var readFollowing = false
+    /// Время самого нового увиденного сообщения за этот показ экрана (мс).
+    @ObservationIgnored private var seenReadMs: Int64 = 0
+    /// Чат помечают непрочитанным: отметки не уходят до следующего открытия.
+    @ObservationIgnored private var markingUnread = false
 
     @ObservationIgnored private let repository: any MessageRepository
     @ObservationIgnored private let drafts: (any ChatDraftStore)?
@@ -253,7 +264,8 @@ public final class ChatViewModel {
         voice: (any VoicePlaying)? = nil,
         gallery: (any GallerySaving)? = nil,
         isNewDialog: Bool = false,
-        chats: (any ChatRepository)? = nil
+        chats: (any ChatRepository)? = nil,
+        readMarkSleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) {
         self.isNewDialog = isNewDialog
         self.chatId = chatId
@@ -273,6 +285,9 @@ public final class ChatViewModel {
         selection.onDeleted = { [weak self] ids in
             guard let self, let reply = self.replyTarget, ids.contains(reply.id) else { return }
             self.replyTarget = nil
+        }
+        readMarks = ReadMarkScheduler(sleep: readMarkSleep) { [weak self] mark in
+            await self?.sendReadMark(mark) ?? false
         }
     }
 
@@ -328,9 +343,12 @@ public final class ChatViewModel {
     /// разделитель, лента откроется на нём.
     ///
     /// Это и есть открытие чата (возврат из профиля его не вызывает): окно перехода, возвраты
-    /// к цитатам и отметка «долистал» прежнего захода сбрасываются.
+    /// к цитатам, отметка «долистал» и отправленная отметка прочтения прежнего захода
+    /// сбрасываются.
     public func noteUnreadOnOpen(_ count: Int) {
         pendingUnread = max(count, 0)
+        markingUnread = false
+        readMarks?.reset()
         returnStack = []
         seenUpTo = nil
         if window != nil { setWindow(nil) }
@@ -513,6 +531,7 @@ public final class ChatViewModel {
 
     public func deactivate() {
         typingReporter?.recordingStopped(chatId: chatId)
+        endReadSession()
         latestRetry?.cancel()
         latestRetry = nil
         loadGeneration &+= 1
@@ -1212,6 +1231,66 @@ public final class ChatViewModel {
         if let last = live.last?.timestamp { markSeen(last) }
     }
 
+    // MARK: Отметка прочтения
+
+    /// Что видно в ленте: `newestSeen` — самое новое сообщение, у которого в видимой области
+    /// (без шапки, поля ввода и клавиатуры) не меньше `ReadMarkRules.minVisibleFraction` высоты
+    /// (`ReadVisibility.newestSeen`); `atBottom` — лента у низа живой ленты и следует за новыми.
+    /// Чат читается до самого нового увиденного сообщения.
+    public func noteVisible(newestSeen id: String?, atBottom: Bool) {
+        readFollowing = atBottom && !isJumped
+        if let id, let message = Self.find(id, in: messages) {
+            seenReadMs = max(seenReadMs, ReadMark.time(of: message))
+        }
+        if readFollowing, let last = messages.last {
+            seenReadMs = max(seenReadMs, ReadMark.time(of: last))
+        }
+        proposeReadMark()
+    }
+
+    /// Экран чата на виду (`true`) или нет: закрыт, перекрыт, приложение ушло в фон или стало
+    /// неактивным. Уход снимает ещё не ушедшую отметку — невидимое не читается; возврат читает
+    /// то, что видно.
+    public func setScreenActive(_ active: Bool) {
+        readScreenActive = active
+        if active {
+            proposeReadMark()
+        } else {
+            readMarks?.cancel()
+        }
+    }
+
+    /// Экран чата ушёл (закрыли чат, сверху открылся другой экран): ждущая отметка снята, а
+    /// увиденное этого показа забыто — следующий показ сообщит своё.
+    public func endReadSession() {
+        setScreenActive(false)
+        readFollowing = false
+        seenReadMs = 0
+    }
+
+    /// Кандидат в отметку: у низа — последнее сообщение живой ленты, иначе самое новое
+    /// увиденное. Когда отметка уйдёт, решает `ReadMarkScheduler`.
+    private func proposeReadMark() {
+        guard readScreenActive, !markingUnread, chats != nil, let readMarks else { return }
+        for message in (readFollowing ? live : messages).reversed() {
+            guard let mark = ReadMark(message: message), readFollowing || mark.time <= seenReadMs else { continue }
+            readMarks.propose(mark)
+            return
+        }
+    }
+
+    /// Отметка уходит через ядро (`markReadAt`): при скрытых отметках о прочтении оно читает
+    /// чат только на устройстве. Ошибка не показывается: отметку повторит следующий кандидат.
+    private func sendReadMark(_ mark: ReadMark) async -> Bool {
+        guard let chats else { return false }
+        do {
+            try await chats.markRead(chatId: chatId, messageId: mark.messageId, at: mark.time)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     /// Экран чата закрывается. Внизу живой ленты место не хранится: чат откроется на свежих.
     /// Окно перехода при следующем открытии уже закрыто — его место тоже нет.
     public func savePlace(_ id: String?, atBottom: Bool) {
@@ -1228,6 +1307,11 @@ public final class ChatViewModel {
     public func topRow(among visible: [String]) -> String? {
         guard let top = visible.compactMap({ rowIndex[$0] }).min(), rows.indices.contains(top) else { return nil }
         return rows[top].id
+    }
+
+    /// Место строки в ленте (больше — новее): экран по нему выбирает самое новое увиденное.
+    public func rowOrder(of id: String) -> Int? {
+        rowIndex[id]
     }
 
     /// Дата сообщения строки — плашка над лентой во время прокрутки.
@@ -1279,6 +1363,7 @@ public final class ChatViewModel {
     /// Новая живая лента из репозитория.
     private func receiveLive(_ page: [Message]) {
         live = page
+        defer { proposeReadMark() }
         if var current = window {
             if current.joined {
                 current.absorb(page)
@@ -2045,6 +2130,9 @@ public final class ChatViewModel {
     /// закрывается: открытый чат тут же отметился бы прочитанным.
     public func requestMarkUnread(_ message: Message) {
         guard canMarkUnread(message) else { return }
+        // Отметка, ждущая паузы, прочитала бы чат обратно.
+        markingUnread = true
+        readMarks?.reset()
         unreadMarkCandidate = message
     }
 

@@ -362,6 +362,33 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         try applyReadReply(chatId: chatId, reply: reply, lastBefore: mark.messageId)
     }
 
+    /// Прочитать чат до увиденного сообщения (экран чата, `ReadMarkScheduler`). Если читать
+    /// нечего (непрочитанных нет), сервер не дёргается. Отметка дошла до последнего сообщения
+    /// строки — бейдж пропадает сразу; иначе счётчик берётся из ответа сервера: ниже отметки
+    /// могут остаться непрочитанные.
+    public func markRead(chatId: String, messageId: String, at mark: Int64) async throws(OrbitleError) {
+        let lastBefore: String?
+        do {
+            guard let chat = try chat(id: chatId), chat.unreadCount > 0 else { return }
+            lastBefore = chat.lastMessageId
+            if mark >= ReadMarks.readTime(lastMessageAt: chat.lastMessageAt, updatedAt: chat.updatedAt) {
+                chat.unreadCount = 0
+                try modelContext.save()
+                notify()
+            }
+        } catch {
+            throw .storageError
+        }
+        let started = generation
+        let reply: CoreReadMark?
+        switch await api.markRead(chatId: chatId, messageId: messageId, at: mark) {
+        case .success(let value): reply = value
+        case .failure(let error): throw error.orbitleError
+        }
+        guard let reply, started == generation else { return }
+        try applyReadReply(chatId: chatId, reply: reply, lastBefore: lastBefore)
+    }
+
     /// Ответ сервера на свою отметку. Ответ старее уже применённой отметки пропускается:
     /// ответы на две отметки подряд могут прийти в обратном порядке. Счётчик сервера берётся,
     /// только если он меньше локального и с запроса в чат ничего не пришло (`lastBefore` —

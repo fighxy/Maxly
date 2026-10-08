@@ -150,11 +150,6 @@ public final class ChatListViewModel {
     @ObservationIgnored private let searchDelay: Duration
     @ObservationIgnored private var watches: [Task<Void, Never>] = []
     @ObservationIgnored private var marking: Set<String> = []
-    /// Счётчик непрочитанных открытого чата в последнем снимке. Отметка уходит снова, только
-    /// когда он вырос (пришло новое сообщение), а не на каждый снимок с ненулевым счётчиком.
-    @ObservationIgnored private var openUnread = 0
-    /// Счётчик открытого чата вырос, пока его отметка была в пути: после неё уйдёт ещё одна.
-    @ObservationIgnored private var openUnreadGrew = false
     @ObservationIgnored private var catchUpTask: Task<Void, Never>?
     @ObservationIgnored private var serverSearchTask: Task<Void, Never>?
     @ObservationIgnored private var foundMessages: [FoundMessage] = []
@@ -412,19 +407,15 @@ public final class ChatListViewModel {
 
     // MARK: Открытие и прочтение
 
-    /// Чат открыт на экране (`nil`, если закрыт). Непрочитанные сбрасываются сразу.
+    /// Чат открыт на экране (`nil`, если закрыт). Ручная пометка «непрочитано» снимается сразу.
+    /// Прочитанным открытый чат отмечает его экран — по тому, что пользователь увидел
+    /// (`ChatViewModel.noteVisible`, правила `ReadMarkRules`), а не список при открытии.
     public func open(chatId: String?) async {
         let previous = openChatId
         openChatId = chatId
-        openUnread = chatId.flatMap { id in chats.first(where: { $0.id == id })?.unreadCount } ?? 0
-        openUnreadGrew = false
         if previous != chatId { rebuildItems() }
-        guard let chatId else { return }
-        if let chat = chats.first(where: { $0.id == chatId }) {
-            if chat.isMarkedUnread { await setMarkedUnread(false, chatId: chatId) }
-            if chat.unreadCount == 0 { return }
-        }
-        await markRead(chatId)
+        guard let chatId, let chat = chats.first(where: { $0.id == chatId }), chat.isMarkedUnread else { return }
+        await setMarkedUnread(false, chatId: chatId)
     }
 
     /// Пометка «непрочитано» с сообщения: чат снова непрочитан на сервере начиная с `date`.
@@ -662,22 +653,6 @@ public final class ChatListViewModel {
         snapshot = next
         hasSnapshot = true
         reorder()
-        markOpenChatIfUnreadGrew()
-    }
-
-    /// Новое сообщение пришло в открытый чат: он уже на экране, значит прочитан. Отметка уходит,
-    /// только когда счётчик вырос. Прежний ненулевой счётчик в следующем снимке (ответ списка,
-    /// правка, чужой чат) отметку не повторяет: иначе каждый снимок слал бы её снова.
-    private func markOpenChatIfUnreadGrew() {
-        guard let open = openChatId, let chat = chats.first(where: { $0.id == open }) else { return }
-        let grew = chat.unreadCount > openUnread
-        openUnread = chat.unreadCount
-        guard grew else { return }
-        if marking.contains(open) {
-            openUnreadGrew = true
-        } else {
-            Task { [weak self] in await self?.markRead(open) }
-        }
     }
 
     /// Собеседник личного чата: `id чата ^ свой id`. У групп, ботов и «Избранного» нет.
@@ -885,14 +860,7 @@ public final class ChatListViewModel {
     private func markRead(_ chatId: String) async {
         guard !marking.contains(chatId) else { return }
         marking.insert(chatId)
-        defer {
-            marking.remove(chatId)
-            // Пока отметка была в пути, в открытый чат пришло новое сообщение: оно тоже прочитано.
-            if chatId == openChatId, openUnreadGrew {
-                openUnreadGrew = false
-                Task { [weak self] in await self?.markRead(chatId) }
-            }
-        }
+        defer { marking.remove(chatId) }
         // Бейдж пропадает сразу, не дожидаясь ответа базы.
         if let index = snapshot.firstIndex(where: { $0.id == chatId }), snapshot[index].unreadCount > 0 {
             snapshot[index].unreadCount = 0

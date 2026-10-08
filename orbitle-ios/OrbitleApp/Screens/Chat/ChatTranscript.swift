@@ -30,6 +30,11 @@ struct ChatTranscript: View {
     var wallpaperFrame: CGRect = .zero
     /// Эмодзи двойного нажатия. `nil` — быстрая реакция выключена.
     var quickReaction: String? = nil
+    /// Низ шапки (панель навигации и плашки под ней) в глобальных координатах: выше него
+    /// сообщение не видно. `nil` — ещё не измерен.
+    var headerBottom: CGFloat? = nil
+    /// Верх открытой клавиатуры в глобальных координатах; `nil` — клавиатуры нет.
+    var keyboardTop: CGFloat? = nil
     /// Низ ленты виден (пока виден, новые сообщения прокручивают ленту сами), число новых
     /// на кнопке «вниз» и прыжок к последнему сообщению.
     @State private var bottom = TranscriptBottomState()
@@ -38,6 +43,9 @@ struct ChatTranscript: View {
     @State private var olderAnchor: String?
     /// Верх ленты на экране: не пришедшая страница старого спрашивается снова, пока он виден.
     @State private var headerVisible = false
+    /// Рамки видимых строк для отметки прочтения. Не состояние экрана: прокрутка не
+    /// перерисовывает ленту, модель узнаёт только смену самого нового увиденного.
+    @State private var reads = TranscriptReadTracker()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.chatWallpaper) private var wallpaper
 
@@ -65,6 +73,14 @@ struct ChatTranscript: View {
                                 reveal: reveal
                             )
                             .equatable()
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                                reads.rows[row.id] = frame
+                                reportReads()
+                            }
+                            .onDisappear {
+                                reads.rows[row.id] = nil
+                                reportReads()
+                            }
                             .id(row.id)
                             .transition(.orbitleBubble(outgoing: row.isOutgoing, reduceMotion: reduceMotion))
                         }
@@ -89,6 +105,18 @@ struct ChatTranscript: View {
                     )
                     // Серверное обогащение (реакции/счётчики) не запускает анимацию
                     // всей ленты. Действия пользователя анимируются у своего пузыря.
+                }
+                // Рамка ленты и её безопасные отступы: под ними строки закрыты панелью
+                // навигации, полем ввода или клавиатурой (отметка прочтения).
+                .onGeometryChange(for: TranscriptReadViewport.self) { proxy in
+                    TranscriptReadViewport(
+                        frame: proxy.frame(in: .global),
+                        safeTop: proxy.safeAreaInsets.top,
+                        safeBottom: proxy.safeAreaInsets.bottom
+                    )
+                } action: { viewport in
+                    reads.viewport = viewport
+                    reportReads()
                 }
                 // Чат открывается сразу внизу, а не сверху до загрузки истории.
                 .defaultScrollAnchor(.bottom)
@@ -174,13 +202,25 @@ struct ChatTranscript: View {
                 }
                 .onChange(of: bottom.atBottom) { _, atBottom in
                     if atBottom, !isOpening { viewModel.noteAtBottom() }
+                    reportReads()
                 }
+                // Лента встала на место открытия: с этого момента увиденное читается.
+                .onChange(of: isOpening) { _, opening in
+                    if !opening { reportReads() }
+                }
+                .onChange(of: headerBottom) { _, _ in reportReads() }
+                .onChange(of: bottomControlsTop) { _, _ in reportReads() }
+                .onChange(of: keyboardTop) { _, _ in reportReads() }
                 .onAppear {
                     // Просьба прокрутки от прошлого захода к этому открытию не относится. Пришедшая,
                     // пока лента была скрыта (профиль), выполняется сейчас: иначе она держала бы `follow`.
                     if isOpening { viewModel.consumeScroll() } else { perform(viewModel.scrollTarget, proxy: proxy) }
                 }
-                .onDisappear { viewModel.savePlace(position, atBottom: bottom.atBottom) }
+                .onDisappear {
+                    viewModel.savePlace(position, atBottom: bottom.atBottom)
+                    // Следующий показ сообщит модели всё заново: прежнее увиденное она забыла.
+                    reads.reported = nil
+                }
                 .onChange(of: geo.size.height) { _, _ in
                     // iOS 17 не умеет sizeChanges: клавиатура и многострочный ввод
                     // должны удерживать последнее сообщение, только если читатель внизу.
@@ -196,6 +236,34 @@ struct ChatTranscript: View {
                 }
             }
         }
+    }
+
+    // MARK: Отметка прочтения
+
+    /// Самое новое сообщение, у которого в видимой области не меньше 30 % высоты
+    /// (`ReadVisibility`, `ReadMarkRules`). Область — рамка ленты без её безопасных отступов,
+    /// ниже шапки и выше поля ввода и клавиатуры. Пока лента открывается (встаёт на
+    /// разделитель или на прежнее место), ничего не сообщается: промежуточное положение у низа
+    /// прочитало бы весь чат. Модель узнаёт только смену результата.
+    private func reportReads() {
+        guard !isOpening, let viewport = reads.viewport else { return }
+        let area = ReadVisibility.area(
+            viewport: ReadSpan(minY: Double(viewport.frame.minY), maxY: Double(viewport.frame.maxY)),
+            safeTop: Double(viewport.safeTop),
+            safeBottom: Double(viewport.safeBottom),
+            headerBottom: headerBottom.map { Double($0) },
+            composerTop: bottomControlsTop > 0 ? Double(bottomControlsTop) : nil,
+            keyboardTop: keyboardTop.map { Double($0) }
+        )
+        let rows = reads.rows.compactMap { id, frame in
+            viewModel.rowOrder(of: id).map {
+                ReadRowFrame(id: id, order: $0, minY: Double(frame.minY), height: Double(frame.height))
+            }
+        }
+        let report = TranscriptReadReport(newest: ReadVisibility.newestSeen(rows, in: area), atBottom: bottom.atBottom)
+        guard report != reads.reported else { return }
+        reads.reported = report
+        viewModel.noteVisible(newestSeen: report.newest, atBottom: report.atBottom)
     }
 
     // MARK: Шапка и низ
@@ -467,6 +535,30 @@ struct ChatTranscript: View {
         }
         return urls
     }
+}
+
+/// Что лента знает о видимых строках для отметки прочтения. Класс, а не состояние: рамки
+/// меняются каждый кадр прокрутки, а перерисовывать из-за них ленту не нужно.
+@MainActor
+final class TranscriptReadTracker {
+    /// Рамки показанных строк в глобальных координатах, по id сообщения.
+    var rows: [String: CGRect] = [:]
+    var viewport: TranscriptReadViewport?
+    /// Последнее, что ушло в модель.
+    var reported: TranscriptReadReport?
+}
+
+/// Рамка ленты в глобальных координатах и её безопасные отступы сверху и снизу.
+struct TranscriptReadViewport: Equatable, Sendable {
+    var frame: CGRect
+    var safeTop: CGFloat
+    var safeBottom: CGFloat
+}
+
+/// Самое новое увиденное сообщение и лента ли у низа: то, что получает модель.
+struct TranscriptReadReport: Equatable {
+    var newest: String?
+    var atBottom: Bool
 }
 
 /// Круглая кнопка «вниз» на стекле; число непрочитанных, пришедших сверху, — бейджем.

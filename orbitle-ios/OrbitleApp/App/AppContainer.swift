@@ -668,8 +668,8 @@ final class AppContainer {
         return ""
     }
 
-    /// Открытый чат: опрос его истории и отметка прочтения, в том числе для сообщений,
-    /// пришедших, пока он на экране (это делает `ChatListViewModel`).
+    /// Открытый чат: опрос его истории. Прочитанным его отмечает экран чата по тому, что
+    /// видно (`ChatViewModel.noteVisible`, docs/read-marks.md).
     func focus(chatId: String?) async {
         // Непрочитанные до отметки прочтения: над первым из них лента ставит разделитель.
         if let chatId, let model = chatViewModel(id: chatId) {
