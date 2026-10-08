@@ -22,6 +22,7 @@ import app.orbitle.domain.TextSpan
 import app.orbitle.domain.VideoContent
 import app.orbitle.domain.VoiceContent
 import com.max.core.api.MaxMessage
+import com.max.core.api.MaxUser
 import com.max.core.state.MaxState
 import java.util.Base64
 
@@ -63,6 +64,19 @@ object MessageMapping {
             isService = control != null,
         )
     }
+
+    /**
+     * Прочитавший из ядра ([com.max.core.api.MessageReaders.build]) для «Кем прочитано»: порядок,
+     * отметка и реакция — как у ядра, имя и аватар — из [user] (профиль может быть ещё не загружен).
+     */
+    fun reader(reader: com.max.core.api.MessageReader, user: MaxUser?): app.orbitle.domain.MessageReader =
+        app.orbitle.domain.MessageReader(
+            userId = reader.userId.toString(),
+            name = user?.displayName.orEmpty(),
+            avatarUrl = user?.baseUrl?.takeIf { it.isNotBlank() },
+            emoji = reader.reaction?.takeIf { it.isNotEmpty() },
+            readMarkMs = reader.readMark,
+        )
 
     /** Подпись служебного сообщения (`CONTROL`) по его `event`. */
     fun serviceText(control: Map<*, *>, actor: String?, names: (Long) -> String?): String {

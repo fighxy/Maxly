@@ -1,6 +1,7 @@
 package app.orbitle.presentation.chat
 
 import app.orbitle.data.MessageRepository
+import app.orbitle.domain.Chat
 import app.orbitle.domain.ChatType
 import app.orbitle.domain.Message
 import app.orbitle.domain.MessageReader
@@ -29,6 +30,9 @@ data class MessageInfoState(
 /**
  * «Сведения» о сообщении: время отправки, правка, пересылка; в группе — «Кем прочитано»
  * (сначала поставившие реакцию, порядок — от ядра), в личном чате у своего — «Прочитано» или «Доставлено».
+ *
+ * Ядро не знает двух правил общих сценариев `test-fixtures/readers`, их проверяет клиент:
+ * «Избранное» ([Chat.SAVED_MESSAGES_ID]) и состояние сообщения (только отправленное на сервер).
  */
 class MessageInfoModel(
     private val chatId: String,
@@ -41,13 +45,30 @@ class MessageInfoModel(
 ) {
     data class Row(val label: String, val value: String)
 
+    /** Строка прочтения своего сообщения в личном чате. */
+    enum class Delivery(val text: String) { READ("Прочитано"), DELIVERED("Доставлено") }
+
     private val _state = MutableStateFlow(MessageInfoState(phase = if (showsReaders) MessageInfoState.Phase.Loading else MessageInfoState.Phase.Unavailable))
     val state: StateFlow<MessageInfoState> = _state.asStateFlow()
 
     val title: String get() = "Сведения"
 
-    /** Блок «Кем прочитано» есть только в группах; окончательно решает ядро (размер группы, звонок). */
-    val showsReaders: Boolean get() = chatType == ChatType.GROUP
+    /**
+     * Блок «Кем прочитано» есть только в группах и только у сообщения на сервере; окончательно
+     * решает ядро (размер группы, звонок).
+     */
+    val showsReaders: Boolean
+        get() = chatType == ChatType.GROUP && chatId != Chat.SAVED_MESSAGES_ID && isOnServer(message)
+
+    /**
+     * «Прочитано» / «Доставлено»: только своё отправленное сообщение в личном чате, кроме
+     * «Избранного». Прочитано — отметка собеседника не раньше сообщения ([Message.isRead]).
+     */
+    val delivery: Delivery?
+        get() {
+            if (!mine || chatType != ChatType.PRIVATE || chatId == Chat.SAVED_MESSAGES_ID || !isOnServer(message)) return null
+            return if (message.isRead) Delivery.READ else Delivery.DELIVERED
+        }
 
     val rows: List<Row>
         get() = buildList {
@@ -55,17 +76,12 @@ class MessageInfoModel(
             val editedAt = message.content.editedAtMs
             if (message.content.edited || editedAt != null) add(Row("Изменено", editedAt?.let { dateTime(it, zone) }.orEmpty()))
             message.content.forward?.let { add(Row("Переслано из", it.authorName)) }
-            delivery()?.let { add(Row("Статус", it)) }
+            delivery?.let { add(Row("Статус", it.text)) }
         }
 
-    private fun delivery(): String? {
-        if (!mine || chatType != ChatType.PRIVATE) return null
-        return when (message.status) {
-            MessageStatus.SENDING -> "Отправляется"
-            MessageStatus.FAILED -> "Не отправлено"
-            MessageStatus.SENT -> if (message.isRead) "Прочитано" else "Доставлено"
-        }
-    }
+    /** Подпись под прочитавшим: «Прочитано · время» по его отметке; без отметки (только реакция) — нет. */
+    fun readText(reader: MessageReader): String? =
+        reader.readMarkMs?.takeIf { it > 0 }?.let { "Прочитано · ${dateTime(it, zone)}" }
 
     fun load() {
         if (!showsReaders) return
@@ -86,6 +102,15 @@ class MessageInfoModel(
     }
 
     companion object {
+        /**
+         * Пункт «Сведения» в меню: у любого сообщения на сервере, кроме служебных. У того, что ещё
+         * отправляется или не ушло, его нет; запланированные живут отдельным списком и сюда не попадают.
+         */
+        fun isOffered(message: Message): Boolean = isOnServer(message) && !message.isService
+
+        private fun isOnServer(message: Message): Boolean =
+            message.status == MessageStatus.SENT && message.id.toLongOrNull() != null
+
         /** «8 октября 2026, 16:44». */
         fun dateTime(ms: Long, zone: ZoneId): String {
             val d = Instant.ofEpochMilli(ms).atZone(zone)

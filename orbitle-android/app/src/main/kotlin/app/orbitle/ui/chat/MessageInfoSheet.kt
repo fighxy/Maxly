@@ -76,6 +76,7 @@ fun MessageInfoSheet(model: MessageInfoModel, onDismiss: () -> Unit) {
                             val initials = ChatAvatar.initials(name)
                             ListItem(
                                 headlineContent = { Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                supportingContent = model.readText(reader)?.let { text -> { Text(text, maxLines = 1) } },
                                 leadingContent = {
                                     Avatar(
                                         ChatAvatar(reader.avatarUrl?.let { ChatAvatar.Kind.Photo(it, initials) } ?: ChatAvatar.Kind.Initials(initials), ChatAvatar.colorIndex(reader.userId)),

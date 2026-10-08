@@ -530,15 +530,7 @@ class CoreMessageRepository(
         // Ядро освежило сведения о чате: группа могла вырасти или в ней идёт звонок.
         if (readers.isEmpty() && !client.isMessageReadersAvailable(id)) return null
         val known = client.store.state.value.users
-        return readers.map { reader ->
-            val user = known[reader.userId]
-            app.orbitle.domain.MessageReader(
-                userId = reader.userId.toString(),
-                name = user?.displayName.orEmpty(),
-                avatarUrl = user?.baseUrl?.takeIf { it.isNotBlank() },
-                emoji = reader.reaction?.takeIf { it.isNotEmpty() },
-            )
-        }
+        return readers.map { MessageMapping.reader(it, known[it.userId]) }
     }
 
     override suspend fun reactionUsers(chatId: String, messageId: String): List<app.orbitle.domain.ReactionUser> {

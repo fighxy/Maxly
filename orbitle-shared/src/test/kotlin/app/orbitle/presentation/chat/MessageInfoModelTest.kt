@@ -81,6 +81,30 @@ class MessageInfoModelTest {
         assertEquals(MessageInfoState.Phase.Unavailable, model(ChatType.CHANNEL).also { it.load() }.state.value.phase)
     }
 
+    @Test
+    fun savedMessagesAndUnsentMessagesHaveNoStatusOrReaders() {
+        val repo = Readers { error("не спрашивать") }
+        val saved = MessageInfoModel("0", message(isRead = true), ChatType.PRIVATE, true, repo, TestScope(UnconfinedTestDispatcher()), zone)
+        assertNull(saved.delivery)
+        assertEquals(1, saved.rows.size)
+        val sending = message(status = MessageStatus.SENDING).copy(id = "local-1")
+        assertNull(model(ChatType.PRIVATE, sending, repo = repo).delivery)
+        assertEquals(false, MessageInfoModel.isOffered(sending))
+        assertEquals(false, MessageInfoModel.isOffered(message(status = MessageStatus.FAILED).copy(id = "local-1")))
+        assertEquals(true, MessageInfoModel.isOffered(message()))
+        val group = model(ChatType.GROUP, sending, repo = repo).also { it.load() }
+        assertEquals(false, group.showsReaders)
+        assertEquals(MessageInfoState.Phase.Unavailable, group.state.value.phase)
+        assertEquals(0, repo.asked)
+    }
+
+    @Test
+    fun readerLineShowsReadMarkOnlyWhenKnown() {
+        val info = model(ChatType.GROUP)
+        assertEquals("Прочитано · 8 октября 2026, 16:44", info.readText(MessageReader("2", "Пётр", readMarkMs = sent)))
+        assertNull(info.readText(MessageReader("3", "Анна", emoji = "👍")))
+    }
+
     private companion object {
         fun unused(): MessageRepository = Proxy.newProxyInstance(
             MessageRepository::class.java.classLoader,
