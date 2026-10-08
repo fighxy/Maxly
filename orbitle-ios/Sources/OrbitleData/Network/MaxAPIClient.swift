@@ -86,6 +86,9 @@ public protocol MaxAPI: Sendable {
     func forwardMessage(toChatId: String, fromChatId: String, messageId: String) async -> Result<MessageRecord, MaxAPIError>
     /// `messageId` nil значит, что локально нечего отмечать: сервер не вызывается.
     func markRead(chatId: String, messageId: String?) async -> Result<Void, MaxAPIError>
+    /// Отметка временем прочитанного сообщения `mark` (мс, серверное). Ответ — отметка и
+    /// счётчик сервера, `nil` — сервер не вызывался или источник ответа не знает.
+    func markRead(chatId: String, messageId: String?, at mark: Int64) async -> Result<CoreReadMark?, MaxAPIError>
     /// Чат непрочитан начиная с сообщения в `date`. Ответ — число непрочитанных на сервере.
     func markUnread(chatId: String, from date: Date) async -> Result<Int, MaxAPIError>
     /// Закреплённые чаты целиком, сверху вниз. Ответ — список, который подтвердил сервер.
@@ -171,6 +174,10 @@ public extension MaxAPI {
     /// Источник без серверных закреплённых: запрос отклоняется.
     func setPinnedChats(_ chatIds: [String]) async -> Result<[String], MaxAPIError> { .failure(.invalidResponse) }
     func markUnread(chatId: String, from date: Date) async -> Result<Int, MaxAPIError> { .failure(.invalidResponse) }
+    /// Источник без ответа на отметку: прежний вызов, ответа нет.
+    func markRead(chatId: String, messageId: String?, at mark: Int64) async -> Result<CoreReadMark?, MaxAPIError> {
+        await markRead(chatId: chatId, messageId: messageId).map { _ -> CoreReadMark? in nil }
+    }
     func setChatMuted(chatId: String, muted: Bool) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
     /// Источник без серверных папок.
     func folderUpdates() -> AsyncStream<[ChatFolder]> { AsyncStream { $0.yield([]); $0.finish() } }
@@ -451,6 +458,14 @@ public final class MaxAPIClient: MaxAPI, Sendable {
         guard let messageId, !messageId.isEmpty else { return .success(()) }
         return await catching {
             try await core.markRead(chatId: chatId, messageId: messageId)
+        }
+    }
+
+    public func markRead(chatId: String, messageId: String?, at mark: Int64) async -> Result<CoreReadMark?, MaxAPIError> {
+        guard let messageId, !messageId.isEmpty else { return .success(nil) }
+        return await catching {
+            let reply = try await core.markRead(chatId: chatId, messageId: messageId, mark: max(mark, 0))
+            return reply.mark > 0 ? reply : nil
         }
     }
 

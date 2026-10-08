@@ -352,6 +352,18 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func markRead(chatId: String, messageId: String, mark: Int64) async throws -> CoreReadMark {
+        try await call("markRead") { done in
+            self.client.markReadAt(chatId: chatId, messageId: messageId, mark: mark) { reply, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(CoreReadMark(unread: Int(reply.unread), mark: reply.mark)))
+                }
+            }
+        }
+    }
+
     func markUnread(chatId: String, mark: Int64) async throws -> Int {
         try await call("markUnread") { done in
             self.client.markUnread(chatId: chatId, mark: mark) { unread, kind, key in
@@ -649,7 +661,8 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             lastFromMe: Int(chat.lastFromMe),
             lastForwarded: chat.lastForwarded == 1,
             peerReadMs: chat.peerReadMs,
-            active: chat.active != 0
+            active: chat.active != 0,
+            lastTimeMs: chat.lastTimeMs
         )
     }
 

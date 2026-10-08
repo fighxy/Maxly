@@ -114,14 +114,18 @@ public struct CoreChat: Sendable, Equatable {
     public var peerReadMs: Int64
     /// Аккаунт участвует в чате (`status` пуст или `ACTIVE`). Покинутые и закрытые — `false`.
     public var active: Bool
+    /// Серверное время последнего сообщения, мс. `0` — сообщений нет или ядро не сказало.
+    /// В отличие от `updatedAtMs` (его двигают и правки, и реакции) с ним сравниваются отметки.
+    public var lastTimeMs: Int64
 
     public init(
         id: String, title: String, type: String, lastMessageId: String, lastText: String, updatedAtMs: Int64, unread: Int,
         avatarURL: String = "", lastAuthorId: String = "", lastMedia: String = "", lastThumbURL: String = "", comments: Int = -1,
         canWrite: Int = -1, muted: Int = -1, lastAuthorName: String = "", lastFromMe: Int = -1, lastForwarded: Bool = false,
-        peerReadMs: Int64 = 0, active: Bool = true
+        peerReadMs: Int64 = 0, active: Bool = true, lastTimeMs: Int64 = 0
     ) {
         self.active = active
+        self.lastTimeMs = lastTimeMs
         self.id = id
         self.title = title
         self.type = type
@@ -140,6 +144,19 @@ public struct CoreChat: Sendable, Equatable {
         self.lastFromMe = lastFromMe
         self.lastForwarded = lastForwarded
         self.peerReadMs = peerReadMs
+    }
+}
+
+/// Ответ сервера на свою отметку прочтения (`CHAT_MARK`).
+public struct CoreReadMark: Sendable, Equatable {
+    /// Непрочитанных в чате по мнению сервера. `-1` — неизвестно.
+    public var unread: Int
+    /// Отметка, которую сохранил сервер, мс. `0` — неизвестно.
+    public var mark: Int64
+
+    public init(unread: Int, mark: Int64) {
+        self.unread = unread
+        self.mark = mark
     }
 }
 
@@ -446,6 +463,10 @@ public protocol MaxCore: Sendable {
     /// Число комментариев под постами канала: id поста → число. Посты без ответа сервера пропущены.
     func loadCommentCounts(chatId: String, postIds: [String]) async throws -> [String: Int]
     func markRead(chatId: String, messageId: String) async throws
+    /// Прочитать чат до сообщения `messageId` с отметкой `mark` — серверным временем этого
+    /// сообщения (мс), а не часами устройства. `0` — время неизвестно, его ищет ядро.
+    /// Ответ — счётчик непрочитанных и отметка сервера.
+    func markRead(chatId: String, messageId: String, mark: Int64) async throws -> CoreReadMark
     /// Чат снова непрочитан начиная с сообщения, отправленного в `mark` (мс). Ответ — число
     /// непрочитанных на сервере.
     func markUnread(chatId: String, mark: Int64) async throws -> Int
@@ -613,6 +634,11 @@ public protocol MaxCore: Sendable {
 }
 
 public extension MaxCore {
+    /// Ядро без ответа на отметку: она уходит прежним вызовом, ответ неизвестен.
+    func markRead(chatId: String, messageId: String, mark: Int64) async throws -> CoreReadMark {
+        try await markRead(chatId: chatId, messageId: messageId)
+        return CoreReadMark(unread: -1, mark: 0)
+    }
     func loadChatList() async throws -> (chats: [CoreChat], complete: Bool) {
         (try await loadChats(), false)
     }

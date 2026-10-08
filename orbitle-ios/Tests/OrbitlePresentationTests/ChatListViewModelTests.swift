@@ -243,6 +243,42 @@ struct ChatListReadTests {
         #expect(await repository.marked == ["a"])
     }
 
+    @Test("Открытый чат отмечается снова, только когда счётчик вырос")
+    func openChatRemarksOnGrowth() async {
+        let (model, repository) = makeList()
+        repository.emit([chat("a", at: 1, unread: 0)])
+        #expect(await eventually { model.items.count == 1 })
+        await model.open(chatId: "a")
+        repository.emit([chat("a", at: 2, unread: 1)])
+        #expect(await eventually { await repository.marked == ["a"] })
+
+        // Тот же счётчик в следующем снимке (правка, ответ списка): отметка не повторяется.
+        repository.emit([chat("a", at: 3, unread: 1), chat("b", at: 3, unread: 2)])
+        #expect(await eventually { model.items.count == 2 })
+        try? await Task.sleep(for: .milliseconds(30))
+        #expect(await repository.marked == ["a"])
+
+        repository.emit([chat("a", at: 4, unread: 2), chat("b", at: 3, unread: 2)])
+        #expect(await eventually { await repository.marked == ["a", "a"] })
+    }
+
+    @Test("Сообщение, пришедшее пока отметка в пути, тоже отмечается")
+    func growthWhileMarking() async {
+        let (model, repository) = makeList()
+        repository.emit([chat("a", at: 1, unread: 0)])
+        #expect(await eventually { model.items.count == 1 })
+        await model.open(chatId: "a")
+        let gate = Gate()
+        await repository.set(markGate: gate)
+        repository.emit([chat("a", at: 2, unread: 1)])
+        #expect(await eventually { await gate.arrivals == 1 })
+        repository.emit([chat("a", at: 3, unread: 2)])
+        try? await Task.sleep(for: .milliseconds(30))
+        #expect(await repository.marked == ["a"])
+        await gate.open()
+        #expect(await eventually { await repository.marked == ["a", "a"] })
+    }
+
     @Test("Сетевая ошибка отметки не показывается, остальные показываются")
     func markErrors() async {
         let (model, repository) = makeList()

@@ -44,6 +44,9 @@ public struct ChatRecord: Sendable, Hashable {
     public var lastKnown: Bool
     /// Отметка прочтения других участников, мс (`participants` карточки чата). `0` — не сказано.
     public var peerReadMark: Int64
+    /// Серверное время последнего сообщения, мс (с ним сравниваются отметки прочтения).
+    /// `0` — неизвестно: пуши чата его не несут.
+    public var lastMessageAt: Int64
     /// Аккаунт участвует в чате. Не хранится: неактивный чат из ответа сервера убирается из
     /// списка (как в Komet), а не записывается.
     public var isActive: Bool = true
@@ -72,7 +75,8 @@ public struct ChatRecord: Sendable, Hashable {
         lastOutgoing: Bool? = nil,
         lastForwarded: Bool = false,
         lastKnown: Bool = false,
-        peerReadMark: Int64 = 0
+        peerReadMark: Int64 = 0,
+        lastMessageAt: Int64 = 0
     ) {
         self.id = id
         self.title = title
@@ -98,6 +102,7 @@ public struct ChatRecord: Sendable, Hashable {
         self.lastForwarded = lastForwarded
         self.lastKnown = lastKnown
         self.peerReadMark = peerReadMark
+        self.lastMessageAt = lastMessageAt
     }
 
     public init(_ chat: Chat) {

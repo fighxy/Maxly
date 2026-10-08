@@ -281,6 +281,15 @@ actor FakeMaxCore: MaxCore {
         marked.append(messageId)
     }
 
+    /// Отметки временем сообщения (мс), как их получило ядро.
+    private(set) var readAt: [Int64] = []
+
+    func markRead(chatId: String, messageId: String, mark: Int64) async throws -> CoreReadMark {
+        marked.append(messageId)
+        readAt.append(mark)
+        return CoreReadMark(unread: 0, mark: mark)
+    }
+
     func markUnread(chatId: String, mark: Int64) async throws -> Int {
         unreadMarks.append(mark)
         return 4

@@ -28,6 +28,9 @@ final class SDChat {
     var lastDeliveryRaw: String?
     /// Время (мс) последней отметки прочтения собеседником.
     var peerReadMark: Int64 = 0
+    /// Серверное время (мс) последнего сообщения: с ним сравниваются отметки прочтения.
+    /// `0` — неизвестно, тогда сравнение идёт с `updatedAt`.
+    var lastMessageAt: Int64 = 0
     /// Место в закреплённых, `nil` — не закреплён.
     var pinOrder: Int?
     var isMarkedUnread: Bool = false

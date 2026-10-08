@@ -148,6 +148,7 @@ actor FakeChatRepository: ChatRepository {
 
     var refreshError: OrbitleError?
     var markError: OrbitleError?
+    var markGate: Gate?
     var actionError: OrbitleError?
     var refreshGate: Gate?
     var actionGate: Gate?
@@ -189,6 +190,7 @@ actor FakeChatRepository: ChatRepository {
 
     func markAsRead(chatId: String) async throws(OrbitleError) {
         marked.append(chatId)
+        if let markGate { await markGate.wait() }
         if let markError { throw markError }
     }
 
@@ -255,6 +257,7 @@ actor FakeChatRepository: ChatRepository {
 
     func set(refreshError: OrbitleError?) { self.refreshError = refreshError }
     func set(markError: OrbitleError?) { self.markError = markError }
+    func set(markGate: Gate?) { self.markGate = markGate }
     func set(actionError: OrbitleError?) { self.actionError = actionError }
     func set(refreshGate: Gate?) { self.refreshGate = refreshGate }
     func set(actionGate: Gate?) { self.actionGate = actionGate }

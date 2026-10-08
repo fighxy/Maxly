@@ -65,7 +65,8 @@ enum CoreMapping {
             lastAuthorName: chat.lastAuthorName.isEmpty ? nil : chat.lastAuthorName,
             lastOutgoing: chat.lastFromMe < 0 ? nil : chat.lastFromMe == 1,
             lastForwarded: chat.lastForwarded,
-            peerReadMark: chat.peerReadMs
+            peerReadMark: chat.peerReadMs,
+            lastMessageAt: chat.lastTimeMs
         )
         record.isActive = chat.active
         return record

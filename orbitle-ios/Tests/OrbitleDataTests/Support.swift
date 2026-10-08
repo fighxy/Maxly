@@ -141,6 +141,18 @@ actor FakeMaxAPI: MaxAPI {
         return .success(())
     }
 
+    /// Отметки прочтения, ушедшие на сервер (мс), и ответы на них по порядку.
+    private(set) var readMarks: [Int64] = []
+    var readReplies: [CoreReadMark?] = []
+
+    func set(readReplies: [CoreReadMark?]) { self.readReplies = readReplies }
+
+    func markRead(chatId: String, messageId: String?, at mark: Int64) async -> Result<CoreReadMark?, MaxAPIError> {
+        markReadCalls.append(chatId)
+        readMarks.append(mark)
+        return .success(readReplies.isEmpty ? nil : readReplies.removeFirst())
+    }
+
     private(set) var markUnreadCalls: [String] = []
     /// Ответ сервера на пометку «непрочитано»: число непрочитанных или ошибка.
     var unreadReply: Result<Int, MaxAPIError> = .success(2)

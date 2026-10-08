@@ -32,6 +32,9 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// Когда чат последний раз записан в базу: сверка полного списка не трогает чаты, записанные
     /// уже после запроса (только что созданный, пришедший пушем).
     private var lastWrites: [String: Date] = [:]
+    /// Своя отметка прочтения, последняя применённая (мс): ответы сервера на отметки и пуши
+    /// с других устройств. Запоздавший ответ на более старую отметку не применяется.
+    private var ownReadMarks: [String: Int64] = [:]
 
     /// Закреплённые чаты сервера сверху вниз, как их прислало ядро (`nil`, пока неизвестны).
     /// В списке могут быть чаты, которых ещё нет в базе: строка получит место, когда появится.
@@ -199,6 +202,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
                     chat.lastThumbnailURLString = record.lastThumbnailURL?.absoluteString
                     Self.mergeFlags(record, into: chat)
                     chat.peerReadMark = record.peerReadMark
+                    chat.lastMessageAt = record.lastMessageAt
                     if record.peerReadMark > 0 { raised.append((record.id, record.peerReadMark)) }
                     modelContext.insert(chat)
                     existing[record.id] = chat
@@ -233,6 +237,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             chat.lastForwarded = false
             chat.lastMediaRaw = nil
             chat.lastThumbnailURLString = nil
+            chat.lastMessageAt = 0
             return
         }
         guard record.updatedAt >= chat.updatedAt else { return }
@@ -251,7 +256,10 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
                 // нет (`nil`), и раньше в строке оставался текст прежнего сообщения вместо
                 // «Фотографии»: превью переписывалось только непустым.
                 chat.preview = record.preview
+                // Время нового сообщения. Пуш чата его не несёт (`0`): прежнее к нему не относится.
+                chat.lastMessageAt = record.lastMessageAt
             } else {
+                if record.lastMessageAt > 0 { chat.lastMessageAt = record.lastMessageAt }
                 if let author = record.lastAuthorId { chat.lastAuthorId = author }
                 if let name = record.lastAuthorName { chat.lastAuthorName = name }
                 if let outgoing = record.lastOutgoing { chat.lastOutgoing = outgoing }
@@ -304,6 +312,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// Стирает чаты в контексте этого актора. Каскад забирает их сообщения в базе.
     public func removeAll() throws(OrbitleError) {
         generation += 1
+        ownReadMarks.removeAll()
         serverPins = nil
         requestedPins = nil
         pendingDialogs.removeAll()
@@ -323,11 +332,40 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// Сбрасывает счётчик непрочитанных локально и отправляет отметку на сервер.
     /// Если читать нечего, сервер не дёргается. Если сервер ответил ошибкой,
     /// локальное изменение остаётся, а ошибка пробрасывается.
+    ///
+    /// Отметка — серверное время последнего сообщения, а не часы устройства: часы могут
+    /// отставать, и только что пришедшие сообщения остались бы непрочитанными на сервере и у
+    /// собеседника. Ответ сервера применяется сразу, не дожидаясь пуша (`applyReadReply`).
     public func markAsRead(chatId: String) async throws(OrbitleError) {
         guard let mark = try markReadLocally(chatId: chatId) else { return }
-        if case .failure(let error) = await api.markRead(chatId: chatId, messageId: mark.messageId) {
-            throw error.orbitleError
+        let started = generation
+        let reply: CoreReadMark?
+        switch await api.markRead(chatId: chatId, messageId: mark.messageId, at: mark.time) {
+        case .success(let value): reply = value
+        case .failure(let error): throw error.orbitleError
         }
+        guard let reply, started == generation else { return }
+        try applyReadReply(chatId: chatId, reply: reply, lastBefore: mark.messageId)
+    }
+
+    /// Ответ сервера на свою отметку. Ответ старее уже применённой отметки пропускается:
+    /// ответы на две отметки подряд могут прийти в обратном порядке. Счётчик сервера берётся,
+    /// только если он меньше локального и с запроса в чат ничего не пришло (`lastBefore` —
+    /// последнее сообщение на момент отметки): новое сообщение остаётся непрочитанным.
+    func applyReadReply(chatId: String, reply: CoreReadMark, lastBefore: String?) throws(OrbitleError) {
+        guard ReadMarks.isFresh(reply.mark, known: ownReadMarks[chatId] ?? 0) else { return }
+        ownReadMarks[chatId] = reply.mark
+        do {
+            guard let chat = try chat(id: chatId),
+                  let unread = ReadMarks.unreadAfterRead(
+                      local: chat.unreadCount, lastNow: chat.lastMessageId, lastBefore: lastBefore, server: reply.unread
+                  ) else { return }
+            chat.unreadCount = unread
+            try modelContext.save()
+        } catch {
+            throw .storageError
+        }
+        notify()
     }
 
     /// Чат непрочитан на сервере начиная с сообщения в `date`. Счётчик в базе — ответ сервера,
@@ -340,6 +378,8 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         case .failure(let error): throw error.orbitleError
         }
         try ensureCurrent(started)
+        // Отметка сервера ушла назад: следующий ответ на прочтение сравнивается уже не с ней.
+        ownReadMarks[chatId] = nil
         do {
             guard let chat = try chat(id: chatId) else { return }
             chat.unreadCount = max(unread, 1)
@@ -380,6 +420,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
                 if let messageId { chat.lastMessageId = messageId }
                 chat.preview = preview
                 chat.updatedAt = at
+                chat.lastMessageAt = at.unixMillis
                 chat.lastAuthorId = authorId
                 chat.lastOutgoing = outgoing
                 chat.lastDeliveryRaw = outgoing ? (delivery ?? .sent).rawValue : nil
@@ -588,6 +629,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             chat.lastAuthorName = message.flatMap { $0.authorName.isEmpty ? nil : $0.authorName }
             if let forwarded = content?.forward?.text, message?.text.isEmpty == true { chat.preview = forwarded }
             if let message { chat.updatedAt = message.timestamp }
+            chat.lastMessageAt = message?.timestamp.unixMillis ?? 0
             try modelContext.save()
         } catch {
             throw .storageError
@@ -599,15 +641,23 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     ///
     /// `mark` — время прочитанного сообщения в миллисекундах. Счётчик обнуляется, только
     /// если отметка не раньше последнего сообщения строки, иначе после неё пришли новые
-    /// и счётчик не трогается. `setAsUnread` — чат помечен непрочитанным вручную.
+    /// и счётчик не трогается. Сравнение идёт со временем сообщения, а не события чата:
+    /// правка или реакция после него не должны оставлять бейдж. `setAsUnread` — чат помечен
+    /// непрочитанным вручную.
     public func applyOwnRead(chatId: String, mark: Int64, setAsUnread: Bool) throws(OrbitleError) {
+        if setAsUnread {
+            ownReadMarks[chatId] = nil
+        } else if mark > ownReadMarks[chatId] ?? 0 {
+            ownReadMarks[chatId] = mark
+        }
         do {
             guard let chat = try chat(id: chatId) else { return }
             if setAsUnread {
                 guard chat.unreadCount == 0 else { return }
                 chat.unreadCount = 1
             } else {
-                guard mark > 0, mark >= chat.updatedAt.unixMillis, chat.unreadCount != 0 else { return }
+                let readTime = ReadMarks.readTime(lastMessageAt: chat.lastMessageAt, updatedAt: chat.updatedAt)
+                guard mark > 0, mark >= readTime, chat.unreadCount != 0 else { return }
                 chat.unreadCount = 0
             }
             try modelContext.save()
@@ -653,6 +703,8 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             if let serverId { chat.lastMessageId = serverId }
             chat.lastDeliveryRaw = DeliveryState.sent.rawValue
             chat.lastLocalId = nil
+            // Время сервера, а не телефона: с ним собеседник ставит отметку прочтения.
+            chat.lastMessageAt = at.unixMillis
             if at > chat.updatedAt { chat.updatedAt = at }
             try modelContext.save()
         } catch let error as OrbitleError {
@@ -941,17 +993,19 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
 
     private struct ReadMark {
         let messageId: String?
+        /// Серверное время этого сообщения, мс. `0` — неизвестно, его найдёт ядро.
+        let time: Int64
     }
 
     /// Отметка для сервера, если было что читать. Иначе `nil`.
     private func markReadLocally(chatId: String) throws(OrbitleError) -> ReadMark? {
         do {
             guard let chat = try chat(id: chatId), chat.unreadCount > 0 else { return nil }
-            let messageId = chat.lastMessageId
+            let mark = ReadMark(messageId: chat.lastMessageId, time: chat.lastMessageAt)
             chat.unreadCount = 0
             try modelContext.save()
             notify()
-            return ReadMark(messageId: messageId)
+            return mark
         } catch {
             throw .storageError
         }
@@ -1014,7 +1068,11 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         if chat.lastOutgoing || chat.lastAuthorId != nil || media != nil {
             var delivery = chat.lastOutgoing ? DeliveryState(rawValue: chat.lastDeliveryRaw ?? "") ?? .sent : nil
             // Собеседник прочитал всё до своей отметки: отправленное раньше неё прочитано.
-            if delivery == .sent, chat.peerReadMark > 0, chat.peerReadMark >= chat.updatedAt.unixMillis {
+            // Отметка — самая свежая из карточки чата и пуша прочтения (`peerReadMark` только
+            // растёт). Сравнение — со временем своего сообщения: правка или реакция после него
+            // двигают время чата, и галочки не становились двойными.
+            let sentAt = ReadMarks.readTime(lastMessageAt: chat.lastMessageAt, updatedAt: chat.updatedAt)
+            if delivery == .sent, ReadMarks.isReadByPeer(peerMark: chat.peerReadMark, messageTime: sentAt) {
                 delivery = .read
             }
             last = ChatLastMessage(
