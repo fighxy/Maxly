@@ -66,13 +66,15 @@ public struct TypingSendPolicy: Sendable {
 
     /// Разовое действие любого типа: кадр, если чат позволяет писать и порог пройден.
     public mutating func report(_ kind: TypingKind, chatId: String, postId: String? = nil, canWrite: Bool = true) -> [TypingFrame] {
-        guard canWrite, !chatId.isEmpty else { return [] }
+        // «Избранное»: собеседника нет, «печатает…» видеть некому.
+        guard canWrite, !chatId.isEmpty, chatId != Chat.savedMessagesId else { return [] }
         return attempt(kind, chatId: chatId, postId: postId, at: now())
     }
 
     /// Началась запись голосового (`.audio`) или кружка (`.videoMessage`).
     public mutating func recordingStarted(_ kind: TypingKind, chatId: String, postId: String? = nil, canWrite: Bool = true) -> [TypingFrame] {
-        guard canWrite, !chatId.isEmpty else { return [] }
+        // «Избранное»: собеседника нет, «печатает…» видеть некому.
+        guard canWrite, !chatId.isEmpty, chatId != Chat.savedMessagesId else { return [] }
         let at = now()
         recordings[chatId] = Recording(kind: kind, postId: postId, next: at + Self.millis(Self.recordingRepeat))
         return attempt(kind, chatId: chatId, postId: postId, at: at)

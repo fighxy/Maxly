@@ -52,6 +52,7 @@
 - `PHOTO`, `VIDEO`, `FILE` — на ход загрузки вложения;
 - `STICKER` — при открытии панели стикеров;
 - в чат, куда писать нельзя, ничего не уходит.
+- в «Избранное» (`Chat.savedMessagesId`) тоже ничего не уходит: показывать «печатает…» там некому.
 
 Подключение: один `TypingReporter` на приложение (`AppContainer`) с `CoreTypingSender` —
 `MaxCore.sendTyping` → мост `sendTyping(chatId:type:)` (вариант без ответа; в комментариях —

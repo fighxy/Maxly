@@ -109,6 +109,15 @@ struct TypingSendPolicyTests {
         let frames = policy.textEdited(chatId: "")
         #expect(frames.isEmpty)
     }
+
+    @Test("В «Избранном» «печатает…» не отправляется: собеседника нет")
+    func savedMessages() {
+        var policy = TypingSendPolicy()
+        #expect(policy.textEdited(chatId: Chat.savedMessagesId).isEmpty)
+        #expect(policy.recordingStarted(.audio, chatId: Chat.savedMessagesId).isEmpty)
+        #expect(policy.stickerPanelOpened(chatId: Chat.savedMessagesId).isEmpty)
+        #expect(!policy.textEdited(chatId: "5").isEmpty)
+    }
 }
 
 /// Отправитель, который запоминает кадры.
