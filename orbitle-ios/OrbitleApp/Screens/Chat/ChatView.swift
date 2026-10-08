@@ -145,31 +145,11 @@ struct ChatView: View {
 
     private var bottomControls: some View {
         VStack(spacing: 0) {
-            ChatComposer(
-                viewModel: viewModel,
-                recording: recording,
-                focus: $composerFocused,
-                attachmentsShown: $attachmentsShown,
-                panelShown: $panelShown,
-                canWrite: writable,
-                showsReadOnlyBar: canWrite != nil || profile?.profile != nil,
-                chatType: kind,
-                isMuted: muted,
-                // Звук чата вне списка не переключить: его нет среди чатов аккаунта.
-                onToggleMute: canWrite == nil ? nil : onToggleMute,
-                onOpenApp: openAppAction,
-                join: joinAction,
-                onSearch: kind == .channel && onToggleMute != nil && canWrite != nil ? { searchShown = true } : nil
-            )
-            if panelShown, writable, let stickerPanel {
-                StickerPanel(
-                    model: stickerPanel,
-                    height: keyboardHeight,
-                    onEmoji: { viewModel.insertEmoji($0.emoji, animated: $0.animated) },
-                    onBackspace: { viewModel.deleteBackward() },
-                    onSticker: { sticker in Task { await viewModel.sendSticker(sticker) } }
-                )
-                .transition(.move(edge: .bottom))
+            if viewModel.selection.isActive {
+                MessageSelectionBar(selection: viewModel.selection, messages: viewModel.messages)
+                    .transition(.opacity)
+            } else {
+                composerControls
             }
         }
         // Без клавиатуры и панели капсулы опускаются в нижний отступ экрана:
@@ -177,6 +157,37 @@ struct ChatView: View {
         .padding(.bottom, lowersControls ? -Self.controlsLowering : 0)
         // Верх поля ввода — от него лента тает в фон к низу экрана (`ChatBottomBlur`).
         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { bottomControlsTop = $0 }
+    }
+
+    /// Поле ввода и панель стикеров.
+    @ViewBuilder
+    private var composerControls: some View {
+        ChatComposer(
+            viewModel: viewModel,
+            recording: recording,
+            focus: $composerFocused,
+            attachmentsShown: $attachmentsShown,
+            panelShown: $panelShown,
+            canWrite: writable,
+            showsReadOnlyBar: canWrite != nil || profile?.profile != nil,
+            chatType: kind,
+            isMuted: muted,
+            // Звук чата вне списка не переключить: его нет среди чатов аккаунта.
+            onToggleMute: canWrite == nil ? nil : onToggleMute,
+            onOpenApp: openAppAction,
+            join: joinAction,
+            onSearch: kind == .channel && onToggleMute != nil && canWrite != nil ? { searchShown = true } : nil
+        )
+        if panelShown, writable, let stickerPanel {
+            StickerPanel(
+                model: stickerPanel,
+                height: keyboardHeight,
+                onEmoji: { viewModel.insertEmoji($0.emoji, animated: $0.animated) },
+                onBackspace: { viewModel.deleteBackward() },
+                onSticker: { sticker in Task { await viewModel.sendSticker(sticker) } }
+            )
+            .transition(.move(edge: .bottom))
+        }
     }
 
     private var muted: Bool { mutedNow?() ?? isMuted }
@@ -209,6 +220,7 @@ struct ChatView: View {
             // в приватном режиме там всегда общее «Личный чат» / «Групповой чат».
             .navigationTitle(shownTitle)
             .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(viewModel.selection.isActive)
             .toolbar { headerToolbar }
             // Стеклянная капсула названия над лентой, под статус-баром мягкое размытие.
             .chatHeaderBlur()
@@ -231,6 +243,31 @@ struct ChatView: View {
 
     @ToolbarContentBuilder
     private var headerToolbar: some ToolbarContent {
+        if viewModel.selection.isActive {
+            selectionToolbar
+        } else {
+            chatToolbar
+        }
+    }
+
+    /// Шапка режима выбора: «Выбрано: N» и «Отмена».
+    @ToolbarContentBuilder
+    private var selectionToolbar: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            Text(viewModel.selection.title(in: viewModel.messages))
+                .font(.headline)
+                .monospacedDigit()
+                .contentTransition(.numericText())
+        }
+        ToolbarItem(placement: .topBarLeading) {
+            Button("Отмена") {
+                withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { viewModel.selection.cancel() }
+            }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var chatToolbar: some ToolbarContent {
         ToolbarItem(placement: .principal) {
             Button(action: openProfile) {
                 ChatHeaderTitle(
@@ -488,9 +525,45 @@ struct ChatView: View {
             .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.notice)
     }
 
+    /// Режим выбора нескольких сообщений: подтверждение удаления, выбор чатов для пересылки
+    /// и права для правил удаления.
+    private var selectionLayer: some View {
+        lifecycleLayer
+            .sheet(item: selectionDeleteRequest) { request in
+                MessageSelectionDeleteSheet(
+                    request: request,
+                    chatType: kind,
+                    onDelete: { forEveryone in Task { await viewModel.selection.confirmDelete(request, forEveryone: forEveryone) } },
+                    onCancel: { viewModel.selection.deleteRequest = nil }
+                )
+            }
+            .sheet(isPresented: batchForwardShown) {
+                ForwardPickerView(
+                    targets: forwardList,
+                    allowsMultiple: true,
+                    onPick: { id in forwardBatch(to: [id], comment: nil) },
+                    onPickMany: { ids, comment in forwardBatch(to: ids, comment: comment) },
+                    onCancel: { viewModel.selection.forwardBatch = nil }
+                )
+            }
+            .onChange(of: viewModel.selection.forwardBatch?.count) { _, count in
+                if count != nil { forwardList = forwardTargets() }
+            }
+            // Права для правил удаления выбранного: в канале писать может только админ.
+            .onChange(of: kind, initial: true) { _, _ in noteSelectionContext() }
+            .onChange(of: writable) { _, _ in noteSelectionContext() }
+            .onChange(of: headerTitle) { _, _ in noteSelectionContext() }
+            // В режиме выбора клавиатура и панель стикеров уходят: внизу панель действий.
+            .onChange(of: viewModel.selection.isActive) { _, active in
+                guard active else { return }
+                composerFocused = false
+                panelShown = false
+            }
+    }
+
     /// Удаление и пересылка сообщения, ответ, правка, пометка «непрочитано» и фаза приложения.
     private var chatEvents: some View {
-        lifecycleLayer
+        selectionLayer
             // Окно по центру: на iOS 26 confirmationDialog всплывает облаком от вида, к которому
             // привязан, — у шапки, далеко от выбранного сообщения.
             .alert(
@@ -786,6 +859,33 @@ struct ChatView: View {
             get: { viewModel.deletionCandidate != nil },
             set: { if !$0 { viewModel.deletionCandidate = nil } }
         )
+    }
+
+    private var selectionDeleteRequest: Binding<MessageSelectionModel.DeleteRequest?> {
+        Binding(
+            get: { viewModel.selection.deleteRequest },
+            set: { viewModel.selection.deleteRequest = $0 }
+        )
+    }
+
+    private var batchForwardShown: Binding<Bool> {
+        Binding(
+            get: { viewModel.selection.forwardBatch != nil },
+            set: { if !$0 { viewModel.selection.forwardBatch = nil } }
+        )
+    }
+
+    private func forwardBatch(to targets: [String], comment: String?) {
+        guard let batch = viewModel.selection.forwardBatch else { return }
+        viewModel.selection.forwardBatch = nil
+        Task { await viewModel.selection.forward(batch, to: targets, comment: comment) }
+    }
+
+    private func noteSelectionContext() {
+        let selection = viewModel.selection
+        selection.chatType = kind
+        selection.isAdmin = kind == .channel && writable
+        selection.peerName = kind == .private ? headerTitle : nil
     }
 
     private var forwardShown: Binding<Bool> {

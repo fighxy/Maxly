@@ -220,6 +220,8 @@ public final class ChatViewModel {
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private let gallery: (any GallerySaving)?
     @ObservationIgnored private var commentsModel: CommentsViewModel?
+    /// Выбор нескольких сообщений: копирование, пересылка, удаление одним запросом.
+    public let selection: MessageSelectionModel
 
     public init(
         chatId: String,
@@ -247,6 +249,13 @@ public final class ChatViewModel {
         self.voice = voice
         self.gallery = gallery
         self.chats = chats
+        self.selection = MessageSelectionModel(chatId: chatId, currentUserId: currentUserId, repository: messages)
+        selection.onNotice = { [weak self] text in self?.showNotice(text) }
+        selection.onError = { [weak self] failure in self?.show(failure) }
+        selection.onDeleted = { [weak self] ids in
+            guard let self, let reply = self.replyTarget, ids.contains(reply.id) else { return }
+            self.replyTarget = nil
+        }
     }
 
     public var errorMessage: String? { error?.userMessage }
@@ -487,6 +496,7 @@ public final class ChatViewModel {
         mediaTask = nil
         loadingMediaId = nil
         openedFile = nil
+        selection.cancel()
         flushDraft()
     }
 

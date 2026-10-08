@@ -42,6 +42,11 @@ struct TranscriptBubble: View, Equatable {
         var chatType: ChatType
         /// Пункт «Сведения»: сообщение принято сервером.
         var showsInfo: Bool
+        /// Режим выбора нескольких сообщений: касание отмечает, меню нет.
+        var isSelecting = false
+        var isSelected = false
+        /// Пункт «Выбрать» и отметка в режиме выбора.
+        var selectable = false
     }
 
     let state: Snapshot
@@ -72,7 +77,11 @@ struct TranscriptBubble: View, Equatable {
                     withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { reveal.reveal(id) }
                 }
             ) {
-                bubble
+                if state.isSelecting {
+                    selectableBubble
+                } else {
+                    bubble
+                }
             } masked: {
                 // Заглушка: «Вы получили сообщение», время и галочки; без имени, медиа и реакций.
                 MessageBubble(
@@ -86,6 +95,29 @@ struct TranscriptBubble: View, Equatable {
                 )
             }
         }
+    }
+
+    /// Пузырь в режиме выбора: слева отметка, касание по всей строке отмечает или снимает,
+    /// кнопки и меню пузыря не срабатывают.
+    private var selectableBubble: some View {
+        let selection = viewModel.selection
+        let message = message
+        return HStack(spacing: 8) {
+            Image(systemName: state.isSelected ? "checkmark.circle.fill" : "circle")
+                .font(.title3)
+                .foregroundStyle(state.isSelected ? Color.orbitleAccent : Color.secondary)
+                .opacity(state.selectable ? 1 : 0)
+                .accessibilityHidden(true)
+            bubble
+                .allowsHitTesting(false)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { selection.toggle(message) }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(state.isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityHint(state.isSelected ? "Снять выбор" : "Выбрать")
     }
 
     private var bubble: some View {
@@ -141,7 +173,10 @@ struct TranscriptBubble: View, Equatable {
             onMarkUnread: viewModel.canMarkUnread(message) ? { viewModel.requestMarkUnread(message) } : nil,
             onInfo: state.showsInfo ? { [chatType = state.chatType] in viewModel.showMessageInfo(message, chatType: chatType) } : nil,
             onVote: { answerId in Task { await viewModel.vote(message, answerId: answerId) } },
-            onButton: { button in press(button) }
+            onButton: { button in press(button) },
+            onSelect: state.selectable ? { [reduceMotion] in
+                withAnimation(OrbitleMotion.quick(reduceMotion: reduceMotion)) { viewModel.selection.begin(with: message) }
+            } : nil
         )
     }
 

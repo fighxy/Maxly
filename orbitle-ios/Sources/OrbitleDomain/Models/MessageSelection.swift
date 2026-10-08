@@ -196,7 +196,7 @@ public enum MessageSelectionRules {
     }
 
     /// Равное время — по серверному id как числу, затем как строке.
-    static func idOrder(_ lhs: String, _ rhs: String) -> Bool {
+    public static func idOrder(_ lhs: String, _ rhs: String) -> Bool {
         switch (Int64(lhs), Int64(rhs)) {
         case let (l?, r?): l < r
         case (.some, nil): true

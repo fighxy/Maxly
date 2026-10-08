@@ -440,7 +440,10 @@ struct ChatTranscript: View {
             canTranscribe: viewModel.canTranscribe(message),
             quickReaction: quickReaction,
             chatType: chatType,
-            showsInfo: viewModel.canShowInfo(message)
+            showsInfo: viewModel.canShowInfo(message),
+            isSelecting: viewModel.selection.isActive,
+            isSelected: viewModel.selection.isSelected(message.id),
+            selectable: viewModel.selection.canSelect(message)
         )
     }
 

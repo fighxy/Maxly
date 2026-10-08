@@ -73,6 +73,8 @@ public struct MessageBubble: View {
     private let onVote: ((String) -> Void)?
     /// Нажатие inline-кнопки бота. `nil` — кнопки видны, но не нажимаются.
     private let onButton: ((InlineButton) -> Void)?
+    /// «Выбрать»: режим выбора нескольких сообщений. `nil` — пункта нет.
+    private let onSelect: (() -> Void)?
 
     /// Сдвиг пузыря при свайпе «ответить».
     @State private var swipe: CGFloat = 0
@@ -131,8 +133,10 @@ public struct MessageBubble: View {
         onMarkUnread: (() -> Void)? = nil,
         onInfo: (() -> Void)? = nil,
         onVote: ((String) -> Void)? = nil,
-        onButton: ((InlineButton) -> Void)? = nil
+        onButton: ((InlineButton) -> Void)? = nil,
+        onSelect: (() -> Void)? = nil
     ) {
+        self.onSelect = onSelect
         self.message = message
         self.layout = MessageBubbleLayout(message: message, showsAuthorName: showsAuthorName, showsComments: allowsComments)
         self.isOutgoing = isOutgoing
@@ -259,6 +263,9 @@ public struct MessageBubble: View {
             }
             if let onInfo, message.status == .sent {
                 Button("Сведения", systemImage: "info.circle", action: onInfo)
+            }
+            if let onSelect {
+                Button("Выбрать", systemImage: "checkmark.circle", action: onSelect)
             }
             if let onDelete {
                 Divider()
