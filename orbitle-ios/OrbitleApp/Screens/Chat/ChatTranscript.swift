@@ -215,6 +215,9 @@ struct ChatTranscript: View {
                     // Просьба прокрутки от прошлого захода к этому открытию не относится. Пришедшая,
                     // пока лента была скрыта (профиль), выполняется сейчас: иначе она держала бы `follow`.
                     if isOpening { viewModel.consumeScroll() } else { perform(viewModel.scrollTarget, proxy: proxy) }
+                    // Возврат на экран (из профиля): рамки могли не смениться, а модель забыла
+                    // увиденное — сообщаем его заново.
+                    reportReads()
                 }
                 .onDisappear {
                     viewModel.savePlace(position, atBottom: bottom.atBottom)
