@@ -65,6 +65,8 @@ import app.orbitle.presentation.calls.CallsViewModel
 import app.orbitle.ui.calls.CallLinkDialog
 import app.orbitle.ui.chatlist.Placeholder
 import app.orbitle.ui.components.Avatar
+import app.orbitle.ui.components.clickCursor
+import app.orbitle.ui.components.onSecondaryClick
 import app.orbitle.ui.components.privateBlur
 
 private val MissedRed = Color(0xFFE5484D)
@@ -167,7 +169,7 @@ private fun ActionRow(title: String, icon: androidx.compose.ui.graphics.vector.I
         leadingContent = { Icon(icon, null, tint = MaterialTheme.colorScheme.primary) },
         headlineContent = { Text(title, color = MaterialTheme.colorScheme.primary) },
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
+        modifier = Modifier.clickCursor().clickable(enabled = enabled, onClick = onClick),
     )
 }
 
@@ -211,7 +213,7 @@ private fun CallRowItem(row: CallRow, onOpen: () -> Unit, onDelete: () -> Unit, 
                 }
             },
             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-            modifier = Modifier.combinedClickable(onClick = onOpen, onLongClick = { menu = true }),
+            modifier = Modifier.onSecondaryClick { menu = true }.combinedClickable(onClick = onOpen, onLongClick = { menu = true }),
         )
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(

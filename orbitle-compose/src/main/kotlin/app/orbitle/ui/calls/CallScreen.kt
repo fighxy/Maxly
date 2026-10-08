@@ -71,6 +71,7 @@ import app.orbitle.presentation.calls.CallCenterState
 import app.orbitle.presentation.calls.CallStatusText
 import app.orbitle.presentation.chatlist.ChatAvatar
 import app.orbitle.ui.components.Avatar
+import app.orbitle.ui.components.clickCursor
 import kotlinx.coroutines.delay
 
 /** Видео звонка по id дорожки: у Android — SurfaceViewRenderer, у ПК — кадры в картинку. */
@@ -151,6 +152,7 @@ fun CallScreen(state: CallCenterState, actions: CallActions, modifier: Modifier 
                 Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 60.dp, end = 14.dp)
                     .size(104.dp, 156.dp).clip(RoundedCornerShape(14.dp))
                     .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+                    .clickCursor()
                     .clickable(onClick = actions::switchCamera),
             )
         }
@@ -328,7 +330,7 @@ private fun Controls(call: ActiveCall, actions: CallActions, modifier: Modifier)
 private fun Toggle(title: String, icon: ImageVector, isOn: Boolean, onClick: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
-            Modifier.size(60.dp).clip(CircleShape).background(if (isOn) Color.White else Color.White.copy(alpha = 0.16f)).clickable(onClick = onClick),
+            Modifier.size(60.dp).clip(CircleShape).background(if (isOn) Color.White else Color.White.copy(alpha = 0.16f)).clickCursor().clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
             Icon(icon, title, tint = if (isOn) Color.Black else Color.White)
@@ -342,7 +344,7 @@ private fun Toggle(title: String, icon: ImageVector, isOn: Boolean, onClick: () 
 @Composable
 private fun RoundButton(title: String, icon: ImageVector, fill: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(72.dp).clip(CircleShape).background(fill).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(72.dp).clip(CircleShape).background(fill).clickCursor().clickable(onClick = onClick), contentAlignment = Alignment.Center) {
             Icon(icon, title, Modifier.size(30.dp), tint = Color.White)
         }
         Spacer(Modifier.height(8.dp))
@@ -358,7 +360,7 @@ fun ActiveCallBar(state: CallCenterState, actions: CallActions, modifier: Modifi
     val now = rememberNow()
     Row(
         modifier.fillMaxWidth().background(if (call.isRinging) Color(0xFFFF9500) else Color(0xFF34C759))
-            .clickable(onClick = actions::expand).padding(horizontal = 16.dp).height(40.dp),
+            .clickCursor().clickable(onClick = actions::expand).padding(horizontal = 16.dp).height(40.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(if (call.isVideo || call.state.cameraOn) Icons.Filled.Videocam else Icons.Filled.Phone, null, Modifier.size(16.dp), tint = Color.White)

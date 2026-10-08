@@ -155,3 +155,42 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
+
+  # Пререлиз с установщиками всех трёх ОС, как у Android и iOS. Хранятся последние 5 сборок.
+  publish:
+    name: Publish pre-release
+    needs: package
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Orbitle-desktop-*-${{ github.sha }}
+          path: installers
+          merge-multiple: true
+      - name: Publish installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          short="${GITHUB_SHA::7}"
+          files=()
+          for file in installers/*; do
+            ext="${file##*.}"
+            target="installers/Orbitle-${short}.${ext}"
+            mv "$file" "$target"
+            files+=("$target")
+          done
+          ls -lh installers
+          gh release delete "desktop-${short}" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "desktop-${short}" "${files[@]}" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --prerelease --title "Orbitle Desktop ${short}" \
+            --notes "Сборка для ПК ${GITHUB_SHA}: Windows (.msi), macOS (.dmg, без подписи — открыть через «Открыть» в контекстном меню), Linux (.deb). Для голосовых, кружков и видео нужен ffmpeg в PATH."
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | startswith("desktop-"))] | sort_by(.createdAt) | reverse | .[5:] | .[].tagName' |
+            while read -r old; do
+              gh release delete "$old" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+            done

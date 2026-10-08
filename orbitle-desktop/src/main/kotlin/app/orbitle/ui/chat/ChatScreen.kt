@@ -321,6 +321,10 @@ fun ChatScreen(
                 attaching = true
                 true
             }
+            HotkeyAction.RECORD -> state.canWrite && run {
+                recording.toggleByKey()
+                true
+            }
             HotkeyAction.REPLY_OLDER -> state.canWrite && model.replyToNeighbour(older = true)
             HotkeyAction.REPLY_NEWER -> state.canWrite && model.replyToNeighbour(older = false)
             HotkeyAction.TO_LATEST -> {
@@ -331,6 +335,9 @@ fun ChatScreen(
         }
     }
     // Esc при ответе или правке отменяет их, а не закрывает чат.
+    // Esc во время записи выбрасывает её, как корзина.
+    val recordingState by recording.state.collectAsStateWithLifecycle()
+    BackHandler(enabled = recordingState.isActive) { recording.cancel() }
     BackHandler(enabled = state.replyTo != null || state.editing != null) {
         if (state.editing != null) model.cancelEdit() else model.cancelReply()
     }

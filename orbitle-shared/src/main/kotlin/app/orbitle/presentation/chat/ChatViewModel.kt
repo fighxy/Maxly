@@ -1829,7 +1829,8 @@ internal fun feedItems(
         val sameAsPrevious = previous != null && messagesAttach(
             message.authorId, message.timeMs, previous.authorId, previous.timeMs, sameDay = true,
         )
-        val sameAsNext = next != null && !next.isService && messagesAttach(
+        // Разделитель непрочитанных рвёт серию с обеих сторон, как на iOS.
+        val sameAsNext = next != null && !next.isService && next.id != unreadAnchorId && messagesAttach(
             message.authorId, message.timeMs, next.authorId, next.timeMs, formatter.dayKey(next.timeMs) == day,
         )
         val outgoing = isOutgoing(message)

@@ -161,6 +161,38 @@ class RecordingController(
         }
     }
 
+    /**
+     * Клавиша записи (ПК): запись начинается сразу закреплённой — её отправляет повторное
+     * нажатие или кнопка, отменяет Esc или корзина.
+     */
+    fun toggleByKey() {
+        when (_state.value.phase) {
+            Phase.IDLE -> {
+                val mode = _state.value.mode
+                when (recorder.access(mode)) {
+                    ComposerRecorder.Access.GRANTED -> Unit
+                    ComposerRecorder.Access.ASK -> {
+                        scope.launch { if (!recorder.requestAccess(mode)) show(denied(mode)) }
+                        return
+                    }
+                    ComposerRecorder.Access.DENIED -> {
+                        show(denied(mode))
+                        return
+                    }
+                }
+                attempt += 1
+                warming = false
+                lockedInPress = false
+                _state.update { it.copy(phase = Phase.LOCKED, recording = mode, dragX = 0f, dragY = 0f) }
+                onStart()
+                val number = attempt
+                enqueue { startRecorder(mode, number) }
+            }
+            Phase.RECORDING, Phase.LOCKED -> send()
+            else -> Unit
+        }
+    }
+
     /** Палец сдвинулся на [dx], [dy] dp от места касания. */
     fun move(dx: Float, dy: Float) {
         if (_state.value.phase != Phase.RECORDING) return
