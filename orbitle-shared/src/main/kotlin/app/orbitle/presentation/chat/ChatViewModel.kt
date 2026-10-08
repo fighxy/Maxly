@@ -872,6 +872,13 @@ class ChatViewModel(
     fun reactionUsers(message: Message): ReactionUsersModel =
         ReactionUsersModel(chatId, message, repository, viewModelScope).also { it.load() }
 
+    /** «Сведения» — у любого сообщения на сервере, кроме служебных. */
+    fun canShowInfo(message: Message): Boolean = isServer(message) && !message.isService
+
+    fun messageInfo(message: Message): MessageInfoModel =
+        MessageInfoModel(chatId, message, builtFor, message.authorId == repository.currentUserId, repository, viewModelScope)
+            .also { it.load() }
+
     /** Пересылать можно только сообщения, уже лежащие на сервере. */
     fun canForward(message: Message): Boolean =
         isServer(message) && message.status == MessageStatus.SENT && !message.isService

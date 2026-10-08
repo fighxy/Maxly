@@ -313,6 +313,7 @@ fun ChatScreen(
     var deleting by remember { mutableStateOf<Message?>(null) }
     var forwarding by remember { mutableStateOf<Message?>(null) }
     var reactionUsers by remember { mutableStateOf<app.orbitle.presentation.chat.ReactionUsersModel?>(null) }
+    var messageInfo by remember { mutableStateOf<app.orbitle.presentation.chat.MessageInfoModel?>(null) }
     var searching by remember { mutableStateOf(false) }
     var toolsOpen by remember { mutableStateOf(false) }
     var eraseChat by remember { mutableStateOf<ChatErase?>(null) }
@@ -530,12 +531,16 @@ fun ChatScreen(
             onDelete = { deleting = message },
             onForward = { forwarding = message },
             onReactionUsers = { reactionUsers = model.reactionUsers(message) },
+            onInfo = { messageInfo = model.messageInfo(message) },
             onSave = { target -> requestSave(message, target) },
             onMarkUnread = { model.markUnread(message, onBack) },
         )
     }
     reactionUsers?.let { users ->
         ReactionUsersSheet(users, onDismiss = { reactionUsers = null })
+    }
+    messageInfo?.let { info ->
+        MessageInfoSheet(info, onDismiss = { messageInfo = null })
     }
     forwarding?.let { message ->
         val targets = remember(message) { forwardTargets() }

@@ -170,6 +170,12 @@ interface MessageRepository {
 
     /** Прямой адрес видео или файла сообщения для плеера и загрузки. */
     /** Кто отреагировал на сообщение. */
+    /**
+     * «Кем прочитано» в группе, поставившие реакцию — первыми. `null` — сервер список не даёт
+     * (не группа, звонок, участников больше `max-readmarks`). До API ядра — `null`.
+     */
+    suspend fun messageReaders(chatId: String, messageId: String): List<app.orbitle.domain.MessageReader>? = null
+
     suspend fun reactionUsers(chatId: String, messageId: String): List<app.orbitle.domain.ReactionUser> =
         throw OrbitleError.Rejected("Список недоступен")
 

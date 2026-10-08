@@ -14,6 +14,7 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Download
 import app.orbitle.presentation.chat.ReactionPalette
 import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.outlined.Info
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.isImeVisible
@@ -170,6 +171,8 @@ internal fun MessageActions(
     onDelete: () -> Unit,
     onForward: () -> Unit,
     onReactionUsers: () -> Unit,
+    /** «Сведения»: время, правка, пересылка, «Кем прочитано». */
+    onInfo: () -> Unit,
     onSave: (SaveTarget) -> Unit,
     /** Пометить чат непрочитанным с этого сообщения и закрыть его. */
     onMarkUnread: () -> Unit,
@@ -217,6 +220,14 @@ internal fun MessageActions(
                 leadingContent = { Icon(Icons.Outlined.Group, null) },
                 colors = colors,
                 modifier = Modifier.clickable { onDismiss(); onReactionUsers() },
+            )
+        }
+        if (model.canShowInfo(message)) {
+            ListItem(
+                headlineContent = { Text("Сведения") },
+                leadingContent = { Icon(Icons.Outlined.Info, null) },
+                colors = colors,
+                modifier = Modifier.clickable { onDismiss(); onInfo() },
             )
         }
         if (model.canCancelUpload(message)) {
