@@ -5,7 +5,7 @@ import java.io.ByteArrayOutputStream
 /**
  * Служебные каналы данных SFU: `producerCommand` (наши команды) и `producerNotification`
  * (алиасы дорожек, слоты видео и уровни звука). Сервер говорит в них MessagePack; схема
- * кадров — как у Komet (`sfu_data_channel.dart`), кодек свой.
+ * кадров повторяет то, что ждёт сервер, кодек свой.
  */
 object SfuChannel {
     const val COMMAND_LABEL = "producerCommand"
@@ -28,7 +28,7 @@ object SfuChannel {
 
     /**
      * Команда `update-display-layout` (код 0): какие видео присылать. Байты повторяют то, что
-     * шлёт Komet: тип, версия, номер, `snapshot`, массив окон или `nil`, завершающий `nil`.
+     * ждёт сервер: тип, версия, номер, `snapshot`, массив окон или `nil`, завершающий `nil`.
      */
     fun displayLayout(items: List<LayoutItem>, sequence: Int, snapshot: Boolean = true): ByteArray {
         val writer = MessagePackWriter()

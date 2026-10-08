@@ -67,7 +67,7 @@ fun interface CallEngine {
 /**
  * Один звонок: сигнальный сокет ws2 сервера звонков и WebRTC. Порт iOS `CallSession`.
  *
- * Протокол — схема Komet (`call_session.dart`, `ws2_signaling.dart`), код свой:
+ * Протокол звонка, код свой:
  * 1. Сокет ws2 открывается по адресу из ответа на звонок или из пуша входящего.
  * 2. Сервер присылает `connection`: участники, топология и серверы ICE.
  * 3. Напрямую (`DIRECT`): звонящий шлёт офер собеседнику через `transmit-data`, тот отвечает,
@@ -360,7 +360,7 @@ class CallSession(
         if (answered) scheduleWake(signaling)
     }
 
-    /** Сервер иногда молчит после рукопожатия. Тогда его будит `change-media-settings`, а если и это не помогло — `accept-call` (так делает Komet). */
+    /** Сервер иногда молчит после рукопожатия. Тогда его будит `change-media-settings`, а если и это не помогло — `accept-call`. */
     private fun scheduleWake(signaling: Ws2Signaling) {
         scope.launch {
             delay(timing.wake)

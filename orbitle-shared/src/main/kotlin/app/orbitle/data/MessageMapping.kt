@@ -124,7 +124,7 @@ object MessageMapping {
         )
     }
 
-    /** Вложение `SHARE`: `{url, host?, title?, description?, image?: PHOTO}` (схема Komet). */
+    /** Вложение `SHARE`: `{url, host?, title?, description?, image?: PHOTO}`. */
     fun linkPreview(attaches: List<*>?): LinkPreview? {
         for (item in attaches.orEmpty()) {
             val map = item as? Map<*, *> ?: continue
@@ -147,7 +147,7 @@ object MessageMapping {
 
     /**
      * Вложение `INLINE_KEYBOARD`: `{callbackId, keyboard: {buttons: [[{type, text, url?, webApp?,
-     * contactId?, payload?}]]}}` (схема Komet). Кнопки без подписи и пустые ряды отбрасываются.
+     * contactId?, payload?}]]}}`. Кнопки без подписи и пустые ряды отбрасываются.
      */
     fun keyboard(attaches: List<*>?): InlineKeyboard? {
         for (item in attaches.orEmpty()) {

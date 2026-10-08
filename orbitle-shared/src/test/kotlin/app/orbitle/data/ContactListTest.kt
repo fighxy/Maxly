@@ -7,7 +7,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Имя и видимость контакта так, как их разбирает Komet. */
+/** Имя и видимость контакта в списке. */
 class ContactListTest {
     @Test
     fun customNameBeatsTheProfileName() {

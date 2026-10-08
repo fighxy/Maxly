@@ -57,7 +57,7 @@ class CoreContactRepository(private val client: MaxClient) : ContactRepository {
         .map { state ->
             state.contactIds.mapNotNull { id ->
                 val user = state.users[id] ?: return@mapNotNull null
-                // Komet не показывает удалённый аккаунт (`accountStatus != 0`). Пустого поля нет — человек жив.
+                // Удалённый аккаунт (`accountStatus != 0`) в список не попадает. Пустого поля нет — человек жив.
                 if (!isListed(user)) return@mapNotNull null
                 contact(user, state)
             }
@@ -66,7 +66,7 @@ class CoreContactRepository(private val client: MaxClient) : ContactRepository {
 
     override suspend fun sync() {
         // Ядро шлёт opcode 8 `{contactsSync: 0}` и добавляет ответ к уже известным id.
-        // Komet тоже дописывает, а не заменяет список целиком.
+        // Список дописывается, а не заменяется целиком.
         MaxCoreGateway.call { client.syncContacts() }
     }
 
@@ -121,7 +121,7 @@ class CoreContactRepository(private val client: MaxClient) : ContactRepository {
         fun isListed(user: MaxUser): Boolean = (user.accountStatus ?: 0) == 0
 
         /**
-         * Имя для списка, как в Komet: запись `CUSTOM`, иначе `ONEME`, иначе первая.
+         * Имя для списка: запись `CUSTOM`, иначе `ONEME`, иначе первая.
          * Берутся `firstName` и `lastName`. Если оба пусты, остаётся поле `name`.
          */
         fun visibleName(names: List<UserName>): Pair<String, String> {

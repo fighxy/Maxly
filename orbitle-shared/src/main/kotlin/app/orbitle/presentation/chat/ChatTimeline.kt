@@ -124,8 +124,8 @@ internal object TimelineFilter {
 }
 
 /**
- * Первое непрочитанное: первое чужое сообщение новее своей отметки прочтения [readMarkMs] (как в
- * Komet). Без отметки — по счётчику [unread] среди последних чужих ([unreadAnchor]).
+ * Первое непрочитанное: первое чужое сообщение новее своей отметки прочтения [readMarkMs].
+ * Без отметки — по счётчику [unread] среди последних чужих ([unreadAnchor]).
  */
 internal fun firstUnread(history: List<Message>, readMarkMs: Long, unread: Int, isOutgoing: (Message) -> Boolean, complete: Boolean): String? {
     if (unread <= 0) return null

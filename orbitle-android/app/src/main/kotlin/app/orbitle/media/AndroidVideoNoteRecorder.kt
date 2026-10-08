@@ -32,7 +32,7 @@ import java.io.File
 
 /**
  * Запись кружка: фронтальная камера (CameraX), кадр обрезается по центру в квадрат, до минуты.
- * Круг рисует уже пузырь, как у Komet и на iOS.
+ * Круг рисует уже пузырь, как на iOS.
  */
 class AndroidVideoNoteRecorder(private val context: Context, private val lifecycle: LifecycleOwner) {
     private val _elapsed = MutableStateFlow<Long?>(null)

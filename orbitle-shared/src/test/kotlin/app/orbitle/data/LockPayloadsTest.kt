@@ -35,7 +35,7 @@ class LockPayloadsTest {
     }
 
     @Test
-    fun callParamsMatchTheKometString() {
+    fun callParamsMatchTheExpectedString() {
         assertEquals(
             """{"platform":"ANDROID","sdkVersion":"0.2.1.3","clientAppKey":"CGPGAGLGDIHBABABA","deviceId":"dev","protocolVersion":5,"onlyAdminCanRecord":false,"isWaitForAdminEnabled":false,"hexCapability":"3c02f"}""",
             LockPayloads.callInternalParams("dev"),

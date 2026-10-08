@@ -48,7 +48,7 @@ sealed class Ws2Exception(message: String) : Exception(message) {
 /**
  * Сигнальный канал звонка поверх ws2.
  *
- * Конверт сообщений (схема Komet `ws2_signaling.dart`, kolibri-net `calls/signaling.rs`):
+ * Конверт сообщений:
  * - команда: `{"command": …, …, "sequence": N}`, номера с 1;
  * - ответ: `{"sequence": N, "response": "<команда>", "type": "response"}`;
  * - ошибка: `{"sequence": N, "type": "error", "error": …}` — она же уходит в уведомления;
@@ -263,7 +263,7 @@ class OkHttpWs2Socket private constructor() : Ws2Socket {
 /** Кому слать SDP и кандидатов: номер участника, тип и номер устройства. */
 data class CallPeerAddress(val id: Long, val type: String = "USER", val deviceIdx: Long = 0)
 
-/** Тела команд ws2 (схема Komet `ws2_signaling.dart`). */
+/** Тела команд ws2. */
 object Ws2Command {
     /** `hexCapability` SDK звонков: его же сервер видит в `internalParams`. */
     const val CAPABILITIES = "3c02f"
@@ -316,7 +316,7 @@ object Ws2Command {
         ),
     )
 
-    /** `record-start` с теми же полями, что шлёт Komet: всё, кроме `streamMovie`, пустое. */
+    /** `record-start` с полями, которые ждёт сервер: всё, кроме `streamMovie`, пустое. */
     val recordStart: Map<String, JsonElement> = json(
         "movieId" to null,
         "name" to null,
