@@ -7,11 +7,13 @@ on:
     paths:
       - "orbitle-android/**"
       - "orbitle-shared/**"
+      - "orbitle-compose/**"
       - ".github/workflows/android.yml"
   pull_request:
     paths:
       - "orbitle-android/**"
       - "orbitle-shared/**"
+      - "orbitle-compose/**"
       - ".github/workflows/android.yml"
 
 permissions:

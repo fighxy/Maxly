@@ -7,12 +7,14 @@ on:
     paths:
       - "orbitle-desktop/**"
       - "orbitle-shared/**"
+      - "orbitle-compose/**"
       - "scripts/fetch-core.ps1"
       - ".github/workflows/desktop.yml"
   pull_request:
     paths:
       - "orbitle-desktop/**"
       - "orbitle-shared/**"
+      - "orbitle-compose/**"
       - "scripts/fetch-core.ps1"
       - ".github/workflows/desktop.yml"
 

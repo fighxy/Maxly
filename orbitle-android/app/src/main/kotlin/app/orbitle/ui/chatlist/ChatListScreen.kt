@@ -33,8 +33,6 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
 import app.orbitle.presentation.chatlist.FolderPages
-import app.orbitle.ui.stories.StoryStripSlot
-import app.orbitle.ui.stories.rememberStoryStripHandle
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -79,7 +77,6 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -88,6 +85,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -148,13 +146,11 @@ fun ChatListScreen(
     onTogglePrivateMode: () -> Unit = {},
     newChat: NewChatModel? = null,
     onOpenCreated: (id: String, title: String) -> Unit = { _, _ -> },
-    /** Полоса историй над поиском и папками; `null` — без неё. */
+    /** Полоса историй над поиском; `null` — без неё. */
     storiesHeader: (@Composable () -> Unit)? = null,
-    /** Полоса скрыта жестом. Запоминается на устройстве. */
-    storiesCollapsed: Boolean = false,
-    onStoriesCollapsed: (Boolean) -> Unit = {},
-    /** Потянули список вниз: обновить и истории. Срабатывает, только когда полоса уже открыта. */
-    onPullRefresh: () -> Unit = {},
+    /** Аватары историй у заголовка, пока полоса спрятана; `null` — историй нет. */
+    storyStack: (@Composable () -> Unit)? = null,
+    onAddStory: (() -> Unit)? = null,
 ) {
     LifecycleResumeEffect(viewModel) {
         viewModel.reloadLocal()
@@ -163,7 +159,6 @@ fun ChatListScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val message by viewModel.messages.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
-    val scroll = TopAppBarDefaults.pinnedScrollBehavior()
     // Папки листаются вбок, только когда полоса видна и поиск закрыт.
     val paged = state.pages.isNotEmpty()
     val folderIds = remember(state.folders) { state.folders.map { it.id } }
@@ -173,19 +168,9 @@ fun ChatListScreen(
     val listStates = rememberSaveable(saver = FolderListStates.Saver) { FolderListStates() }
     val looseListState = rememberLazyListState()
     LaunchedEffect(folderIds) { listStates.retain(folderIds) }
-    val storiesHandle = rememberStoryStripHandle(storiesCollapsed, onStoriesCollapsed)
-    val edgeList = if (paged && folderIds.isNotEmpty()) {
-        listStates.of(folderIds[pagerState.currentPage.coerceIn(0, folderIds.lastIndex)])
-    } else {
-        looseListState
-    }
-    storiesHandle.listAtTop = edgeList.firstVisibleItemIndex == 0 && edgeList.firstVisibleItemScrollOffset == 0
-    storiesHandle.forceHidden = state.isSearchActive || state.isReorderingPins
-    storiesHandle.reduceMotion = android.provider.Settings.Global.getFloat(
-        androidx.compose.ui.platform.LocalView.current.context.contentResolver,
-        android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
-        1f,
-    ) == 0f
+    val header = rememberChatListHeaderState(snapOnIdle = false)
+    val showsHeader = !state.isSearchActive && !state.isReorderingPins
+    header.enabled = showsHeader
     if (paged) {
         // Вкладка выбрана нажатием — страница доезжает до неё.
         LaunchedEffect(pagerState, selectedPage) {
@@ -207,7 +192,6 @@ fun ChatListScreen(
     }
     BackHandler(enabled = state.isReorderingPins) { viewModel.finishPinReorder() }
     Scaffold(
-        modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
         topBar = {
             Column {
                 if (state.isReorderingPins) {
@@ -219,13 +203,30 @@ fun ChatListScreen(
                     SearchBarRow(state.searchQuery, viewModel::setSearchQuery) { viewModel.setSearchActive(false) }
                 } else {
                     TopAppBar(
-                        title = { Text(state.banner ?: stringResource(R.string.chats_title)) },
-                        actions = {
-                            IconButton(onClick = { viewModel.setSearchActive(true) }) {
-                                Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.chats_search))
+                        title = {
+                            // Как на iOS: пока истории спрятаны, у заголовка их стопка; нажатие их открывает.
+                            Row(
+                                Modifier.clip(RoundedCornerShape(12.dp))
+                                    .clickable(enabled = storiesHeader != null, onClick = header::toggleStories)
+                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                androidx.compose.animation.AnimatedVisibility(storyStack != null && header.storiesHidden) {
+                                    Row {
+                                        storyStack?.invoke()
+                                        Spacer(Modifier.width(8.dp))
+                                    }
+                                }
+                                Text(state.banner ?: stringResource(R.string.chats_title))
                             }
                         },
-                        scrollBehavior = scroll,
+                        actions = {
+                            if (onAddStory != null) {
+                                IconButton(onClick = onAddStory) {
+                                    Icon(Icons.Outlined.AddCircleOutline, contentDescription = "Новая история")
+                                }
+                            }
+                        },
                     )
                 }
             }
@@ -258,24 +259,28 @@ fun ChatListScreen(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            if (storiesHeader != null && !storiesHandle.forceHidden) {
-                StoryStripSlot(storiesHandle) { storiesHeader() }
+            if (showsHeader) {
+                ChatListHeader(
+                    header,
+                    stories = storiesHeader,
+                    search = { SearchCapsule(stringResource(R.string.chats_search), onClick = { viewModel.setSearchActive(true) }) },
+                    folders = if (state.showsFolders) {
+                        {
+                            FolderCapsule(
+                                state.folders,
+                                selected = if (paged) pagerState.currentPage else selectedPage,
+                                onSelect = viewModel::selectFolder,
+                                pageOffset = if (paged) pagerState.currentPageOffsetFraction else 0f,
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                )
             }
-            if (state.showsFolders && !state.isSearchActive && !state.isReorderingPins) {
-                Box(storiesHandle.headerDrag()) {
-                    FolderTabs(state, selected = if (paged) pagerState.targetPage else selectedPage, onSelect = viewModel::selectFolder)
-                }
-            }
-        PullToRefreshBox(
-            isRefreshing = state.isRefreshing && storiesHandle.canRefresh,
-            onRefresh = {
-                if (!storiesHandle.canRefresh) return@PullToRefreshBox
-                viewModel.refresh()
-                onPullRefresh()
-            },
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-        ) {
-            Box(Modifier.fillMaxSize().nestedScroll(storiesHandle.connection)) {
+        // Без «потянуть, чтобы обновить», как на iOS: потягивание у верха открывает истории,
+        // а список обновляется сам — пушами и сверкой после подключения.
+        Box(Modifier.weight(1f).fillMaxWidth().nestedScroll(header.connection)) {
             val open: (ChatListItem) -> Unit = {
                 if (state.isSearchActive) viewModel.selectSearchResult(it.id)
                 viewModel.opened(it.id)
@@ -327,7 +332,6 @@ fun ChatListScreen(
                         canReorderPins = state.canReorderPins,
                     )
                 }
-            }
             }
         }
         }
@@ -433,28 +437,6 @@ private fun SearchBarRow(query: String, onQuery: (String) -> Unit, onClose: () -
                 modifier = Modifier.weight(1f).focusRequester(focus),
             )
             LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun FolderTabs(state: ChatListUiState, selected: Int, onSelect: (String) -> Unit) {
-    PrimaryScrollableTabRow(selectedTabIndex = selected, edgePadding = 12.dp, divider = { HorizontalDivider() }) {
-        state.folders.forEachIndexed { index, folder ->
-            Tab(
-                selected = index == selected,
-                onClick = { onSelect(folder.id) },
-                text = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(folder.title, maxLines = 1)
-                        folder.badge?.let {
-                            Spacer(Modifier.width(6.dp))
-                            Badge(containerColor = MaterialTheme.colorScheme.primary) { Text(it) }
-                        }
-                    }
-                },
-            )
         }
     }
 }

@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -56,6 +57,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -163,6 +165,23 @@ private fun DrawScope.drawStoryRing(ring: StoryRing?, stroke: Float, seen: Color
         val style = Stroke(stroke, cap = if (count > 1) StrokeCap.Round else StrokeCap.Butt)
         if (i < read) drawArc(seen, start, sweep, false, topLeft, arc, style = style)
         else drawArc(brush, start, sweep, false, topLeft, arc, style = style)
+    }
+}
+
+/** Стопка аватаров историй у заголовка списка, пока полоса спрятана над поиском. */
+@Composable
+fun StoryStack(items: List<Pair<ChatAvatar, StoryRing>>, modifier: Modifier = Modifier) {
+    val shown = items.take(3)
+    if (shown.isEmpty()) return
+    Box(modifier.width((28 + 16 * (shown.size - 1)).dp)) {
+        shown.forEachIndexed { index, (avatar, ring) ->
+            StoryRingAvatar(
+                avatar,
+                ring,
+                28.dp,
+                Modifier.offset(x = (16 * index).dp).zIndex((shown.size - index).toFloat()),
+            )
+        }
     }
 }
 
