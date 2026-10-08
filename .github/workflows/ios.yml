@@ -9,6 +9,7 @@ on:
       - "scripts/**"
       - "test-fixtures/calls/**"
       - "test-fixtures/typing/**"
+      - "test-fixtures/readers/**"
       - ".github/workflows/ios.yml"
   pull_request:
     paths:
@@ -16,6 +17,7 @@ on:
       - "scripts/**"
       - "test-fixtures/calls/**"
       - "test-fixtures/typing/**"
+      - "test-fixtures/readers/**"
       - ".github/workflows/ios.yml"
 
 permissions:
