@@ -25,10 +25,6 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.LifecycleRegistry
-import androidx.lifecycle.ViewModelStore
-import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
@@ -36,6 +32,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import app.orbitle.domain.AuthPhase
 import app.orbitle.domain.ThemeMode
 import app.orbitle.platform.AppPaths
+import app.orbitle.platform.DesktopOwner
 import app.orbitle.presentation.auth.AuthViewModel
 import app.orbitle.presentation.chatlist.ChatListViewModel
 import app.orbitle.ui.auth.AuthScreen
@@ -80,8 +77,13 @@ fun main() {
         val container = remember { AppContainer() }
         val owner = remember { DesktopOwner() }
         DisposableEffect(owner) {
-            owner.resume()
+            owner.moveTo(Lifecycle.State.STARTED)
             onDispose { owner.destroy() }
+        }
+        // RESUMED — только пока окно видно и в фокусе: открытый чат отмечается прочитанным лишь
+        // тогда, а при возврате к окну отмечает последнее видимое сообщение.
+        LaunchedEffect(owner, container) {
+            container.window.looking.collect { owner.moveTo(DesktopOwner.stateOf(it)) }
         }
         LaunchedEffect(container) { container.session.restoreSession() }
         val windowState = rememberWindowState(size = DpSize(1100.dp, 760.dp))
@@ -141,22 +143,6 @@ fun main() {
 /** События ввода, после которых пользователь снова считается у окна. */
 private val INPUT_EVENTS: Long = java.awt.AWTEvent.KEY_EVENT_MASK or java.awt.AWTEvent.MOUSE_EVENT_MASK or
     java.awt.AWTEvent.MOUSE_MOTION_EVENT_MASK or java.awt.AWTEvent.MOUSE_WHEEL_EVENT_MASK
-
-/** Жизненный цикл окна: чаты перечитывают локальные пометки, когда он в состоянии RESUMED. */
-private class DesktopOwner : LifecycleOwner, ViewModelStoreOwner {
-    private val registry = LifecycleRegistry(this)
-    override val lifecycle: Lifecycle get() = registry
-    override val viewModelStore = ViewModelStore()
-
-    fun resume() {
-        registry.currentState = Lifecycle.State.RESUMED
-    }
-
-    fun destroy() {
-        registry.currentState = Lifecycle.State.DESTROYED
-        viewModelStore.clear()
-    }
-}
 
 @Composable
 private fun AppRoot(container: AppContainer) {
