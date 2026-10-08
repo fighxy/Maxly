@@ -71,6 +71,9 @@ public final class ChatViewModel {
     }
     /// Сколько непрочитанных было при открытии и ещё ждут места в ленте.
     @ObservationIgnored private var pendingUnread = 0
+    /// Своя отметка прочтения при открытии (`OwnReadMark`, мс): разделитель встаёт над первым
+    /// чужим сообщением новее неё. `0` — неизвестна, разделитель ставится по счётчику.
+    @ObservationIgnored private var openReadMark: Int64 = 0
     /// Закреп, который видит шапка чата. `nil` — закрепа нет.
     public private(set) var pinned: (id: String, text: String)?
     /// Голосовые (id вложения), чья расшифровка идёт: текст ещё не пришёл.
@@ -340,13 +343,16 @@ public final class ChatViewModel {
     }
 
     /// Чат открыт с `count` непрочитанными (до отметки прочтения): над первым из них встанет
-    /// разделитель, лента откроется на нём.
+    /// разделитель, лента откроется на нём. `ownReadMark` — своя отметка прочтения
+    /// (`ChatRepository.ownReadMark`, самая свежая из карточки, пуша и местной): если она
+    /// известна, разделитель встаёт над первым чужим сообщением новее неё.
     ///
     /// Это и есть открытие чата (возврат из профиля его не вызывает): окно перехода, возвраты
     /// к цитатам, отметка «долистал» и отправленная отметка прочтения прежнего захода
     /// сбрасываются.
-    public func noteUnreadOnOpen(_ count: Int) {
+    public func noteUnreadOnOpen(_ count: Int, ownReadMark: Int64 = 0) {
         pendingUnread = max(count, 0)
+        openReadMark = max(ownReadMark, 0)
         markingUnread = false
         readMarks?.reset()
         returnStack = []
@@ -360,7 +366,9 @@ public final class ChatViewModel {
 
     private func placeUnreadAnchor() {
         guard pendingUnread > 0, unreadAnchorId == nil else { return }
-        guard let anchor = TranscriptLayout.unreadAnchor(live, unread: pendingUnread, currentUserId: currentUserId, complete: latestLoaded) else { return }
+        guard let anchor = TranscriptLayout.firstUnread(
+            live, readMark: openReadMark, unread: pendingUnread, currentUserId: currentUserId, complete: latestLoaded
+        ) else { return }
         pendingUnread = 0
         unreadAnchorId = anchor
     }

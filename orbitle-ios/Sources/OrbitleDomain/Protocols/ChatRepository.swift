@@ -97,6 +97,9 @@ public protocol ChatRepository: Sendable {
     /// так экран чата отмечает увиденное (`ReadMarkScheduler`). Если читать нечего, сервер не
     /// дёргается. При скрытых отметках о прочтении ядро читает чат только на устройстве.
     func markRead(chatId: String, messageId: String, at mark: Int64) async throws(OrbitleError)
+    /// До какого места чат прочитан этим аккаунтом (мс, `OwnReadMark`): по ней встаёт
+    /// разделитель непрочитанных. `0` — неизвестно.
+    func ownReadMark(chatId: String) -> Int64
 
     /// Что из необязательных действий доступно.
     var capabilities: ChatListCapabilities { get }
@@ -160,6 +163,7 @@ public struct BotButtonAnswer: Sendable, Equatable {
 public extension ChatRepository {
     var capabilities: ChatListCapabilities { [] }
     func markRead(chatId: String, messageId: String, at mark: Int64) async throws(OrbitleError) { throw .invalidRequest }
+    func ownReadMark(chatId: String) -> Int64 { 0 }
     func setPinned(_ pinned: Bool, chatId: String) async throws(OrbitleError) { throw .invalidRequest }
     func reorderPinned(_ chatIds: [String]) async throws(OrbitleError) { throw .invalidRequest }
     func setMarkedUnread(_ unread: Bool, chatId: String) async throws(OrbitleError) { throw .invalidRequest }

@@ -251,7 +251,11 @@ final class AppContainer {
             self.chatAdmin = CoreChatAdminRepository(core: core)
             self.stickerRepository = CoreStickerRepository(core: core)
             self.accounts = CoreAccountRepository(core: core)
-            self.privacyAdapter = CoreGhostPrivacyControls(core: core)
+            let privacyAdapter = CoreGhostPrivacyControls(core: core)
+            self.privacyAdapter = privacyAdapter
+            // Своя позиция чата для разделителя непрочитанных учитывает местную отметку ядра,
+            // пока отметки о прочтении скрыты (docs/read-marks.md).
+            chats.setLocalReadMarks { privacyAdapter.localReadMark(chatId: $0) }
             self.folderRepository = CoreFolderRepository(core: core)
             self.session = session
             self.chats = chats
@@ -671,9 +675,13 @@ final class AppContainer {
     /// Открытый чат: опрос его истории. Прочитанным его отмечает экран чата по тому, что
     /// видно (`ChatViewModel.noteVisible`, docs/read-marks.md).
     func focus(chatId: String?) async {
-        // Непрочитанные до отметки прочтения: над первым из них лента ставит разделитель.
+        // Непрочитанные и своя отметка прочтения до отметки этого захода: по ним лента ставит
+        // разделитель. Отметка — самая свежая из ответа сервера, пуша и местной (`OwnReadMark`).
         if let chatId, let model = chatViewModel(id: chatId) {
-            model.noteUnreadOnOpen(listModel?.chat(id: chatId)?.unreadCount ?? 0)
+            model.noteUnreadOnOpen(
+                listModel?.chat(id: chatId)?.unreadCount ?? 0,
+                ownReadMark: chats?.ownReadMark(chatId: chatId) ?? 0
+            )
         }
         await sync?.focus(chatId)
         await listModel?.open(chatId: chatId)

@@ -41,9 +41,9 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// Временные выключения звука: id чата → задача, которая включит звук в конце срока.
     /// Отдельного события об окончании ядро не шлёт.
     private var muteExpiries: [String: (until: Int64, task: Task<Void, Never>)] = [:]
-    /// Своя отметка прочтения, последняя применённая (мс): ответы сервера на отметки и пуши
-    /// с других устройств. Запоздавший ответ на более старую отметку не применяется.
-    private var ownReadMarks: [String: Int64] = [:]
+    /// Свои отметки прочтения (мс): ответы сервера на отметки, пуши с других устройств и
+    /// местная отметка ядра. Запоздавший ответ на более старую отметку не применяется.
+    private nonisolated let readMarkBook = OwnReadMarkBook()
 
     /// Закреплённые чаты сервера сверху вниз, как их прислало ядро (`nil`, пока неизвестны).
     /// В списке могут быть чаты, которых ещё нет в базе: строка получит место, когда появится.
@@ -322,7 +322,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// Стирает чаты в контексте этого актора. Каскад забирает их сообщения в базе.
     public func removeAll() throws(OrbitleError) {
         generation += 1
-        ownReadMarks.removeAll()
+        readMarkBook.removeAll()
         muteToggles.removeAll()
         muteExpiries.values.forEach { $0.task.cancel() }
         muteExpiries.removeAll()
@@ -389,13 +389,23 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         try applyReadReply(chatId: chatId, reply: reply, lastBefore: lastBefore)
     }
 
+    /// Своя позиция чата (`OwnReadMark`): ответ сервера, пуш и местная отметка ядра.
+    public nonisolated func ownReadMark(chatId: String) -> Int64 {
+        readMarkBook.position(chatId)
+    }
+
+    /// Местная отметка ядра, пока отметки о прочтении скрыты (`GhostControls.localReadMark`).
+    public nonisolated func setLocalReadMarks(_ source: (@Sendable (String) -> Int64)?) {
+        readMarkBook.setLocal(source)
+    }
+
     /// Ответ сервера на свою отметку. Ответ старее уже применённой отметки пропускается:
     /// ответы на две отметки подряд могут прийти в обратном порядке. Счётчик сервера берётся,
     /// только если он меньше локального и с запроса в чат ничего не пришло (`lastBefore` —
     /// последнее сообщение на момент отметки): новое сообщение остаётся непрочитанным.
     func applyReadReply(chatId: String, reply: CoreReadMark, lastBefore: String?) throws(OrbitleError) {
-        guard ReadMarks.isFresh(reply.mark, known: ownReadMarks[chatId] ?? 0) else { return }
-        ownReadMarks[chatId] = reply.mark
+        guard ReadMarks.isFresh(reply.mark, known: readMarkBook.known(chatId)) else { return }
+        readMarkBook.noteReply(reply.mark, chatId: chatId)
         do {
             guard let chat = try chat(id: chatId),
                   let unread = ReadMarks.unreadAfterRead(
@@ -420,7 +430,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         }
         try ensureCurrent(started)
         // Отметка сервера ушла назад: следующий ответ на прочтение сравнивается уже не с ней.
-        ownReadMarks[chatId] = nil
+        readMarkBook.forget(chatId)
         do {
             guard let chat = try chat(id: chatId) else { return }
             chat.unreadCount = max(unread, 1)
@@ -687,9 +697,9 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// непрочитанным вручную.
     public func applyOwnRead(chatId: String, mark: Int64, setAsUnread: Bool) throws(OrbitleError) {
         if setAsUnread {
-            ownReadMarks[chatId] = nil
-        } else if mark > ownReadMarks[chatId] ?? 0 {
-            ownReadMarks[chatId] = mark
+            readMarkBook.forget(chatId)
+        } else if mark > 0 {
+            readMarkBook.notePush(mark, chatId: chatId)
         }
         do {
             guard let chat = try chat(id: chatId) else { return }

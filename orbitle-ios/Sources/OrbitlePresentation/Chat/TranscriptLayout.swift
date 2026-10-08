@@ -54,6 +54,22 @@ public enum TranscriptLayout {
         }
     }
 
+    /// Первое непрочитанное по своей отметке прочтения `readMark` (мс, `OwnReadMark`): первое
+    /// чужое сообщение новее неё. Отметка учитывается, только когда лента до неё дотягивается
+    /// (в ней есть сообщение с сервера не новее отметки), иначе граница не видна. Без отметки,
+    /// без такой ленты или без чужого новее — по счётчику `unread` (`unreadAnchor`). Без
+    /// непрочитанных разделителя нет.
+    public static func firstUnread(_ messages: [Message], readMark: Int64, unread: Int, currentUserId: String, complete: Bool) -> String? {
+        guard unread > 0 else { return nil }
+        if readMark > 0, messages.contains(where: { $0.status == .sent && ReadMark.time(of: $0) <= readMark }),
+           let first = messages.first(where: {
+               $0.status == .sent && $0.authorId != currentUserId && $0.content.pin == nil && ReadMark.time(of: $0) > readMark
+           }) {
+            return first.id
+        }
+        return unreadAnchor(messages, unread: unread, currentUserId: currentUserId, complete: complete)
+    }
+
     /// Первое непрочитанное из `unread` последних чужих сообщений (служебные и свои не
     /// считаются, как и в счётчике сервера). Если ленты не хватает, а она уже сверена с
     /// сервером (`complete`), — самое старое чужое сообщение ленты; иначе `nil`, ждём историю.
