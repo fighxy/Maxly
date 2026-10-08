@@ -10,8 +10,38 @@ sealed interface AuthPhase {
     data class Password(val hint: String?) : AuthPhase
     data object Registration : AuthPhase
     data class SignedIn(val userId: String) : AuthPhase
-    /** Сервер отклонил сохранённый токен. */
-    data object Expired : AuthPhase
+    /**
+     * Сервер отклонил сохранённый токен ([rejection]: недействителен или аккаунт заблокирован).
+     * Ядро токен стёрло, данные прежнего сеанса стёрты: вход заново по номеру.
+     */
+    data class Expired(val rejection: SessionRejection = SessionRejection(SessionRejection.Reason.TOKEN)) : AuthPhase
+    /**
+     * Сервер временно не пускает (`login.flood`): токен цел, сеанс не стёрт. Вход можно повторить
+     * позже или выйти из аккаунта.
+     */
+    data class Throttled(val rejection: SessionRejection) : AuthPhase
+}
+
+/**
+ * Отказ сервера во входе по сохранённому токену. [reason] — код сервера; [tokenCleared] — ядро
+ * стёрло токен (всегда, кроме [Reason.FLOOD]). [title], [localizedMessage] и [description] —
+ * тексты сервера для пользователя, если он их прислал.
+ */
+data class SessionRejection(
+    val reason: Reason,
+    val tokenCleared: Boolean = reason != Reason.FLOOD,
+    val title: String? = null,
+    val localizedMessage: String? = null,
+    val description: String? = null,
+) {
+    enum class Reason {
+        /** `login.token`: токен недействителен или отозван. */
+        TOKEN,
+        /** `login.blocked`: аккаунт заблокирован. */
+        BLOCKED,
+        /** `login.flood`: слишком много входов, ограничение временное. */
+        FLOOD,
+    }
 }
 
 /**
@@ -21,7 +51,7 @@ sealed interface AuthPhase {
 fun AuthPhase.freshEntry(): AccountLimits.Entry? = when (this) {
     is AuthPhase.CodeSent, is AuthPhase.Password -> AccountLimits.Entry.LOGIN
     AuthPhase.Registration -> AccountLimits.Entry.REGISTRATION
-    AuthPhase.Restoring, AuthPhase.SignedOut, is AuthPhase.SignedIn, AuthPhase.Expired -> null
+    AuthPhase.Restoring, AuthPhase.SignedOut, is AuthPhase.SignedIn, is AuthPhase.Expired, is AuthPhase.Throttled -> null
 }
 
 /** Соединение с сервером для баннера «Подключение…». */
@@ -43,4 +73,6 @@ interface AuthService {
     /** Вернуться к вводу номера. После входа ничего не делает. */
     suspend fun cancelLogin()
     suspend fun logout()
+    /** Повторить вход сохранённым токеном после временного отказа ([AuthPhase.Throttled]). */
+    suspend fun retryLogin() = restoreSession()
 }

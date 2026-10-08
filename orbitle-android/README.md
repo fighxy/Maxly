@@ -138,6 +138,14 @@ The core is pinned to max-kmp-core `33cca05` in `core.lock`. Everything below ru
   first right after login), answers the server's `PING`, follows a server `RECONNECT` (op 3, only
   to `oneme.ru` hosts) and backs off reconnects from 3 s to 96 s with ±10 % jitter. Neither
   server `PING` nor `RECONNECT` reaches `pushes`; the app has no ping or reconnect code of its own.
+- **Login rejection:** when the server refuses the stored token (`ClientState.TokenRejected`),
+  the app goes to the login screen, never to an empty chat list. `login.token` and
+  `login.blocked`: the core has cleared the token, so the app also clears its own session state
+  (chats, caches, last user id, feed positions) and shows the notice above the phone number field.
+  `login.flood`: the token is kept and nothing is cleared; a blocking notice replaces the login
+  form with "Retry" (log in again with the same token) and "Log out". The notice shows the
+  server's `title` and `localizedMessage` (or `description`) first and falls back to our own
+  Russian text per reason (`LoginNotices`, `SessionRejection`).
 - **Ghost mode and hidden read receipts** are two independent core flags (`MaxClient.ghostMode`,
   `MaxClient.hideReadReceipts`). The core stores them, applies them and publishes them in
   `MaxState.ghostMode` / `MaxState.hideReadReceipts`; chats read under hidden receipts are kept

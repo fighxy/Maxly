@@ -4,6 +4,7 @@ import app.orbitle.domain.AccountLimits
 import app.orbitle.domain.AuthPhase
 import app.orbitle.domain.ConnectionState
 import app.orbitle.domain.OrbitleError
+import app.orbitle.domain.SessionRejection
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -27,7 +28,9 @@ class FakeCore : CoreGateway {
     var verifyGate: CompletableDeferred<Unit>? = null
     val requests = mutableListOf<Pair<String, Boolean>>()
     var logouts = 0
+    var rejected: SessionRejection? = null
 
+    override fun rejection() = rejected
     override fun hasStoredToken() = stored
     override suspend fun start() = startPhase
     override fun currentUserId() = userId
@@ -272,8 +275,71 @@ class SessionManagerTest {
         val s = session()
         s.restoreSession()
         core.phases.emit(CorePhase.TOKEN_REJECTED)
-        assertEquals(AuthPhase.Expired, s.phase.value)
+        assertEquals(AuthPhase.Expired(), s.phase.value)
         assertTrue(s.connection.value == ConnectionState.OFFLINE)
+    }
+
+    @Test
+    fun clearedTokenWipesTheSessionAndShowsLogin() = runTest(UnconfinedTestDispatcher()) {
+        core.startPhase = CorePhase.READY
+        core.userId = "100"
+        val s = session()
+        s.restoreSession()
+        assertEquals("100", ids.lastUserId)
+        val blocked = SessionRejection(SessionRejection.Reason.BLOCKED, title = "Заблокирован")
+        core.rejected = blocked
+        core.phases.emit(CorePhase.TOKEN_REJECTED)
+        assertEquals(AuthPhase.Expired(blocked), s.phase.value)
+        // Токен стёрт: данные прежнего сеанса уходят вместе с ним.
+        assertEquals(1, cleared)
+        assertEquals(null, ids.lastUserId)
+    }
+
+    @Test
+    fun rejectionAtStartGoesStraightToLogin() = runTest(UnconfinedTestDispatcher()) {
+        core.stored = true
+        ids.lastUserId = "100"
+        core.startPhase = CorePhase.TOKEN_REJECTED
+        core.rejected = SessionRejection(SessionRejection.Reason.TOKEN)
+        val s = session()
+        s.restoreSession()
+        assertEquals(AuthPhase.Expired(SessionRejection(SessionRejection.Reason.TOKEN)), s.phase.value)
+        assertEquals(1, cleared)
+        assertEquals(null, ids.lastUserId)
+    }
+
+    @Test
+    fun floodKeepsTheSessionAndCanRetry() = runTest(UnconfinedTestDispatcher()) {
+        core.startPhase = CorePhase.READY
+        core.userId = "100"
+        val s = session()
+        s.restoreSession()
+        val flood = SessionRejection(SessionRejection.Reason.FLOOD, localizedMessage = "Попробуйте позже")
+        core.rejected = flood
+        core.phases.emit(CorePhase.TOKEN_REJECTED)
+        assertEquals(AuthPhase.Throttled(flood), s.phase.value)
+        // Токен цел: ничего не стирается, id остаётся.
+        assertEquals(0, cleared)
+        assertEquals("100", ids.lastUserId)
+        // Повтор входа тем же токеном.
+        core.rejected = null
+        s.retryLogin()
+        assertEquals(AuthPhase.SignedIn("100"), s.phase.value)
+    }
+
+    @Test
+    fun floodThenLogoutSignsOut() = runTest(UnconfinedTestDispatcher()) {
+        core.stored = true
+        ids.lastUserId = "100"
+        core.startPhase = CorePhase.TOKEN_REJECTED
+        core.rejected = SessionRejection(SessionRejection.Reason.FLOOD)
+        val s = session()
+        s.restoreSession()
+        assertTrue(s.phase.value is AuthPhase.Throttled)
+        s.logout()
+        assertEquals(AuthPhase.SignedOut, s.phase.value)
+        assertEquals(1, core.logouts)
+        assertEquals(null, ids.lastUserId)
     }
 
     @Test

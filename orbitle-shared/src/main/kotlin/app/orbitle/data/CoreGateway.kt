@@ -34,4 +34,6 @@ interface CoreGateway {
     suspend fun checkPassword(trackId: String, password: String): CoreAuthStep
     suspend fun register(token: String, firstName: String, lastName: String): CoreAuthStep
     suspend fun logout()
+    /** Последний отказ сервера во входе по токену ([CorePhase.TOKEN_REJECTED]); `null` — не было. */
+    fun rejection(): app.orbitle.domain.SessionRejection? = null
 }

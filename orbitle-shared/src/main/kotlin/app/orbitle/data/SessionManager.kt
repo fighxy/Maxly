@@ -6,6 +6,7 @@ import app.orbitle.domain.AccountLimits
 import app.orbitle.domain.freshEntry
 import app.orbitle.domain.ConnectionState
 import app.orbitle.domain.OrbitleError
+import app.orbitle.domain.SessionRejection
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -75,7 +76,7 @@ class SessionManager(
                 val id = core.currentUserId()
                 enter(id.ifEmpty { remembered }, epoch)
             }
-            CorePhase.TOKEN_REJECTED -> expire()
+            CorePhase.TOKEN_REJECTED -> reject()
             CorePhase.AWAITING_AUTH -> {
                 _connection.value = ConnectionState.ONLINE
                 _phase.value = AuthPhase.SignedOut
@@ -243,9 +244,22 @@ class SessionManager(
         if (fresh != null) runCatching { onFreshSession(fresh) }
     }
 
-    private fun expire() {
+    /**
+     * Сервер отказал во входе по токену. Токен стёрт (недействителен, аккаунт заблокирован) —
+     * экран входа, данные прежнего сеанса стираются. Временный отказ (`login.flood`) токен не
+     * трогает: экран ожидания с повтором и выходом, данные остаются.
+     */
+    private suspend fun reject() {
         forgetLoginAttempt()
-        _phase.value = AuthPhase.Expired
+        val rejection = core.rejection() ?: SessionRejection(SessionRejection.Reason.TOKEN)
+        if (!rejection.tokenCleared) {
+            _phase.value = AuthPhase.Throttled(rejection)
+            return
+        }
+        val epoch = logouts
+        _phase.value = AuthPhase.Expired(rejection)
+        userIds.lastUserId = null
+        if (epoch == logouts) runCatching { onSignedOut() }
     }
 
     private fun watchCore() {
@@ -259,7 +273,7 @@ class SessionManager(
             CorePhase.TOKEN_REJECTED -> {
                 _connection.value = ConnectionState.OFFLINE
                 // Во время входа по коду старый отказ токена шаг не сбрасывает.
-                if (isAuthorized || _phase.value == AuthPhase.Restoring) expire()
+                if (isAuthorized || _phase.value == AuthPhase.Restoring) reject()
             }
             CorePhase.READY -> {
                 _connection.value = ConnectionState.ONLINE

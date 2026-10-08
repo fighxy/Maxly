@@ -5,6 +5,7 @@ import app.orbitle.domain.AuthPhase
 import app.orbitle.domain.AuthService
 import app.orbitle.domain.ConnectionState
 import app.orbitle.domain.OrbitleError
+import app.orbitle.domain.SessionRejection
 import app.orbitle.presentation.auth.AuthStep
 import app.orbitle.presentation.auth.AuthViewModel
 import app.orbitle.presentation.auth.PhoneCountry
@@ -52,7 +53,15 @@ class FakeAuth : AuthService {
         cancels += 1
         phase.value = AuthPhase.SignedOut
     }
-    override suspend fun logout() = Unit
+    var logouts = 0
+    var retries = 0
+    override suspend fun logout() {
+        logouts += 1
+        phase.value = AuthPhase.SignedOut
+    }
+    override suspend fun retryLogin() {
+        retries += 1
+    }
 }
 
 class AuthViewModelTest {
@@ -201,8 +210,37 @@ class AuthViewModelTest {
 
     @Test
     fun expiredSessionFlag() {
-        auth.phase.value = AuthPhase.Expired
+        auth.phase.value = AuthPhase.Expired()
         assertTrue(vm.state.value.sessionExpired)
         assertEquals(AuthStep.Phone, vm.state.value.step)
+    }
+
+    @Test
+    fun rejectedTokenShowsTheServerTextOverTheLoginForm() {
+        val blocked = SessionRejection(SessionRejection.Reason.BLOCKED, title = "Аккаунт заблокирован", localizedMessage = "Обратитесь в поддержку")
+        auth.phase.value = AuthPhase.Expired(blocked)
+        val notice = vm.state.value.notice!!
+        assertEquals("Аккаунт заблокирован", notice.title)
+        assertEquals("Обратитесь в поддержку", notice.message)
+        assertFalse(notice.blocking)
+        assertEquals(AuthStep.Phone, vm.state.value.step)
+        // Новый вход по номеру убирает надпись.
+        vm.setPhone("+7 999 123-45-67")
+        vm.requestCode()
+        assertNull(vm.state.value.notice)
+    }
+
+    @Test
+    fun floodBlocksTheFormUntilRetryOrLogout() {
+        auth.phase.value = AuthPhase.Throttled(SessionRejection(SessionRejection.Reason.FLOOD))
+        val notice = vm.state.value.notice!!
+        assertTrue(notice.blocking)
+        assertFalse(vm.state.value.sessionExpired)
+        vm.retryLogin()
+        assertEquals(1, auth.retries)
+        vm.logout()
+        assertEquals(1, auth.logouts)
+        assertEquals(AuthPhase.SignedOut, auth.phase.value)
+        assertNull(vm.state.value.notice)
     }
 }

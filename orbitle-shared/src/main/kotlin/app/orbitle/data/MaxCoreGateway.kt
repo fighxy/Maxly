@@ -1,6 +1,8 @@
 package app.orbitle.data
 
+import app.orbitle.domain.SessionRejection
 import com.max.core.auth.CodeRequestType
+import com.max.core.auth.LoginRejection
 import com.max.core.auth.VerifyResult
 import com.max.core.toMaxError
 import com.max.shared.ClientState
@@ -13,11 +15,21 @@ import kotlinx.coroutines.flow.map
 /** [CoreGateway] над `MaxClient` ядра. Любое исключение ядра становится [CoreFailure]. */
 class MaxCoreGateway(private val client: MaxClient) : CoreGateway {
 
-    override val phases: Flow<CorePhase> = client.state.map(::phaseOf).distinctUntilChanged()
+    /** Отказ из последнего [ClientState.TokenRejected]: состояние ядра могло уже смениться. */
+    @Volatile private var lastRejection: SessionRejection? = null
+
+    override val phases: Flow<CorePhase> = client.state.map { remember(it); phaseOf(it) }.distinctUntilChanged()
 
     override fun hasStoredToken(): Boolean = runCatching { client.hasStoredToken }.getOrDefault(false)
 
-    override suspend fun start(): CorePhase = call { phaseOf(client.start()) }
+    override suspend fun start(): CorePhase = call { client.start().also(::remember).let(::phaseOf) }
+
+    override fun rejection(): SessionRejection? =
+        (client.state.value as? ClientState.TokenRejected)?.let(::rejectionOf) ?: lastRejection
+
+    private fun remember(state: ClientState) {
+        if (state is ClientState.TokenRejected) lastRejection = rejectionOf(state)
+    }
 
     override fun currentUserId(): String = client.userId.value?.toString().orEmpty()
 
@@ -47,6 +59,19 @@ class MaxCoreGateway(private val client: MaxClient) : CoreGateway {
     override suspend fun logout() = call { client.logout() }
 
     companion object {
+        /** Отказ ядра во входе — в доменный вид: код, стёрт ли токен, тексты сервера. */
+        fun rejectionOf(state: ClientState.TokenRejected): SessionRejection = SessionRejection(
+            reason = when (state.reason) {
+                LoginRejection.TOKEN -> SessionRejection.Reason.TOKEN
+                LoginRejection.BLOCKED -> SessionRejection.Reason.BLOCKED
+                LoginRejection.FLOOD -> SessionRejection.Reason.FLOOD
+            },
+            tokenCleared = state.tokenCleared,
+            title = state.title,
+            localizedMessage = state.localizedMessage,
+            description = state.description,
+        )
+
         fun phaseOf(state: ClientState): CorePhase = when (state) {
             ClientState.Idle -> CorePhase.IDLE
             ClientState.Connecting -> CorePhase.CONNECTING

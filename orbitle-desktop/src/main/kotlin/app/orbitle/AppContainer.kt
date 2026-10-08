@@ -236,6 +236,9 @@ class AppContainer {
         },
         onSignedOut = {
             scope.launch { callCenter.deactivate() }
+            // Места в лентах и куски истории — прежнего аккаунта (выход, отказ токена, смена аккаунта).
+            app.orbitle.presentation.chat.HistoryRanges.clear()
+            app.orbitle.presentation.chat.ScrollMemory.clear()
             chats.clear()
             calls.clear()
             recentSearches.clear()

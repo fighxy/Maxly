@@ -28,6 +28,11 @@ data class AuthUiState(
     val isBusy: Boolean = false,
     val errorMessage: String? = null,
     val sessionExpired: Boolean = false,
+    /**
+     * Отказ сервера во входе по токену: над формой входа или, если [LoginNotice.blocking], вместо
+     * неё (временный отказ: «Повторить» и «Выйти»).
+     */
+    val notice: LoginNotice? = null,
     val country: PhoneCountry? = PhoneCountry.russia,
     val countryCode: String = PhoneCountry.russia.code,
     val countryTitle: String = PhoneCountry.russia.name,
@@ -79,6 +84,7 @@ class AuthViewModel(
     private var isBusy = false
     private var error: OrbitleError? = null
     private var sessionExpired = false
+    private var notice: LoginNotice? = null
     private var sentTo: String? = null
     private var resendAvailableAt: Long? = null
     private var countryDigits = PhoneCountry.russia.code
@@ -207,6 +213,7 @@ class AuthViewModel(
                 sentTo = number
                 codeText = ""
                 sessionExpired = false
+                notice = null
                 resendAvailableAt = now() + resendIntervalMs
             }
         }
@@ -260,6 +267,18 @@ class AuthViewModel(
         perform({ auth.register(first, last) }) {}
     }
 
+    /** Временный отказ сервера: снова войти сохранённым токеном. */
+    fun retryLogin() {
+        if (isBusy || notice?.blocking != true) return
+        perform({ auth.retryLogin() }) {}
+    }
+
+    /** Временный отказ сервера: выйти из аккаунта и войти по номеру. */
+    fun logout() {
+        if (isBusy) return
+        perform({ auth.logout() }) { ok -> if (ok) notice = null }
+    }
+
     /** Назад к номеру: текущая попытка входа забывается. */
     fun backToPhone() {
         if (step == AuthStep.Phone) return
@@ -281,13 +300,25 @@ class AuthViewModel(
     internal fun apply(phase: AuthPhase) {
         when (phase) {
             AuthPhase.Restoring -> Unit
-            AuthPhase.SignedOut -> if (step != AuthStep.Phone) {
+            AuthPhase.SignedOut -> {
+                // Выход после временного отказа: ждать больше нечего, дальше вход по номеру.
+                if (notice?.blocking == true) notice = null
+                if (step != AuthStep.Phone) {
+                    resetSecrets()
+                    resendAvailableAt = null
+                    step = AuthStep.Phone
+                }
+            }
+            is AuthPhase.Expired -> {
+                sessionExpired = true
+                notice = LoginNotices.of(phase.rejection)
                 resetSecrets()
                 resendAvailableAt = null
                 step = AuthStep.Phone
             }
-            AuthPhase.Expired -> {
-                sessionExpired = true
+            is AuthPhase.Throttled -> {
+                sessionExpired = false
+                notice = LoginNotices.of(phase.rejection)
                 resetSecrets()
                 resendAvailableAt = null
                 step = AuthStep.Phone
@@ -310,6 +341,7 @@ class AuthViewModel(
             AuthPhase.Registration -> step = AuthStep.Registration
             is AuthPhase.SignedIn -> {
                 sessionExpired = false
+                notice = null
                 resetSecrets()
             }
         }
@@ -434,6 +466,7 @@ class AuthViewModel(
             isBusy = isBusy,
             errorMessage = error?.userMessage,
             sessionExpired = sessionExpired,
+            notice = notice,
             country = country,
             countryCode = countryDigits,
             countryTitle = country?.name ?: if (countryDigits.isEmpty()) "Выберите страну" else "Другая страна",
