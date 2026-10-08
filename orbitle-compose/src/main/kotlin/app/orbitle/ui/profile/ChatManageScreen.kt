@@ -144,7 +144,7 @@ fun ChatManageScreen(
                 }
             }
             items(state.members, key = { it.id }) { person ->
-                MemberRow(person, state.busy, onAdmin = { model.setAdmin(person.id, person.role != ChatPerson.Role.ADMIN) }, onRemove = { model.removeMember(person.id) })
+                MemberRow(person, state.memberPresence[person.id], state.busy, onAdmin = { model.setAdmin(person.id, person.role != ChatPerson.Role.ADMIN) }, onRemove = { model.removeMember(person.id) })
             }
             if (state.requests.isNotEmpty()) {
                 item { Section("Заявки") }
@@ -184,15 +184,17 @@ private fun Toggle(title: String, checked: Boolean, busy: Boolean, onChange: (Bo
 }
 
 @Composable
-private fun MemberRow(person: ChatPerson, busy: Boolean, onAdmin: () -> Unit, onRemove: () -> Unit) {
+private fun MemberRow(person: ChatPerson, presence: String?, busy: Boolean, onAdmin: () -> Unit, onRemove: () -> Unit) {
     val role = when (person.role) {
         ChatPerson.Role.OWNER -> "владелец"
         ChatPerson.Role.ADMIN -> "админ"
         ChatPerson.Role.MEMBER -> ""
     }
+    // Роль и присутствие одной строкой: «админ · в сети».
+    val line = listOfNotNull(role.takeIf { it.isNotEmpty() }, presence).joinToString(" · ")
     ListItem(
         headlineContent = { Text(person.name) },
-        supportingContent = if (role.isEmpty()) null else ({ Text(role) }),
+        supportingContent = if (line.isEmpty()) null else ({ Text(line) }),
         trailingContent = {
             if (person.role != ChatPerson.Role.OWNER) {
                 Row {

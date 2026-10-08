@@ -51,7 +51,18 @@ class ChatFormatter(private val zone: ZoneId = ZoneId.systemDefault()) {
                 val count = info.participants ?: return "группа" to false
                 "${PresenceText.grouped(count)} ${PresenceText.plural(count, "участник", "участника", "участников")}" to false
             }
-            else -> presence.status(chat.isOnline, info.lastSeenMs, nowMs) to chat.isOnline
+            // О присутствии ничего не известно: вторая строка пустая.
+            else -> (presence.status(chat.isOnline, info.lastSeenMs, nowMs) ?: "") to chat.isOnline
         }
     }
+
+    /** Когда вторая строка личного чата («был(а) 5 минут назад») сменится сама; `null` — не сменится. */
+    fun subtitleChange(info: ChatHeaderInfo, nowMs: Long): Long? {
+        val chat = info.chat
+        if (chat.type != ChatType.PRIVATE || chat.isSavedMessages || chat.isBot) return null
+        return presence.nextChange(chat.isOnline, info.lastSeenMs, nowMs)
+    }
+
+    /** Подпись присутствия участника; `null` — ничего не известно. */
+    fun presence(online: Boolean, lastSeenMs: Long, nowMs: Long): String? = presence.status(online, lastSeenMs, nowMs)
 }

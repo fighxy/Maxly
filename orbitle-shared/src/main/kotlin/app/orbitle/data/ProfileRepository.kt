@@ -4,7 +4,15 @@ import app.orbitle.domain.ChatProfile
 import app.orbitle.domain.Message
 import app.orbitle.domain.SharedMediaTab
 import com.max.shared.MaxClient
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import com.max.core.api.Chat as CoreChat
+
+/** Присутствие собеседника: в сети ли и когда был (мс, `0` — неизвестно). */
+data class PeerPresence(val isOnline: Boolean, val lastSeenMs: Long)
 
 /** Профиль чата и его общие медиа. */
 interface ProfileRepository {
@@ -19,6 +27,9 @@ interface ProfileRepository {
      * Пустой список — дальше ничего нет.
      */
     suspend fun sharedPage(chatId: String, tab: SharedMediaTab, beforeMessageId: String): List<Message>
+
+    /** Присутствие человека [peerId] по мере пушей; `null` — о нём ничего не известно. */
+    fun presence(peerId: String): Flow<PeerPresence?> = emptyFlow()
 }
 
 class CoreProfileRepository(private val client: MaxClient) : ProfileRepository {
@@ -55,6 +66,14 @@ class CoreProfileRepository(private val client: MaxClient) : ProfileRepository {
         return userProfile(chatId, bot?.contact ?: user, bot?.commands?.map { ChatProfile.BotCommand(it.name, it.description) }, displayFrom = user)
     }
 
+    override fun presence(peerId: String): Flow<PeerPresence?> {
+        val id = peerId.toLongOrNull() ?: return flowOf(null)
+        return client.store.state
+            .map { it.presence[id] }
+            .distinctUntilChanged()
+            .map { info -> info?.let { PeerPresence(PresenceTime.isOnline(it), PresenceTime.ms(it.seen)) } }
+    }
+
     private fun userProfile(
         chatId: String,
         card: com.max.core.api.MaxUser,
@@ -72,8 +91,8 @@ class CoreProfileRepository(private val client: MaxClient) : ProfileRepository {
             description = card.description?.trim()?.takeIf { it.isNotEmpty() },
             link = card.link?.takeIf { it.isNotEmpty() }?.let(::absoluteLink),
             phone = displayFrom.phone?.takeIf { it > 0 }?.toString(),
-            isOnline = presence?.status == 1,
-            lastSeenMs = presence?.seen?.let { if (it < 100_000_000_000L) it * 1000 else it } ?: 0L,
+            isOnline = PresenceTime.isOnline(presence),
+            lastSeenMs = PresenceTime.ms(presence?.seen),
             isOfficial = "OFFICIAL" in displayFrom.options,
             commands = commands.orEmpty(),
         )

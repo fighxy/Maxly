@@ -145,7 +145,14 @@ class CoreChatAdminRepository(private val client: MaxClient) : ChatAdminReposito
             user.id in admins -> ChatPerson.Role.ADMIN
             else -> ChatPerson.Role.MEMBER
         }
-        return ChatPerson(user.id.toString(), user.displayName?.trim().orEmpty().ifEmpty { "Участник" }, role)
+        val presence = PresenceTime.freshest(client.store.state.value.presence[user.id], PresenceTime.from(member.presence))
+        return ChatPerson(
+            user.id.toString(),
+            user.displayName?.trim().orEmpty().ifEmpty { "Участник" },
+            role,
+            isOnline = PresenceTime.isOnline(presence),
+            lastSeenMs = PresenceTime.ms(presence?.seen),
+        )
     }
 
     /** Id из `admins` и ключей `adminParticipants` карточки чата. */

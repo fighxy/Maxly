@@ -8,6 +8,7 @@ import app.orbitle.data.ChatPerson
 import app.orbitle.data.CoreErrors
 import app.orbitle.data.GroupOption
 import app.orbitle.domain.OrbitleError
+import app.orbitle.presentation.common.PresenceText
 import app.orbitle.presentation.settings.ProfileLink
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +31,8 @@ data class ChatManageState(
     val ownerId: String? = null,
     val selfId: String? = null,
     val members: List<ChatPerson> = emptyList(),
+    /** «в сети» или «был(а)…» участников по id; без записи — ничего не известно. */
+    val memberPresence: Map<String, String> = emptyMap(),
     val requests: List<ChatPerson> = emptyList(),
     val busy: Boolean = false,
     val message: String? = null,
@@ -46,6 +49,8 @@ class ChatManageViewModel(
     val isChannel: Boolean,
     private val selfId: String?,
     private val repository: ChatAdminRepository,
+    private val now: () -> Long = System::currentTimeMillis,
+    private val presenceText: PresenceText = PresenceText(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(ChatManageState(isChannel = isChannel, selfId = selfId))
     val state: StateFlow<ChatManageState> = _state.asStateFlow()
@@ -152,7 +157,7 @@ class ChatManageViewModel(
     private suspend fun reloadPeople() {
         val members = runCatching { repository.members(chatId) }.getOrDefault(_state.value.members)
         val requests = runCatching { repository.joinRequests(chatId) }.getOrDefault(_state.value.requests)
-        _state.update { it.copy(members = members, requests = requests) }
+        _state.update { it.copy(members = members, memberPresence = presenceOf(members), requests = requests) }
     }
 
     private fun stateOf(card: ChatAdminSnapshot, members: List<ChatPerson>, requests: List<ChatPerson>) = ChatManageState(
@@ -170,8 +175,14 @@ class ChatManageViewModel(
         ownerId = card.ownerId,
         selfId = selfId,
         members = members,
+        memberPresence = presenceOf(members),
         requests = requests,
     )
+
+    private fun presenceOf(members: List<ChatPerson>): Map<String, String> {
+        val at = now()
+        return members.mapNotNull { m -> presenceText.status(m.isOnline, m.lastSeenMs, at)?.let { m.id to it } }.toMap()
+    }
 
     private fun fail(error: Throwable, fallback: String) {
         val mapped = CoreErrors.map(error)

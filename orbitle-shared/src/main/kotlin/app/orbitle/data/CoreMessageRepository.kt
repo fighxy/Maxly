@@ -80,7 +80,7 @@ class CoreMessageRepository(
             val raw = state.chats[id] ?: return@combine null
             val chat = ChatMapping.chat(raw, state, config, now, mutes = ChatMutes.of(client))
             val peer = ChatMapping.dialogPeer(raw, state.me)
-            val seen = peer?.let { state.presence[it]?.seen }?.let { if (it < 100_000_000_000L) it * 1000 else it } ?: 0L
+            val seen = PresenceTime.ms(peer?.let { state.presence[it]?.seen })
             val typing = typists.typists(state, id, now) { state.users[it]?.displayName?.takeIf(String::isNotBlank) }
             val bot = peer?.let { state.users[it] }?.takeIf { "BOT" in it.options && com.max.core.api.hasWebApp(it.options) }
             ChatHeaderInfo(chat, participants(raw.raw), seen, typing, botAppId = bot?.id?.toString(), readMarkMs = ReadMarks.own(raw, state))

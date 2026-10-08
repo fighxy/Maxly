@@ -83,7 +83,7 @@ object ChatMapping {
             isMuted = mutes?.isMuted(chat.id, config, nowMs) ?: (config?.isMuted(chat.id, nowMs) ?: false),
             isBot = "BOT" in peerOptions,
             isVerified = "OFFICIAL" in peerOptions || options?.get("OFFICIAL") == true,
-            isOnline = presence?.status == 1,
+            isOnline = PresenceTime.isOnline(presence),
             commentsEnabled = when (options?.get("COMMENTS")) {
                 true -> true
                 false -> false

@@ -16,7 +16,14 @@ data class ChatAdminSnapshot(
 )
 
 /** Человек в списке участников, заявок или контактов. */
-data class ChatPerson(val id: String, val name: String, val role: Role = Role.MEMBER) {
+data class ChatPerson(
+    val id: String,
+    val name: String,
+    val role: Role = Role.MEMBER,
+    /** Присутствие, если оно уже известно (стор или сама страница участников); `0` — неизвестно. */
+    val isOnline: Boolean = false,
+    val lastSeenMs: Long = 0,
+) {
     enum class Role { OWNER, ADMIN, MEMBER }
 }
 

@@ -181,7 +181,13 @@ data class ComplaintChoice(val id: Int, val title: String)
 data class SharedChat(val id: String, val title: String, val type: String)
 
 /** Участник группы или канала для листа. */
-data class ChatMemberRow(val id: String, val name: String)
+data class ChatMemberRow(
+    val id: String,
+    val name: String,
+    /** Присутствие, если оно уже известно (стор или сама страница участников); `0` — неизвестно. */
+    val isOnline: Boolean = false,
+    val lastSeenMs: Long = 0,
+)
 
 /** Команда бота из `BOT_INFO` 145. */
 data class BotCommandRow(val name: String, val description: String)

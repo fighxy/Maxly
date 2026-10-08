@@ -340,6 +340,32 @@ class ChatViewModelTest {
     }
 
     @Test
+    fun headerWithoutKnownPresenceShowsNothing() {
+        val model = vm()
+        repo.headerInfo.value = ChatHeaderInfo(chat().copy(isOnline = false))
+        assertEquals("", model.state.value.header!!.subtitle)
+        assertFalse(model.state.value.header!!.subtitleAccent)
+    }
+
+    @Test
+    fun headerPresenceAgesWithoutNewEvents() {
+        val scheduler = (main.dispatcher as kotlinx.coroutines.test.TestDispatcher).scheduler
+        val model = ChatViewModel("10", repo, ChatFormatter(ZoneOffset.UTC), now = { now + scheduler.currentTime })
+        repo.headerInfo.value = ChatHeaderInfo(chat().copy(isOnline = false), lastSeenMs = now - 30_000)
+        assertEquals("был(а) только что", model.state.value.header!!.subtitle)
+        scheduler.advanceTimeBy(29_000)
+        assertEquals("был(а) только что", model.state.value.header!!.subtitle)
+        scheduler.advanceTimeBy(2_000)
+        assertEquals("был(а) 1 минуту назад", model.state.value.header!!.subtitle)
+        scheduler.advanceTimeBy(60_000)
+        assertEquals("был(а) 2 минуты назад", model.state.value.header!!.subtitle)
+        // Снова в сети: таймер больше ничего не меняет.
+        repo.headerInfo.value = ChatHeaderInfo(chat())
+        scheduler.advanceTimeBy(10 * 60_000)
+        assertEquals("в сети", model.state.value.header!!.subtitle)
+    }
+
+    @Test
     fun typingSignalGoesOutAtMostOnceInSixSeconds() {
         var clock = now
         val model = ChatViewModel("10", repo, ChatFormatter(ZoneOffset.UTC), now = { clock })

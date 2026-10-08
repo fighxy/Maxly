@@ -158,6 +158,8 @@ data class InChatSearchState(
 /** Участники, общие чаты, жалобы и сигнал звонка. */
 data class ChatToolsState(
     val members: List<ChatMemberRow> = emptyList(),
+    /** «в сети» или «был(а)…» участников по id; без записи — ничего не известно. */
+    val memberPresence: Map<String, String> = emptyMap(),
     val shared: List<SharedChat> = emptyList(),
     val reasons: List<ComplaintChoice> = emptyList(),
     val busy: Boolean = false,
@@ -1274,6 +1276,7 @@ class ChatViewModel(
                 muted = if (stored != null && chats != null && chat.canWrite == false) pendingMute ?: chat.isMuted else null,
             )
         }
+        schedulePresenceTick(info)
         // Непрочитанных стало больше (пришли с синхронизацией, мимо ленты): прочитать заново то,
         // что на экране. Пока счётчик не растёт, шапка отметку не повторяет: она обновляется
         // каждую секунду, а часть чата может законно оставаться непрочитанной.
@@ -1289,6 +1292,20 @@ class ChatViewModel(
     }
 
     private var commentsFlagAsked = false
+
+    /** Пересборка шапки, когда «был(а) 5 минут назад» должно смениться само. */
+    private var presenceTick: Job? = null
+
+    private fun schedulePresenceTick(info: ChatHeaderInfo) {
+        presenceTick?.cancel()
+        val at = now()
+        val next = formatter.subtitleChange(info, at) ?: return
+        presenceTick = viewModelScope.launch {
+            delay((next - at).coerceAtLeast(0) + 1)
+            // Часы стоят (тесты): пересчитывать нечего.
+            if (now() != at) rebuildHeader()
+        }
+    }
 
     /** Нажатый звук, пока стор его не отразил: кнопка меняется сразу. */
     private var pendingMute: Boolean? = null
@@ -1570,7 +1587,9 @@ class ChatViewModel(
                 val reasons = if (typeId == null) emptyList() else {
                     runCatching { source.complaintReasons()[typeId].orEmpty() }.getOrDefault(emptyList())
                 }
-                _tools.update { it.copy(members = members, shared = shared, reasons = reasons, busy = false) }
+                val at = now()
+                val presence = members.mapNotNull { m -> formatter.presence(m.isOnline, m.lastSeenMs, at)?.let { m.id to it } }.toMap()
+                _tools.update { it.copy(members = members, memberPresence = presence, shared = shared, reasons = reasons, busy = false) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

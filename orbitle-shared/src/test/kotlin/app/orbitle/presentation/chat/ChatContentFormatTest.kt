@@ -89,14 +89,44 @@ class ChatContentFormatTest {
         val text = PresenceText(zone)
         val now = ms(2026, 10, 2, 18)
         assertEquals("в сети", text.status(true, 0, now))
-        assertEquals("был(а) недавно", text.status(false, 0, now))
+        // Ничего не известно — строки нет, а не «недавно».
+        assertNull(text.status(false, 0, now))
         assertEquals("был(а) только что", text.status(false, now - 30_000, now))
         assertEquals("был(а) 5 минут назад", text.status(false, now - 5 * 60_000, now))
         assertEquals("был(а) 1 минуту назад", text.status(false, now - 61_000, now))
-        assertEquals("был(а) в 09:30", text.status(false, ms(2026, 10, 2, 9, 30), now))
+        assertEquals("был(а) 59 минут назад", text.status(false, now - 59 * 60_000 - 59_000, now))
+        assertEquals("был(а) 1 ч назад", text.status(false, now - 61 * 60_000, now))
+        assertEquals("был(а) 8 ч назад", text.status(false, ms(2026, 10, 2, 9, 30), now))
+        assertEquals("был(а) 18 ч назад", text.status(false, ms(2026, 10, 2, 0, 0), now))
         assertEquals("был(а) вчера в 22:00", text.status(false, ms(2026, 10, 1, 22), now))
         assertEquals("был(а) 5 марта", text.status(false, ms(2026, 3, 5), now))
         assertEquals("был(а) 05.03.2024", text.status(false, ms(2024, 3, 5), now))
+    }
+
+    @Test
+    fun presenceFromTheFutureIsNow() {
+        val text = PresenceText(zone)
+        val now = ms(2026, 10, 2, 18)
+        assertEquals("был(а) только что", text.status(false, now + 5 * 60_000, now))
+        assertEquals("был(а) только что", text.status(false, now + 2 * 86_400_000L, now))
+    }
+
+    @Test
+    fun presenceChangesAtMinutesHoursAndMidnight() {
+        val text = PresenceText(zone)
+        val now = ms(2026, 10, 2, 18)
+        assertNull(text.nextChange(true, now - 60_000, now))
+        assertNull(text.nextChange(false, 0, now))
+        assertEquals(now - 30_000 + 60_000, text.nextChange(false, now - 30_000, now))
+        assertEquals(now - 5 * 60_000 + 6 * 60_000, text.nextChange(false, now - 5 * 60_000, now))
+        // «8 ч назад» → «9 ч назад»: в 18:30.
+        assertEquals(ms(2026, 10, 2, 18, 30), text.nextChange(false, ms(2026, 10, 2, 9, 30), now))
+        // Час сменился бы позже полуночи: подпись сменит «вчера».
+        assertEquals(ms(2026, 10, 3, 0), text.nextChange(false, ms(2026, 10, 2, 0, 45), ms(2026, 10, 2, 23, 50)))
+        assertEquals(ms(2026, 10, 3, 0), text.nextChange(false, ms(2026, 10, 1, 22), now))
+        assertNull(text.nextChange(false, ms(2026, 3, 5), now))
+        // Будущее время считается текущим.
+        assertEquals(now + 60_000, text.nextChange(false, now + 10 * 60_000, now))
     }
 
     @Test

@@ -1,6 +1,7 @@
 package app.orbitle.presentation.profile
 
 import app.orbitle.MainDispatcherRule
+import app.orbitle.data.PeerPresence
 import app.orbitle.data.ProfileRepository
 import app.orbitle.domain.ChatAttachment
 import app.orbitle.domain.ChatProfile
@@ -15,6 +16,8 @@ import app.orbitle.domain.VideoContent
 import app.orbitle.domain.VoiceContent
 import app.orbitle.presentation.chat.FakeMessages
 import app.orbitle.presentation.common.PresenceText
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.TestDispatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -29,6 +32,8 @@ private class FakeProfiles : ProfileRepository {
     var failure: Exception? = null
     val pages = mutableMapOf<SharedMediaTab, MutableList<List<Message>>>()
     val requests = mutableListOf<Pair<SharedMediaTab, String>>()
+    val presence = MutableStateFlow<PeerPresence?>(null)
+    val watched = mutableListOf<String>()
 
     override fun cached(chatId: String) = cachedProfile
     override suspend fun profile(chatId: String): ChatProfile {
@@ -38,6 +43,10 @@ private class FakeProfiles : ProfileRepository {
     override suspend fun sharedPage(chatId: String, tab: SharedMediaTab, beforeMessageId: String): List<Message> {
         requests += tab to beforeMessageId
         return pages[tab]?.removeFirstOrNull() ?: emptyList()
+    }
+    override fun presence(peerId: String): MutableStateFlow<PeerPresence?> {
+        watched += peerId
+        return presence
     }
 }
 
@@ -65,6 +74,52 @@ class ProfileViewModelTest {
         assertEquals(listOf("phone"), state.rows.map { it.id })
         assertEquals("+7 900 123-45-67", state.rows.single().value)
         assertEquals(InfoRow.Action.Call("tel:+79001234567"), state.rows.single().action)
+    }
+
+    @Test
+    fun unknownPresenceHasNoSubtitle() {
+        profiles.fresh = ChatProfile(ChatProfile.Kind.USER, "10", "Анна", peerId = "10")
+        val model = vm()
+        assertEquals("", model.state.value.subtitle)
+        assertFalse(model.state.value.subtitleAccent)
+    }
+
+    @Test
+    fun openProfileFollowsStorePresence() {
+        profiles.fresh = ChatProfile(ChatProfile.Kind.USER, "10", "Анна", peerId = "10", isOnline = true)
+        val model = vm()
+        assertEquals(listOf("10"), profiles.watched)
+        assertEquals("в сети", model.state.value.subtitle)
+        profiles.presence.value = PeerPresence(isOnline = false, lastSeenMs = now - 5 * 60_000)
+        assertEquals("был(а) 5 минут назад", model.state.value.subtitle)
+        assertFalse(model.state.value.subtitleAccent)
+        assertEquals(now - 5 * 60_000, model.state.value.profile.lastSeenMs)
+        // Записи нет — известное не стирается.
+        profiles.presence.value = null
+        assertEquals("был(а) 5 минут назад", model.state.value.subtitle)
+        profiles.presence.value = PeerPresence(isOnline = true, lastSeenMs = now)
+        assertEquals("в сети", model.state.value.subtitle)
+        assertTrue(model.state.value.subtitleAccent)
+        assertEquals(listOf("10"), profiles.watched)
+    }
+
+    @Test
+    fun profilePresenceAgesOnItsOwn() {
+        val scheduler = (main.dispatcher as TestDispatcher).scheduler
+        profiles.fresh = ChatProfile(ChatProfile.Kind.USER, "10", "Анна", peerId = "10", lastSeenMs = now - 30_000)
+        val model = ProfileViewModel("10", "Анна", profiles, repo, now = { now + scheduler.currentTime }, presence = PresenceText(ZoneOffset.UTC))
+        assertEquals("был(а) только что", model.state.value.subtitle)
+        scheduler.advanceTimeBy(31_000)
+        assertEquals("был(а) 1 минуту назад", model.state.value.subtitle)
+        scheduler.advanceTimeBy(60 * 60_000)
+        assertEquals("был(а) 1 ч назад", model.state.value.subtitle)
+    }
+
+    @Test
+    fun groupProfileDoesNotWatchPresence() {
+        profiles.fresh = ChatProfile(ChatProfile.Kind.GROUP, "10", "Команда", participants = 3)
+        vm()
+        assertTrue(profiles.watched.isEmpty())
     }
 
     @Test

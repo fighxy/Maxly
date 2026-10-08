@@ -386,12 +386,14 @@ private fun Header(state: ProfileUiState) {
                 Icon(Icons.Filled.Verified, "Официальный", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
             }
         }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            state.subtitle,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (state.subtitleAccent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        if (state.subtitle.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                state.subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (state.subtitleAccent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         if (state.isLoading && state.rows.isEmpty()) {
             Spacer(Modifier.height(12.dp))
             CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)

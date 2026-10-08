@@ -169,9 +169,9 @@ private fun ContactItem(row: ContactRow, onClick: () -> Unit) {
                 }
             }
         },
-        supportingContent = {
+        supportingContent = if (row.status.isEmpty()) null else ({
             Text(row.status, color = if (row.isOnline) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-        },
+        }),
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.clickable(onClick = onClick),
     )

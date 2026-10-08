@@ -3,6 +3,7 @@ package app.orbitle.presentation.profile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.orbitle.data.MessageRepository
+import app.orbitle.data.PeerPresence
 import app.orbitle.data.ProfileRepository
 import app.orbitle.domain.ChatProfile
 import app.orbitle.domain.Message
@@ -19,6 +20,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -99,6 +103,18 @@ class ProfileViewModel(
                 val text = (e as? OrbitleError)?.userMessage ?: "Не удалось загрузить профиль"
                 _state.update { it.copy(isLoading = false, error = if (it.rows.isEmpty() && it.profile.title.isBlank()) text else null) }
             }
+        }
+        // Присутствие собеседника из стора: пуши меняют «в сети» и «был(а)…» на открытом профиле.
+        viewModelScope.launch {
+            _state.map { s -> s.profile.peerId?.takeIf { s.profile.kind == ChatProfile.Kind.USER } }
+                .distinctUntilChanged()
+                .collectLatest { peer -> if (peer != null) profiles.presence(peer).collect(::applyPresence) }
+        }
+        // «был(а) 5 минут назад» стареет: подпись пересчитывается, когда должна смениться.
+        viewModelScope.launch {
+            _state.map { Triple(it.profile.kind, it.profile.isOnline, it.profile.lastSeenMs) }
+                .distinctUntilChanged()
+                .collectLatest { tickPresence() }
         }
         viewModelScope.launch {
             messages.messages(chatId).collect {
@@ -208,6 +224,34 @@ class ProfileViewModel(
         }
     }
 
+    private fun applyPresence(presence: PeerPresence?) {
+        presence ?: return
+        _state.update { s ->
+            if (s.profile.kind != ChatProfile.Kind.USER) return@update s
+            val profile = s.profile.copy(isOnline = presence.isOnline, lastSeenMs = presence.lastSeenMs)
+            val (subtitle, accent) = subtitle(profile)
+            s.copy(profile = profile, subtitle = subtitle, subtitleAccent = accent)
+        }
+    }
+
+    private suspend fun tickPresence() {
+        var last = Long.MIN_VALUE
+        while (true) {
+            val at = now()
+            // Часы стоят (тесты): пересчитывать нечего.
+            if (at == last) return
+            last = at
+            val profile = _state.value.profile
+            if (profile.kind != ChatProfile.Kind.USER) return
+            val next = presence.nextChange(profile.isOnline, profile.lastSeenMs, at) ?: return
+            delay(next - at + 1)
+            _state.update { s ->
+                val (subtitle, accent) = subtitle(s.profile)
+                s.copy(subtitle = subtitle, subtitleAccent = accent)
+            }
+        }
+    }
+
     private fun show(error: Exception) {
         _notice.value = (error as? OrbitleError)?.userMessage ?: OrbitleError.Unknown.userMessage
     }
@@ -267,7 +311,8 @@ class ProfileViewModel(
     }
 
     private fun subtitle(profile: ChatProfile): Pair<String, Boolean> = when (profile.kind) {
-        ChatProfile.Kind.USER -> presence.status(profile.isOnline, profile.lastSeenMs, now()) to profile.isOnline
+        // О присутствии ничего не известно: строки нет.
+        ChatProfile.Kind.USER -> (presence.status(profile.isOnline, profile.lastSeenMs, now()) ?: "") to profile.isOnline
         ChatProfile.Kind.BOT -> "бот" to false
         ChatProfile.Kind.SAVED -> "ваши сообщения и заметки" to false
         ChatProfile.Kind.CHANNEL -> (profile.participants?.let { "${grouped(it)} ${PresenceText.plural(it, "подписчик", "подписчика", "подписчиков")}" }

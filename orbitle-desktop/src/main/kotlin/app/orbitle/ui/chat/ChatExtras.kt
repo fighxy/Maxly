@@ -176,7 +176,17 @@ fun ChatToolsSheet(
                 Text("Список пуст", color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 tools.members.forEach { member ->
-                    Text(member.name.ifBlank { member.id }, modifier = Modifier.padding(vertical = 4.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Column(Modifier.padding(vertical = 4.dp)) {
+                        Text(member.name.ifBlank { member.id }, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        tools.memberPresence[member.id]?.let { presence ->
+                            Text(
+                                presence,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (member.isOnline) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                        }
+                    }
                 }
             }
             SectionTitle("Общие чаты")

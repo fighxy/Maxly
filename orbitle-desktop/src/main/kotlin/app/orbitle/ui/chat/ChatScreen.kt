@@ -660,13 +660,15 @@ private fun ChatTopBar(
                             Icon(Icons.Filled.Verified, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                         }
                     }
-                    Text(
-                        header.subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (header.subtitleAccent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    if (header.subtitle.isNotEmpty()) {
+                        Text(
+                            header.subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (header.subtitleAccent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         },

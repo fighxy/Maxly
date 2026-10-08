@@ -185,6 +185,16 @@ class ContactsViewModelTest {
     }
 
     @Test
+    fun contactWithoutKnownPresenceHasNoStatus() {
+        val model = vm()
+        val now = 1_790_683_200_000L
+        repo.contacts.value = listOf(Contact("2", "Борис"), Contact("3", "Вера", lastSeenMs = now - 3 * 3_600_000L))
+        val rows = model.state.value.sections.flatMap { it.rows }.associateBy { it.id }
+        assertEquals("", rows["2"]!!.status)
+        assertEquals("Был(а) 3 ч назад", rows["3"]!!.status)
+    }
+
+    @Test
     fun searchByNameAndPhone() {
         val model = vm()
         repo.contacts.value = listOf(Contact("2", "Борис", phone = "79001234567"), Contact("3", "Йоган"), Contact("4", "Иван"))

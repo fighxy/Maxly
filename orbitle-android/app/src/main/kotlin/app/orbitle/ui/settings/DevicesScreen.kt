@@ -85,7 +85,7 @@ fun DevicesScreen(repository: SessionRepository, onBack: () -> Unit) {
             items(list, key = { it.id }) { session ->
                 val status = when {
                     session.isCurrent -> "это устройство"
-                    session.lastActiveMs > 0 -> presence.status(false, session.lastActiveMs, System.currentTimeMillis()).replace("был(а)", "активен")
+                    session.lastActiveMs > 0 -> presence.status(false, session.lastActiveMs, System.currentTimeMillis())?.replace("был(а)", "активен")
                     else -> null
                 }
                 ListItem(
