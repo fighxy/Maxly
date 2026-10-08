@@ -73,4 +73,28 @@ extension MaxIosCore {
             }
         }
     }
+
+    /// «Кем прочитано» (docs/readers.md). `readMark` `0` у моста — в списке только из-за реакции.
+    func loadMessageReaders(chatId: String, messageId: String) async throws -> [MessageReader] {
+        try await call("loadMessageReaders") { done in
+            self.client.loadMessageReaders(chatId: chatId, messageId: messageId) { readers, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(readers.map {
+                        MessageReader(
+                            userId: $0.userId,
+                            reaction: $0.reaction.flatMap { $0.isEmpty ? nil : $0 },
+                            readMark: $0.readMark > 0 ? $0.readMark : nil,
+                            name: $0.name ?? ""
+                        )
+                    }))
+                }
+            }
+        }
+    }
+
+    func isReadersAvailable(chatId: String) -> Bool {
+        client.isReadersAvailable(chatId: chatId)
+    }
 }

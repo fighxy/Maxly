@@ -167,6 +167,9 @@ public struct MessageRecord: Sendable, Hashable {
     /// Реакции в `contentJSON` пришли от сервера и точны. Иначе при записи в базу остаются
     /// прежние: ответ на правку и другие частичные записи реакций не несут. В базе не хранится.
     public var reactionsKnown: Bool
+    /// Время последней правки (`updateTime`, мс). `0` — не правили или источник не сказал:
+    /// уже сохранённое время такой записью не затирается.
+    public var updateTimeMs: Int64
 
     public init(
         id: String,
@@ -181,7 +184,8 @@ public struct MessageRecord: Sendable, Hashable {
         threadOf: String = "",
         authorName: String = "",
         authorAvatarURL: String = "",
-        reactionsKnown: Bool = false
+        reactionsKnown: Bool = false,
+        updateTimeMs: Int64 = 0
     ) {
         self.id = id
         self.serverId = serverId
@@ -196,6 +200,7 @@ public struct MessageRecord: Sendable, Hashable {
         self.authorName = authorName
         self.authorAvatarURL = authorAvatarURL
         self.reactionsKnown = reactionsKnown
+        self.updateTimeMs = updateTimeMs
     }
 
     public init(_ message: Message) {
@@ -211,7 +216,8 @@ public struct MessageRecord: Sendable, Hashable {
             contentJSON: MessageContentCodec.encode(message.content),
             threadOf: message.content.threadOf ?? "",
             authorName: message.authorName,
-            authorAvatarURL: message.authorAvatarURL?.absoluteString ?? ""
+            authorAvatarURL: message.authorAvatarURL?.absoluteString ?? "",
+            updateTimeMs: message.editedAt?.unixMillis ?? 0
         )
     }
 
@@ -229,7 +235,8 @@ public struct MessageRecord: Sendable, Hashable {
             mediaId: mediaId,
             content: content,
             authorName: authorName,
-            authorAvatarURL: authorAvatarURL.isEmpty ? nil : URL(string: authorAvatarURL)
+            authorAvatarURL: authorAvatarURL.isEmpty ? nil : URL(string: authorAvatarURL),
+            editedAt: updateTimeMs > 0 ? Date(unixMillis: updateTimeMs) : nil
         )
     }
 }

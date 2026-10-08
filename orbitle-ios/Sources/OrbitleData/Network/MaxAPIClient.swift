@@ -105,6 +105,10 @@ public protocol MaxAPI: Sendable {
     func fetchReactions(chatId: String, messageIds: [String]) async -> Result<[String: ReactionUpdate], MaxAPIError>
     /// Кто поставил реакции на сообщение.
     func reactionUsers(chatId: String, messageId: String) async -> Result<[ReactionUser], MaxAPIError>
+    /// «Кем прочитано» сообщения (серверные id): отреагировавшие, затем прочитавшие.
+    func messageReaders(chatId: String, messageId: String) async -> Result<[MessageReader], MaxAPIError>
+    /// Есть ли в чате «Кем прочитано», без запроса.
+    func readersAvailable(chatId: String) -> Bool
     /// Расшифровка голосового: `messageId` серверный, `audioId` — id вложения.
     func transcribe(chatId: String, messageId: String, audioId: String) async -> Result<CoreTranscription, MaxAPIError>
     /// Эмодзи каталога реакций сервера.
@@ -200,6 +204,11 @@ public extension MaxAPI {
     func reactionUsers(chatId: String, messageId: String) async -> Result<[ReactionUser], MaxAPIError> {
         .failure(.invalidResponse)
     }
+    /// Источник без «Кем прочитано».
+    func messageReaders(chatId: String, messageId: String) async -> Result<[MessageReader], MaxAPIError> {
+        .failure(.invalidResponse)
+    }
+    func readersAvailable(chatId: String) -> Bool { false }
     func transcribe(chatId: String, messageId: String, audioId: String) async -> Result<CoreTranscription, MaxAPIError> {
         .failure(.invalidResponse)
     }
@@ -493,6 +502,16 @@ public final class MaxAPIClient: MaxAPI, Sendable {
         await catching {
             try await core.loadReactionUsers(chatId: chatId, messageId: messageId)
         }
+    }
+
+    public func messageReaders(chatId: String, messageId: String) async -> Result<[MessageReader], MaxAPIError> {
+        await catching {
+            try await core.loadMessageReaders(chatId: chatId, messageId: messageId)
+        }
+    }
+
+    public func readersAvailable(chatId: String) -> Bool {
+        core.isReadersAvailable(chatId: chatId)
     }
 
     public func transcribe(chatId: String, messageId: String, audioId: String) async -> Result<CoreTranscription, MaxAPIError> {

@@ -8,13 +8,18 @@ public struct MessageReader: Hashable, Sendable, Identifiable {
     /// Отметка прочтения (мс): время последнего прочитанного сообщения, а не момент чтения.
     /// `nil` — в списке только из-за реакции, известная отметка раньше сообщения или её нет.
     public var readMark: Int64?
+    /// Имя для строки. Пустое — профиль неизвестен.
+    public var name: String
+    public var avatarURL: URL?
 
     public var id: String { userId }
 
-    public init(userId: String, reaction: String? = nil, readMark: Int64? = nil) {
+    public init(userId: String, reaction: String? = nil, readMark: Int64? = nil, name: String = "", avatarURL: URL? = nil) {
         self.userId = userId
         self.reaction = reaction
         self.readMark = readMark
+        self.name = name
+        self.avatarURL = avatarURL
     }
 }
 

@@ -25,6 +25,9 @@ public struct Message: Identifiable, Hashable, Sendable {
     /// Своё отправленное прочитано собеседником (отметка прочтения чата не раньше его времени):
     /// в пузыре две галочки.
     public var isRead: Bool
+    /// Когда текст правили последний раз (`updateTime` сервера). `nil` — не правили или время
+    /// неизвестно (тогда о правке говорит только `content.edited`).
+    public var editedAt: Date?
 
     public init(
         id: String,
@@ -38,7 +41,8 @@ public struct Message: Identifiable, Hashable, Sendable {
         content: MessageContent = .empty,
         authorName: String = "",
         authorAvatarURL: URL? = nil,
-        isRead: Bool = false
+        isRead: Bool = false,
+        editedAt: Date? = nil
     ) {
         self.id = id
         self.serverId = serverId
@@ -52,6 +56,7 @@ public struct Message: Identifiable, Hashable, Sendable {
         self.mediaId = mediaId
         self.content = content
         self.isRead = isRead
+        self.editedAt = editedAt
     }
 
     /// Текст пузыря: свой, а у пересланного без своего текста — текст оригинала.

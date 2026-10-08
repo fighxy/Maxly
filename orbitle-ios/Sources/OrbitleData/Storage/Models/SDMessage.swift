@@ -25,6 +25,8 @@ final class SDMessage {
     var authorName: String = ""
     /// Адрес аватара отправителя. Пустая строка хранится так же, как отсутствие адреса.
     var authorAvatarURL: String = ""
+    /// Время последней правки (`updateTime`, мс). `0` — не правили или время неизвестно.
+    var updateTimeMs: Int64 = 0
 
     var chat: SDChat?
 

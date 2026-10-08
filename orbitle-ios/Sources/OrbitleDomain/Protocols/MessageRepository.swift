@@ -43,6 +43,11 @@ public protocol MessageRepository: Sendable {
     func syncReactions(chatId: String, messageIds: [String]) async -> Bool
     /// Кто поставил реакции на сообщение.
     func reactionUsers(messageId: String) async throws(OrbitleError) -> [ReactionUser]
+    /// «Кем прочитано» (docs/readers.md): сначала отреагировавшие, затем прочитавшие, без себя
+    /// и автора. Пусто, если в чате списка нет. Ошибка — только если не удалось ничего.
+    func messageReaders(messageId: String) async throws(OrbitleError) -> [MessageReader]
+    /// Есть ли в чате «Кем прочитано» — по сохранённой в ядре карточке, без запроса.
+    func readersAvailable(chatId: String) async -> Bool
     /// Эмодзи, которые сервер предлагает для реакций, в его порядке. Пусто, если каталог
     /// не загрузился.
     func reactionCatalog() async -> [String]
@@ -124,6 +129,12 @@ extension MessageRepository {
     public func reactionUsers(messageId: String) async throws(OrbitleError) -> [ReactionUser] {
         throw .invalidRequest
     }
+
+    public func messageReaders(messageId: String) async throws(OrbitleError) -> [MessageReader] {
+        throw .invalidRequest
+    }
+
+    public func readersAvailable(chatId: String) async -> Bool { false }
 
     public func reactionCatalog() async -> [String] { [] }
 

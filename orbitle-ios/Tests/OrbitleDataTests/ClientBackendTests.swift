@@ -71,6 +71,9 @@ actor FakeMaxCore: MaxCore {
     private(set) var reactionCalls: [String] = []
     var reactionsById: [String: String] = [:]
     var reactionUserList: [ReactionUser] = []
+    var readerList: [MessageReader] = []
+    var readerError: CoreFailure?
+    private(set) var readerCalls: [String] = []
 
     func setReaction(chatId: String, messageId: String, postId: String, emoji: String) async throws -> String {
         reactionCalls.append("\(chatId)/\(messageId)/\(postId)/\(emoji)")
@@ -88,6 +91,17 @@ actor FakeMaxCore: MaxCore {
     func loadReactionUsers(chatId: String, messageId: String) async throws -> [ReactionUser] {
         if let reactionError { throw reactionError }
         return reactionUserList
+    }
+
+    func loadMessageReaders(chatId: String, messageId: String) async throws -> [MessageReader] {
+        readerCalls.append("\(chatId)/\(messageId)")
+        if let readerError { throw readerError }
+        return readerList
+    }
+
+    func setReaders(_ readers: [MessageReader], error: CoreFailure? = nil) {
+        readerList = readers
+        readerError = error
     }
 
     func setReactions(reply: String = "", error: CoreFailure? = nil, byId: [String: String] = [:], users: [ReactionUser] = []) {

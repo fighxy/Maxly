@@ -315,6 +315,8 @@ public struct CoreMessage: Sendable, Equatable {
     /// Реакции сообщения (`{counters, totalCount, yourReaction}`, docs/reactions.md). Пустая
     /// строка — источник мог их не прислать (ответ на правку), прежние остаются.
     public var reactionsJSON: String
+    /// Время последней правки (`updateTime`, мс). `0` — не правили.
+    public var updateTimeMs: Int64
 
     public init(
         id: String,
@@ -325,7 +327,8 @@ public struct CoreMessage: Sendable, Equatable {
         contentJSON: String = "",
         authorName: String = "",
         authorAvatarURL: String = "",
-        reactionsJSON: String = ""
+        reactionsJSON: String = "",
+        updateTimeMs: Int64 = 0
     ) {
         self.id = id
         self.chatId = chatId
@@ -336,6 +339,7 @@ public struct CoreMessage: Sendable, Equatable {
         self.authorName = authorName
         self.authorAvatarURL = authorAvatarURL
         self.reactionsJSON = reactionsJSON
+        self.updateTimeMs = updateTimeMs
     }
 }
 
@@ -390,6 +394,8 @@ public struct CoreEvent: Sendable, Equatable {
     /// Реакции: у `message` и `reactions`. У `reactions` без ключа `yourReaction`, если своя
     /// реакция неизвестна. Пустая строка у `edited`: правка реакции не меняет.
     public var reactionsJSON: String
+    /// Время правки сообщения у `message` и `edited` (мс). `0` — не правили или пуш его не нёс.
+    public var updateTimeMs: Int64
 
     public init(
         kind: Kind,
@@ -404,7 +410,8 @@ public struct CoreEvent: Sendable, Equatable {
         contentJSON: String = "",
         authorName: String = "",
         authorAvatarURL: String = "",
-        reactionsJSON: String = ""
+        reactionsJSON: String = "",
+        updateTimeMs: Int64 = 0
     ) {
         self.kind = kind
         self.chatId = chatId
@@ -419,6 +426,7 @@ public struct CoreEvent: Sendable, Equatable {
         self.authorName = authorName
         self.authorAvatarURL = authorAvatarURL
         self.reactionsJSON = reactionsJSON
+        self.updateTimeMs = updateTimeMs
     }
 }
 
@@ -481,6 +489,12 @@ public protocol MaxCore: Sendable {
     func loadReactionCatalog() async throws -> [String]
     /// Кто поставил реакции на сообщение.
     func loadReactionUsers(chatId: String, messageId: String) async throws -> [ReactionUser]
+    /// «Кем прочитано» (`MaxIosClient.loadMessageReaders`): отреагировавшие, затем прочитавшие,
+    /// без себя и автора. Пусто, если в чате списка нет. Ядро каждый раз обновляет отметки чата.
+    func loadMessageReaders(chatId: String, messageId: String) async throws -> [MessageReader]
+    /// Есть ли в чате «Кем прочитано» (`MaxIosClient.isReadersAvailable`) — по сохранённой
+    /// карточке, без запроса.
+    func isReadersAvailable(chatId: String) -> Bool
     /// Расшифровка голосового (`AUDIO_TRANSCRIPTION` 202). `audioId` — id вложения.
     func transcribeVoice(chatId: String, messageId: String, audioId: String) async throws -> CoreTranscription
     /// Выключить уведомления чата насовсем или включить обратно (`CONFIG`, `dontDisturbUntil`).
@@ -765,6 +779,8 @@ public extension MaxCore {
     func loadReactions(chatId: String, messageIds: [String]) async throws -> [String: String] { throw unsupported }
     func loadReactionCatalog() async throws -> [String] { throw unsupported }
     func loadReactionUsers(chatId: String, messageId: String) async throws -> [ReactionUser] { throw unsupported }
+    func loadMessageReaders(chatId: String, messageId: String) async throws -> [MessageReader] { throw unsupported }
+    func isReadersAvailable(chatId: String) -> Bool { false }
     func transcribeVoice(chatId: String, messageId: String, audioId: String) async throws -> CoreTranscription { throw unsupported }
 
     func findByPhone(phone: String) async throws -> CoreContact { throw unsupported }

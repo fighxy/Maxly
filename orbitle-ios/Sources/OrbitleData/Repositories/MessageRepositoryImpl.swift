@@ -658,6 +658,47 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         }
     }
 
+    /// «Кем прочитано»: список ядра, а имена и аватары, которых ядро не знает, — из базы
+    /// (пользователи и авторы сохранённых сообщений).
+    public func messageReaders(messageId: String) async throws(OrbitleError) -> [MessageReader] {
+        let stored = (try? message(id: messageId)) ?? (try? message(serverId: messageId))
+        guard let stored, let serverId = stored.serverId, Int64(serverId) != nil else { return [] }
+        switch await api.messageReaders(chatId: stored.chatId, messageId: serverId) {
+        case .success(let readers):
+            return readers.map(withKnownProfile)
+        case .failure(let error):
+            throw error.orbitleError
+        }
+    }
+
+    public func readersAvailable(chatId: String) async -> Bool {
+        api.readersAvailable(chatId: chatId)
+    }
+
+    /// Имя и аватар читателя из базы, если ядро их не дало.
+    private func withKnownProfile(_ reader: MessageReader) -> MessageReader {
+        guard reader.name.isEmpty || reader.avatarURL == nil else { return reader }
+        var reader = reader
+        let id = reader.userId
+        var users = FetchDescriptor<SDUser>(predicate: #Predicate { $0.id == id })
+        users.fetchLimit = 1
+        if let user = try? modelContext.fetch(users).first {
+            if reader.name.isEmpty { reader.name = user.name }
+            if reader.avatarURL == nil { reader.avatarURL = user.avatarUrl.flatMap(URL.init(string:)) }
+        }
+        guard reader.name.isEmpty || reader.avatarURL == nil else { return reader }
+        var authored = FetchDescriptor<SDMessage>(
+            predicate: #Predicate { $0.authorId == id && $0.authorName != "" },
+            sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+        )
+        authored.fetchLimit = 1
+        if let message = try? modelContext.fetch(authored).first {
+            if reader.name.isEmpty { reader.name = message.authorName }
+            if reader.avatarURL == nil, !message.authorAvatarURL.isEmpty { reader.avatarURL = URL(string: message.authorAvatarURL) }
+        }
+        return reader
+    }
+
     public func reactionCatalog() async -> [String] {
         if let catalog { return catalog }
         switch await api.reactionCatalog() {
@@ -810,6 +851,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
                 content.formatting = fresh.formatting
                 content.edited = true
                 message.contentJSON = MessageContentCodec.encode(content)
+                if record.updateTimeMs > 0 { message.updateTimeMs = record.updateTimeMs }
                 try modelContext.save()
             } catch {
                 throw .storageError
@@ -1022,6 +1064,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
                     Self.merge(record, into: message, keepReactions: pendingReactions[message.id] != nil)
                     if !record.authorName.isEmpty { message.authorName = record.authorName }
                     if !record.authorAvatarURL.isEmpty { message.authorAvatarURL = record.authorAvatarURL }
+                    if record.updateTimeMs > 0 { message.updateTimeMs = record.updateTimeMs }
                     if let serverId = record.serverId {
                         message.serverId = serverId
                         byServerId[serverId] = message
@@ -1041,6 +1084,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
                     message.threadOf = record.threadOf
                     message.authorName = record.authorName
                     message.authorAvatarURL = record.authorAvatarURL
+                    message.updateTimeMs = max(record.updateTimeMs, 0)
                     message.chat = chatRows[record.chatId]
                     modelContext.insert(message)
                     byId[record.id] = message
@@ -1101,6 +1145,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             Self.merge(record, into: message, keepReactions: pendingReactions[message.id] != nil)
             if !record.authorName.isEmpty { message.authorName = record.authorName }
             if !record.authorAvatarURL.isEmpty { message.authorAvatarURL = record.authorAvatarURL }
+            if record.updateTimeMs > 0 { message.updateTimeMs = record.updateTimeMs }
             try modelContext.save()
             notify(chatId: message.chatId)
             return true
@@ -1457,7 +1502,8 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             contentJSON: MessageContentCodec.encode(content),
             threadOf: content.threadOf ?? "",
             authorName: message.authorName,
-            authorAvatarURL: message.authorAvatarURL
+            authorAvatarURL: message.authorAvatarURL,
+            updateTimeMs: message.updateTimeMs
         )
     }
 }

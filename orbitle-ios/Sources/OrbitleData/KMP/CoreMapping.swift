@@ -172,7 +172,8 @@ enum CoreMapping {
             threadOf: content.threadOf ?? "",
             authorName: message.authorName,
             authorAvatarURL: message.authorAvatarURL,
-            reactionsKnown: reactions != nil
+            reactionsKnown: reactions != nil,
+            updateTimeMs: max(message.updateTimeMs, 0)
         )
     }
 
@@ -226,7 +227,8 @@ extension MessageRecord {
             threadOf: content.threadOf ?? "",
             authorName: event.authorName,
             authorAvatarURL: event.authorAvatarURL,
-            reactionsKnown: reactions != nil
+            reactionsKnown: reactions != nil,
+            updateTimeMs: max(event.updateTimeMs, 0)
         )
     }
 }
