@@ -139,6 +139,15 @@ class AppContainer(context: Context) {
     /** Приватный режим: только на этом устройстве. */
     val privateMode = app.orbitle.data.PrivateModeSettings(preferenceStore)
 
+    /**
+     * Режим призрака и отметки о прочтении: пока заглушка, флаги в локальных настройках. Когда ядро даст API, здесь
+     * встанет реализация над ним; глушит активность ядро, не приложение.
+     */
+    val ghostMode: app.orbitle.data.GhostModeRepository = app.orbitle.data.LocalGhostModeRepository(preferenceStore)
+
+    /** «Показывать мой онлайн» в своём профиле: только на этом устройстве. */
+    val ownPresence = app.orbitle.data.OwnPresenceSettings(preferenceStore)
+
     val stickers: StickerRepository = CoreStickerRepository(client)
 
     val comments: app.orbitle.data.CommentsRepository = app.orbitle.data.CoreCommentsRepository(client)

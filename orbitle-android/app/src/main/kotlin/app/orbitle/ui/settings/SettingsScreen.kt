@@ -73,6 +73,7 @@ import app.orbitle.R
 import app.orbitle.domain.Account
 import app.orbitle.domain.AccountLimits
 import app.orbitle.presentation.settings.AccountLimitsText
+import app.orbitle.presentation.settings.GhostModeViewModel
 import app.orbitle.ui.auth.AccountLimitsNotice
 import app.orbitle.presentation.auth.PhoneNumber
 
@@ -99,6 +100,8 @@ fun SettingsScreen(
     profileLink: String? = null,
     /** Отметка нового сеанса: пока ограничения входа действуют, вверху видна строка о них. */
     accountLimits: AccountLimits? = null,
+    /** Свой статус под номером («Показывать мой онлайн»); `null` — без него. */
+    ghost: GhostModeViewModel? = null,
 ) {
     var confirm by rememberSaveable { mutableStateOf(false) }
     var sheet by rememberSaveable { mutableStateOf<String?>(null) }
@@ -120,7 +123,7 @@ fun SettingsScreen(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())) {
-            ProfileHeader(account, onEditProfile)
+            ProfileHeader(account, onEditProfile, ghost)
             if (limitsRow != null) {
                 SettingsItem(Icons.Outlined.Timer, limitsRow.title, subtitle = limitsRow.subtitle) { sheet = "limits" }
             }
@@ -179,7 +182,7 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun ProfileHeader(account: Account?, onEdit: () -> Unit) {
+private fun ProfileHeader(account: Account?, onEdit: () -> Unit, ghost: GhostModeViewModel?) {
     Column(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         val name = account?.displayName.orEmpty()
         Box(Modifier.clip(CircleShape).clickable(onClick = onEdit)) { AccountAvatar(account, 96.dp) }
@@ -211,6 +214,7 @@ private fun ProfileHeader(account: Account?, onEdit: () -> Unit) {
                 }
             }
         }
+        ghost?.let { OwnPresenceLine(it) }
     }
 }
 

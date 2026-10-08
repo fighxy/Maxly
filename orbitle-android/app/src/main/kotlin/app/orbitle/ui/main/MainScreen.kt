@@ -60,6 +60,7 @@ import app.orbitle.ui.chat.ChatScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.orbitle.presentation.settings.AccountSettingsViewModel
 import app.orbitle.presentation.settings.RecoveryEmailViewModel
+import app.orbitle.presentation.settings.GhostModeViewModel
 import app.orbitle.presentation.settings.SecurityViewModel
 import app.orbitle.ui.settings.BlockedUsersScreen
 import app.orbitle.ui.settings.PrivacyScreen
@@ -126,6 +127,7 @@ fun MainScreen(
     val calls by callsModel.state.collectAsStateWithLifecycle()
     val accountModel = viewModel { AccountSettingsViewModel(container.account) }
     val securityModel = viewModel { SecurityViewModel(container.account) }
+    val ghostModel = viewModel { GhostModeViewModel(container.ghostMode, container.ownPresence) }
     val accountState by accountModel.state.collectAsStateWithLifecycle()
     val contactsModel = viewModel { ContactsViewModel(container.contacts, { container.messages.currentUserId }, chats = container.chats) }
     val phoneBookModel = viewModel { container.phoneBookModel() }
@@ -260,6 +262,7 @@ fun MainScreen(
                     onMessages = { nav.navigate("messages") },
                     profileLink = app.orbitle.presentation.settings.ProfileLink.link(accountState.settings.inviteLink, account?.link),
                     accountLimits = limits,
+                    ghost = ghostModel,
                 )
             }
             composable("messages") {
@@ -270,7 +273,7 @@ fun MainScreen(
                 )
             }
             composable("profile-edit") { ProfileEditScreen(accountModel, onBack = { nav.popBackStack() }, onLogout = onLogout) }
-            composable("privacy") { PrivacyScreen(accountModel, onBack = { nav.popBackStack() }, onBlocked = { nav.navigate("blocked") }, privateMode = container.privateMode) }
+            composable("privacy") { PrivacyScreen(accountModel, onBack = { nav.popBackStack() }, onBlocked = { nav.navigate("blocked") }, privateMode = container.privateMode, ghost = ghostModel) }
             composable("security") {
                 SecurityScreen(securityModel, onBack = { nav.popBackStack() }, onChangeEmail = { nav.navigate("recovery-email") })
             }
