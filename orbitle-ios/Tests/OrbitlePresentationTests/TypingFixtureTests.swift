@@ -12,7 +12,7 @@ struct TypingFixtureTests {
     static let played = [
         "texts-private", "texts-group", "texts-names-unknown", "texts-channel",
         "expiry-ttl", "expiry-order", "expiry-message",
-        "sending-text", "sending-throttle-per-chat", "sending-recording", "sending-uploads",
+        "sending-text", "sending-throttle-per-chat", "sending-type-change", "sending-recording", "sending-uploads",
         "sending-sticker", "sending-channel",
     ]
 

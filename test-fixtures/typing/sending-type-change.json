@@ -1,0 +1,83 @@
+{
+  "kind": "sending",
+  "name": "sending-type-change",
+  "description": "Смена типа не обходит порог: TEXT в 0, запись голосового с 2 с — AUDIO не уходит до 6 с; ближайший повтор записи — в 7 с (5 с от её начала), тогда AUDIO и уходит.",
+  "steps": [
+    {
+      "at": 0,
+      "do": "editText",
+      "chatId": "c1",
+      "sent": [
+        {
+          "chatId": "c1",
+          "type": "TEXT"
+        }
+      ]
+    },
+    {
+      "at": 2000,
+      "do": "startRecording",
+      "chatId": "c1",
+      "type": "AUDIO",
+      "sent": []
+    },
+    {
+      "at": 4000,
+      "do": "editText",
+      "chatId": "c1",
+      "sent": []
+    },
+    {
+      "at": 5999,
+      "do": "tick",
+      "sent": []
+    },
+    {
+      "at": 6000,
+      "do": "tick",
+      "sent": []
+    },
+    {
+      "at": 7000,
+      "do": "tick",
+      "sent": [
+        {
+          "chatId": "c1",
+          "type": "AUDIO"
+        }
+      ]
+    },
+    {
+      "at": 12000,
+      "do": "tick",
+      "sent": []
+    },
+    {
+      "at": 17000,
+      "do": "tick",
+      "sent": [
+        {
+          "chatId": "c1",
+          "type": "AUDIO"
+        }
+      ]
+    },
+    {
+      "at": 18000,
+      "do": "stopRecording",
+      "chatId": "c1",
+      "sent": []
+    },
+    {
+      "at": 23000,
+      "do": "editText",
+      "chatId": "c1",
+      "sent": [
+        {
+          "chatId": "c1",
+          "type": "TEXT"
+        }
+      ]
+    }
+  ]
+}
