@@ -55,6 +55,7 @@ class CoreChatMembers(private val client: MaxClient, private val pageSize: Int =
                 name(id),
                 role,
                 alias = entry.admin?.alias?.takeIf { role == ChatPerson.Role.ADMIN },
+                mentionName = entry.user?.mentionName,
                 isOnline = PresenceTime.isOnline(presence),
                 lastSeenMs = PresenceTime.ms(presence?.seen),
             )

@@ -19,6 +19,9 @@ class SearchResultMappingTest {
         assertEquals("Новости", found.title)
         assertEquals("@news", found.subtitle)
         assertEquals(ChatType.CHANNEL, found.type)
+        // Ссылка-адрес: имя для упоминаний — путь ссылки (Chat.mentionName ядра).
+        val linked = CoreChatRepository.searchResultOf(hit(mapOf("id" to 7L, "type" to "CHANNEL", "link" to "https://max.ru/news")))!!
+        assertEquals("@news", linked.subtitle)
         assertEquals("https://i/7", found.avatarUrl)
     }
 

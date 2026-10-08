@@ -17,7 +17,7 @@ data class ChatAdminSnapshot(
 
 /**
  * Человек в списке участников, заявок или контактов. [alias] — подпись админа; [mentionName] — имя
- * для упоминаний (ник без «@»), если оно известно (ядро его пока не отдаёт).
+ * для упоминаний без «@» (`MaxUser.mentionName` ядра, из ссылки профиля), если оно есть.
  */
 data class ChatPerson(
     val id: String,
@@ -67,27 +67,13 @@ interface ChatAdminRepository : ChatMembersSource {
 
     /** Без поиска на сервере — по именам из [members]. */
     override suspend fun searchMembers(chatId: String, query: String): List<ChatPerson> =
-        MemberSearch.filter(members(chatId), query)
+        members(chatId).matching(query)
 }
 
 /**
- * Поиск среди загруженных участников (общий с iOS, `test-fixtures/members/search`): подстрока
- * имени или имени для упоминаний без учёта регистра, «ё» = «е», пробелы запроса по краям не
- * важны, пустой запрос — все. Запрос с «@» ищет только по [ChatPerson.mentionName], «@» без
- * текста — все. Порядок сохраняется.
+ * Поиск среди загруженных участников — общий поиск ядра ([com.max.core.api.MemberSearch.filter],
+ * сценарии `test-fixtures/members/search`): подстрока имени или имени для упоминаний без учёта
+ * регистра, «ё» = «е»; запрос с «@» — только по [ChatPerson.mentionName]. Порядок сохраняется.
  */
-object MemberSearch {
-    fun filter(people: List<ChatPerson>, query: String): List<ChatPerson> {
-        val needle = fold(query.trim())
-        if (needle.isEmpty()) return people
-        val byMention = needle.startsWith("@")
-        val mention = needle.removePrefix("@")
-        if (byMention && mention.isEmpty()) return people
-        return people.filter { person ->
-            (!byMention && fold(person.name).contains(needle)) ||
-                person.mentionName?.let { fold(it).contains(mention) } == true
-        }
-    }
-
-    private fun fold(text: String): String = text.lowercase().replace('ё', 'е')
-}
+fun List<ChatPerson>.matching(query: String): List<ChatPerson> =
+    com.max.core.api.MemberSearch.filter(this, query, ChatPerson::name, ChatPerson::mentionName)

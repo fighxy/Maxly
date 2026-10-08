@@ -59,10 +59,10 @@ interface ChatRepository : ChatMembersSource {
     suspend fun members(chatId: String): List<ChatMemberRow> = emptyList()
 
     override suspend fun memberPage(chatId: String, marker: Long?): MemberPage =
-        if (marker == null) MemberPage(members(chatId).map { ChatPerson(it.id, it.name) }, null) else MemberPage(emptyList(), null)
+        if (marker == null) MemberPage(members(chatId).map { ChatPerson(it.id, it.name, mentionName = it.mentionName) }, null) else MemberPage(emptyList(), null)
 
     override suspend fun searchMembers(chatId: String, query: String): List<ChatPerson> =
-        MemberSearch.filter(members(chatId).map { ChatPerson(it.id, it.name) }, query)
+        members(chatId).map { ChatPerson(it.id, it.name, mentionName = it.mentionName) }.matching(query)
 
     /** Общие чаты с человеком (`CHAT_SEARCH_COMMON_PARTICIPANTS` 198). */
     suspend fun commonChats(userId: String): List<SharedChat> = emptyList()

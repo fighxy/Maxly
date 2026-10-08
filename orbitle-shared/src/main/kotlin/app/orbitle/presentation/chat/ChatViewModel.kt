@@ -2134,7 +2134,8 @@ class ChatViewModel(
         val mention = mentionQuery(text)
         val command = commandQuery(text)
         val bot = header?.chat?.isBot == true
-        val mentions = if (mention == null) emptyList() else memberRows.filter { it.name.contains(mention, ignoreCase = true) }.take(8)
+        // Подсказки «@»: общий поиск ядра по имени и имени для упоминаний.
+        val mentions = if (mention == null) emptyList() else com.max.core.api.MemberSearch.filter(memberRows, mention, ChatMemberRow::name, ChatMemberRow::mentionName).take(8)
         val commands = if (command == null || !bot) emptyList() else commandRows.filter {
             it.name.removePrefix("/").contains(command, ignoreCase = true)
         }.take(8)

@@ -838,6 +838,17 @@ class ChatViewModelTest {
     }
 
     @Test
+    fun mentionHintsMatchTheMentionNameToo() {
+        val model = vm(chats = FakeChats())
+        model.setDraft("@бор")
+        assertEquals(listOf("Борис"), model.state.value.hints.mentions.map { it.name })
+        model.setDraft("@boris")
+        assertEquals(listOf("Борис"), model.state.value.hints.mentions.map { it.name })
+        model.setDraft("@ан")
+        assertEquals(listOf("Анна"), model.state.value.hints.mentions.map { it.name })
+    }
+
+    @Test
     fun unreadSeparatorStandsAboveTheFirstUnreadAndGoesAwayAfterSending() {
         repo.list.value = listOf(msg("1", at = now - 4_000), msg("2", at = now - 3_000), msg("3", author = "1", at = now - 2_000), msg("4", at = now - 1_000))
         repo.headerInfo.value = ChatHeaderInfo(chat(unread = 2))
@@ -972,6 +983,6 @@ private class FakeChats : ChatRepository {
             failures--
             throw IllegalStateException("сеть")
         }
-        return listOf(ChatMemberRow("42", "Анна"))
+        return listOf(ChatMemberRow("42", "Анна"), ChatMemberRow("43", "Борис", mentionName = "boris_k"))
     }
 }

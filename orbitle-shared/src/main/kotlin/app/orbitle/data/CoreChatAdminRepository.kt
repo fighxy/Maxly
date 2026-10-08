@@ -151,6 +151,7 @@ class CoreChatAdminRepository(private val client: MaxClient) : ChatAdminReposito
             user.id.toString(),
             client.store.state.value.displayName(user.id) ?: user.displayName?.trim().orEmpty().ifEmpty { "Участник" },
             role,
+            mentionName = user.mentionName,
             isOnline = PresenceTime.isOnline(presence),
             lastSeenMs = PresenceTime.ms(presence?.seen),
         )

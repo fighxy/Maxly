@@ -175,6 +175,8 @@ data class SharedChat(val id: String, val title: String, val type: String)
 data class ChatMemberRow(
     val id: String,
     val name: String,
+    /** Имя для упоминаний без «@» (`MaxUser.mentionName` ядра), если оно есть. */
+    val mentionName: String? = null,
     /** Присутствие, если оно уже известно (стор или сама страница участников); `0` — неизвестно. */
     val isOnline: Boolean = false,
     val lastSeenMs: Long = 0,

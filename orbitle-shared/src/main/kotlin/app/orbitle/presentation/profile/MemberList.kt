@@ -3,7 +3,7 @@ package app.orbitle.presentation.profile
 import app.orbitle.data.ChatMembersSource
 import app.orbitle.data.ChatPerson
 import app.orbitle.data.CoreErrors
-import app.orbitle.data.MemberSearch
+import app.orbitle.data.matching
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -37,7 +37,7 @@ data class MemberListState(
      */
     val visible: List<ChatPerson> get() {
         if (!isSearch) return members
-        val local = MemberSearch.filter(members, query)
+        val local = members.matching(query)
         val ids = local.mapTo(HashSet()) { it.id }
         return local + found.orEmpty().filter { ids.add(it.id) }
     }

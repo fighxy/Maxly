@@ -168,7 +168,7 @@ class CoreChatRepository(
     private val people = CoreChatMembers(client)
 
     override suspend fun members(chatId: String): List<ChatMemberRow> =
-        people.memberPage(chatId).members.map { ChatMemberRow(it.id, it.name, isOnline = it.isOnline, lastSeenMs = it.lastSeenMs) }
+        people.memberPage(chatId).members.map { ChatMemberRow(it.id, it.name, mentionName = it.mentionName, isOnline = it.isOnline, lastSeenMs = it.lastSeenMs) }
 
     override suspend fun memberPage(chatId: String, marker: Long?): MemberPage = people.memberPage(chatId, marker)
 
@@ -392,7 +392,7 @@ class CoreChatRepository(
                     else -> "Чат"
                 }
             }
-            val subtitle = hit.link?.let { "@$it" } ?: chat.lastMessage?.text?.trim()?.takeIf { it.isNotEmpty() }
+            val subtitle = (chat.mentionName ?: hit.link)?.let { "@$it" } ?: chat.lastMessage?.text?.trim()?.takeIf { it.isNotEmpty() }
             return ChatSearchResult(chat.id.toString(), title, subtitle, type, hit.iconUrl)
         }
     }
