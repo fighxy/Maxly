@@ -7,8 +7,11 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.ScrollScope
+import androidx.compose.foundation.gestures.rememberScrollableState
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,7 +49,10 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.SubcomposeLayout
+import app.orbitle.ui.components.clickCursor
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
@@ -182,9 +188,21 @@ fun ChatListHeader(
     folders: (@Composable () -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    val drag = rememberDraggableState { state.drag(it) }
+    // Палец, колесо мыши и тачпад двигают шапку одинаково; отпускание или пауза колеса — доводка.
+    val scroll = rememberScrollableState { delta ->
+        state.drag(delta)
+        delta
+    }
+    val settle = remember(state) {
+        object : FlingBehavior {
+            override suspend fun ScrollScope.performFling(initialVelocity: Float): Float {
+                state.snap()
+                return 0f
+            }
+        }
+    }
     SubcomposeLayout(
-        modifier.clipToBounds().draggable(drag, Orientation.Vertical, onDragStopped = { state.snap() }),
+        modifier.clipToBounds().scrollable(scroll, Orientation.Vertical, flingBehavior = settle),
     ) { constraints ->
         val loose = constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity)
         val storyRow = stories?.let { content -> subcompose("stories", content).map { it.measure(loose) } }.orEmpty()
@@ -216,6 +234,7 @@ fun SearchCapsule(placeholder: String, onClick: () -> Unit, modifier: Modifier =
             .height(36.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+            .clickCursor()
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -264,7 +283,27 @@ fun FolderCapsule(
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
-        Box(Modifier.horizontalScroll(scroll).padding(4.dp).height(32.dp)) {
+        val wheelScope = rememberCoroutineScope()
+        Box(
+            Modifier
+                // Колесо мыши над папками листает их вбок, как в Telegram Desktop.
+                .pointerInput(scroll) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            if (event.type != PointerEventType.Scroll) continue
+                            val delta = event.changes.firstOrNull()?.scrollDelta ?: continue
+                            val step = if (delta.x != 0f) delta.x else delta.y
+                            if (step == 0f) continue
+                            event.changes.forEach { it.consume() }
+                            wheelScope.launch { scroll.scrollBy(step * 48f) }
+                        }
+                    }
+                }
+                .horizontalScroll(scroll)
+                .padding(4.dp)
+                .height(32.dp),
+        ) {
             if (pillWidth.value > 0f) {
                 Box(
                     Modifier
@@ -282,6 +321,7 @@ fun FolderCapsule(
                             .height(32.dp)
                             .widthIn(min = 48.dp)
                             .clip(CircleShape)
+                            .clickCursor()
                             .clickable { onSelect(folder.id) }
                             .onPlaced { bounds[index] = it.positionInParent().x to it.size.width.toFloat() }
                             .padding(horizontal = 13.dp),

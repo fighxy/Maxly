@@ -112,6 +112,8 @@ import app.orbitle.presentation.chatlist.ChatListUiState
 import app.orbitle.presentation.chatlist.ChatListViewModel
 import app.orbitle.presentation.chatlist.NewChatModel
 import app.orbitle.ui.components.Avatar
+import app.orbitle.ui.components.clickCursor
+import app.orbitle.ui.components.onSecondaryClick
 import app.orbitle.platform.BackHandler
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -207,6 +209,7 @@ fun ChatListScreen(
                             // Как на iOS: пока истории спрятаны, у заголовка их стопка; нажатие их открывает.
                             Row(
                                 Modifier.clip(RoundedCornerShape(12.dp))
+                                    .then(if (storiesHeader != null) Modifier.clickCursor() else Modifier)
                                     .clickable(enabled = storiesHeader != null, onClick = header::toggleStories)
                                     .padding(horizontal = 4.dp, vertical = 2.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -784,6 +787,7 @@ fun ChatRow(
             Modifier
                 .fillMaxWidth()
                 .background(if (item.isPinned) MaterialTheme.colorScheme.surfaceContainerLow else Color.Transparent)
+                .onSecondaryClick { menu = true }
                 .combinedClickable(onClick = onClick, onLongClick = { menu = true })
                 .semantics { contentDescription = item.accessibilityLabel }
                 .padding(horizontal = 16.dp, vertical = 10.dp),

@@ -158,4 +158,17 @@ class RecordingControllerTest {
         runCurrent()
         assertEquals(1, sent.size)
     }
+
+    @Test
+    fun keyStartsLockedRecordingAndSendsOnSecondPress() = runTest {
+        val (controller, sent) = controller()
+        controller.toggleByKey()
+        runCurrent()
+        assertEquals(RecordingController.Phase.LOCKED, controller.state.value.phase)
+        assertEquals(listOf("start VOICE"), recorder.log)
+        controller.toggleByKey()
+        runCurrent()
+        assertEquals(1, sent.size)
+        assertEquals(RecordingController.Phase.IDLE, controller.state.value.phase)
+    }
 }

@@ -430,7 +430,8 @@ internal fun ChatFeed(
             visible = awayFromBottom || state.hasNewer || state.canReturn,
             enter = fadeIn() + scaleIn(),
             exit = fadeOut() + scaleOut(),
-            modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
+            // Ровно над кнопкой отправки: её центр в 8 + 22 dp от края, у кнопки «вниз» радиус 20.
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 10.dp, bottom = 12.dp),
         ) {
             BadgedBox(badge = {
                 if (state.unreadBelow > 0) Badge { Text(app.orbitle.presentation.chatlist.ChatListFormatter.compactCount(state.unreadBelow)) }

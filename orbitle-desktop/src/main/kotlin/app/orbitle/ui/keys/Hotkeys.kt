@@ -46,6 +46,16 @@ enum class HotkeyAction {
     ROTATE,
     /** Ctrl+S: сохранить открытое в просмотре. */
     SAVE,
+    /** Ctrl+D: микрофон в звонке, как в Google Meet. */
+    CALL_MUTE,
+    /** Ctrl+E: камера в звонке. */
+    CALL_CAMERA,
+    /** Ctrl+Shift+A: ответить на входящий. */
+    CALL_ANSWER,
+    /** Ctrl+Shift+H: положить трубку или отклонить входящий. */
+    CALL_HANG_UP,
+    /** Ctrl+Shift+R: записать голосовое или кружок (закреплённой записью), повторно — отправить. */
+    RECORD,
 }
 
 /** Сработавшая горячая клавиша; [index] — номер папки у [HotkeyAction.FOLDER]. */
@@ -116,8 +126,18 @@ object KeyChords {
         }
         if (action != null) return Hotkey(action)
         val key = base(keyCode, extended, char) ?: return null
+        if (ctrl && !alt && shift) {
+            return when (key) {
+                'a' -> Hotkey(HotkeyAction.CALL_ANSWER)
+                'h' -> Hotkey(HotkeyAction.CALL_HANG_UP)
+                'r' -> Hotkey(HotkeyAction.RECORD)
+                else -> null
+            }
+        }
         if (ctrl && !alt) {
             return when (key) {
+                'd' -> Hotkey(HotkeyAction.CALL_MUTE)
+                'e' -> Hotkey(HotkeyAction.CALL_CAMERA)
                 'f' -> Hotkey(HotkeyAction.SEARCH)
                 'k' -> Hotkey(HotkeyAction.SEARCH_CHATS)
                 'n' -> Hotkey(HotkeyAction.NEW_MESSAGE)

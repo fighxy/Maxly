@@ -78,6 +78,17 @@ object HotkeyCatalog {
                 ),
             ),
             Group(
+                "Звонки и запись",
+                listOf(
+                    Entry(listOf("$command+Shift+A"), "Ответить на входящий звонок"),
+                    Entry(listOf("$command+Shift+H"), "Завершить или отклонить звонок"),
+                    Entry(listOf("$command+D"), "Микрофон в звонке"),
+                    Entry(listOf("$command+E"), "Камера в звонке"),
+                    Entry(listOf("$command+Shift+R"), "Записать голосовое или кружок, повторно — отправить"),
+                    Entry(listOf("Esc"), "Отменить запись"),
+                ),
+            ),
+            Group(
                 "Просмотр фото и видео",
                 listOf(
                     Entry(listOf("←", "→"), "Предыдущее или следующее"),

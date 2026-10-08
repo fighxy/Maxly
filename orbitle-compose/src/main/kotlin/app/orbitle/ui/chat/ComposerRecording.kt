@@ -42,6 +42,7 @@ import app.orbitle.presentation.chat.CallBubbleText
 import app.orbitle.presentation.chat.RecordingController
 import app.orbitle.presentation.chat.RecordingGesture
 import app.orbitle.presentation.chat.RecordingMode
+import app.orbitle.ui.components.clickCursor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -133,6 +134,7 @@ fun RecordButton(ui: RecordingUi) {
                 .size(if (recording) 72.dp else 44.dp)
                 .clip(CircleShape)
                 .background(if (recording || locked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest)
+                .clickCursor()
                 .then(ui.gesture)
                 .semantics {
                     contentDescription = when {

@@ -168,6 +168,18 @@ private fun Root(container: AppContainer) {
             LaunchedEffect(container) { container.callCenter.activate() }
             val callActions = remember { CenterCallActions(container.callCenter, scope, hasSpeaker = false) }
             val callSounds = remember { DesktopCallSounds() }
+            // Звонок с клавиатуры: ответить, завершить, микрофон, камера.
+            app.orbitle.ui.keys.HotkeyHandler { hotkey ->
+                val call = container.callCenter.state.value.call ?: return@HotkeyHandler false
+                val live = !call.state.isEnded && !call.isRinging
+                when (hotkey.action) {
+                    app.orbitle.ui.keys.HotkeyAction.CALL_ANSWER -> call.isRinging.also { if (it) callActions.answer(false) }
+                    app.orbitle.ui.keys.HotkeyAction.CALL_HANG_UP -> true.also { callActions.hangUp() }
+                    app.orbitle.ui.keys.HotkeyAction.CALL_MUTE -> live.also { if (it) callActions.toggleMute() }
+                    app.orbitle.ui.keys.HotkeyAction.CALL_CAMERA -> live.also { if (it) callActions.toggleCamera() }
+                    else -> false
+                }
+            }
             CompositionLocalProvider(LocalCallVideo provides DesktopCallVideo) {
                 CallHost(container.callCenter, callActions, callSounds) {
                     MainScreen(container, chats, account, onLogout = {
