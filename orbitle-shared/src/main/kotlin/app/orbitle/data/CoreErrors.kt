@@ -3,8 +3,14 @@ package app.orbitle.data
 import app.orbitle.domain.OrbitleError
 import kotlinx.coroutines.CancellationException
 
-/** Перевод ошибок ядра в категории UI. */
+/**
+ * Перевод ошибок ядра в категории UI. Текст ошибки от сервера (`title` / `localizedMessage`)
+ * идёт первым, свои тексты — запасные.
+ */
 object CoreErrors {
+    /** Запасной текст, когда об ошибке сказать нечего. */
+    const val UNKNOWN_TEXT = "Что-то пошло не так"
+
     fun map(error: Throwable): OrbitleError {
         if (error is OrbitleError) return error
         if (error is CancellationException) return OrbitleError.Cancelled
@@ -13,13 +19,27 @@ object CoreErrors {
             "NETWORK", "TIMEOUT", "CLOSED" -> OrbitleError.NetworkUnavailable
             "SESSION_EXPIRED" -> OrbitleError.AuthExpired
             // Отказ шага входа переводит AuthErrors, а вне входа это отклонённый запрос.
-            "AUTH", "NOT_FOUND" -> OrbitleError.InvalidRequest
-            "SERVER", "UPLOAD" -> OrbitleError.Server(failure.key ?: failure.kind)
+            "AUTH", "NOT_FOUND" -> failure.serverText?.let(OrbitleError::Rejected) ?: OrbitleError.InvalidRequest
+            "SERVER", "UPLOAD" -> OrbitleError.Server(failure.key ?: failure.kind, failure.serverText)
             // Сервер ответил без нужных полей: это его сбой, а не ошибка пользователя.
             "MALFORMED_REPLY" -> OrbitleError.Server(failure.kind)
             "CANCELLED" -> OrbitleError.Cancelled
             else -> OrbitleError.Unknown
         }
+    }
+
+    /**
+     * Текст ошибки для экрана, где у действия есть свой текст [fallback]: сначала текст сервера,
+     * затем текст уже переведённой ошибки ([OrbitleError.userMessage]), затем [fallback].
+     */
+    fun text(error: Throwable, fallback: String = UNKNOWN_TEXT): String =
+        serverText(error) ?: (error as? OrbitleError)?.userMessage ?: fallback
+
+    /** Текст, который прислал сервер, если он есть у [error]. */
+    fun serverText(error: Throwable): String? = when (error) {
+        is CoreFailure -> error.serverText
+        is OrbitleError -> error.serverText
+        else -> null
     }
 }
 
@@ -29,6 +49,7 @@ enum class AuthStep { REQUEST_CODE, VERIFY_CODE, PASSWORD, REGISTER }
 /**
  * Ошибки шагов входа с русским текстом для экрана. Неверный код приходит как `SERVER`,
  * неверный пароль как `AUTH`, поэтому один и тот же вид значит разное на разных шагах.
+ * Если сервер прислал свой текст, показывается он; свои тексты — запасные.
  */
 object AuthErrors {
     const val TOO_MANY_ATTEMPTS = "Слишком много попыток. Подождите немного и попробуйте снова"
@@ -37,14 +58,17 @@ object AuthErrors {
         if (error is OrbitleError) return error
         val failure = error as? CoreFailure ?: return CoreErrors.map(error)
         val key = failure.key?.lowercase().orEmpty()
+        val server = failure.serverText
         return when (failure.kind) {
-            "AUTH", "SERVER", "NOT_FOUND" ->
-                if (isRateLimit(key)) OrbitleError.Rejected(TOO_MANY_ATTEMPTS)
-                else OrbitleError.Rejected(rejection(step, key))
-            "SESSION_EXPIRED" -> when (step) {
-                AuthStep.VERIFY_CODE -> OrbitleError.Rejected("Код устарел. Запросите новый")
-                else -> OrbitleError.Rejected("Попытка входа устарела. Начните заново")
-            }
+            "AUTH", "SERVER", "NOT_FOUND" -> OrbitleError.Rejected(
+                server ?: if (isRateLimit(key)) TOO_MANY_ATTEMPTS else rejection(step, key),
+            )
+            "SESSION_EXPIRED" -> OrbitleError.Rejected(
+                server ?: when (step) {
+                    AuthStep.VERIFY_CODE -> "Код устарел. Запросите новый"
+                    else -> "Попытка входа устарела. Начните заново"
+                },
+            )
             else -> CoreErrors.map(error)
         }
     }
@@ -69,7 +93,7 @@ object AuthErrors {
 
 /**
  * Ошибки смены почты восстановления. Неверный пароль идёт тем же путём, что пароль при входе.
- * Отказ на почте и коде — свой текст; ключ с `limit` — слишком много попыток.
+ * Отказ на почте и коде — текст сервера, иначе свой; ключ с `limit` — слишком много попыток.
  */
 object TwoFactorErrors {
     private val REJECTION = setOf("AUTH", "SERVER", "NOT_FOUND")
@@ -79,6 +103,7 @@ object TwoFactorErrors {
     fun rejection(error: Throwable, message: String): OrbitleError {
         val failure = error as? CoreFailure
         if (failure != null && failure.kind in REJECTION) {
+            failure.serverText?.let { return OrbitleError.Rejected(it) }
             if (failure.key?.lowercase()?.contains("limit") == true) return OrbitleError.Rejected(AuthErrors.TOO_MANY_ATTEMPTS)
             return OrbitleError.Rejected(message)
         }

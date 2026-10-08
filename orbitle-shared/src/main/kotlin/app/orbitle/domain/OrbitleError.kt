@@ -8,9 +8,12 @@ sealed class OrbitleError(message: String) : Exception(message) {
     data object NetworkUnavailable : OrbitleError("Нет соединения с сервером")
     /** Сессия истекла, нужно войти заново. */
     data object AuthExpired : OrbitleError("Сессия истекла, войдите снова")
-    /** Сервер вернул ошибку. На частые запросы он отвечает [RATE_LIMIT_CODE]: текст тогда просит подождать. */
-    data class Server(val code: String) : OrbitleError(
-        if (code == RATE_LIMIT_CODE) "Сервер просит подождать: слишком много запросов" else "Ошибка сервера ($code). Попробуйте позже",
+    /**
+     * Сервер вернул ошибку. Показывается его [text], если он прислал; иначе свой: на частые
+     * запросы ([RATE_LIMIT_CODE]) — просьба подождать, на остальное — код ошибки.
+     */
+    data class Server(val code: String, val text: String? = null) : OrbitleError(
+        text ?: if (code == RATE_LIMIT_CODE) "Сервер просит подождать: слишком много запросов" else "Ошибка сервера ($code). Попробуйте позже",
     )
     /** Запрос отклонён как неверный. */
     data object InvalidRequest : OrbitleError("Сервер отклонил запрос")
@@ -24,6 +27,9 @@ sealed class OrbitleError(message: String) : Exception(message) {
 
     /** Текст для экрана. `null` у отмены: её пользователю не показывают. */
     val userMessage: String? get() = if (this == Cancelled) null else message
+
+    /** Текст, который прислал сервер (только у [Server]); `null` — показывать свой. */
+    val serverText: String? get() = (this as? Server)?.text
 
     /** Повтор того же действия позже может пройти без участия пользователя. */
     val isTransient: Boolean get() = this is NetworkUnavailable || this is Server || this is SyncFailed

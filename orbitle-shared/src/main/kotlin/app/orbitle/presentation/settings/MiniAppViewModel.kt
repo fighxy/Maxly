@@ -77,5 +77,5 @@ class MiniAppViewModel(
     }
 
     private fun message(error: Throwable): String =
-        (error as? OrbitleError)?.userMessage ?: CoreErrors.map(error).userMessage ?: "Что-то пошло не так"
+        CoreErrors.map(error).userMessage ?: CoreErrors.UNKNOWN_TEXT
 }

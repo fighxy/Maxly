@@ -7,7 +7,6 @@ import app.orbitle.domain.Message
 import app.orbitle.domain.MessageContent
 import app.orbitle.domain.MessageReaction
 import app.orbitle.domain.MessageStatus
-import app.orbitle.domain.OrbitleError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -231,8 +230,7 @@ class CommentsModel(
                 if (pendingReactions[comment.id] != request) return@launch
                 pendingReactions.remove(comment.id)
                 if (_state.value.comments.firstOrNull { it.id == comment.id }?.content?.reactions == after) replaceReactions(comment.id, before)
-                val error = CoreErrors.map(e)
-                _state.update { it.copy(error = if (error is OrbitleError.Rejected) error.userMessage else ChatViewModel.REACTION_FAILURE) }
+                _state.update { it.copy(error = ChatViewModel.reactionFailure(e)) }
             }
         }
     }

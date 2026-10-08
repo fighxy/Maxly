@@ -143,6 +143,19 @@ class AccountSettingsViewModelTest {
     }
 
     @Test
+    fun `server text wins over our own`() {
+        val repo = FakeAccount().apply { failure = app.orbitle.data.CoreFailure("SERVER", "profile.name", "raw", "Имя не подходит") }
+        val model = AccountSettingsViewModel(repo)
+        model.saveProfile("Иван", "", "", onSaved = {})
+        assertEquals("Имя не подходит", model.state.value.error)
+        // Без текста сервера — свой.
+        repo.failure = app.orbitle.data.CoreFailure("SERVER", "profile.name")
+        model.dismissError()
+        model.saveProfile("Иван", "", "", onSaved = {})
+        assertEquals("Ошибка сервера (profile.name). Попробуйте позже", model.state.value.error)
+    }
+
+    @Test
     fun `about over the limit is rejected`() {
         val model = AccountSettingsViewModel(FakeAccount())
         assertNotNull(model.validate("Иван", "", "a".repeat(AccountSettingsViewModel.ABOUT_LIMIT + 1)))

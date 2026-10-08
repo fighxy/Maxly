@@ -3,9 +3,9 @@ package app.orbitle.presentation.calls
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.orbitle.data.CallRepository
+import app.orbitle.data.CoreErrors
 import app.orbitle.domain.CallOutcome
 import app.orbitle.domain.CallRecord
-import app.orbitle.domain.OrbitleError
 import app.orbitle.domain.ConnectionState
 import app.orbitle.presentation.chatlist.ChatAvatar
 import kotlinx.coroutines.CancellationException
@@ -191,7 +191,7 @@ class CallsViewModel(
 
     fun dismissLink() = _state.update { it.copy(createdLink = null) }
 
-    private fun message(e: Exception) = (e as? OrbitleError)?.userMessage ?: OrbitleError.Unknown.userMessage
+    private fun message(e: Exception) = CoreErrors.text(e)
 
     fun dismissError() = _state.update { it.copy(error = null) }
 

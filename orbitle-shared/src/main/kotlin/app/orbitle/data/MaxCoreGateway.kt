@@ -123,7 +123,8 @@ class MaxCoreGateway(private val client: MaxClient) : CoreGateway {
 
         fun failureOf(e: Throwable): CoreFailure {
             val error = e.toMaxError()
-            return CoreFailure(error.kind.name, error.errorKey, error.message)
+            val text = error.serverText?.trim()?.takeIf { it.isNotEmpty() }
+            return CoreFailure(error.kind.name, error.errorKey, error.message, text)
         }
     }
 }

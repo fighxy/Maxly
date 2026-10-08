@@ -18,7 +18,13 @@ sealed interface CoreAuthStep {
 /**
  * Ошибка ядра: [kind] — имя `ErrorKind` (`NETWORK`, `AUTH`, `SERVER`…), [key] — ключ сервера.
  */
-class CoreFailure(val kind: String, val key: String?, message: String? = null) : Exception(message ?: kind)
+class CoreFailure(
+    val kind: String,
+    val key: String?,
+    message: String? = null,
+    /** Текст ошибки от сервера для пользователя (`title`, иначе `localizedMessage`); `null` — не прислал. */
+    val serverText: String? = null,
+) : Exception(message ?: kind)
 
 /**
  * Ядро в объёме, который нужен сессии. Реализация над `MaxClient` — [MaxCoreGateway];

@@ -35,9 +35,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.orbitle.data.CoreErrors
 import app.orbitle.data.DeviceSession
 import app.orbitle.data.SessionRepository
-import app.orbitle.domain.OrbitleError
 import app.orbitle.presentation.common.PresenceText
 import kotlinx.coroutines.launch
 
@@ -61,7 +61,7 @@ fun DevicesScreen(repository: SessionRepository, onBack: () -> Unit) {
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            error = (e as? OrbitleError)?.userMessage ?: OrbitleError.Unknown.userMessage
+            error = CoreErrors.text(e)
             if (sessions == null) sessions = emptyList()
         }
     }
@@ -150,7 +150,7 @@ fun DevicesScreen(repository: SessionRepository, onBack: () -> Unit) {
                         } catch (e: kotlinx.coroutines.CancellationException) {
                             throw e
                         } catch (e: Exception) {
-                            "Не удалось подтвердить вход. " + ((e as? OrbitleError)?.userMessage ?: OrbitleError.Unknown.userMessage)
+                            "Не удалось подтвердить вход. " + CoreErrors.text(e)
                         }
                         approving = false
                         load()
@@ -181,7 +181,7 @@ fun DevicesScreen(repository: SessionRepository, onBack: () -> Unit) {
                         } catch (e: kotlinx.coroutines.CancellationException) {
                             throw e
                         } catch (e: Exception) {
-                            error = (e as? OrbitleError)?.userMessage
+                            error = CoreErrors.text(e)
                         }
                         load()
                     }

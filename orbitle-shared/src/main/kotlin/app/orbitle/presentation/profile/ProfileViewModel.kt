@@ -2,13 +2,13 @@ package app.orbitle.presentation.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.orbitle.data.CoreErrors
 import app.orbitle.data.MessageRepository
 import app.orbitle.data.PeerPresence
 import app.orbitle.data.ProfileRepository
 import app.orbitle.domain.ChatProfile
 import app.orbitle.domain.Message
 import app.orbitle.domain.MessageStatus
-import app.orbitle.domain.OrbitleError
 import app.orbitle.domain.SharedMediaTab
 import app.orbitle.presentation.chat.ChatMedia
 import app.orbitle.presentation.chat.MessageFiles
@@ -110,7 +110,7 @@ class ProfileViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                val text = (e as? OrbitleError)?.userMessage ?: "Не удалось загрузить профиль"
+                val text = CoreErrors.text(e, "Не удалось загрузить профиль")
                 _state.update { it.copy(isLoading = false, error = if (it.rows.isEmpty() && it.profile.title.isBlank()) text else null) }
             }
         }
@@ -308,7 +308,7 @@ class ProfileViewModel(
     }
 
     private fun show(error: Exception) {
-        _notice.value = (error as? OrbitleError)?.userMessage ?: OrbitleError.Unknown.userMessage
+        _notice.value = CoreErrors.text(error)
     }
 
     private fun build(profile: ChatProfile, loading: Boolean): ProfileUiState {

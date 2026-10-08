@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.orbitle.data.AccountRepository
 import app.orbitle.data.CoreErrors
-import app.orbitle.domain.OrbitleError
 import app.orbitle.domain.TwoFactorStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -109,12 +108,12 @@ class SecurityViewModel(private val repository: AccountRepository) : ViewModel()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                _state.update { it.copy(working = false, formError = (e as? OrbitleError)?.userMessage ?: "Не удалось изменить пароль") }
+                _state.update { it.copy(working = false, formError = CoreErrors.text(e, "Не удалось изменить пароль")) }
             }
         }
     }
 
-    private fun message(e: Throwable): String = (e as? OrbitleError)?.userMessage ?: CoreErrors.map(e).userMessage ?: "Что-то пошло не так"
+    private fun message(e: Throwable): String = CoreErrors.map(e).userMessage ?: CoreErrors.UNKNOWN_TEXT
 }
 
 /**
@@ -216,7 +215,7 @@ class RecoveryEmailViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                _state.update { it.copy(error = (e as? OrbitleError)?.userMessage ?: OrbitleError.Unknown.userMessage) }
+                _state.update { it.copy(error = CoreErrors.text(e)) }
             } finally {
                 _state.update { it.copy(working = false) }
             }

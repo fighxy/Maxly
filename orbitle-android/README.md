@@ -146,6 +146,12 @@ The core is pinned to max-kmp-core `33cca05` in `core.lock`. Everything below ru
   form with "Retry" (log in again with the same token) and "Log out". The notice shows the
   server's `title` and `localizedMessage` (or `description`) first and falls back to our own
   Russian text per reason (`LoginNotices`, `SessionRejection`).
+- **Server error texts:** when an error reply carries text for the user, the app shows it:
+  `title`, else `localizedMessage` (the core's `MaxError.serverText` /
+  `ServerErrorException.displayText`). It reaches the screen through `CoreFailure.serverText`,
+  `OrbitleError.Server.text` and `CoreErrors.text(error, fallback)`; login steps, the recovery
+  email and reactions do the same. Our own Russian strings are only the fallback when the server
+  sent nothing.
 - **Ghost mode and hidden read receipts** are two independent core flags (`MaxClient.ghostMode`,
   `MaxClient.hideReadReceipts`). The core stores them, applies them and publishes them in
   `MaxState.ghostMode` / `MaxState.hideReadReceipts`; chats read under hidden receipts are kept

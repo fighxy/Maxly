@@ -5,6 +5,7 @@ import app.orbitle.data.ChatMemberRow
 import app.orbitle.data.ChatRepository
 import app.orbitle.data.CommentsRepository
 import app.orbitle.data.ComplaintChoice
+import app.orbitle.data.CoreErrors
 import app.orbitle.data.SharedChat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -387,7 +388,7 @@ class ChatViewModel(
                     latestFailure = RATE_LIMIT_HINT
                     scheduleLatestRetry()
                 } else {
-                    latestFailure = (e as? OrbitleError)?.userMessage ?: "Не удалось загрузить сообщения"
+                    latestFailure = CoreErrors.text(e, "Не удалось загрузить сообщения")
                     show(e)
                 }
             }
@@ -1456,7 +1457,7 @@ class ChatViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                show(if (e is OrbitleError.Rejected) e else OrbitleError.Rejected(REACTION_FAILURE))
+                show(OrbitleError.Rejected(reactionFailure(e)))
             }
         }
     }
@@ -2012,7 +2013,7 @@ class ChatViewModel(
                 throw e
             } catch (e: Exception) {
                 if (_search.value.query != term) return@launch
-                _search.update { it.copy(busy = false, hits = emptyList(), error = (e as? OrbitleError)?.userMessage ?: "Не удалось найти") }
+                _search.update { it.copy(busy = false, hits = emptyList(), error = CoreErrors.text(e, "Не удалось найти")) }
             }
         }
     }
@@ -2038,7 +2039,7 @@ class ChatViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _tools.update { it.copy(busy = false, error = (e as? OrbitleError)?.userMessage ?: "Не удалось открыть сведения чата") }
+                _tools.update { it.copy(busy = false, error = CoreErrors.text(e, "Не удалось открыть сведения чата")) }
             }
         }
     }
@@ -2064,7 +2065,7 @@ class ChatViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _tools.update { it.copy(busy = false, error = (e as? OrbitleError)?.userMessage ?: "Не удалось отправить жалобу") }
+                _tools.update { it.copy(busy = false, error = CoreErrors.text(e, "Не удалось отправить жалобу")) }
             }
         }
     }
@@ -2109,7 +2110,7 @@ class ChatViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _tools.update { it.copy(busy = false, error = (e as? OrbitleError)?.userMessage ?: "Не удалось удалить чат") }
+                _tools.update { it.copy(busy = false, error = CoreErrors.text(e, "Не удалось удалить чат")) }
             }
         }
     }
@@ -2140,7 +2141,7 @@ class ChatViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _tools.update { it.copy(busy = false, error = (e as? OrbitleError)?.userMessage ?: "Не удалось очистить историю") }
+                _tools.update { it.copy(busy = false, error = CoreErrors.text(e, "Не удалось очистить историю")) }
             }
         }
     }
@@ -2340,6 +2341,12 @@ class ChatViewModel(
         const val OLDER_RETRY_MS = 5_000L
         const val OLDER_AUTO_RETRIES = 3
         const val REACTION_FAILURE = "Не удалось поставить реакцию"
+
+        /** Текст отказа реакции: свой текст отказа или текст сервера, иначе [REACTION_FAILURE]. */
+        fun reactionFailure(error: Throwable): String {
+            val mapped = app.orbitle.data.CoreErrors.map(error)
+            return (mapped as? OrbitleError.Rejected)?.text ?: mapped.serverText ?: REACTION_FAILURE
+        }
     }
 }
 

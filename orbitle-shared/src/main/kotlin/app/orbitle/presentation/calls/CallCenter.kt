@@ -1,5 +1,6 @@
 package app.orbitle.presentation.calls
 
+import app.orbitle.data.CoreErrors
 import app.orbitle.data.calls.CallControl
 import app.orbitle.data.calls.CallEngine
 import app.orbitle.data.calls.CallLog
@@ -10,7 +11,6 @@ import app.orbitle.domain.CallRole
 import app.orbitle.domain.CallState
 import app.orbitle.domain.CallTopology
 import app.orbitle.domain.IncomingCall
-import app.orbitle.domain.OrbitleError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -394,7 +394,7 @@ class CallCenter(
 
     private fun fail(id: String, error: Throwable, text: String = "Не удалось позвонить") {
         CallLog.error("Звонок не начался", error)
-        val shown = message(error).takeIf { error is OrbitleError } ?: text
+        val shown = CoreErrors.text(error, text)
         // Движок мог успеть подключиться: его надо отпустить, иначе он держит микрофон.
         val orphan = control.takeIf { _state.value.call?.id == id }
         if (orphan != null) {
@@ -411,7 +411,7 @@ class CallCenter(
     /** Что можно пережить: исключения и сбои загрузки классов и нативных библиотек. */
     private fun recoverable(error: Throwable) = error is Exception || error is LinkageError
 
-    private fun message(error: Throwable): String = (error as? OrbitleError)?.userMessage ?: "Что-то пошло не так"
+    private fun message(error: Throwable): String = CoreErrors.text(error)
 
     private fun resolveCaller(userId: String, id: String) {
         scope.launch {
