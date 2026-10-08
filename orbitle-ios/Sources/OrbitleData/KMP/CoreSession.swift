@@ -375,6 +375,13 @@ public struct CoreEvent: Sendable, Equatable {
         case transcription
         /// Аккаунт больше не участвует в чате `chatId` (вышел, чат закрыт): чат уходит из списка.
         case chatGone
+        /// Сменился звук чата `chatId` (пуш `NOTIF_CONFIG` 134, свой `setChatMuted`, вход):
+        /// `muted` `1` без звука, `0` со звуком, `-1` неизвестно; `timeMs` — сырой
+        /// `dontDisturbUntil` (`-1` насовсем, иначе конец в мс, `0` — со звуком или неизвестно).
+        case chatMute
+        /// Конфиг аккаунта стал известен или пропал (вход, выход): звук известных чатов
+        /// перечитывается (`isChatMuted`).
+        case config
     }
 
     public var kind: Kind
@@ -396,6 +403,8 @@ public struct CoreEvent: Sendable, Equatable {
     public var reactionsJSON: String
     /// Время правки сообщения у `message` и `edited` (мс). `0` — не правили или пуш его не нёс.
     public var updateTimeMs: Int64
+    /// Звук у `chatMute`: `1` без звука, `0` со звуком, `-1` неизвестно (у остальных `-1`).
+    public var muted: Int
 
     public init(
         kind: Kind,
@@ -411,7 +420,8 @@ public struct CoreEvent: Sendable, Equatable {
         authorName: String = "",
         authorAvatarURL: String = "",
         reactionsJSON: String = "",
-        updateTimeMs: Int64 = 0
+        updateTimeMs: Int64 = 0,
+        muted: Int = -1
     ) {
         self.kind = kind
         self.chatId = chatId
@@ -427,6 +437,7 @@ public struct CoreEvent: Sendable, Equatable {
         self.authorAvatarURL = authorAvatarURL
         self.reactionsJSON = reactionsJSON
         self.updateTimeMs = updateTimeMs
+        self.muted = muted
     }
 }
 
@@ -499,6 +510,13 @@ public protocol MaxCore: Sendable {
     func transcribeVoice(chatId: String, messageId: String, audioId: String) async throws -> CoreTranscription
     /// Выключить уведомления чата насовсем или включить обратно (`CONFIG`, `dontDisturbUntil`).
     func setChatMuted(chatId: String, muted: Bool) async throws
+    /// Выключить звук до `untilMs` (мс Unix), насовсем (`-1`) или включить (`0`).
+    func setChatMuteUntil(chatId: String, untilMs: Int64) async throws
+    /// Звук чата по конфигу ядра, без запроса: `1` без звука, `0` со звуком, `-1` неизвестно.
+    func isChatMuted(chatId: String) async -> Int
+    /// Сырой `dontDisturbUntil` чата: `0` со звуком, `-1` насовсем, иначе конец в мс;
+    /// `Int64.min` — неизвестно.
+    func chatMuteUntil(chatId: String) async -> Int64
     /// User-Agent сессии для CDN: адреса видео и файлов выданы под Android-клиента.
     func mediaUserAgent() -> String?
     /// «Я печатаю» (`MSG_TYPING` 65): кадр уходит сразу, ответа нет, ошибки не возвращаются —
@@ -713,6 +731,11 @@ public extension MaxCore {
     func setChatMuted(chatId: String, muted: Bool) async throws {
         throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
     }
+    func setChatMuteUntil(chatId: String, untilMs: Int64) async throws {
+        throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
+    }
+    func isChatMuted(chatId: String) async -> Int { -1 }
+    func chatMuteUntil(chatId: String) async -> Int64 { Int64.min }
     func mediaUserAgent() -> String? { nil }
     /// Фейки в тестах «печатаю» не отправляют.
     func sendTyping(chatId: String, type: String, postId: String) {}

@@ -4,6 +4,11 @@ import OrbitleDomain
 @testable import OrbitleData
 
 actor FakeMaxCore: MaxCore {
+    /// Звук чатов в конфиге ядра: код `isChatMuted` и сырой `dontDisturbUntil`.
+    var mutes: [String: (code: Int, until: Int64)] = [:]
+    func setMute(chatId: String, code: Int, until: Int64) { mutes[chatId] = (code, until) }
+    func isChatMuted(chatId: String) async -> Int { mutes[chatId]?.code ?? -1 }
+    func chatMuteUntil(chatId: String) async -> Int64 { mutes[chatId]?.until ?? Int64.min }
     var phase: CorePhase = .idle
     var userId = ""
     var storedToken = false

@@ -239,6 +239,11 @@ public actor SyncEngine {
             }
         case .chatGone:
             await chats.dropInactive(chatId: event.chatId)
+        case .chatMute:
+            // `-1` (неизвестно) строку не трогает: метка остаётся прежней.
+            await chats.applyMute(chatId: event.chatId, muted: event.muted, untilMs: event.timeMs)
+        case .config:
+            await chats.reloadMutes()
         case .transcription:
             guard !event.messageId.isEmpty, event.unread == 1 else { return }
             await messages.applyTranscription(chatId: event.chatId, messageId: event.messageId, text: event.text)

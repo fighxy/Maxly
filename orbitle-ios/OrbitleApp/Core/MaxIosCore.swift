@@ -335,6 +335,26 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func setChatMuteUntil(chatId: String, untilMs: Int64) async throws {
+        let _: Void = try await call("setChatMuteUntil") { done in
+            self.client.setChatMuteUntil(chatId: chatId, untilMs: untilMs) { kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(()))
+                }
+            }
+        }
+    }
+
+    func isChatMuted(chatId: String) async -> Int {
+        Int(client.isChatMuted(chatId: chatId))
+    }
+
+    func chatMuteUntil(chatId: String) async -> Int64 {
+        client.chatMuteUntil(chatId: chatId)
+    }
+
     func mediaUserAgent() -> String? {
         let agent = client.mediaUserAgent()
         return agent.isEmpty ? nil : agent
@@ -760,7 +780,8 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             authorName: event.authorName,
             authorAvatarURL: event.authorAvatarUrl,
             reactionsJSON: event.reactionsJson,
-            updateTimeMs: event.updateTime
+            updateTimeMs: event.updateTime,
+            muted: Int(event.muted)
         )
     }
 }

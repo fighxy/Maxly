@@ -38,6 +38,9 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// считает его по конфигу, который мог ещё не получить новое значение, и метка «без звука»
     /// слетала до следующего опроса.
     private var muteToggles: [String: Date] = [:]
+    /// Временные выключения звука: id чата → задача, которая включит звук в конце срока.
+    /// Отдельного события об окончании ядро не шлёт.
+    private var muteExpiries: [String: (until: Int64, task: Task<Void, Never>)] = [:]
     /// Своя отметка прочтения, последняя применённая (мс): ответы сервера на отметки и пуши
     /// с других устройств. Запоздавший ответ на более старую отметку не применяется.
     private var ownReadMarks: [String: Int64] = [:]
@@ -321,6 +324,8 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         generation += 1
         ownReadMarks.removeAll()
         muteToggles.removeAll()
+        muteExpiries.values.forEach { $0.task.cancel() }
+        muteExpiries.removeAll()
         serverPins = nil
         requestedPins = nil
         pendingDialogs.removeAll()
@@ -791,6 +796,57 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
                 notify()
             }
             throw error.orbitleError
+        }
+    }
+
+    /// Звук чата из ядра (событие `chatMute`): `1` без звука, `0` со звуком, `-1` неизвестно —
+    /// строка не трогается. `untilMs` — сырой `dontDisturbUntil`: срок в будущем включит звук по
+    /// таймеру. Событие свежее любого ответа списка, запрошенного до него (см. `muteToggles`).
+    public func applyMute(chatId: String, muted: Int, untilMs: Int64) {
+        guard muted == 0 || muted == 1, !chatId.isEmpty else { return }
+        muteToggles[chatId] = Date()
+        scheduleMuteExpiry(chatId: chatId, muted: muted, untilMs: untilMs)
+        guard let chat = try? chat(id: chatId), chat.isMuted != (muted == 1) else { return }
+        chat.isMuted = muted == 1
+        try? modelContext.save()
+        notify()
+    }
+
+    /// Событие `config`: конфиг аккаунта стал известен, звук известных чатов перечитывается из ядра.
+    public func reloadMutes() async {
+        guard let ids = try? modelContext.fetch(FetchDescriptor<SDChat>()).map(\.id) else { return }
+        for id in ids {
+            let state = await api.chatMute(chatId: id)
+            applyMute(chatId: id, muted: state.muted, untilMs: state.untilMs)
+        }
+    }
+
+    private func scheduleMuteExpiry(chatId: String, muted: Int, untilMs: Int64) {
+        if let known = muteExpiries[chatId] {
+            if muted == 1, known.until == untilMs { return }
+            known.task.cancel()
+            muteExpiries[chatId] = nil
+        }
+        guard muted == 1, untilMs > 0 else { return }
+        let delay = Double(untilMs) / 1000 - clock().timeIntervalSince1970
+        let task = Task { [weak self] in
+            if delay > 0 { try? await Task.sleep(for: .seconds(delay)) }
+            guard !Task.isCancelled else { return }
+            await self?.expireMute(chatId: chatId, untilMs: untilMs)
+        }
+        muteExpiries[chatId] = (untilMs, task)
+    }
+
+    /// Срок вышел: ядро считает звук по своим часам; не знает — звук включается.
+    private func expireMute(chatId: String, untilMs: Int64) async {
+        guard muteExpiries[chatId]?.until == untilMs else { return }
+        muteExpiries[chatId] = nil
+        let state = await api.chatMute(chatId: chatId)
+        guard muteExpiries[chatId] == nil else { return }
+        if state.muted == 1, state.untilMs != untilMs {
+            applyMute(chatId: chatId, muted: 1, untilMs: state.untilMs)
+        } else {
+            applyMute(chatId: chatId, muted: 0, untilMs: 0)
         }
     }
 

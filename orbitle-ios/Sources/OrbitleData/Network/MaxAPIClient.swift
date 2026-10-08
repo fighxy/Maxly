@@ -95,6 +95,9 @@ public protocol MaxAPI: Sendable {
     func setPinnedChats(_ chatIds: [String]) async -> Result<[String], MaxAPIError>
     /// Выключить уведомления чата насовсем или включить обратно.
     func setChatMuted(chatId: String, muted: Bool) async -> Result<Void, MaxAPIError>
+    /// Звук чата по конфигу ядра, без запроса (перечитать после события `config`, по концу
+    /// временного выключения).
+    func chatMute(chatId: String) async -> ChatMuteState
     /// Серверные папки для полосы над списком, без «Все»: сразу, если известны, и после
     /// каждого изменения. Пустой массив — папок нет.
     func folderUpdates() -> AsyncStream<[ChatFolder]>
@@ -183,6 +186,7 @@ public extension MaxAPI {
         await markRead(chatId: chatId, messageId: messageId).map { _ -> CoreReadMark? in nil }
     }
     func setChatMuted(chatId: String, muted: Bool) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
+    func chatMute(chatId: String) async -> ChatMuteState { .unknown }
     /// Источник без серверных папок.
     func folderUpdates() -> AsyncStream<[ChatFolder]> { AsyncStream { $0.yield([]); $0.finish() } }
     func deleteMessages(chatId: String, messageIds: [String], forEveryone: Bool) async -> Result<Void, MaxAPIError> {
@@ -445,6 +449,12 @@ public final class MaxAPIClient: MaxAPI, Sendable {
         }
     }
 
+    public func chatMute(chatId: String) async -> ChatMuteState {
+        let muted = await core.isChatMuted(chatId: chatId)
+        let until = await core.chatMuteUntil(chatId: chatId)
+        return ChatMuteState(muted: muted, untilMs: until == Int64.min ? 0 : until)
+    }
+
     public func searchPublic(query: String) async -> Result<[ChatSearchResult], MaxAPIError> {
         await catching {
             try await core.searchPublic(query: query, from: 0, count: Self.searchPageSize).map(CoreMapping.searchResult)
@@ -626,4 +636,19 @@ public final class MaxAPIClient: MaxAPI, Sendable {
             return .failure(CoreMapping.apiError(error))
         }
     }
+}
+
+/// Звук чата из конфига ядра: `muted` `1` без звука, `0` со звуком, `-1` неизвестно;
+/// `untilMs` — сырой `dontDisturbUntil` (`-1` насовсем, больше нуля — конец в мс, `0` — нет срока
+/// или неизвестно).
+public struct ChatMuteState: Sendable, Equatable {
+    public var muted: Int
+    public var untilMs: Int64
+
+    public init(muted: Int, untilMs: Int64 = 0) {
+        self.muted = muted
+        self.untilMs = untilMs
+    }
+
+    public static let unknown = ChatMuteState(muted: -1)
 }

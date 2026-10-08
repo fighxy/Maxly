@@ -349,6 +349,16 @@ actor FakeMaxAPI: MaxAPI {
         if let muteError { return .failure(muteError) }
         return .success(())
     }
+
+    /// Звук чатов по конфигу ядра (`chatMute`); нет записи — неизвестно.
+    var muteStates: [String: ChatMuteState] = [:]
+    private(set) var muteReads: [String] = []
+    func setMuteState(_ state: ChatMuteState?, chatId: String) { muteStates[chatId] = state }
+
+    func chatMute(chatId: String) async -> ChatMuteState {
+        muteReads.append(chatId)
+        return muteStates[chatId] ?? .unknown
+    }
 }
 
 /// Репозиторий сообщений на базе в памяти с подключённой очередью без реальных задержек.
