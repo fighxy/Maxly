@@ -209,3 +209,41 @@ struct ScreenReadMarkTests {
         #expect(await api.readMarks.isEmpty)
     }
 }
+
+@Suite("Своя позиция чата: репозиторий")
+struct OwnReadMarkDataTests {
+    @Test("Своя позиция — самая свежая из ответа сервера, пуша и местной отметки ядра")
+    func ownPositionIsNewest() async throws {
+        let (chats, api) = try makeRepository()
+        try await chats.upsert([chatRecord(unread: 3, sentMs: 100_000)])
+        #expect(chats.ownReadMark(chatId: "c1") == 0)
+
+        await api.set(readReplies: [CoreReadMark(unread: 2, mark: 50_000)])
+        try await chats.markRead(chatId: "c1", messageId: "m50", at: 50_000)
+        #expect(chats.ownReadMark(chatId: "c1") == 50_000)
+
+        try await chats.applyOwnRead(chatId: "c1", mark: 70_000, setAsUnread: false)
+        #expect(chats.ownReadMark(chatId: "c1") == 70_000)
+
+        // Отметки о прочтении скрыты: ядро читает чат только на устройстве.
+        let local = LocalMarks()
+        chats.setLocalReadMarks { local.mark(of: $0) }
+        local.set(90_000, for: "c1")
+        #expect(chats.ownReadMark(chatId: "c1") == 90_000)
+        #expect(chats.ownReadMark(chatId: "other") == 0)
+
+        // Пометка «непрочитано» забывает отметки сервера; местная остаётся у ядра.
+        try await chats.applyOwnRead(chatId: "c1", mark: 0, setAsUnread: true)
+        local.set(0, for: "c1")
+        #expect(chats.ownReadMark(chatId: "c1") == 0)
+    }
+}
+
+/// Местные отметки ядра в тесте.
+private final class LocalMarks: @unchecked Sendable {
+    private let lock = NSLock()
+    private var marks: [String: Int64] = [:]
+
+    func set(_ mark: Int64, for chatId: String) { lock.withLock { marks[chatId] = mark } }
+    func mark(of chatId: String) -> Int64 { lock.withLock { marks[chatId] ?? 0 } }
+}

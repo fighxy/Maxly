@@ -24,6 +24,27 @@ struct UnreadSeparatorTests {
         #expect(TranscriptLayout.unreadAnchor(feed, unread: 5, currentUserId: "me", complete: false) == nil)
     }
 
+    @Test("По своей отметке: над первым чужим новее неё, а не по счётчику")
+    func byOwnMark() {
+        let feed = (1...6).map { message("\($0)", author: $0 == 5 ? "me" : "bob") }
+        // Отметка на 2-м (2 000 мс): первое чужое новее — 3-е, хотя счётчик говорит 1.
+        #expect(TranscriptLayout.firstUnread(feed, readMark: 2_000, unread: 1, currentUserId: "me", complete: true) == "3")
+        // Отметка на 4-м: своё 5-е пропускается, первое чужое новее — 6-е.
+        #expect(TranscriptLayout.firstUnread(feed, readMark: 4_000, unread: 3, currentUserId: "me", complete: true) == "6")
+        // Без непрочитанных разделителя нет, какой бы ни была отметка.
+        #expect(TranscriptLayout.firstUnread(feed, readMark: 2_000, unread: 0, currentUserId: "me", complete: true) == nil)
+    }
+
+    @Test("Отметки нет, она раньше ленты или после неё нет чужих — по счётчику")
+    func ownMarkFallsBackToCount() {
+        let feed = (10...12).map { message("\($0)", author: "bob") }
+        #expect(TranscriptLayout.firstUnread(feed, readMark: 0, unread: 2, currentUserId: "me", complete: true) == "11")
+        // Отметка старше всей ленты: где граница, не видно.
+        #expect(TranscriptLayout.firstUnread(feed, readMark: 5_000, unread: 2, currentUserId: "me", complete: true) == "11")
+        // Отметка на последнем: новее чужих нет.
+        #expect(TranscriptLayout.firstUnread(feed, readMark: 12_000, unread: 1, currentUserId: "me", complete: true) == "12")
+    }
+
     @Test("Строка с якорем помечена, остальные нет")
     func rows() {
         let feed = [message("1", author: "bob"), message("2", author: "bob")]
