@@ -18,6 +18,10 @@ struct ContactsView: View {
     @State private var showsAddUnavailable = false
     @State private var contactsAccess = CNContactStore.authorizationStatus(for: .contacts)
     @State private var profileDialog: DialogDraft?
+    /// Контакт в листе «Переименовать».
+    @State private var renaming: Contact?
+    /// Контакт, удаление которого подтверждают.
+    @State private var removing: Contact?
     @Environment(\.privateMode) private var privateMode
 
     private static let searchRowId = "search"
@@ -25,6 +29,49 @@ struct ContactsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        list
+            .sheet(item: $renaming) { contact in
+                ContactRenameSheet(viewModel: viewModel, contact: contact)
+            }
+            .confirmationDialog(
+                removing.map { "Удалить «\($0.displayName)» из контактов?" } ?? "",
+                isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+                titleVisibility: .visible,
+                presenting: removing
+            ) { contact in
+                Button("Удалить контакт", role: .destructive) {
+                    Task { await viewModel.remove(id: contact.id) }
+                }
+                Button("Отмена", role: .cancel) {}
+            } message: { _ in
+                Text("Чат с человеком останется.")
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if let removed = viewModel.removed {
+                    ContactRemovedBanner(
+                        removed: removed,
+                        onUndo: { Task { await viewModel.undoRemove() } },
+                        onTimeout: { viewModel.dismissRemoved() }
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.removed)
+            .alert(
+                "Не получилось",
+                isPresented: Binding(
+                    get: { viewModel.errorMessage != nil && !isAdding && renaming == nil },
+                    set: { if !$0 { viewModel.dismissError() } }
+                )
+            ) {
+                Button("Понятно", role: .cancel) {}
+            } message: {
+                Text(viewModel.errorMessage ?? "")
+            }
+    }
+
+    /// Список с поиском, указателем и кнопками шапки.
+    private var list: some View {
         ScrollViewReader { proxy in
             List {
                 FlatSearchField(text: $viewModel.query, isActive: $viewModel.isSearching)
@@ -164,6 +211,15 @@ struct ContactsView: View {
                 Button("Написать", systemImage: "message") { onOpenDialog(dialog) }
                 if makeProfile != nil {
                     Button("Профиль", systemImage: "person.crop.circle") { profileDialog = dialog }
+                }
+            }
+            if viewModel.canEdit, let contact = viewModel.contact(id: row.id) {
+                Button("Переименовать", systemImage: "pencil") {
+                    viewModel.dismissError()
+                    renaming = contact
+                }
+                Button("Удалить контакт", systemImage: "person.crop.circle.badge.minus", role: .destructive) {
+                    removing = contact
                 }
             }
         }

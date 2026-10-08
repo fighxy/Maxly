@@ -162,6 +162,92 @@ public final class ContactsViewModel {
         errorMessage = nil
     }
 
+    // MARK: Переименование и удаление
+
+    /// Удалённый контакт, пока висит плашка «Отменить».
+    public struct RemovedContact: Identifiable, Equatable, Sendable {
+        public let id: String
+        public let firstName: String
+        public let lastName: String
+        public var title: String { [firstName, lastName].filter { !$0.isEmpty }.joined(separator: " ") }
+    }
+
+    public var canEdit: Bool { repository.capabilities.contains(.edit) }
+    /// Последний удалённый: плашка с «Отменить», пока её не закрыли.
+    public private(set) var removed: RemovedContact?
+    /// Идёт запрос переименования, удаления или возврата.
+    public private(set) var isEditing = false
+
+    public func contact(id: String) -> Contact? {
+        contacts.first { $0.id == id }
+    }
+
+    /// `true` — сервер принял новое имя, список уже с ним.
+    public func rename(id: String, firstName: String, lastName: String) async -> Bool {
+        if let problem = ContactNameRules.problem(firstName: firstName, lastName: lastName) {
+            errorMessage = problem
+            return false
+        }
+        let first = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let last = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+        isEditing = true
+        defer { isEditing = false }
+        do {
+            let saved = try await repository.rename(userId: id, firstName: first, lastName: last)
+            if let index = contacts.firstIndex(where: { $0.id == id }) {
+                var updated = contacts[index]
+                updated.firstName = saved.firstName.isEmpty ? first : saved.firstName
+                updated.lastName = saved.firstName.isEmpty ? last : saved.lastName
+                contacts[index] = updated
+                rebuild()
+            }
+            errorMessage = nil
+            return true
+        } catch {
+            errorMessage = error.userMessage
+            return false
+        }
+    }
+
+    /// Убрать из контактов. Строка уходит сразу, плашка предлагает «Отменить».
+    public func remove(id: String) async {
+        guard let contact = contact(id: id) else { return }
+        isEditing = true
+        defer { isEditing = false }
+        do {
+            try await repository.remove(userId: id)
+            contacts.removeAll { $0.id == id }
+            removed = RemovedContact(id: id, firstName: contact.firstName, lastName: contact.lastName)
+            errorMessage = nil
+            rebuild()
+        } catch {
+            errorMessage = error.userMessage
+        }
+    }
+
+    /// «Отменить»: контакт возвращается с прежним именем.
+    public func undoRemove() async {
+        guard let removed else { return }
+        self.removed = nil
+        isEditing = true
+        defer { isEditing = false }
+        do {
+            _ = try await repository.addFoundContact(userId: removed.id, firstName: removed.firstName)
+            if !removed.lastName.isEmpty {
+                _ = try? await repository.rename(userId: removed.id, firstName: removed.firstName, lastName: removed.lastName)
+            }
+            errorMessage = nil
+            deactivate()
+            activate()
+        } catch {
+            errorMessage = error.userMessage
+        }
+    }
+
+    public func dismissRemoved() {
+        removed = nil
+    }
+
     // MARK: Внутреннее
 
     private func rebuild() {

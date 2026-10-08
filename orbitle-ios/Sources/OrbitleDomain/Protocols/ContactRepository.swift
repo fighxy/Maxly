@@ -11,6 +11,22 @@ public struct ContactCapabilities: OptionSet, Sendable {
     public static let presence = ContactCapabilities(rawValue: 1 << 1)
     /// Добавление контакта по номеру.
     public static let add = ContactCapabilities(rawValue: 1 << 2)
+    /// Переименование и удаление контакта (`CONTACT_UPDATE` 34, `UPDATE` и `REMOVE`).
+    public static let edit = ContactCapabilities(rawValue: 1 << 3)
+}
+
+/// Имя контакта: имя обязательно, имя и фамилия — до 64 символов (как у сервера).
+public enum ContactNameRules {
+    public static let limit = 64
+
+    /// Почему имя не подходит; `nil` — подходит.
+    public static func problem(firstName: String, lastName: String) -> String? {
+        let first = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let last = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if first.isEmpty { return "Введите имя" }
+        if first.count > limit || last.count > limit { return "Не длиннее \(limit) символов" }
+        return nil
+    }
 }
 
 public protocol ContactRepository: Sendable {
@@ -25,6 +41,10 @@ public protocol ContactRepository: Sendable {
     func addFoundContact(userId: String, firstName: String) async throws(OrbitleError) -> Contact
     /// Попросить сервер прислать список заново. Новые подписки получат уже его.
     func sync() async throws(OrbitleError)
+    /// Своё имя контакта (`CONTACT_UPDATE` 34, `UPDATE`); пустая фамилия не уходит.
+    func rename(userId: String, firstName: String, lastName: String) async throws(OrbitleError) -> Contact
+    /// Убрать из контактов (`CONTACT_UPDATE` 34, `REMOVE`). Чат с человеком остаётся.
+    func remove(userId: String) async throws(OrbitleError)
 }
 
 public extension ContactRepository {
@@ -41,4 +61,12 @@ public extension ContactRepository {
     }
 
     func sync() async throws(OrbitleError) {}
+
+    func rename(userId: String, firstName: String, lastName: String) async throws(OrbitleError) -> Contact {
+        throw .invalidRequest
+    }
+
+    func remove(userId: String) async throws(OrbitleError) {
+        throw .invalidRequest
+    }
 }

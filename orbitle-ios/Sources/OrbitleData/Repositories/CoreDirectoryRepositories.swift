@@ -17,7 +17,7 @@ public actor CoreContactRepository: ContactRepository {
         self.core = core
     }
 
-    public nonisolated var capabilities: ContactCapabilities { [.list, .presence, .add] }
+    public nonisolated var capabilities: ContactCapabilities { [.list, .presence, .add, .edit] }
 
     public nonisolated func contacts() -> AsyncStream<[Contact]> {
         AsyncStream { continuation in
@@ -49,9 +49,29 @@ public actor CoreContactRepository: ContactRepository {
         }
     }
 
-    /// Фамилия в проверенное тело не входит: уходит только непустое имя.
+    /// Одним `CONTACT_ADD_BY_PHONE` 41 с именем и фамилией. Ядро без этого вызова —
+    /// прежним путём: поиск по номеру и `CONTACT_UPDATE` с одним именем.
     public func addContact(phone: String, firstName: String, lastName: String) async throws(OrbitleError) -> Contact {
-        _ = lastName
+        guard let payload = Self.queryPhone(phone) else { throw .invalidRequest }
+        do {
+            let added = try await core.addContactByPhone(
+                phone: payload,
+                firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
+                lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            guard !added.contact.id.isEmpty else { throw OrbitleError.rejected("Человек с таким номером не найден") }
+            let contact = CoreMapping.contact(added.contact)
+            remember(contact)
+            return contact
+        } catch let failure as CoreFailure where failure.key == "unsupported" {
+            // Дальше — прежний путь.
+        } catch let failure as CoreFailure where Self.isMissingPerson(failure) {
+            throw .rejected("Человек с таким номером не найден")
+        } catch let error as OrbitleError {
+            throw error
+        } catch {
+            throw CoreMapping.apiError(error).orbitleError
+        }
         guard let person = try await findByPhone(phone) else {
             throw .rejected("Человек с таким номером не найден")
         }
@@ -66,6 +86,44 @@ public actor CoreContactRepository: ContactRepository {
             let contact = CoreMapping.contact(saved)
             remember(contact)
             return contact
+        } catch let error as OrbitleError {
+            throw error
+        } catch {
+            throw CoreMapping.apiError(error).orbitleError
+        }
+    }
+
+    public func rename(userId: String, firstName: String, lastName: String) async throws(OrbitleError) -> Contact {
+        if let problem = ContactNameRules.problem(firstName: firstName, lastName: lastName) { throw .rejected(problem) }
+        do {
+            let saved = try await core.renameContact(
+                userId: userId,
+                firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
+                lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            var contact = CoreMapping.contact(saved)
+            if contact.id.isEmpty, let known = cached?.first(where: { $0.id == userId }) {
+                contact = known
+                contact.firstName = firstName
+                contact.lastName = lastName
+            }
+            if var list = cached, let index = list.firstIndex(where: { $0.id == userId }) {
+                list[index] = contact
+                cached = list
+            }
+            return contact
+        } catch let error as OrbitleError {
+            throw error
+        } catch {
+            throw CoreMapping.apiError(error).orbitleError
+        }
+    }
+
+    public func remove(userId: String) async throws(OrbitleError) {
+        do {
+            _ = try await core.removeContact(userId: userId)
+            cached?.removeAll { $0.id == userId }
+            pendingAdds[userId] = nil
         } catch let error as OrbitleError {
             throw error
         } catch {
