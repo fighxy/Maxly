@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Call
+import androidx.compose.material.icons.outlined.FamilyRestroom
 import androidx.compose.material.icons.outlined.FilterAlt
 import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.outlined.PersonSearch
@@ -45,31 +46,34 @@ import app.orbitle.presentation.settings.PrivacyText
 /**
  * Настройки приватности MAX, как в его разделе «Безопасность»: безопасный режим и четыре пункта
  * под ним (пока режим включён, они заперты и показывают его значения), затем «Информация» —
- * статус «в сети» и номер. Пока конфиг не пришёл, всё неактивно.
+ * статус «в сети» и номер. Под семейной защитой заперт и сам безопасный режим, пояснение говорит
+ * почему. Пока конфиг не пришёл, всё неактивно.
  */
 @Composable
 fun MaxPrivacySection(model: AccountSettingsViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
     val settings = state.settings
     val known = settings.known
-    val open = known && !settings.lockedBySafeMode
+    val open = known && !settings.privacyLocked
+    val safeModeOpen = known && !settings.safeModeLocked
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
 
     ListItem(
         leadingContent = { Icon(Icons.Outlined.Shield, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
         headlineContent = { Text(PrivacyText.SAFE_MODE) },
         supportingContent = { Text(PrivacyText.SAFE_MODE_DESCRIPTION) },
-        trailingContent = { Switch(settings.safeMode, onCheckedChange = model::setSafeMode, enabled = known) },
+        trailingContent = { Switch(settings.safeMode, onCheckedChange = model::setSafeMode, enabled = safeModeOpen) },
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.clickable(enabled = known) { model.setSafeMode(!settings.safeMode) },
+        modifier = Modifier.clickable(enabled = safeModeOpen) { model.setSafeMode(!settings.safeMode) }
+            .alpha(if (safeModeOpen || !known) 1f else 0.5f),
     )
     PrivacyRow(Icons.Outlined.PersonSearch, PrivacyText.SEARCH_BY_PHONE, settings.shownSearchByPhone.title, open) { dialog = "search" }
     PrivacyRow(Icons.Outlined.Call, PrivacyText.INCOMING_CALL, settings.shownIncomingCalls.title, open) { dialog = "call" }
     PrivacyRow(Icons.Outlined.GroupAdd, PrivacyText.CHATS_INVITE, settings.shownChatInvites.title, open) { dialog = "invite" }
     PrivacyRow(Icons.Outlined.FilterAlt, PrivacyText.CONTENT, PrivacyText.content(settings.shownSafeContentOnly), open) { dialog = "content" }
-    if (settings.lockedBySafeMode) {
+    PrivacyText.lockNote(settings)?.let { note ->
         Text(
-            PrivacyText.SAFE_MODE_LOCK,
+            note,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -94,6 +98,28 @@ fun MaxPrivacySection(model: AccountSettingsViewModel) {
         "online" -> Choice(PrivacyText.ONLINE, PrivacyText.ONLINE_DESCRIPTION, listOf(false, true), settings.onlineHidden, PrivacyText::online, close, onPick = model::setOnlineHidden)
         "phone" -> Choice(PrivacyText.PHONE, PrivacyText.PHONE_DESCRIPTION, PrivacyAccess.entries, settings.phonePrivacy, { it.title }, close, onPick = model::setPhonePrivacy)
     }
+}
+
+/**
+ * Статус семейной защиты для «Безопасности»: только чтение — включается и выключается она
+ * в мини-приложении MAX. Пока конфиг не пришёл, вместо статуса «…».
+ */
+@Composable
+fun FamilyProtectionRow(model: AccountSettingsViewModel) {
+    val state by model.state.collectAsStateWithLifecycle()
+    val settings = state.settings
+    ListItem(
+        leadingContent = { Icon(Icons.Outlined.FamilyRestroom, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+        headlineContent = { Text(PrivacyText.FAMILY_PROTECTION) },
+        supportingContent = { Text(if (settings.known) settings.familyProtection.title else "…") },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+    )
+    Text(
+        if (settings.managedByFamily) PrivacyText.FAMILY_LOCK else PrivacyText.FAMILY_PROTECTION_NOTE,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    )
 }
 
 @Composable
