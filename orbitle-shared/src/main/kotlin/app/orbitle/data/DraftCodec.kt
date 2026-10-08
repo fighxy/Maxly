@@ -26,11 +26,12 @@ object DraftCodec {
                 val reply = parts[2].takeIf { it.isNotEmpty() }
                 // Ответ без текста — тоже черновик.
                 if (text.isBlank() && reply == null) return null
-                val marks = runCatching { TextMarks.fromElements(TextElementsJson.parse(parts[3], text.length)) }.getOrDefault(emptyList())
+                // Отметки по тексту: хвост за концом обрезается, отметка за концом выпадает (как с сервера).
+                val marks = runCatching { TextMarks.fromElements(TextElementsJson.parse(parts[3], text.length), text.length) }.getOrDefault(emptyList())
                 return ChatDraft(
                     text = text,
                     updatedAtMs = parts[1].toLongOrNull() ?: 0L,
-                    formatting = marks.filter { it.from >= 0 && it.from + it.length <= text.length },
+                    formatting = marks,
                     replyTo = reply,
                 )
             }

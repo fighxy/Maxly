@@ -1,6 +1,7 @@
 package app.orbitle.data
 
 import app.orbitle.domain.ChatDraft
+import app.orbitle.domain.TextSpans
 import com.max.shared.MaxClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -33,9 +34,8 @@ class CoreDraftRepository(private val client: MaxClient) : DraftRepository {
 
     override suspend fun save(chatId: String, draft: ChatDraft) {
         val id = chatId.toLongOrNull() ?: return
-        MaxCoreGateway.call {
-            client.saveDraft(id, draft.text, TextMarks.toElements(draft.text, draft.formatting), draft.replyTo?.toLongOrNull())
-        }
+        val request = request(draft)
+        MaxCoreGateway.call { client.saveDraft(id, request.text, request.elements, request.replyTo) }
     }
 
     override suspend fun discard(chatId: String) {
@@ -43,7 +43,19 @@ class CoreDraftRepository(private val client: MaxClient) : DraftRepository {
         MaxCoreGateway.call { client.discardDraft(id) }
     }
 
+    /** Что уходит в [MaxClient.saveDraft]: текст без краёв, элементы по нему, ответ. */
+    data class Request(val text: String, val elements: List<com.max.core.api.TextElement>, val replyTo: Long?)
+
     companion object {
+        /**
+         * Черновик поля для [MaxClient.saveDraft]: текст обрезан по краям, отметки сдвинуты и слиты
+         * ([TextSpans.serialize], как при отправке сообщения), вложений нет.
+         */
+        fun request(draft: ChatDraft): Request {
+            val (text, spans) = TextSpans.serialize(draft.text, draft.formatting)
+            return Request(text, TextMarks.toElements(text, spans), draft.replyTo?.toLongOrNull())
+        }
+
         /** Черновик ядра для экрана; `null` — ни текста, ни ответа. */
         fun draft(draft: com.max.core.api.MaxDraft): ChatDraft? {
             // Ответ без текста — черновик (так сохраняет и веб). Вложения сервера ядро держит только в `raw`.
@@ -51,7 +63,7 @@ class CoreDraftRepository(private val client: MaxClient) : DraftRepository {
             return ChatDraft(
                 text = draft.text,
                 updatedAtMs = draft.updateTime,
-                formatting = TextMarks.fromElements(draft.elements.filter { it.fits(draft.text.length) }),
+                formatting = TextMarks.fromElements(draft.elements, draft.text.length),
                 replyTo = draft.replyTo?.toString(),
             )
         }

@@ -70,17 +70,31 @@ data class ChatDraft(
     /** Ни текста, ни ответа: такой черновик удаляется. */
     val isEmpty: Boolean get() = text.isBlank() && replyTo == null
 
-    /** То же содержимое, время не в счёт. */
-    fun sameContent(other: ChatDraft?): Boolean =
-        other != null && text == other.text && replyTo == other.replyTo && formatting.toSet() == other.formatting.toSet()
+    /**
+     * То же содержимое, время не в счёт: тот же ответ, текст после обрезки краёв и отметки по нему
+     * ([TextSpans.serialize]) — так их увидит сервер.
+     */
+    fun sameContent(other: ChatDraft?): Boolean {
+        if (other == null || replyTo != other.replyTo) return false
+        val (mine, myMarks) = TextSpans.serialize(text, formatting)
+        val (theirs, theirMarks) = TextSpans.serialize(other.text, other.formatting)
+        return mine == theirs && myMarks.toSet() == theirMarks.toSet()
+    }
 
     companion object {
-        /** Из двух черновиков — более поздний; при равном времени [first]. */
-        fun later(first: ChatDraft?, second: ChatDraft?): ChatDraft? = when {
-            first == null -> second
-            second == null -> first
-            second.updatedAtMs > first.updatedAtMs -> second
-            else -> first
+        /**
+         * Из двух черновиков — более поздний; при равном времени [first]. Пустой ([isEmpty]) —
+         * всё равно что его нет.
+         */
+        fun later(first: ChatDraft?, second: ChatDraft?): ChatDraft? {
+            val a = first?.takeUnless { it.isEmpty }
+            val b = second?.takeUnless { it.isEmpty }
+            return when {
+                a == null -> b
+                b == null -> a
+                b.updatedAtMs > a.updatedAtMs -> b
+                else -> a
+            }
         }
     }
 }
