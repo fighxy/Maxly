@@ -34,7 +34,7 @@ object CallPermissions {
             pendingPermission = null
         }
         screenLauncher = activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            pendingScreen?.complete(result.data.takeIf { result.resultCode == ComponentActivity.RESULT_OK })
+            pendingScreen?.complete(result.data.takeIf { result.resultCode == android.app.Activity.RESULT_OK })
             pendingScreen = null
         }
     }
