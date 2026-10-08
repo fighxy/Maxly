@@ -32,6 +32,10 @@ data class CallRow(
     val dateText: String,
     val chatId: String?,
     val isVideo: Boolean,
+    /** Собеседник для «перезвонить»: id пользователя Max, имя без счётчика и аватар. */
+    val peerId: String = "",
+    val name: String = "",
+    val avatarUrl: String? = null,
 ) {
     enum class Direction { OUTGOING, INCOMING, DOWN }
 }
@@ -254,6 +258,9 @@ class CallsViewModel(
             dateText = dateText(first.timeMs),
             chatId = first.chatId,
             isVideo = first.isVideo,
+            peerId = first.peerId,
+            name = name,
+            avatarUrl = first.avatarUrl,
         )
     }
 

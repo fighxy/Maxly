@@ -1,7 +1,7 @@
 package app.orbitle.ui.calls
 
-import android.content.Intent
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.CallReceived
 import androidx.compose.material.icons.filled.AddLink
+import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.Call
@@ -30,6 +31,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -53,9 +55,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -63,6 +62,7 @@ import app.orbitle.presentation.calls.CallRow
 import app.orbitle.presentation.calls.CallsFilter
 import app.orbitle.presentation.calls.CallsUiState
 import app.orbitle.presentation.calls.CallsViewModel
+import app.orbitle.ui.calls.CallLinkDialog
 import app.orbitle.ui.chatlist.Placeholder
 import app.orbitle.ui.components.Avatar
 import app.orbitle.ui.components.privateBlur
@@ -72,7 +72,17 @@ private val MissedRed = Color(0xFFE5484D)
 /** Вкладка «Звонки»: «Все» и «Пропущенные», нажатие открывает чат с собеседником. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CallsScreen(model: CallsViewModel, onOpenChat: (String) -> Unit) {
+fun CallsScreen(
+    model: CallsViewModel,
+    onOpenChat: (String) -> Unit,
+    /** Войти в групповой звонок по ссылке. */
+    onJoin: (String) -> Unit = {},
+    /** Перезвонить: строка и видео ли. */
+    onCall: (CallRow, Boolean) -> Unit = { _, _ -> },
+    /** Поделиться ссылкой через систему; `null` — только скопировать. */
+    onShareLink: ((String) -> Unit)? = null,
+) {
+    var joining by remember { mutableStateOf(false) }
     val state by model.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     DisposableEffect(Unit) {
@@ -85,21 +95,13 @@ fun CallsScreen(model: CallsViewModel, onOpenChat: (String) -> Unit) {
         model.dismissError()
     }
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Звонки") },
-                actions = {
-                    IconButton(onClick = model::createLink, enabled = !state.isCreatingLink) {
-                        if (state.isCreatingLink) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                        else Icon(Icons.Filled.AddLink, "Создать ссылку на звонок")
-                    }
-                },
-            )
-        },
+        topBar = { TopAppBar(title = { Text("Звонки") }) },
         snackbarHost = { SnackbarHost(snackbar) },
         contentWindowInsets = WindowInsets(0),
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
+            ActionRow(if (state.isCreatingLink) "Создаём звонок…" else "Создать звонок", Icons.Filled.AddLink, enabled = !state.isCreatingLink, onClick = model::createLink)
+            ActionRow("Присоединиться", Icons.Filled.GroupAdd) { joining = true }
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                 CallsFilter.entries.forEachIndexed { index, filter ->
                     SegmentedButton(
@@ -124,44 +126,54 @@ fun CallsScreen(model: CallsViewModel, onOpenChat: (String) -> Unit) {
                     }
                     CallsUiState.Content.READY -> LazyColumn(Modifier.fillMaxSize()) {
                         items(state.rows, key = { it.id }) { row ->
-                            CallRowItem(row, onOpen = { row.chatId?.let(onOpenChat) }, onDelete = { model.delete(row) })
+                            CallRowItem(row, onOpen = { row.chatId?.let(onOpenChat) }, onDelete = { model.delete(row) }, onCall = { onCall(row, row.isVideo) })
                         }
                     }
                 }
             }
         }
     }
-    state.createdLink?.let { link -> CallLinkDialog(link, onDismiss = model::dismissLink) }
+    state.createdLink?.let { link ->
+        CallLinkDialog(
+            link,
+            onJoin = { onJoin(link) },
+            onShare = onShareLink,
+            onDismiss = model::dismissLink,
+        )
+    }
+    if (joining) JoinCallDialog(onJoin = { joining = false; onJoin(it) }, onDismiss = { joining = false })
 }
 
-/** Ссылка на новый групповой звонок: скопировать или отправить. */
+/** «Присоединиться»: ссылка на звонок или её токен. */
 @Composable
-private fun CallLinkDialog(link: String, onDismiss: () -> Unit) {
-    val clipboard = LocalClipboardManager.current
-    val context = LocalContext.current
+private fun JoinCallDialog(onJoin: (String) -> Unit, onDismiss: () -> Unit) {
+    var link by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Ссылка на звонок") },
-        text = { Text("Отправьте ссылку тем, кого хотите позвать в звонок.\n\n$link") },
+        title = { Text("Присоединиться к звонку") },
+        text = {
+            OutlinedTextField(link, { link = it }, placeholder = { Text("Ссылка на звонок") }, singleLine = true)
+        },
         confirmButton = {
-            TextButton(onClick = {
-                clipboard.setText(AnnotatedString(link))
-                onDismiss()
-            }) { Text("Скопировать") }
+            TextButton(onClick = { link.trim().takeIf { it.isNotEmpty() }?.let(onJoin) }, enabled = link.isNotBlank()) { Text("Войти") }
         },
-        dismissButton = {
-            TextButton(onClick = {
-                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, link)
-                context.startActivity(Intent.createChooser(send, null))
-                onDismiss()
-            }) { Text("Поделиться") }
-        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
+    )
+}
+
+@Composable
+private fun ActionRow(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, enabled: Boolean = true, onClick: () -> Unit) {
+    ListItem(
+        leadingContent = { Icon(icon, null, tint = MaterialTheme.colorScheme.primary) },
+        headlineContent = { Text(title, color = MaterialTheme.colorScheme.primary) },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
     )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun CallRowItem(row: CallRow, onOpen: () -> Unit, onDelete: () -> Unit) {
+private fun CallRowItem(row: CallRow, onOpen: () -> Unit, onDelete: () -> Unit, onCall: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     val privacy = app.orbitle.ui.components.LocalPrivateMode.current
     val hidden = privacy == app.orbitle.domain.PrivateModeDisplay.PLACEHOLDER
@@ -186,9 +198,15 @@ private fun CallRowItem(row: CallRow, onOpen: () -> Unit, onDelete: () -> Unit) 
             trailingContent = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(row.dateText, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (row.isVideo) {
-                        Spacer(Modifier.width(8.dp))
-                        Icon(Icons.Filled.Videocam, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // Перезвонить тем же видом звонка, как на iOS.
+                    if (!row.isGroup && row.peerId.isNotEmpty()) {
+                        IconButton(onClick = onCall) {
+                            Icon(
+                                if (row.isVideo) Icons.Filled.Videocam else Icons.Outlined.Call,
+                                if (row.isVideo) "Видеозвонок" else "Позвонить",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     }
                 }
             },

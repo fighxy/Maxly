@@ -1,6 +1,21 @@
 package app.orbitle
 
+import android.Manifest
+import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import app.orbitle.calls.AndroidCallSounds
+import app.orbitle.calls.AndroidCallSystem
+import app.orbitle.calls.AndroidCallVideo
+import app.orbitle.calls.AndroidCalls
+import app.orbitle.calls.CallPermissions
+import app.orbitle.ui.calls.CallHost
+import app.orbitle.ui.calls.CenterCallActions
+import app.orbitle.ui.calls.LocalCallVideo
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.SystemBarStyle
@@ -44,6 +59,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val container = (application as OrbitleApp).container
+        CallPermissions.attach(this)
+        handleCallIntent(intent)
         setContent {
             val prefs by container.appearance.state.collectAsStateWithLifecycle()
             val dark = when (prefs.theme) {
@@ -68,6 +85,27 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleCallIntent(intent)
+    }
+
+    override fun onDestroy() {
+        CallPermissions.detach()
+        super.onDestroy()
+    }
+
+    /** «Ответить» и нажатие на уведомление звонка. */
+    private fun handleCallIntent(intent: Intent?) {
+        val container = (application as OrbitleApp).container
+        when (intent?.action) {
+            AndroidCallSystem.ACTION_ANSWER -> AndroidCalls.answer(container, video = false)
+            AndroidCallSystem.ACTION_OPEN -> container.callCenter.expand()
+            else -> return
+        }
+        intent?.action = null
+    }
 }
 
 @Composable
@@ -79,12 +117,33 @@ private fun Root(container: AppContainer) {
         is AuthPhase.SignedIn -> {
             val chats = viewModel { ChatListViewModel(container.chats, container.session.connection, local = container.chatMarks, recents = container.recentSearches) }
             val account by container.account.account.collectAsStateWithLifecycle(initialValue = null)
-            MainScreen(container, chats, account, onLogout = {
-                // Места в лентах и куски истории — прежнего аккаунта.
-                app.orbitle.presentation.chat.HistoryRanges.clear()
-                app.orbitle.presentation.chat.ScrollMemory.clear()
-                scope.launch { container.session.logout() }
-            })
+            LaunchedEffect(container) {
+                container.callCenter.activate()
+                // Без разрешения на уведомления входящий звонок в фоне не покажется.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) CallPermissions.ensure(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            val context = LocalContext.current
+            val callActions = remember {
+                CenterCallActions(container.callCenter, container.scope, hasSpeaker = true) { video -> AndroidCalls.answer(container, video) }
+            }
+            val callSounds = remember { AndroidCallSounds(context.applicationContext) }
+            val callState by container.callCenter.state.collectAsStateWithLifecycle()
+            // Пока идёт звонок, экран не гаснет сам.
+            val activity = context as? android.app.Activity
+            DisposableEffect(callState.call != null) {
+                if (callState.call != null) activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                onDispose { activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+            }
+            CompositionLocalProvider(LocalCallVideo provides AndroidCallVideo) {
+                CallHost(container.callCenter, callActions, callSounds, onShareLink = { AndroidCalls.share(context, it) }) {
+                    MainScreen(container, chats, account, onLogout = {
+                        // Места в лентах и куски истории — прежнего аккаунта.
+                        app.orbitle.presentation.chat.HistoryRanges.clear()
+                        app.orbitle.presentation.chat.ScrollMemory.clear()
+                        scope.launch { container.session.logout() }
+                    })
+                }
+            }
         }
         else -> {
             val auth = viewModel { AuthViewModel(container.session) }

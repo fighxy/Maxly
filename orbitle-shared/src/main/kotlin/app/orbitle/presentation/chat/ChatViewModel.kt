@@ -1571,30 +1571,12 @@ class ChatViewModel(
         }
     }
 
-    /**
-     * Просит сервер начать звонок. Звук и видео не передаются:
-     * в [messages] остаётся честная фраза, если сервер принял сигнал.
-     */
-    fun signalCall(video: Boolean) {
-        val source = chats ?: return
-        val peer = header?.chat?.peerId ?: return
-        if (header?.chat?.type != ChatType.PRIVATE) return
-        viewModelScope.launch {
-            _tools.update { it.copy(busy = true, error = null) }
-            try {
-                val call = source.signalCall(peer, video)
-                _tools.update { it.copy(busy = false) }
-                _messages.value = if (call == null) {
-                    "Сервер не принял звонок"
-                } else {
-                    "Сервер принял звонок. Звук и видео этот клиент не передаёт."
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                _tools.update { it.copy(busy = false, error = (e as? OrbitleError)?.userMessage ?: "Не удалось позвонить") }
-            }
-        }
+    /** С кем звонить из этого чата: собеседник личного чата; у групп и ботов — `null`. */
+    fun callPeer(): app.orbitle.presentation.calls.CallPeerInfo? {
+        val chat = header?.chat ?: return null
+        if (chat.type != ChatType.PRIVATE || chat.isBot) return null
+        val peer = chat.peerId ?: return null
+        return app.orbitle.presentation.calls.CallPeerInfo(peer, chat.title, chat.avatarUrl)
     }
 
     private fun refreshHints(text: String) {

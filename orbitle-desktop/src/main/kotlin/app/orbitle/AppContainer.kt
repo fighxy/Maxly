@@ -45,6 +45,8 @@ import com.max.shared.MaxClientConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** Зависимости окна: одно ядро, одна сессия, репозитории над стором ядра. Токен хранит само ядро. */
 class AppContainer {
@@ -156,6 +158,40 @@ class AppContainer {
 
     val recentSearches = PreferenceRecentSearches(preferenceStore)
 
+    /** Звонки: один на приложение. Разговор — webrtc-java, сигналы — ws2 сервера звонков. */
+    val callCenter = app.orbitle.presentation.calls.CallCenter(
+        service = app.orbitle.data.calls.CoreCallService(client),
+        engine = { connection, role, isGroup, expiresAtMs ->
+            app.orbitle.data.calls.CallSession(
+                connection, role, isGroup,
+                media = app.orbitle.calls.DesktopCallMedia(),
+                connector = { app.orbitle.data.calls.OkHttpWs2Socket.connect(it) },
+                scope = scope,
+                expiresAtMs = expiresAtMs,
+            )
+        },
+        scope = scope,
+        lookup = ::callPeer,
+    ).also { center ->
+        app.orbitle.data.calls.CallLog.sink = { level, message -> System.err.println("[calls] $level $message") }
+        // Журнал звонков читается заново, когда сервер успел записать звонок.
+        center.onCallEnded = {
+            scope.launch {
+                delay(2_000)
+                runCatching { calls.refresh() }
+            }
+        }
+    }
+
+    /** Имя и аватар пользователя Max для экрана звонка: из стора ядра или с сервера. */
+    private suspend fun callPeer(userId: String): app.orbitle.presentation.calls.CallPeerInfo? {
+        val id = userId.toLongOrNull() ?: return null
+        val user = client.store.state.value.users[id]
+            ?: runCatching { MaxCoreGateway.read { client.loadUsers(listOf(id)) } }.getOrNull()?.firstOrNull()
+            ?: return null
+        return app.orbitle.presentation.calls.CallPeerInfo(userId, user.displayName.orEmpty(), user.baseUrl?.takeIf { it.isNotBlank() })
+    }
+
     /** Ограничения нового сеанса: отметка входа для панели на главном экране и строки в настройках. */
     val accountLimits = app.orbitle.data.AccountLimitsStore(preferenceStore)
 
@@ -176,6 +212,7 @@ class AppContainer {
             runCatching { account.reload() }
         },
         onSignedOut = {
+            scope.launch { callCenter.deactivate() }
             chats.clear()
             calls.clear()
             recentSearches.clear()

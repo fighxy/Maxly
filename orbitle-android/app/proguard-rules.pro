@@ -4,3 +4,6 @@
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
+# WebRTC зовёт свои Java-классы из JNI по именам.
+-keep class org.webrtc.** { *; }
+-dontwarn org.webrtc.**

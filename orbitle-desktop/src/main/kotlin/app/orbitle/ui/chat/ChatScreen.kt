@@ -182,6 +182,8 @@ fun ChatScreen(
     botApp: @Composable (request: BotAppRequest, onClose: () -> Unit) -> Unit = { _, onClose -> onClose() },
     /** Блок автора комментария под постом канала. Ошибку показывает экран комментариев. */
     onBlockComment: suspend (postId: String, comment: Message) -> Unit = { _, _ -> },
+    /** Позвонить собеседнику: звонок ведёт центр звонков приложения. */
+    onStartCall: (peer: app.orbitle.presentation.calls.CallPeerInfo, video: Boolean) -> Unit = { _, _ -> },
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val privacy = app.orbitle.ui.components.LocalPrivateMode.current
@@ -577,8 +579,8 @@ fun ChatScreen(
     }
     if (confirmingCall) {
         CallConfirmDialog(
-            onAudio = { confirmingCall = false; model.signalCall(false) },
-            onVideo = { confirmingCall = false; model.signalCall(true) },
+            onAudio = { confirmingCall = false; model.callPeer()?.let { onStartCall(it, false) } },
+            onVideo = { confirmingCall = false; model.callPeer()?.let { onStartCall(it, true) } },
             onDismiss = { confirmingCall = false },
         )
     }
