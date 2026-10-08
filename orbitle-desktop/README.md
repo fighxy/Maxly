@@ -80,6 +80,12 @@ The core is pinned to max-kmp-core `85b5aa6` in `core.lock`. Everything below ru
   focused and had input within the last 60 s (`WindowActivity`).
 - **No read marks in the background:** the window lifecycle is `RESUMED` only while the window is
   shown and focused, `STARTED` otherwise, so a minimized or unfocused window marks nothing read.
+- **Read marks** (rule agreed with iOS, constants in `ReadMarkRules`): a message counts as seen
+  only when at least 30 % of its height is inside the feed viewport; the top bar, the input field
+  and the on-screen keyboard are outside it, and the feed's content padding under overlays does
+  not count either (`ReadVisibility`). Only the newest seen message is marked: the mark is sent
+  200 ms after the candidate last changed, a newer candidate replaces a pending one, and a mark
+  older than the one already sent never goes out. Leaving the screen cancels a pending mark.
 
 ## Устройство
 

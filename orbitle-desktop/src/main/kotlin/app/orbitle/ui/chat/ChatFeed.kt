@@ -313,11 +313,21 @@ internal fun ChatFeed(
         }
         model.consumeScroll(current.token)
     }
-    // Что видно: самое новое сообщение на экране и лента ли у низа.
+    // Что видно: самое новое сообщение, показанное хотя бы на треть, и лента ли у низа.
+    // Считается только лента: верхняя панель, поле ввода и клавиатура снаружи неё, а отступы
+    // содержимого прячут строки под накладками внутри ленты — под ними сообщение не прочитано.
     LaunchedEffect(listState) {
         snapshotFlow {
-            val visible = listState.layoutInfo.visibleItemsInfo
-            val newest = visible.firstNotNullOfOrNull { info -> (items.getOrNull(info.index) as? ChatItem.Bubble)?.key }
+            val info = listState.layoutInfo
+            val frames = info.visibleItemsInfo.mapNotNull { row ->
+                (items.getOrNull(row.index) as? ChatItem.Bubble)?.let {
+                    app.orbitle.presentation.chat.FeedItemFrame(row.index, it.key, row.offset, row.size)
+                }
+            }
+            val newest = app.orbitle.presentation.chat.ReadVisibility.newestVisibleKey(
+                frames, info.viewportStartOffset, info.viewportEndOffset, info.reverseLayout,
+                beforeContent = info.beforeContentPadding, afterContent = info.afterContentPadding,
+            )
             newest to (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < BOTTOM_SLOP && !hasNewer)
         }.distinctUntilChanged().collect { (newest, atBottom) -> model.onVisible(newest, atBottom) }
     }

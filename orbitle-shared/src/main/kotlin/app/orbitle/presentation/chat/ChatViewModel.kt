@@ -261,7 +261,14 @@ class ChatViewModel(
     private var unreadAnchorId: String? = null
     /** Непрочитанные при открытии, ещё не нашедшие места в ленте; `-1` — шапки ещё не было. */
     private var pendingUnread = -1
+    /** Сообщение, до которого отметка уже ушла (или не нужна: последнее — своё). */
     private var markedReadId: String? = null
+    /** Время (мс) сообщения [markedReadId]: отметка старше неё не уходит. */
+    private var sentReadMs = 0L
+    /** Отложенная отметка: пока она ждёт, более новая заменяет её, а уход с экрана отменяет. */
+    private var readJob: Job? = null
+    /** Сообщение, до которого читает [readJob]. */
+    private var pendingRead: Message? = null
     /** Счётчик непрочитанных из прошлой шапки: отметка повторяется, только когда он вырос. */
     private var headerUnread = 0
     private var active = true
@@ -666,12 +673,17 @@ class ChatViewModel(
         requestScroll(ScrollRequest.Target.Bottom)
     }
 
-    /** Экран виден: можно отмечать прочитанным. */
+    /**
+     * Экран виден: можно отмечать прочитанным. Уход с экрана (приложение свернули, окно потеряло
+     * фокус или свернулось) отменяет ещё не ушедшую отметку: невидимое не читается.
+     */
     fun setActive(value: Boolean) {
         active = value
         if (value) {
             markingUnread = false
             markRead()
+        } else {
+            cancelPendingRead()
         }
     }
 
@@ -1526,29 +1538,72 @@ class ChatViewModel(
 
     private fun isServer(message: Message) = message.status == MessageStatus.SENT && message.id.toLongOrNull() != null
 
-    /** Прочитать всё до последнего чужого сообщения, пока экран виден. */
+    /**
+     * Прочитать всё до последнего увиденного сообщения, пока экран виден. Уходит только самая новая
+     * отметка и только через [ReadMarkRules.DEBOUNCE_MS] после её последней смены: пока отправка
+     * ждёт, более новый кандидат заменяет прежний, а отметка не новее уже отправленной не уходит.
+     */
     private fun markRead() {
         if (!active || markingUnread) return
         val last = (if (following) history.lastOrNull { isServer(it) } else visible.lastOrNull { isServer(it) && it.timeMs <= seenMs }) ?: return
-        val markedTime = markedReadId?.let { id -> history.firstOrNull { it.id == id }?.timeMs } ?: 0L
-        if (last.timeMs < markedTime) return
+        // Только новее уже отправленной. Шапка с выросшим счётчиком снимает лишь [markedReadId]:
+        // та же отметка может уйти снова, более старая — никогда.
+        if (last.timeMs < sentReadMs || markedReadId != null && !newerThan(last, sentReadMs, markedReadId)) return
+        // Ждёт тот же или более новый кандидат: таймер не перезапускается.
+        pendingRead?.let { if (!newerThan(last, it.timeMs, it.id)) return }
         val unread = header?.chat?.unreadCount ?: 0
-        if (last.id == markedReadId) return
         if (isOutgoing(last) && unread == 0) {
+            // Последнее — своё и непрочитанных нет: сервер уже считает чат прочитанным.
+            cancelPendingRead()
             markedReadId = last.id
+            sentReadMs = last.timeMs
             return
         }
-        markedReadId = last.id
-        viewModelScope.launch {
-            try {
-                repository.markRead(chatId, last.id)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                // Отметка прочтения не важна для экрана: повторится при следующем сообщении.
-                markedReadId = null
+        readJob?.cancel()
+        pendingRead = last
+        readJob = viewModelScope.launch {
+            delay(ReadMarkRules.DEBOUNCE_MS)
+            // Пауза прошла: дальше отправка не отменяется ни новым кандидатом, ни уходом с экрана.
+            readJob = null
+            pendingRead = null
+            val previousId = markedReadId
+            val previousMs = sentReadMs
+            markedReadId = last.id
+            sentReadMs = last.timeMs
+            sendRead(last, previousId, previousMs)
+        }
+    }
+
+    private suspend fun sendRead(message: Message, previousId: String?, previousMs: Long) {
+        try {
+            repository.markRead(chatId, message.id)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Отметка не важна для экрана: не ушла — повторится при следующем обновлении.
+            if (markedReadId == message.id) {
+                markedReadId = previousId
+                sentReadMs = previousMs
             }
         }
+    }
+
+    /**
+     * [message] новее сообщения [id] со временем [timeMs]. При равном времени решает id сервера:
+     * он растёт с каждым сообщением.
+     */
+    private fun newerThan(message: Message, timeMs: Long, id: String?): Boolean {
+        if (message.timeMs != timeMs) return message.timeMs > timeMs
+        val mine = message.id.toLongOrNull() ?: return false
+        val other = id?.toLongOrNull() ?: return true
+        return mine > other
+    }
+
+    /** Снять ещё не ушедшую отметку. */
+    private fun cancelPendingRead() {
+        readJob?.cancel()
+        readJob = null
+        pendingRead = null
     }
 
     /** Карточка чата, которого нет в сторе: канал или группа из поиска. */
@@ -2027,7 +2082,10 @@ class ChatViewModel(
         viewModelScope.launch {
             try {
                 repository.markUnread(chatId, message.timeMs)
+                // Явная «непрочитанность» старше любой отметки: следующая отметка сравнивается заново.
+                cancelPendingRead()
                 markedReadId = null
+                sentReadMs = 0L
                 onLeft()
             } catch (e: CancellationException) {
                 markingUnread = false

@@ -154,6 +154,12 @@ The core is pinned to max-kmp-core `85b5aa6` in `core.lock`. Everything below ru
   (`api2.oneme.ru` is a CNAME of it with a Russian Trusted CA certificate; we keep `api`).
 - **App activity** is reported with `client.setInteractive`: active while the app is in the
   foreground and the screen is unlocked, or while a call is in progress (`AppActivity.android`).
+- **Read marks** (rule agreed with iOS, constants in `ReadMarkRules`): a message counts as seen
+  only when at least 30 % of its height is inside the feed viewport; the top bar, the input field
+  and the on-screen keyboard are outside it, and the feed's content padding under overlays does
+  not count either (`ReadVisibility`). Only the newest seen message is marked: the mark is sent
+  200 ms after the candidate last changed, a newer candidate replaces a pending one, and a mark
+  older than the one already sent never goes out. Leaving the screen cancels a pending mark.
 
 ## Сборка
 

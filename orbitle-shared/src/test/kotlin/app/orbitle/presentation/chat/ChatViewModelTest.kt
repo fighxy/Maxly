@@ -622,6 +622,12 @@ class ChatViewModelTest {
         // Чат с непрочитанными читается тем, что видно: пока экран молчит, отметки нет.
         assertTrue(repo.reads.isEmpty())
         model.onVisible("2", atBottom = true)
+        // Отметка ждёт паузу: раньше неё ничего не уходит.
+        main.dispatcher.scheduler.advanceTimeBy(ReadMarkRules.DEBOUNCE_MS - 1)
+        main.dispatcher.scheduler.runCurrent()
+        assertTrue(repo.reads.isEmpty())
+        main.dispatcher.scheduler.advanceTimeBy(1)
+        main.dispatcher.scheduler.runCurrent()
         assertEquals("2", repo.reads.last())
         val count = repo.reads.size
         repo.list.value = repo.list.value + msg("local-3", author = "1", status = MessageStatus.SENDING)
@@ -630,6 +636,8 @@ class ChatViewModelTest {
         repo.list.value = repo.list.value + msg("5")
         assertEquals(count, repo.reads.size)
         model.setActive(true)
+        main.dispatcher.scheduler.advanceTimeBy(ReadMarkRules.DEBOUNCE_MS)
+        main.dispatcher.scheduler.runCurrent()
         assertEquals("5", repo.reads.last())
     }
 
@@ -640,6 +648,8 @@ class ChatViewModelTest {
         repo.list.value = listOf(msg("1", at = now - 1_000), msg("2"))
         // Прочитана только верхняя часть: второе сообщение законно остаётся непрочитанным.
         model.onVisible("1", atBottom = false)
+        main.dispatcher.scheduler.advanceTimeBy(ReadMarkRules.DEBOUNCE_MS)
+        main.dispatcher.scheduler.runCurrent()
         assertEquals(listOf("1"), repo.reads)
         // Шапка обновляется (присутствие, «печатает»), счётчик не растёт: отметка не повторяется.
         repo.headerInfo.value = ChatHeaderInfo(chat(unread = 1), lastSeenMs = now)
@@ -647,7 +657,62 @@ class ChatViewModelTest {
         assertEquals(listOf("1"), repo.reads)
         // Непрочитанных стало больше мимо ленты (синхронизация): видимое читается заново.
         repo.headerInfo.value = ChatHeaderInfo(chat(unread = 2), lastSeenMs = now + 2_000)
+        main.dispatcher.scheduler.advanceTimeBy(ReadMarkRules.DEBOUNCE_MS)
+        main.dispatcher.scheduler.runCurrent()
         assertEquals(listOf("1", "1"), repo.reads)
+    }
+
+    @Test
+    fun burstOfVisibleUpdatesSendsOnlyTheNewestMark() {
+        val model = vm()
+        repo.headerInfo.value = ChatHeaderInfo(chat(unread = 3))
+        repo.list.value = listOf(msg("1", at = now - 2_000), msg("2", at = now - 1_000), msg("3"))
+        // Быстрая прокрутка: каждая смена кандидата заново откладывает отправку.
+        model.onVisible("1", atBottom = false)
+        main.dispatcher.scheduler.advanceTimeBy(ReadMarkRules.DEBOUNCE_MS - 1)
+        model.onVisible("2", atBottom = false)
+        main.dispatcher.scheduler.advanceTimeBy(ReadMarkRules.DEBOUNCE_MS - 1)
+        model.onVisible("3", atBottom = true)
+        main.dispatcher.scheduler.runCurrent()
+        assertTrue(repo.reads.isEmpty())
+        main.dispatcher.scheduler.advanceTimeBy(ReadMarkRules.DEBOUNCE_MS)
+        main.dispatcher.scheduler.runCurrent()
+        assertEquals(listOf("3"), repo.reads)
+    }
+
+    @Test
+    fun olderMarkIsNeverSentAfterANewerOne() {
+        val model = vm()
+        repo.headerInfo.value = ChatHeaderInfo(chat())
+        repo.list.value = listOf(msg("1", at = now - 2_000), msg("2", at = now - 1_000), msg("3"))
+        model.onVisible("3", atBottom = true)
+        main.dispatcher.scheduler.advanceTimeBy(ReadMarkRules.DEBOUNCE_MS)
+        main.dispatcher.scheduler.runCurrent()
+        assertEquals(listOf("3"), repo.reads)
+        // Лента ушла вверх: более старое увиденное отметку не откатывает.
+        model.onVisible("1", atBottom = false)
+        main.dispatcher.scheduler.advanceTimeBy(ReadMarkRules.DEBOUNCE_MS * 2)
+        main.dispatcher.scheduler.runCurrent()
+        assertEquals(listOf("3"), repo.reads)
+    }
+
+    @Test
+    fun leavingTheScreenCancelsThePendingMark() {
+        val model = vm()
+        repo.headerInfo.value = ChatHeaderInfo(chat(unread = 1))
+        repo.list.value = listOf(msg("1"), msg("2"))
+        model.onVisible("2", atBottom = true)
+        // Экран погас до паузы: отложенная отметка отменяется и потом сама не уходит.
+        main.dispatcher.scheduler.advanceTimeBy(ReadMarkRules.DEBOUNCE_MS - 1)
+        model.setActive(false)
+        main.dispatcher.scheduler.advanceTimeBy(ReadMarkRules.DEBOUNCE_MS * 2)
+        main.dispatcher.scheduler.runCurrent()
+        assertTrue(repo.reads.isEmpty())
+        // Вернулись — читается то, что видно.
+        model.setActive(true)
+        main.dispatcher.scheduler.advanceTimeBy(ReadMarkRules.DEBOUNCE_MS)
+        main.dispatcher.scheduler.runCurrent()
+        assertEquals(listOf("2"), repo.reads)
     }
 
     @Test
@@ -656,8 +721,12 @@ class ChatViewModelTest {
         repo.headerInfo.value = ChatHeaderInfo(chat())
         repo.list.value = listOf(msg("1", at = now - 1_000))
         model.onVisible("1", atBottom = true)
+        main.dispatcher.scheduler.advanceTimeBy(ReadMarkRules.DEBOUNCE_MS)
+        main.dispatcher.scheduler.runCurrent()
         repo.list.value = repo.list.value + msg("2")
         repo.headerInfo.value = ChatHeaderInfo(chat(unread = 1))
+        main.dispatcher.scheduler.advanceTimeBy(ReadMarkRules.DEBOUNCE_MS)
+        main.dispatcher.scheduler.runCurrent()
         assertEquals("2", repo.reads.last())
     }
 
@@ -680,6 +749,8 @@ class ChatViewModelTest {
         // Чат открыли снова — он читается как обычно.
         model.setActive(false)
         model.setActive(true)
+        main.dispatcher.scheduler.advanceTimeBy(ReadMarkRules.DEBOUNCE_MS)
+        main.dispatcher.scheduler.runCurrent()
         assertEquals("3", repo.reads.last())
     }
 

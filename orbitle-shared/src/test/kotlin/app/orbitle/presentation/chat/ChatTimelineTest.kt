@@ -109,6 +109,8 @@ class ChatTimelineTest {
         // Ничего не прочитано, пока экран не показал сообщения.
         assertTrue(repo.base.reads.isEmpty())
         model.onVisible("110", atBottom = false)
+        main.dispatcher.scheduler.advanceTimeBy(ReadMarkRules.DEBOUNCE_MS)
+        main.dispatcher.scheduler.runCurrent()
         assertEquals(listOf("110"), repo.base.reads)
         model.loadNewer()
         // Страница вперёд перекрыла свежую: дальше это обычная лента.
