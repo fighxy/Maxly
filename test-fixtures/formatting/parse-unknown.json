@@ -1,7 +1,7 @@
 {
   "kind": "parse",
   "name": "parse-unknown",
-  "description": "Незнакомые типы (SPOILER, EMOJI) и LINK без адреса пропускаются; нет elements или null — разметки нет.",
+  "description": "Незнакомые типы (SPOILER, EMOJI…) сохраняются как есть: тип, смещения и остальные ключи (attributes, entityId) — и при правке уходят обратно без изменений; показ их не рисует. Элемент без type и LINK без адреса пропускаются; нет elements или null — разметки нет.",
   "cases": [
     {
       "name": "unknown-types",
@@ -15,7 +15,11 @@
         {
           "type": "EMOJI",
           "from": 0,
-          "length": 1
+          "length": 1,
+          "entityId": 42,
+          "attributes": {
+            "size": "big"
+          }
         },
         {
           "type": "STRONG",
@@ -26,10 +30,47 @@
       "expect": {
         "spans": [
           {
+            "type": "SPOILER",
+            "from": 0,
+            "length": 5,
+            "text": "Текст"
+          },
+          {
+            "type": "EMOJI",
+            "from": 0,
+            "length": 1,
+            "entityId": 42,
+            "attributes": {
+              "size": "big"
+            },
+            "text": "Т"
+          },
+          {
             "type": "STRONG",
             "from": 0,
             "length": 5,
             "text": "Текст"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown-type-case-kept",
+      "text": "Текст",
+      "elements": [
+        {
+          "type": "Spoiler",
+          "from": 1,
+          "length": 2
+        }
+      ],
+      "expect": {
+        "spans": [
+          {
+            "type": "Spoiler",
+            "from": 1,
+            "length": 2,
+            "text": "ек"
           }
         ]
       }

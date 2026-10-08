@@ -33,7 +33,7 @@ enum FormattedText {
             case .mention:
                 result[range].foregroundColor = linkColor
                 result[range].inlinePresentationIntent = merged(result[range].inlinePresentationIntent, .stronglyEmphasized)
-            case .quote, .animoji:
+            case .quote, .animoji, .unknown:
                 // Анимодзи внутри строки рисуется обычным эмодзи; крупно и с анимацией —
                 // в сообщении из одних эмодзи (`BigEmojiMessage`).
                 break

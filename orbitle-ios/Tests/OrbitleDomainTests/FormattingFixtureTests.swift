@@ -56,7 +56,7 @@ struct FormattingFixtureTests {
         #expect(got == (try FixtureValue.elements(expect["elements"], label)), "\(label): \(got)")
         // Форма JSON для моста: у ссылки адрес в attributes, без лишних ключей.
         let json = got.map(\.json)
-        for (index, map) in json.enumerated() {
+        for (index, map) in json.enumerated() where got[index].extra == nil {
             #expect(Set(map.keys).isSubset(of: ["type", "from", "length", "attributes", "entityId"]), "\(label): ключи \(index)")
         }
     }

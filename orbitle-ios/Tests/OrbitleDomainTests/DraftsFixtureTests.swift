@@ -61,7 +61,10 @@ struct DraftsFixtureTests {
             let payload = try FixtureValue.object(expect["payload"], label)
             #expect(FixtureValue.string(payload[address.key]) == address.id, "\(label): адрес \(address.key)")
             let draft = try FixtureValue.object(payload["draft"], label)
-            #expect(draft["text"] as? String == text, "\(label): текст")
+            #expect(draft["text"] as? String == (text.isEmpty ? nil : text), "\(label): текст")
+            // Пустой текст не отправляется: ключа нет ни в сценарии, ни в теле запроса.
+            let body = request?.payload["draft"] as? [String: Any] ?? [:]
+            #expect(Set(body.keys) == Set(draft.keys), "\(label): ключи \(body.keys.sorted())")
             #expect((try FixtureValue.elements(draft["elements"], label)) == elements, "\(label): \(elements)")
             #expect(FixtureValue.string(draft["replyTo"]) == replyTo, "\(label): replyTo")
         case let .discard(address, time)?:

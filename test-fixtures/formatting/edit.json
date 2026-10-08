@@ -1,7 +1,7 @@
 {
   "kind": "edit",
   "name": "edit",
-  "description": "Правка сообщения (MSG_EDIT 67) всегда шлёт весь список elements; без разметки — пустой список [], поле не опускается. Если текст (после обрезки краёв) и разметка не изменились, запроса нет.",
+  "description": "Правка сообщения (MSG_EDIT 67) всегда шлёт весь список elements; без разметки — пустой список [], поле не опускается. Если текст (после обрезки краёв) и разметка не изменились, запроса нет. Незнакомые типы из исходного сообщения уходят обратно без изменений (тип, attributes, entityId).",
   "cases": [
     {
       "name": "add-formatting",
@@ -227,6 +227,90 @@
             "length": 10
           }
         ]
+      }
+    },
+    {
+      "name": "unknown-kept-on-edit",
+      "original": {
+        "text": "Секрет внутри",
+        "elements": [
+          {
+            "type": "SPOILER",
+            "from": 0,
+            "length": 6,
+            "attributes": {
+              "mode": "blur"
+            }
+          },
+          {
+            "type": "STRONG",
+            "from": 7,
+            "length": 6
+          }
+        ]
+      },
+      "draft": {
+        "text": "Секрет внутри!",
+        "spans": [
+          {
+            "type": "SPOILER",
+            "from": 0,
+            "length": 6,
+            "attributes": {
+              "mode": "blur"
+            }
+          },
+          {
+            "type": "STRONG",
+            "from": 7,
+            "length": 6
+          }
+        ]
+      },
+      "expect": {
+        "request": true,
+        "text": "Секрет внутри!",
+        "elements": [
+          {
+            "type": "SPOILER",
+            "from": 0,
+            "length": 6,
+            "attributes": {
+              "mode": "blur"
+            }
+          },
+          {
+            "type": "STRONG",
+            "from": 7,
+            "length": 6
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown-only-unchanged",
+      "original": {
+        "text": "Секрет",
+        "elements": [
+          {
+            "type": "SPOILER",
+            "from": 0,
+            "length": 6
+          }
+        ]
+      },
+      "draft": {
+        "text": "Секрет",
+        "spans": [
+          {
+            "type": "SPOILER",
+            "from": 0,
+            "length": 6
+          }
+        ]
+      },
+      "expect": {
+        "request": false
       }
     }
   ]

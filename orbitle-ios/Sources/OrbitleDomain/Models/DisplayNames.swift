@@ -67,11 +67,13 @@ public enum DisplayName {
             self.type = type
         }
 
-        /// `name`, а если его нет — «Имя Фамилия» без пустых частей.
+        /// `name`, а если его нет — «Имя Фамилия» без пустых частей. У `CUSTOM` наоборот:
+        /// «Имя Фамилия», а `name` — только если обе части пустые.
         public var fullName: String? {
-            if let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty { return name }
+            let named = name?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
             let parts = [firstName, lastName].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-            return parts.isEmpty ? nil : parts.joined(separator: " ")
+            let joined = parts.isEmpty ? nil : parts.joined(separator: " ")
+            return type?.uppercased() == "CUSTOM" ? (joined ?? named) : (named ?? joined)
         }
     }
 
@@ -133,4 +135,8 @@ public struct AddressBookNames: Hashable, Sendable {
         let key = PhoneNormalizer.normalize(phone) ?? PhoneNormalizer.normalize("+" + phone)
         return key.flatMap { names[$0] }
     }
+}
+
+private extension String {
+    var nonEmpty: String? { isEmpty ? nil : self }
 }

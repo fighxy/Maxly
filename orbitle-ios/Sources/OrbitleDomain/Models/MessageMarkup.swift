@@ -5,7 +5,8 @@ import Foundation
 ///
 /// - Чтение: `from` нет — 0, `length` нет — до конца текста, пустые и вышедшие за текст
 ///   отрезки выпадают, хвост за концом обрезается. `CODE` читается как моноширинный.
-///   Неизвестные типы пропускаются, `LINK` без адреса — тоже.
+///   Незнакомые типы сохраняются как есть (`unknown`: тип и остальные ключи) и при правке
+///   уходят обратно; показ их не рисует. `LINK` без адреса и элемент без типа пропускаются.
 /// - Запись: отрезки одного вида, которые пересекаются или стоят вплотную, сливаются
 ///   (ссылки — только с одинаковым адресом); порядок — по началу, затем по виду ([order]),
 ///   затем по длине. Правка всегда шлёт весь список, пустой `[]` снимает разметку.
@@ -51,6 +52,7 @@ public enum MessageMarkup {
         case .link: "LINK"
         case .mention: "USER_MENTION"
         case .animoji: "ANIMOJI"
+        case .unknown: "UNKNOWN"
         }
     }
 
@@ -62,7 +64,9 @@ public enum MessageMarkup {
         guard let list = value as? [Any] else { return [] }
         let total = text.map { $0.utf16.count }
         return list.compactMap { item -> TextSpan? in
-            guard let map = item as? [String: Any], let type = map["type"] as? String, let kind = kind(type: type) else { return nil }
+            guard let map = item as? [String: Any], let type = map["type"] as? String,
+                  !type.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+            let kind = kind(type: type) ?? .unknown
             let from = number(map["from"]) ?? 0
             guard from >= 0 else { return nil }
             let rawLength: Int
@@ -91,6 +95,8 @@ public enum MessageMarkup {
             case .mention:
                 return TextSpan(kind: .mention, from: from, length: length,
                                 userId: identifier(map["entityId"]) ?? identifier(attributes?["userId"]))
+            case .unknown:
+                return TextSpan(kind: .unknown, from: from, length: length, type: type, extra: extraJSON(map))
             default:
                 return TextSpan(kind: kind, from: from, length: length)
             }
@@ -114,8 +120,9 @@ public enum MessageMarkup {
     /// упорядочить. Упоминания и анимодзи не сливаются: у каждого свои данные.
     public static func normalize(_ spans: [TextSpan]) -> [TextSpan] {
         let valid = spans.filter { $0.length > 0 && $0.from >= 0 }
-        var result = valid.filter { $0.kind == .animoji || $0.kind == .mention }
-        let mergeable = valid.filter { $0.kind != .animoji && $0.kind != .mention }
+        let separate: Set<TextSpan.Kind> = [.animoji, .mention, .unknown]
+        var result = valid.filter { separate.contains($0.kind) }
+        let mergeable = valid.filter { !separate.contains($0.kind) }
         var groups: [String: [TextSpan]] = [:]
         var keys: [String] = []
         for span in mergeable {
@@ -157,13 +164,16 @@ public enum MessageMarkup {
         public var length: Int
         public var url: String?
         public var entityId: String?
+        /// Остальные ключи незнакомого типа объектом JSON — уходят как пришли.
+        public var extra: String?
 
-        public init(type: String, from: Int, length: Int, url: String? = nil, entityId: String? = nil) {
+        public init(type: String, from: Int, length: Int, url: String? = nil, entityId: String? = nil, extra: String? = nil) {
             self.type = type
             self.from = from
             self.length = length
             self.url = url
             self.entityId = entityId
+            self.extra = extra
         }
 
         /// JSON-объект в форме сервера: `{type, from, length}` и `attributes.url` у ссылки,
@@ -173,6 +183,10 @@ public enum MessageMarkup {
             if type == "LINK", let url { map["attributes"] = ["url": url] }
             if type == "ANIMOJI", let url { map["attributes"] = ["animojiLottieUrl": url] }
             if let entityId { map["entityId"] = Int64(entityId).map { $0 as Any } ?? entityId }
+            if let extra, let data = extra.data(using: .utf8),
+               let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                for (key, value) in object where map[key] == nil { map[key] = value }
+            }
             return map
         }
     }
@@ -186,9 +200,19 @@ public enum MessageMarkup {
             case .link: Element(type: "LINK", from: span.from, length: span.length, url: span.url)
             case .mention: Element(type: "USER_MENTION", from: span.from, length: span.length, entityId: span.userId)
             case .animoji: Element(type: "ANIMOJI", from: span.from, length: span.length, url: span.url, entityId: span.entityId)
+            case .unknown: Element(type: span.type ?? "UNKNOWN", from: span.from, length: span.length, extra: span.extra)
             default: Element(type: type(of: span.kind), from: span.from, length: span.length)
             }
         }
+    }
+
+    /// Ключи элемента, кроме `type`, `from` и `length`, объектом JSON с упорядоченными ключами;
+    /// `nil` — других ключей нет.
+    public static func extraJSON(_ element: [String: Any]) -> String? {
+        let rest = element.filter { !["type", "from", "length"].contains($0.key) }
+        guard !rest.isEmpty, JSONSerialization.isValidJSONObject(rest),
+              let data = try? JSONSerialization.data(withJSONObject: rest, options: [.sortedKeys]) else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 
     /// [elements] строкой JSON (для моста ядра). Пустой список — `[]`.
@@ -247,7 +271,7 @@ public enum MessageMarkup {
     /// Кнопка панели: размеченное целиком `[start, end)` — снять (отрезок режется), иначе
     /// разметить весь `[start, end)`, сливаясь с соседями того же вида. Ссылку ставит [setLink].
     public static func toggle(_ spans: [TextSpan], kind: TextSpan.Kind, start: Int, end: Int) -> [TextSpan] {
-        guard start < end, kind != .link, kind != .mention, kind != .animoji else { return spans }
+        guard start < end, kind != .link, kind != .mention, kind != .animoji, kind != .unknown else { return spans }
         if covers(spans, kind: kind, start: start, end: end) {
             return normalize(subtract(spans, kind: kind, start: start, end: end))
         }

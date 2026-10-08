@@ -98,10 +98,18 @@ enum FixtureValue {
 
     /// Отрезок поля ввода `{type, from, length, url?}`.
     static func span(_ map: [String: Any], _ context: String) throws -> TextSpan {
-        guard let type = map["type"] as? String, let kind = MessageMarkup.kind(type: type) else {
-            throw SharedFixtureError("\(context): неизвестный type \(String(describing: map["type"]))")
+        guard let type = map["type"] as? String else {
+            throw SharedFixtureError("\(context): нет type")
         }
-        return TextSpan(kind: kind, from: try int(map["from"], context), length: try int(map["length"], context), url: map["url"] as? String)
+        let from = try int(map["from"], context)
+        let length = try int(map["length"], context)
+        guard let kind = MessageMarkup.kind(type: type) else {
+            // Незнакомый тип: остальные ключи — как в элементе (кроме проверочного text).
+            var rest = map
+            rest["text"] = nil
+            return TextSpan(kind: .unknown, from: from, length: length, type: type, extra: MessageMarkup.extraJSON(rest))
+        }
+        return TextSpan(kind: kind, from: from, length: length, url: map["url"] as? String)
     }
 
     static func spans(_ value: Any?, _ context: String) throws -> [TextSpan] {
@@ -112,6 +120,10 @@ enum FixtureValue {
     /// Элемент сервера `{type, from, length, attributes?}` в сравнимом виде.
     static func element(_ map: [String: Any], _ context: String) throws -> MessageMarkup.Element {
         guard let type = map["type"] as? String else { throw SharedFixtureError("\(context): нет type") }
+        if MessageMarkup.kind(type: type) == nil {
+            return MessageMarkup.Element(type: type, from: try int(map["from"], context), length: try int(map["length"], context),
+                                         extra: MessageMarkup.extraJSON(map))
+        }
         let attributes = map["attributes"] as? [String: Any]
         return MessageMarkup.Element(type: type, from: try int(map["from"], context), length: try int(map["length"], context),
                                      url: attributes?["url"] as? String, entityId: string(map["entityId"]))

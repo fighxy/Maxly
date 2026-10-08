@@ -81,6 +81,20 @@ public enum DraftSync {
         case save(Address, text: String, elements: [MessageMarkup.Element], replyTo: String?)
         /// `DRAFT_DISCARD` 177 `{chatId | userId, time}`: `time` — `updateTime` черновика сервера.
         case discard(Address, time: Int64)
+
+        /// Тело запроса в форме сервера. У `DRAFT_SAVE` пустой текст (черновик из одного
+        /// ответа) не отправляется вовсе — ключа `text` нет, как у веб-клиента.
+        public var payload: [String: Any] {
+            switch self {
+            case let .save(address, text, elements, replyTo):
+                var draft: [String: Any] = ["elements": elements.map(\.json)]
+                if !text.isEmpty { draft["text"] = text }
+                if let replyTo, !replyTo.isEmpty { draft["replyTo"] = replyTo }
+                return [address.key: address.id, "draft": draft]
+            case let .discard(address, time):
+                return [address.key: address.id, "time": time]
+            }
+        }
     }
 
     /// Что отправить: непустой черновик, не совпадающий с сохранённым на сервере, — сохранить;

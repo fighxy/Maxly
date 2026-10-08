@@ -145,6 +145,9 @@ public struct TextSpan: Hashable, Sendable, Codable {
         case mention
         /// Анимодзи (`ANIMOJI`): `entityId` — id анимодзи, `url` — его Lottie.
         case animoji
+        /// Незнакомый тип (разметка другого клиента): тип в `type`, остальные ключи в `extra`.
+        /// Не рисуется, но при правке уходит обратно как был.
+        case unknown
     }
 
     public var kind: Kind
@@ -156,14 +159,21 @@ public struct TextSpan: Hashable, Sendable, Codable {
     public var userId: String?
     /// id анимодзи (`ANIMOJI`).
     public var entityId: String?
+    /// Тип сервера незнакомого отрезка (`unknown`), как пришёл.
+    public var type: String?
+    /// Остальные ключи незнакомого элемента (`attributes`, `entityId`…) объектом JSON.
+    public var extra: String?
 
-    public init(kind: Kind, from: Int, length: Int, url: String? = nil, userId: String? = nil, entityId: String? = nil) {
+    public init(kind: Kind, from: Int, length: Int, url: String? = nil, userId: String? = nil, entityId: String? = nil,
+                type: String? = nil, extra: String? = nil) {
         self.kind = kind
         self.from = from
         self.length = length
         self.url = url
         self.userId = userId
         self.entityId = entityId
+        self.type = type
+        self.extra = extra
     }
 }
 
