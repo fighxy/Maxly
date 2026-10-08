@@ -115,6 +115,7 @@ https://github.com/fighxy/Orbitle/releases/download/desktop-latest/Orbitle.deb. 
 
 - [docs/architecture.md](docs/architecture.md) — слои клиентов и роль ядра.
 - [docs/pins.md](docs/pins.md) — несколько закрепов в одном чате.
+- [docs/scheduled.md](docs/scheduled.md) — отложенные сообщения и счётчики опросов.
 - [docs/komet-reference.md](docs/komet-reference.md) — карта функций клиента Komet (сверка поведения).
 - [docs/komet-gap-map.md](docs/komet-gap-map.md) — чего нет в Orbitle по сравнению с Komet, по платформам, и план работ.
 - [docs/account-limits.md](docs/account-limits.md) — ограничения аккаунта после входа и регистрации на всех платформах.
