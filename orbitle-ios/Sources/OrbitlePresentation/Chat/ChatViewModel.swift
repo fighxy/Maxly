@@ -98,6 +98,7 @@ public final class ChatViewModel {
     /// Текст в поле ввода. Сохраняется черновиком с короткой задержкой и при уходе с экрана.
     public var draft = "" {
         didSet {
+            format.textChanged(from: oldValue, to: draft)
             if draft.isEmpty {
                 mentionDraft.clear()
             } else {
@@ -669,17 +670,19 @@ public final class ChatViewModel {
     }
 
     public func send() async {
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let marked = MessageMarkup.trimmed(draft, spans: format.spans)
+        let text = marked.text
         guard !text.isEmpty else { return }
         if let target = editTarget {
-            await saveEdit(target, text: text)
+            await saveEdit(target)
             return
         }
         let reply = replyTarget
         let animoji = animojiDraft
         let mentions = mentionDraft
-        let spans = animoji.spans(in: text) + mentions.spans(in: text)
+        let spans = marked.spans + animoji.spans(in: text) + mentions.spans(in: text)
         draft = ""
+        format = ComposerFormat()
         // Ответил — значит, прочитал: разделитель непрочитанных больше не нужен.
         pendingUnread = 0
         unreadAnchorId = nil
@@ -693,11 +696,59 @@ public final class ChatViewModel {
             error = nil
         } catch {
             draft = text
+            format = ComposerFormat(spans: marked.spans)
             animojiDraft = animoji
             mentionDraft = mentions
             replyTarget = reply
             show(error)
         }
+    }
+
+    // MARK: Разметка поля
+
+    /// Разметка поля ввода (панель «Жирный», «Курсив», …), смещения UTF-16 по `draft`.
+    public internal(set) var format = ComposerFormat()
+    /// Выделение в поле (UTF-16 по `draft`); `nil` — ничего не выделено, панели нет.
+    /// Задаёт экран: выделение в SwiftUI-поле видно с iOS 18.
+    public var formatSelection: Range<Int>?
+    /// Разметка, отложенная на время правки.
+    @ObservationIgnored private var formatBeforeEdit = ComposerFormat()
+
+    /// Выделение, к которому применяется панель: внутри текста и не пустое.
+    private var selectedRange: Range<Int>? {
+        guard let range = formatSelection, !range.isEmpty, range.upperBound <= draft.utf16.count else { return nil }
+        return range
+    }
+
+    public func isFormatActive(_ kind: TextSpan.Kind) -> Bool {
+        guard let range = selectedRange else { return false }
+        return kind == .link ? format.link(in: range) != nil : format.isActive(kind, in: range)
+    }
+
+    public func toggleFormat(_ kind: TextSpan.Kind) {
+        guard let range = selectedRange else { return }
+        format.toggle(kind, in: range)
+    }
+
+    /// Адрес ссылки на выделении — для поля «Ссылка».
+    public var selectedLink: String? {
+        selectedRange.flatMap { format.link(in: $0) }
+    }
+
+    /// `false` — адрес не похож на ссылку.
+    @discardableResult
+    public func setLink(_ raw: String) -> Bool {
+        guard let range = selectedRange else { return false }
+        return format.setLink(raw, in: range)
+    }
+
+    public var canClearFormat: Bool {
+        selectedRange.map { format.hasFormatting(in: $0) } ?? false
+    }
+
+    public func clearFormat() {
+        guard let range = selectedRange else { return }
+        format.clear(in: range)
     }
 
     /// Анимодзи, вставленные в поле из панели: уходят с текстом отметками `ANIMOJI`.
@@ -738,37 +789,54 @@ public final class ChatViewModel {
     public func beginEdit(_ message: Message) {
         guard canEdit(message) else { return }
         replyTarget = nil
-        if editTarget == nil { draftBeforeEdit = draft }
+        if editTarget == nil {
+            draftBeforeEdit = draft
+            formatBeforeEdit = format
+        }
         editTarget = message
         draft = message.text
+        // Правка начинается со всей разметки сообщения: `MSG_EDIT` заменяет её целиком.
+        format = ComposerFormat(spans: message.content.formatting ?? [])
     }
 
     public func cancelEdit() {
         guard editTarget != nil else { return }
         editTarget = nil
         draft = draftBeforeEdit
+        format = formatBeforeEdit
         draftBeforeEdit = ""
+        formatBeforeEdit = ComposerFormat()
     }
 
-    private func saveEdit(_ target: Message, text: String) async {
-        if text == target.text.trimmingCharacters(in: .whitespacesAndNewlines) {
+    /// Текст и весь список разметки: на сервер уходит полный список, пустой снимает разметку.
+    /// Ничего не изменилось — правка просто закрывается.
+    private func saveEdit(_ target: Message) async {
+        let spans = format.spans + animojiDraft.spans(in: draft) + mentionDraft.spans(in: draft)
+        let original = target.content.formatting ?? []
+        guard MessageMarkup.editRequest(originalText: target.text, originalSpans: original, draft: draft, spans: spans) != nil else {
             cancelEdit()
             return
         }
+        let edited = MessageMarkup.trimmed(draft, spans: spans)
         editTarget = nil
         let restore = draftBeforeEdit
+        let restoreFormat = formatBeforeEdit
         draftBeforeEdit = ""
+        formatBeforeEdit = ComposerFormat()
         isRestoringDraft = true
         draft = restore
+        format = restoreFormat
         isRestoringDraft = false
         do {
-            try await repository.edit(messageId: target.id, chatId: chatId, text: text)
+            try await repository.edit(messageId: target.id, chatId: chatId, text: edited.text, formatting: edited.spans)
             error = nil
         } catch {
             // Правка не ушла: вернуть её в поле ввода.
             draftBeforeEdit = draft
+            formatBeforeEdit = format
             editTarget = target
-            draft = text
+            draft = edited.text
+            format = ComposerFormat(spans: edited.spans)
             show(error)
         }
     }

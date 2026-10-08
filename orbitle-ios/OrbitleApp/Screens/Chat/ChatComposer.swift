@@ -109,6 +109,11 @@ struct ChatComposer: View {
                 .foregroundStyle(Color.orbitleAccent)
                 .orbitleGlassCapsule()
             }
+            if canWrite, viewModel.formatSelection != nil, !recording.isActive {
+                ComposerFormatBar(viewModel: viewModel)
+                    .frame(maxWidth: .infinity)
+                    .transition(.orbitleBar(edge: .bottom, reduceMotion: reduceMotion))
+            }
             if canWrite {
                 input
             } else if showsReadOnlyBar {
@@ -122,6 +127,7 @@ struct ChatComposer: View {
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.replyTarget?.id)
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: recording.hint)
         .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.errorMessage)
+        .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.formatSelection != nil)
     }
 
     /// Поле ввода и кнопка отправки (при правке — галочка).
@@ -157,8 +163,7 @@ struct ChatComposer: View {
                     }
                     if !recording.isActive {
                         HStack(alignment: .bottom, spacing: 0) {
-                            TextField("Сообщение", text: $viewModel.draft, axis: .vertical)
-                                .focused(focus)
+                            ComposerTextField(viewModel: viewModel, focus: focus)
                                 .lineLimit(1...5)
                                 .textFieldStyle(.plain)
                                 .padding(.leading, 16)
