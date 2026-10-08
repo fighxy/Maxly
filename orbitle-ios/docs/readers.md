@@ -46,29 +46,49 @@
 
 Тесты: `ReadersFixtureTests` (OrbitleDomainTests) проигрывают все файлы `test-fixtures/readers`.
 
-## Экран сведений (план)
+## Экран сведений
 
-Пока не сделан. Состав, о котором договорились:
+Пункт «Сведения» (`info.circle`) в контекстном меню любого отправленного сообщения — своего и
+чужого, в любом чате; у `sending`, `failed`, запланированных и сообщений без серверного id его нет
+(`MessageInfoViewModel.isAvailable(for:)`). Открывает лист `MessageInfoView` (как список
+реакций: `NavigationStack`, `List`, «Закрыть», `.medium`/`.large`):
 
-- время отправки;
-- «изменено» и время правки — `MessageInfo.editedTime(updateTime:)`: `updateTime` сообщения
-  (мс), `null` или `0` — правки не было (поле ядро добавляет в `feat/readers`);
-- «переслано из» — источник пересылки;
-- в группе — раздел «Кем прочитано» (`build`), пустой — «Пока никто не прочитал»;
-- в личном чате — строка «Прочитано» / «Доставлено» (`privateStatus`).
+- «Отправлено» — время сообщения («сегодня в 15:00», «вчера в…», «3 октября в…», в другом
+  году — с годом);
+- «Изменено» и время правки, если `updateTime > 0`; если сервер пометил правку без времени —
+  просто «Изменено»;
+- «Переслано из» — автор исходного сообщения пересылки;
+- в личном чате, только у своего сообщения, — «Прочитано» / «Доставлено» (`privateStatus`
+  по признаку прочтения сообщения); у входящих и в «Избранном» строки нет;
+- в группе, где `isReadersAvailable`, — раздел «Кем прочитано»: загрузка, список (аватар, имя,
+  «Прочитано · время» или эмодзи реакции), пустой — «Пока никто не прочитал», ошибка —
+  «Не удалось загрузить список» с «Повторить». Нажатие на человека закрывает лист и открывает
+  личный чат с ним.
 
-## Подключение (план)
+`MessageInfoViewModel` (OrbitlePresentation) — строки и состояние списка, тесты —
+`MessageInfoViewModelTests`.
 
-Ядро ещё не отдаёт всё нужное, поэтому правила пока ни к чему не подключены. Сейчас мост
-(`IosBridge`) даёт только `IosChat.peerReadMs` — самую позднюю отметку остальных участников
-(`peerReadMark` по `participants`), этого хватает для галочек и `privateStatus`, но не для
-списка. Для «Кем прочитано» от ядра нужны:
+## Подключение
 
-1. отметки по участникам: `participants` карточки, слитые с `MaxState.readMarks` (пуши 130), —
-   карта `id → мс` для чата;
-2. признак `videoConversation` и `participantsCount` чата;
-3. `max-readmarks` из серверного конфига (`AccountConfig.server`);
-4. реакции 181 — уже есть: `IosBridge.loadReactionUsers` (`MessageRepositoryImpl.reactionUsers`).
+Список собирает ядро (`max-kmp-core`, `core.lock`) по тем же правилам и сценариям:
 
-Когда ядро отдаст готовый список, `MessageReaders` останется эталоном: те же сценарии
-проигрываются и против ответа ядра.
+- `MaxIosClient.isReadersAvailable(chatId:)` — показывать ли раздел (по сохранённой карточке
+  чата и `max-readmarks`);
+- `MaxIosClient.loadMessageReaders(chatId:messageId:)` — освежает `CHAT_INFO`, при нехватке
+  участников добирает 59, запрашивает 181 и отдаёт `IosMessageReader(userId, name, reaction,
+  readMark)`; `readMark == 0` — отметки нет, пустая реакция — реакции нет.
+
+Цепочка: `MaxIosCore` → `MaxCore.loadMessageReaders` / `isReadersAvailable` →
+`MaxAPI.messageReaders` / `readersAvailable` → `MessageRepository.messageReaders(messageId:)` /
+`readersAvailable(chatId:)`. Репозиторий находит серверный id и чат по сохранённому сообщению,
+а пустые имена и аватары дополняет из локальной базы (профили и сообщения автора) — аватаров
+мост не отдаёт.
+
+Время правки: `IosMessage.updateTime` и `IosEvent.updateTime` (мс, `0` — правки не было) →
+`CoreMessage` / `CoreEvent.updateTimeMs` → `MessageRecord.updateTimeMs` → `SDMessage.updateTimeMs`
+→ `Message.editedAt`. Запись без времени (`0`) сохранённое время не стирает.
+
+Ядро и клиентские правила расходятся в мелочах: «Избранное» (`chatId == "0"`) и состояние
+сообщения (`sending`, `failed`, запланированное) проверяет только клиент; при повторе ключа в
+`participants` ядро берёт последнее значение, `MessageReaders` — бо́льшее. `MessageReaders`
+остаётся эталоном сценариев `test-fixtures/readers`.
