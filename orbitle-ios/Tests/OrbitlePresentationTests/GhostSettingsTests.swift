@@ -40,6 +40,8 @@ final class FakeGhostControls: GhostControls, @unchecked Sendable {
         }
     }
 
+    func localReadMark(chatId: String) -> Int64 { 0 }
+
     /// Изменение, пришедшее из ядра (например, с другого экрана).
     func publish(_ change: (inout GhostState) -> Void) {
         let (value, list) = lock.withLock { () -> (GhostState, [AsyncStream<GhostState>.Continuation]) in

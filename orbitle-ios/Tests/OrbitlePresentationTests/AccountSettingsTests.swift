@@ -113,7 +113,8 @@ struct AccountSettingsTests {
         #expect(model.settings.safeMode)
         repo.failWith = .networkUnavailable
         await model.setPhonePrivacy(.nobody)
-        #expect(model.settings.phonePrivacy == .everybody)
+        // Откат к прежнему значению: по умолчанию номер видят контакты, как в веб-клиенте MAX.
+        #expect(model.settings.phonePrivacy == .contacts)
         #expect(model.errorMessage != nil)
         #expect(model.settings.safeMode)
     }

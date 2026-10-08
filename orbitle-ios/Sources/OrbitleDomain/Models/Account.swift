@@ -118,6 +118,14 @@ public struct AccountSettings: Sendable, Hashable {
     /// «Показывать контент» (`CONTENT_LEVEL_ACCESS`): `true` — только безопасный.
     public var safeContentOnly: Bool
     public var familyProtection: FamilyProtection
+    /// Значение `FAMILY_PROTECTION` сервера как есть, когда ядро его не узнало (`unknown`);
+    /// пусто — сервер ключ не прислал.
+    public var familyProtectionRaw: String
+    /// Ядро не даёт менять поиск по номеру, звонки, приглашения и контент: включён безопасный
+    /// режим или профилем управляет семейная защита.
+    public var privacyLocked: Bool
+    /// `SHOW_READ_MARK` сервера, только для чтения. `nil` — сервер ключ не прислал.
+    public var showReadMark: Bool?
     public var inactiveTTL: InactiveTTL
     /// Ссылка-приглашение сервера. `nil`, если её нет.
     public var inviteLink: URL?
@@ -131,10 +139,11 @@ public struct AccountSettings: Sendable, Hashable {
     public static let defaultQuickReaction = "👍"
 
     public init(
-        isKnown: Bool = false, phonePrivacy: PrivacyAccess = .everybody, onlineHidden: Bool = false,
+        isKnown: Bool = false, phonePrivacy: PrivacyAccess = .contacts, onlineHidden: Bool = false,
         safeMode: Bool = false, searchByPhone: PrivacyAccess = .everybody, incomingCall: PrivacyAccess = .everybody,
         chatsInvite: PrivacyAccess = .everybody, safeContentOnly: Bool = false,
-        familyProtection: FamilyProtection = .off, inactiveTTL: InactiveTTL = .sixMonths,
+        familyProtection: FamilyProtection = .off, familyProtectionRaw: String = "", privacyLocked: Bool = false,
+        showReadMark: Bool? = nil, inactiveTTL: InactiveTTL = .sixMonths,
         inviteLink: URL? = nil, sferumBotId: Int64 = 2_340_831, digitalIdBotId: Int64 = 8_250_447,
         quickReaction: String = AccountSettings.defaultQuickReaction, quickReactionEnabled: Bool = true
     ) {
@@ -147,6 +156,9 @@ public struct AccountSettings: Sendable, Hashable {
         self.chatsInvite = chatsInvite
         self.safeContentOnly = safeContentOnly
         self.familyProtection = familyProtection
+        self.familyProtectionRaw = familyProtectionRaw
+        self.privacyLocked = privacyLocked
+        self.showReadMark = showReadMark
         self.inactiveTTL = inactiveTTL
         self.inviteLink = inviteLink
         self.sferumBotId = sferumBotId

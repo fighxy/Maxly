@@ -1,29 +1,31 @@
 import Foundation
 
-/// Семейная защита (`FAMILY_PROTECTION` в `config.user`): строка `OFF`, `ADMIN` или `MANAGEABLE`.
+/// Семейная защита (`FAMILY_PROTECTION` в `config.user`) так, как её читает ядро: `OFF`, `ADMIN`,
+/// `MANAGEABLE` или `UNKNOWN` (сервер прислал что-то другое, само значение —
+/// `AccountSettings.familyProtectionRaw`).
 public enum FamilyProtection: String, Sendable, Hashable, CaseIterable {
     case off = "OFF"
     /// Вы администратор: управляете чужим профилем.
     case admin = "ADMIN"
     /// Профилем управляет администратор: часть настроек приватности заблокирована.
     case manageable = "MANAGEABLE"
-
-    /// Значение сервера в любом регистре; незнакомое (в том числе старое `ON`) — «Отключена».
-    public init(wire: String) {
-        self = FamilyProtection(rawValue: wire.trimmingCharacters(in: .whitespaces).uppercased()) ?? .off
-    }
+    /// Незнакомое значение сервера. Ничего не блокирует само по себе: блокировку решает ядро
+    /// (`AccountSettings.privacyLocked`).
+    case unknown = "UNKNOWN"
 
     public var title: String {
         switch self {
         case .off: "Отключена"
         case .admin: "Вы администратор"
         case .manageable: "Профиль под защитой"
+        case .unknown: "Неизвестно"
         }
     }
 }
 
 /// Ключ настройки приватности в `config.user`. Изменение — `CONFIG` 22
-/// `{settings:{user:{<ключ>: <значение>}}}`. `FAMILY_PROTECTION` только читается и здесь не нужен.
+/// `{settings:{user:{<ключ>: <значение>}}}` через `setPrivacy` ядра. `FAMILY_PROTECTION` и
+/// `SHOW_READ_MARK` только читаются и здесь не нужны.
 public enum PrivacyKey: String, Sendable, Hashable, CaseIterable {
     case searchByPhone = "SEARCH_BY_PHONE"
     case incomingCall = "INCOMING_CALL"

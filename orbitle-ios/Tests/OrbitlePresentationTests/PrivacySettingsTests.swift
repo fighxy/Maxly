@@ -7,6 +7,8 @@ import OrbitleDomain
 final class FakePrivacyControls: PrivacyControls, @unchecked Sendable {
     var settingsValue: AccountSettings
     var failWith: OrbitleError?
+    /// Ключи, которые ядро сейчас не даёт менять (`isPrivacyReadOnly`).
+    var readOnly: Set<PrivacyKey> = []
     private(set) var sent: [(PrivacyKey, PrivacyValue)] = []
 
     init(_ settings: AccountSettings = AccountSettings(isKnown: true)) {
@@ -23,6 +25,10 @@ final class FakePrivacyControls: PrivacyControls, @unchecked Sendable {
         if let failWith { throw failWith }
         settingsValue.set(key, value)
         return settingsValue
+    }
+
+    func isPrivacyReadOnly(_ key: PrivacyKey) -> Bool {
+        readOnly.contains(key)
     }
 }
 
@@ -75,14 +81,30 @@ struct PrivacyOptionTests {
         #expect(!PrivacyRow.phoneNumber.needsConfirmation(PrivacyRow.phoneNumber.options[2]))
     }
 
-    @Test("Семейная защита читается строкой")
+    @Test("Семейная защита — имена перечисления ядра")
     func family() {
-        #expect(FamilyProtection(wire: "ADMIN") == .admin)
-        #expect(FamilyProtection(wire: "manageable") == .manageable)
-        #expect(FamilyProtection(wire: "OFF") == .off)
-        #expect(FamilyProtection(wire: "ON") == .off)
-        #expect(FamilyProtection(wire: "") == .off)
-        #expect(FamilyProtection.allCases.map(\.title) == ["Отключена", "Вы администратор", "Профиль под защитой"])
+        #expect(FamilyProtection.allCases.map(\.rawValue) == ["OFF", "ADMIN", "MANAGEABLE", "UNKNOWN"])
+        #expect(FamilyProtection(rawValue: "MANAGEABLE") == .manageable)
+        #expect(FamilyProtection.allCases.map(\.title) == ["Отключена", "Вы администратор", "Профиль под защитой", "Неизвестно"])
+    }
+
+    @Test("Доступ уходит строкой ядра: «Никто» — NOBODY")
+    func accessWire() {
+        #expect(PrivacyAccess.allCases.map(\.rawValue) == ["ALL", "CONTACTS", "NOBODY"])
+        #expect(PrivacyValue.access(.nobody).wire == "NOBODY")
+        #expect(PrivacyValue.flag(true).wire == "true")
+    }
+
+    @Test("По умолчанию — значения веб-клиента MAX, как в ядре")
+    func defaults() {
+        let settings = AccountSettings.unknown
+        #expect(settings.phonePrivacy == .contacts)
+        #expect(settings.searchByPhone == .everybody)
+        #expect(settings.incomingCall == .everybody)
+        #expect(settings.chatsInvite == .everybody)
+        #expect(settings.familyProtection == .off)
+        #expect(!settings.privacyLocked)
+        #expect(settings.showReadMark == nil)
     }
 
     @Test("Значение ключа читается и пишется в настройки")
@@ -135,6 +157,44 @@ struct PrivacySettingsModelTests {
             #expect(PrivacyRow.allCases.allSatisfy { model.canChange($0) })
             #expect(model.mainLockReason == nil)
         }
+    }
+
+    @Test("Незнакомая семейная защита сама не блокирует, блокирует ядро")
+    func unknownFamily() async {
+        let open = await activated(FakePrivacyControls(AccountSettings(isKnown: true, familyProtection: .unknown, familyProtectionRaw: "PARTIAL")))
+        #expect(PrivacyRow.allCases.allSatisfy { open.canChange($0) })
+        let locked = await activated(FakePrivacyControls(AccountSettings(isKnown: true, familyProtection: .unknown, privacyLocked: true)))
+        for row in PrivacyRow.main {
+            #expect(locked.lockReason(row) == PrivacySettingsModel.readOnlyLock)
+        }
+        #expect(locked.canChange(.onlineStatus))
+    }
+
+    @Test("Ключ, который ядро не даёт менять, заблокирован")
+    func coreReadOnly() async {
+        let controls = FakePrivacyControls()
+        controls.readOnly = [.phoneNumberPrivacy]
+        let model = await activated(controls)
+        #expect(model.lockReason(.phoneNumber) == PrivacySettingsModel.readOnlyLock)
+        #expect(model.canChange(.incomingCall))
+        await model.choose(PrivacyRow.phoneNumber.options[2], for: .phoneNumber)
+        #expect(controls.sent.isEmpty)
+    }
+
+    @Test("Под семейной защитой безопасный режим не переключается")
+    func safeModeLockedByFamily() async {
+        let controls = FakePrivacyControls(AccountSettings(isKnown: true, familyProtection: .manageable))
+        let model = await activated(controls)
+        #expect(model.isSafeModeLocked)
+        await model.setSafeMode(true)
+        #expect(controls.sent.isEmpty)
+        #expect(!model.settings.safeMode)
+        let other = FakePrivacyControls()
+        other.readOnly = [.safeMode]
+        let byCore = await activated(other)
+        #expect(byCore.isSafeModeLocked)
+        let plain = await activated(FakePrivacyControls())
+        #expect(!plain.isSafeModeLocked)
     }
 
     @Test("Пока конфиг неизвестен, менять нельзя, но и блокировки нет")

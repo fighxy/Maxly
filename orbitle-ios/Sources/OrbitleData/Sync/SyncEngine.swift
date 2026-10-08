@@ -268,6 +268,9 @@ public actor SyncEngine {
         case .transcription:
             guard !event.messageId.isEmpty, event.unread == 1 else { return }
             await messages.applyTranscription(chatId: event.chatId, messageId: event.messageId, text: event.text)
+        case .ghostMode, .hideReadReceipts:
+            // Флаги устройства: их слушают настройки (`CoreGhostPrivacyControls`), базе они не нужны.
+            return
         case .typing:
             let mine = await messages.currentUser()
             guard !event.authorId.isEmpty, event.authorId != mine else { return }

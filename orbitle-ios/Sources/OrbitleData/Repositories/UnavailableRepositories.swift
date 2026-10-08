@@ -70,3 +70,19 @@ public struct UnavailableFolderRepository: FolderRepository {
     public func delete(folderId: String) async throws(OrbitleError) { throw .invalidRequest }
     public func reorder(_ folderIds: [String]) async throws(OrbitleError) { throw .invalidRequest }
 }
+
+/// Режим призрака и приватность до сборки зависимостей: всё выключено, изменения отклоняются.
+public struct UnavailablePrivacyControls: GhostControls, PrivacyControls {
+    public init() {}
+
+    public func ghostMode() -> Bool { false }
+    public func setGhostMode(_ enabled: Bool) async {}
+    public func hideReadReceipts() -> Bool { false }
+    public func setHideReadReceipts(_ hidden: Bool) async {}
+    public func ghostChanges() -> AsyncStream<GhostState> { AsyncStream { $0.yield(GhostState()); $0.finish() } }
+    public func checkOwnPresence() async throws(OrbitleError) -> Contact.Presence { throw .invalidRequest }
+    public func localReadMark(chatId: String) -> Int64 { 0 }
+    public func privacySettings() -> AsyncStream<AccountSettings> { AsyncStream { $0.finish() } }
+    public func setPrivacy(_ key: PrivacyKey, _ value: PrivacyValue) async throws(OrbitleError) -> AccountSettings { throw .invalidRequest }
+    public func isPrivacyReadOnly(_ key: PrivacyKey) -> Bool { false }
+}

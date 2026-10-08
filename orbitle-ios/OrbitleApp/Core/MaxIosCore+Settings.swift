@@ -3,7 +3,8 @@ import OrbitleData
 import OrbitleDomain
 import MaxIos
 
-/// Настройки аккаунта через `MaxIosClient` (docs/settings.md).
+/// Настройки аккаунта, режим призрака и приватность через `MaxIosClient` (docs/settings.md,
+/// docs/privacy.md).
 /// Числа в колбэках Kotlin приходят упакованными (`KotlinLong`, `KotlinInt`).
 extension MaxIosCore {
     func loadMyProfile() async throws -> MyProfile {
@@ -70,6 +71,59 @@ extension MaxIosCore {
         try await call("setSafeMode") { done in
             self.client.setSafeMode(enabled: enabled) { done(Self.settingsResult($0, $1, $2)) }
         }
+    }
+
+    // MARK: Режим призрака и приватность (docs/privacy.md)
+
+    func setGhostMode(_ enabled: Bool) async {
+        client.setGhostMode(enabled: enabled)
+    }
+
+    func ghostMode() -> Bool {
+        client.ghostMode()
+    }
+
+    func setHideReadReceipts(_ enabled: Bool) async {
+        client.setHideReadReceipts(enabled: enabled)
+    }
+
+    func hideReadReceipts() -> Bool {
+        client.hideReadReceipts()
+    }
+
+    func localReadMarkOf(chatId: String) -> Int64 {
+        client.localReadMarkOf(chatId: chatId)
+    }
+
+    /// Свежий `CONTACT_PRESENCE` 35 со своим id. `nil` и без ошибки — сервер о себе промолчал.
+    func checkOwnPresence() async throws -> CorePresence? {
+        try await call("checkOwnPresence") { done in
+            self.client.checkOwnPresence { presence, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                } else {
+                    done(.success(presence.map {
+                        CorePresence(userId: $0.userId, status: Int($0.status), seenMs: $0.seenMs)
+                    }))
+                }
+            }
+        }
+    }
+
+    func setPrivacy(key: String, value: String) async throws -> AccountSettings {
+        try await call("setPrivacy") { done in
+            self.client.setPrivacy(key: key, value: value) { done(Self.settingsResult($0, $1, $2)) }
+        }
+    }
+
+    func setPrivacyFlag(key: String, enabled: Bool) async throws -> AccountSettings {
+        try await call("setPrivacyFlag") { done in
+            self.client.setPrivacyFlag(key: key, enabled: enabled) { done(Self.settingsResult($0, $1, $2)) }
+        }
+    }
+
+    func isPrivacyReadOnly(key: String) -> Bool {
+        client.isPrivacyReadOnly(key: key)
     }
 
     func setInactiveTTL(_ ttl: InactiveTTL) async throws -> AccountSettings {
@@ -352,16 +406,20 @@ extension MaxIosCore {
     private static func settings(_ value: IosAccountSettings) -> AccountSettings {
         AccountSettings(
             isKnown: value.known,
-            phonePrivacy: PrivacyAccess(rawValue: value.phonePrivacy) ?? .everybody,
+            // Ядро уже подставило значения веб-клиента MAX для ключей, которых сервер не прислал,
+            // и привело `_NONE_` к `NOBODY`; запасные значения здесь — те же.
+            phonePrivacy: PrivacyAccess(rawValue: value.phonePrivacy) ?? .contacts,
             onlineHidden: value.onlineHidden,
             safeMode: value.safeMode,
             searchByPhone: PrivacyAccess(rawValue: value.searchByPhone) ?? .everybody,
             incomingCall: PrivacyAccess(rawValue: value.incomingCalls) ?? .everybody,
             chatsInvite: PrivacyAccess(rawValue: value.chatInvites) ?? .everybody,
             safeContentOnly: value.safeContentOnly,
-            // Ядро 84a9ffc читает ключ как флаг и отдаёт `ON` / `OFF`; строки сервера
-            // (`ADMIN`, `MANAGEABLE`) придут с ядром режима призрака (docs/privacy.md).
-            familyProtection: FamilyProtection(wire: value.familyProtection),
+            // Имя `FamilyProtection` ядра: `OFF`, `ADMIN`, `MANAGEABLE` или `UNKNOWN`.
+            familyProtection: FamilyProtection(rawValue: value.familyProtection) ?? .unknown,
+            familyProtectionRaw: value.familyProtectionRaw,
+            privacyLocked: value.privacyLocked,
+            showReadMark: value.showReadMarkKnown ? value.showReadMark : nil,
             inactiveTTL: InactiveTTL(rawValue: value.inactiveTtl) ?? .sixMonths,
             inviteLink: value.inviteLink.isEmpty ? nil : URL(string: value.inviteLink),
             sferumBotId: value.sferumBotId,
@@ -406,3 +464,6 @@ extension MaxIosCore {
         )
     }
 }
+
+/// Мост для `CoreGhostPrivacyControls`: методы выше, `accountSettings()` и `events()`.
+extension MaxIosCore: GhostPrivacyCore {}

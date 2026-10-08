@@ -393,6 +393,11 @@ public struct CoreEvent: Sendable, Equatable {
         case draft
         /// Статус человека `authorId` изменился: код в `presence`, время визита (мс) в `timeMs`.
         case presence
+        /// Режим призрака включили или выключили (`setGhostMode`): `text` — `on` или `off`.
+        /// Приходит и без входа в аккаунт.
+        case ghostMode
+        /// «Не отправлять отметки о прочтении» (`setHideReadReceipts`): `text` — `on` или `off`.
+        case hideReadReceipts
     }
 
     public var kind: Kind

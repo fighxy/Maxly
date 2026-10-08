@@ -18,8 +18,6 @@ public final class GhostSettingsModel {
     public private(set) var showsOwnPresence: Bool
     /// Последний ответ сервера о себе. `nil` — ещё не спрашивали или строка выключена.
     public private(set) var ownPresence: Contact.Presence?
-    /// Режим только запоминается на устройстве: ядро пока его не применяет (заглушка).
-    public let isLocalOnly: Bool
 
     public private(set) var isScreenVisible = false
     public private(set) var isAppForeground: Bool
@@ -41,7 +39,6 @@ public final class GhostSettingsModel {
     public init(
         controls: any GhostControls,
         store: any SelfCheckStore,
-        isLocalOnly: Bool = false,
         isAppForeground: Bool = true,
         interval: Duration = GhostSettingsModel.defaultInterval,
         formatter: ContactsFormatter = ContactsFormatter(),
@@ -49,7 +46,6 @@ public final class GhostSettingsModel {
     ) {
         self.controls = controls
         self.store = store
-        self.isLocalOnly = isLocalOnly
         self.isAppForeground = isAppForeground
         self.interval = interval
         self.formatter = formatter
@@ -59,7 +55,7 @@ public final class GhostSettingsModel {
         showsOwnPresence = store.showsOwnPresence()
     }
 
-    /// Подписка на изменения флагов в ядре.
+    /// Подписка на изменения флагов в ядре (в том числе с другого экрана).
     public func activate() {
         guard watch == nil else { return }
         let stream = controls.ghostChanges()

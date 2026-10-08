@@ -107,27 +107,26 @@ public enum PrivacyRow: String, CaseIterable, Sendable, Identifiable {
 /// «Конфиденциальность» в «Безопасности»: безопасный режим и строки MAX (docs/privacy.md).
 ///
 /// Выбор применяется сразу и откатывается, если сервер отказал. Пока включён безопасный режим
-/// или профилем управляет семейная защита, четыре строки под переключателем заблокированы.
+/// или профилем управляет семейная защита, четыре строки под переключателем заблокированы;
+/// что ещё нельзя менять, решает ядро (`isPrivacyReadOnly`, `AccountSettings.privacyLocked`).
 @MainActor
 @Observable
 public final class PrivacySettingsModel {
     public static let safeModeLock = "Отключите безопасный режим, чтобы изменить эту настройку"
     public static let familyLock = "Этой настройкой управляет семейная защита"
+    public static let readOnlyLock = "Эту настройку сейчас нельзя изменить"
 
     public private(set) var settings: AccountSettings = .unknown
     /// Ошибка безопасного режима: алерт экрана «Безопасность».
     public var errorMessage: String?
     /// Ошибка выбора в списке вариантов: текст под списком, пока экран открыт.
     public var choiceError: String?
-    /// Настройки без сеттера в ядре пока только запоминаются на устройстве (заглушка).
-    public let isLocalOnly: Bool
 
     @ObservationIgnored private let controls: any PrivacyControls
     @ObservationIgnored private var watch: Task<Void, Never>?
 
-    public init(controls: any PrivacyControls, isLocalOnly: Bool = false) {
+    public init(controls: any PrivacyControls) {
         self.controls = controls
-        self.isLocalOnly = isLocalOnly
     }
 
     public func activate() {
@@ -148,12 +147,20 @@ public final class PrivacySettingsModel {
 
     public var familyProtection: FamilyProtection { settings.familyProtection }
 
-    /// Почему строку нельзя менять. `nil` — можно.
+    /// Почему строку нельзя менять. `nil` — можно. Свои причины (безопасный режим, семейная
+    /// защита) видны сразу после переключения; остальное — по ответу ядра.
     public func lockReason(_ row: PrivacyRow) -> String? {
-        guard PrivacyKey.guarded.contains(row.key) else { return nil }
-        if settings.safeMode { return Self.safeModeLock }
-        if settings.familyProtection == .manageable { return Self.familyLock }
-        return nil
+        if PrivacyKey.guarded.contains(row.key) {
+            if settings.safeMode { return Self.safeModeLock }
+            if settings.familyProtection == .manageable { return Self.familyLock }
+            if settings.privacyLocked { return Self.readOnlyLock }
+        }
+        return controls.isPrivacyReadOnly(row.key) ? Self.readOnlyLock : nil
+    }
+
+    /// Безопасный режим нельзя переключить: профилем управляет семейная защита.
+    public var isSafeModeLocked: Bool {
+        settings.familyProtection == .manageable || controls.isPrivacyReadOnly(.safeMode)
     }
 
     public func isLocked(_ row: PrivacyRow) -> Bool {
@@ -181,7 +188,7 @@ public final class PrivacySettingsModel {
     }
 
     public func setSafeMode(_ enabled: Bool) async {
-        guard settings.isKnown else { return }
+        guard settings.isKnown, !isSafeModeLocked else { return }
         if let failure = await change(.safeMode, to: .flag(enabled)) { errorMessage = failure }
     }
 

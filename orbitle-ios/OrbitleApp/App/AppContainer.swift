@@ -82,9 +82,9 @@ final class AppContainer {
     @ObservationIgnored private var folderRepository: any FolderRepository = UnavailableFolderRepository()
     @ObservationIgnored private var accountModel: AccountSettingsModel?
     @ObservationIgnored private var securityModel: SecuritySettingsModel?
-    /// Режим призрака и приватность MAX (docs/privacy.md). Пока в ядре нет своего API — заглушка
-    /// в `UserDefaults`; настоящий мост заменит её одним адаптером.
-    @ObservationIgnored private var privacyStub: StubPrivacyControls?
+    /// Режим призрака и приватность MAX (docs/privacy.md): адаптер над мостом ядра. Флаги и
+    /// настройки живут в ядре и на сервере, приложение их не хранит.
+    @ObservationIgnored private var privacyAdapter: CoreGhostPrivacyControls?
     @ObservationIgnored private var ghostScreenModel: GhostSettingsModel?
     @ObservationIgnored private var privacyScreenModel: PrivacySettingsModel?
     /// Приложение на экране (`scenePhase`): шапка настроек спрашивает свой статус только так.
@@ -134,6 +134,8 @@ final class AppContainer {
         logs = directory.map { FileLogStore(directory: $0, enabled: enabled) }
         if let logs { Log.sink = logs.sink }
         Log.info(.app, "Запуск: \(Self.appVersion), \(ProcessInfo.processInfo.operatingSystemVersionString)")
+        // Флаги режима призрака теперь в ядре: старые ключи `UserDefaults` убираются один раз.
+        GhostDefaultsMigration.run()
         if let crashReport {
             Log.error(.app, "Прошлый запуск завершился сбоем:\n\(crashReport)")
         }
@@ -249,12 +251,7 @@ final class AppContainer {
             self.chatAdmin = CoreChatAdminRepository(core: core)
             self.stickerRepository = CoreStickerRepository(core: core)
             self.accounts = CoreAccountRepository(core: core)
-            self.privacyStub = StubPrivacyControls(
-                accounts: self.accounts,
-                ownPresence: StubPrivacyControls.corePresence(core: core, userId: { [weak self] in
-                    await self?.currentUserId ?? ""
-                })
-            )
+            self.privacyAdapter = CoreGhostPrivacyControls(core: core)
             self.folderRepository = CoreFolderRepository(core: core)
             self.session = session
             self.chats = chats
@@ -569,20 +566,21 @@ final class AppContainer {
         return model
     }
 
-    private func privacyControls() -> StubPrivacyControls {
-        if let privacyStub { return privacyStub }
-        let stub = StubPrivacyControls(accounts: accounts, ownPresence: { .unknown })
-        privacyStub = stub
-        return stub
+    /// До сборки зависимостей экранов приватности нет; на всякий случай — пустая реализация.
+    private func ghostControls() -> any GhostControls {
+        privacyAdapter ?? UnavailablePrivacyControls()
+    }
+
+    private func privacyControls() -> any PrivacyControls {
+        privacyAdapter ?? UnavailablePrivacyControls()
     }
 
     /// «Дополнительно» в «Безопасности» и свой статус в шапке настроек. Одна модель на вход.
     func ghostSettingsModel() -> GhostSettingsModel {
         if let ghostScreenModel { return ghostScreenModel }
         let model = GhostSettingsModel(
-            controls: privacyControls(),
+            controls: ghostControls(),
             store: UserDefaultsSelfCheckStore(),
-            isLocalOnly: true,
             isAppForeground: isAppForeground
         )
         model.activate()
@@ -593,7 +591,7 @@ final class AppContainer {
     /// Безопасный режим и строки приватности MAX.
     func privacySettingsModel() -> PrivacySettingsModel {
         if let privacyScreenModel { return privacyScreenModel }
-        let model = PrivacySettingsModel(controls: privacyControls(), isLocalOnly: true)
+        let model = PrivacySettingsModel(controls: privacyControls())
         privacyScreenModel = model
         return model
     }
@@ -765,7 +763,6 @@ final class AppContainer {
         await profileCache.removeAll()
         await presence.removeAll()
         await presenceService?.reset()
-        privacyStub?.reset()
         await stickerRepository?.removeAll()
         recentStickers.clear()
         LottieStore.shared.removeAll()
