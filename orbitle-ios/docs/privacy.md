@@ -41,7 +41,7 @@
 | Переключатель | Что делает ядро | Что делает приложение |
 |---|---|---|
 | **Режим призрака** | `setGhostMode` / `ghostMode()`: `PING` 1 и `LOGIN` 19 с `interactive: false` (в том числе первый `LOGIN` после запуска и при возврате из фона), один `PING` сразу при переключении; не шлёт `MSG_TYPING` 65 никакого вида: текст, запись голосового и кружка, загрузка фото, видео и файлов, стикеры (`sendTyping` молча ничего не делает). Флаг хранится в ядре и переживает выход и перезапуск | `GhostControls.setGhostMode` → мост; сразу спрашивает свой статус |
-| **Не отправлять отметки о прочтении** | `setHideReadReceipts` / `hideReadReceipts()`: `markRead` / `markReadAt` идут через `MaxClient.markRead` и без сети читают чат на устройстве — ответ несёт локальный счётчик и отметку; счётчик чата в сторе ядра остаётся нулём и после переподключения, пока отметка сервера не догонит (`localReadMarkOf`). Просмотры историй тоже не уходят; `SET_AS_UNREAD` — как обычно | ничего сверх обычного: чат и так обнуляет непрочитанное локально (`markReadLocally`), ответ `markReadAt` применяется как раньше |
+| **Не отправлять отметки о прочтении** | `setHideReadReceipts` / `hideReadReceipts()`: `markRead` / `markReadAt` идут через `MaxClient.markRead` и без сети читают чат на устройстве — ответ несёт локальный счётчик и отметку; счётчик чата в сторе ядра остаётся нулём и после переподключения, пока отметка сервера не догонит (`localReadMarkOf`). Просмотры историй тоже не уходят; `SET_AS_UNREAD` — как обычно | ничего сверх обычного: экран чата шлёт отметку по увиденному (`markRead(chatId:messageId:at:)`), ответ `markReadAt` применяется как раньше. Местная отметка ядра (`localReadMark`) входит в свою позицию чата: по ней встаёт разделитель непрочитанных ([`read-marks.md`](read-marks.md)) |
 | **Показывать мой онлайн** | — | строка в шапке настроек (раздел 3); настройка устройства (`SelfCheckStore`) |
 
 Приложение **не дублирует** логику ядра: не трогает `setAppActive`, `TypingReporter` и
@@ -166,9 +166,12 @@ protocol PrivacyControls: Sendable {
 | `isPrivacyReadOnly(_:)` | `isPrivacyReadOnly(key:)` |
 | `privacySettings()` | `accountSettings()` (`watchAccountSettings`) |
 
-Отметки о прочтении приложение шлёт как раньше — `markRead(chatId:messageId:mark:)` →
-`markReadAt`, который в ядре идёт через `MaxClient.markRead`: при скрытых отметках сеть не
-трогается, а ответ — локальный. Счётчики чатов, которые приходят из ядра (список, события
+Отметки о прочтении экран чата шлёт по увиденному ([`read-marks.md`](read-marks.md)) —
+`markRead(chatId:messageId:mark:)` → `markReadAt`, который в ядре идёт через
+`MaxClient.markRead`: при скрытых отметках сеть не трогается, а ответ — локальный. Местную
+отметку (`localReadMark`) `AppContainer` подключает к `ChatRepositoryImpl.setLocalReadMarks`:
+своя позиция чата — самая свежая из ответа сервера, пуша и местной, и разделитель
+непрочитанных идёт за ней. Счётчики чатов, которые приходят из ядра (список, события
 `chat`), уже учитывают локальное прочтение. Прежние `setPhonePrivacy` / `setOnlineHidden` /
 `setSafeMode` (`AccountSettingsModel`) в ядре тоже идут через `setPrivacy`.
 
@@ -200,6 +203,9 @@ protocol PrivacyControls: Sendable {
   молчание сервера, ошибка), `setPrivacy` / `setPrivacyFlag` со строками ключей, значение не
   того вида и отказ ядра, `isPrivacyReadOnly` и `localReadMark`, поток настроек;
   `GhostDefaultsTests` — «Показывать мой онлайн» и разовая чистка ключей.
+- `ScreenReadMarkTests` (OrbitleData): своя позиция с местной отметкой ядра;
+  `ReadMarkFlowTests` (OrbitlePresentation): разделитель по своей позиции. Остальные тесты
+  отметки прочтения — в [`read-marks.md`](read-marks.md#5-тесты).
 
 ## 9. Проверка на устройстве
 
