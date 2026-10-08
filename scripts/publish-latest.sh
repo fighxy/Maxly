@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Заменяет единственный пререлиз платформы (ios-latest, android-latest, desktop-latest)
+# Обновляет единственный пререлиз платформы (ios-latest, android-latest, desktop-latest)
 # сборкой текущего коммита: ссылка на файл не меняется, внутри всегда последняя зелёная сборка.
+# Выпуск и его тег постоянные: скрипт только заменяет файлы и заметки. Встроенный токен Actions
+# не может создать тег на коммите, в истории которого правились воркфлоу (HTTP 403), поэтому тег
+# не пересоздаётся, а настоящий SHA сборки пишется в заголовок и заметки.
 # CI вызывает скрипт только после успешной сборки на push в main.
 #
 # Переменные: TAG, TITLE, NOTES; WATCH — пути через пробел, на которые запускается сборка
@@ -45,11 +48,17 @@ if [[ "$tip" != "$sha" ]]; then
   done <<< "$changed"
 fi
 
-# Старый выпуск удаляется вместе с тегом, новый ставит тег на этот коммит.
-gh release delete "$TAG" --repo "$repo" --yes --cleanup-tag 2>/dev/null || true
-if gh api "repos/$repo/git/ref/tags/$TAG" > /dev/null 2>&1; then
-  git push --delete origin "$TAG" 2>/dev/null || gh api -X DELETE "repos/$repo/git/refs/tags/$TAG" || true
+# Файлы заменяются на месте, выпуск не удаляется: если что-то упадёт, старая сборка останется.
+if gh release view "$TAG" --repo "$repo" > /dev/null 2>&1; then
+  gh release upload "$TAG" "$@" --repo "$repo" --clobber
+  gh release edit "$TAG" --repo "$repo" --prerelease --title "$TITLE" --notes "$NOTES"
+else
+  # Первый выпуск платформы. Если встроенному токену создать тег нельзя, выпуск создают один раз
+  # вручную (gh release create "$TAG" ... --prerelease), дальше CI только обновляет файлы.
+  if ! gh release create "$TAG" "$@" --repo "$repo" --target "$sha" --prerelease \
+    --title "$TITLE" --notes "$NOTES"; then
+    echo "::error::Выпуска $TAG нет, а создать его токеном CI не удалось. Создайте его один раз вручную."
+    exit 1
+  fi
 fi
-gh release create "$TAG" "$@" --repo "$repo" --target "$sha" --prerelease \
-  --title "$TITLE" --notes "$NOTES"
 echo "Выпуск $TAG: https://github.com/$repo/releases/tag/$TAG"
