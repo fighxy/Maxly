@@ -17,7 +17,7 @@ struct CallSessionFixtureTests {
     /// `everyFixtureIsPlayed`, как и в Kotlin.
     nonisolated static let played = [
         "outgoing-direct", "outgoing-canceled", "outgoing-declined", "incoming-answered", "incoming-rejected",
-        "incoming-missed", "ice", "errors", "conversation-closed",
+        "incoming-missed", "ice", "errors", "conversation-closed", "screen-share-sfu",
     ]
 
     @Test("Сценарий ws2 проигрывается шаг за шагом", arguments: played)
@@ -153,6 +153,12 @@ struct Ws2FixturePlayer {
                 case "start": await call.start()
                 case "accept": await call.accept(video: step["video"]?.bool == true)
                 case "hangUp": await call.hangUp()
+                case "setCamera":
+                    let on = try flag(step)
+                    await call.setCamera(on)
+                case "setScreenSharing":
+                    let on = try flag(step)
+                    await call.setScreenSharing(on)
                 default: throw FixtureError(at("неизвестное действие \(action.serialized())"))
                 }
             } else if let frame = step["receive"] {
@@ -162,6 +168,8 @@ struct Ws2FixturePlayer {
                 server.deliver(text: text)
             } else if let event = step["peerEvent"] {
                 try await peerEvent(event)
+            } else if let answer = step["peerAnswer"] {
+                try await peerAnswer(answer)
             } else if let expect = step["expect"] {
                 await check(expect)
             } else {
@@ -171,6 +179,20 @@ struct Ws2FixturePlayer {
     }
 
     // MARK: Шаги
+
+    /// `"on": true/false` действий `setCamera` и `setScreenSharing`.
+    private func flag(_ step: JSONValue) throws -> Bool {
+        guard let on = step["on"]?.bool else { throw FixtureError(at("действие без \"on\"")) }
+        return on
+    }
+
+    /// Свой SDP, которым фейковый WebRTC ответит на следующие оферы.
+    private func peerAnswer(_ answer: JSONValue) async throws {
+        guard let sdp = answer.string else { throw FixtureError(at("peerAnswer — не строка")) }
+        _ = await settle(timeout: Self.timeout) { media.peer != nil }
+        guard let peer = media.peer else { throw FixtureError(at("peerAnswer без соединения")) }
+        peer.answerSdp = sdp
+    }
 
     private func peerEvent(_ event: JSONValue) async throws {
         _ = await settle(timeout: Self.timeout) { media.peer != nil }
@@ -231,10 +253,42 @@ struct Ws2FixturePlayer {
             let wanted = (texts.array ?? []).compactMap(\.string)
             if Array(fresh) != wanted { problems.append("текстовые кадры: ждали \(wanted), ушли \(Array(fresh))") }
         }
+        if let labels = expect["sdpLabels"]?.array {
+            let wanted = labels.compactMap(\.string)
+            let actual = Self.labels(in: lastSentSdp())
+            if wanted != actual { problems.append("подписи своего SDP: ждали \(wanted), ушли \(actual)") }
+        }
         if let peer = expect["peer"] {
             problems += peerFailures(peer)
         }
         return problems
+    }
+
+    /// SDP последней команды клиента, которая его несёт: `accept-producer` или `transmit-data`.
+    private func lastSentSdp() -> String {
+        for frame in server.frames.reversed() {
+            switch frame["command"]?.string {
+            case "accept-producer":
+                if let sdp = frame["description"]?.string { return sdp }
+            case "transmit-data":
+                if let sdp = frame["data"]?["sdp"]?["sdp"]?.string { return sdp }
+            default:
+                break
+            }
+        }
+        return ""
+    }
+
+    /// Подписи своего видео `u<id>:s<ВИД>` в SDP по порядку, без повторов.
+    private static func labels(in sdp: String) -> [String] {
+        guard let pattern = try? NSRegularExpression(pattern: "u[0-9]+:s[A-Z]+") else { return [] }
+        let text = sdp as NSString
+        var result: [String] = []
+        for match in pattern.matches(in: sdp, range: NSRange(location: 0, length: text.length)) {
+            let label = text.substring(with: match.range)
+            if !result.contains(label) { result.append(label) }
+        }
+        return result
     }
 
     private func peerFailures(_ expected: JSONValue) -> [String] {
@@ -253,6 +307,15 @@ struct Ws2FixturePlayer {
             let wanted = remotes.compactMap(\.string)
             let actual = peer.remotes.map(\.type.rawValue)
             if wanted != actual { problems.append("удалённые SDP: ждали \(wanted), сейчас \(actual)") }
+        }
+        if let videos = expected["sendVideo"]?.array {
+            let wanted = videos.compactMap(\.string)
+            let actual = peer.sending.map(\.rawValue)
+            if wanted != actual { problems.append("sendVideo: ждали \(wanted), было \(actual)") }
+        }
+        if let slot = expected["slot"] {
+            let actual = peer.slotVideo?.rawValue
+            if slot.string != actual { problems.append("слот SFU: ждали \(slot.string ?? "пусто"), сейчас \(actual ?? "пусто")") }
         }
         if let candidates = expected["candidates"]?.array {
             let actual: [JSONValue] = peer.candidates.map {

@@ -1,0 +1,380 @@
+{
+  "name": "screen-share-sfu",
+  "description": "Показ экрана через сервер (SFU): слот своего видео один. Экран встаёт в слот камеры без нового отправителя, после каждой замены тот же ответ уходит accept-producer с новой подписью (u10:sSCREEN / u10:sCAMERA); пока идёт показ экрана, isVideoEnabled — false. Экран выключили — в слот возвращается камера.",
+  "role": "JOINER",
+  "isGroup": true,
+  "selfId": 10,
+  "conversationId": "conv",
+  "signalingUrl": "wss://sig.test/ws?userId=10&token=t",
+  "steps": [
+    {
+      "do": "start"
+    },
+    {
+      "receive": {
+        "type": "notification",
+        "notification": "connection",
+        "conversation": {
+          "id": "conv",
+          "topology": "SERVER",
+          "participants": [
+            {
+              "id": 10,
+              "state": "ACCEPTED"
+            },
+            {
+              "id": 20,
+              "state": "ACCEPTED",
+              "externalId": {
+                "id": "777",
+                "type": "USER"
+              },
+              "mediaSettings": {
+                "isAudioEnabled": true
+              },
+              "responderTypes": [
+                "USER"
+              ],
+              "responderDeviceIdxs": [
+                3
+              ]
+            }
+          ]
+        },
+        "conversationParams": {
+          "stun": {
+            "urls": [
+              "stun:stun.test:3478"
+            ]
+          },
+          "turn": {
+            "urls": [
+              "turn:turn.test:3478"
+            ],
+            "username": "u",
+            "credential": "p"
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "sent": [
+          {
+            "command": "accept-call",
+            "mediaSettings": {
+              "isAudioEnabled": true,
+              "isVideoEnabled": false,
+              "isScreenSharingEnabled": false,
+              "isAnimojiEnabled": false
+            }
+          },
+          {
+            "command": "allocate-consumer"
+          }
+        ],
+        "peer": {
+          "microphone": true,
+          "iceServers": 2,
+          "remotes": [],
+          "sendVideo": [],
+          "slot": null
+        }
+      }
+    },
+    {
+      "do": "setCamera",
+      "on": true
+    },
+    {
+      "expect": {
+        "sent": [
+          {
+            "command": "change-media-settings",
+            "mediaSettings": {
+              "isAudioEnabled": true,
+              "isVideoEnabled": true,
+              "isScreenSharingEnabled": false,
+              "isAnimojiEnabled": false
+            }
+          }
+        ],
+        "peer": {
+          "sendVideo": [],
+          "slot": null
+        }
+      }
+    },
+    {
+      "peerAnswer": "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=mid:0\r\na=sendrecv\r\na=msid:orbitle audio-track\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=mid:1\r\na=sendonly\r\na=msid:orbitle cam-track\r\na=ssrc:21 msid:orbitle cam-track\r\n"
+    },
+    {
+      "receive": {
+        "type": "notification",
+        "notification": "producer-updated",
+        "sessionId": 7,
+        "description": {
+          "type": "offer",
+          "sdp": "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=mid:0\r\na=sendrecv\r\na=ssrc:555 cname:sfu\r\na=candidate:1 1 udp 2122260223 10.0.0.5 40000 typ host\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=mid:1\r\na=recvonly\r\n"
+        }
+      }
+    },
+    {
+      "expect": {
+        "sent": [
+          {
+            "command": "accept-producer",
+            "sessionId": 7,
+            "ssrcs": [
+              "555"
+            ]
+          },
+          {
+            "command": "change-media-settings",
+            "mediaSettings": {
+              "isAudioEnabled": true,
+              "isVideoEnabled": true,
+              "isScreenSharingEnabled": false,
+              "isAnimojiEnabled": false
+            }
+          }
+        ],
+        "sdpLabels": [
+          "u10:sCAMERA"
+        ],
+        "peer": {
+          "remotes": [
+            "offer"
+          ],
+          "sendVideo": [],
+          "slot": "camera"
+        }
+      }
+    },
+    {
+      "peerEvent": {
+        "state": "CONNECTED"
+      }
+    },
+    {
+      "expect": {
+        "phase": "Active",
+        "mediaConnected": true,
+        "sent": []
+      }
+    },
+    {
+      "do": "setScreenSharing",
+      "on": true
+    },
+    {
+      "expect": {
+        "sent": [
+          {
+            "command": "accept-producer",
+            "sessionId": 7,
+            "ssrcs": [
+              "555"
+            ]
+          },
+          {
+            "command": "change-media-settings",
+            "mediaSettings": {
+              "isAudioEnabled": true,
+              "isVideoEnabled": false,
+              "isScreenSharingEnabled": true,
+              "isAnimojiEnabled": false
+            }
+          }
+        ],
+        "sdpLabels": [
+          "u10:sSCREEN"
+        ],
+        "peer": {
+          "remotes": [
+            "offer"
+          ],
+          "sendVideo": [],
+          "slot": "screen"
+        }
+      }
+    },
+    {
+      "do": "setScreenSharing",
+      "on": false
+    },
+    {
+      "expect": {
+        "sent": [
+          {
+            "command": "accept-producer",
+            "sessionId": 7,
+            "ssrcs": [
+              "555"
+            ]
+          },
+          {
+            "command": "change-media-settings",
+            "mediaSettings": {
+              "isAudioEnabled": true,
+              "isVideoEnabled": true,
+              "isScreenSharingEnabled": false,
+              "isAnimojiEnabled": false
+            }
+          }
+        ],
+        "sdpLabels": [
+          "u10:sCAMERA"
+        ],
+        "peer": {
+          "remotes": [
+            "offer"
+          ],
+          "sendVideo": [],
+          "slot": "camera"
+        }
+      }
+    },
+    {
+      "do": "setScreenSharing",
+      "on": true
+    },
+    {
+      "expect": {
+        "sent": [
+          {
+            "command": "accept-producer",
+            "sessionId": 7,
+            "ssrcs": [
+              "555"
+            ]
+          },
+          {
+            "command": "change-media-settings",
+            "mediaSettings": {
+              "isAudioEnabled": true,
+              "isVideoEnabled": false,
+              "isScreenSharingEnabled": true,
+              "isAnimojiEnabled": false
+            }
+          }
+        ],
+        "sdpLabels": [
+          "u10:sSCREEN"
+        ],
+        "peer": {
+          "sendVideo": [],
+          "slot": "screen"
+        }
+      }
+    },
+    {
+      "receive": {
+        "type": "notification",
+        "notification": "producer-updated",
+        "sessionId": 7,
+        "description": {
+          "type": "offer",
+          "sdp": "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=mid:0\r\na=sendrecv\r\na=ssrc:556 cname:sfu\r\na=candidate:1 1 udp 2122260223 10.0.0.5 40000 typ host\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=mid:1\r\na=recvonly\r\n"
+        }
+      }
+    },
+    {
+      "expect": {
+        "sent": [
+          {
+            "command": "accept-producer",
+            "sessionId": 7,
+            "ssrcs": [
+              "556"
+            ]
+          },
+          {
+            "command": "change-media-settings",
+            "mediaSettings": {
+              "isAudioEnabled": true,
+              "isVideoEnabled": false,
+              "isScreenSharingEnabled": true,
+              "isAnimojiEnabled": false
+            }
+          }
+        ],
+        "sdpLabels": [
+          "u10:sSCREEN"
+        ],
+        "peer": {
+          "remotes": [
+            "offer",
+            "offer"
+          ],
+          "sendVideo": [],
+          "slot": "screen"
+        }
+      }
+    },
+    {
+      "do": "setCamera",
+      "on": false
+    },
+    {
+      "expect": {
+        "sent": [
+          {
+            "command": "change-media-settings",
+            "mediaSettings": {
+              "isAudioEnabled": true,
+              "isVideoEnabled": false,
+              "isScreenSharingEnabled": true,
+              "isAnimojiEnabled": false
+            }
+          }
+        ],
+        "sdpLabels": [
+          "u10:sSCREEN"
+        ],
+        "peer": {
+          "slot": "screen"
+        }
+      }
+    },
+    {
+      "do": "setScreenSharing",
+      "on": false
+    },
+    {
+      "expect": {
+        "sent": [
+          {
+            "command": "change-media-settings",
+            "mediaSettings": {
+              "isAudioEnabled": true,
+              "isVideoEnabled": false,
+              "isScreenSharingEnabled": false,
+              "isAnimojiEnabled": false
+            }
+          }
+        ],
+        "peer": {
+          "sendVideo": [],
+          "slot": null
+        }
+      }
+    },
+    {
+      "do": "hangUp"
+    },
+    {
+      "expect": {
+        "phase": "Ended",
+        "ended": "HungUp",
+        "sent": [
+          {
+            "command": "hangup",
+            "reason": "HUNGUP"
+          }
+        ],
+        "socketClosed": true
+      }
+    }
+  ]
+}

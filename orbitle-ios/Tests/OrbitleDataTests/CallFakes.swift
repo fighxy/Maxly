@@ -145,6 +145,8 @@ final class FakeCallPeer: CallPeer {
     var sending: [LocalVideo] = []
     var stopped: [LocalVideo] = []
     var slots: [(mids: Set<String>, video: LocalVideo)] = []
+    /// Что сейчас в слоте SFU: последнее `fillVideoSlot`, пока его не сняли `stopVideo`.
+    var slotVideo: LocalVideo?
     var offers: [Bool] = []
     var locals: [SessionDescription] = []
     var remotes: [SessionDescription] = []
@@ -169,11 +171,16 @@ final class FakeCallPeer: CallPeer {
         return added
     }
 
-    func stopVideo(_ video: LocalVideo) { stopped.append(video) }
+    func stopVideo(_ video: LocalVideo) {
+        stopped.append(video)
+        if slotVideo == video { slotVideo = nil }
+    }
 
     func fillVideoSlot(mids: Set<String>, with video: LocalVideo) -> Bool {
         slots.append((mids, video))
-        return !mids.isEmpty
+        guard !mids.isEmpty else { return false }
+        slotVideo = video
+        return true
     }
 
     func makeOffer(iceRestart: Bool) async throws -> SessionDescription {
