@@ -191,6 +191,29 @@ struct ChatListDataTests {
         #expect(rolledBack?.first { $0.id == "a" }?.isMuted == false)
     }
 
+    @Test("Звук чата: список, запрошенный до переключения, метку не сбрасывает, следующий применяется")
+    func muteSurvivesStaleList() async throws {
+        let parts = try await makeParts()
+        var stale = makeChat(id: "a")
+        stale.isMuted = false
+        try await parts.chats.upsert([stale])
+        await parts.api.setChats([stale])
+        let gate = Gate()
+        await parts.api.setFetchGate(gate)
+
+        // Опрос ушёл до нажатия: ядро считает звук по старому конфигу.
+        let refresh = Task { try await parts.chats.refresh() }
+        #expect(await eventually { await gate.arrivals == 1 })
+        try await parts.chats.setMuted(true, chatId: "a")
+        await gate.open()
+        try await refresh.value
+        #expect(await chatRow(parts.chats, "a")?.isMuted == true)
+
+        // Список, запрошенный после ответа сервера, снова главный: звук включили на другом устройстве.
+        try await parts.chats.refresh()
+        #expect(await chatRow(parts.chats, "a")?.isMuted == false)
+    }
+
     @Test("Закреплённые с сервера: порядок сервера, остальные откреплены, догруженные чаты встают на место")
     func serverPins() async throws {
         let parts = try await makeParts()

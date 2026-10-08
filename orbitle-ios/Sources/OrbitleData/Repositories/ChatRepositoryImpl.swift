@@ -33,6 +33,11 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// Когда чат последний раз записан в базу: сверка полного списка не трогает чаты, записанные
     /// уже после запроса (только что созданный, пришедший пушем).
     private var lastWrites: [String: Date] = [:]
+    /// Свои переключения звука: id чата → когда переключён или когда пришёл ответ сервера.
+    /// Ответ списка или `CHAT_INFO`, запрошенный раньше, звук этого чата не трогает: ядро
+    /// считает его по конфигу, который мог ещё не получить новое значение, и метка «без звука»
+    /// слетала до следующего опроса.
+    private var muteToggles: [String: Date] = [:]
     /// Своя отметка прочтения, последняя применённая (мс): ответы сервера на отметки и пуши
     /// с других устройств. Запоздавший ответ на более старую отметку не применяется.
     private var ownReadMarks: [String: Int64] = [:]
@@ -91,7 +96,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         switch await api.fetchChatList() {
         case .success(let page):
             try ensureCurrent(started)
-            try upsert(page.records.filter(\.isActive))
+            try upsert(keepingLocalMute(page.records.filter(\.isActive), requestedAt: requestedAt))
             for record in page.records where !record.isActive {
                 await dropInactive(chatId: record.id)
             }
@@ -142,10 +147,11 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// Один чат с сервера (`CHAT_INFO`).
     public func refresh(chatId: String) async throws(OrbitleError) {
         let started = generation
+        let requestedAt = Date()
         switch await api.fetchChat(id: chatId) {
         case .success(let record):
             try ensureCurrent(started)
-            try upsert([record])
+            try upsert(keepingLocalMute([record], requestedAt: requestedAt))
         case .failure(let error):
             throw error.orbitleError
         }
@@ -314,6 +320,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     public func removeAll() throws(OrbitleError) {
         generation += 1
         ownReadMarks.removeAll()
+        muteToggles.removeAll()
         serverPins = nil
         requestedPins = nil
         pendingDialogs.removeAll()
@@ -761,6 +768,9 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// канале срабатывала с задержкой, а при переподключении — будто не срабатывала вовсе.
     public func setMuted(_ muted: Bool, chatId: String) async throws(OrbitleError) {
         let previous: Bool
+        muteToggles[chatId] = Date()
+        // Ответ сервера тоже отметка: список, запрошенный до него, мог посчитаться по старому конфигу.
+        defer { muteToggles[chatId] = Date() }
         do {
             guard let chat = try chat(id: chatId) else { throw OrbitleError.invalidRequest }
             previous = chat.isMuted
@@ -781,6 +791,17 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
                 notify()
             }
             throw error.orbitleError
+        }
+    }
+
+    /// Записи с сервера без звука для чатов, переключённых после `requestedAt` (см. `muteToggles`).
+    private func keepingLocalMute(_ records: [ChatRecord], requestedAt: Date) -> [ChatRecord] {
+        guard !muteToggles.isEmpty else { return records }
+        return records.map { record in
+            guard let toggled = muteToggles[record.id], toggled >= requestedAt else { return record }
+            var kept = record
+            kept.isMuted = nil
+            return kept
         }
     }
 
