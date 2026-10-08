@@ -1,10 +1,12 @@
 package app.orbitle.presentation.chat
 
 import app.orbitle.MainDispatcherRule
+import app.orbitle.data.CoreDraftRepository
 import app.orbitle.data.DraftRepository
 import app.orbitle.domain.ChatDraft
 import app.orbitle.domain.Message
 import app.orbitle.domain.TextSpan
+import com.max.core.api.Drafts
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -18,14 +20,29 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
-/** Сервер черновиков в памяти: сохранение ставит своё время. */
+/**
+ * Сервер черновиков в памяти: сохранение ставит своё время. [marks] — отметки стирания, как их
+ * держит стор ядра; выбор черновика для поля — правилом ядра [Drafts.reconcile].
+ */
 class FakeDraftServer : DraftRepository {
     val stored = MutableStateFlow<Map<String, ChatDraft>>(emptyMap())
+    val marks = mutableMapOf<String, Long>()
     val saves = mutableListOf<Pair<String, ChatDraft>>()
     val discards = mutableListOf<String>()
     var clock = 10_000L
     override val drafts = stored
     override fun current(chatId: String) = stored.value[chatId]
+    override fun reconcile(chatId: String, local: ChatDraft?): ChatDraft? {
+        val id = chatId.toLongOrNull() ?: 0L
+        val server = stored.value[chatId]?.let { CoreDraftRepository.maxDraft(id, it) }
+        return CoreDraftRepository.reconcile(id, local) { mine -> Drafts.reconcile(mine, server, marks[chatId]) }
+    }
+
+    /** Черновик стёрли на другом устройстве в [time] (пуш 153). */
+    fun discardedElsewhere(chatId: String, time: Long) {
+        marks[chatId] = time
+        stored.update { it - chatId }
+    }
     override suspend fun save(chatId: String, draft: ChatDraft) {
         saves += chatId to draft
         stored.update { it + (chatId to draft.copy(updatedAtMs = ++clock)) }
@@ -204,6 +221,40 @@ class ChatDraftsTest {
 
         local.map["10"] = ChatDraft("здесь", 3_000)
         assertEquals("здесь", vm().state.value.draft)
+    }
+
+    @Test
+    fun discardAtTheSameTimeBeatsTheDeviceDraft() {
+        local.map["10"] = ChatDraft("здесь", 1_000)
+        server.marks["10"] = 1_000
+        val model = vm()
+        assertEquals("", model.state.value.draft)
+        assertNull(local.map["10"])
+        assertTrue(server.discards.isEmpty())
+
+        local.map["10"] = ChatDraft("здесь", 1_001)
+        assertEquals("здесь", vm().state.value.draft)
+    }
+
+    @Test
+    fun discardElsewhereClearsAnUntouchedComposer() {
+        server.stored.value = mapOf("10" to ChatDraft("на сервере", 2_000))
+        val model = vm()
+        assertEquals("на сервере", model.state.value.draft)
+        server.discardedElsewhere("10", 3_000)
+        scope.runCurrent()
+        assertEquals("", model.state.value.draft)
+        assertNull(local.map["10"])
+    }
+
+    @Test
+    fun discardElsewhereKeepsTypedText() {
+        server.stored.value = mapOf("10" to ChatDraft("на сервере", 2_000))
+        val model = vm()
+        model.setDraft("моё")
+        server.discardedElsewhere("10", 3_000)
+        scope.runCurrent()
+        assertEquals("моё", model.state.value.draft)
     }
 
     @Test

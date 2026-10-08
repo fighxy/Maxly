@@ -5,6 +5,7 @@ import app.orbitle.data.ChatRepository
 import app.orbitle.data.CoreFailure
 import app.orbitle.domain.Chat
 import app.orbitle.domain.ChatDraft
+import app.orbitle.presentation.chat.FakeDraftServer
 import app.orbitle.domain.ChatSearchResult
 import app.orbitle.domain.FoundMessage
 import app.orbitle.presentation.chatlist.FoundMessageItem
@@ -504,16 +505,20 @@ class ChatListViewModelTest {
 
     @Test
     fun laterOfLocalAndServerDraftIsShown() {
-        val server = MutableStateFlow(mapOf("a" to ChatDraft("с телефона", now - 1_000)))
+        val server = FakeDraftServer()
+        server.stored.value = mapOf("a" to ChatDraft("с телефона", now - 1_000))
         val vm = ChatListViewModel(repo, connection, ChatListFormatter(ZoneOffset.UTC), now = { now }, local = marks, serverDrafts = server)
         repo.chats.value = listOf(chat("a"), chat("b"))
         assertTrue(vm.state.value.items.first { it.id == "a" }.preview.contains("с телефона"))
         marks.stored = mapOf("a" to ChatDraft("отсюда", now - 500))
         vm.reloadLocal()
         assertTrue(vm.state.value.items.first { it.id == "a" }.preview.contains("отсюда"))
-        server.value = mapOf("a" to ChatDraft("ещё новее", now), "b" to ChatDraft("второй", now))
+        server.stored.value = mapOf("a" to ChatDraft("ещё новее", now), "b" to ChatDraft("второй", now))
         assertTrue(vm.state.value.items.first { it.id == "a" }.preview.contains("ещё новее"))
         assertTrue(vm.state.value.items.first { it.id == "b" }.preview.contains("второй"))
+        // Стирание на другом устройстве в то же время, что и наш черновик: побеждает стирание.
+        server.discardedElsewhere("a", now)
+        assertFalse(vm.state.value.items.first { it.id == "a" }.preview.contains("ещё новее"))
     }
 
     @Test

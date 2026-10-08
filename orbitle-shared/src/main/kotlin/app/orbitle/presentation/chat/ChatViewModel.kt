@@ -315,15 +315,29 @@ class ChatViewModel(
     /** Открытое обсуждение поста. */
     val commentsModel: StateFlow<CommentsModel?> = _comments.asStateFlow()
 
+    // Черновик: поля объявлены до init, который восстанавливает черновик.
+
+    /** Время восстановленного черновика: более ранний с сервера его не заменит. */
+    private var restoredDraftAt = 0L
+    /** Поле меняли после открытия чата. */
+    private var draftTouched = false
+    /** Ответ из черновика, пока сообщения нет в загруженной ленте. */
+    private var draftReplyId: String? = null
+
     init {
-        ChatDraft.later(drafts?.load(chatId), draftSync?.server(chatId))?.let(::applyDraft)
+        restoreDraft()
         draftSync?.let { sync ->
             viewModelScope.launch {
-                // Черновик с другого устройства пришёл позже открытия, а поле ещё не трогали.
-                sync.serverDrafts.collect { all ->
-                    val server = all[chatId] ?: return@collect
-                    if (draftTouched || _state.value.editing != null || server.updatedAtMs <= restoredDraftAt) return@collect
-                    if (!server.sameContent(currentDraft())) applyDraft(server)
+                // Черновик с другого устройства или его стирание пришли позже открытия, а поле ещё не трогали.
+                sync.serverDrafts.drafts.collect {
+                    if (draftTouched || _state.value.editing != null) return@collect
+                    val shown = currentDraft()?.copy(updatedAtMs = restoredDraftAt)
+                    val next = sync.reconcile(chatId, shown)
+                    when {
+                        next == null -> if (shown != null) clearRestoredDraft()
+                        next === shown || next.sameContent(shown) -> Unit
+                        else -> applyDraft(next)
+                    }
                 }
             }
         }
@@ -797,13 +811,6 @@ class ChatViewModel(
 
     // Черновик
 
-    /** Время восстановленного черновика: более ранний с сервера его не заменит. */
-    private var restoredDraftAt = 0L
-    /** Поле меняли после открытия чата. */
-    private var draftTouched = false
-    /** Ответ из черновика, пока сообщения нет в загруженной ленте. */
-    private var draftReplyId: String? = null
-
     /** Поле ввода как черновик: текст, все отметки и ответ. Ответ без текста — тоже черновик; `null` — ни того, ни другого. */
     private fun currentDraft(): ChatDraft? {
         val reply = _state.value.replyTo?.id ?: draftReplyId
@@ -821,6 +828,32 @@ class ChatViewModel(
         val draft = currentDraft()
         drafts?.save(chatId, draft)
         draftSync?.changed(chatId, draft)
+    }
+
+    /**
+     * Черновик при открытии: устройства или сервера ([DraftSync.reconcile], правило ядра). Если
+     * черновик устройства проиграл стиранию на другом устройстве, он удаляется и здесь.
+     */
+    private fun restoreDraft() {
+        val local = drafts?.load(chatId)?.takeUnless { it.isEmpty }
+        val sync = draftSync
+        val shown = if (sync == null) local else sync.reconcile(chatId, local)
+        if (shown == null) {
+            if (local != null) drafts?.save(chatId, null)
+            return
+        }
+        applyDraft(shown)
+    }
+
+    /** Черновик в поле стёрли на другом устройстве, а здесь его ещё не трогали: поле пустеет. */
+    private fun clearRestoredDraft() {
+        animojiDraft.clear()
+        mentionDraft.clear()
+        formatDraft.clear()
+        draftReplyId = null
+        restoredDraftAt = 0L
+        drafts?.save(chatId, null)
+        _state.update { it.copy(draft = "", formatting = formatDraft.spans, replyTo = null) }
     }
 
     /** Сообщение ушло: черновика больше нет ни здесь, ни на сервере. */

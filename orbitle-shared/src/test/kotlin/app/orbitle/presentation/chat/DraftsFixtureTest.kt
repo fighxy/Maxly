@@ -14,14 +14,13 @@ import app.orbitle.domain.ChatDraft
 import app.orbitle.domain.TextSpan
 import com.max.core.api.Chat
 import com.max.core.api.Drafts
-import com.max.core.api.MaxApi
+import com.max.core.state.MaxState
+import com.max.core.state.StateReducer
 import com.max.core.auth.RequestSink
 import com.max.core.protocol.CmdType
 import com.max.core.protocol.Opcode
 import com.max.core.protocol.PROTOCOL_VERSION
 import com.max.core.protocol.PacketHeader
-import com.max.core.state.MaxState
-import com.max.core.state.StateReducer
 import com.max.core.transport.TransportPacket
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -37,9 +36,10 @@ import org.junit.Test
 /**
  * Общие с iOS сценарии черновиков из `test-fixtures/drafts` (правила — в README каталога).
  *
- * `merge`: черновик сервера — `LOGIN` через ядро ([Drafts.fromLogin], [StateReducer.putDrafts]) и
- * [CoreDraftRepository.draft]; черновик устройства — через [DraftCodec] (так он лежит в настройках);
- * победитель — [ChatDraft.later], как при открытии чата.
+ * `merge`: черновик сервера и отметка стирания — `LOGIN` через ядро ([Drafts.fromLogin],
+ * [StateReducer.putDrafts]); черновик устройства — через [DraftCodec] (так он лежит в настройках);
+ * выбор — [CoreDraftRepository.reconcile] с правилом ядра над этим стором, ровно как
+ * `MaxClient.reconcileDraft` при открытии чата.
  *
  * `outgoing`: [DraftSync] над сервером, который делает то же, что [CoreDraftRepository] и
  * `MaxClient`: сохранение — [CoreDraftRepository.request] и `DRAFT_SAVE` ядра по адресу
@@ -47,14 +47,7 @@ import org.junit.Test
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class DraftsFixtureTest {
-    private val fixtures = SharedFixtures(
-        "drafts",
-        disagreements = mapOf(
-            "merge / discard-newer-clears" to
-                "ядро: MaxState не хранит drafts.*.discarded (StateReducer.putDrafts лишь убирает черновик сервера), " +
-                "клиенту нечем стереть более старый черновик устройства",
-        ),
-    )
+    private val fixtures = SharedFixtures("drafts")
 
     @Test
     fun everyFixtureIsPlayed() {
@@ -87,10 +80,9 @@ class DraftsFixtureTest {
         case["discardedAt"].long?.let { chats["discarded"] = mapOf(chatId.toString() to it) }
         val snapshot = Drafts.fromLogin(mapOf("drafts" to mapOf("chats" to chats)), me)
         val state = StateReducer.putDrafts(MaxState(me = me), snapshot)
-        val server = state.drafts[chatId]?.let(CoreDraftRepository::draft)
         val local = case["local"].obj?.let { DraftCodec.decode(DraftCodec.encode(draft(it))) }
-        val merged = ChatDraft.later(local, server)
-        check("draft", case["expect"].obj?.let(::key), merged?.let(::key))
+        val shown = CoreDraftRepository.reconcile(chatId, local) { Drafts.reconcile(it, state.draftOf(chatId), state.draftDiscardedAt(chatId)) }
+        check("draft", case["expect"].obj?.let(::key), shown?.let(::key))
     }
 
     /** Черновик сервера в `LOGIN`: `{saveTime, text, elements, replyTo?}`. */
@@ -134,9 +126,10 @@ class DraftsFixtureTest {
 
     /** Сервер черновиков одного чата, как его видит [DraftSync] через [CoreDraftRepository] и `MaxClient`. */
     private class CoreLikeDrafts(sink: RequestSink, private val address: com.max.core.api.DraftAddress, private var stored: ChatDraft?) : DraftRepository {
-        private val api = MaxApi(sink).drafts
+        private val api = com.max.core.api.MaxApi(sink).drafts
         override val drafts: Flow<Map<String, ChatDraft>> = flowOf(emptyMap())
         override fun current(chatId: String): ChatDraft? = stored
+        override fun reconcile(chatId: String, local: ChatDraft?): ChatDraft? = error("сценарий outgoing не выбирает черновик")
 
         override suspend fun save(chatId: String, draft: ChatDraft) {
             val request = CoreDraftRepository.request(draft)

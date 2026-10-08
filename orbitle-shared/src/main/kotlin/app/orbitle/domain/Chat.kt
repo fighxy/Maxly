@@ -80,23 +80,6 @@ data class ChatDraft(
         val (theirs, theirMarks) = TextSpans.serialize(other.text, other.formatting)
         return mine == theirs && myMarks.toSet() == theirMarks.toSet()
     }
-
-    companion object {
-        /**
-         * Из двух черновиков — более поздний; при равном времени [first]. Пустой ([isEmpty]) —
-         * всё равно что его нет.
-         */
-        fun later(first: ChatDraft?, second: ChatDraft?): ChatDraft? {
-            val a = first?.takeUnless { it.isEmpty }
-            val b = second?.takeUnless { it.isEmpty }
-            return when {
-                a == null -> b
-                b == null -> a
-                b.updatedAtMs > a.updatedAtMs -> b
-                else -> a
-            }
-        }
-    }
 }
 
 /** Чат, как его видит UI. Время — миллисекунды Unix. */

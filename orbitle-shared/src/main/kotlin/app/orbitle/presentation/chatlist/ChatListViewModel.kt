@@ -6,6 +6,7 @@ import app.orbitle.data.ChatRepository
 import app.orbitle.data.CoreErrors
 import app.orbitle.domain.Chat
 import app.orbitle.domain.ChatDraft
+import app.orbitle.data.ServerDrafts
 import app.orbitle.domain.ChatFolder
 import app.orbitle.domain.ConnectionState
 import app.orbitle.domain.OrbitleError
@@ -19,10 +20,10 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
 /** Что список хранит на устройстве: ручные пометки «непрочитано» и черновики. */
@@ -96,8 +97,8 @@ class ChatListViewModel(
     private val recents: RecentSearchStore? = null,
     /** Пауза после последней буквы перед запросом к серверу. */
     private val searchDelayMs: Long = SEARCH_DELAY_MS,
-    /** Черновики на сервере: из двух черновиков чата показывается более поздний. */
-    serverDrafts: Flow<Map<String, ChatDraft>> = flowOf(emptyMap()),
+    /** Черновики на сервере: из двух черновиков чата показывается более поздний, стирание побеждает. */
+    private val serverDrafts: ServerDrafts = ServerDrafts.NONE,
 ) : ViewModel() {
 
     private var serverSearch: Job? = null
@@ -145,7 +146,7 @@ class ChatListViewModel(
             }
         }
         viewModelScope.launch {
-            serverDrafts.collect {
+            serverDrafts.drafts.collect {
                 remoteDrafts = it
                 rebuild()
             }
@@ -518,7 +519,7 @@ class ChatListViewModel(
         pendingMutes[chat.id]?.let { next = next.copy(isMuted = it) }
         if (chat.id in markedUnread && chat.unreadCount == 0) next = next.copy(isMarkedUnread = true)
         // Строке нужен текст черновика: ответ без текста списку не виден и чат не поднимает.
-        ChatDraft.later(drafts[chat.id], remoteDrafts[chat.id])?.takeIf { it.text.isNotBlank() }?.let { next = next.copy(draft = it) }
+        serverDrafts.reconcile(chat.id, drafts[chat.id])?.takeIf { it.text.isNotBlank() }?.let { next = next.copy(draft = it) }
         return next
     }
 

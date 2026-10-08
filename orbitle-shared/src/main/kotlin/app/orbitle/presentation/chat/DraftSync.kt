@@ -1,12 +1,12 @@
 package app.orbitle.presentation.chat
 
 import app.orbitle.data.DraftRepository
+import app.orbitle.data.ServerDrafts
 import app.orbitle.domain.ChatDraft
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -30,10 +30,13 @@ class DraftSync(
     /** Сохранения и удаления по очереди: удаление не обгонит сохранение того же чата. */
     private val order = Mutex()
 
-    /** Черновики сервера по чатам. */
-    val serverDrafts: Flow<Map<String, ChatDraft>> get() = remote.drafts
+    /** Черновики сервера по чатам и выбор между ними и черновиком устройства. */
+    val serverDrafts: ServerDrafts get() = remote
 
     fun server(chatId: String): ChatDraft? = remote.current(chatId)
+
+    /** Что показать в поле ввода [chatId] при черновике устройства [local] ([ServerDrafts.reconcile]). */
+    fun reconcile(chatId: String, local: ChatDraft?): ChatDraft? = remote.reconcile(chatId, local)
 
     /** Поле ввода [chatId] стало таким; `null` или ни текста, ни ответа — черновика больше нет. */
     fun changed(chatId: String, draft: ChatDraft?) {
