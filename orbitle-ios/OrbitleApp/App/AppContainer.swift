@@ -51,6 +51,8 @@ final class AppContainer {
     @ObservationIgnored private var contacts: any ContactRepository = UnavailableContactRepository()
     @ObservationIgnored private var calls: any CallHistoryRepository = UnavailableCallHistoryRepository()
     @ObservationIgnored private var coreContacts: CoreContactRepository?
+    /// «Я печатаю» для всех чатов: порог 6 с на чат общий, сколько бы экранов ни открывалось.
+    @ObservationIgnored private var typingReporter: TypingReporter?
     /// Управление группой и каналом. До входа ядра пусто.
     @ObservationIgnored private(set) var chatAdmin: (any ChatAdminRepository)?
     @ObservationIgnored private var coreCalls: CoreCallHistoryRepository?
@@ -188,6 +190,7 @@ final class AppContainer {
             )
             let coreContacts = CoreContactRepository(core: core)
             let coreCalls = CoreCallHistoryRepository(core: core)
+            typingReporter = TypingReporter(sender: CoreTypingSender(core: core))
             self.coreContacts = coreContacts
             self.coreCalls = coreCalls
             self.contacts = coreContacts
@@ -445,6 +448,7 @@ final class AppContainer {
             isNewDialog: isNew,
             chats: chats
         )
+        model.typingReporter = typingReporter
         chatModels[id] = model
         return model
     }

@@ -143,3 +143,53 @@ struct TypingReporterTests {
         try await SilentTypingSender().sendTyping(chatId: "c", type: "TEXT", postId: nil)
     }
 }
+
+@Suite("Набор текста: экран чата")
+@MainActor
+struct TypingChatTests {
+    @Test("Правка текста шлёт TEXT, пока сюда можно писать, порог общий с панелью стикеров")
+    func textEdits() async {
+        let sender = RecordingSender()
+        let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository())
+        model.typingReporter = TypingReporter(sender: sender)
+        model.draft = "п"
+        model.typingAllowed = true
+        model.draft = "пр"
+        model.draft = "при"
+        model.typingStickerPanelOpened()
+        model.draft = ""
+        #expect(await eventually { await sender.frames.count == 1 })
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(await sender.frames == [TypingFrame(chatId: "c", type: "TEXT")])
+    }
+
+    @Test("Запись кружка шлёт VIDEO_MSG, в чат без права писать — ничего")
+    func recording() async {
+        let sender = RecordingSender()
+        let closed = ChatViewModel(chatId: "ch", currentUserId: "me", messages: FakeMessageRepository())
+        closed.typingReporter = TypingReporter(sender: sender)
+        closed.typingRecording(.audio)
+        closed.typingStickerPanelOpened()
+        let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository())
+        model.typingReporter = TypingReporter(sender: sender)
+        model.typingAllowed = true
+        model.typingRecording(.videoMessage)
+        model.typingRecording(nil)
+        model.deactivate()
+        #expect(await eventually { await sender.frames.count == 1 })
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(await sender.frames == [TypingFrame(chatId: "c", type: "VIDEO_MSG")])
+    }
+
+    @Test("Тип загрузки — по первому вложению: фото, видео, файл; голосовое и кружок не считаются")
+    func uploadKinds() {
+        func message(_ attachment: ChatAttachment) -> Message {
+            Message(id: "m", chatId: "c", authorId: "me", text: "", timestamp: .now, status: .sending, content: MessageContent(attachments: [attachment]))
+        }
+        #expect(ChatViewModel.uploadKind(message(.photo(PhotoContent(id: "p", url: nil)))) == .photo)
+        #expect(ChatViewModel.uploadKind(message(.video(VideoContent(id: "v", url: nil, durationMs: 1_000)))) == .video)
+        #expect(ChatViewModel.uploadKind(message(.file(FileContent(id: "f", name: "a.pdf", size: 1)))) == .file)
+        #expect(ChatViewModel.uploadKind(message(.video(VideoContent(id: "r", url: nil, durationMs: 1_000, isRound: true)))) == nil)
+        #expect(ChatViewModel.uploadKind(message(.voice(VoiceContent(id: "a", url: nil, waveform: [], durationMs: 1_000)))) == nil)
+    }
+}

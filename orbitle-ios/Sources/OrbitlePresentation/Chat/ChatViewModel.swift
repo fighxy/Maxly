@@ -107,6 +107,7 @@ public final class ChatViewModel {
             guard draft != oldValue, !isRestoringDraft, editTarget == nil else { return }
             scheduleDraftSave()
             refreshComposerHints()
+            if !draft.isEmpty { typingReporter?.textEdited(chatId: chatId, canWrite: typingAllowed) }
         }
     }
     /// Подсказки `@` над полем ввода.
@@ -167,6 +168,11 @@ public final class ChatViewModel {
     /// Ход загрузки вложений своих сообщений: id сообщения → доля 0…1.
     public private(set) var uploadProgress: [String: Double] = [:]
     @ObservationIgnored private var progressWatch: Task<Void, Never>?
+    /// «Я печатаю» для собеседника (`MSG_TYPING` 65). `nil` — не отправляется.
+    @ObservationIgnored public var typingReporter: TypingReporter?
+    /// Можно ли писать в чат: экран ставит его по праву на поле ввода. Пока не поставил,
+    /// «печатаю» не уходит (канал без прав, чат из поиска).
+    @ObservationIgnored public var typingAllowed = false
 
     @ObservationIgnored private let repository: any MessageRepository
     @ObservationIgnored private let drafts: (any ChatDraftStore)?
@@ -373,6 +379,47 @@ public final class ChatViewModel {
         !currentUserId.isEmpty && message.authorId == currentUserId
     }
 
+    // MARK: «Я печатаю»
+
+    /// Запись голосового (`.audio`) или кружка (`.videoMessage`) пошла; `nil` — кончилась.
+    public func typingRecording(_ kind: TypingKind?) {
+        guard let typingReporter else { return }
+        if let kind {
+            typingReporter.recordingStarted(kind, chatId: chatId, canWrite: typingAllowed)
+        } else {
+            typingReporter.recordingStopped(chatId: chatId)
+        }
+    }
+
+    /// Открыта панель эмодзи и стикеров.
+    public func typingStickerPanelOpened() {
+        typingReporter?.stickerPanelOpened(chatId: chatId, canWrite: typingAllowed)
+    }
+
+    /// Ход загрузки своих вложений этого чата: фото, видео или файл. Голосовое и кружок
+    /// уже сообщены записью.
+    private func reportUploads(_ snapshot: [String: Double]) {
+        guard let typingReporter, !snapshot.isEmpty else { return }
+        for message in messages where message.chatId == chatId {
+            guard let fraction = snapshot[message.id], fraction < 1,
+                  let kind = Self.uploadKind(message) else { continue }
+            typingReporter.uploadProgress(kind, chatId: chatId, canWrite: typingAllowed)
+            return
+        }
+    }
+
+    nonisolated static func uploadKind(_ message: Message) -> TypingKind? {
+        for attachment in message.content.attachments {
+            switch attachment {
+            case .photo: return .photo
+            case .video(let video): return video.isRound ? nil : .video
+            case .file: return .file
+            default: continue
+            }
+        }
+        return nil
+    }
+
     public func activate() {
         guard watch == nil else { return }
         loadReactionCatalog()
@@ -382,6 +429,7 @@ public final class ChatViewModel {
             for await snapshot in progress {
                 guard let self else { return }
                 self.uploadProgress = snapshot
+                self.reportUploads(snapshot)
             }
         }
         if let drafts {
@@ -418,6 +466,7 @@ public final class ChatViewModel {
     }
 
     public func deactivate() {
+        typingReporter?.recordingStopped(chatId: chatId)
         latestRetry?.cancel()
         latestRetry = nil
         loadGeneration &+= 1

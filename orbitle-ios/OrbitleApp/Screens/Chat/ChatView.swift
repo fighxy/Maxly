@@ -440,6 +440,15 @@ struct ChatView: View {
         coversLayer
             .onAppear {
                 recording.onStart = { [viewModel] in viewModel.stopVoice() }
+                recording.onRecordingChange = { [viewModel] mode in
+                    let kind: TypingKind?
+                    switch mode {
+                    case .voice?: kind = .audio
+                    case .video?: kind = .videoMessage
+                    case nil: kind = nil
+                    }
+                    viewModel.typingRecording(kind)
+                }
                 recording.onRecorded = { [viewModel] draft in
                     Task { await viewModel.sendAttachments([draft], caption: "") }
                 }
@@ -451,6 +460,11 @@ struct ChatView: View {
             }
             // Режим выключили или сменили вид — открытые пузыри снова закрыты при следующем включении.
             .onChange(of: privateMode) { _, _ in reveal.hideAll() }
+            // «Я печатаю» уходит, только пока сюда можно писать; панель стикеров — «выбирает стикер».
+            .onChange(of: writable, initial: true) { _, value in viewModel.typingAllowed = value }
+            .onChange(of: panelShown) { _, shown in
+                if shown { viewModel.typingStickerPanelOpened() }
+            }
             .animation(OrbitleMotion.quick(reduceMotion: reduceMotion), value: viewModel.notice)
     }
 

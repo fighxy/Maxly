@@ -487,6 +487,9 @@ public protocol MaxCore: Sendable {
     func setChatMuted(chatId: String, muted: Bool) async throws
     /// User-Agent сессии для CDN: адреса видео и файлов выданы под Android-клиента.
     func mediaUserAgent() -> String?
+    /// «Я печатаю» (`MSG_TYPING` 65): кадр уходит сразу, ответа нет, ошибки не возвращаются —
+    /// пропущенный сигнал ничего не стоит. `postId` — комментарий к посту, пусто — чат.
+    func sendTyping(chatId: String, type: String, postId: String)
     func phases() -> AsyncStream<CorePhase>
     func events() -> AsyncStream<CoreEvent>
     func loadContacts() async throws -> [CoreContact]
@@ -697,6 +700,8 @@ public extension MaxCore {
         throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
     }
     func mediaUserAgent() -> String? { nil }
+    /// Фейки в тестах «печатаю» не отправляют.
+    func sendTyping(chatId: String, type: String, postId: String) {}
     func editMessage(chatId: String, messageId: String, text: String) async throws -> CoreMessage {
         throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
     }

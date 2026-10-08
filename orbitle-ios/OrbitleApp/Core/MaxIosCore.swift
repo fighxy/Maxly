@@ -340,6 +340,15 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         return agent.isEmpty ? nil : agent
     }
 
+    /// Без комментария — вариант моста без ответа: офлайн он не пишет ошибок в журнал.
+    func sendTyping(chatId: String, type: String, postId: String) {
+        if postId.isEmpty {
+            client.sendTyping(chatId: chatId, type: type)
+        } else {
+            client.sendTyping(chatId: chatId, type: type, postId: postId) { _, _ in }
+        }
+    }
+
     func markRead(chatId: String, messageId: String) async throws {
         let _: Void = try await call("markRead") { done in
             self.client.markRead(chatId: chatId, messageId: messageId) { kind, key in

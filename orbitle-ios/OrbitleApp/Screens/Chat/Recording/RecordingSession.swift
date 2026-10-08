@@ -46,6 +46,9 @@ final class RecordingSession {
     @ObservationIgnored var onRecorded: ((AttachmentDraft) -> Void)?
     /// Запись началась: остановить воспроизведение голосовых.
     @ObservationIgnored var onStart: (() -> Void)?
+    /// Полоса записи появилась (режим) или запись кончилась (`nil`): собеседник видит
+    /// «записывает аудио» или «записывает видеосообщение».
+    @ObservationIgnored var onRecordingChange: ((Mode?) -> Void)?
 
     static let cancelDistance: CGFloat = 120
     static let lockDistance: CGFloat = 90
@@ -186,6 +189,7 @@ final class RecordingSession {
                 guard let self, !Task.isCancelled, self.phase == .pressing, self.warming else { return }
                 self.warming = false
                 self.phase = .recording
+                self.onRecordingChange?(current)
                 Self.haptic(.light)
             }
         case .undetermined:
@@ -222,6 +226,7 @@ final class RecordingSession {
             pressTask = nil
             warming = false
             phase = .idle
+            onRecordingChange?(nil)
             show(current == .voice ? "Не удалось включить микрофон" : "Не удалось включить камеру")
         }
     }
@@ -230,6 +235,7 @@ final class RecordingSession {
     func send() {
         guard phase == .recording || phase == .locked else { return }
         phase = .finishing
+        onRecordingChange?(nil)
         dragX = 0
         dragY = 0
         let current = recordingMode
@@ -265,6 +271,7 @@ final class RecordingSession {
             discard(recordingMode)
         case .recording, .locked:
             discard(recordingMode)
+            onRecordingChange?(nil)
             Self.haptic(.rigid)
         default:
             break
