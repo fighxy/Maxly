@@ -5,12 +5,16 @@ public struct MessageReader: Hashable, Sendable, Identifiable {
     public var userId: String
     /// Эмодзи реакции из `MSG_GET_DETAILED_REACTIONS` 181. `nil` — прочитал без реакции.
     public var reaction: String?
+    /// Отметка прочтения (мс): время последнего прочитанного сообщения, а не момент чтения.
+    /// `nil` — в списке только из-за реакции, известная отметка раньше сообщения или её нет.
+    public var readMark: Int64?
 
     public var id: String { userId }
 
-    public init(userId: String, reaction: String? = nil) {
+    public init(userId: String, reaction: String? = nil, readMark: Int64? = nil) {
         self.userId = userId
         self.reaction = reaction
+        self.readMark = readMark
     }
 }
 
@@ -64,17 +68,20 @@ public enum MessageReaders {
 
     /// Показывать ли «Кем прочитано»: группа `CHAT` (не видеоконференция) не больше
     /// [maxReadmarks] участников и отправленное сообщение, своё или чужое. В личных чатах,
-    /// «Избранном», каналах и комментариях списка нет.
+    /// «Избранном», каналах и комментариях списка нет. Участников считает `participantsCount`,
+    /// а если его нет (`0`) — размер `participants` ([listedParticipants]), как в ядре.
     public static func isAvailable(
         chatId: String,
         chatType: String,
         isVideoConversation: Bool,
         participantsCount: Int,
+        listedParticipants: Int = 0,
         messageState: MessageState,
         maxReadmarks: Int = defaultMaxReadmarks
     ) -> Bool {
         guard chatType.uppercased() == "CHAT", !isVideoConversation, chatId != Chat.savedMessagesId else { return false }
-        guard participantsCount <= maxReadmarks else { return false }
+        let members = participantsCount > 0 ? participantsCount : listedParticipants
+        guard members <= maxReadmarks else { return false }
         return messageState == .sent
     }
 
@@ -99,7 +106,8 @@ public enum MessageReaders {
     ///
     /// Сначала отреагировавшие в порядке ответа 181 (с эмодзи), затем прочитавшие без реакции
     /// (`messageTime <= mark`) по убыванию отметки, при равной — по id как числу. Каждый один
-    /// раз; себя ([me]) и автора ([authorId]) нет. `reactions == nil` — запрос 181 не удался:
+    /// раз; себя ([me]) и автора ([authorId]) нет. У отреагировавшего `readMark` — его отметка,
+    /// если она не раньше сообщения, иначе `nil`. `reactions == nil` — запрос 181 не удался:
     /// только прочитавшие.
     public static func build(
         messageTime: Int64,
@@ -113,14 +121,15 @@ public enum MessageReaders {
         for reaction in reactions ?? [] {
             guard !reaction.userId.isEmpty, !reaction.emoji.isEmpty, !excluded.contains(reaction.userId) else { continue }
             excluded.insert(reaction.userId)
-            result.append(MessageReader(userId: reaction.userId, reaction: reaction.emoji))
+            let mark = marks[reaction.userId].flatMap { messageTime <= $0 ? $0 : nil }
+            result.append(MessageReader(userId: reaction.userId, reaction: reaction.emoji, readMark: mark))
         }
         let readers = marks
             .filter { !excluded.contains($0.key) && messageTime <= $0.value }
             .sorted { lhs, rhs in
                 lhs.value != rhs.value ? lhs.value > rhs.value : idLess(lhs.key, rhs.key)
             }
-        result += readers.map { MessageReader(userId: $0.key) }
+        result += readers.map { MessageReader(userId: $0.key, readMark: $0.value) }
         return result
     }
 

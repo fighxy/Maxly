@@ -28,11 +28,13 @@
     "readers": [
       {
         "userId": "2",
-        "reaction": null
+        "reaction": null,
+        "readMark": 8000
       },
       {
         "userId": "3",
-        "reaction": null
+        "reaction": null,
+        "readMark": 6000
       }
     ]
   }

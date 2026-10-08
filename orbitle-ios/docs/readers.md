@@ -27,14 +27,16 @@
 `MessageReaders` (OrbitleDomain) — чистые правила без сети и хранения:
 
 - `isAvailable(chatId:chatType:isVideoConversation:participantsCount:messageState:maxReadmarks:)` —
-  только `CHAT` без `videoConversation`, участников не больше порога (`max-readmarks` сервера,
+  только `CHAT` без `videoConversation`, участников (`participantsCount`, а без него — размер
+  `participants`) не больше порога (`max-readmarks` сервера,
   по умолчанию 100, `maxReadmarks(server:)`), сообщение отправлено (не `sending`, `failed`,
   `scheduled`). Своё или чужое — неважно. В личных чатах, «Избранном» и каналах — нет.
 - `marks(participants:pushed:)` — разбор `participants` (числа и строки) и слияние с пушами 130:
   бо́льшая отметка побеждает. `merged(_:_:)` — то же для следующего пуша.
 - `build(messageTime:authorId:me:marks:reactions:)` — сначала отреагировавшие в порядке ответа
   181 (с эмодзи), затем прочитавшие (`messageTime <= mark`) по убыванию отметки, при равной — по
-  id как числу. Каждый один раз, без себя и без автора. `reactions == nil` — 181 не удался:
+  id как числу. Каждый один раз, без себя и без автора. `readMark` — отметка; у отреагировавшего
+  с отметкой раньше сообщения — `nil`. `reactions == nil` — 181 не удался:
   только прочитавшие, без ошибки.
 - `privateStatus(chatId:chatType:isOwn:messageState:messageTime:peerMark:)` — строка
   «Прочитано» / «Доставлено» для своего отправленного сообщения в личном чате (кроме

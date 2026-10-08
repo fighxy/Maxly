@@ -31,7 +31,8 @@
     "readers": [
       {
         "userId": "3",
-        "reaction": null
+        "reaction": null,
+        "readMark": 6000
       }
     ]
   }

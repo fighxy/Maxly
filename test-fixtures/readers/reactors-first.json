@@ -37,19 +37,23 @@
     "readers": [
       {
         "userId": "4",
-        "reaction": "❤️"
+        "reaction": "❤️",
+        "readMark": null
       },
       {
         "userId": "2",
-        "reaction": "👍"
+        "reaction": "👍",
+        "readMark": 6000
       },
       {
         "userId": "3",
-        "reaction": null
+        "reaction": null,
+        "readMark": 7000
       },
       {
         "userId": "5",
-        "reaction": null
+        "reaction": null,
+        "readMark": 5500
       }
     ]
   }

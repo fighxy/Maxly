@@ -1,0 +1,29 @@
+{
+  "kind": "readers",
+  "name": "group-size-count-missing",
+  "description": "В карточке нет participantsCount (0): участников считаем по размеру participants. Три человека при пороге сервера 2 — списка нет.",
+  "me": "1",
+  "serverMaxReadmarks": 2,
+  "chat": {
+    "id": "c1",
+    "type": "CHAT",
+    "videoConversation": false,
+    "participantsCount": 0,
+    "participants": {
+      "1": 9000,
+      "2": 6000,
+      "3": 7000
+    }
+  },
+  "pushedMarks": {},
+  "message": {
+    "time": 5000,
+    "author": "1",
+    "state": "sent"
+  },
+  "reactions": [],
+  "expect": {
+    "available": false,
+    "readers": []
+  }
+}

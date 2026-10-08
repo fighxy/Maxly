@@ -14,6 +14,7 @@ struct ReadersFixtureTests {
         "not-private", "not-saved-messages", "not-channel", "not-video-conversation",
         "message-sending", "message-failed", "message-scheduled",
         "group-size-100", "group-size-101", "group-size-server-lower", "group-size-server-higher",
+        "group-size-count-missing",
         "pushed-mark-newer", "pushed-mark-older", "live-push",
         "reactor-not-participant", "reactions-error", "nobody", "readers-order-ties", "ids-string-and-number",
         "info-private-status", "info-edited",
@@ -114,7 +115,7 @@ enum ReadersFixturePlayer {
     static func readers(_ value: Any?, _ context: String) throws -> [MessageReader] {
         try objects(value, context).map { entry in
             guard let id = entry["userId"] as? String else { throw ReadersFixtureError("\(context): userId не строка") }
-            return MessageReader(userId: id, reaction: entry["reaction"] as? String)
+            return MessageReader(userId: id, reaction: entry["reaction"] as? String, readMark: MessageReaders.number(entry["readMark"]))
         }
     }
 
@@ -132,6 +133,7 @@ enum ReadersFixturePlayer {
             chatType: chat["type"] as? String ?? "",
             isVideoConversation: chat["videoConversation"] as? Bool ?? false,
             participantsCount: Int(try int(chat["participantsCount"], "\(file)/participantsCount")),
+            listedParticipants: (chat["participants"] as? [String: Any])?.count ?? 0,
             messageState: try state(message["state"], file),
             maxReadmarks: MessageReaders.maxReadmarks(server: (fixture["serverMaxReadmarks"] as? NSNumber)?.intValue)
         )
