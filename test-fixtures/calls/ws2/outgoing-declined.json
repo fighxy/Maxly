@@ -1,0 +1,105 @@
+{
+  "name": "outgoing-declined",
+  "description": "Собеседник отклонил исходящий: hungup с причиной REJECTED.",
+  "role": "CALLER",
+  "isGroup": false,
+  "selfId": 10,
+  "conversationId": "conv",
+  "signalingUrl": "wss://sig.test/ws?userId=10&token=t",
+  "steps": [
+    {
+      "do": "start"
+    },
+    {
+      "receive": {
+        "type": "notification",
+        "notification": "connection",
+        "conversation": {
+          "id": "conv",
+          "topology": "DIRECT",
+          "participants": [
+            {
+              "id": 10,
+              "state": "ACCEPTED"
+            },
+            {
+              "id": 20,
+              "state": "CALLED",
+              "externalId": {
+                "id": "777",
+                "type": "USER"
+              },
+              "mediaSettings": {
+                "isAudioEnabled": true
+              },
+              "responderTypes": [
+                "USER"
+              ],
+              "responderDeviceIdxs": [
+                3
+              ]
+            }
+          ]
+        },
+        "conversationParams": {
+          "stun": {
+            "urls": [
+              "stun:stun.test:3478"
+            ]
+          },
+          "turn": {
+            "urls": [
+              "turn:turn.test:3478"
+            ],
+            "username": "u",
+            "credential": "p"
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "phase": "Ringing",
+        "sent": [
+          {
+            "command": "transmit-data",
+            "participantId": 20,
+            "participantType": "USER",
+            "deviceIdx": 3,
+            "data": {
+              "sdp": {
+                "type": "offer"
+              }
+            },
+            "capabilities": "3c02f"
+          },
+          {
+            "command": "accept-call",
+            "mediaSettings": {
+              "isAudioEnabled": true,
+              "isVideoEnabled": false,
+              "isScreenSharingEnabled": false,
+              "isAnimojiEnabled": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "receive": {
+        "type": "notification",
+        "notification": "hungup",
+        "participantId": 20,
+        "reason": "REJECTED"
+      }
+    },
+    {
+      "expect": {
+        "phase": "Ended",
+        "ended": "Declined",
+        "sent": [],
+        "socketClosed": true
+      }
+    }
+  ]
+}

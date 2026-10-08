@@ -205,3 +205,10 @@ compose.desktop {
         }
     }
 }
+
+// Общие с iOS сценарии ws2 (test-fixtures/calls/ws2) — вход тестов: правка файла перезапускает их.
+tasks.withType<Test>().configureEach {
+    inputs.dir(layout.projectDirectory.dir("../test-fixtures/calls/ws2"))
+        .withPropertyName("ws2Fixtures")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+}

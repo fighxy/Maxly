@@ -1,0 +1,195 @@
+{
+  "name": "outgoing-direct",
+  "description": "Исходящий напрямую: connection, офер и accept-call, гудки, ответ собеседника, кандидаты, разговор, своё завершение.",
+  "role": "CALLER",
+  "isGroup": false,
+  "selfId": 10,
+  "conversationId": "conv",
+  "signalingUrl": "wss://sig.test/ws?userId=10&token=t",
+  "steps": [
+    {
+      "do": "start"
+    },
+    {
+      "expect": {
+        "phase": "Connecting",
+        "sent": []
+      }
+    },
+    {
+      "receive": {
+        "type": "notification",
+        "notification": "connection",
+        "conversation": {
+          "id": "conv",
+          "topology": "DIRECT",
+          "participants": [
+            {
+              "id": 10,
+              "state": "ACCEPTED"
+            },
+            {
+              "id": 20,
+              "state": "CALLED",
+              "externalId": {
+                "id": "777",
+                "type": "USER"
+              },
+              "mediaSettings": {
+                "isAudioEnabled": true
+              },
+              "responderTypes": [
+                "USER"
+              ],
+              "responderDeviceIdxs": [
+                3
+              ]
+            }
+          ]
+        },
+        "conversationParams": {
+          "stun": {
+            "urls": [
+              "stun:stun.test:3478"
+            ]
+          },
+          "turn": {
+            "urls": [
+              "turn:turn.test:3478"
+            ],
+            "username": "u",
+            "credential": "p"
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "phase": "Ringing",
+        "sent": [
+          {
+            "command": "transmit-data",
+            "participantId": 20,
+            "participantType": "USER",
+            "deviceIdx": 3,
+            "data": {
+              "sdp": {
+                "type": "offer"
+              }
+            },
+            "capabilities": "3c02f"
+          },
+          {
+            "command": "accept-call",
+            "mediaSettings": {
+              "isAudioEnabled": true,
+              "isVideoEnabled": false,
+              "isScreenSharingEnabled": false,
+              "isAnimojiEnabled": false
+            }
+          }
+        ],
+        "peer": {
+          "microphone": true,
+          "iceServers": 2,
+          "remotes": []
+        }
+      }
+    },
+    {
+      "receive": {
+        "type": "notification",
+        "notification": "transmitted-data",
+        "participantId": 20,
+        "participantType": "USER",
+        "deviceIdx": 3,
+        "data": {
+          "candidate": {
+            "candidate": "candidate:9 1 udp 1 1.2.3.4 5 typ host",
+            "sdpMLineIndex": 0,
+            "sdpMid": "0"
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "peer": {
+          "candidates": []
+        }
+      }
+    },
+    {
+      "receive": {
+        "type": "notification",
+        "notification": "accepted-call",
+        "participantId": 20
+      }
+    },
+    {
+      "expect": {
+        "phase": "Active",
+        "sent": []
+      }
+    },
+    {
+      "receive": {
+        "type": "notification",
+        "notification": "transmitted-data",
+        "participantId": 20,
+        "participantType": "USER",
+        "deviceIdx": 3,
+        "data": {
+          "sdp": {
+            "type": "answer",
+            "sdp": "v=0 answer"
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "peer": {
+          "remotes": [
+            "answer"
+          ],
+          "candidates": [
+            {
+              "sdp": "candidate:9 1 udp 1 1.2.3.4 5 typ host",
+              "sdpMid": "0",
+              "sdpMLineIndex": 0
+            }
+          ]
+        },
+        "sent": []
+      }
+    },
+    {
+      "peerEvent": {
+        "state": "CONNECTED"
+      }
+    },
+    {
+      "expect": {
+        "mediaConnected": true,
+        "phase": "Active"
+      }
+    },
+    {
+      "do": "hangUp"
+    },
+    {
+      "expect": {
+        "phase": "Ended",
+        "ended": "HungUp",
+        "sent": [
+          {
+            "command": "hangup",
+            "reason": "HUNGUP"
+          }
+        ],
+        "socketClosed": true
+      }
+    }
+  ]
+}
