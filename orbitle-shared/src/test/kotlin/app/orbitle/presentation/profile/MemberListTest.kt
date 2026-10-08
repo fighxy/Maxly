@@ -166,7 +166,7 @@ class MemberListTest {
     @Test
     fun rolesAreLabelled() {
         assertEquals("владелец", MemberListState.roleLabel(people[0]))
-        assertEquals("админ · модератор", MemberListState.roleLabel(people[1]))
+        assertEquals("модератор", MemberListState.roleLabel(people[1]))
         assertEquals("", MemberListState.roleLabel(people[2]))
         assertNull(MemberListState().emptyText)
         assertEquals("Список пуст", MemberListState(loaded = true).emptyText)

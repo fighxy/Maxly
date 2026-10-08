@@ -15,8 +15,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * Участники чата на экране: страницы по `marker` и поиск. Поиск сначала среди загруженных; пока
- * загружены не все страницы, ещё и на сервере — [found], его ответ по [query].
+ * Участники чата на экране (правила общие с iOS, `test-fixtures/members`): страницы по `marker`
+ * и поиск. Порядок — владелец, админы, остальные ([ranked]). Поиск сначала среди загруженных;
+ * пока загружены не все страницы, ещё и на сервере — [found], его ответ по [query].
  */
 data class MemberListState(
     val members: List<ChatPerson> = emptyList(),
@@ -30,8 +31,16 @@ data class MemberListState(
 ) {
     val isSearch: Boolean get() = query.isNotBlank()
 
-    /** Что показать списком. */
-    val visible: List<ChatPerson> get() = if (!isSearch) members else found ?: MemberSearch.filter(members, query)
+    /**
+     * Что показать списком. При поиске — совпадения среди загруженных, за ними найденные
+     * сервером ([found]) без повторов.
+     */
+    val visible: List<ChatPerson> get() {
+        if (!isSearch) return members
+        val local = MemberSearch.filter(members, query)
+        val ids = local.mapTo(HashSet()) { it.id }
+        return local + found.orEmpty().filter { ids.add(it.id) }
+    }
 
     /** Подпись под списком, когда в нём никого. */
     val emptyText: String? get() = when {
@@ -42,12 +51,18 @@ data class MemberListState(
     }
 
     companion object {
-        /** Роль под именем: «владелец», «админ» (с подписью админа, если есть), у остальных пусто. */
+        /** Значок у имени: «владелец»; у админа — его подпись, без неё «админ»; у остальных пусто. */
         fun roleLabel(person: ChatPerson): String = when (person.role) {
             ChatPerson.Role.OWNER -> "владелец"
-            ChatPerson.Role.ADMIN -> listOfNotNull("админ", person.alias?.takeIf { it.isNotBlank() }).joinToString(" · ")
+            ChatPerson.Role.ADMIN -> person.alias?.trim()?.takeIf { it.isNotEmpty() } ?: "админ"
             ChatPerson.Role.MEMBER -> ""
         }
+
+        /** Порядок экрана: владелец, админы, остальные — каждый в порядке сервера. */
+        fun ranked(people: List<ChatPerson>): List<ChatPerson> =
+            people.filter { it.role == ChatPerson.Role.OWNER } +
+                people.filter { it.role == ChatPerson.Role.ADMIN } +
+                people.filter { it.role == ChatPerson.Role.MEMBER }
     }
 }
 
@@ -112,11 +127,14 @@ class MemberList(
         _state.update { it.copy(loading = true, error = null) }
         try {
             val page = source.memberPage(chatId, marker)
-            next = page.next
-            complete = page.next == null
+            val known = if (reset) emptyList() else _state.value.members
+            val ids = known.mapTo(HashSet()) { it.id }
+            // Повторы выбрасываются (остаётся первый); страница без новых — конец списка.
+            val added = page.members.filter { ids.add(it.id) }
+            next = page.next?.takeIf { added.isNotEmpty() }
+            complete = next == null
             _state.update {
-                val members = if (reset) page.members else (it.members + page.members).distinctBy { p -> p.id }
-                it.copy(members = members, loading = false, loaded = true, hasMore = page.next != null)
+                it.copy(members = MemberListState.ranked(known + added), loading = false, loaded = true, hasMore = next != null)
             }
         } catch (e: CancellationException) {
             throw e

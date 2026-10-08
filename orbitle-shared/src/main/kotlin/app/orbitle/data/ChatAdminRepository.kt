@@ -15,13 +15,16 @@ data class ChatAdminSnapshot(
     val membersCanSeePrivateLink: Boolean,
 )
 
-/** Человек в списке участников, заявок или контактов. */
+/**
+ * Человек в списке участников, заявок или контактов. [alias] — подпись админа; [mentionName] — имя
+ * для упоминаний (ник без «@»), если оно известно (ядро его пока не отдаёт).
+ */
 data class ChatPerson(
     val id: String,
     val name: String,
     val role: Role = Role.MEMBER,
-    /** Подпись админа («должность») из карточки чата. */
     val alias: String? = null,
+    val mentionName: String? = null,
     /** Присутствие, если оно уже известно (стор или сама страница участников); `0` — неизвестно. */
     val isOnline: Boolean = false,
     val lastSeenMs: Long = 0,
@@ -67,11 +70,24 @@ interface ChatAdminRepository : ChatMembersSource {
         MemberSearch.filter(members(chatId), query)
 }
 
-/** Поиск по именам, когда сервер не ищет сам. */
+/**
+ * Поиск среди загруженных участников (общий с iOS, `test-fixtures/members/search`): подстрока
+ * имени или имени для упоминаний без учёта регистра, «ё» = «е», пробелы запроса по краям не
+ * важны, пустой запрос — все. Запрос с «@» ищет только по [ChatPerson.mentionName], «@» без
+ * текста — все. Порядок сохраняется.
+ */
 object MemberSearch {
     fun filter(people: List<ChatPerson>, query: String): List<ChatPerson> {
-        val term = query.trim().lowercase()
-        if (term.isEmpty()) return people
-        return people.filter { it.name.lowercase().contains(term) }
+        val needle = fold(query.trim())
+        if (needle.isEmpty()) return people
+        val byMention = needle.startsWith("@")
+        val mention = needle.removePrefix("@")
+        if (byMention && mention.isEmpty()) return people
+        return people.filter { person ->
+            (!byMention && fold(person.name).contains(needle)) ||
+                person.mentionName?.let { fold(it).contains(mention) } == true
+        }
     }
+
+    private fun fold(text: String): String = text.lowercase().replace('ё', 'е')
 }
