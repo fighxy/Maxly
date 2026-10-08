@@ -595,6 +595,23 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func refreshPhotoURLs(_ items: [PhotoRefreshKey]) async throws -> [RefreshedPhotoURL] {
+        if items.isEmpty { return [] }
+        let media = items.map { IosPhotoRefresh(chatId: $0.chatId, messageId: $0.messageId, photoIds: [$0.photoId]) }
+        return try await call("refreshPhotoURLs") { done in
+            client.refreshPhotoUrls(media: media) { photos, kind, key in
+                if let kind {
+                    done(.failure(CoreFailure(kind: kind, key: key)))
+                    return
+                }
+                let mapped = (photos ?? []).map {
+                    RefreshedPhotoURL(photoId: $0.photoId, url: $0.baseUrl, width: Int($0.width), height: Int($0.height))
+                }
+                done(.success(mapped))
+            }
+        }
+    }
+
     func loginRejection() async -> CoreLoginRejection? {
         guard let value = client.loginRejection() else { return nil }
         return CoreLoginRejection(

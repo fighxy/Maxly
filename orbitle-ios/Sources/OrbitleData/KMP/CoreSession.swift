@@ -476,6 +476,8 @@ public protocol MaxCore: Sendable {
     func hasStoredToken() async -> Bool
     /// Почему ядро отклонило вход. `nil`, пока фазы `tokenRejected` нет.
     func loginRejection() async -> CoreLoginRejection?
+    /// Opcode 203. Пустой список — нечего обновлять.
+    func refreshPhotoURLs(_ items: [PhotoRefreshKey]) async throws -> [RefreshedPhotoURL]
     func start() async throws -> CorePhase
     func requestCode(phone: String, resend: Bool) async throws -> CoreCode
     func verifyCode(token: String, code: String) async throws -> CoreAuthStep
@@ -755,6 +757,11 @@ public protocol MaxCore: Sendable {
 public extension MaxCore {
     /// Ядро без отдельного отказа входа: причины нет.
     func loginRejection() async -> CoreLoginRejection? { nil }
+
+    /// Ядро без обновления адресов фото.
+    func refreshPhotoURLs(_ items: [PhotoRefreshKey]) async throws -> [RefreshedPhotoURL] {
+        throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
+    }
 
     /// Ядро без ответа на отметку: она уходит прежним вызовом, ответ неизвестен.
     func markRead(chatId: String, messageId: String, mark: Int64) async throws -> CoreReadMark {

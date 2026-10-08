@@ -55,6 +55,8 @@ public struct SentMessage: Sendable, Hashable {
 /// подставлять фейковую реализацию.
 public protocol MaxAPI: Sendable {
     func fetchChats() async -> Result<[ChatRecord], MaxAPIError>
+    /// Новые адреса просроченных фото. Пустой ответ — обновлять нечего.
+    func refreshPhotoURLs(_ items: [PhotoRefreshKey]) async -> Result<[RefreshedPhotoURL], MaxAPIError>
     /// Список чатов и признак, что он полный (весь список аккаунта, первый после входа).
     func fetchChatList() async -> Result<ChatListPage, MaxAPIError>
     /// Один чат. Ошибка, если сервер его не вернул.
@@ -172,6 +174,11 @@ public struct ChatListPage: Sendable {
 }
 
 public extension MaxAPI {
+    /// Источник без обновления адресов: просроченное фото остаётся как есть.
+    func refreshPhotoURLs(_ items: [PhotoRefreshKey]) async -> Result<[RefreshedPhotoURL], MaxAPIError> {
+        .success([])
+    }
+
     func fetchChatList() async -> Result<ChatListPage, MaxAPIError> {
         await fetchChats().map { ChatListPage(records: $0, complete: false) }
     }
@@ -308,6 +315,10 @@ public final class MaxAPIClient: MaxAPI, Sendable {
             }
             return ChatListPage(records: records, complete: list.complete)
         }
+    }
+
+    public func refreshPhotoURLs(_ items: [PhotoRefreshKey]) async -> Result<[RefreshedPhotoURL], MaxAPIError> {
+        await catching { try await core.refreshPhotoURLs(items) }
     }
 
     public func fetchChats() async -> Result<[ChatRecord], MaxAPIError> {

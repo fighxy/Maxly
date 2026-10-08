@@ -19,6 +19,7 @@ struct RootView: View {
         .dynamicTypeSize(container.appearance.textSize.dynamicTypeSize)
         .background(InterfaceStyleOverride(theme: container.appearance.theme))
         .environment(\.chatWallpaper, container.appearance.wallpaper)
+        .environment(\.imageURLSizing, CoreImageURLSizing())
         .task { await container.bootstrap() }
         .task(id: router.chatId) { await container.focus(chatId: router.chatId) }
         .onChange(of: container.phase) { old, phase in

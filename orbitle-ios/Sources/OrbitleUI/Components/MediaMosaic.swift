@@ -24,6 +24,8 @@ struct MediaMosaic: View {
     /// Двойное нажатие по фото или видео: быстрая реакция. Одиночное касание по-прежнему открывает.
     var onDoubleTap: (() -> Void)? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.displayScale) private var displayScale
+    @Environment(\.imageURLSizing) private var imageURLSizing
 
     var body: some View {
         let visuals = attachments.filter(\.isVisual)
@@ -63,7 +65,7 @@ struct MediaMosaic: View {
         // Не `Button`: кнопка ловит касание в начале прокрутки и подсвечивается, а жест
         // касания срабатывает только на короткое нажатие без движения.
         return ZStack {
-            RemoteImage(url: still(item), maxPixel: Self.decodeSize(width: width, height: height)) {
+            RemoteImage(url: thumbnail(item, width: width, height: height), maxPixel: Self.decodeSize(width: width, height: height)) {
                 placeholder(item)
             }
             .frame(width: width, height: height)
@@ -185,9 +187,18 @@ struct MediaMosaic: View {
         return min(ImagePipeline.fullSize, max(256, (pixels + 255) / 256 * 256))
     }
 
-    private func still(_ item: ChatAttachment) -> URL? {
-        item.photo?.displayURL ?? item.video?.displayURL
+    /// Миниатюра фото идёт через ядро (`w_N`). Файл на диске и видео не меняются.
+    /// Полный экран берёт исходный адрес сам.
+    private func thumbnail(_ item: ChatAttachment, width: CGFloat, height: CGFloat) -> URL? {
+        if let photo = item.photo, photo.localPath == nil {
+            return ImageURLRequests.url(
+                photo.url, shape: .width, pointSize: max(width, height), scale: displayScale,
+                fullScreen: false, sizing: imageURLSizing
+            )
+        }
+        return item.photo?.displayURL ?? item.video?.displayURL
     }
+
 }
 
 /// Даже маленькое preview декодируется вне body, один раз на значение Data.

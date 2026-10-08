@@ -185,6 +185,10 @@ final class AppContainer {
             let api = MaxAPIClient(core: core)
             let chats = ChatRepositoryImpl.make(stack: stack, api: api)
             let messages = MessageRepositoryImpl.make(stack: stack, api: api)
+            // Флаг photo-url-refresh на мост не выведен, по умолчанию он выключен.
+            // Пока его нет, просроченные адреса не спрашиваем.
+            let sizing = CoreImageURLSizing()
+            await messages.setPhotoURLRefresh(enabled: false, expired: sizing.isExpired)
             let outbox = OutboxQueue(api: api)
             await messages.attach(outbox: outbox)
             // Адреса CDN (видео, файлы) выданы под Android-клиента ядра: без его User-Agent

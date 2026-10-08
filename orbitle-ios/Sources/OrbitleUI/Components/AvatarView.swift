@@ -1,4 +1,5 @@
 import SwiftUI
+import OrbitleDomain
 import OrbitlePresentation
 
 /// Аватар строки: фото, буквы на градиенте по id, «Избранное», архив. Точка «в сети» справа снизу.
@@ -8,6 +9,8 @@ public struct ChatAvatarView: View {
     private let isOnline: Bool
     @Environment(\.privateMode) private var privateMode
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.displayScale) private var displayScale
+    @Environment(\.imageURLSizing) private var imageURLSizing
 
     public init(avatar: ChatAvatar, size: CGFloat = OrbitleTheme.avatar, isOnline: Bool = false) {
         self.avatar = avatar
@@ -56,7 +59,10 @@ public struct ChatAvatarView: View {
         case .initials(let text):
             initials(text)
         case .photo(let url, let text):
-            RemoteImage(url: url, maxPixel: Int(size * 3)) { initials(text) }
+            RemoteImage(
+                url: ImageURLRequests.url(url, shape: .square, pointSize: size, scale: displayScale, fullScreen: false, sizing: imageURLSizing),
+                maxPixel: Int(size * 3)
+            ) { initials(text) }
         case .savedMessages:
             special("bookmark.fill")
         case .archive:

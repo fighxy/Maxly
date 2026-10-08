@@ -78,6 +78,10 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// повторное открытие чата в это окно сервер не спрашивают: на частые `CHAT_HISTORY`
     /// он отвечает `too.many.requests`. Новые сообщения в это время приходят пушами.
     private let latestReuse: TimeInterval
+    /// Обновление просроченных адресов фото. Выключено, пока сервер не разрешил.
+    private var photoRefreshEnabled = false
+    private var photoURLExpired: @Sendable (String, Int64) -> Bool = { _, _ in false }
+    private var photoRefreshQueue = PhotoRefreshQueue()
 
     /// Что случилось со своим сообщением.
     public enum OutgoingChange: Sendable, Equatable {
@@ -114,6 +118,13 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
 
     public func setCurrentUser(id: String) {
         currentUserId = id
+    }
+
+    /// `enabled` — флаг сервера `photo-url-refresh`. Пока он выключен, адреса не спрашиваются.
+    public func setPhotoURLRefresh(enabled: Bool, maxPerRequest: Int = 100, expired: @escaping @Sendable (String, Int64) -> Bool) {
+        photoRefreshEnabled = enabled
+        photoURLExpired = expired
+        photoRefreshQueue = PhotoRefreshQueue(maxPerRequest: maxPerRequest)
     }
 
     public func currentUser() -> String {
@@ -1019,6 +1030,47 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         try await latest(chatId: chatId, opened: false)
     }
 
+    /// Просроченные фото открытого чата: одна пачка за раз, повтор того же фото не копится.
+    private func refreshExpiredPhotos(chatId: String) async {
+        guard photoRefreshEnabled else { return }
+        let now = Date().unixMillis
+        var keys: [PhotoRefreshKey] = []
+        let rows = (try? modelContext.fetch(FetchDescriptor<SDMessage>(predicate: #Predicate { $0.chatId == chatId }))) ?? []
+        for row in rows {
+            let messageId = row.serverId ?? row.id
+            for attachment in Self.content(of: row).attachments {
+                guard let photo = attachment.photo, let url = photo.url, !url.isFileURL else { continue }
+                guard photoURLExpired(url.absoluteString, now) else { continue }
+                keys.append(PhotoRefreshKey(chatId: chatId, messageId: messageId, photoId: photo.id))
+            }
+        }
+        photoRefreshQueue.enqueue(keys)
+        guard let batch = photoRefreshQueue.take(nowMs: now) else { return }
+        switch await api.refreshPhotoURLs(batch) {
+        case .success(let fresh):
+            applyRefreshedPhotos(fresh, chatId: chatId)
+        case .failure:
+            photoRefreshQueue.requeue(batch)
+        }
+    }
+
+    private func applyRefreshedPhotos(_ fresh: [RefreshedPhotoURL], chatId: String) {
+        let useful = fresh.filter { !$0.url.isEmpty }
+        guard !useful.isEmpty else { return }
+        let rows = (try? modelContext.fetch(FetchDescriptor<SDMessage>(predicate: #Predicate { $0.chatId == chatId }))) ?? []
+        var changed = false
+        for row in rows {
+            let content = Self.content(of: row)
+            let next = content.replacingPhotoURLs(useful)
+            guard next != content else { continue }
+            row.contentJSON = MessageContentCodec.encode(next)
+            changed = true
+        }
+        guard changed else { return }
+        try? modelContext.save()
+        notify(chatId: chatId)
+    }
+
     public func openLatest(chatId: String) async throws(OrbitleError) {
         try await latest(chatId: chatId, opened: true)
     }
@@ -1036,6 +1088,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             let records = await withReactions(fetched, chatId: chatId)
             try ensureCurrent(started)
             try upsert(records)
+            if opened { await refreshExpiredPhotos(chatId: chatId) }
             latestFetchedAt[chatId] = Date()
             let gone = pruneMissing(chatId: chatId, page: records, requestedAt: requestedAt)
             if !gone.isEmpty { await outgoingHandler?(.deleted(chatId: chatId, ids: gone)) }
