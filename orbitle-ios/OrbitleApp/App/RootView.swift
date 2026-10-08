@@ -108,6 +108,7 @@ struct MainTabView: View {
         // Приватный режим: вид для строк и пузырей, а сама настройка — для кнопок-переключателей.
         .environment(\.privateMode, container.privateMode.display)
         .environment(container.privateMode)
+        .environment(container.addressBook)
         // Истории: кольца в списке, шапке чата и профиле, просмотр и публикация.
         .modifier(StoriesHost(stories: container.storiesViewModel(), picking: $pickingStory, afterStart: {
             let account = container.accountSettingsModel()

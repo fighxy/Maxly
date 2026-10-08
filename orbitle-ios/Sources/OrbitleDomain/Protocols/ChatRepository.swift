@@ -180,11 +180,21 @@ public extension ChatRepository {
     }
 }
 
-/// Черновики полей ввода. Хранятся только на устройстве.
+/// Черновики полей ввода. Хранятся на устройстве; источник с черновиками сервера сверяет
+/// их, когда из поля ушли (`commitDraft`).
 public protocol ChatDraftStore: Sendable {
     func draft(chatId: String) async -> String?
     /// Пустой текст удаляет черновик.
     func saveDraft(_ text: String, chatId: String) async
+    /// Когда черновик сохранили на устройстве; `nil` — неизвестно или черновика нет.
+    func draftTime(chatId: String) async -> Date?
+    /// Из поля ушли (закрыли чат): черновик можно отдать серверу или стереть там.
+    func commitDraft(chatId: String) async
+}
+
+public extension ChatDraftStore {
+    func draftTime(chatId: String) async -> Date? { nil }
+    func commitDraft(chatId: String) async {}
 }
 
 /// Недавние чаты из поиска, новые первыми.

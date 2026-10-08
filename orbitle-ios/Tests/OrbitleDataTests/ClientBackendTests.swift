@@ -49,6 +49,23 @@ actor FakeMaxCore: MaxCore {
 
     func setStickerCatalog(_ catalog: StickerCatalog?) { stickerCatalog = catalog }
 
+    // Черновики сервера (`DRAFT_SAVE` 176, `DRAFT_DISCARD` 177).
+    var serverDraftList: [CoreDraft] = []
+    private(set) var draftCalls: [String] = []
+
+    func setServerDrafts(_ list: [CoreDraft]) { serverDraftList = list }
+
+    func saveDraft(chatId: String, text: String, elementsJSON: String, replyTo: String) async throws -> Int64 {
+        draftCalls.append("save \(chatId) \(text)")
+        return 9_000
+    }
+
+    func discardDraft(chatId: String, time: Int64) async throws {
+        draftCalls.append("discard \(chatId) \(time)")
+    }
+
+    func serverDrafts() async -> [CoreDraft] { serverDraftList }
+
     func loadStickerCatalog() async throws -> StickerCatalog {
         guard let stickerCatalog else { throw CoreFailure(kind: "NETWORK", key: nil) }
         return stickerCatalog

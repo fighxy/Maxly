@@ -973,6 +973,10 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         (try? chat(id: chatId))?.draftText
     }
 
+    public func draftTime(chatId: String) async -> Date? {
+        (try? chat(id: chatId))?.draftAt
+    }
+
     /// Пустой текст удаляет черновик. Чата ещё нет в базе — черновик не сохраняется.
     public func saveDraft(_ text: String, chatId: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -15,6 +15,8 @@ struct SecurityView: View {
     @State private var confirmHideOnline = false
     @State private var passwordDraft = ""
     @State private var passwordHint = ""
+    /// «Имена из адресной книги» (настройка устройства).
+    @Environment(AddressBookNamesSync.self) private var addressBook: AddressBookNamesSync?
 
     var body: some View {
         List {
@@ -74,6 +76,7 @@ struct SecurityView: View {
             .disabled(!account.settings.isKnown)
 
             privateModeSection
+            addressBookSection
 
             Section {
                 NavigationLink {
@@ -108,6 +111,23 @@ struct SecurityView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(account.errorMessage ?? model.errorMessage ?? "")
+        }
+    }
+
+    /// Имена людей в чатах — как в телефонной книге. Книга не покидает устройство.
+    @ViewBuilder
+    private var addressBookSection: some View {
+        if let addressBook {
+            Section {
+                Toggle(isOn: Binding(
+                    get: { addressBook.isEnabled },
+                    set: { value in Task { await addressBook.setEnabled(value) } }
+                )) {
+                    SettingsRowLabel("Имена из адресной книги", systemImage: "person.crop.rectangle.stack.fill", tint: .orange)
+                }
+            } footer: {
+                Text("Люди в чатах подписаны так, как вы записали их в телефоне. Адресная книга остаётся на этом устройстве и никуда не отправляется. Нужен доступ к контактам.")
+            }
         }
     }
 

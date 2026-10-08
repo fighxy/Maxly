@@ -40,7 +40,7 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Orbitle сохраняет фото и видео из чатов и фото профиля в вашу медиатеку, когда вы просите об этом.</string>
 	<key>NSContactsUsageDescription</key>
-	<string>Orbitle показывает, кто из ваших контактов уже в Max. Можно дать доступ только к выбранным контактам.</string>
+	<string>Orbitle подписывает людей в чатах именами из вашей адресной книги и показывает, кто из контактов уже в Max. Адресная книга остаётся на устройстве и никуда не отправляется. Можно дать доступ только к выбранным контактам.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIBackgroundModes</key>

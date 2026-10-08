@@ -1,3 +1,4 @@
+import Contacts
 import Foundation
 import Observation
 import OrbitleCallMedia
@@ -24,6 +25,8 @@ final class AppContainer {
     // SwiftUI перерисовывать экран ещё раз. Экран следит только за `boot` и `phase`.
     @ObservationIgnored private var session: SessionManager?
     @ObservationIgnored private var chats: ChatRepositoryImpl?
+    /// Черновики устройства, сверенные с черновиками сервера.
+    @ObservationIgnored private var draftStore: ServerSyncedDraftStore?
     @ObservationIgnored private var messages: MessageRepositoryImpl?
     @ObservationIgnored private var media: MediaRepositoryImpl?
     /// Кэш медиа на устройстве: размеры, очистка и правила для «Данных и памяти».
@@ -51,6 +54,9 @@ final class AppContainer {
     @ObservationIgnored private var contacts: any ContactRepository = UnavailableContactRepository()
     @ObservationIgnored private var calls: any CallHistoryRepository = UnavailableCallHistoryRepository()
     @ObservationIgnored private var coreContacts: CoreContactRepository?
+    /// «Имена из адресной книги»: книга телефона в ядро, на сервер — ничего. До ядра пусто.
+    private(set) var addressBook: AddressBookNamesSync?
+    @ObservationIgnored private var addressBookObserver: (any NSObjectProtocol)?
     /// «Я печатаю» для всех чатов: порог 6 с на чат общий, сколько бы экранов ни открывалось.
     @ObservationIgnored private var typingReporter: TypingReporter?
     /// Управление группой и каналом. До входа ядра пусто.
@@ -191,6 +197,14 @@ final class AppContainer {
             let coreContacts = CoreContactRepository(core: core)
             let coreCalls = CoreCallHistoryRepository(core: core)
             typingReporter = TypingReporter(sender: CoreTypingSender(core: core))
+            let addressBook = AddressBookNamesSync(read: { await AddressBookReader.read() }, send: AddressBookReader.sender(core: core))
+            self.addressBook = addressBook
+            // Книга изменилась — ядро получает её заново целиком.
+            addressBookObserver = NotificationCenter.default.addObserver(
+                forName: .CNContactStoreDidChange, object: nil, queue: .main
+            ) { _ in
+                Task { @MainActor in await addressBook.refresh() }
+            }
             self.coreContacts = coreContacts
             self.coreCalls = coreCalls
             self.contacts = coreContacts
@@ -221,6 +235,7 @@ final class AppContainer {
             self.folderRepository = CoreFolderRepository(core: core)
             self.session = session
             self.chats = chats
+            self.draftStore = ServerSyncedDraftStore(local: chats, core: core)
             self.messages = messages
             self.media = media
             self.mediaLinks = CoreMediaLinkResolver(core: core)
@@ -252,6 +267,8 @@ final class AppContainer {
                             self.dropScreenModels()
                         }
                         self.callCenter?.activate()
+                        // Ядро забывает книгу при выходе: после входа — снова.
+                        await self.addressBook?.refresh()
                     default:
                         break
                     }
@@ -435,11 +452,12 @@ final class AppContainer {
         let me: String
         if case .signedIn(let userId) = phase { me = userId } else { me = "" }
         let isNew = dialogDrafts[id] != nil && listModel?.chat(id: id) == nil
+        let draftSource: (any ChatDraftStore)? = if let draftStore { draftStore } else { chats }
         let model = ChatViewModel(
             chatId: id,
             currentUserId: me,
             messages: messages,
-            drafts: chats,
+            drafts: draftSource,
             media: media,
             links: mediaLinks,
             comments: commentsRepository,
@@ -651,6 +669,8 @@ final class AppContainer {
     /// Приложение вернулось на экран: сверка с сервером того, что могло прийти без пушей.
     func appBecameActive() async {
         await sync?.appBecameActive()
+        // Разрешение на контакты могли выдать или забрать в настройках.
+        if case .signedIn = phase { await addressBook?.refresh() }
     }
 
     /// После переподключения: журнал звонков и лента историй заново (список чатов и открытый чат

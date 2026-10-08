@@ -506,6 +506,18 @@ public final class ChatViewModel {
         draftSave?.cancel()
         draftSave = nil
         persistDraft()
+        commitDraft()
+    }
+
+    /// Из поля ушли: черновик сверяется с сервером после записи на устройстве.
+    private func commitDraft() {
+        guard let drafts, editTarget == nil else { return }
+        let chatId = chatId
+        let previous = saveChain
+        saveChain = Task {
+            await previous?.value
+            await drafts.commitDraft(chatId: chatId)
+        }
     }
 
     private func scheduleDraftSave() {
