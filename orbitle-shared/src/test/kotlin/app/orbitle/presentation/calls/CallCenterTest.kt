@@ -97,7 +97,12 @@ private class FakeService : CallService {
 class CallCenterTest {
     private val service = FakeService()
     private val controls = mutableListOf<FakeControl>()
-    private val engine = CallEngine { _, role, _, _ -> FakeControl(role).also { controls += it } }
+    /** Чем движок падает при создании звонка (нет WebRTC, нет камеры…). */
+    private var engineFailure: Throwable? = null
+    private val engine = CallEngine { _, role, _, _ ->
+        engineFailure?.let { throw it }
+        FakeControl(role).also { controls += it }
+    }
 
     private fun TestScope.center() = CallCenter(
         service, engine, backgroundScope,
@@ -238,5 +243,35 @@ class CallCenterTest {
         assertEquals("Абонент занят", CallStatusText.ended(CallEndReason.Busy))
         assertEquals("21 участник", CallStatusText.participants(21))
         assertEquals("11 участников", CallStatusText.participants(11))
+    }
+
+    @Test
+    fun incomingCallThatTheEngineCannotTakeIsDroppedWithoutCrashing() = runTest {
+        val center = center()
+        center.activate()
+        runCurrent()
+        engineFailure = IllegalStateException("createPeerConnectionFactory")
+        val connection = CallConnection("in", "wss://x", 1)
+        service.incoming.emit(IncomingCall("in", "9", "Иван", isVideo = false, connection = connection))
+        runCurrent()
+        assertNull(center.state.value.call)
+        assertEquals("Не удалось принять звонок", center.state.value.errorMessage)
+
+        // Подписка на входящие жива: следующий звонок приходит как обычно.
+        engineFailure = null
+        service.incoming.emit(IncomingCall("in2", "9", "Иван", isVideo = false, connection = connection))
+        runCurrent()
+        assertTrue(center.state.value.call!!.isRinging)
+        assertEquals(1, controls.single().started)
+    }
+
+    @Test
+    fun missingNativeLibraryFailsTheCallInsteadOfCrashing() = runTest {
+        val center = center()
+        engineFailure = UnsatisfiedLinkError("dlopen failed: libjingle_peerconnection_so.so")
+        center.startCall(CallPeerInfo("7", "Анна"), video = false)
+        runCurrent()
+        assertNull(center.state.value.call)
+        assertEquals("Не удалось позвонить", center.state.value.errorMessage)
     }
 }

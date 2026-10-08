@@ -71,16 +71,39 @@ object AndroidWebRtc {
 
     val factory: PeerConnectionFactory by lazy {
         val app = requireNotNull(context) { "AndroidWebRtc.init не вызван" }
-        PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(app).createInitializationOptions())
-        val audio = JavaAudioDeviceModule.builder(app)
-            .setUseHardwareAcousticEchoCanceler(true)
-            .setUseHardwareNoiseSuppressor(true)
-            .createAudioDeviceModule()
-        PeerConnectionFactory.builder()
-            .setAudioDeviceModule(audio)
-            .setVideoEncoderFactory(DefaultVideoEncoderFactory(egl.eglBaseContext, true, true))
-            .setVideoDecoderFactory(DefaultVideoDecoderFactory(egl.eglBaseContext))
-            .createPeerConnectionFactory()
+        // Строка пишется до загрузки нативной библиотеки: если процесс упадёт в ней, это будет
+        // последним в журнале, а система расскажет о падении на следующем запуске.
+        CallLog.info("WebRTC: загружаю нативную библиотеку")
+        try {
+            PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(app).createInitializationOptions())
+            val audio = JavaAudioDeviceModule.builder(app)
+                .setUseHardwareAcousticEchoCanceler(true)
+                .setUseHardwareNoiseSuppressor(true)
+                .setAudioRecordErrorCallback(AudioErrors)
+                .setAudioTrackErrorCallback(AudioErrors)
+                .createAudioDeviceModule()
+            PeerConnectionFactory.builder()
+                .setAudioDeviceModule(audio)
+                .setVideoEncoderFactory(DefaultVideoEncoderFactory(egl.eglBaseContext, true, true))
+                .setVideoDecoderFactory(DefaultVideoDecoderFactory(egl.eglBaseContext))
+                .createPeerConnectionFactory()
+                .also { CallLog.info("WebRTC: фабрика готова") }
+        } catch (e: Throwable) {
+            CallLog.error("WebRTC не запустился", e)
+            throw e
+        }
+    }
+
+    /** Ошибки записи и воспроизведения звука: иначе микрофон молча не работает. */
+    private object AudioErrors : JavaAudioDeviceModule.AudioRecordErrorCallback, JavaAudioDeviceModule.AudioTrackErrorCallback {
+        override fun onWebRtcAudioRecordInitError(message: String?) = CallLog.warning("Микрофон не открылся: $message")
+        override fun onWebRtcAudioRecordStartError(code: JavaAudioDeviceModule.AudioRecordStartErrorCode?, message: String?) =
+            CallLog.warning("Запись звука не началась ($code): $message")
+        override fun onWebRtcAudioRecordError(message: String?) = CallLog.warning("Ошибка записи звука: $message")
+        override fun onWebRtcAudioTrackInitError(message: String?) = CallLog.warning("Звук собеседника не открылся: $message")
+        override fun onWebRtcAudioTrackStartError(code: JavaAudioDeviceModule.AudioTrackStartErrorCode?, message: String?) =
+            CallLog.warning("Звук собеседника не запустился ($code): $message")
+        override fun onWebRtcAudioTrackError(message: String?) = CallLog.warning("Ошибка звука собеседника: $message")
     }
 
     fun init(context: Context) {
@@ -128,16 +151,30 @@ class AndroidCallMedia(private val context: Context) : CallMedia {
     private var screenSource: VideoSource? = null
     private var screenTrack: VideoTrack? = null
     private val previousMode = audio.mode
+    private var communicationMode = false
 
     init {
-        // Разговорный режим: эхоподавление, звук в динамик у уха.
-        audio.mode = AudioManager.MODE_IN_COMMUNICATION
+        CallLog.info("Медиа звонка готово: режим звука ${audio.mode}, камер ${runCatching { cameras.deviceNames.size }.getOrDefault(0)}")
+    }
+
+    /**
+     * Разговорный режим (эхоподавление, звук в динамик у уха) — с первым соединением, а не пока
+     * звонит входящий: иначе система приглушает мелодию звонка.
+     */
+    private fun enterCommunicationMode() {
+        if (communicationMode) return
+        communicationMode = true
+        runCatching { audio.mode = AudioManager.MODE_IN_COMMUNICATION }
+            .onFailure { CallLog.error("Режим разговора не включился", it) }
+        CallLog.info("Режим звука: разговор (${audio.mode})")
     }
 
     override fun makePeer(iceServers: List<CallIceServer>): CallPeer? = try {
+        enterCommunicationMode()
+        CallLog.info("WebRTC: новое соединение, ICE-серверов ${iceServers.size} (${iceServers.joinToString { it.urls.firstOrNull()?.substringBefore(':').orEmpty() }})")
         AndroidCallPeer(factory, iceServers, this)
     } catch (e: Throwable) {
-        CallLog.warning("WebRTC не создал соединение: $e")
+        CallLog.error("WebRTC не создал соединение", e)
         null
     }
 
@@ -149,6 +186,7 @@ class AndroidCallMedia(private val context: Context) : CallMedia {
     }
 
     override suspend fun startCamera(position: CallCameraPosition) {
+        CallLog.info("Камера: включаю ($position)")
         if (!CallPermissions.ensure(Manifest.permission.CAMERA)) throw CallMediaException(CallMediaException.Kind.DENIED)
         val names = cameras.deviceNames.toList()
         val front = position == CallCameraPosition.FRONT
@@ -177,7 +215,7 @@ class AndroidCallMedia(private val context: Context) : CallMedia {
         } catch (e: CallMediaException) {
             throw e
         } catch (e: Exception) {
-            CallLog.warning("Камера не включилась: $e")
+            CallLog.error("Камера не включилась", e)
             throw CallMediaException(CallMediaException.Kind.UNAVAILABLE)
         }
     }
@@ -204,6 +242,7 @@ class AndroidCallMedia(private val context: Context) : CallMedia {
 
     /** Весь экран телефона через MediaProjection: 15 кадров в секунду, до 1280×720. */
     override suspend fun startScreen() {
+        CallLog.info("Показ экрана: спрашиваю разрешение")
         val permission = CallPermissions.screenCapture() ?: throw CallMediaException(CallMediaException.Kind.DENIED)
         try {
             // С Android 14 показ экрана разрешён только при службе типа mediaProjection.
@@ -221,7 +260,7 @@ class AndroidCallMedia(private val context: Context) : CallMedia {
             track.setEnabled(true)
             CallVideoRegistry.register(track, mirrored = false)
         } catch (e: Exception) {
-            CallLog.warning("Показ экрана не начался: $e")
+            CallLog.error("Показ экрана не начался", e)
             throw CallMediaException(CallMediaException.Kind.UNAVAILABLE)
         }
     }
@@ -239,6 +278,7 @@ class AndroidCallMedia(private val context: Context) : CallMedia {
 
     @Suppress("DEPRECATION")
     override fun setSpeaker(on: Boolean) {
+        CallLog.info("Громкая связь: $on")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (on) {
                 audio.availableCommunicationDevices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
@@ -252,6 +292,7 @@ class AndroidCallMedia(private val context: Context) : CallMedia {
     }
 
     override fun shutdown() {
+        CallLog.info("Медиа звонка: освобождаю")
         runCatching { cameraCapturer?.stopCapture() }
         runCatching { screenCapturer?.stopCapture() }
         audioTrack.setEnabled(false)
@@ -270,8 +311,9 @@ class AndroidCallMedia(private val context: Context) : CallMedia {
         screenCapturer = null
         cameraTrack = null
         screenTrack = null
-        setSpeaker(false)
-        audio.mode = previousMode
+        runCatching { setSpeaker(false) }
+        if (communicationMode) runCatching { audio.mode = previousMode }
+        communicationMode = false
     }
 
     internal companion object {
@@ -293,13 +335,16 @@ internal class AndroidCallPeer(
     private var closed = false
 
     private val observer = object : PeerConnection.Observer {
-        override fun onSignalingChange(state: PeerConnection.SignalingState?) = Unit
+        override fun onSignalingChange(state: PeerConnection.SignalingState?) = CallLog.info("WebRTC сигналинг: $state")
+
         override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {
+            CallLog.info("WebRTC ICE: $state")
             if (state == PeerConnection.IceConnectionState.FAILED) send(PeerEvent.IceFailed)
         }
 
         override fun onIceConnectionReceivingChange(receiving: Boolean) = Unit
         override fun onIceGatheringChange(state: PeerConnection.IceGatheringState?) {
+            CallLog.info("WebRTC сбор кандидатов: $state")
             if (state == PeerConnection.IceGatheringState.COMPLETE) send(PeerEvent.GatheringComplete)
         }
 
@@ -313,7 +358,12 @@ internal class AndroidCallPeer(
         override fun onRenegotiationNeeded() = Unit
         override fun onAddTrack(receiver: RtpReceiver?, streams: Array<out MediaStream>?) = Unit
 
-        override fun onConnectionChange(state: PeerConnection.PeerConnectionState) = send(
+        override fun onConnectionChange(state: PeerConnection.PeerConnectionState) {
+            CallLog.info("WebRTC соединение: $state")
+            sendState(state)
+        }
+
+        private fun sendState(state: PeerConnection.PeerConnectionState) = send(
             PeerEvent.State(
                 when (state) {
                     PeerConnection.PeerConnectionState.NEW -> PeerState.NEW
@@ -328,6 +378,7 @@ internal class AndroidCallPeer(
 
         override fun onTrack(transceiver: RtpTransceiver) {
             val track = transceiver.receiver?.track() ?: return
+            CallLog.info("WebRTC: дорожка собеседника ${runCatching { track.kind() }.getOrNull()}")
             onMain { register(track)?.let { emit(PeerEvent.Track(it)) } }
         }
     }
@@ -419,8 +470,17 @@ internal class AndroidCallPeer(
         connection.setRemoteDescription(applied(continuation), rtc(description))
     }
 
+    /**
+     * Без `sdpMid` — пустая строка, как `nil` на iOS: тогда WebRTC берёт секцию по номеру строки.
+     * Прежнее `"0"` уводило кандидата в чужую секцию, если у той другой mid.
+     */
     override suspend fun add(candidate: IceCandidate) {
-        runCatching { connection.addIceCandidate(RtcIceCandidate(candidate.sdpMid ?: "0", candidate.sdpMLineIndex, candidate.sdp)) }
+        val added = runCatching {
+            connection.addIceCandidate(RtcIceCandidate(candidate.sdpMid.orEmpty(), candidate.sdpMLineIndex, candidate.sdp))
+        }
+        if (added.getOrDefault(false) != true) {
+            CallLog.warning("WebRTC: кандидат собеседника не принят (mid ${candidate.sdpMid}, ${added.exceptionOrNull() ?: "отказ"})")
+        }
     }
 
     /** Дорожки приёмников, которые по согласованному SDP действительно принимают. */
@@ -488,6 +548,7 @@ internal class AndroidCallPeer(
         override fun onSetSuccess() = Unit
 
         override fun onCreateFailure(error: String?) {
+            CallLog.warning("WebRTC: SDP не создан: $error")
             if (continuation.isActive) continuation.resumeWithException(IllegalStateException(error))
         }
 
@@ -504,6 +565,7 @@ internal class AndroidCallPeer(
         override fun onCreateFailure(error: String?) = Unit
 
         override fun onSetFailure(error: String?) {
+            CallLog.warning("WebRTC: SDP не применён: $error")
             if (continuation.isActive) continuation.resumeWithException(IllegalStateException(error))
         }
     }

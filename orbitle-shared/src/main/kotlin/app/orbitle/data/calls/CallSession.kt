@@ -323,7 +323,15 @@ class CallSession(
         gotConnection = false
         listener = scope.launch {
             for (message in signaling.notifications) {
-                handle(message, signaling)
+                // Одно непонятое уведомление не роняет звонок: оно пишется в журнал и пропускается.
+                try {
+                    handle(message, signaling)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    val name = message["notification"].str ?: message["type"].str
+                    CallLog.error("ws2: не обработано уведомление $name", e)
+                }
             }
             signalingLost(signaling)
         }

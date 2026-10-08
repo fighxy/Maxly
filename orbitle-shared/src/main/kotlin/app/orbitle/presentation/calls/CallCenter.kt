@@ -92,7 +92,20 @@ class CallCenter(
     /** Слушать входящие звонки. */
     fun activate() {
         if (watch != null) return
-        watch = scope.launch { service.incomingCalls().collect { receive(it) } }
+        watch = scope.launch {
+            // Сбой в потоке входящих не должен ни ронять приложение, ни глушить следующие звонки.
+            while (true) {
+                try {
+                    service.incomingCalls().collect { receive(it) }
+                    break
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    CallLog.error("Входящие оборвались, слушаю заново", e)
+                    delay(1_000)
+                }
+            }
+        }
     }
 
     /** Выход из аккаунта: входящие больше не слушаются, идущий звонок кладётся. */
@@ -111,6 +124,7 @@ class CallCenter(
             return
         }
         val id = UUID.randomUUID().toString()
+        CallLog.info("Исходящий звонок пользователю ${peer.id}, видео: $video")
         _state.update {
             it.copy(
                 call = ActiveCall(id, "", ActiveCall.Direction.OUTGOING, peer, video, state = CallState(), answered = true),
@@ -120,6 +134,7 @@ class CallCenter(
         }
         try {
             val connection = service.startCall(peer.id, video)
+            CallLog.info("Сервер начал звонок ${connection.conversationId}, ICE-серверов: ${connection.iceServers.size}")
             val control = engine.makeCall(connection, CallRole.CALLER, isGroup = false, expiresAtMs = null)
             val call = _state.value.call
             if (call?.id != id || call.state.isEnded) {
@@ -134,7 +149,9 @@ class CallCenter(
             control.start()
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // Error тоже: без нативной библиотеки WebRTC движок бросает UnsatisfiedLinkError.
+            if (!recoverable(e)) throw e
             fail(id, e)
         }
     }
@@ -148,6 +165,7 @@ class CallCenter(
             return
         }
         val id = UUID.randomUUID().toString()
+        CallLog.info("Вход в групповой звонок по ссылке, видео: $video")
         val peer = CallPeerInfo("", "Групповой звонок", isGroup = true)
         _state.update {
             it.copy(
@@ -184,7 +202,9 @@ class CallCenter(
             control.start()
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // Error тоже: без нативной библиотеки WebRTC движок бросает UnsatisfiedLinkError.
+            if (!recoverable(e)) throw e
             fail(id, e)
         }
     }
@@ -214,6 +234,7 @@ class CallCenter(
             return
         }
         val id = UUID.randomUUID().toString()
+        CallLog.info("Входящий ${incoming.conversationId} от ${incoming.callerId}, видео: ${incoming.isVideo}, ICE-серверов: ${incoming.connection.iceServers.size}")
         val peer = CallPeerInfo(incoming.callerId, incoming.callerName, incoming.callerAvatarUrl)
         _state.update {
             it.copy(
@@ -224,10 +245,18 @@ class CallCenter(
                 isExpanded = true,
             )
         }
-        val control = engine.makeCall(incoming.connection, CallRole.CALLEE, isGroup = false, expiresAtMs = incoming.expiresAtMs)
-        attach(control, id)
-        if (incoming.callerName.isEmpty()) resolveCaller(incoming.callerId, id)
-        control.start()
+        try {
+            val control = engine.makeCall(incoming.connection, CallRole.CALLEE, isGroup = false, expiresAtMs = incoming.expiresAtMs)
+            attach(control, id)
+            if (incoming.callerName.isEmpty()) resolveCaller(incoming.callerId, id)
+            control.start()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            // Раньше исключение отсюда уходило в корутину входящих и роняло приложение.
+            if (!recoverable(e)) throw e
+            fail(id, e, text = "Не удалось принять звонок")
+        }
     }
 
     /** Ответить на входящий. */
@@ -235,6 +264,7 @@ class CallCenter(
         val call = _state.value.call ?: return
         val control = control ?: return
         if (!call.isRinging) return
+        CallLog.info("Ответ на входящий ${call.conversationId}, видео: $video")
         updateCall(call.id) { it.copy(answered = true) }
         _state.update { it.copy(isExpanded = true) }
         control.accept(video)
@@ -246,6 +276,7 @@ class CallCenter(
     /** Положить трубку. */
     suspend fun hangUp() {
         val call = _state.value.call ?: return
+        CallLog.info("Положить трубку: ${call.conversationId.ifEmpty { "без номера" }}, фаза ${call.state.phase}")
         if (call.state.isEnded) {
             dismiss(call.id)
             return
@@ -331,6 +362,7 @@ class CallCenter(
         val call = _state.value.call ?: return
         if (call.id != id) return
         val previous = call.state
+        if (previous.phase != next.phase) CallLog.info("Фаза звонка: ${previous.phase} → ${next.phase}")
         var updated = call.copy(state = next)
         if (call.direction == ActiveCall.Direction.INCOMING && !call.answered && next.phase != CallPhase.Ringing && !next.isEnded) {
             updated = updated.copy(answered = true)
@@ -360,15 +392,26 @@ class CallCenter(
         dismissal = null
     }
 
-    private fun fail(id: String, error: Exception) {
-        CallLog.warning("Звонок не начался: $error")
-        val text = message(error).takeIf { error is OrbitleError } ?: "Не удалось позвонить"
+    private fun fail(id: String, error: Throwable, text: String = "Не удалось позвонить") {
+        CallLog.error("Звонок не начался", error)
+        val shown = message(error).takeIf { error is OrbitleError } ?: text
+        // Движок мог успеть подключиться: его надо отпустить, иначе он держит микрофон.
+        val orphan = control.takeIf { _state.value.call?.id == id }
+        if (orphan != null) {
+            control = null
+            controlWatch?.cancel()
+            controlWatch = null
+            scope.launch { runCatching { orphan.hangUp() } }
+        }
         _state.update { state ->
-            if (state.call?.id == id) state.copy(call = null, isExpanded = true, errorMessage = text) else state.copy(errorMessage = text)
+            if (state.call?.id == id) state.copy(call = null, isExpanded = true, errorMessage = shown) else state.copy(errorMessage = shown)
         }
     }
 
-    private fun message(error: Exception): String = (error as? OrbitleError)?.userMessage ?: "Что-то пошло не так"
+    /** Что можно пережить: исключения и сбои загрузки классов и нативных библиотек. */
+    private fun recoverable(error: Throwable) = error is Exception || error is LinkageError
+
+    private fun message(error: Throwable): String = (error as? OrbitleError)?.userMessage ?: "Что-то пошло не так"
 
     private fun resolveCaller(userId: String, id: String) {
         scope.launch {

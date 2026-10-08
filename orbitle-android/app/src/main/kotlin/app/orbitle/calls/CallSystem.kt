@@ -27,6 +27,7 @@ import androidx.core.content.ContextCompat
 import app.orbitle.MainActivity
 import app.orbitle.OrbitleApp
 import app.orbitle.R
+import app.orbitle.data.calls.CallLog
 import app.orbitle.presentation.calls.ActiveCall
 import app.orbitle.presentation.calls.CallCenter
 import app.orbitle.presentation.calls.CallCenterState
@@ -95,12 +96,27 @@ class AndroidCallSystem(private val context: Context, private val center: CallCe
             }
             snapshot.ringing -> {
                 CallForegroundService.stop(context)
-                notifications.notify(INCOMING_ID, incoming(snapshot))
+                showIncoming(snapshot)
             }
             else -> {
                 notifications.cancel(INCOMING_ID)
                 CallForegroundService.start(context, snapshot.title, camera = snapshot.camera, screen = snapshot.screen)
             }
+        }
+    }
+
+    private fun showIncoming(snapshot: Snapshot) {
+        if (!notifications.areNotificationsEnabled()) {
+            CallLog.warning("Входящий: уведомления Orbitle выключены — звонок виден только в открытом приложении")
+        }
+        if (Build.VERSION.SDK_INT >= 34 && !notifications.canUseFullScreenIntent()) {
+            CallLog.warning("Входящий: нет разрешения на полноэкранные уведомления")
+        }
+        try {
+            notifications.notify(INCOMING_ID, incoming(snapshot))
+            CallLog.info("Входящий: уведомление показано")
+        } catch (e: Exception) {
+            CallLog.error("Входящий: уведомление не показано", e)
         }
     }
 
@@ -175,6 +191,7 @@ class AndroidCallSystem(private val context: Context, private val center: CallCe
 class CallActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val container = (context.applicationContext as OrbitleApp).container
+        CallLog.info("Кнопка уведомления: ${intent.action?.substringAfterLast('.')}")
         container.scope.launch {
             when (intent.action) {
                 AndroidCallSystem.ACTION_DECLINE -> container.callCenter.decline()
@@ -187,14 +204,47 @@ class CallActionReceiver : BroadcastReceiver() {
 /**
  * Служба переднего плана, пока идёт разговор: без неё Android отнимет у свёрнутого приложения
  * микрофон и камеру. Тип — микрофон, плюс камера и показ экрана, когда они включены.
+ *
+ * Служба запускается обычным `startService` (приложение в этот момент на экране) и сама
+ * выходит на передний план. Так звонок, который сорвался через миг после начала, можно
+ * остановить в любой момент: служба, запущенная через `startForegroundService`, обязана успеть
+ * вызвать `startForeground`, иначе система роняет приложение — и `stopService` до этого вызова
+ * тоже роняет. `startForegroundService` остаётся запасным путём, если обычный запуск запрещён
+ * (приложение в фоне); тогда остановка ждёт, пока служба вышла на передний план.
  */
 class CallForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val viaForegroundStart = intent?.getBooleanExtra(EXTRA_FOREGROUND_START, false) == true
+        if (viaForegroundStart) pendingForegroundStart = false
+        if (!running && !viaForegroundStart) {
+            CallLog.info("Служба звонка: звонок уже закончился, не запускаюсь")
+            stopSelf()
+            return START_NOT_STICKY
+        }
         val title = intent?.getStringExtra(EXTRA_TITLE).orEmpty().ifEmpty { "Звонок" }
         val camera = intent?.getBooleanExtra(EXTRA_CAMERA, false) == true
         val screen = intent?.getBooleanExtra(EXTRA_SCREEN, false) == true || screenAllowed
+        val foreground = enterForeground(notification(title), camera, screen)
+        if (screen) screenReady?.complete(Unit)
+        when {
+            !running -> {
+                // Звонок закончился, пока служба запускалась через startForegroundService.
+                CallLog.info("Служба звонка: звонок уже закончился, останавливаюсь")
+                stopSelfSafely(foreground)
+            }
+            !foreground && viaForegroundStart -> {
+                CallLog.warning("Служба звонка не вышла на передний план после startForegroundService: система может закрыть приложение")
+            }
+            !foreground -> {
+                CallLog.warning("Служба звонка не вышла на передний план: в фоне Android может отнять микрофон")
+            }
+        }
+        return START_NOT_STICKY
+    }
+
+    private fun notification(title: String): Notification {
         val open = PendingIntent.getActivity(
             this, 5,
             Intent(this, MainActivity::class.java).setAction(AndroidCallSystem.ACTION_OPEN).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
@@ -205,7 +255,7 @@ class CallForegroundService : Service() {
             Intent(this, CallActionReceiver::class.java).setAction(AndroidCallSystem.ACTION_HANG_UP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val notification = NotificationCompat.Builder(this, AndroidCallSystem.CHANNEL_ONGOING)
+        return NotificationCompat.Builder(this, AndroidCallSystem.CHANNEL_ONGOING)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText("Идёт звонок")
@@ -214,20 +264,34 @@ class CallForegroundService : Service() {
             .setContentIntent(open)
             .addAction(0, "Завершить", hangUp)
             .build()
-        var types = 0
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (CallPermissions.granted(Manifest.permission.RECORD_AUDIO)) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            if (camera && CallPermissions.granted(Manifest.permission.CAMERA)) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+    }
+
+    /**
+     * Передний план с нужными типами; если система их не дала (нет разрешения, приложение не
+     * на экране) — только микрофон, потом без типа (до Android 14 это разрешено).
+     */
+    private fun enterForeground(notification: Notification, camera: Boolean, screen: Boolean): Boolean {
+        for (types in foregroundTypes(camera, screen)) {
+            try {
+                ServiceCompat.startForeground(this, AndroidCallSystem.ONGOING_ID, notification, types)
+                CallLog.info("Служба звонка на переднем плане: ${typeNames(types)}")
+                return true
+            } catch (e: Exception) {
+                CallLog.error("startForeground (${typeNames(types)}) не удался", e)
+            }
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && screen) {
-            types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-        }
-        runCatching { ServiceCompat.startForeground(this, AndroidCallSystem.ONGOING_ID, notification, types) }
-        if (screen) screenReady?.complete(Unit)
-        return START_NOT_STICKY
+        return false
+    }
+
+    private fun stopSelfSafely(allowed: Boolean) {
+        // Без startForeground остановка службы, запущенной startForegroundService, роняет процесс.
+        if (!allowed) return
+        runCatching { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) }
+        stopSelf()
     }
 
     override fun onDestroy() {
+        CallLog.info("Служба звонка остановлена")
         screenAllowed = false
         super.onDestroy()
     }
@@ -236,12 +300,45 @@ class CallForegroundService : Service() {
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_CAMERA = "camera"
         private const val EXTRA_SCREEN = "screen"
+        private const val EXTRA_FOREGROUND_START = "foregroundStart"
 
         /** Пользователь разрешил показ экрана: служба добавляет тип mediaProjection. */
         @Volatile
         private var screenAllowed = false
+
+        /** Служба нужна (идёт звонок). Меняется только на главном потоке. */
         private var running = false
+
+        /** Служба запущена через `startForegroundService` и ещё не дошла до `onStartCommand`. */
+        private var pendingForegroundStart = false
         private var last: Triple<String, Boolean, Boolean>? = null
+
+        /** Наборы типов по убыванию: сначала всё нужное, потом только микрофон, потом без типа. */
+        internal fun foregroundTypes(camera: Boolean, screen: Boolean): List<Int> {
+            var preferred = 0
+            var microphone = 0
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                if (CallPermissions.granted(Manifest.permission.RECORD_AUDIO)) microphone = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                preferred = microphone
+                if (camera && CallPermissions.granted(Manifest.permission.CAMERA)) preferred = preferred or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && screen) {
+                preferred = preferred or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+            }
+            return listOf(preferred, microphone, 0).distinct()
+        }
+
+        private fun typeNames(types: Int): String {
+            if (types == 0) return "без типа"
+            val names = buildList {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    if (types and ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE != 0) add("микрофон")
+                    if (types and ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA != 0) add("камера")
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && types and ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION != 0) add("экран")
+            }
+            return names.joinToString(" + ")
+        }
 
         fun start(context: Context, title: String, camera: Boolean, screen: Boolean) {
             val wanted = Triple(title, camera, screen)
@@ -252,7 +349,25 @@ class CallForegroundService : Service() {
                 .putExtra(EXTRA_TITLE, title)
                 .putExtra(EXTRA_CAMERA, camera)
                 .putExtra(EXTRA_SCREEN, screen)
-            runCatching { ContextCompat.startForegroundService(context, intent) }
+            try {
+                context.startService(intent)
+                CallLog.info("Служба звонка: запуск (камера: $camera, экран: $screen)")
+            } catch (e: IllegalStateException) {
+                // Приложение в фоне: обычный запуск запрещён, остаётся запуск переднего плана.
+                CallLog.warning("Служба звонка: обычный запуск запрещён ($e), запускаю как службу переднего плана")
+                try {
+                    ContextCompat.startForegroundService(context, intent.putExtra(EXTRA_FOREGROUND_START, true))
+                    pendingForegroundStart = true
+                } catch (e: Exception) {
+                    CallLog.error("Служба звонка не запустилась", e)
+                    running = false
+                    last = null
+                }
+            } catch (e: Exception) {
+                CallLog.error("Служба звонка не запустилась", e)
+                running = false
+                last = null
+            }
         }
 
         fun stop(context: Context) {
@@ -260,7 +375,14 @@ class CallForegroundService : Service() {
             running = false
             last = null
             screenAllowed = false
-            context.stopService(Intent(context, CallForegroundService::class.java))
+            if (pendingForegroundStart) {
+                // Остановить сейчас — значит уронить приложение; служба остановится сама.
+                CallLog.info("Служба звонка: остановится сама, когда выйдет на передний план")
+                return
+            }
+            CallLog.info("Служба звонка: остановка")
+            runCatching { context.stopService(Intent(context, CallForegroundService::class.java)) }
+                .onFailure { CallLog.error("Служба звонка не остановилась", it) }
         }
 
         private var screenReady: kotlinx.coroutines.CompletableDeferred<Unit>? = null
@@ -277,7 +399,9 @@ class CallForegroundService : Service() {
             last = null
             running = false
             start(context, title, camera, screen = true)
-            kotlinx.coroutines.withTimeoutOrNull(2_000) { ready.await() }
+            if (kotlinx.coroutines.withTimeoutOrNull(2_000) { ready.await() } == null) {
+                CallLog.warning("Служба звонка не подтвердила показ экрана за 2 с")
+            }
             screenReady = null
         }
     }
