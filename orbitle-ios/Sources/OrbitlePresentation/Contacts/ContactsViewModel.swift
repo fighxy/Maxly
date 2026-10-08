@@ -113,6 +113,13 @@ public final class ContactsViewModel {
         watch = nil
     }
 
+    /// Пересчитать «был(а) 5 минут назад» и подобное: экран зовёт раз в минуту,
+    /// иначе относительное время застывало на момент загрузки списка.
+    public func refreshTimes() {
+        guard !contacts.isEmpty else { return }
+        rebuild()
+    }
+
     /// Синхронизировать контакты с сервером и перечитать список.
     /// Неудача синхронизации не мешает: показывается прежний список.
     public func sync() async {
@@ -353,11 +360,15 @@ public struct ContactsFormatter: Sendable {
         self.calendar = calendar
     }
 
+    /// Пустая строка — статус неизвестен (ядро ничего не прислало): строку статуса не показывать.
+    /// Раньше неизвестное выглядело как «Был(а) недавно», и после запуска так были почти все.
     public func status(_ presence: Contact.Presence, now: Date) -> String {
         switch presence {
         case .online:
             return "В сети"
-        case .recently, .unknown:
+        case .unknown:
+            return ""
+        case .recently:
             return "Был(а) недавно"
         case .withinWeek:
             return "Был(а) на этой неделе"
@@ -372,7 +383,8 @@ public struct ContactsFormatter: Sendable {
 
     private func lastSeen(_ date: Date, now: Date) -> String {
         let seconds = now.timeIntervalSince(date)
-        if seconds < 60, seconds > -60 { return "Был(а) только что" }
+        // Время из будущего (часы устройства отстают) — тоже «только что», а не дата.
+        if seconds < 60 { return "Был(а) только что" }
         if seconds > 0, seconds < 3600 {
             let minutes = Int(seconds / 60)
             return "Был(а) \(minutes) \(Self.minutesWord(minutes)) назад"

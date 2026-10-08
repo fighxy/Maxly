@@ -44,6 +44,8 @@ final class AppContainer {
     @ObservationIgnored private var listModel: ChatListViewModel?
     /// Карточки профилей на диске: шапка чата и профиль видны сразу.
     @ObservationIgnored private let profileCache = ChatProfileCache.standard()
+    /// Статус «в сети» по id человека: пишут контакты и карточки, позже — пуш присутствия ядра.
+    @ObservationIgnored let presence = PresenceStore()
     @ObservationIgnored private var chatModels: [String: ChatViewModel] = [:]
     /// Диалоги, открытые из контактов: по ним экран знает имя собеседника, пока чата нет в списке.
     @ObservationIgnored private var dialogDrafts: [String: DialogDraft] = [:]
@@ -194,7 +196,7 @@ final class AppContainer {
                 sync: sync,
                 media: media
             )
-            let coreContacts = CoreContactRepository(core: core)
+            let coreContacts = CoreContactRepository(core: core, presence: self.presence)
             let coreCalls = CoreCallHistoryRepository(core: core)
             typingReporter = TypingReporter(sender: CoreTypingSender(core: core))
             // Правило имён ядра живёт до перезапуска: задаётся при каждом старте.
@@ -229,7 +231,7 @@ final class AppContainer {
             }
             self.callKit = callKit
             self.callCenter = center
-            self.profiles = CoreChatProfileRepository(core: core, cache: self.profileCache)
+            self.profiles = CoreChatProfileRepository(core: core, cache: self.profileCache, presence: self.presence)
             self.profileActions = CoreProfileActions(core: core)
             self.chatAdmin = CoreChatAdminRepository(core: core)
             self.stickerRepository = CoreStickerRepository(core: core)
@@ -698,6 +700,7 @@ final class AppContainer {
         if !userId.isEmpty { UserDefaultsCallHistoryMarks.erase(userId: userId) }
         await recentSearches.clear()
         await profileCache.removeAll()
+        await presence.removeAll()
         await stickerRepository?.removeAll()
         recentStickers.clear()
         LottieStore.shared.removeAll()

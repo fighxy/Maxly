@@ -141,6 +141,22 @@ struct DirectoryRepositoryTests {
         #expect(list[1].avatarURL == URL(string: "https://a/b.jpg"))
     }
 
+    @Test("Статусы контактов и карточки собеседника уходят в общий PresenceStore, неизвестные — нет")
+    func presenceFeed() async throws {
+        let core = FakeMaxCore()
+        await core.setDirectory(contacts: [
+            CoreContact(id: "20", firstName: "Анна", lastName: "", phone: "", avatarURL: "", lastSeenMs: 0, online: true),
+            CoreContact(id: "30", firstName: "Борис", lastName: "", phone: "", avatarURL: "", lastSeenMs: 1_000, online: false),
+            CoreContact(id: "40", firstName: "Вера", lastName: "", phone: "", avatarURL: "", lastSeenMs: 0, online: false),
+        ])
+        let presence = PresenceStore()
+        let repository = CoreContactRepository(core: core, presence: presence)
+        _ = await first(repository.contacts())
+        #expect(await presence.isOnline("20"))
+        #expect(await presence.presence(of: "30") == .lastSeen(Date(unixMillis: 1_000)))
+        #expect(await presence.presence(of: "40") == nil)
+    }
+
     @Test("Первое открытие списка запускает полную синхронизацию: ядро после входа знает не всех")
     func contactsSyncOnFirstFeed() async {
         let core = FakeMaxCore()

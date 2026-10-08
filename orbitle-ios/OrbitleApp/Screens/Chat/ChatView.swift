@@ -270,13 +270,16 @@ struct ChatView: View {
     private var chatToolbar: some ToolbarContent {
         ToolbarItem(placement: .principal) {
             Button(action: openProfile) {
-                ChatHeaderTitle(
-                    title: headerTitle,
-                    maskedTitle: maskedTitle,
-                    status: privateMode.isMasked ? .none : headerStatus,
-                    isVerified: live().isVerified || profile?.isOfficial == true,
-                    isMuted: muted
-                )
+                // Раз в минуту: «был(а) N минут назад» в шапке не застывает на времени открытия.
+                TimelineView(.everyMinute) { context in
+                    ChatHeaderTitle(
+                        title: headerTitle,
+                        maskedTitle: maskedTitle,
+                        status: privateMode.isMasked ? .none : headerStatus(at: context.date),
+                        isVerified: live().isVerified || profile?.isOfficial == true,
+                        isMuted: muted
+                    )
+                }
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(shownTitle), открыть профиль")
@@ -637,8 +640,8 @@ struct ChatView: View {
         }
     }
 
-    private var headerStatus: ChatHeaderStatus {
-        profile?.headerStatus(live()) ?? .none
+    private func headerStatus(at date: Date) -> ChatHeaderStatus {
+        profile?.headerStatus(live(), at: date) ?? .none
     }
 
     @ViewBuilder

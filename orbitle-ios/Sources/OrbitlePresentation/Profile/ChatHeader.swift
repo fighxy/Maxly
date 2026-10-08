@@ -39,7 +39,7 @@ public enum ChatHeaderStatus: Equatable, Sendable {
         case .saved:
             return .none
         case .channel:
-            return .plain(subtitle)
+            return subtitle.isEmpty ? .none : .plain(subtitle)
         case .user, .bot, .group:
             // Тот же текст, что в строке списка, без «…»: точки рисует экран.
             let chatType: ChatType = kind == .group ? .group : .private
@@ -47,6 +47,8 @@ public enum ChatHeaderStatus: Equatable, Sendable {
                 return .typing(text)
             }
             if kind == .user, live.isOnline || isOnline { return .accent("в сети") }
+            // Статус неизвестен: строки нет, а не «был(а) недавно».
+            if subtitle.isEmpty { return .none }
             // «Был(а) недавно» карточки в шапке со строчной.
             return .plain(subtitle.prefix(1).lowercased() + subtitle.dropFirst())
         }

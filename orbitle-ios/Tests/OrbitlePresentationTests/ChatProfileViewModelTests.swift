@@ -46,6 +46,20 @@ struct ChatProfileViewModelTests {
         #expect(model.canWrite)
     }
 
+    @Test("Статус собеседника считается на момент показа; неизвестный — без строки")
+    func presenceOverTime() async {
+        let t0 = Date(timeIntervalSince1970: 1_790_683_200)
+        let seen = makeModel(ChatProfile(kind: .user, chatId: "13", peerId: "3", title: "Анна", presence: .lastSeen(t0.addingTimeInterval(-5 * 60))))
+        await seen.load()
+        #expect(seen.subtitle(at: t0) == "Был(а) 5 минут назад")
+        #expect(seen.subtitle(at: t0.addingTimeInterval(60)) == "Был(а) 6 минут назад")
+        #expect(seen.headerStatus(ChatHeaderLive(), at: t0.addingTimeInterval(60)) == .plain("был(а) 6 минут назад"))
+        let unknown = makeModel(ChatProfile(kind: .user, chatId: "14", peerId: "4", title: "Борис"))
+        await unknown.load()
+        #expect(unknown.subtitle(at: t0).isEmpty)
+        #expect(unknown.headerStatus(ChatHeaderLive(), at: t0) == .none)
+    }
+
     @Test("Бот: подпись, описание, команды со слешем")
     func bot() async {
         let profile = ChatProfile(

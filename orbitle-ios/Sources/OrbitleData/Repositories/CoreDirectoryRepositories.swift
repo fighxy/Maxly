@@ -12,9 +12,12 @@ public actor CoreContactRepository: ContactRepository {
     private var pendingAdds: [String: Contact] = [:]
     /// Полная синхронизация уже была в этом сеансе.
     private var synced = false
+    /// Общий статус «в сети»: сюда уходит то, что пришло со списком контактов.
+    private let presence: (any PresenceSink)?
 
-    public init(core: any MaxCore) {
+    public init(core: any MaxCore, presence: (any PresenceSink)? = nil) {
         self.core = core
+        self.presence = presence
     }
 
     public nonisolated var capabilities: ContactCapabilities { [.list, .presence, .add, .edit] }
@@ -158,6 +161,14 @@ public actor CoreContactRepository: ContactRepository {
 
     /// Серверный список плюс локальные добавления, которых в нём ещё нет.
     /// Удалённый аккаунт (`accountStatus != 0`) в список не входит.
+    /// Статусы списка — в общий `PresenceSink` (неизвестные он сам пропускает).
+    private func remember(_ list: [Contact]) async {
+        guard let presence, !list.isEmpty else { return }
+        var batch: [String: Contact.Presence] = [:]
+        for contact in list { batch[contact.id] = contact.presence }
+        await presence.record(batch, at: Date())
+    }
+
     private func listed(_ contacts: [CoreContact]) -> [Contact] {
         let server = contacts.compactMap { core -> Contact? in
             guard (core.accountStatus ?? 0) == 0 else { return nil }
@@ -183,7 +194,9 @@ public actor CoreContactRepository: ContactRepository {
             Log.info(.contacts, "Синхронизация контактов: \(raw.count)")
             synced = true
             guard !raw.isEmpty else { return }
-            cached = listed(raw)
+            let list = listed(raw)
+            await remember(list)
+            cached = list
         } catch {
             Log.warning(.contacts, "Синхронизация контактов не удалась: \(error)")
             throw CoreMapping.apiError(error).orbitleError
@@ -198,6 +211,7 @@ public actor CoreContactRepository: ContactRepository {
         if let cached { continuation.yield(cached) }
         do {
             var list = listed(try await core.loadContacts())
+            await remember(list)
             Log.info(.contacts, "Контакты с сервера: \(list.count)")
             var shown = false
             if !synced {
@@ -211,6 +225,7 @@ public actor CoreContactRepository: ContactRepository {
                     synced = true
                     Log.info(.contacts, "Синхронизация контактов: \(raw.count)")
                     let fresh = listed(raw)
+                    await remember(fresh)
                     if !raw.isEmpty, fresh != list {
                         list = fresh
                         shown = false
@@ -361,10 +376,13 @@ public actor CoreCallHistoryRepository: CallHistoryRepository {
 public struct CoreChatProfileRepository: ChatProfileRepository {
     private let core: any MaxCore
     private let cache: ChatProfileCache?
+    /// Общий статус «в сети»: карточка собеседника приносит свежий.
+    private let presence: (any PresenceSink)?
 
-    public init(core: any MaxCore, cache: ChatProfileCache? = nil) {
+    public init(core: any MaxCore, cache: ChatProfileCache? = nil, presence: (any PresenceSink)? = nil) {
         self.core = core
         self.cache = cache
+        self.presence = presence
     }
 
     public func profile(chatId: String) async throws(OrbitleError) -> ChatProfile {
@@ -372,6 +390,9 @@ public struct CoreChatProfileRepository: ChatProfileRepository {
             let profile = CoreMapping.profile(try await core.loadProfile(chatId: chatId))
             Log.info(.chats, "Карточка чата \(chatId): \(profile.kind.rawValue)")
             await cache?.save(profile)
+            if profile.kind == .user, let peerId = profile.peerId, !peerId.isEmpty {
+                await presence?.record([peerId: profile.presence], at: Date())
+            }
             return profile
         } catch {
             Log.warning(.chats, "Карточка чата \(chatId) не загрузилась: \(error)")

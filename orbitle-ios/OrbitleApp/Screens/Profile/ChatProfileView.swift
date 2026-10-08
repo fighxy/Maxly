@@ -290,9 +290,16 @@ struct ChatProfileView: View {
         }
     }
 
-    @ViewBuilder
+    /// Статус пересчитывается раз в минуту: «был(а) N минут назад» не застывает.
     private func status(font: Font) -> some View {
-        switch viewModel.headerStatus(live) {
+        TimelineView(.everyMinute) { context in
+            statusLine(viewModel.headerStatus(live, at: context.date), font: font)
+        }
+    }
+
+    @ViewBuilder
+    private func statusLine(_ status: ChatHeaderStatus, font: Font) -> some View {
+        switch status {
         case .none:
             EmptyView()
         case .plain(let text):

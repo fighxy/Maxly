@@ -11,6 +11,13 @@ struct ChatHeaderTests {
         #expect(ChatHeaderStatus.make(kind: .user, subtitle: "Был(а) недавно", isOnline: false, live: ChatHeaderLive()) == .plain("был(а) недавно"))
     }
 
+    @Test("Статус неизвестен (пустая подпись) — строки нет; «в сети» по списку всё равно видно")
+    func unknownPresence() {
+        #expect(ChatHeaderStatus.make(kind: .user, subtitle: "", isOnline: false, live: ChatHeaderLive()) == .none)
+        #expect(ChatHeaderStatus.make(kind: .user, subtitle: "", isOnline: false, live: ChatHeaderLive(isOnline: true)) == .accent("в сети"))
+        #expect(ChatHeaderStatus.make(kind: .channel, subtitle: "", isOnline: false, live: ChatHeaderLive()) == .none)
+    }
+
     @Test("«печатает» перекрывает статус, в группе — имена или число печатающих, точки рисует экран")
     func typing() {
         let one = [TypingFormatter.Participant(name: "Иван")]

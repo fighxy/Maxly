@@ -122,11 +122,15 @@ public final class ChatProfileViewModel {
     }
 
     /// Вторая строка шапки: статус человека, «бот», число подписчиков или участников.
-    public var subtitle: String {
+    /// Пустая строка — статус человека неизвестен.
+    public var subtitle: String { subtitle(at: now()) }
+
+    /// То же на момент `date`: экран пересчитывает «был(а) N минут назад» по таймеру.
+    public func subtitle(at date: Date) -> String {
         let profile = shown
         switch profile.kind {
         case .user:
-            return formatter.status(profile.presence, now: now())
+            return formatter.status(profile.presence, now: date)
         case .bot:
             return "бот"
         case .saved:
@@ -288,7 +292,12 @@ public final class ChatProfileViewModel {
 
     /// Вторая строка шапки чата с живыми данными списка (сеть, «печатает…»).
     public func headerStatus(_ live: ChatHeaderLive) -> ChatHeaderStatus {
-        ChatHeaderStatus.make(kind: shown.kind, subtitle: subtitle, isOnline: isOnline, live: live)
+        headerStatus(live, at: now())
+    }
+
+    /// Шапка на момент `date` (`TimelineView` экрана раз в минуту).
+    public func headerStatus(_ live: ChatHeaderLive, at date: Date) -> ChatHeaderStatus {
+        ChatHeaderStatus.make(kind: shown.kind, subtitle: subtitle(at: date), isOnline: isOnline, live: live)
     }
 
     /// Что отдать в «Поделиться»: публичная ссылка, если есть.

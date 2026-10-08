@@ -119,6 +119,14 @@ struct ContactsView: View {
             }
         }
         .task { viewModel.activate() }
+        // «Был(а) 5 минут назад» стареет вместе с часами: раз в минуту строки пересчитываются.
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                guard !Task.isCancelled else { return }
+                viewModel.refreshTimes()
+            }
+        }
         .contactsAccess(status: $contactsAccess)
         .navigationDestination(item: $profileDialog) { dialog in
             ProfileDestination(make: { makeProfile?(dialog) }) {
@@ -255,10 +263,13 @@ struct ContactRowView: View {
                             .accessibilityLabel("Официальный аккаунт")
                     }
                 }
-                Text(row.status)
-                    .font(.subheadline)
-                    .foregroundStyle(row.isOnline ? AnyShapeStyle(Color.orbitleAccent) : AnyShapeStyle(.secondary))
-                    .lineLimit(1)
+                // Неизвестный статус — без строки, а не «был(а) недавно».
+                if !row.status.isEmpty {
+                    Text(row.status)
+                        .font(.subheadline)
+                        .foregroundStyle(row.isOnline ? AnyShapeStyle(Color.orbitleAccent) : AnyShapeStyle(.secondary))
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 0)
         }

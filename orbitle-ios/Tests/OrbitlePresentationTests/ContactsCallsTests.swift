@@ -152,6 +152,40 @@ struct ContactsViewModelTests {
         #expect(rows.dropFirst().allSatisfy { !$0.isOnline })
     }
 
+    @Test("Неизвестный статус — пустая строка, а не «недавно»; время из будущего — «только что»")
+    func unknownAndFuturePresence() async {
+        let (model, _) = make([
+            Contact(id: "2", firstName: "Анна", presence: .unknown),
+            Contact(id: "3", firstName: "Борис", presence: .lastSeen(referenceNow.addingTimeInterval(3 * 3600))),
+            Contact(id: "4", firstName: "Вера", presence: .lastSeen(referenceNow.addingTimeInterval(-30))),
+        ])
+        _ = await eventually { model.state == .ready }
+        #expect(model.sections.flatMap(\.rows).map(\.status) == ["", "Был(а) только что", "Был(а) только что"])
+        let formatter = ContactsFormatter(calendar: moscowCalendar())
+        #expect(formatter.status(.unknown, now: referenceNow).isEmpty)
+        #expect(formatter.status(.recently, now: referenceNow) == "Был(а) недавно")
+    }
+
+    @Test("«N минут назад» пересчитывается со временем, а не застывает на загрузке")
+    func relativeTimeTicks() async {
+        final class Clock { var date = referenceNow }
+        let clock = Clock()
+        let source = FakeContactSource([
+            Contact(id: "2", firstName: "Анна", presence: .lastSeen(referenceNow.addingTimeInterval(-5 * 60))),
+        ])
+        let model = ContactsViewModel(
+            contacts: source, currentUserId: "1",
+            formatter: ContactsFormatter(calendar: moscowCalendar()),
+            now: { clock.date }
+        )
+        model.activate()
+        _ = await eventually { model.state == .ready }
+        #expect(model.sections.flatMap(\.rows).first?.status == "Был(а) 5 минут назад")
+        clock.date = referenceNow.addingTimeInterval(2 * 60)
+        model.refreshTimes()
+        #expect(model.sections.flatMap(\.rows).first?.status == "Был(а) 7 минут назад")
+    }
+
     @Test("Поиск по имени и телефону, без разделов")
     func search() async {
         let (model, _) = make([
