@@ -307,12 +307,23 @@ internal fun MessageActions(
             )
         }
         if (model.canPin(message)) {
-            ListItem(
-                headlineContent = { Text("Закрепить") },
-                leadingContent = { Icon(Icons.Filled.PushPin, null) },
-                colors = colors,
-                modifier = Modifier.clickable { model.pin(message); onDismiss() },
-            )
+            if (model.isPinned(message)) {
+                ListItem(
+                    headlineContent = { Text("Открепить") },
+                    leadingContent = { Icon(Icons.Filled.PushPin, null) },
+                    colors = colors,
+                    modifier = Modifier.clickable { model.unpin(message); onDismiss() },
+                )
+            } else {
+                model.pinChoices().forEach { choice ->
+                    ListItem(
+                        headlineContent = { Text(choice.label) },
+                        leadingContent = { Icon(Icons.Filled.PushPin, null) },
+                        colors = colors,
+                        modifier = Modifier.clickable { model.pin(message, choice); onDismiss() },
+                    )
+                }
+            }
         }
         if (model.canMarkUnread(message)) {
             ListItem(

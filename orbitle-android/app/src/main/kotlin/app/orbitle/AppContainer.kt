@@ -291,6 +291,11 @@ class AppContainer(context: Context) {
     )
 
     init {
+        // Профиль поменяли на другом устройстве (пуш 159): перечитать свой профиль.
+        scope.launch { account.profileChanges.collect { runCatching { account.reload() } } }
+    }
+
+    init {
         // Флаг активности для ядра: приложение на переднем плане при разблокированном экране или
         // идёт звонок. Режим призрака ядро сводит с ним само.
         val foreground = androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.currentStateFlow

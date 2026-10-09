@@ -248,6 +248,11 @@ class AppContainer {
     )
 
     init {
+        // Профиль поменяли на другом устройстве (пуш 159): перечитать свой профиль.
+        scope.launch { account.profileChanges.collect { runCatching { account.reload() } } }
+    }
+
+    init {
         // Флаг активности для ядра: окно видно, в фокусе и в нём недавно был ввод, или идёт звонок
         // (тогда и в свёрнутом окне). Режим призрака ядро сводит с ним само.
         val active = combine(

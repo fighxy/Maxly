@@ -169,11 +169,31 @@ class FakeMessages : MessageRepository {
         return transcript
     }
     override fun transcriptions() = pushes
+
+    /** Закрепы сервера (241); `null` — списка нет, как у старых подмен. */
+    var serverPins: List<Message>? = null
+    val pinUpdates = mutableListOf<PinCall>()
+    val pinPushes = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+    val ownReactions = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 8)
+    override suspend fun pinnedMessages(chatId: String): List<Message>? = serverPins
+    override suspend fun updatePins(chatId: String, change: app.orbitle.domain.PinChange, messageIds: List<String>, forMe: Boolean, notify: Boolean) {
+        pinUpdates += PinCall(change, messageIds, forMe, notify)
+        val pins = serverPins ?: return super.updatePins(chatId, change, messageIds, forMe, notify)
+        serverPins = when (change) {
+            app.orbitle.domain.PinChange.PIN -> list.value.filter { it.id in messageIds } + pins
+            app.orbitle.domain.PinChange.UNPIN -> pins.filterNot { it.id in messageIds }
+            app.orbitle.domain.PinChange.UNPIN_ALL -> emptyList()
+        }
+    }
+    override fun pinChanges(chatId: String) = pinPushes
+    override fun ownReactionChanges(chatId: String) = ownReactions
     override suspend fun mediaLink(chatId: String, messageId: String, attachment: app.orbitle.domain.ChatAttachment): String {
         linkCalls += attachment.id
         return link
     }
 }
+
+data class PinCall(val change: app.orbitle.domain.PinChange, val ids: List<String>, val forMe: Boolean, val notify: Boolean)
 
 class ChatViewModelTest {
     @get:Rule val main = MainDispatcherRule()
@@ -831,6 +851,59 @@ class ChatViewModelTest {
         repo.forwardFailure = app.orbitle.domain.OrbitleError.Rejected("Нельзя переслать")
         model.forward(msg("5"), "20")
         assertEquals("Нельзя переслать", model.messages.value)
+    }
+
+    @Test
+    fun serverPinsCycleOnEachTap() {
+        repo.serverPins = listOf(msg("12", text = "новое"), msg("9", text = "старое"))
+        val model = vm()
+        assertEquals("12", model.state.value.pinnedMessageId)
+        assertEquals("Закреплённое сообщение 1 из 2", model.state.value.pinnedTitle)
+        assertEquals(2, model.state.value.pinnedCount)
+        assertEquals("12", model.openPinned())
+        assertEquals("9", model.state.value.pinnedMessageId)
+        assertEquals("старое", model.state.value.pinnedText)
+        assertEquals("9", model.openPinned())
+        assertEquals("12", model.state.value.pinnedMessageId)
+    }
+
+    @Test
+    fun pinChoiceGoesToServerAndReloadsList() {
+        repo.serverPins = emptyList()
+        val target = msg("5", text = "важно")
+        repo.list.value = listOf(target)
+        val model = vm()
+        assertNull(model.state.value.pinnedMessageId)
+        model.pin(target, PinChoice("Закрепить только у меня", forMe = true, notify = true))
+        assertEquals(PinCall(app.orbitle.domain.PinChange.PIN, listOf("5"), forMe = true, notify = true), repo.pinUpdates.single())
+        assertEquals("5", model.state.value.pinnedMessageId)
+        assertTrue(model.isPinned(target))
+        model.unpin(target)
+        assertEquals(app.orbitle.domain.PinChange.UNPIN, repo.pinUpdates.last().change)
+        assertNull(model.state.value.pinnedMessageId)
+        assertFalse(model.isPinned(target))
+    }
+
+    @Test
+    fun unpinAllAndPushReload() {
+        repo.serverPins = listOf(msg("12"), msg("9"))
+        val model = vm()
+        model.unpinAll()
+        assertEquals(PinCall(app.orbitle.domain.PinChange.UNPIN_ALL, emptyList(), forMe = false, notify = true), repo.pinUpdates.single())
+        assertNull(model.state.value.pinnedMessageId)
+        assertEquals(0, model.state.value.pinnedCount)
+        repo.serverPins = listOf(msg("20", text = "с другого устройства"))
+        repo.pinPushes.tryEmit(Unit)
+        assertEquals("20", model.state.value.pinnedMessageId)
+        assertEquals("Закреплённое сообщение", model.state.value.pinnedTitle)
+    }
+
+    @Test
+    fun ownReactionFromAnotherDeviceResyncsThatMessage() {
+        val model = vm()
+        repo.synced.clear()
+        repo.ownReactions.tryEmit("7")
+        assertTrue(repo.synced.contains(listOf("7")))
     }
 
     @Test

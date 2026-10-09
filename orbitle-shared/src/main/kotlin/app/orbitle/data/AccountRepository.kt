@@ -23,12 +23,16 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.filterIsInstance
 
 /** Свой профиль, его изменение и настройки приватности. */
 interface AccountRepository {
     val account: Flow<Account?>
     val settings: Flow<AccountSettings>
     suspend fun reload()
+
+    /** Свой профиль поменялся на другом устройстве (`NOTIF_PROFILE` 159). */
+    val profileChanges: Flow<Unit> get() = kotlinx.coroutines.flow.emptyFlow()
 
     /** Имя, фамилия и «О себе»; пустые фамилия и описание стирают их. */
     suspend fun updateProfile(firstName: String, lastName: String, about: String)
@@ -120,6 +124,9 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
     override suspend fun reload() {
         MaxCoreGateway.call { client.loadMe() }
     }
+
+    override val profileChanges: Flow<Unit>
+        get() = client.events.all.filterIsInstance<com.max.core.events.MaxEvent.ProfileUpdated>().map { }
 
     override suspend fun updateProfile(firstName: String, lastName: String, about: String) {
         MaxCoreGateway.call { client.updateProfile(firstName.trim(), lastName.trim(), about.trim()) }

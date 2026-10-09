@@ -50,23 +50,44 @@ import app.orbitle.presentation.chat.ScheduleWhen
 import java.time.Instant
 import java.time.ZoneId
 
-/** Плашка закрепа над лентой. Касание ищет сообщение в уже загруженной истории. */
+/**
+ * Плашка закрепа над лентой. Касание переходит к показанному сообщению и листает к следующему
+ * закрепу; крестик снимает показанный, «Все» — все закрепы чата.
+ */
 @Composable
-fun PinBanner(text: String, onOpen: () -> Unit, onUnpin: () -> Unit) {
+fun PinBanner(
+    title: String,
+    text: String,
+    count: Int,
+    onOpen: () -> Unit,
+    onUnpin: () -> Unit,
+    onUnpinAll: () -> Unit,
+) {
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
         Row(
             Modifier.clickable(onClick = onOpen).padding(start = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(Icons.Filled.PushPin, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-            Text(
-                text,
-                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            IconButton(onClick = onUnpin) { Icon(Icons.Filled.Close, "Снять закреп") }
+            androidx.compose.foundation.layout.Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
+                Text(
+                    title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            if (count > 1) {
+                androidx.compose.material3.TextButton(onClick = onUnpinAll) { Text("Открепить все") }
+            }
+            IconButton(onClick = onUnpin) { Icon(Icons.Filled.Close, "Открепить") }
         }
     }
 }

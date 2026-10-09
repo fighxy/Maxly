@@ -233,6 +233,30 @@ interface MessageRepository {
     suspend fun pin(chatId: String, messageId: String) {}
 
     /**
+     * Закреплённые сообщения чата (`PINNED_MESSAGES_GET` 241), от нового к старому.
+     * `null` — список недоступен: плашка берёт закреп из служебных сообщений истории.
+     */
+    suspend fun pinnedMessages(chatId: String): List<Message>? = null
+
+    /**
+     * Закрепить, открепить или открепить все (`PINNED_MESSAGE_UPDATE` 242). [forMe] — только у себя
+     * (личный чат), [notify] `false` — без уведомления участникам. По умолчанию — старый одиночный
+     * закреп [pin].
+     */
+    suspend fun updatePins(chatId: String, change: app.orbitle.domain.PinChange, messageIds: List<String>, forMe: Boolean = false, notify: Boolean = true) {
+        when (change) {
+            app.orbitle.domain.PinChange.PIN -> messageIds.firstOrNull()?.let { pin(chatId, it) }
+            else -> pin(chatId, "0")
+        }
+    }
+
+    /** Закрепы чата поменялись (пуш 243): плашка перечитывает список. */
+    fun pinChanges(chatId: String): Flow<Unit> = emptyFlow()
+
+    /** Своя реакция поменялась на другом устройстве (пуш 156): id сообщения. */
+    fun ownReactionChanges(chatId: String): Flow<String> = emptyFlow()
+
+    /**
      * Обновляет просроченные адреса фото чата (код 203), если сервер включил `photo-url-refresh`.
      * По умолчанию ничего не делает: так устроены подмены в тестах.
      */

@@ -16,6 +16,7 @@ import app.orbitle.domain.Chat
 import app.orbitle.domain.ChatDraft
 import app.orbitle.domain.DeletePlan
 import app.orbitle.domain.ChatType
+import app.orbitle.domain.PinChange
 import app.orbitle.domain.Message
 import app.orbitle.domain.MessageStatus
 import app.orbitle.domain.OrbitleError
@@ -138,6 +139,10 @@ data class ChatUiState(
     /** Закреплённое сообщение. Пусто, если закрепа нет. */
     val pinnedMessageId: String? = null,
     val pinnedText: String? = null,
+    /** Заголовок плашки: «Закреплённое сообщение» или «… 2 из 3». */
+    val pinnedTitle: String = "Закреплённое сообщение",
+    /** Сколько сообщений закреплено (из списка сервера; без него 0 или 1). */
+    val pinnedCount: Int = 0,
     /** Подсказки `@` и `/` над полем ввода. */
     val hints: ComposerHints = ComposerHints(),
     /** Разметка текста поля ввода ([FormatDraft]): поле рисует её и отправляет с текстом. */
@@ -306,6 +311,8 @@ class ChatViewModel(
     private var mentionsBeforeEdit: List<TextSpan> = emptyList()
     /** Локальный закреп, пока в истории не появится более новое служебное pin/unpin. */
     private var pinOverride: PinNotice? = null
+    /** Закрепы со списка сервера (241). `null` — списка нет, закреп берётся из истории. */
+    private var pins: PinnedBar? = null
     /** Id сообщения истории, которое было последним pin-notice в момент локального pin/unpin. */
     private var pinBaselineId: String? = null
     private var memberRows: List<ChatMemberRow> = emptyList()
@@ -367,6 +374,22 @@ class ChatViewModel(
                 rebuildHeader()
             }
         }
+        viewModelScope.launch {
+            repository.pinChanges(chatId).collect { loadPins() }
+        }
+        viewModelScope.launch {
+            // Своя реакция с другого устройства: перечитать реакции этого сообщения.
+            repository.ownReactionChanges(chatId).collect { id ->
+                try {
+                    repository.syncReactions(chatId, listOf(id))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    askedReactions -= id
+                }
+            }
+        }
+        loadPins()
         viewModelScope.launch {
             val catalog = repository.reactionCatalog()
             if (catalog.isNotEmpty()) _state.update { it.copy(reactionCatalog = catalog, quickReactions = ReactionPalette.quick(catalog)) }
@@ -1862,6 +1885,8 @@ class ChatViewModel(
                 isLoading = !latestLoaded && history.isEmpty(),
                 pinnedMessageId = pinned?.first,
                 pinnedText = pinned?.second,
+                pinnedTitle = pins?.title ?: "Закреплённое сообщение",
+                pinnedCount = pins?.count ?: if (pinned != null) 1 else 0,
                 hasNewer = jumpTime != null,
                 canReturn = returnStack.isNotEmpty(),
                 hasOlder = if (range != null && ranges.startsAtBeginning(range)) false else it.hasOlder,
@@ -1902,6 +1927,7 @@ class ChatViewModel(
         history.asReversed().firstNotNullOfOrNull { message -> message.content.pin?.let { message.id to it } }
 
     private fun pinnedNow(): Pair<String, String>? {
+        pins?.let { bar -> return bar.current?.let { it.messageId to it.preview } }
         val latest = latestPinAnchor()
         if (pinOverride != null && latest?.first != pinBaselineId) {
             pinOverride = null
@@ -1914,14 +1940,50 @@ class ChatViewModel(
 
     fun canPin(message: Message): Boolean = isServer(message) && !message.isService
 
-    fun pin(message: Message) {
+    /** Варианты закрепа в меню: «только у меня» в личном чате, без уведомления в группе и канале. */
+    fun pinChoices(): List<PinChoice> {
+        val header = _state.value.header
+        return PinChoices.of(header?.type ?: ChatType.PRIVATE, chatId == Chat.SAVED_MESSAGES_ID || header?.isSavedMessages == true)
+    }
+
+    fun isPinned(message: Message): Boolean = pins?.contains(message.id) ?: (_state.value.pinnedMessageId == message.id)
+
+    /** Список закрепов с сервера (241). Ошибка или его отсутствие оставляют закреп из истории. */
+    private fun loadPins() {
+        viewModelScope.launch {
+            try {
+                val list = repository.pinnedMessages(chatId) ?: return@launch
+                val entries = list.map { PinnedEntry(it.id, it.replySnippet.ifBlank { "Сообщение" }) }
+                pins = (pins ?: PinnedBar()).replace(entries)
+                rebuild()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    /** Касание плашки: id показанного закрепа для перехода, плашка переходит к следующему. */
+    fun openPinned(): String? {
+        val bar = pins ?: return _state.value.pinnedMessageId
+        val id = bar.current?.messageId
+        pins = bar.next()
+        rebuild()
+        return id
+    }
+
+    fun pin(message: Message, choice: PinChoice? = null) {
         if (!canPin(message)) return
         viewModelScope.launch {
             try {
-                repository.pin(chatId, message.id)
-                pinBaselineId = latestPinAnchor()?.first
-                pinOverride = PinNotice(message.id, message.replySnippet)
-                rebuild()
+                repository.updatePins(chatId, PinChange.PIN, listOf(message.id), choice?.forMe ?: false, choice?.notify ?: true)
+                if (pins != null) {
+                    loadPins()
+                } else {
+                    pinBaselineId = latestPinAnchor()?.first
+                    pinOverride = PinNotice(message.id, message.replySnippet)
+                    rebuild()
+                }
                 _messages.value = "Сообщение закреплено"
             } catch (e: CancellationException) {
                 throw e
@@ -1931,7 +1993,64 @@ class ChatViewModel(
         }
     }
 
+    /** Открепить одно сообщение из меню. */
+    fun unpin(message: Message) {
+        val bar = pins ?: return unpin()
+        viewModelScope.launch {
+            try {
+                repository.updatePins(chatId, PinChange.UNPIN, listOf(message.id))
+                pins = bar.without(message.id)
+                rebuild()
+                loadPins()
+                _messages.value = "Закреп снят"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                show(e)
+            }
+        }
+    }
+
+    /** Открепить все сообщения чата. */
+    fun unpinAll() {
+        viewModelScope.launch {
+            try {
+                repository.updatePins(chatId, PinChange.UNPIN_ALL, emptyList())
+                if (pins != null) {
+                    pins = PinnedBar()
+                } else {
+                    pinBaselineId = latestPinAnchor()?.first
+                    pinOverride = PinNotice(null, "")
+                }
+                rebuild()
+                _messages.value = "Все закрепы сняты"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                show(e)
+            }
+        }
+    }
+
     fun unpin() {
+        pins?.current?.let { current ->
+            history.firstOrNull { it.id == current.messageId }?.let { return unpin(it) }
+            val bar = pins ?: return
+            viewModelScope.launch {
+                try {
+                    repository.updatePins(chatId, PinChange.UNPIN, listOf(current.messageId))
+                    pins = bar.without(current.messageId)
+                    rebuild()
+                    loadPins()
+                    _messages.value = "Закреп снят"
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    show(e)
+                }
+            }
+            return
+        }
         viewModelScope.launch {
             try {
                 repository.pin(chatId, "0")

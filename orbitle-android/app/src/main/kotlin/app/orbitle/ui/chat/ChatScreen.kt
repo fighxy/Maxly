@@ -405,7 +405,14 @@ fun ChatScreen(
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().imePadding()) {
             state.pinnedText?.let { pinned ->
-                PinBanner(pinned, onOpen = { state.pinnedMessageId?.let(scrollToMessage) }, onUnpin = model::unpin)
+                PinBanner(
+                    title = state.pinnedTitle,
+                    text = pinned,
+                    count = state.pinnedCount,
+                    onOpen = { model.openPinned()?.let(scrollToMessage) },
+                    onUnpin = { model.unpin() },
+                    onUnpinAll = { model.unpinAll() },
+                )
             }
             ChatFeed(
                 model = model,

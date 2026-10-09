@@ -15,7 +15,6 @@ import app.orbitle.presentation.media.withPhotoUrls
 import app.orbitle.domain.MessageReply
 import app.orbitle.domain.MessageStatus
 import app.orbitle.domain.TextSpan
-import com.max.core.api.Transcription
 import com.max.core.events.MaxEvent
 import com.max.core.protocol.Opcode
 import com.max.shared.MaxClient
@@ -29,6 +28,10 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.update
 import java.util.concurrent.atomic.AtomicLong
 
@@ -252,6 +255,18 @@ class CoreMessageRepository(
     private val uploads = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Job>()
     /** Загрузки живут дольше экрана: уход из чата их не обрывает. */
     private val uploadScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+    /** Загрузки, которые сервер отверг пушем `NOTIF_ATTACH` с `error`: они встают «не отправлено». */
+    private val rejectedUploads = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    init {
+        uploadScope.launch {
+            client.events.all.filterIsInstance<MaxEvent.AttachmentFailed>().collect {
+                val id = app.orbitle.presentation.chat.AttachmentFailures.target(uploads.keys.toList()) ?: return@collect
+                rejectedUploads += id
+                uploads[id]?.cancel()
+            }
+        }
+    }
 
     override fun cancelUpload(chatId: String, localId: String) {
         uploads.remove(localId)?.cancel()
@@ -385,6 +400,8 @@ class CoreMessageRepository(
                     try {
                         work.await()
                     } catch (e: kotlinx.coroutines.CancellationException) {
+                        // Сервер отверг вложение: сообщение остаётся с «Повторить».
+                        if (rejectedUploads.remove(local.id)) throw OrbitleError.Rejected("Сервер не принял вложение")
                         // Отменили кнопкой: сообщение уже убрано, это не ошибка.
                         if (work.isCancelled) return@withContext
                         throw e
@@ -437,6 +454,34 @@ class CoreMessageRepository(
         val chat = chatId.toLongOrNull() ?: return
         val message = messageId.toLongOrNull() ?: return
         MaxCoreGateway.call { client.api.messages.pinMessage(chat, message) }
+    }
+
+    override suspend fun pinnedMessages(chatId: String): List<Message>? {
+        val id = chatId.toLongOrNull() ?: return null
+        val found = MaxCoreGateway.call { client.pinnedMessages(id) }
+        val state = client.store.state.value
+        return found.map { MessageMapping.message(it, id, state) }.sortedByDescending { it.timeMs }
+    }
+
+    override suspend fun updatePins(chatId: String, change: app.orbitle.domain.PinChange, messageIds: List<String>, forMe: Boolean, notify: Boolean) {
+        val id = chatId.toLongOrNull() ?: return
+        val action = when (change) {
+            app.orbitle.domain.PinChange.PIN -> com.max.core.api.PinAction.PIN
+            app.orbitle.domain.PinChange.UNPIN -> com.max.core.api.PinAction.UNPIN
+            app.orbitle.domain.PinChange.UNPIN_ALL -> com.max.core.api.PinAction.UNPIN_ALL
+        }
+        val ids = messageIds.mapNotNull { it.toLongOrNull() }
+        MaxCoreGateway.call { client.updatePinnedMessages(id, action, ids, forMe, notify) }
+    }
+
+    override fun pinChanges(chatId: String): Flow<Unit> {
+        val id = chatId.toLongOrNull()
+        return client.events.all.filterIsInstance<MaxEvent.PinsChanged>().filter { it.chatId == id }.map { }
+    }
+
+    override fun ownReactionChanges(chatId: String): Flow<String> {
+        val id = chatId.toLongOrNull()
+        return client.events.all.filterIsInstance<MaxEvent.YouReacted>().filter { it.chatId == id }.map { it.messageId.toString() }
     }
 
     override suspend fun refreshExpiredPhotos(chatId: String, nowMs: Long) {
@@ -619,8 +664,8 @@ class CoreMessageRepository(
     }
 
     override fun transcriptions(): Flow<Pair<String, String>> = client.events.all.mapNotNull { event ->
-        if (event !is MaxEvent.Unknown || event.opcode != Opcode.TRANSCRIPTION_RESULT.value) return@mapNotNull null
-        val result = Transcription.from(event.raw) ?: return@mapNotNull null
+        if (event !is MaxEvent.TranscriptionReady) return@mapNotNull null
+        val result = event.transcription
         val messageId = result.messageId ?: return@mapNotNull null
         if (result.status != 1) return@mapNotNull null
         messageId.toString() to result.text.orEmpty()
