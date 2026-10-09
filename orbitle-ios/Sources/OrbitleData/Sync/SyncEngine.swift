@@ -298,6 +298,8 @@ public actor SyncEngine {
         case .scheduled:
             guard !event.chatId.isEmpty else { return }
             scheduledHub?.publish(ScheduledPush(chatId: event.chatId, messageId: event.messageId, action: event.text))
+        case .attachError:
+            await messages.attachmentFailed(attachId: event.messageId, kind: event.title, text: event.text)
         case .callLog:
             // Журнал звонков живёт в памяти у `CoreCallHistoryRepository`, базе он не нужен.
             let item = CallLogItem(

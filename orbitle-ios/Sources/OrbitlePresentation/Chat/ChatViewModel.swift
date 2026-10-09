@@ -196,6 +196,7 @@ public final class ChatViewModel {
     /// Ход загрузки вложений своих сообщений: id сообщения → доля 0…1.
     public private(set) var uploadProgress: [String: Double] = [:]
     @ObservationIgnored private var progressWatch: Task<Void, Never>?
+    @ObservationIgnored private var failureWatch: Task<Void, Never>?
     /// «Я печатаю» для собеседника (`MSG_TYPING` 65). `nil` — не отправляется.
     @ObservationIgnored public var typingReporter: TypingReporter?
     /// Можно ли писать в чат: экран ставит его по праву на поле ввода. Пока не поставил,
@@ -519,6 +520,14 @@ public final class ChatViewModel {
         startScheduledWatch()
         startPollRefresh()
         let progress = repository.uploadProgress()
+        let failures = repository.uploadFailures()
+        failureWatch = Task { [weak self] in
+            for await failure in failures {
+                guard let self else { return }
+                guard failure.chatId == self.chatId else { continue }
+                self.showNotice(failure.notice)
+            }
+        }
         progressWatch = Task { [weak self] in
             for await snapshot in progress {
                 guard let self else { return }
@@ -590,6 +599,8 @@ public final class ChatViewModel {
         watch = nil
         progressWatch?.cancel()
         progressWatch = nil
+        failureWatch?.cancel()
+        failureWatch = nil
         stopVoice()
         fileTask?.cancel()
         fileTask = nil

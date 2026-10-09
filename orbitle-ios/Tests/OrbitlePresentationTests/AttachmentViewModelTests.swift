@@ -129,4 +129,18 @@ struct AttachmentChatTests {
         #expect(await repository.cancelledUploads == ["local-1"])
         model.deactivate()
     }
+
+    @Test("Ошибка загрузки от сервера видна в чате, чужие чаты её не показывают")
+    func uploadFailureNotice() async throws {
+        let repository = FakeMessageRepository()
+        let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
+        model.activate()
+        #expect(await eventually { await repository.failureSubscribers == 1 })
+        await repository.publish(failure: UploadFailure(chatId: "other", messageId: "local-0", text: "file.too.big"))
+        await repository.publish(failure: UploadFailure(chatId: "c", messageId: "local-1", text: " upload.failed "))
+        #expect(await eventually { model.notice == "Вложение не отправлено: upload.failed" })
+        await repository.publish(failure: UploadFailure(chatId: "c", messageId: "local-2", text: ""))
+        #expect(await eventually { model.notice == "Вложение не отправлено" })
+        model.deactivate()
+    }
 }

@@ -61,6 +61,12 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// Загрузки, которые отменил пользователь: их сообщения удаляются, а не падают в `failed`.
     private var cancelledUploads: Set<String> = []
     private var progressObservers: [UUID: AsyncStream<[String: Double]>.Continuation] = [:]
+    private var failureObservers: [UUID: AsyncStream<UploadFailure>.Continuation] = [:]
+    /// Ошибки `attachError` по локальному id загрузки: ответ ядра на ту же загрузку берёт текст
+    /// отсюда, если сам его не принёс.
+    private var attachErrors: [String: String] = [:]
+    /// Загрузки, уже помеченные `failed` по пушу: второй раз о них не сообщаем.
+    private var reportedFailures: Set<String> = []
     /// Эхо своих сообщений, пришедшее раньше ответа на отправку, по серверному id. Сервер шлёт
     /// пуш о своём сообщении до того, как ответит на запрос отправки: раньше оно ложилось
     /// второй строкой и пропадало, когда приходил ответ, — лента прыгала. Теперь эхо ждёт
@@ -260,6 +266,63 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         }
     }
 
+    public nonisolated func uploadFailures() -> AsyncStream<UploadFailure> {
+        AsyncStream { continuation in
+            let id = UUID()
+            Task { await self.addFailureObserver(id, continuation) }
+            continuation.onTermination = { _ in
+                Task { await self.removeFailureObserver(id) }
+            }
+        }
+    }
+
+    private func addFailureObserver(_ id: UUID, _ continuation: AsyncStream<UploadFailure>.Continuation) {
+        failureObservers[id] = continuation
+    }
+
+    private func removeFailureObserver(_ id: UUID) {
+        failureObservers[id] = nil
+    }
+
+    var failureObserverCount: Int { failureObservers.count }
+
+    private func publishFailure(_ failure: UploadFailure) {
+        for continuation in failureObservers.values {
+            continuation.yield(failure)
+        }
+    }
+
+    /// Пуш `attachError`: сервер не принял файл, видео или аудио. Идущая загрузка того же вида
+    /// сразу становится `failed` (если она такая одна), текст ошибки уходит открытому чату.
+    /// Id вложения клиент до ответа не знает, поэтому сверяется вид.
+    public func attachmentFailed(attachId: String, kind: String, text: String) async {
+        let reason = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        Log.warning(.messages, "Сервер не принял вложение \(kind) \(attachId): \(reason)")
+        let candidates = uploads.keys.filter { localId in
+            guard !reportedFailures.contains(localId), let stored = try? message(id: localId) else { return false }
+            let drafts = Self.content(of: stored).drafts ?? []
+            return drafts.contains { Self.matches($0.kind, attachKind: kind) }
+        }
+        guard candidates.count == 1, let localId = candidates.first,
+              let message = try? message(id: localId) else { return }
+        attachErrors[localId] = reason
+        reportedFailures.insert(localId)
+        message.status = .failed
+        try? modelContext.save()
+        notify(chatId: message.chatId)
+        publishFailure(UploadFailure(chatId: message.chatId, messageId: localId, text: reason))
+        await outgoingHandler?(.failed(Self.record(message)))
+    }
+
+    static func matches(_ draft: AttachmentDraft.Kind, attachKind: String) -> Bool {
+        switch attachKind {
+        case "file": draft == .file
+        case "video": draft == .video || draft == .videoNote
+        case "audio": draft == .voice
+        default: draft == .file || draft == .video || draft == .videoNote || draft == .voice
+        }
+    }
+
     /// Загрузка ещё идёт (для тестов и повтора).
     public func isUploading(localId: String) -> Bool {
         uploads[localId] != nil
@@ -301,6 +364,8 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
 
     private func finishUpload(localId: String, result: Result<MessageRecord, MaxAPIError>) async {
         uploads[localId] = nil
+        let pushed = attachErrors.removeValue(forKey: localId)
+        let reported = reportedFailures.remove(localId) != nil
         progress[localId] = nil
         publishProgress()
         let cancelled = cancelledUploads.remove(localId) != nil
@@ -336,7 +401,18 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             message.status = .failed
             try? modelContext.save()
             notify(chatId: message.chatId)
+            guard !reported else { return }
+            publishFailure(UploadFailure(chatId: message.chatId, messageId: localId, text: pushed ?? Self.uploadErrorText(error)))
             await outgoingHandler?(.failed(Self.record(message)))
+        }
+    }
+
+    /// Текст ошибки загрузки от сервера: его фраза или ключ ошибки. Сеть и отмена — без текста.
+    static func uploadErrorText(_ error: MaxAPIError) -> String {
+        switch error {
+        case .server(let code, let text): text ?? code
+        case .rejected(let text): text
+        default: ""
         }
     }
 

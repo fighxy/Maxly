@@ -440,6 +440,9 @@ public struct CoreEvent: Sendable, Equatable {
         /// Журнал звонков изменился (`NOTIF_CALL_HISTORY` 165): `text` — `add` или `remove`,
         /// `messageId` — `historyId` записи (пусто — пуш без записей, журнал перечитывается).
         case callLog
+        /// Сервер не принял загрузку (`NOTIF_ATTACH` 136 с `error`): ошибка в `text`, id вложения
+        /// в `messageId`, вид (`file`, `video`, `audio`) в `title`; пусто, если пуш их не назвал.
+        case attachError
     }
 
     public var kind: Kind

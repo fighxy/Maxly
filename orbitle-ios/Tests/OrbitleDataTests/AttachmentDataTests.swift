@@ -286,6 +286,68 @@ struct AttachmentRepositoryTests {
         #expect(await repository.isUploading(localId: localId) == false)
     }
 
+    @Test("Ошибка сервера при загрузке доходит до чата текстом")
+    func serverFailureText() async throws {
+        let api = FakeMaxAPI()
+        await api.setAttachmentResults([.failure(.server(code: "upload.failed", text: nil))])
+        let (repository, _) = try await makeMessageStack(api: api)
+        let stream = repository.uploadFailures()
+        #expect(await eventually { await repository.failureObserverCount == 1 })
+        try await repository.sendAttachments([file], caption: "", chatId: "c1", replyTo: nil)
+        let localId = try await only(repository).id
+        await repository.waitForUpload(localId: localId)
+        var failure: UploadFailure?
+        for await next in stream {
+            failure = next
+            break
+        }
+        #expect(failure == UploadFailure(chatId: "c1", messageId: localId, text: "upload.failed"))
+        #expect(try await only(repository).status == .failed)
+    }
+
+    @Test("Пуш attachError сразу делает идущее видео «не отправлено», повтор остаётся")
+    func attachErrorPush() async throws {
+        let api = FakeMaxAPI()
+        await api.setHoldUploads(true)
+        await api.setAttachmentResults([.failure(.server(code: "attachment.error", text: nil)), .success(sentPhoto())])
+        let (repository, _) = try await makeMessageStack(api: api)
+        let stream = repository.uploadFailures()
+        #expect(await eventually { await repository.failureObserverCount == 1 })
+        try await repository.sendAttachments([video], caption: "", chatId: "c1", replyTo: nil)
+        let localId = try await only(repository).id
+
+        await repository.attachmentFailed(attachId: "77", kind: "file", text: "x")
+        #expect(try await only(repository).status == .sending)
+
+        await repository.attachmentFailed(attachId: "78", kind: "video", text: " video.too.long ")
+        #expect(try await only(repository).status == .failed)
+        var pushed: UploadFailure?
+        for await next in stream {
+            pushed = next
+            break
+        }
+        #expect(pushed == UploadFailure(chatId: "c1", messageId: localId, text: "video.too.long"))
+
+        await api.setHoldUploads(false)
+        await repository.waitForUpload(localId: localId)
+        #expect(try await only(repository).status == .failed)
+        try await repository.retry(messageId: localId)
+        await repository.waitForUpload(localId: localId)
+        #expect(try await only(repository).status == .sent)
+    }
+
+    @Test("Вид вложения из пуша сверяется с черновиком")
+    func attachKinds() {
+        #expect(MessageRepositoryImpl.matches(.file, attachKind: "file"))
+        #expect(MessageRepositoryImpl.matches(.videoNote, attachKind: "video"))
+        #expect(MessageRepositoryImpl.matches(.voice, attachKind: "audio"))
+        #expect(!MessageRepositoryImpl.matches(.photo, attachKind: "file"))
+        #expect(!MessageRepositoryImpl.matches(.photo, attachKind: ""))
+        #expect(MessageRepositoryImpl.matches(.video, attachKind: ""))
+        #expect(MessageRepositoryImpl.uploadErrorText(.offline).isEmpty)
+        #expect(MessageRepositoryImpl.uploadErrorText(.server(code: "k", text: "Файл слишком большой")) == "Файл слишком большой")
+    }
+
     @Test("Пустой набор вложений отклоняется")
     func empty() async throws {
         let (repository, _) = try await makeMessageStack(api: FakeMaxAPI())

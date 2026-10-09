@@ -441,6 +441,24 @@ actor FakeMessageRepository: MessageRepository {
 
     var progressSubscribers: Int { progressContinuations.count }
 
+    private var failureContinuations: [AsyncStream<UploadFailure>.Continuation] = []
+
+    nonisolated func uploadFailures() -> AsyncStream<UploadFailure> {
+        AsyncStream { continuation in
+            Task { await self.addFailure(continuation) }
+        }
+    }
+
+    private func addFailure(_ continuation: AsyncStream<UploadFailure>.Continuation) {
+        failureContinuations.append(continuation)
+    }
+
+    var failureSubscribers: Int { failureContinuations.count }
+
+    func publish(failure: UploadFailure) {
+        failureContinuations.forEach { $0.yield(failure) }
+    }
+
     func publish(progress: [String: Double]) {
         progressContinuations.forEach { $0.yield(progress) }
     }

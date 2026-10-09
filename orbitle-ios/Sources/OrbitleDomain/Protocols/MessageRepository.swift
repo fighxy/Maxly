@@ -91,6 +91,8 @@ public protocol MessageRepository: Sendable {
     func cancelUpload(messageId: String) async
     /// Ход загрузок: локальный id сообщения → доля 0…1. Сразу при подписке и после каждого шага.
     func uploadProgress() -> AsyncStream<[String: Double]>
+    /// Загрузки, которые не удались: сообщение уже `failed`, его можно повторить.
+    func uploadFailures() -> AsyncStream<UploadFailure>
     /// Закрепить сообщение. `messageId` `0` снимает закреп (`CHAT_UPDATE` 55).
     func pin(chatId: String, messageId: String) async throws(OrbitleError)
     /// Закрепы чата от новых к старым (`PINNED_MESSAGES_GET` 241).
@@ -220,5 +222,29 @@ extension MessageRepository {
 
     public func uploadProgress() -> AsyncStream<[String: Double]> {
         AsyncStream { $0.finish() }
+    }
+
+    public func uploadFailures() -> AsyncStream<UploadFailure> {
+        AsyncStream { $0.finish() }
+    }
+}
+
+/// Загрузка вложений не удалась. `text` — ошибка сервера (пуш `attachError` или ответ ядра),
+/// пусто — сервер ничего не сказал.
+public struct UploadFailure: Equatable, Sendable {
+    public var chatId: String
+    public var messageId: String
+    public var text: String
+
+    public init(chatId: String, messageId: String, text: String) {
+        self.chatId = chatId
+        self.messageId = messageId
+        self.text = text
+    }
+
+    /// Строка для экрана чата.
+    public var notice: String {
+        let reason = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return reason.isEmpty ? "Вложение не отправлено" : "Вложение не отправлено: \(reason)"
     }
 }
