@@ -516,7 +516,6 @@ public final class ChatViewModel {
         loadReactionCatalog()
         startMessagesWatch()
         startPinWatch()
-        Task { [weak self] in await self?.reloadPins() }
         startScheduledWatch()
         startPollRefresh()
         let progress = repository.uploadProgress()
@@ -2355,18 +2354,6 @@ public final class ChatViewModel {
         if let pinned { focusReply(pinned.id) }
     }
 
-    public func reloadPins() async {
-        do {
-            let pins = try await repository.loadPins(chatId: chatId)
-            var bar = pinBar
-            bar.replace(pins)
-            pinBar = bar
-            pinsFromList = true
-        } catch {
-            // Служебное сообщение в ленте остаётся запасным закрепом.
-        }
-    }
-
     private func startPinWatch() {
         pinWatch?.cancel()
         guard let pinHub else { return }
@@ -2385,11 +2372,12 @@ public final class ChatViewModel {
             pinsFromList = true
             return
         }
-        var bar = pinBar
-        bar.apply(action: push.action, messageId: push.messageId)
+        if !pinsFromList, push.action == "unpin", push.messageId != pinned?.id { return }
+        var bar = pinsFromList ? pinBar : PinBar(pins: pinned.map { [ChatPin(messageId: $0.id, text: $0.text)] } ?? [])
+        let text = live.first { $0.id == push.messageId || $0.serverId == push.messageId }?.replySnippet ?? ""
+        bar.apply(action: push.action, messageId: push.messageId, text: text.trimmingCharacters(in: .whitespacesAndNewlines))
         pinBar = bar
         pinsFromList = true
-        await reloadPins()
     }
 
     public func vote(_ message: Message, answerId: String) async {

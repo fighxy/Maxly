@@ -446,15 +446,7 @@ public final class MaxAPIClient: MaxAPI, Sendable {
     }
 
     public func pinnedMessages(chatId: String) async -> Result<[ChatPin], MaxAPIError> {
-        await catching {
-            let messages = try await core.pinnedMessages(chatId: chatId, from: "", backward: -1)
-            return messages.reversed().compactMap { message in
-                let id = message.id.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !id.isEmpty else { return nil }
-                let text = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                return ChatPin(messageId: id, text: text.isEmpty ? "Сообщение" : text)
-            }
-        }
+        .failure(.invalidResponse)
     }
 
     public func updatePinned(chatId: String, action: String, messageIds: [String], forMe: Bool, notify: Bool) async -> Result<Void, MaxAPIError> {
