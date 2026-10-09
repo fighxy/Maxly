@@ -58,7 +58,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 
 /**
- * Отладочный экран: `adb shell am start -n app.orbitle.android.debug/app.maxly.demo.DemoActivity --es screen chat`.
+ * Отладочный экран: `adb shell am start -n app.maxly.android.debug/app.maxly.demo.DemoActivity --es screen chat`.
  * Показывает экраны на выдуманных данных, чтобы проверить вёрстку без аккаунта.
  */
 class DemoActivity : ComponentActivity() {
@@ -197,15 +197,15 @@ private class DemoMessages(group: Boolean, channel: Boolean = false) : MessageRe
             msg("4", "3", now - 49 * minute, "Это голосовое про выходные. А вот отчёт:", name = "Борис"),
             msg("5", "3", now - 48 * minute, "", name = "Борис", content = MessageContent(attachments = listOf(ChatAttachment.File(FileContent("401", "Отчёт за сентябрь.txt", 1_536_000))))),
             msg("51", "2", now - 40 * minute, "Фото с дачи", name = "Анна", content = MessageContent(attachments = listOf(
-                ChatAttachment.Photo(PhotoContent("p1", "android.resource://app.orbitle.android.debug/${app.maxly.R.drawable.wallpaper_autumn}", 1080, 1920)),
-                ChatAttachment.Photo(PhotoContent("p2", "android.resource://app.orbitle.android.debug/${app.maxly.R.drawable.wallpaper_autumn_dark}", 1080, 1920)),
+                ChatAttachment.Photo(PhotoContent("p1", "android.resource://${app.maxly.BuildConfig.APPLICATION_ID}/${app.maxly.R.drawable.wallpaper_autumn}", 1080, 1920)),
+                ChatAttachment.Photo(PhotoContent("p2", "android.resource://${app.maxly.BuildConfig.APPLICATION_ID}/${app.maxly.R.drawable.wallpaper_autumn_dark}", 1080, 1920)),
             ))),
             msg("6", "1", now - 30 * minute, "Отлично, спасибо! Посмотрю вечером и отпишусь", content = MessageContent(reply = MessageReply("4", "Борис", "Это голосовое про выходные. А вот отчёт:", MessageReply.Kind.TEXT), reactions = listOf(MessageReaction("👍", 2, true), MessageReaction("🔥", 1, false))), read = true),
             msg("7", "2", now - 20 * minute, "", name = "Анна", content = MessageContent(attachments = listOf(ChatAttachment.Call(CallContent("c", 0, false, "MISSED"))))),
             msg("8", "2", now - 10 * minute, "Пересылаю важное", name = "Анна", content = MessageContent(forward = MessageForward("Канал новостей", "Пересылаю важное"), edited = true)),
             msg("9", "1", now - 2 * minute, "Уже в пути, буду через 10 минут"),
             msg("95", "2", now - minute, "", name = "Анна", content = MessageContent(attachments = listOf(ChatAttachment.Video(VideoContent(
-                "r1", null, "android.resource://app.orbitle.android.debug/${app.maxly.R.drawable.demo_round_poster}", 320, 320, 4_000, isRound = true,
+                "r1", null, "android.resource://${app.maxly.BuildConfig.APPLICATION_ID}/${app.maxly.R.drawable.demo_round_poster}", 320, 320, 4_000, isRound = true,
             ))))),
         ),
     )
@@ -291,7 +291,7 @@ private class DemoStickers : app.maxly.data.StickerRepository {
         listOf(app.maxly.domain.StickerSet("s1", "Осень", null, (1..8).map { "$it" })),
     )
     override suspend fun stickers(ids: List<String>) = ids.map {
-        app.maxly.domain.Sticker(it, "android.resource://app.orbitle.android.debug/${res[it.toInt() % res.size]}")
+        app.maxly.domain.Sticker(it, "android.resource://${app.maxly.BuildConfig.APPLICATION_ID}/${res[it.toInt() % res.size]}")
     }
 }
 

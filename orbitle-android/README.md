@@ -13,7 +13,11 @@ https://github.com/fighxy/Maxly/releases/download/android-latest/Maxly.apk. Её
 открыть прямо на телефоне: браузер скачает `.apk`, остаётся разрешить установку из этого
 источника. На переходный период тот же файл лежит и под прежним именем `Orbitle.apk`.
 
-Сборки подписаны одним ключом, поэтому новая версия ставится поверх старой без потери входа.
+**Переход с Orbitle.** У Maxly новый идентификатор приложения (`app.maxly.android`), поэтому
+Maxly ставится отдельным приложением рядом со старым Orbitle, а не поверх него. В Maxly нужно
+войти заново; после входа старое приложение Orbitle можно удалить.
+
+Сборки подписаны одним ключом, поэтому новая версия Maxly ставится поверх предыдущей без потери входа.
 Если в репозитории есть секрет `ORBITLE_KEYSTORE_BASE64` (с `ORBITLE_KEYSTORE_PASSWORD`,
 `ORBITLE_KEY_ALIAS`, `ORBITLE_KEY_PASSWORD`), CI подписывает им; иначе — ключом разработки
 `signing/orbitle-dev.keystore` (пароли `android`). Ключ разработки лежит в открытом
@@ -122,9 +126,9 @@ https://github.com/fighxy/Maxly/releases/download/android-latest/Maxly.apk. Её
 
 Один модуль `app`, одна активность, Navigation Compose, ViewModel + StateFlow.
 
-Пакеты Kotlin — `app.maxly.*`. `applicationId` прежний (`app.orbitle.android`, отладочная
-сборка — `app.orbitle.android.debug`), чтобы новые версии ставились поверх старых без потери
-входа.
+Пакеты Kotlin — `app.maxly.*`, `applicationId` — `app.maxly.android` (отладочная сборка —
+`app.maxly.android.debug`). До переименования он был `app.orbitle.android`, поэтому Maxly
+ставится рядом со старым Orbitle, а не поверх него.
 
 | Пакет | Что внутри |
 |---|---|
@@ -140,7 +144,7 @@ https://github.com/fighxy/Maxly/releases/download/android-latest/Maxly.apk. Её
 `appearance`; для чата `--es type group`, обои — `--es wallpaper AUTUMN_AUTO`):
 
 ```bash
-adb shell am start -n app.orbitle.android.debug/app.maxly.demo.DemoActivity --es screen chat --es type group
+adb shell am start -n app.maxly.android.debug/app.maxly.demo.DemoActivity --es screen chat --es type group
 ```
 
 ## Ядро
@@ -223,7 +227,7 @@ export ANDROID_HOME=~/android-sdk
 bash scripts/fetch-core.sh
 ./gradlew testDebugUnitTest      # JVM-тесты
 ./gradlew assembleRelease        # app/build/outputs/apk/release/app-release.apk
-./gradlew installDebug           # отладочная сборка на подключённый телефон (app.orbitle.android.debug)
+./gradlew installDebug           # отладочная сборка на подключённый телефон (app.maxly.android.debug)
 ```
 
 Инструменты: Gradle 9.6, AGP 9.4 (встроенный Kotlin), Kotlin 2.4.20, Compose BOM 2026.09,

@@ -17,7 +17,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "app.orbitle.android"
+        applicationId = "app.maxly.android"
         minSdk = 26
         targetSdk = 37
         versionCode = versionCodeOverride ?: 1
