@@ -55,15 +55,6 @@ class AppContainer {
     /** Исключение в корутине приложения пишется в журнал и отчёт, но не роняет процесс. */
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + app.maxly.diagnostics.DesktopDiagnostics.coroutineHandler)
 
-    /** Вход из прежнего пространства ядра `orbitle-desktop` — в `maxly-desktop`, до создания клиента. */
-    private val coreStoreMigration = app.maxly.platform.CoreStoreFileMigration
-        .migrate(app.maxly.platform.CoreStoreFileMigration.coreDir(), LEGACY_CORE_NAMESPACE, CORE_NAMESPACE)
-        .also {
-            if (it.outcome != app.maxly.platform.CoreStoreFileMigration.Outcome.NOTHING_TO_DO) {
-                app.maxly.data.diagnostics.AppLog.w("core", "Хранилище ядра $LEGACY_CORE_NAMESPACE → $CORE_NAMESPACE: ${it.outcome}", it.error)
-            }
-        }
-
     /**
      * Без догрузки дыр истории после переподключения (`fillGapsOnReconnect`), как на iOS: ядро
      * листало историю всех чатов подряд, до 16 страниц на чат, и сервер отвечал
@@ -279,9 +270,6 @@ class AppContainer {
 
     private companion object {
         const val CORE_NAMESPACE = "maxly-desktop"
-
-        /** Пространство ядра до переименования: его вход переносится в [CORE_NAMESPACE]. */
-        const val LEGACY_CORE_NAMESPACE = "orbitle-desktop"
         const val KEY_LAST_USER = "lastUserId"
         /**
          * Сообщений одного чата в сторе ядра: `0` — без предела. Стор при переполнении выбрасывает

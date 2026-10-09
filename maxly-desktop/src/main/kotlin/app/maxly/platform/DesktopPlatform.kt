@@ -14,9 +14,7 @@ import java.util.Properties
 object AppPaths {
     private val userHome = File(System.getProperty("user.home"))
 
-    /** Перенос `~/.orbitle` в `~/.maxly` при первом запуске после переименования; итог пишет журнал. */
-    val migration: DataDirMigration.Result = DataDirMigration.resolve(File(userHome, ".maxly"), File(userHome, ".orbitle"))
-    val home: File = migration.dir.apply { mkdirs() }
+    val home: File = File(userHome, ".maxly").apply { mkdirs() }
     val cacheDir: File = File(home, "cache").apply { mkdirs() }
     val prefsFile: File = File(home, "preferences.properties")
     val downloads: File = File(userHome, "Downloads").apply { mkdirs() }

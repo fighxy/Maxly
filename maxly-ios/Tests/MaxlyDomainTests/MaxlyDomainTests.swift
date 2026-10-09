@@ -6,16 +6,13 @@ import Testing
 struct DeepLinkTests {
     @Test("Чат, сообщение и профиль")
     func parses() {
-        #expect(DeepLink.parse(URL(string: "orbitle://chat/abc")!) == .chat(id: "abc"))
-        #expect(DeepLink.parse(URL(string: "ORBITLE://chat/abc/message/m1")!) == .message(chatId: "abc", messageId: "m1"))
-        #expect(DeepLink.parse(URL(string: "orbitle://user/u1")!) == .user(id: "u1"))
         #expect(DeepLink.parse(URL(string: "maxly://chat/abc")!) == .chat(id: "abc"))
         #expect(DeepLink.parse(URL(string: "MAXLY://chat/abc/message/m1")!) == .message(chatId: "abc", messageId: "m1"))
         #expect(DeepLink.parse(URL(string: "maxly://user/u1")!) == .user(id: "u1"))
         #expect(DeepLink.parse(URL(string: "https://chat/abc")!) == nil)
         #expect(DeepLink.parse(URL(string: "https://example.com/chat/abc")!) == nil)
-        #expect(DeepLink.parse(URL(string: "orbitle://chat")!) == nil)
-        #expect(DeepLink.parse(URL(string: "orbitle://other/abc")!) == nil)
+        #expect(DeepLink.parse(URL(string: "maxly://chat")!) == nil)
+        #expect(DeepLink.parse(URL(string: "maxly://other/abc")!) == nil)
     }
 }
 

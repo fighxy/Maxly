@@ -75,14 +75,14 @@ jobs:
             head -c 20000 "$report"
             echo "::endgroup::"
           done
-      # Ключ подписи: секрет ORBITLE_KEYSTORE_BASE64 (с паролями; секреты репозитория сохранили
-      # имена до переименования), иначе общий ключ разработки из maxly-android/signing. Один ключ на все сборки — обновления ставятся поверх.
+      # Ключ подписи: секрет MAXLY_KEYSTORE_BASE64 с паролями и alias,
+      # иначе ключ разработки из maxly-android/signing. Для обновлений сертификат должен оставаться тем же.
       - name: Signing key
         env:
-          KEYSTORE_BASE64: ${{ secrets.ORBITLE_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.ORBITLE_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ORBITLE_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ORBITLE_KEY_PASSWORD }}
+          KEYSTORE_BASE64: ${{ secrets.MAXLY_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.MAXLY_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.MAXLY_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.MAXLY_KEY_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/maxly.keystore"
@@ -92,9 +92,9 @@ jobs:
               echo "MAXLY_KEY_ALIAS=$KEY_ALIAS"
               echo "MAXLY_KEY_PASSWORD=$KEY_PASSWORD"
             } >> "$GITHUB_ENV"
-            echo "Подпись ключом из секрета ORBITLE_KEYSTORE_BASE64"
+            echo "Подпись ключом из секрета MAXLY_KEYSTORE_BASE64"
           else
-            echo "::notice::Нет секрета ORBITLE_KEYSTORE_BASE64: APK подписан ключом разработки из репозитория"
+            echo "::notice::Нет секрета MAXLY_KEYSTORE_BASE64: APK подписан ключом разработки из репозитория"
           fi
       - name: Build APK
         env:
@@ -124,7 +124,6 @@ jobs:
 
   # Один пререлиз android-latest с Maxly.apk: ссылка постоянная, её можно открыть в браузере
   # на телефоне и сразу поставить. Внутри последняя сборка main, у которой прошли тесты.
-  # На переходный период тот же APK выкладывается и как Orbitle.apk: старые ссылки не ломаются.
   publish:
     name: Publish android-latest
     needs: build
@@ -151,9 +150,7 @@ jobs:
         run: |
           set -euo pipefail
           short="${GITHUB_SHA::7}"
-          # Копия под прежним именем — на переходный период, для старых ссылок.
-          cp build/Maxly.apk build/Orbitle.apk
           export TITLE="🕊 Maxly для Android — последняя сборка"
-          export NOTES="Свежая сборка Maxly из \`main\`: клиент MAX без телеметрии и слежки, с режимом призрака. Android 8.0+. Скачайте \`Maxly.apk\`. Maxly ставится отдельным приложением, поэтому войти нужно заново, а старый Orbitle потом можно удалить. Файлы \`Orbitle.*\` оставлены для старых ссылок."$'\n\n'"Коммит ${short} (${GITHUB_SHA}), собран $(date -u '+%Y-%m-%d %H:%M') UTC. Откройте Maxly.apk в браузере на телефоне и установите (нужно разрешить установку из этого источника)."
-          ls -lh build/Maxly.apk build/Orbitle.apk
-          bash scripts/publish-latest.sh build/Maxly.apk build/Orbitle.apk
+          export NOTES="Свежая сборка Maxly из \`main\`: клиент MAX без телеметрии и слежки, с режимом призрака. Android 8.0+. Скачайте \`Maxly.apk\`. После первой установки войдите по номеру телефона."$'\n\n'"Коммит ${short} (${GITHUB_SHA}), собран $(date -u '+%Y-%m-%d %H:%M') UTC. Откройте Maxly.apk в браузере на телефоне и установите (нужно разрешить установку из этого источника)."
+          ls -lh build/Maxly.apk
+          bash scripts/publish-latest.sh build/Maxly.apk

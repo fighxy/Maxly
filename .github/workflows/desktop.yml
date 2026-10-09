@@ -164,8 +164,7 @@ jobs:
 
   # Один пререлиз desktop-latest с установщиками всех трёх ОС под постоянными именами
   # (Maxly.msi, Maxly.dmg, Maxly.deb): внутри последняя сборка main, у которой прошли
-  # тесты и собрались все три установщика. На переходный период те же файлы выкладываются
-  # и под прежними именами Orbitle.msi, Orbitle.dmg, Orbitle.deb: старые ссылки не ломаются.
+  # тесты и собрались все три установщика.
   publish:
     name: Publish desktop-latest
     needs: package
@@ -202,11 +201,9 @@ jobs:
               exit 1
             fi
             cp "${found[0]}" "release/Maxly.$ext"
-            # Копия под прежним именем — на переходный период, для старых ссылок.
-            cp "${found[0]}" "release/Orbitle.$ext"
-            files+=("release/Maxly.$ext" "release/Orbitle.$ext")
+            files+=("release/Maxly.$ext")
           done
           ls -lh release
           export TITLE="🕊 Maxly для Desktop — последняя сборка"
-          export NOTES="Свежая сборка Maxly из \`main\` для Windows, macOS и Linux: \`Maxly.msi\`, \`Maxly.dmg\`, \`Maxly.deb\`. Встаёт поверх Orbitle, вход и настройки сохраняются. Файлы \`Orbitle.*\` оставлены для старых ссылок."$'\n\n'"Коммит ${short} (${GITHUB_SHA}), собран $(date -u '+%Y-%m-%d %H:%M') UTC. macOS: сборка без подписи — открыть через «Открыть» в контекстном меню. Для голосовых, кружков и видео нужен ffmpeg в PATH."
+          export NOTES="Свежая сборка Maxly из \`main\` для Windows, macOS и Linux: \`Maxly.msi\`, \`Maxly.dmg\`, \`Maxly.deb\`. После первой установки войдите по номеру телефона."$'\n\n'"Коммит ${short} (${GITHUB_SHA}), собран $(date -u '+%Y-%m-%d %H:%M') UTC. macOS: сборка без подписи — открыть через «Открыть» в контекстном меню. Для голосовых, кружков и видео нужен ffmpeg в PATH."
           bash scripts/publish-latest.sh "${files[@]}"

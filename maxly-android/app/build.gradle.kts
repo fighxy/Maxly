@@ -36,8 +36,7 @@ android {
             } else {
                 storeFile = rootProject.file("signing/maxly-dev.keystore")
                 storePassword = "android"
-                // Имя записи внутри файла ключа — прежнее: сам ключ (и подпись APK) не менялся.
-                keyAlias = "orbitle"
+                keyAlias = "maxly"
                 keyPassword = "android"
             }
         }

@@ -28,9 +28,9 @@
 
 | Слой | iOS | Android и ПК |
 |---|---|---|
-| Модель | `OrbitleDomain/Models/AccountLimits.swift`: `AccountLimits`, `AuthPhase.freshEntry` | `maxly-shared/.../domain/AccountLimits.kt`, `AuthPhase.freshEntry()` в `Session.kt` |
-| Хранение | `UserDefaultsAccountLimitsStore` (`orbitle.accountLimits.*`) | `AccountLimitsStore` над `PreferenceStore` (ключ `accountLimits`) |
-| Тексты | `AccountLimitsText`, `AccountLimitsSettings` (`OrbitlePresentation/Settings`) | `AccountLimitsText` (`presentation/settings`) |
+| Модель | `MaxlyDomain/Models/AccountLimits.swift`: `AccountLimits`, `AuthPhase.freshEntry` | `maxly-shared/.../domain/AccountLimits.kt`, `AuthPhase.freshEntry()` в `Session.kt` |
+| Хранение | `UserDefaultsAccountLimitsStore` (`maxly.accountLimits.*`) | `AccountLimitsStore` над `PreferenceStore` (ключ `accountLimits`) |
+| Тексты | `AccountLimitsText`, `AccountLimitsSettings` (`MaxlyPresentation/Settings`) | `AccountLimitsText` (`presentation/settings`) |
 | Экран | `AccountLimitsSheet`, строка в `SettingsView` | `AccountLimitsNotice`, строка в `SettingsScreen` |
 | Отметка | `AppContainer`: вход после шага кода, пароля или имени → `grant`, `signedOut` → `clear` | `SessionManager.onFreshSession(entry)` → `grant`, `onSignedOut` → `clear` |
 
