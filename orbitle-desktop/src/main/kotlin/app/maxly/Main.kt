@@ -50,6 +50,11 @@ import java.io.File
 fun main() {
     // Журнал — первым: всё, что случится дальше, включая сбой на старте, попадёт в файл.
     DesktopDiagnostics.init(AppPaths.home)
+    AppPaths.migration.let {
+        if (it.outcome != app.maxly.platform.DataDirMigration.Outcome.NOTHING_TO_DO) {
+            AppLog.w("paths", "Каталог данных: ${it.outcome}, ${it.dir}", it.error)
+        }
+    }
     DesktopDiagnostics.watchUi()
     // Swing-диспетчер становится Dispatchers.Main до первого обращения к сессии.
     Dispatchers.Swing

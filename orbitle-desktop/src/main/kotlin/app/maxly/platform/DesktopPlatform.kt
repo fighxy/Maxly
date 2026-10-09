@@ -12,10 +12,14 @@ import java.util.Properties
 
 /** Каталоги десктоп-клиента: кэш рядом с профилем пользователя, не в папке установки. */
 object AppPaths {
-    val home: File = File(System.getProperty("user.home"), ".orbitle").apply { mkdirs() }
+    private val userHome = File(System.getProperty("user.home"))
+
+    /** Перенос `~/.orbitle` в `~/.maxly` при первом запуске после переименования; итог пишет журнал. */
+    val migration: DataDirMigration.Result = DataDirMigration.resolve(File(userHome, ".maxly"), File(userHome, ".orbitle"))
+    val home: File = migration.dir.apply { mkdirs() }
     val cacheDir: File = File(home, "cache").apply { mkdirs() }
     val prefsFile: File = File(home, "preferences.properties")
-    val downloads: File = File(System.getProperty("user.home"), "Downloads").apply { mkdirs() }
+    val downloads: File = File(userHome, "Downloads").apply { mkdirs() }
 }
 
 /** Небольшой файл настроек с тем же набором операций, что у Android SharedPreferences в контейнере. */
