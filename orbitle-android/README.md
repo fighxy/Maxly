@@ -1,6 +1,6 @@
-# Orbitle для Android
+# Maxly для Android
 
-Нативный Android-клиент Orbitle: Kotlin, Jetpack Compose и Material 3. Рабочий клиент с тем же
+Нативный Android-клиент Maxly: Kotlin, Jetpack Compose и Material 3. Рабочий клиент с тем же
 набором возможностей, что у [iOS](../orbitle-ios/README.md) и компьютера, внешний вид — родной
 для Android. Сеть, протокол, вход и хранение сессии — в общем ядре
 [max-kmp-core](https://github.com/fighxy/max-kmp-core) (Android-цель), клиент представляется
@@ -9,9 +9,9 @@
 ## Скачать
 
 Последняя зелёная сборка `main` — в пререлизе `android-latest`, ссылка постоянная:
-https://github.com/fighxy/Orbitle/releases/download/android-latest/Orbitle.apk. Её можно
+https://github.com/fighxy/Orbitle/releases/download/android-latest/Maxly.apk. Её можно
 открыть прямо на телефоне: браузер скачает `.apk`, остаётся разрешить установку из этого
-источника.
+источника. На переходный период тот же файл лежит и под прежним именем `Orbitle.apk`.
 
 Сборки подписаны одним ключом, поэтому новая версия ставится поверх старой без потери входа.
 Если в репозитории есть секрет `ORBITLE_KEYSTORE_BASE64` (с `ORBITLE_KEYSTORE_PASSWORD`,
@@ -122,9 +122,13 @@ https://github.com/fighxy/Orbitle/releases/download/android-latest/Orbitle.apk. 
 
 Один модуль `app`, одна активность, Navigation Compose, ViewModel + StateFlow.
 
+Пакеты Kotlin — `app.maxly.*`. `applicationId` прежний (`app.orbitle.android`, отладочная
+сборка — `app.orbitle.android.debug`), чтобы новые версии ставились поверх старых без потери
+входа.
+
 | Пакет | Что внутри |
 |---|---|
-| `domain` | модели UI (`Chat`, `ChatFolder`, `Message` с вложениями, `AuthPhase`, `OrbitleError`) — как `OrbitleDomain` в iOS |
+| `domain` | модели UI (`Chat`, `ChatFolder`, `Message` с вложениями, `AuthPhase`, `MaxlyError`) — как `OrbitleDomain` в iOS |
 | `data` | мост к ядру: `MaxCoreGateway` (вызовы `MaxClient`, ошибки ядра → `CoreFailure`), `SessionManager` (шаги входа, попытки, выход), `ChatMapping` и `MessageMapping` (чаты и сообщения стора → модели, разбор вложений, цитат, пересылок и реакций), репозитории над `MaxClient.store` |
 | `presentation` | логика экранов без Android UI: `AuthViewModel`, `PhoneNumber`, `PhoneCountry`, `ChatListFormatter`, `ChatListViewModel`, `ChatViewModel`, `CallBubbleText`, `ChatContentFormat`, `WaveformLayout` — перенесены из `OrbitlePresentation` iOS-клиента вместе с тестами |
 | `ui` | Compose-экраны и тема Material 3 (подсветка кнопок и надписей: графит `#212327` в светлой теме, серебро `#CCD0D6` в тёмной; свои пузыри `#5C6BF5`; тёмный фон `#0C0E14`; палитра аватаров как в iOS) |
@@ -136,7 +140,7 @@ https://github.com/fighxy/Orbitle/releases/download/android-latest/Orbitle.apk. 
 `appearance`; для чата `--es type group`, обои — `--es wallpaper AUTUMN_AUTO`):
 
 ```bash
-adb shell am start -n app.orbitle.android.debug/app.orbitle.demo.DemoActivity --es screen chat --es type group
+adb shell am start -n app.orbitle.android.debug/app.maxly.demo.DemoActivity --es screen chat --es type group
 ```
 
 ## Ядро
@@ -175,7 +179,7 @@ The core is pinned to max-kmp-core `df5a4e1` in `core.lock`. Everything below ru
 - **Server error texts:** when an error reply carries text for the user, the app shows it:
   `title`, else `localizedMessage` (the core's `MaxError.serverText` /
   `ServerErrorException.displayText`). It reaches the screen through `CoreFailure.serverText`,
-  `OrbitleError.Server.text` and `CoreErrors.text(error, fallback)`; login steps, the recovery
+  `MaxlyError.Server.text` and `CoreErrors.text(error, fallback)`; login steps, the recovery
   email and reactions do the same. Our own Russian strings are only the fallback when the server
   sent nothing.
 - **Ghost mode and hidden read receipts** are two independent core flags (`MaxClient.ghostMode`,
@@ -231,4 +235,5 @@ Material 3, Coil 3, minSdk 26, targetSdk 37. Релизная сборка уж�
 Workflow «Android» (`.github/workflows/android.yml`) запускается на изменения в
 `orbitle-android/**` и в самом workflow: собирает ядро по `core.lock` (с кэшем), гоняет
 JVM-тесты, собирает подписанный release-APK, проверяет подпись и на push в `main` заменяет
-пререлиз `android-latest` (`scripts/publish-latest.sh`). Код версии — номер прогона, поэтому каждая сборка новее предыдущей.
+пререлиз `android-latest` файлом `Maxly.apk` и его копией `Orbitle.apk` на переходный период
+(`scripts/publish-latest.sh`). Код версии — номер прогона, поэтому каждая сборка новее предыдущей.
