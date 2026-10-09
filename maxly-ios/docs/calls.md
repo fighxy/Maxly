@@ -9,12 +9,12 @@
 | Слой | Где | Что делает |
 |---|---|---|
 | Ядро | `maxly-core`: `CallsApi`, `IosBridge` | 78 начать, 166 войти по ссылке, 76/84 создать ссылку, 89 описание ссылки, 163 журнал по курсору, 164 удалить из журнала, 167 отклонить входящий, пуш 137 с `vcp`, пуш 165 журнала. Отдаёт адрес ws2 с параметрами клиента (`Ws2ClientInfo.forCalls`) |
-| Домен | `OrbitleDomain/Models/Call.swift`, `Protocols/CallService.swift` | `CallConnection`, `IncomingCall`, `CallState`, `CallParticipant`; протоколы `CallService`, `CallControl`, `CallEngine` |
-| Данные | `OrbitleData/Calls` | `Ws2Signaling` (сокет ws2), `CallSession` (весь звонок), разбор SDP (`CallSdp`), каналы SFU (`SfuChannel`), `CoreCallService` |
-| WebRTC | `OrbitleCallMedia` | `WebRTCCallMedia`, `WebRTCPeer`: соединение, микрофон, камера, показ экрана, аудиосессия, вид видео |
-| Экраны | `OrbitlePresentation/Calls/CallCenter.swift`, `OrbitleApp/Calls` | `CallCenter` — один звонок на приложение; `CallKitController`, экран звонка, плашка, гудки |
+| Домен | `MaxlyDomain/Models/Call.swift`, `Protocols/CallService.swift` | `CallConnection`, `IncomingCall`, `CallState`, `CallParticipant`; протоколы `CallService`, `CallControl`, `CallEngine` |
+| Данные | `MaxlyData/Calls` | `Ws2Signaling` (сокет ws2), `CallSession` (весь звонок), разбор SDP (`CallSdp`), каналы SFU (`SfuChannel`), `CoreCallService` |
+| WebRTC | `MaxlyCallMedia` | `WebRTCCallMedia`, `WebRTCPeer`: соединение, микрофон, камера, показ экрана, аудиосессия, вид видео |
+| Экраны | `MaxlyPresentation/Calls/CallCenter.swift`, `MaxlyApp/Calls` | `CallCenter` — один звонок на приложение; `CallKitController`, экран звонка, плашка, гудки |
 
-`CallSession` знает WebRTC только через протоколы `CallMedia`/`CallPeer`, поэтому весь протокол звонка проходит `swift test` на фейковом сервере ws2 и фейковом WebRTC (`Tests/OrbitleDataTests/CallSessionTests.swift`).
+`CallSession` знает WebRTC только через протоколы `CallMedia`/`CallPeer`, поэтому весь протокол звонка проходит `swift test` на фейковом сервере ws2 и фейковом WebRTC (`Tests/MaxlyDataTests/CallSessionTests.swift`).
 
 WebRTC — сборка Google WebRTC M154 от stasel (`https://github.com/stasel/WebRTC`, BSD), подключена в `Package.swift` с точной версией. Xcode сам кладёт `WebRTC.framework` в приложение.
 
@@ -104,7 +104,7 @@ ReplayKit `startCapture` внутри приложения: собеседник
 
 Журнал приходит по курсору (163, `callHistory` ядра): первый запрос с пустым курсором, каждый следующий — с `callHistorySync` прошлого ответа. Так приходят и следующие страницы (экран просит их, дойдя до последней строки), и новые звонки (вкладка открылась, приложение вернулось на экран, переподключение, 2 с после звонка). Ответ с `reset` заменяет журнал целиком. Пустая страница или тот же курсор — дальше страниц нет. Журнал живёт в памяти `CoreCallHistoryRepository` и забывается при выходе.
 
-Запись (`CallLogItem`, `OrbitleDomain/Calls/CallLog.swift`): `historyId`, `callerId`, `chatId`, `callName`, вид (`AUDIO`/`VIDEO`), `hangupType`, `durationMs` (`-1` — сервер длительность не прислал), `groupCallType` (`LINK`, `CHAT` или пусто). Свой звонок — `callerId` равен своему id; собеседник своего звонка — второй участник диалога (id диалога — XOR двух id). Исход: входящий `MISSED`/`CANCELED` — пропущенный, `REJECTED` — отклонённый, `HUNGUP` — состоявшийся; исходящий `REJECTED` — отклонён собеседником, `CANCELED`/`MISSED` — отменённый. Имена и аватары — из контактов ядра, остальным — карточка диалога или чата (не больше 20 за проход).
+Запись (`CallLogItem`, `MaxlyDomain/Calls/CallLog.swift`): `historyId`, `callerId`, `chatId`, `callName`, вид (`AUDIO`/`VIDEO`), `hangupType`, `durationMs` (`-1` — сервер длительность не прислал), `groupCallType` (`LINK`, `CHAT` или пусто). Свой звонок — `callerId` равен своему id; собеседник своего звонка — второй участник диалога (id диалога — XOR двух id). Исход: входящий `MISSED`/`CANCELED` — пропущенный, `REJECTED` — отклонённый, `HUNGUP` — состоявшийся; исходящий `REJECTED` — отклонён собеседником, `CANCELED`/`MISSED` — отменённый. Имена и аватары — из контактов ядра, остальным — карточка диалога или чата (не больше 20 за проход).
 
 Пуш 165: `remove` сразу убирает записи по `historyId`; `add` перечитывает журнал с курсора (в пуше нет исхода и длительности), и только если запись так и не пришла, она встаёт из пуша. Ядро без 163 (фейки тестов) читает прежний журнал 79.
 
@@ -112,13 +112,13 @@ ReplayKit `startCapture` внутри приложения: собеседник
 
 ## Тесты
 
-- `OrbitleDataTests/CallProtocolTests.swift` — JSON, сокет ws2 (номера, ошибки, `ping`, закрытие, таймаут), тела команд, SDP (ssrc, кандидаты, слоты, подписи), id участников, MessagePack каналов SFU.
-- `OrbitleDataTests/CallSessionTests.swift` — исходящий и входящий напрямую, отмена и отказ, пропущенный, SFU с пересборкой, показ экрана в слоте SFU, микрофон/камера/экран/динамик, участники и видео по дорожкам, конец по серверу, пробуждение молчащего сервера, переподключение, недоступный сервер, запись и приглашение.
-- `OrbitleDataTests/CallSessionFixtureTests.swift` — общие с Kotlin сценарии ws2 из `test-fixtures/calls/ws2` (формат — в README там же): каждый файл проигрывается шаг за шагом на тех же фейках, проверяются команды клиента по порядку, фазы, причины конца, кандидаты ICE и закрытие сокета. Каталог ищется от файла теста вверх до корня репозитория; новый файл без строки в `played` роняет тест.
-- `OrbitlePresentationTests/CallCenterTests.swift` — центр звонков с фейковыми CallKit и звонком: исходящий, ошибка, сброс до ответа сервера, входящий через систему, занято и истёкший, отклонение (ws2 и 167, ошибка 167 не мешает отбою, отбой после ответа — не отклонение), «занят» для активности ядра, отказ системы, имя позже, группа по ссылке, кнопки; подписи статуса.
-- `OrbitleDomainTests/CallLogTests.swift` — курсор и конец страниц, `reset`, пуши `add`/`remove`, порядок, собеседник по XOR, исходы и длительность `-1`.
-- `OrbitleDataTests/DirectoryRepositoryTests.swift` — журнал по курсору (`""`, затем курсор ответа), имена из контактов, пуши 165, `reset()` при выходе; 167 из `CoreCallService`.
-- `OrbitlePresentationTests/ContactsCallsTests.swift` — листание журнала страницами в `CallsViewModel`.
+- `MaxlyDataTests/CallProtocolTests.swift` — JSON, сокет ws2 (номера, ошибки, `ping`, закрытие, таймаут), тела команд, SDP (ssrc, кандидаты, слоты, подписи), id участников, MessagePack каналов SFU.
+- `MaxlyDataTests/CallSessionTests.swift` — исходящий и входящий напрямую, отмена и отказ, пропущенный, SFU с пересборкой, показ экрана в слоте SFU, микрофон/камера/экран/динамик, участники и видео по дорожкам, конец по серверу, пробуждение молчащего сервера, переподключение, недоступный сервер, запись и приглашение.
+- `MaxlyDataTests/CallSessionFixtureTests.swift` — общие с Kotlin сценарии ws2 из `test-fixtures/calls/ws2` (формат — в README там же): каждый файл проигрывается шаг за шагом на тех же фейках, проверяются команды клиента по порядку, фазы, причины конца, кандидаты ICE и закрытие сокета. Каталог ищется от файла теста вверх до корня репозитория; новый файл без строки в `played` роняет тест.
+- `MaxlyPresentationTests/CallCenterTests.swift` — центр звонков с фейковыми CallKit и звонком: исходящий, ошибка, сброс до ответа сервера, входящий через систему, занято и истёкший, отклонение (ws2 и 167, ошибка 167 не мешает отбою, отбой после ответа — не отклонение), «занят» для активности ядра, отказ системы, имя позже, группа по ссылке, кнопки; подписи статуса.
+- `MaxlyDomainTests/CallLogTests.swift` — курсор и конец страниц, `reset`, пуши `add`/`remove`, порядок, собеседник по XOR, исходы и длительность `-1`.
+- `MaxlyDataTests/DirectoryRepositoryTests.swift` — журнал по курсору (`""`, затем курсор ответа), имена из контактов, пуши 165, `reset()` при выходе; 167 из `CoreCallService`.
+- `MaxlyPresentationTests/ContactsCallsTests.swift` — листание журнала страницами в `CallsViewModel`.
 - В ядре: `CallsApiTest` (164, 89, токен ссылки), `VcpTest` (`forCalls`), `MaxIosClientTest` (фасад звонков).
 
 ## Что проверить на устройстве

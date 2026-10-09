@@ -4,12 +4,12 @@ iOS-клиент Maxly на SwiftUI. Слои описаны в [`docs/architect
 
 ## Слои
 
-- `Sources/OrbitleDomain` — модели, протоколы репозиториев, ошибки, разбор ссылок `maxly://` (и прежних `orbitle://`). Чистый Swift.
-- `Sources/OrbitleData` — SwiftData, URLSession, очередь исходящих, синхронизация и сессия. Ядро сюда входит только как протокол `MaxCore`.
-- `Sources/OrbitlePresentation` — логика экранов без SwiftUI: `AuthViewModel`, `PhoneNumber`, `ChatListViewModel`, `ChatListFormatter`, `ChatViewModel`. Зависит только от `OrbitleDomain`, покрыта тестами `Tests/OrbitlePresentationTests` на фейковых репозиториях.
-- `Sources/OrbitleUI` — цвета, отступы, аватар, строка чата (принимает готовые строки), пузырь сообщения.
-- `Sources/OrbitleCallMedia` — WebRTC (Google WebRTC M154, сборка stasel): соединение, микрофон, камера, показ экрана, аудиосессия и вид видео. Логика звонка в `OrbitleData/Calls` с ним не связана и тестируется на фейках.
-- `OrbitleApp` — точка входа, контейнер, навигация и тонкие SwiftUI-экраны. Это таргет Xcode. `import MaxlyCore` живёт только в `OrbitleApp/Core/MaxIosCore.swift`.
+- `Sources/MaxlyDomain` — модели, протоколы репозиториев, ошибки, разбор ссылок `maxly://` (и прежних `orbitle://`). Чистый Swift.
+- `Sources/MaxlyData` — SwiftData, URLSession, очередь исходящих, синхронизация и сессия. Ядро сюда входит только как протокол `MaxCore`.
+- `Sources/MaxlyPresentation` — логика экранов без SwiftUI: `AuthViewModel`, `PhoneNumber`, `ChatListViewModel`, `ChatListFormatter`, `ChatViewModel`. Зависит только от `MaxlyDomain`, покрыта тестами `Tests/MaxlyPresentationTests` на фейковых репозиториях.
+- `Sources/MaxlyUI` — цвета, отступы, аватар, строка чата (принимает готовые строки), пузырь сообщения.
+- `Sources/MaxlyCallMedia` — WebRTC (Google WebRTC M154, сборка stasel): соединение, микрофон, камера, показ экрана, аудиосессия и вид видео. Логика звонка в `MaxlyData/Calls` с ним не связана и тестируется на фейках.
+- `MaxlyApp` — точка входа, контейнер, навигация и тонкие SwiftUI-экраны. Это таргет Xcode. `import MaxlyCore` живёт только в `MaxlyApp/Core/MaxIosCore.swift`.
 
 Профиль устройства остаётся внутри ядра: Android, Pixel 8. Приложение не подставляет данные iPhone.
 
@@ -32,7 +32,7 @@ iOS-клиент Maxly на SwiftUI. Слои описаны в [`docs/architect
 
 ### Синхронизация
 
-Правила записи пушей описаны в [`Sources/OrbitleData/Storage/README.md`](Sources/OrbitleData/Storage/README.md#правила-слияния). Поведение сверено с клиентом Komet (код не заимствован).
+Правила записи пушей описаны в [`Sources/MaxlyData/Storage/README.md`](Sources/MaxlyData/Storage/README.md#правила-слияния). Поведение сверено с клиентом Komet (код не заимствован).
 
 ### Прочее
 
@@ -52,7 +52,7 @@ iOS-клиент Maxly на SwiftUI. Слои описаны в [`docs/architect
 bash scripts/fetch-core.sh
 ```
 
-Скрипт кладёт статический `Vendor/MaxlyCore.xcframework` (каталог в `.gitignore`) и не линкует `MaxShared` отдельно: он уже внутри `MaxlyCore`. Дальше открывается `Orbitle.xcodeproj`, схема `Orbitle`.
+Скрипт кладёт статический `Vendor/MaxlyCore.xcframework` (каталог в `.gitignore`) и не линкует `MaxShared` отдельно: он уже внутри `MaxlyCore`. Дальше открывается `Maxly.xcodeproj`, схема `Maxly`.
 
 Ядро из локальной папки вместо GitHub (ревизия `core.lock` тогда не проверяется):
 
@@ -66,11 +66,11 @@ MAX_KMP_CORE_DIR=~/src/maxly-core bash scripts/fetch-core.sh
 bash scripts/build-ipa.sh            # или MAX_KMP_CORE_DIR=… / SKIP_CORE=1
 ```
 
-Скрипт собирает Release для устройства без подписи и кладёт `build/Maxly.ipa`. Его подписывают своим сертификатом (Sideloadly, AltStore, eSign и т. п.) и ставят на телефон. CI делает то же, выкладывает `.ipa` в артефакты прогона, а зелёная сборка `main` заменяет пререлиз `ios-latest`: https://github.com/fighxy/Maxly/releases/download/ios-latest/Maxly.ipa. Прежняя ссылка на `Orbitle.ipa` в том же выпуске тоже работает: это копия той же сборки.
+Скрипт собирает Release для устройства без подписи и кладёт `build/Maxly.ipa`. Его подписывают своим сертификатом (Sideloadly, AltStore, eSign и т. п.) и ставят на телефон. CI делает то же, выкладывает `.ipa` в артефакты прогона, а зелёная сборка `main` заменяет пререлиз `ios-latest`: https://github.com/fighxy/Maxly/releases/download/ios-latest/Maxly.ipa. Прежняя ссылка на `Maxly.ipa` в том же выпуске тоже работает: это копия той же сборки.
 
 **Переход с Orbitle.** У Maxly свой Bundle ID `app.maxly.ios` (у Orbitle был `app.orbitle.ios`), поэтому Maxly ставится отдельным приложением рядом с Orbitle и данные Orbitle не видит: нужен новый вход по номеру, чаты подтянутся с сервера. Настройки начинаются заново (ключи `maxly.*`), база лежит в `Application Support/Maxly/Maxly.store`, кэш — в `MaxlyMedia`. После входа в Maxly старый Orbitle можно удалить. Ссылки `orbitle://` Maxly открывает так же, как `maxly://`, но пока стоит и Orbitle, iOS может отдать их ему.
 
-Тесты библиотек (`OrbitleDomainTests`, `OrbitleDataTests`, `OrbitlePresentationTests`) ядро не требуют:
+Тесты библиотек (`MaxlyDomainTests`, `MaxlyDataTests`, `MaxlyPresentationTests`) ядро не требуют:
 
 ```bash
 swift test --package-path maxly-ios
@@ -82,4 +82,4 @@ swift test --package-path maxly-ios
 
 ## CI
 
-Workflow `.github/workflows/ios.yml` на `macos-15` выбирает Xcode 26.3 (SDK iOS 26.2, Swift 6.2) и гоняет `swift test` и сборку приложения: только с SDK iOS 26 в приложение попадает код под `#available(iOS 26)` (стекло Liquid Glass, системный указатель списка). Минимальная версия iOS прежняя, 17.0. `MaxlyCore.xcframework` собирается Xcode 16.2 (`DEVELOPER_DIR`): Kotlin/Native 2.1.10 в ядре не разбирает заголовки SDK 26. Проверка запуска идёт в симуляторе iOS 26.2 (`ORBITLE_SIM_RUNTIME`), а сборка .ipa проверяет, что в бинарнике есть вызовы `glassEffect`. `swift test` вшивает `Tests/OrbitleDataTests/Info.plist` в тестовый бинарник: SwiftData требует `CFBundleName`. Приложение (`OrbitleApp`, `MaxIosCore.swift`) компилируется только в этой сборке, `swift test` его не видит. Сборка приложения клонирует приватный `fighxy/maxly-core`, поэтому в секретах репозитория Orbitle нужен `MAX_KMP_CORE_TOKEN`: PAT с правом чтения `fighxy/maxly-core`. Без секрета сборка приложения пропускается с предупреждением, а тесты библиотек идут как обычно. `GITHUB_TOKEN` самого Orbitle к ядру доступа не имеет.
+Workflow `.github/workflows/ios.yml` на `macos-15` выбирает Xcode 26.3 (SDK iOS 26.2, Swift 6.2) и гоняет `swift test` и сборку приложения: только с SDK iOS 26 в приложение попадает код под `#available(iOS 26)` (стекло Liquid Glass, системный указатель списка). Минимальная версия iOS прежняя, 17.0. `MaxlyCore.xcframework` собирается Xcode 16.2 (`DEVELOPER_DIR`): Kotlin/Native 2.1.10 в ядре не разбирает заголовки SDK 26. Проверка запуска идёт в симуляторе iOS 26.2 (`MAXLY_SIM_RUNTIME`), а сборка .ipa проверяет, что в бинарнике есть вызовы `glassEffect`. `swift test` вшивает `Tests/MaxlyDataTests/Info.plist` в тестовый бинарник: SwiftData требует `CFBundleName`. Приложение (`MaxlyApp`, `MaxIosCore.swift`) компилируется только в этой сборке, `swift test` его не видит. Сборка приложения клонирует приватный `fighxy/maxly-core`, поэтому в секретах репозитория Maxly нужен `MAX_KMP_CORE_TOKEN`: PAT с правом чтения `fighxy/maxly-core`. Без секрета сборка приложения пропускается с предупреждением, а тесты библиотек идут как обычно. `GITHUB_TOKEN` самого Maxly к ядру доступа не имеет.

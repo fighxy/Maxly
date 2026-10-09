@@ -19,7 +19,7 @@
 
 - `SyncEngine` передаёт пуш в `ChatRepositoryImpl.noteTyping(chatId:userId:type:)`, тип мост
   кладёт в поле `text` события `typing`. Свои пуши не учитываются.
-- Сроки — `TypingTracker` (OrbitleDomain): отметка живёт 8 с после последнего пуша
+- Сроки — `TypingTracker` (MaxlyDomain): отметка живёт 8 с после последнего пуша
   (`typingTTL`, включительно), повторный пуш продлевает срок и меняет тип, место в очереди не
   меняется. Сообщение автора снимает отметку сразу.
 - Поток `ChatRepository.typing()` отдаёт `[id чата: [TypingActivity]]` — печатающие по времени
@@ -28,7 +28,7 @@
 
 ## Текст
 
-`TypingFormatter` (OrbitlePresentation) — одна строка для списка чатов (`ChatListFormatter.item`)
+`TypingFormatter` (MaxlyPresentation) — одна строка для списка чатов (`ChatListFormatter.item`)
 и шапки чата (`ChatHeaderStatus.make`):
 
 - личный чат — только действие: «печатает…», «записывает аудио…»;

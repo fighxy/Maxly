@@ -2,7 +2,7 @@
 
 Режим выбора нескольких сообщений («Выбрать» в меню сообщения) есть на Swift (`maxly-ios`)
 и Kotlin (`maxly-shared`). Swift проигрывает сценарии в `SelectionFixtureTests`
-(`maxly-ios/Tests/OrbitleDomainTests`), логика — `MessageSelectionRules` в `OrbitleDomain`.
+(`maxly-ios/Tests/MaxlyDomainTests`), логика — `MessageSelectionRules` в `MaxlyDomain`.
 Новый файл без проигрывателя — ошибка.
 
 ## Удаление (`delete`)

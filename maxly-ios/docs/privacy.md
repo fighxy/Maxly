@@ -144,20 +144,20 @@ protocol GhostControls: Sendable {
     func hideReadReceipts() -> Bool
     func setHideReadReceipts(_ hidden: Bool) async
     func ghostChanges() -> AsyncStream<GhostState>        // события ядра ghostMode / hideReadReceipts
-    func checkOwnPresence() async throws(OrbitleError) -> Contact.Presence
+    func checkOwnPresence() async throws(MaxlyError) -> Contact.Presence
     func localReadMark(chatId: String) -> Int64            // 0 — чат не читали только локально
 }
 
 protocol PrivacyControls: Sendable {
     func privacySettings() -> AsyncStream<AccountSettings>
-    func setPrivacy(_ key: PrivacyKey, _ value: PrivacyValue) async throws(OrbitleError) -> AccountSettings
+    func setPrivacy(_ key: PrivacyKey, _ value: PrivacyValue) async throws(MaxlyError) -> AccountSettings
     func isPrivacyReadOnly(_ key: PrivacyKey) -> Bool
 }
 ```
 
 ## 7. Мост ядра
 
-`CoreGhostPrivacyControls` (OrbitleData) реализует оба протокола поверх `GhostPrivacyCore`;
+`CoreGhostPrivacyControls` (MaxlyData) реализует оба протокола поверх `GhostPrivacyCore`;
 в приложении это `MaxIosCore` (`MaxIosClient` из `MaxlyCore`). Адаптер ничего не хранит:
 
 | Протокол приложения | Мост `MaxIosClient` |
@@ -165,7 +165,7 @@ protocol PrivacyControls: Sendable {
 | `ghostMode()` / `setGhostMode(_:)` | `ghostMode()` / `setGhostMode(enabled:)` |
 | `hideReadReceipts()` / `setHideReadReceipts(_:)` | `hideReadReceipts()` / `setHideReadReceipts(enabled:)` |
 | `ghostChanges()` | текущие флаги, затем `watchEvents` → `ghostMode` / `hideReadReceipts` (`text` `on` / `off`; незнакомый текст — флаг перечитывается). Подписка открывается раньше чтения флагов |
-| `checkOwnPresence()` | `checkOwnPresence(onResult:)` → `IosPresence?` → `CorePresence` → `Contact.Presence`; `nil` — «неизвестно»; ошибка ядра — `OrbitleError` (`CoreMapping`). До входа (`currentUserId()` пуст) мост не зовётся: он ждал бы сессию, а `MaxClient` бросает «not logged in»; ответ — «неизвестно» |
+| `checkOwnPresence()` | `checkOwnPresence(onResult:)` → `IosPresence?` → `CorePresence` → `Contact.Presence`; `nil` — «неизвестно»; ошибка ядра — `MaxlyError` (`CoreMapping`). До входа (`currentUserId()` пуст) мост не зовётся: он ждал бы сессию, а `MaxClient` бросает «not logged in»; ответ — «неизвестно» |
 | `localReadMark(chatId:)` | `localReadMarkOf(chatId:)` |
 | `setPrivacy(_:_:)` | доступ — `setPrivacy(key:value:)`, флаг — `setPrivacyFlag(key:enabled:)`. `NOBODY` ядро (`PrivacyConfig.payload`) принимает только у `PHONE_NUMBER_PRIVACY`; у `SEARCH_BY_PHONE`, `INCOMING_CALL`, `CHATS_INVITE` — только `ALL` / `CONTACTS`, и списки этих строк `NOBODY` не предлагают. Значение не того вида или `NOBODY` не у номера в ядро не уходит (`invalidRequest`) |
 | `isPrivacyReadOnly(_:)` | `isPrivacyReadOnly(key:)` |
@@ -181,7 +181,7 @@ protocol PrivacyControls: Sendable {
 `setSafeMode` (`AccountSettingsModel`) в ядре тоже идут через `setPrivacy`.
 
 **Разовая чистка.** До ядра флаги и выбор приватности лежали в `UserDefaults`
-(`orbitle.ghost.*`, `orbitle.privacy.local.*`). `GhostDefaultsMigration.run()` при запуске
+(`maxly.ghost.*`, `maxly.privacy.local.*`). `GhostDefaultsMigration.run()` при запуске
 (`AppContainer.init`) один раз удаляет эти ключи; «Показывать мой онлайн» переезжает на
 `maxly.settings.showsOwnPresence`. Отметка выполнения — `maxly.migrations.ghostCore`.
 
@@ -196,7 +196,7 @@ protocol PrivacyControls: Sendable {
 
 ## 8. Тесты
 
-- `GhostSettingsTests` (OrbitlePresentation): опрос раз в 15 с на ручных часах
+- `GhostSettingsTests` (MaxlyPresentation): опрос раз в 15 с на ручных часах
   (`ManualSleeper`), остановка вне экрана и в фоне, запрос при возврате, при переключении
   режима и при включении строки, текст шапки, флаги из события.
 - `PrivacySettingsTests`: порядок строк и ключи, подписи и значения вариантов, значение вне
@@ -204,13 +204,13 @@ protocol PrivacyControls: Sendable {
   блокировка безопасным режимом, `MANAGEABLE`, `privacyLocked` и `isPrivacyReadOnly`,
   безопасный режим под семейной защитой, выбор с откатом, ошибки, бот семейной защиты
   (`familyApp`: id бота → запрос мини-приложения, пустой или нулевой id → строки-кнопки нет).
-- `PrivacyControlsTests` (OrbitleData, фейк моста `GhostPrivacyCore`): флаги уходят в ядро,
+- `PrivacyControlsTests` (MaxlyData, фейк моста `GhostPrivacyCore`): флаги уходят в ядро,
   поток флагов из событий (чужие события, незнакомый текст), свой статус (в сети, был(а),
   молчание сервера, ошибка), `setPrivacy` / `setPrivacyFlag` со строками ключей, значение не
   того вида и отказ ядра, `isPrivacyReadOnly` и `localReadMark`, поток настроек;
   `GhostDefaultsTests` — «Показывать мой онлайн» и разовая чистка ключей.
-- `ScreenReadMarkTests` (OrbitleData): своя позиция с местной отметкой ядра;
-  `ReadMarkFlowTests` (OrbitlePresentation): разделитель по своей позиции. Остальные тесты
+- `ScreenReadMarkTests` (MaxlyData): своя позиция с местной отметкой ядра;
+  `ReadMarkFlowTests` (MaxlyPresentation): разделитель по своей позиции. Остальные тесты
   отметки прочтения — в [`read-marks.md`](read-marks.md#5-тесты).
 
 ## 9. Проверка на устройстве

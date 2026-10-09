@@ -5,7 +5,7 @@
 для обеих реализаций, чтобы они не разошлись: какой текст показать, сколько живёт отметка и
 когда отправлять свой кадр.
 
-Swift проигрывает их в `TypingFixtureTests` (`maxly-ios/Tests/OrbitlePresentationTests`).
+Swift проигрывает их в `TypingFixtureTests` (`maxly-ios/Tests/MaxlyPresentationTests`).
 Kotlin-проигрыватель пишется отдельно и должен гонять все файлы каталога, как и Swift: новый
 файл без проигрывателя — ошибка теста.
 

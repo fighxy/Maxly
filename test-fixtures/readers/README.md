@@ -4,7 +4,7 @@
 чате реализуются в Orbitle дважды: на Swift (`maxly-ios`) и на Kotlin (`maxly-shared`,
 Android и Desktop). Эти файлы — общие сценарии для обеих реализаций, чтобы они не разошлись.
 
-Swift проигрывает их в `ReadersFixtureTests` (`maxly-ios/Tests/OrbitleDomainTests`).
+Swift проигрывает их в `ReadersFixtureTests` (`maxly-ios/Tests/MaxlyDomainTests`).
 Kotlin-проигрыватель пишется отдельно и должен гонять все файлы каталога, как и Swift: новый
 файл без проигрывателя — ошибка теста.
 

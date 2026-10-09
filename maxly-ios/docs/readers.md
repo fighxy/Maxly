@@ -24,7 +24,7 @@
 
 ## Правила
 
-`MessageReaders` (OrbitleDomain) — чистые правила без сети и хранения:
+`MessageReaders` (MaxlyDomain) — чистые правила без сети и хранения:
 
 - `isAvailable(chatId:chatType:isVideoConversation:participantsCount:messageState:maxReadmarks:)` —
   только `CHAT` без `videoConversation`, участников (`participantsCount`, а без него — размер
@@ -44,7 +44,7 @@
 
 - `MessageInfo.editedTime(updateTime:)` — время для строки «изменено» или `nil`.
 
-Тесты: `ReadersFixtureTests` (OrbitleDomainTests) проигрывают все файлы `test-fixtures/readers`.
+Тесты: `ReadersFixtureTests` (MaxlyDomainTests) проигрывают все файлы `test-fixtures/readers`.
 
 ## Экран сведений
 
@@ -65,7 +65,7 @@
   «Не удалось загрузить список» с «Повторить». Нажатие на человека закрывает лист и открывает
   личный чат с ним.
 
-`MessageInfoViewModel` (OrbitlePresentation) — строки и состояние списка, тесты —
+`MessageInfoViewModel` (MaxlyPresentation) — строки и состояние списка, тесты —
 `MessageInfoViewModelTests`.
 
 ## Подключение

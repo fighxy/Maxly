@@ -3,7 +3,7 @@
 Разметка текста (`elements` сообщения) читается и пишется в Orbitle дважды: на Swift
 (`maxly-ios`) и на Kotlin (`maxly-shared`). Эти файлы — общие сценарии для обеих
 реализаций. Swift проигрывает их в `FormattingFixtureTests`
-(`maxly-ios/Tests/OrbitleDomainTests`), логика — `MessageMarkup` в `OrbitleDomain`.
+(`maxly-ios/Tests/MaxlyDomainTests`), логика — `MessageMarkup` в `MaxlyDomain`.
 Проигрыватель должен гонять все файлы каталога: новый файл без проигрывателя — ошибка теста.
 
 ## Протокол

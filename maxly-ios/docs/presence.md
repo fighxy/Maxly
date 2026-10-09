@@ -40,10 +40,10 @@ loadPresence ──────┘          ▲
                               └── CorePresenceService.refresh(ids) ◄── экраны: кого видно
 ```
 
-- `PresenceStore` (OrbitleDomain): `.unknown` известное не затирает, запись старше известной не
+- `PresenceStore` (MaxlyDomain): `.unknown` известное не затирает, запись старше известной не
   применяется, «в сети» без подтверждения через 5 минут становится «был(а)» во время последнего
   подтверждения.
-- `CorePresenceService` (OrbitleData, `PresenceProvider`): `refresh(ids)` берёт только числовые
+- `CorePresenceService` (MaxlyData, `PresenceProvider`): `refresh(ids)` берёт только числовые
   id, каждого не чаще раза в минуту, и пишет ответ в хранилище; при ошибке спросит снова при
   следующем показе. `presence(of:)` — из хранилища, а если там пусто — `presenceOf` ядра.
 - `SyncEngine` пишет события `presence` в то же хранилище (`attachPresence`).
@@ -71,4 +71,4 @@ loadPresence ──────┘          ▲
 - `PresenceFixtureTests` — тексты по сценариям.
 - `PresenceLiveTests`, `ChatListPresenceTests` — живые обновления экранов.
 - `ChatProfileViewModelTests.livePresence` — шапка и профиль.
-- `CorePresenceTests` (OrbitleData) — коды ядра, пачки и минутный порог, ошибка, событие.
+- `CorePresenceTests` (MaxlyData) — коды ядра, пачки и минутный порог, ошибка, событие.

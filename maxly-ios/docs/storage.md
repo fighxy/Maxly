@@ -8,7 +8,7 @@
 
 | Категория | Папка | Кто пишет | Имя файла |
 |---|---|---|---|
-| Фото (фото из сообщений и аватары) | `photos/` | `ImagePipeline` (OrbitleUI) | SHA-256 адреса |
+| Фото (фото из сообщений и аватары) | `photos/` | `ImagePipeline` (MaxlyUI) | SHA-256 адреса |
 | Видео | `videos/` | `MediaRepositoryImpl`, запасной путь просмотра видео | id вложения + расширение |
 | Видеосообщения (кружки) | `videoNotes/` | `MediaRepositoryImpl`, перед воспроизведением в ленте | `note<id>.mp4` |
 | Голосовые | `voice/` | `MediaRepositoryImpl` при первом воспроизведении | id + `.ogg` (рядом CAF для плеера) |
@@ -64,7 +64,7 @@
 | Presentation | `StorageSettingsModel`, подписи категорий и вариантов |
 | App | `DataStorageView` (Swift Charts `SectorMark`), сборка `DeviceStorage` в `AppContainer`, применение правил при уходе в фон |
 
-Тесты: `DeviceStorageTests` (размеры, очистка, «Прочее», срок, предел, сохранение правил, папки категорий), `StorageSettingsModelTests`, кэш картинок в `OrbitleUITests`.
+Тесты: `DeviceStorageTests` (размеры, очистка, «Прочее», срок, предел, сохранение правил, папки категорий), `StorageSettingsModelTests`, кэш картинок в `MaxlyUITests`.
 
 ## 6. Что дальше (по образцу популярных мессенджеров, без решения Ивана не делается)
 

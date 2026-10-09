@@ -79,8 +79,8 @@
 
 ## Тесты ошибок загрузки
 
-- `AttachmentRepositoryTests.serverFailureText`, `attachErrorPush`, `attachKinds` (OrbitleData): текст ошибки сервера, пуш `attachError` для идущего видео, сверка вида, повтор после ошибки.
-- `AttachmentViewModelTests.uploadFailureNotice` (OrbitlePresentation): плашка только для своего чата, с текстом и без.
+- `AttachmentRepositoryTests.serverFailureText`, `attachErrorPush`, `attachKinds` (MaxlyData): текст ошибки сервера, пуш `attachError` для идущего видео, сверка вида, повтор после ошибки.
+- `AttachmentViewModelTests.uploadFailureNotice` (MaxlyPresentation): плашка только для своего чата, с текстом и без.
 
 ## Проверка на устройстве
 

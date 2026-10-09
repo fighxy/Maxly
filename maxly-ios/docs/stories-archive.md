@@ -23,8 +23,8 @@
 
 ## 3. Экран
 
-`StoryArchiveView` (`OrbitleApp/Screens/Stories`), модель `StoryArchiveModel`
-(`OrbitlePresentation/Stories`).
+`StoryArchiveView` (`MaxlyApp/Screens/Stories`), модель `StoryArchiveModel`
+(`MaxlyPresentation/Stories`).
 
 - Сетка в три колонки, плитки 9:16: обложка (для видео — превью, для фото — сам снимок), дата
   и значок ▶︎ у видео.
@@ -50,7 +50,7 @@
 
 ## 5. Тесты
 
-`StoryArchiveModelTests` (OrbitlePresentation, запускаются и на Linux):
+`StoryArchiveModelTests` (MaxlyPresentation, запускаются и на Linux):
 
 - первая страница без курсора, дальше курсор ответа, пустой курсор — конец;
 - пустой архив и курсор `"0"`;

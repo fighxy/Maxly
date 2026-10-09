@@ -1,8 +1,8 @@
 # Участники группы: общие сценарии
 
 Список «Участники» группы или канала на Swift (`maxly-ios`) и Kotlin (`maxly-shared`).
-Swift проигрывает сценарии в `MembersFixtureTests` (`maxly-ios/Tests/OrbitleDomainTests`),
-логика — `ChatMembersRules` в `OrbitleDomain`. Новый файл без проигрывателя — ошибка.
+Swift проигрывает сценарии в `MembersFixtureTests` (`maxly-ios/Tests/MaxlyDomainTests`),
+логика — `ChatMembersRules` в `MaxlyDomain`. Новый файл без проигрывателя — ошибка.
 
 ## Протокол
 
