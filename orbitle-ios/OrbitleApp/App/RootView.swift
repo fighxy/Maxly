@@ -41,7 +41,7 @@ struct RootView: View {
         case .failed(let message):
             ContentUnavailableView {
                 Label {
-                    Text("Orbitle не запустился")
+                    Text("Maxly не запустился")
                 } icon: {
                     OrbitleMark(size: 72)
                 }

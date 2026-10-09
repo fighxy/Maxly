@@ -13,7 +13,7 @@ struct PhotoLibrarySaver: GallerySaving {
         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
         guard status == .authorized || status == .limited else {
             Log.warning(.media, "Нет доступа к «Фото» для сохранения: \(status.rawValue)")
-            throw .rejected("Нет доступа к «Фото». Разрешите в Настройках → Orbitle → Фото")
+            throw .rejected("Нет доступа к «Фото». Разрешите в Настройках → Maxly → Фото")
         }
         do {
             try await PHPhotoLibrary.shared().performChanges {

@@ -56,7 +56,7 @@ struct AvatarPickerModifier: ViewModifier {
             } message: {
                 Text(cameraProblem == .unavailable
                      ? "На этом устройстве нет камеры."
-                     : "Разрешите Orbitle доступ к камере в Настройках, чтобы сделать снимок.")
+                     : "Разрешите Maxly доступ к камере в Настройках, чтобы сделать снимок.")
             }
     }
 }

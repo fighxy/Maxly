@@ -62,7 +62,7 @@ struct CallsView: View {
         .alert("Звонки пока недоступны", isPresented: $showsCallsUnavailable) {
             Button("Понятно", role: .cancel) {}
         } message: {
-            Text("Эта версия Orbitle ещё не умеет начинать звонки и подключаться к ним.")
+            Text("Эта версия Maxly ещё не умеет начинать звонки и подключаться к ним.")
         }
         .alert("Присоединиться к звонку", isPresented: $isJoining) {
             TextField("Ссылка на звонок", text: $joinLink)
@@ -100,7 +100,7 @@ struct CallsView: View {
             placeholder(
                 "История звонков недоступна",
                 systemImage: "phone",
-                description: "Звонки появятся, когда Orbitle научится получать их с сервера."
+                description: "Звонки появятся, когда Maxly научится получать их с сервера."
             )
         case .empty:
             if viewModel.filter == .missed {

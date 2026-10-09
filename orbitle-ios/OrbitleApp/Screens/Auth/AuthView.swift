@@ -99,7 +99,7 @@ struct AuthWordmark: View {
             OrbitleLogoTile(size: 88)
                 .shadow(color: .black.opacity(0.18), radius: 12, y: 6)
                 .accessibilityHidden(true)
-            Text(verbatim: "Orbitle")
+            Text(verbatim: "Maxly")
                 .font(.system(size: 34, weight: .bold))
                 .foregroundStyle(.primary)
         }

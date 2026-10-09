@@ -24,7 +24,7 @@ struct ContactsAccessRow: View {
             row(
                 systemImage: "person.crop.circle.badge.checkmark",
                 title: "Доступ к части контактов",
-                detail: "Orbitle видит только выбранные вами контакты телефона. Изменить выбор можно в настройках: Orbitle → Контакты.",
+                detail: "Maxly видит только выбранные вами контакты телефона. Изменить выбор можно в настройках: Maxly → Контакты.",
                 action: "Выбрать в настройках",
                 perform: openSettings
             )

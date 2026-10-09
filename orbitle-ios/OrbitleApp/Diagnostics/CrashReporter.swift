@@ -110,6 +110,6 @@ enum AppInfo {
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "?"
         let build = info?["CFBundleVersion"] as? String ?? "?"
-        return "Orbitle \(version) (\(build)), \(ProcessInfo.processInfo.operatingSystemVersionString)"
+        return "Maxly \(version) (\(build)), \(ProcessInfo.processInfo.operatingSystemVersionString)"
     }
 }

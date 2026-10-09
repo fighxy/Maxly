@@ -66,8 +66,8 @@ struct MediaSavingTests {
     @Test("Имя по времени сообщения, номер со второго вложения")
     func naming() throws {
         let utc = try #require(TimeZone(identifier: "UTC"))
-        #expect(SaveNaming.name(for: Self.date, index: 0, ext: "jpg", timeZone: utc) == "Orbitle 2026-09-21 14.13.20.jpg")
-        #expect(SaveNaming.name(for: Self.date, index: 2, ext: "mp4", timeZone: utc) == "Orbitle 2026-09-21 14.13.20 3.mp4")
+        #expect(SaveNaming.name(for: Self.date, index: 0, ext: "jpg", timeZone: utc) == "Maxly 2026-09-21 14.13.20.jpg")
+        #expect(SaveNaming.name(for: Self.date, index: 2, ext: "mp4", timeZone: utc) == "Maxly 2026-09-21 14.13.20 3.mp4")
     }
 
     @Test("Расширение картинки по первым байтам")
@@ -107,7 +107,7 @@ struct MediaSavingTests {
         #expect(await eventually { await gallery.saved.count == 1 })
         let file = try #require(await gallery.saved.first?.first)
         #expect(file.kind == .image)
-        #expect(file.name.hasPrefix("Orbitle "))
+        #expect(file.name.hasPrefix("Maxly "))
         #expect(file.name.hasSuffix(".png"))
         #expect(file.url.lastPathComponent == file.name)
         #expect(FileManager.default.fileExists(atPath: file.url.path))
@@ -122,7 +122,7 @@ struct MediaSavingTests {
         let source = folder.appending(path: "cdn-image")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try Self.gif.write(to: source)
-        let saved = try await SaveFormat.image(at: source, in: folder.appending(path: "out"), baseName: "Orbitle test")
+        let saved = try await SaveFormat.image(at: source, in: folder.appending(path: "out"), baseName: "Maxly test")
         #expect(["jpg", "png"].contains(saved.pathExtension))
         #expect(["jpg", "png"].contains(SaveNaming.imageExtension(of: try Data(contentsOf: saved))))
     }

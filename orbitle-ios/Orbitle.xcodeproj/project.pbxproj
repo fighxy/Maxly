@@ -16,7 +16,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		AA0000000000000000000004 /* Orbitle.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Orbitle.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000000000000000000004 /* Maxly.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Maxly.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000000000000000000005 /* MaxIos.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Vendor/MaxIos.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -74,7 +74,7 @@
 		AA0000000000000000000018 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				AA0000000000000000000004 /* Orbitle.app */,
+				AA0000000000000000000004 /* Maxly.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -108,7 +108,7 @@
 				AA000000000000000000001F /* OrbitleCallMedia */,
 			);
 			productName = Orbitle;
-			productReference = AA0000000000000000000004 /* Orbitle.app */;
+			productReference = AA0000000000000000000004 /* Maxly.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -270,7 +270,8 @@
 				);
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = app.orbitle.ios;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = Orbitle;
+				PRODUCT_NAME = Maxly;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -301,7 +302,8 @@
 				);
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = app.orbitle.ios;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = Orbitle;
+				PRODUCT_NAME = Maxly;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;

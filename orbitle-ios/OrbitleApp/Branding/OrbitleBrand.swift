@@ -27,7 +27,7 @@ struct OrbitleLogoTile: View {
                 RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
                     .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
             }
-            .accessibilityLabel("Orbitle")
+            .accessibilityLabel("Maxly")
     }
 }
 
@@ -43,7 +43,7 @@ struct OrbitleMark: View {
             .interpolation(.high)
             .scaledToFit()
             .frame(width: size, height: size)
-            .accessibilityLabel("Orbitle")
+            .accessibilityLabel("Maxly")
     }
 }
 
@@ -76,6 +76,6 @@ struct OrbitleSplash: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(caption ?? "Orbitle, загрузка")
+        .accessibilityLabel(caption ?? "Maxly, загрузка")
     }
 }

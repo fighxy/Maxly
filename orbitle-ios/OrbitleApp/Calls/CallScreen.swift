@@ -561,5 +561,5 @@ enum CallPermissions {
         }
     }
 
-    static let microphoneDenied = "Нет доступа к микрофону. Разрешите его Orbitle в Настройках, чтобы звонить."
+    static let microphoneDenied = "Нет доступа к микрофону. Разрешите его Maxly в Настройках, чтобы звонить."
 }

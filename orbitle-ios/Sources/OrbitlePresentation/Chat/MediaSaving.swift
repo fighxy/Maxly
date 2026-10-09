@@ -51,14 +51,14 @@ public struct FileExport: Identifiable, Hashable, Sendable {
 
 /// Имена сохраняемых файлов и их тип по первым байтам.
 public enum SaveNaming {
-    /// «Orbitle 2026-10-01 14.05.33.jpg»: имя с префиксом приложения и по времени
+    /// «Maxly 2026-10-01 14.05.33.jpg»: имя с префиксом приложения и по времени
     /// сообщения, номер для второго и следующих вложений одного сообщения.
     public static func name(for date: Date, index: Int, ext: String, timeZone: TimeZone = .current) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = timeZone
         formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
-        let base = "Orbitle \(formatter.string(from: date))" + (index > 0 ? " \(index + 1)" : "")
+        let base = "Maxly \(formatter.string(from: date))" + (index > 0 ? " \(index + 1)" : "")
         return ext.isEmpty ? base : "\(base).\(ext)"
     }
 

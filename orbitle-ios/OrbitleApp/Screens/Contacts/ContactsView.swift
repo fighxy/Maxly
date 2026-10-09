@@ -140,7 +140,7 @@ struct ContactsView: View {
         .alert("Добавление контактов пока недоступно", isPresented: $showsAddUnavailable) {
             Button("Понятно", role: .cancel) {}
         } message: {
-            Text("Эта версия Orbitle ещё не умеет добавлять контакты.")
+            Text("Эта версия Maxly ещё не умеет добавлять контакты.")
         }
     }
 
@@ -160,7 +160,7 @@ struct ContactsView: View {
             placeholder(
                 "Контакты пока недоступны",
                 systemImage: "person.crop.circle.badge.questionmark",
-                description: "Список появится, когда Orbitle научится получать его с сервера."
+                description: "Список появится, когда Maxly научится получать его с сервера."
             )
         case .empty:
             placeholder(

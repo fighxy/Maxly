@@ -54,7 +54,7 @@ struct FileLogStoreTests {
     func archive() throws {
         let store = makeStore()
         store.write(entry("для архива"))
-        let archive = try store.makeArchive(info: "Orbitle test")
+        let archive = try store.makeArchive(info: "Maxly test")
         defer { try? FileManager.default.removeItem(at: archive) }
         let data = try Data(contentsOf: archive)
         // Локальный заголовок ZIP: `PK\u{3}\u{4}`.

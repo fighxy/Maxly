@@ -129,7 +129,7 @@ struct LogArchive: FileDocument {
 
     init(configuration: ReadConfiguration) throws {
         data = configuration.file.regularFileContents ?? Data()
-        filename = "orbitle-logs"
+        filename = "maxly-logs"
     }
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {

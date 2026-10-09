@@ -12,7 +12,7 @@ struct AboutView: View {
             Section {
                 VStack(spacing: 10) {
                     OrbitleLogoTile(size: 72)
-                    Text(verbatim: "Orbitle")
+                    Text(verbatim: "Maxly")
                         .font(.title2.bold())
                     Text("Версия \(AppContainer.versionNumber)")
                         .font(.subheadline)

@@ -177,7 +177,7 @@ struct CrashDumpStoreTests {
         dumps.save("Сбой по сигналу 11", date: date(0))
         let store = FileLogStore(directory: logs)
         store.write(Log.Entry(date: date(0), level: .info, category: .app, message: "запуск"))
-        let archive = try store.makeArchive(info: "Orbitle test")
+        let archive = try store.makeArchive(info: "Maxly test")
         defer { try? FileManager.default.removeItem(at: archive) }
         let data = try Data(contentsOf: archive)
         #expect(data.range(of: Data("Crashes/crash-".utf8)) != nil)

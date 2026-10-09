@@ -95,10 +95,10 @@ public final class StorageSettingsModel {
 
     // MARK: Подписи
 
-    /// «Orbitle занимает 1,2 ГБ — 3 % памяти устройства».
+    /// «Maxly занимает 1,2 ГБ — 3 % памяти устройства».
     public var summary: String? {
         guard let usage else { return nil }
-        var text = "Orbitle занимает \(Self.format(usage.total))"
+        var text = "Maxly занимает \(Self.format(usage.total))"
         if let total = usage.deviceTotal, total > 0 {
             let percent = Double(usage.total) / Double(total) * 100
             text += " — \(Self.percent(percent)) памяти устройства"

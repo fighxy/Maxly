@@ -161,12 +161,12 @@ final class AppContainer {
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "?"
         let build = info?["CFBundleVersion"] as? String ?? "?"
-        return "Orbitle \(version) (\(build))"
+        return "Maxly \(version) (\(build))"
     }
 
     /// `0.1.0 (1)` для настроек и «О приложении».
     static var versionNumber: String {
-        appVersion.replacingOccurrences(of: "Orbitle ", with: "")
+        appVersion.replacingOccurrences(of: "Maxly ", with: "")
     }
 
     /// Писать журнал в файлы. Настройка живёт на устройстве.
