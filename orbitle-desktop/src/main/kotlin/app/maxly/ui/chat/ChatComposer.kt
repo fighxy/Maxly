@@ -484,7 +484,7 @@ internal fun AttachmentStrip(items: List<OutgoingFile>, onRemove: (OutgoingFile)
     }
 }
 /**
- * Меню вложений — выпадает у скрепки, как в Telegram Desktop: фото и видео, файл, опрос,
+ * Меню вложений — выпадает у скрепки: фото и видео, файл, опрос,
  * отложенное. Картинку и файлы можно и вставить из буфера (Ctrl+V).
  */
 @Composable

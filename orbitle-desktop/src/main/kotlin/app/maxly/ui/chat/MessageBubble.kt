@@ -646,7 +646,7 @@ private fun cropWidth(cell: Dp, cellHeight: Dp, photoWidth: Int?, photoHeight: I
 
 /**
  * Плотность для адреса фото в ленте — не меньше 2: на Windows с масштабом 100 % плотность 1,
- * и ступень лестницы впритык к ячейке выглядит мыльной рядом с Telegram.
+ * и ступень лестницы впритык к ячейке выглядит мыльной.
  */
 @Composable
 private fun feedDensity(): Float = maxOf(LocalDensity.current.density, 2f)
