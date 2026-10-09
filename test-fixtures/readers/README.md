@@ -1,7 +1,7 @@
 # «Кем прочитано» и строка прочтения: общие сценарии
 
 Список тех, кто прочитал сообщение в группе, и строка «Прочитано»/«Доставлено» в личном
-чате реализуются в Orbitle дважды: на Swift (`maxly-ios`) и на Kotlin (`maxly-shared`,
+чате реализуются в Maxly дважды: на Swift (`maxly-ios`) и на Kotlin (`maxly-shared`,
 Android и Desktop). Эти файлы — общие сценарии для обеих реализаций, чтобы они не разошлись.
 
 Swift проигрывает их в `ReadersFixtureTests` (`maxly-ios/Tests/MaxlyDomainTests`).

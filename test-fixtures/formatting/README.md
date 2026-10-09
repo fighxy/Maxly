@@ -1,6 +1,6 @@
 # Форматирование текста: общие сценарии
 
-Разметка текста (`elements` сообщения) читается и пишется в Orbitle дважды: на Swift
+Разметка текста (`elements` сообщения) читается и пишется в Maxly дважды: на Swift
 (`maxly-ios`) и на Kotlin (`maxly-shared`). Эти файлы — общие сценарии для обеих
 реализаций. Swift проигрывает их в `FormattingFixtureTests`
 (`maxly-ios/Tests/MaxlyDomainTests`), логика — `MessageMarkup` в `MaxlyDomain`.

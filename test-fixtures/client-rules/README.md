@@ -1,6 +1,6 @@
 # Правила клиентов: общие константы
 
-Некоторые числа поведения клиента Orbitle задаёт дважды: на Swift (`maxly-ios`) и на Kotlin
+Некоторые числа поведения клиента Maxly задаёт дважды: на Swift (`maxly-ios`) и на Kotlin
 (`maxly-shared`, Android и Desktop). Здесь они записаны один раз, чтобы не разошлись. Оба
 клиента сверяют свои константы с этим файлом в тестах: Kotlin — `ClientRulesFixtureTest`
 (`maxly-shared/src/test`) против `ReadMarkRules`. Значение меняется только здесь и в обоих

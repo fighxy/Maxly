@@ -106,7 +106,7 @@
       }
     },
     {
-      "peerAnswer": "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=mid:0\r\na=sendrecv\r\na=msid:orbitle audio-track\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=mid:1\r\na=sendonly\r\na=msid:orbitle cam-track\r\na=ssrc:21 msid:orbitle cam-track\r\n"
+      "peerAnswer": "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=mid:0\r\na=sendrecv\r\na=msid:maxly audio-track\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=mid:1\r\na=sendonly\r\na=msid:maxly cam-track\r\na=ssrc:21 msid:maxly cam-track\r\n"
     },
     {
       "receive": {
