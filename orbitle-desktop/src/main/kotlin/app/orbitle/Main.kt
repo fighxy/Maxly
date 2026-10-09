@@ -108,8 +108,10 @@ fun main() {
             // Свёрнуто ли окно и в фокусе ли оно: от этого зависят флаг активности для ядра
             // и опрос своего статуса (свёрнутое окно — фон).
             val windowInfo = LocalWindowInfo.current
+            // До первого показа окна isMinimized бросает исключение: до тех пор окно считается развёрнутым.
             LaunchedEffect(container) {
-                androidx.compose.runtime.snapshotFlow { windowState.isMinimized }.collect { container.window.setMinimized(it) }
+                androidx.compose.runtime.snapshotFlow { windowState.isInitialized && windowState.isMinimized }
+                    .collect { container.window.setMinimized(it) }
             }
             LaunchedEffect(container) {
                 androidx.compose.runtime.snapshotFlow { windowInfo.isWindowFocused }.collect { container.window.setFocused(it) }
