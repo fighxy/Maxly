@@ -26,6 +26,10 @@
   <a href="https://github.com/fighxy/Maxly/actions/workflows/ios.yml"><img alt="iOS CI" src="https://github.com/fighxy/Maxly/actions/workflows/ios.yml/badge.svg?branch=main"></a>
 </p>
 
+<p align="center">
+  <a href="https://t.me/maxly_client"><img alt="Канал новостей Maxly" src="https://img.shields.io/badge/Новости-maxly__client-26A5E4?style=flat&logo=telegram&logoColor=white"></a>
+</p>
+
 Maxly — нативный клиент мессенджера MAX. Протокол, сеть, вход, хранение сессии и логика
 сервера живут в общем ядре [maxly-core](https://github.com/fighxy/maxly-core) на Kotlin
 Multiplatform, Maxly отвечает за нативный интерфейс на каждой платформе.
