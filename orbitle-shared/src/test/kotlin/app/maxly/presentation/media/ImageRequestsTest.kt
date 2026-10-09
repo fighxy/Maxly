@@ -1,8 +1,8 @@
 package app.maxly.presentation.media
 
-import com.max.core.api.MaxMessage
-import com.max.core.media.ImageShape
-import com.max.core.media.ImageSizes
+import com.maxly.core.api.MaxMessage
+import com.maxly.core.media.ImageShape
+import com.maxly.core.media.ImageSizes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

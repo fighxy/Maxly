@@ -1,7 +1,7 @@
 package app.maxly.data
 
 import app.maxly.domain.ChatDraft
-import com.max.core.api.TextElementsJson
+import com.maxly.core.api.TextElementsJson
 
 /**
  * Черновик в одной строке настроек: `v2⇥время⇥ответ⇥отметки⇥текст` (текст может быть пуст, если

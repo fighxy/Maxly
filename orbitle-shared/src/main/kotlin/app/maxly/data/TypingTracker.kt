@@ -2,7 +2,7 @@ package app.maxly.data
 
 import app.maxly.domain.Typist
 import app.maxly.domain.TypingKind
-import com.max.core.state.MaxState
+import com.maxly.core.state.MaxState
 
 /**
  * Кто сейчас что-то делает в чате: из `typingUsersWithType` ядра (живёт 8 с после последнего

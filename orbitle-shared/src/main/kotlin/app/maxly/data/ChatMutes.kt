@@ -1,10 +1,10 @@
 package app.maxly.data
 
 import app.maxly.domain.Chat
-import com.max.core.api.AccountConfig
-import com.max.core.events.MaxEvent
-import com.max.core.state.MaxState
-import com.max.shared.MaxClient
+import com.maxly.core.api.AccountConfig
+import com.maxly.core.events.MaxEvent
+import com.maxly.core.state.MaxState
+import com.maxly.shared.MaxClient
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow

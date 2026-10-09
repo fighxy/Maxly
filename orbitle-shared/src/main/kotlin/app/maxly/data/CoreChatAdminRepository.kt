@@ -1,12 +1,12 @@
 package app.maxly.data
 
-import com.max.core.api.Chat as CoreChat
-import com.max.core.api.ChatMember
-import com.max.core.api.ChatPermission
-import com.max.core.api.GroupSettings
-import com.max.core.api.MaxUser
-import com.max.core.protocol.Opcode
-import com.max.shared.MaxClient
+import com.maxly.core.api.Chat as CoreChat
+import com.maxly.core.api.ChatMember
+import com.maxly.core.api.ChatPermission
+import com.maxly.core.api.GroupSettings
+import com.maxly.core.api.MaxUser
+import com.maxly.core.protocol.Opcode
+import com.maxly.shared.MaxClient
 
 /** [ChatAdminRepository] через `ChatsApi` ядра. */
 class CoreChatAdminRepository(private val client: MaxClient) : ChatAdminRepository {

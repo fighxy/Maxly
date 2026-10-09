@@ -2,13 +2,13 @@ package app.maxly.data.calls
 
 import app.maxly.data.CoreCallRepository
 import app.maxly.domain.CallOutcome
-import com.max.core.calls.CallEnd
-import com.max.core.calls.CallHistoryAction
-import com.max.core.calls.CallHistoryItem
-import com.max.core.calls.CallHistoryPage
-import com.max.core.calls.CallMedia
-import com.max.core.calls.GroupCallKind
-import com.max.core.state.MaxState
+import com.maxly.core.calls.CallEnd
+import com.maxly.core.calls.CallHistoryAction
+import com.maxly.core.calls.CallHistoryItem
+import com.maxly.core.calls.CallHistoryPage
+import com.maxly.core.calls.CallMedia
+import com.maxly.core.calls.GroupCallKind
+import com.maxly.core.state.MaxState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

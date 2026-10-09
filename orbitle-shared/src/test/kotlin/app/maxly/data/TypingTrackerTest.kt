@@ -2,7 +2,7 @@ package app.maxly.data
 
 import app.maxly.domain.Typist
 import app.maxly.domain.TypingKind
-import com.max.core.state.MaxState
+import com.maxly.core.state.MaxState
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

@@ -4,15 +4,15 @@ import app.maxly.domain.Chat
 import app.maxly.domain.ChatSearchResult
 import app.maxly.domain.ChatType
 import app.maxly.domain.FoundMessage
-import com.max.core.api.Chat as CoreChat
-import com.max.core.api.MaxMessage
-import com.max.core.api.PublicSearchHit
-import com.max.core.events.MaxEvent
-import com.max.core.protocol.Opcode
-import com.max.core.state.MaxState
+import com.maxly.core.api.Chat as CoreChat
+import com.maxly.core.api.MaxMessage
+import com.maxly.core.api.PublicSearchHit
+import com.maxly.core.events.MaxEvent
+import com.maxly.core.protocol.Opcode
+import com.maxly.core.state.MaxState
 import kotlinx.coroutines.CancellationException
 import app.maxly.domain.ServerFolder
-import com.max.shared.MaxClient
+import com.maxly.shared.MaxClient
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -306,7 +306,7 @@ class CoreChatRepository(
         const val MESSAGE_SEARCH_COUNT = 50
 
         /**
-         * Тело `MSG_SEND` для нового канала: то же вложение, что у [com.max.core.api.ChatsApi.createGroup],
+         * Тело `MSG_SEND` для нового канала: то же вложение, что у [com.maxly.core.api.ChatsApi.createGroup],
          * но `chatType` — `CHANNEL`, а участников нет. Opcode 63 не используется.
          */
         fun channelCreatePayload(cid: Long, title: String): Map<String, Any?> {

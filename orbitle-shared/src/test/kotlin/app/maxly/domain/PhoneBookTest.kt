@@ -1,7 +1,7 @@
 package app.maxly.domain
 
 import app.maxly.data.CoreAddressBookSink
-import com.max.core.api.PhoneContact
+import com.maxly.core.api.PhoneContact
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

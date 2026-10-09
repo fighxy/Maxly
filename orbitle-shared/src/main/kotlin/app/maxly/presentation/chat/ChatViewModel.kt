@@ -2443,7 +2443,7 @@ class ChatViewModel(
         val command = commandQuery(text)
         val bot = header?.chat?.isBot == true
         // Подсказки «@»: общий поиск ядра по имени и имени для упоминаний.
-        val mentions = if (mention == null) emptyList() else com.max.core.api.MemberSearch.filter(memberRows, mention, ChatMemberRow::name, ChatMemberRow::mentionName).take(8)
+        val mentions = if (mention == null) emptyList() else com.maxly.core.api.MemberSearch.filter(memberRows, mention, ChatMemberRow::name, ChatMemberRow::mentionName).take(8)
         val commands = if (command == null || !bot) emptyList() else commandRows.filter {
             it.name.removePrefix("/").contains(command, ignoreCase = true)
         }.take(8)

@@ -8,16 +8,16 @@ import app.maxly.SharedFixtures.Companion.raw
 import app.maxly.SharedFixtures.Companion.str
 import app.maxly.domain.PhoneBook
 import app.maxly.domain.PhoneBookRow
-import com.max.core.api.MaxMessage
-import com.max.core.api.MaxUser
-import com.max.core.api.PhoneNumbers
-import com.max.core.state.MaxState
-import com.max.core.state.StateReducer
+import com.maxly.core.api.MaxMessage
+import com.maxly.core.api.MaxUser
+import com.maxly.core.api.PhoneNumbers
+import com.maxly.core.state.MaxState
+import com.maxly.core.state.StateReducer
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import com.max.core.api.Chat as CoreChat
+import com.maxly.core.api.Chat as CoreChat
 
 /**
  * Общие с iOS сценарии имён из `test-fixtures/names` (правила — в README каталога).

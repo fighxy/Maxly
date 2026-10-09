@@ -1,12 +1,12 @@
 package app.maxly.data
 
 import app.maxly.domain.SessionRejection
-import com.max.core.auth.CodeRequestType
-import com.max.core.auth.LoginRejection
-import com.max.core.auth.VerifyResult
-import com.max.core.toMaxError
-import com.max.shared.ClientState
-import com.max.shared.MaxClient
+import com.maxly.core.auth.CodeRequestType
+import com.maxly.core.auth.LoginRejection
+import com.maxly.core.auth.VerifyResult
+import com.maxly.core.toMaxError
+import com.maxly.shared.ClientState
+import com.maxly.shared.MaxClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged

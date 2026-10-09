@@ -1,7 +1,7 @@
 package app.maxly.data
 
 import app.maxly.domain.ServerFolder
-import com.max.shared.MaxClient
+import com.maxly.shared.MaxClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map

@@ -136,8 +136,8 @@ internal val STRING_TABLE: Map<Int, String> = mapOf(
     R.string.settings_cancel to "Отмена",
     R.string.about_version to "Версия",
     R.string.about_build to "Сборка",
-    R.string.about_core to "Ядро max-kmp-core",
-    R.string.about_text to "Неофициальный клиент Max для компьютера. Работает на открытом ядре max-kmp-core и представляется сервису как Android-устройство.",
+    R.string.about_core to "Ядро maxly-core",
+    R.string.about_text to "Неофициальный клиент Max для компьютера. Работает на открытом ядре maxly-core и представляется сервису как Android-устройство.",
     R.string.about_source to "Исходный код",
 )
 

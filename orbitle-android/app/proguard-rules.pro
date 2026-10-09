@@ -1,5 +1,5 @@
-# Ядро max-kmp-core разбирает ответы сервера по именам полей и типам; не трогаем его классы.
--keep class com.max.** { *; }
+# Ядро maxly-core разбирает ответы сервера по именам полей и типам; не трогаем его классы.
+-keep class com.maxly.** { *; }
 -keepattributes Signature, InnerClasses, EnclosingMethod, *Annotation*
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**

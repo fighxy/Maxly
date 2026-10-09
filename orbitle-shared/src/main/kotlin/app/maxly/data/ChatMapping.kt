@@ -6,11 +6,11 @@ import app.maxly.domain.ChatType
 import app.maxly.domain.DeliveryState
 import app.maxly.domain.MessageMediaKind
 import app.maxly.domain.ServerFolder
-import com.max.core.api.AccountConfig
-import com.max.core.api.ChatFolders
-import com.max.core.api.MaxMessage
-import com.max.core.state.MaxState
-import com.max.core.api.Chat as CoreChat
+import com.maxly.core.api.AccountConfig
+import com.maxly.core.api.ChatFolders
+import com.maxly.core.api.MaxMessage
+import com.maxly.core.state.MaxState
+import com.maxly.core.api.Chat as CoreChat
 
 /** Чаты и папки ядра в моделях приложения. */
 object ChatMapping {

@@ -3,11 +3,11 @@ package app.maxly.data
 import app.maxly.domain.DeletePlan
 import app.maxly.domain.Message
 import app.maxly.domain.MessageStatus
-import com.max.core.api.Chat
-import com.max.core.api.ChatRights
-import com.max.core.api.MaxMessage
-import com.max.core.api.MessageDeletion
-import com.max.core.state.MaxState
+import com.maxly.core.api.Chat
+import com.maxly.core.api.ChatRights
+import com.maxly.core.api.MaxMessage
+import com.maxly.core.api.MessageDeletion
+import com.maxly.core.state.MaxState
 
 /**
  * Стор ядра для правил удаления в тестах: чат вида [type] (`DIALOG`, `CHAT`, `CHANNEL`; `null` —

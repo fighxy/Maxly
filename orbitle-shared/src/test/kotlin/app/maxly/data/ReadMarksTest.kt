@@ -1,12 +1,12 @@
 package app.maxly.data
 
-import com.max.core.api.LocalRead
-import com.max.core.api.MaxMessage
-import com.max.core.state.MaxState
+import com.maxly.core.api.LocalRead
+import com.maxly.core.api.MaxMessage
+import com.maxly.core.state.MaxState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
-import com.max.core.api.Chat as CoreChat
+import com.maxly.core.api.Chat as CoreChat
 
 class ReadMarksTest {
     private val me = 1L

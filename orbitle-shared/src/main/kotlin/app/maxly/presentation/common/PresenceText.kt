@@ -1,6 +1,6 @@
 package app.maxly.presentation.common
 
-import com.max.core.api.PresenceStatus
+import com.maxly.core.api.PresenceStatus
 import java.time.Instant
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit

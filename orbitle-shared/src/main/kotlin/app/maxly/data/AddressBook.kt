@@ -23,14 +23,14 @@ fun interface AddressBookSink {
 }
 
 /** Книга в ядро ([MaxClient.setAddressBook]): номера как в книге, записи без имени не нужны. */
-class CoreAddressBookSink(private val client: com.max.shared.MaxClient) : AddressBookSink {
+class CoreAddressBookSink(private val client: com.maxly.shared.MaxClient) : AddressBookSink {
     override fun publish(entries: List<PhoneBookEntry>) = client.setAddressBook(contacts(entries))
 
     companion object {
-        fun contacts(entries: List<PhoneBookEntry>): List<com.max.core.api.PhoneContact> = entries.flatMap { entry ->
+        fun contacts(entries: List<PhoneBookEntry>): List<com.maxly.core.api.PhoneContact> = entries.flatMap { entry ->
             val first = entry.firstName.trim()
             if (first.isEmpty()) emptyList()
-            else entry.rawPhones.map { com.max.core.api.PhoneContact(it, first, entry.lastName?.trim()?.takeIf(String::isNotEmpty)) }
+            else entry.rawPhones.map { com.maxly.core.api.PhoneContact(it, first, entry.lastName?.trim()?.takeIf(String::isNotEmpty)) }
         }
     }
 }

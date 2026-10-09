@@ -40,8 +40,8 @@ import app.maxly.presentation.chat.MessageFiles
 import app.maxly.presentation.chat.VoicePlayer
 import app.maxly.presentation.chatlist.ChatLocalMarks
 import app.maxly.presentation.chatlist.PreferenceRecentSearches
-import com.max.shared.MaxClient
-import com.max.shared.MaxClientConfig
+import com.maxly.shared.MaxClient
+import com.maxly.shared.MaxClientConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

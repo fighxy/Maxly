@@ -1,7 +1,7 @@
 package app.maxly.data
 
-import com.max.core.api.PresenceInfo
-import com.max.shared.MaxClient
+import com.maxly.core.api.PresenceInfo
+import com.maxly.shared.MaxClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow

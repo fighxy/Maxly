@@ -7,7 +7,7 @@ import app.maxly.domain.TypingKind
 import app.maxly.presentation.chat.ChatFormatter
 import app.maxly.presentation.chat.TypingSendPolicy
 import app.maxly.presentation.chatlist.ChatListFormatter
-import com.max.core.state.MaxState
+import com.maxly.core.state.MaxState
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement

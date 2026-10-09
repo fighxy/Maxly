@@ -1,7 +1,7 @@
 package app.maxly.data
 
-import com.max.core.api.MaxUser
-import com.max.core.api.UserName
+import com.maxly.core.api.MaxUser
+import com.maxly.core.api.UserName
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -41,7 +41,7 @@ class ContactListTest {
     fun optionsMarkBotOfficialAndService() {
         val contact = CoreContactRepository.contact(
             user(options = listOf("BOT", "OFFICIAL", "SERVICE_ACCOUNT")),
-            com.max.core.state.MaxState(),
+            com.maxly.core.state.MaxState(),
         )
         assertTrue(contact.isBot)
         assertTrue(contact.isOfficial)

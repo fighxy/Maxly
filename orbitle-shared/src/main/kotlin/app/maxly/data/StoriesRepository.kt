@@ -6,17 +6,17 @@ import app.maxly.domain.StoryAudience
 import app.maxly.domain.StoryMedia
 import app.maxly.domain.StoryOwner
 import app.maxly.domain.StoryRing
-import com.max.core.api.StoryPreview
-import com.max.core.events.MaxEvent
-import com.max.core.media.UploadProgress
-import com.max.core.state.MaxState
-import com.max.shared.MaxClient
+import com.maxly.core.api.StoryPreview
+import com.maxly.core.events.MaxEvent
+import com.maxly.core.media.UploadProgress
+import com.maxly.core.state.MaxState
+import com.maxly.shared.MaxClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.map
-import com.max.core.api.Story as CoreStory
-import com.max.core.api.StoryAudience as CoreAudience
-import com.max.core.api.StoryOwner as CoreOwner
+import com.maxly.core.api.Story as CoreStory
+import com.maxly.core.api.StoryAudience as CoreAudience
+import com.maxly.core.api.StoryOwner as CoreOwner
 
 /** Истории владельца: свежее кольцо (`null` — историй больше нет) и сами истории, от старых к новым. */
 data class OwnerStories(val ring: StoryRing?, val stories: List<Story>)

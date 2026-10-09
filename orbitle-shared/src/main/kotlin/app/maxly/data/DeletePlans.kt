@@ -4,12 +4,12 @@ import app.maxly.domain.DeletePlan
 import app.maxly.domain.DeleteScope
 import app.maxly.domain.Message
 import app.maxly.domain.MessageStatus
-import com.max.core.api.Chat
-import com.max.core.api.ChatRights
-import com.max.core.api.DeleteChatKind
-import com.max.core.api.MessageDeletion
-import com.max.core.api.DeletePlan as CorePlan
-import com.max.core.api.DeleteScope as CoreScope
+import com.maxly.core.api.Chat
+import com.maxly.core.api.ChatRights
+import com.maxly.core.api.DeleteChatKind
+import com.maxly.core.api.MessageDeletion
+import com.maxly.core.api.DeletePlan as CorePlan
+import com.maxly.core.api.DeleteScope as CoreScope
 
 /**
  * Правила удаления — ядра (общие сценарии `test-fixtures/selection/delete`): ушедшие на сервер
@@ -59,7 +59,7 @@ object DeletePlans {
      * виду чата из его id.
      */
     fun withoutStore(chatId: String, messages: List<Message>): DeletePlan {
-        val empty = com.max.core.state.MaxState()
+        val empty = com.maxly.core.state.MaxState()
         return of(chatId, null, ChatRights.NONE, messages) { ids -> MessageDeletion.plan(empty, chatId.toLong(), ids, 0L) }
     }
 

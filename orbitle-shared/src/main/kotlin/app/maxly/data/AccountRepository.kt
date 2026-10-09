@@ -10,15 +10,15 @@ import app.maxly.domain.MaxlyError
 import app.maxly.domain.PrivacyAccess
 import app.maxly.domain.PrivacyChange
 import app.maxly.domain.TwoFactorStatus
-import com.max.core.api.AccountConfig
-import com.max.core.api.EntryApp
-import com.max.core.api.MaxUser
-import com.max.core.api.PrivacyConfig
-import com.max.core.api.TwoFactorDetails
-import com.max.core.api.WebAppInitData
-import com.max.core.api.FamilyProtection as CoreFamily
-import com.max.core.api.PrivacyAccess as CoreAccess
-import com.max.shared.MaxClient
+import com.maxly.core.api.AccountConfig
+import com.maxly.core.api.EntryApp
+import com.maxly.core.api.MaxUser
+import com.maxly.core.api.PrivacyConfig
+import com.maxly.core.api.TwoFactorDetails
+import com.maxly.core.api.WebAppInitData
+import com.maxly.core.api.FamilyProtection as CoreFamily
+import com.maxly.core.api.PrivacyAccess as CoreAccess
+import com.maxly.shared.MaxClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -126,7 +126,7 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
     }
 
     override val profileChanges: Flow<Unit>
-        get() = client.events.all.filterIsInstance<com.max.core.events.MaxEvent.ProfileUpdated>().map { }
+        get() = client.events.all.filterIsInstance<com.maxly.core.events.MaxEvent.ProfileUpdated>().map { }
 
     override suspend fun updateProfile(firstName: String, lastName: String, about: String) {
         MaxCoreGateway.call { client.updateProfile(firstName.trim(), lastName.trim(), about.trim()) }

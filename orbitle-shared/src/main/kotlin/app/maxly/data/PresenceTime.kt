@@ -1,7 +1,7 @@
 package app.maxly.data
 
-import com.max.core.api.PresenceInfo
-import com.max.core.api.PresenceStatus
+import com.maxly.core.api.PresenceInfo
+import com.maxly.core.api.PresenceStatus
 
 /** Присутствие человека так, как его видит приложение: время в мс и «в сети». */
 object PresenceTime {

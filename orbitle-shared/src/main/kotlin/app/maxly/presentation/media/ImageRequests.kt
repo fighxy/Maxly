@@ -1,7 +1,7 @@
 package app.maxly.presentation.media
 
-import com.max.core.media.ImageShape
-import com.max.core.media.ImageSizes
+import com.maxly.core.media.ImageShape
+import com.maxly.core.media.ImageSizes
 import kotlin.math.ceil
 
 /**

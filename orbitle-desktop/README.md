@@ -5,7 +5,7 @@
 вкладки, рядом список чатов и открытая переписка.
 
 Сеть, протокол, вход и хранение сессии — в общем ядре
-[max-kmp-core](https://github.com/fighxy/max-kmp-core). В сборку входят его исходники для JVM
+[maxly-core](https://github.com/fighxy/maxly-core). В сборку входят его исходники для JVM
 (`commonMain`, `jvmMain`, `jvmAndroidShared`), ревизия записана в `core.lock`. Клиент
 представляется сервису Android-устройством (`DeviceProfile.android` ядра). Сессия лежит в
 пространстве `orbitle-desktop` и не пересекается с приложением на телефоне.
@@ -62,7 +62,7 @@
 
 ## Ghost mode, privacy and activity
 
-The core is pinned to max-kmp-core `df5a4e1` in `core.lock`. Everything below runs through it.
+The core is pinned to maxly-core `835d443` in `core.lock`. Everything below runs through it.
 
 - **Connection:** the core owns the keepalive and reconnects. It sends `PING` every 29 s (the
   first right after login), answers the server's `PING`, follows a server `RECONNECT` (op 3, only

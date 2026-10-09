@@ -3,15 +3,15 @@ package app.maxly.data
 import app.maxly.domain.ChatType
 import app.maxly.domain.DeliveryState
 import app.maxly.domain.MessageMediaKind
-import com.max.core.api.AccountConfig
-import com.max.core.api.MaxUser
-import com.max.core.state.MaxState
+import com.maxly.core.api.AccountConfig
+import com.maxly.core.api.MaxUser
+import com.maxly.core.state.MaxState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import com.max.core.api.Chat as CoreChat
+import com.maxly.core.api.Chat as CoreChat
 
 class ChatMappingTest {
     private val me = 1L
@@ -169,10 +169,10 @@ class ChatMappingTest {
 
     @Test
     fun foldersSkipNothingAndMarkAll() {
-        val folders = com.max.core.api.ChatFolders(
+        val folders = com.maxly.core.api.ChatFolders(
             listOf(
-                com.max.core.api.Folder.from(mapOf("id" to "all.chat.folder", "title" to "Все"))!!,
-                com.max.core.api.Folder.from(mapOf("id" to "f1", "title" to "Работа", "include" to listOf(10L), "filters" to listOf(4L, "CHANNEL")))!!,
+                com.maxly.core.api.Folder.from(mapOf("id" to "all.chat.folder", "title" to "Все"))!!,
+                com.maxly.core.api.Folder.from(mapOf("id" to "f1", "title" to "Работа", "include" to listOf(10L), "filters" to listOf(4L, "CHANNEL")))!!,
             ),
         )
         val mapped = ChatMapping.folders(folders)

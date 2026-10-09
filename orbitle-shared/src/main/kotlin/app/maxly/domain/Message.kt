@@ -169,7 +169,7 @@ data class TextSpan(
      * смещения в нём нулевые — они в [from] и [length]. Такой отрезок не рисуется, но хранится и
      * при правке уходит обратно со всеми ключами и новыми смещениями.
      */
-    val foreign: com.max.core.api.TextElement? = null,
+    val foreign: com.maxly.core.api.TextElement? = null,
 ) {
     /** Виды разметки; [UNKNOWN] — незнакомый тип сервера, всегда последний. */
     enum class Kind { STRONG, EMPHASIZED, UNDERLINE, STRIKETHROUGH, MONOSPACED, HEADING, QUOTE, LINK, MENTION, ANIMOJI, UNKNOWN }

@@ -7,7 +7,7 @@ import app.maxly.data.PeerPresence
 import app.maxly.data.PreferenceStore
 import app.maxly.presentation.common.PresenceText
 import app.maxly.presentation.settings.GhostModeViewModel.Toggle
-import com.max.core.api.PresenceStatus
+import com.maxly.core.api.PresenceStatus
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow

@@ -2,8 +2,8 @@ package app.maxly.data
 
 import app.maxly.domain.TextSpan
 import app.maxly.domain.TextSpans
-import com.max.core.api.TextElement
-import com.max.core.api.TextElementType
+import com.maxly.core.api.TextElement
+import com.maxly.core.api.TextElementType
 
 /**
  * Отметки текста клиента ([TextSpan]) и элементы ядра ([TextElement]) — одно и то же в двух видах.

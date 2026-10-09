@@ -1,7 +1,7 @@
 package app.maxly.data
 
-import com.max.core.api.SessionInfo
-import com.max.shared.MaxClient
+import com.maxly.core.api.SessionInfo
+import com.maxly.shared.MaxClient
 
 /** Сеанс аккаунта на одном устройстве. */
 data class DeviceSession(

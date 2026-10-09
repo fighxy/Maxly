@@ -2,7 +2,7 @@ package app.maxly.data
 
 import app.maxly.domain.ChatDraft
 import app.maxly.domain.TextSpan
-import com.max.core.api.MaxDraft
+import com.maxly.core.api.MaxDraft
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

@@ -21,9 +21,9 @@ import app.maxly.domain.StickerContent
 import app.maxly.domain.TextSpan
 import app.maxly.domain.VideoContent
 import app.maxly.domain.VoiceContent
-import com.max.core.api.MaxMessage
-import com.max.core.api.MaxUser
-import com.max.core.state.MaxState
+import com.maxly.core.api.MaxMessage
+import com.maxly.core.api.MaxUser
+import com.maxly.core.state.MaxState
 import java.util.Base64
 
 /**
@@ -67,10 +67,10 @@ object MessageMapping {
     }
 
     /**
-     * Прочитавший из ядра ([com.max.core.api.MessageReaders.build]) для «Кем прочитано»: порядок,
+     * Прочитавший из ядра ([com.maxly.core.api.MessageReaders.build]) для «Кем прочитано»: порядок,
      * отметка и реакция — как у ядра, имя и аватар — из [user] (профиль может быть ещё не загружен).
      */
-    fun reader(reader: com.max.core.api.MessageReader, user: MaxUser?, name: String? = null): app.maxly.domain.MessageReader =
+    fun reader(reader: com.maxly.core.api.MessageReader, user: MaxUser?, name: String? = null): app.maxly.domain.MessageReader =
         app.maxly.domain.MessageReader(
             userId = reader.userId.toString(),
             name = name ?: user?.displayName.orEmpty(),
@@ -326,12 +326,12 @@ object MessageMapping {
         if (answers.size < 2) return null
         val total = integer((map["state"] as? Map<*, *>)?.get("total")) ?: answers.sumOf { it.votes }
         val title = (map["title"] as? String)?.trim().orEmpty().ifEmpty { "Опрос" }
-        val flags = com.max.core.api.PollFlag.of(integer(map["settings"]) ?: 0)
+        val flags = com.maxly.core.api.PollFlag.of(integer(map["settings"]) ?: 0)
         return PollContent(
             id, title, answers, total,
-            multiple = com.max.core.api.PollFlag.MULTISELECT in flags,
-            revote = com.max.core.api.PollFlag.REVOTE in flags,
-            closed = com.max.core.api.PollFlag.CLOSED in flags,
+            multiple = com.maxly.core.api.PollFlag.MULTISELECT in flags,
+            revote = com.maxly.core.api.PollFlag.REVOTE in flags,
+            closed = com.maxly.core.api.PollFlag.CLOSED in flags,
         )
     }
 

@@ -2,8 +2,8 @@ package app.maxly
 
 import android.app.Application
 import app.maxly.diagnostics.Diagnostics
-import com.max.shared.PlatformSession
-import com.max.shared.init
+import com.maxly.shared.PlatformSession
+import com.maxly.shared.init
 import kotlinx.coroutines.launch
 
 class MaxlyApp : Application() {

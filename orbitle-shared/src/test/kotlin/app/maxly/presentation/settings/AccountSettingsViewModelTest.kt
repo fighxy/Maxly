@@ -12,7 +12,7 @@ import app.maxly.domain.MaxlyError
 import app.maxly.domain.PrivacyAccess
 import app.maxly.domain.PrivacyChange
 import app.maxly.domain.TwoFactorStatus
-import com.max.core.api.AccountConfig
+import com.maxly.core.api.AccountConfig
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals

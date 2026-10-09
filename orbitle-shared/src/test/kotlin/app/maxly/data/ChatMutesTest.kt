@@ -1,9 +1,9 @@
 package app.maxly.data
 
 import app.maxly.domain.Chat
-import com.max.core.api.AccountConfig
-import com.max.core.api.AccountConfigUpdate
-import com.max.core.state.MaxState
+import com.maxly.core.api.AccountConfig
+import com.maxly.core.api.AccountConfigUpdate
+import com.maxly.core.state.MaxState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,7 +16,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import com.max.core.api.Chat as CoreChat
+import com.maxly.core.api.Chat as CoreChat
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatMutesTest {

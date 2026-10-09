@@ -73,9 +73,9 @@ interface ChatAdminRepository : ChatMembersSource {
 }
 
 /**
- * Поиск среди загруженных участников — общий поиск ядра ([com.max.core.api.MemberSearch.filter],
+ * Поиск среди загруженных участников — общий поиск ядра ([com.maxly.core.api.MemberSearch.filter],
  * сценарии `test-fixtures/members/search`): подстрока имени или имени для упоминаний без учёта
  * регистра, «ё» = «е»; запрос с «@» — только по [ChatPerson.mentionName]. Порядок сохраняется.
  */
 fun List<ChatPerson>.matching(query: String): List<ChatPerson> =
-    com.max.core.api.MemberSearch.filter(this, query, ChatPerson::name, ChatPerson::mentionName)
+    com.maxly.core.api.MemberSearch.filter(this, query, ChatPerson::name, ChatPerson::mentionName)

@@ -15,7 +15,7 @@ if [[ -z "$revision" || -z "$repository" ]]; then
   exit 1
 fi
 
-# Локальная копия ядра вместо GitHub: MAX_KMP_CORE_DIR=~/src/max-kmp-core bash orbitle-android/scripts/fetch-core.sh
+# Локальная копия ядра вместо GitHub: MAX_KMP_CORE_DIR=~/src/maxly-core bash orbitle-android/scripts/fetch-core.sh
 # Собирается то, что лежит в этой папке сейчас, ревизия из core.lock не проверяется.
 if [[ -n "${MAX_KMP_CORE_DIR:-}" ]]; then
   dest="$(cd "$MAX_KMP_CORE_DIR" && pwd)"

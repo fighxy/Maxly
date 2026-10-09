@@ -1,14 +1,14 @@
 package app.maxly.data
 
 import app.maxly.domain.SessionRejection
-import com.max.core.auth.InvalidTokenException
-import com.max.core.protocol.CmdType
-import com.max.core.protocol.Opcode
-import com.max.core.protocol.PROTOCOL_VERSION
-import com.max.core.protocol.PacketHeader
-import com.max.core.transport.ServerErrorException
-import com.max.core.transport.TransportPacket
-import com.max.shared.ClientState
+import com.maxly.core.auth.InvalidTokenException
+import com.maxly.core.protocol.CmdType
+import com.maxly.core.protocol.Opcode
+import com.maxly.core.protocol.PROTOCOL_VERSION
+import com.maxly.core.protocol.PacketHeader
+import com.maxly.core.transport.ServerErrorException
+import com.maxly.core.transport.TransportPacket
+import com.maxly.shared.ClientState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

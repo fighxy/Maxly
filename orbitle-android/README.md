@@ -3,7 +3,7 @@
 Нативный Android-клиент Maxly: Kotlin, Jetpack Compose и Material 3. Рабочий клиент с тем же
 набором возможностей, что у [iOS](../orbitle-ios/README.md) и компьютера, внешний вид — родной
 для Android. Сеть, протокол, вход и хранение сессии — в общем ядре
-[max-kmp-core](https://github.com/fighxy/max-kmp-core) (Android-цель), клиент представляется
+[maxly-core](https://github.com/fighxy/maxly-core) (Android-цель), клиент представляется
 сервису Android-устройством (`DeviceProfile.android` ядра).
 
 ## Скачать
@@ -153,11 +153,11 @@ adb shell am start -n app.orbitle.android.debug/app.maxly.demo.DemoActivity --es
 `app/build.gradle.kts`.
 
 Обновить ядро: поменять `revision=` в `core.lock` и снова запустить скрипт. Для работы с
-локальной копией: `MAX_KMP_CORE_DIR=~/src/max-kmp-core bash scripts/fetch-core.sh`.
+локальной копией: `MAX_KMP_CORE_DIR=~/src/maxly-core bash scripts/fetch-core.sh`.
 
 ## Ghost mode, privacy and activity
 
-The core is pinned to max-kmp-core `df5a4e1` in `core.lock`. Everything below runs through it.
+The core is pinned to maxly-core `835d443` in `core.lock`. Everything below runs through it.
 
 - **Connection:** the core owns the keepalive and reconnects. It sends `PING` every 29 s (the
   first right after login), answers the server's `PING`, follows a server `RECONNECT` (op 3, only
@@ -228,7 +228,7 @@ bash scripts/fetch-core.sh
 
 Инструменты: Gradle 9.6, AGP 9.4 (встроенный Kotlin), Kotlin 2.4.20, Compose BOM 2026.09,
 Material 3, Coil 3, minSdk 26, targetSdk 37. Релизная сборка ужимается R8; классы ядра
-(`com.max.**`) не трогаются.
+(`com.maxly.**`) не трогаются.
 
 ## CI
 

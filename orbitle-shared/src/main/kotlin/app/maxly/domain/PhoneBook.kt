@@ -1,6 +1,6 @@
 package app.maxly.domain
 
-import com.max.core.api.PhoneNumbers
+import com.maxly.core.api.PhoneNumbers
 
 /**
  * Запись телефонной книги устройства. [id] — ключ записи в системной книге (на Android —

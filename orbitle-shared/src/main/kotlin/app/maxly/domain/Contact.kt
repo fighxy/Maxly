@@ -1,7 +1,7 @@
 package app.maxly.domain
 
-import com.max.core.api.ContactNames
-import com.max.core.api.PhoneNumbers
+import com.maxly.core.api.ContactNames
+import com.maxly.core.api.PhoneNumbers
 
 /** Контакт аккаунта с последним известным присутствием. */
 data class Contact(

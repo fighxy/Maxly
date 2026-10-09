@@ -3,9 +3,9 @@ package app.maxly.data
 import app.maxly.domain.ChatAttachment
 import app.maxly.domain.MessageReply
 import app.maxly.domain.TextSpan
-import com.max.core.api.MaxMessage
-import com.max.core.api.MaxUser
-import com.max.core.state.MaxState
+import com.maxly.core.api.MaxMessage
+import com.maxly.core.api.MaxUser
+import com.maxly.core.state.MaxState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

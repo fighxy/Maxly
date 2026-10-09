@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Кладёт исходники max-kmp-core ревизии из orbitle-desktop/core.lock в .build/max-kmp-core
+# Кладёт исходники maxly-core ревизии из orbitle-desktop/core.lock в .build/max-kmp-core
 # в корне репозитория: десктоп собирает ядро из них сам. Для Windows то же делает
 # scripts/fetch-core.ps1.
 set -euo pipefail
@@ -15,7 +15,7 @@ if [[ -z "$revision" || -z "$repository" ]]; then
   exit 1
 fi
 
-# Локальная копия ядра вместо GitHub: MAX_KMP_CORE_DIR=~/src/max-kmp-core ./gradlew build
+# Локальная копия ядра вместо GitHub: MAX_KMP_CORE_DIR=~/src/maxly-core ./gradlew build
 # Сборка берёт исходники прямо из этой папки, скачивать нечего.
 if [[ -n "${MAX_KMP_CORE_DIR:-}" ]]; then
   echo "Ядро из локальной папки $MAX_KMP_CORE_DIR, core.lock: $revision. Скачивание не нужно."

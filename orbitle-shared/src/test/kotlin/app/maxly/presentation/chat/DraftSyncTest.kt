@@ -6,7 +6,7 @@ import app.maxly.data.DraftRepository
 import app.maxly.domain.ChatDraft
 import app.maxly.domain.Message
 import app.maxly.domain.TextSpan
-import com.max.core.api.Drafts
+import com.maxly.core.api.Drafts
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update

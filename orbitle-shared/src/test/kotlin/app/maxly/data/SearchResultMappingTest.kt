@@ -1,7 +1,7 @@
 package app.maxly.data
 
 import app.maxly.domain.ChatType
-import com.max.core.api.PublicSearchHit
+import com.maxly.core.api.PublicSearchHit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

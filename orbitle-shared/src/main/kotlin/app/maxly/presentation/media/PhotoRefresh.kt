@@ -2,9 +2,9 @@ package app.maxly.presentation.media
 
 import app.maxly.domain.ChatAttachment
 import app.maxly.domain.Message
-import com.max.core.api.MaxMessage
-import com.max.core.media.ImageSizes
-import com.max.core.media.PhotoUrlMedia
+import com.maxly.core.api.MaxMessage
+import com.maxly.core.media.ImageSizes
+import com.maxly.core.media.PhotoUrlMedia
 
 /** Одно фото, чей адрес пора обновить (код 203). */
 data class PhotoRefreshKey(val chatId: Long, val messageId: Long, val photoId: Long)

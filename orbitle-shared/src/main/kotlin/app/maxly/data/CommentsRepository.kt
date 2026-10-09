@@ -3,7 +3,7 @@ package app.maxly.data
 import app.maxly.domain.Message
 import app.maxly.domain.MessageReaction
 import app.maxly.domain.MaxlyError
-import com.max.shared.MaxClient
+import com.maxly.shared.MaxClient
 
 /** Комментарии под постами канала. */
 interface CommentsRepository {

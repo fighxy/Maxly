@@ -19,10 +19,10 @@ import app.maxly.presentation.chat.FakeMessages
 import app.maxly.presentation.contacts.ContactsViewModel
 import app.maxly.presentation.contacts.EditableContacts
 import app.maxly.presentation.profile.ProfileViewModel
-import com.max.core.api.MaxUser
-import com.max.core.api.PresenceInfo
-import com.max.core.api.UserName
-import com.max.core.state.MaxState
+import com.maxly.core.api.MaxUser
+import com.maxly.core.api.PresenceInfo
+import com.maxly.core.api.UserName
+import com.maxly.core.state.MaxState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.serialization.json.JsonObject

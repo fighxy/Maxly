@@ -10,8 +10,8 @@ import app.maxly.data.MessageMapping
 import app.maxly.data.TextMarks
 import app.maxly.domain.TextSpan
 import app.maxly.domain.TextSpans
-import com.max.core.api.MaxMessage
-import com.max.core.api.TextElement
+import com.maxly.core.api.MaxMessage
+import com.maxly.core.api.TextElement
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertTrue

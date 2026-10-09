@@ -1,8 +1,8 @@
 package app.maxly.data
 
-import com.max.core.state.MaxState
-import com.max.shared.MaxClient
-import com.max.core.api.Chat as CoreChat
+import com.maxly.core.state.MaxState
+import com.maxly.shared.MaxClient
+import com.maxly.core.api.Chat as CoreChat
 
 /**
  * Отметки прочтения: своя и собеседников. Отметка — время (мс): всё, что отправлено не позже

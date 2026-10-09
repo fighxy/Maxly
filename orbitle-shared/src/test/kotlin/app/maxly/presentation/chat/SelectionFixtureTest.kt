@@ -11,8 +11,8 @@ import app.maxly.data.MessageMapping
 import app.maxly.domain.Message
 import app.maxly.domain.MessageContent
 import app.maxly.domain.MessageStatus
-import com.max.core.api.MaxMessage
-import com.max.core.state.MaxState
+import com.maxly.core.api.MaxMessage
+import com.maxly.core.state.MaxState
 import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertTrue
 import org.junit.Test

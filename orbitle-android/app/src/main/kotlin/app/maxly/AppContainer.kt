@@ -33,8 +33,8 @@ import app.maxly.data.MessageRepository
 import app.maxly.data.MaxCoreGateway
 import app.maxly.data.SessionManager
 import app.maxly.data.UserIdStore
-import com.max.shared.MaxClient
-import com.max.shared.MaxClientConfig
+import com.maxly.shared.MaxClient
+import com.maxly.shared.MaxClientConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

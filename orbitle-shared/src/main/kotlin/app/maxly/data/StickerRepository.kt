@@ -4,7 +4,7 @@ import app.maxly.domain.AnimatedEmoji
 import app.maxly.domain.Sticker
 import app.maxly.domain.StickerCatalog
 import app.maxly.domain.StickerSet
-import com.max.shared.MaxClient
+import com.maxly.shared.MaxClient
 import kotlinx.coroutines.CancellationException
 
 /** Каталог стикеров сервера. */

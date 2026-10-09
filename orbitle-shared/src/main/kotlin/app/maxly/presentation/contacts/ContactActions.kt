@@ -3,8 +3,8 @@ package app.maxly.presentation.contacts
 import app.maxly.data.ContactRepository
 import app.maxly.data.CoreErrors
 import app.maxly.domain.Contact
-import com.max.core.api.PhoneNumbers
-import com.max.core.api.UsersApi
+import com.maxly.core.api.PhoneNumbers
+import com.maxly.core.api.UsersApi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow

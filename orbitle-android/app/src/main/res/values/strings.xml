@@ -67,8 +67,8 @@
     <string name="settings_cancel">Отмена</string>
     <string name="about_version">Версия</string>
     <string name="about_build">Сборка</string>
-    <string name="about_core">Ядро max-kmp-core</string>
-    <string name="about_text">Неофициальный клиент Max для Android. Работает на открытом ядре max-kmp-core и представляется сервису как Android-устройство.</string>
+    <string name="about_core">Ядро maxly-core</string>
+    <string name="about_text">Неофициальный клиент Max для Android. Работает на открытом ядре maxly-core и представляется сервису как Android-устройство.</string>
     <string name="about_source">Исходный код</string>
     <string name="diag_title">Диагностика</string>
     <string name="diag_log">Журнал</string>

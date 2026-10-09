@@ -2,10 +2,10 @@ package app.maxly.data
 
 import app.maxly.domain.CallOutcome
 import app.maxly.domain.CallRecord
-import com.max.core.calls.CallLink
-import com.max.core.calls.CallLogEntry
-import com.max.core.state.MaxState
-import com.max.shared.MaxClient
+import com.maxly.core.calls.CallLink
+import com.maxly.core.calls.CallLogEntry
+import com.maxly.core.state.MaxState
+import com.maxly.shared.MaxClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,7 +42,7 @@ class CoreCallRepository(
 
     init {
         scope?.launch {
-            client.events.all.filterIsInstance<com.max.core.events.MaxEvent.CallHistoryChanged>().collect { event ->
+            client.events.all.filterIsInstance<com.maxly.core.events.MaxEvent.CallHistoryChanged>().collect { event ->
                 val resync = lock.withLock {
                     val result = app.maxly.data.calls.CallHistorySync.push(log, event.sync, event.prevSync, event.action, event.items, event.historyIds)
                     if (!result.resync) {
@@ -83,7 +83,7 @@ class CoreCallRepository(
         _calls.value = log.items.map { item(it, state.me, state) }
     }
 
-    private fun dialogPeer(item: com.max.core.calls.CallHistoryItem): Long? {
+    private fun dialogPeer(item: com.maxly.core.calls.CallHistoryItem): Long? {
         val state = client.store.state.value
         val chat = state.chats[item.chatId] ?: return null
         return ChatMapping.dialogPeer(chat, state.me)
@@ -124,7 +124,7 @@ class CoreCallRepository(
 
     companion object {
         /** Звонок журнала 163: собеседник — звонивший или второй участник диалога, у группового — чат. */
-        fun item(item: com.max.core.calls.CallHistoryItem, me: Long?, state: MaxState): CallRecord {
+        fun item(item: com.maxly.core.calls.CallHistoryItem, me: Long?, state: MaxState): CallRecord {
             val outgoing = me != null && item.callerId == me
             val chat = state.chats[item.chatId]
             val peerId = when {
@@ -148,7 +148,7 @@ class CoreCallRepository(
                 chatId = chatId,
                 outgoing = outgoing,
                 outcome = app.maxly.data.calls.CallHistoryRecords.outcome(item, outgoing),
-                isVideo = item.callType == com.max.core.calls.CallMedia.VIDEO,
+                isVideo = item.callType == com.maxly.core.calls.CallMedia.VIDEO,
                 timeMs = item.time,
                 durationMs = app.maxly.data.calls.CallHistoryRecords.duration(item),
             )

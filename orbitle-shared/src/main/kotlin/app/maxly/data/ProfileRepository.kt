@@ -3,13 +3,13 @@ package app.maxly.data
 import app.maxly.domain.ChatProfile
 import app.maxly.domain.Message
 import app.maxly.domain.SharedMediaTab
-import com.max.shared.MaxClient
+import com.maxly.shared.MaxClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import com.max.core.api.Chat as CoreChat
+import com.maxly.core.api.Chat as CoreChat
 
 /** Присутствие собеседника: в сети ли и когда был (мс, `0` — неизвестно). */
 data class PeerPresence(val isOnline: Boolean, val lastSeenMs: Long, val presence: Int = -1)
@@ -76,9 +76,9 @@ class CoreProfileRepository(private val client: MaxClient) : ProfileRepository {
 
     private fun userProfile(
         chatId: String,
-        card: com.max.core.api.MaxUser,
+        card: com.maxly.core.api.MaxUser,
         commands: List<ChatProfile.BotCommand>?,
-        displayFrom: com.max.core.api.MaxUser = card,
+        displayFrom: com.maxly.core.api.MaxUser = card,
     ): ChatProfile {
         val presence = client.store.state.value.presence[displayFrom.id]
         val bot = "BOT" in displayFrom.options

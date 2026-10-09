@@ -17,9 +17,9 @@ import app.maxly.domain.ThemeMode
 import app.maxly.domain.WallpaperImage
 import app.maxly.presentation.contacts.ContactsUiState
 import app.maxly.presentation.contacts.ContactsViewModel
-import com.max.core.calls.CallLogEntry
-import com.max.core.api.MaxUser
-import com.max.core.state.MaxState
+import com.maxly.core.calls.CallLogEntry
+import com.maxly.core.api.MaxUser
+import com.maxly.core.state.MaxState
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

@@ -7,7 +7,7 @@ import app.maxly.domain.OutgoingFile
 import app.maxly.domain.PhotoContent
 import app.maxly.domain.VideoContent
 import app.maxly.domain.FileContent
-import com.max.core.media.OutgoingMedia
+import com.maxly.core.media.OutgoingMedia
 import app.maxly.domain.MessageContent
 import app.maxly.presentation.media.PhotoRefreshKeys
 import app.maxly.presentation.media.PhotoRefreshQueue
@@ -15,9 +15,9 @@ import app.maxly.presentation.media.withPhotoUrls
 import app.maxly.domain.MessageReply
 import app.maxly.domain.MessageStatus
 import app.maxly.domain.TextSpan
-import com.max.core.events.MaxEvent
-import com.max.core.protocol.Opcode
-import com.max.shared.MaxClient
+import com.maxly.core.events.MaxEvent
+import com.maxly.core.protocol.Opcode
+import com.maxly.shared.MaxClient
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -99,7 +99,7 @@ class CoreMessageRepository(
             val peerPresence = peer?.let { state.presence[it] }
             val seen = PresenceTime.ms(peerPresence?.seen)
             val typing = typists.typists(state, id, now) { state.displayName(it)?.takeIf(String::isNotBlank) }
-            val bot = peer?.let { state.users[it] }?.takeIf { "BOT" in it.options && com.max.core.api.hasWebApp(it.options) }
+            val bot = peer?.let { state.users[it] }?.takeIf { "BOT" in it.options && com.maxly.core.api.hasWebApp(it.options) }
             ChatHeaderInfo(chat, participants(raw.raw), seen, presence = PresenceTime.status(peerPresence), typing = typing, botAppId = bot?.id?.toString(), readMarkMs = ReadMarks.own(raw, state))
         }.distinctUntilChanged()
     }
@@ -182,14 +182,14 @@ class CoreMessageRepository(
     }
 
     /** Страница дошла до последнего сообщения чата, которое знает список. */
-    private fun reachesNewest(chatId: Long, page: List<com.max.core.api.MaxMessage>): Boolean {
+    private fun reachesNewest(chatId: Long, page: List<com.maxly.core.api.MaxMessage>): Boolean {
         val newest = page.maxOfOrNull { it.time } ?: return false
         val chat = client.store.state.value.chats[chatId] ?: return false
         val last = chat.lastMessage?.time ?: chat.lastEventTime
         return last in 1..newest
     }
 
-    private fun span(page: List<com.max.core.api.MaxMessage>, reachedOldest: Boolean = false, reachedNewest: Boolean = false): HistorySpan? {
+    private fun span(page: List<com.maxly.core.api.MaxMessage>, reachedOldest: Boolean = false, reachedNewest: Boolean = false): HistorySpan? {
         if (page.isEmpty()) return null
         return HistorySpan(page.minOf { it.time }, page.maxOf { it.time }, page.size, reachedOldest, reachedNewest)
     }
@@ -336,7 +336,7 @@ class CoreMessageRepository(
 
     /** Загрузка кружка (слот видеосообщения) и одно сообщение с ним. */
     private suspend fun uploadVideoNote(chatId: String, recording: app.maxly.domain.VideoNoteRecording, replyTo: String?, progress: (Float) -> Unit) {
-        val source = com.max.core.media.fileUploadSource(recording.path)
+        val source = com.maxly.core.media.fileUploadSource(recording.path)
         val note = try {
             client.media.uploadVideoNote(source, recording.fileName, recording.durationMs.takeIf { it > 0 }) { sent, total ->
                 if (total > 0) progress((sent.toFloat() / total).coerceIn(0f, 1f))
@@ -474,9 +474,9 @@ class CoreMessageRepository(
     override suspend fun updatePins(chatId: String, change: app.maxly.domain.PinChange, messageIds: List<String>, forMe: Boolean, notify: Boolean) {
         val id = chatId.toLongOrNull() ?: return
         val action = when (change) {
-            app.maxly.domain.PinChange.PIN -> com.max.core.api.PinAction.PIN
-            app.maxly.domain.PinChange.UNPIN -> com.max.core.api.PinAction.UNPIN
-            app.maxly.domain.PinChange.UNPIN_ALL -> com.max.core.api.PinAction.UNPIN_ALL
+            app.maxly.domain.PinChange.PIN -> com.maxly.core.api.PinAction.PIN
+            app.maxly.domain.PinChange.UNPIN -> com.maxly.core.api.PinAction.UNPIN
+            app.maxly.domain.PinChange.UNPIN_ALL -> com.maxly.core.api.PinAction.UNPIN_ALL
         }
         val ids = messageIds.mapNotNull { it.toLongOrNull() }
         MaxCoreGateway.call { client.updatePinnedMessages(id, action, ids, forMe, notify) }
@@ -549,17 +549,17 @@ class CoreMessageRepository(
         return client.events.all.filterIsInstance<MaxEvent.DelayedUpdated>().filter { it.chatId == chat }.map { event ->
             val ids = event.messageIds.map { it.toString() }
             when (event.updateType) {
-                com.max.core.api.DelayedUpdate.CREATED, com.max.core.api.DelayedUpdate.EDITED ->
+                com.maxly.core.api.DelayedUpdate.CREATED, com.maxly.core.api.DelayedUpdate.EDITED ->
                     event.message?.let { app.maxly.domain.ScheduledChange.Upsert(scheduledOf(it)) }
                         ?: app.maxly.domain.ScheduledChange.Reload
-                com.max.core.api.DelayedUpdate.DELETED -> app.maxly.domain.ScheduledChange.Removed(ids, fired = false)
-                com.max.core.api.DelayedUpdate.FIRE_SUCCESS -> app.maxly.domain.ScheduledChange.Removed(ids, fired = true)
+                com.maxly.core.api.DelayedUpdate.DELETED -> app.maxly.domain.ScheduledChange.Removed(ids, fired = false)
+                com.maxly.core.api.DelayedUpdate.FIRE_SUCCESS -> app.maxly.domain.ScheduledChange.Removed(ids, fired = true)
                 null -> app.maxly.domain.ScheduledChange.Reload
             }
         }
     }
 
-    private fun scheduledOf(message: com.max.core.api.MaxMessage) = app.maxly.domain.ScheduledMessage(
+    private fun scheduledOf(message: com.maxly.core.api.MaxMessage) = app.maxly.domain.ScheduledMessage(
         id = message.id.toString(),
         text = message.text.trim(),
         sendAt = message.fireAt,
@@ -568,9 +568,9 @@ class CoreMessageRepository(
 
     override suspend fun sendPoll(chatId: String, title: String, answers: List<String>) {
         val chat = chatId.toLongOrNull() ?: return
-        val options = answers.map { com.max.core.api.PollAnswer(it) }
+        val options = answers.map { com.maxly.core.api.PollAnswer(it) }
         val sent = MaxCoreGateway.call {
-            client.api.messages.sendPoll(chat, com.max.core.media.OutgoingAttachment.Poll(title, options))
+            client.api.messages.sendPoll(chat, com.maxly.core.media.OutgoingAttachment.Poll(title, options))
         }
         client.store.putSentMessage(chat, sent)
     }
@@ -590,7 +590,7 @@ class CoreMessageRepository(
         val refs = polls.mapNotNull { (message, poll) ->
             val m = message.toLongOrNull() ?: return@mapNotNull null
             val p = poll.toLongOrNull() ?: return@mapNotNull null
-            com.max.core.api.PollRef(m, p)
+            com.maxly.core.api.PollRef(m, p)
         }
         if (refs.isEmpty()) return emptyMap()
         val fresh = MaxCoreGateway.call { client.pollUpdates(chat, refs) }

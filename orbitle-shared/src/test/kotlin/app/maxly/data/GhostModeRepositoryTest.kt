@@ -1,13 +1,13 @@
 package app.maxly.data
 
-import com.max.core.api.PresenceInfo
-import com.max.core.api.PresenceStatus
-import com.max.core.media.HttpResponse
-import com.max.core.media.MediaHttp
-import com.max.core.transport.ConnectionFactory
-import com.max.shared.InMemoryKeyValueStore
-import com.max.shared.MaxClient
-import com.max.shared.MaxClientConfig
+import com.maxly.core.api.PresenceInfo
+import com.maxly.core.api.PresenceStatus
+import com.maxly.core.media.HttpResponse
+import com.maxly.core.media.MediaHttp
+import com.maxly.core.transport.ConnectionFactory
+import com.maxly.shared.InMemoryKeyValueStore
+import com.maxly.shared.MaxClient
+import com.maxly.shared.MaxClientConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel

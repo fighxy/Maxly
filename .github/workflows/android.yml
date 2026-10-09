@@ -60,7 +60,7 @@ jobs:
         with:
           path: orbitle-android/vendor
           key: max-core-aar-${{ hashFiles('orbitle-android/core.lock', 'orbitle-android/scripts/fetch-core.sh') }}
-      - name: Fetch max-kmp-core
+      - name: Fetch maxly-core
         if: steps.core-cache.outputs.cache-hit != 'true'
         env:
           MAX_KMP_CORE_TOKEN: ${{ secrets.MAX_KMP_CORE_TOKEN }}

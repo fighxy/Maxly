@@ -47,7 +47,7 @@ jobs:
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
       # Десктоп собирает ядро из исходников ревизии orbitle-desktop/core.lock.
-      - name: Fetch max-kmp-core
+      - name: Fetch maxly-core
         env:
           MAX_KMP_CORE_TOKEN: ${{ secrets.MAX_KMP_CORE_TOKEN }}
         run: bash scripts/fetch-core.sh
@@ -104,12 +104,12 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q fakeroot
-      - name: Fetch max-kmp-core
+      - name: Fetch maxly-core
         if: runner.os != 'Windows'
         env:
           MAX_KMP_CORE_TOKEN: ${{ secrets.MAX_KMP_CORE_TOKEN }}
         run: bash scripts/fetch-core.sh
-      - name: Fetch max-kmp-core
+      - name: Fetch maxly-core
         if: runner.os == 'Windows'
         working-directory: .
         shell: pwsh

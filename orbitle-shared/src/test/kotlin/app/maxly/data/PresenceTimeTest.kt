@@ -1,6 +1,6 @@
 package app.maxly.data
 
-import com.max.core.api.PresenceInfo
+import com.maxly.core.api.PresenceInfo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

@@ -1,8 +1,8 @@
 package app.maxly.data.calls
 
-import com.max.core.calls.CallHistoryAction
-import com.max.core.calls.CallHistoryItem
-import com.max.core.calls.CallHistoryPage
+import com.maxly.core.calls.CallHistoryAction
+import com.maxly.core.calls.CallHistoryItem
+import com.maxly.core.calls.CallHistoryPage
 
 /**
  * Журнал звонков `CALL_HISTORY` 163: курсор [sync] и звонки от нового к старому.
@@ -79,12 +79,12 @@ object CallHistoryRecords {
         val end = item.hangupType
         return if (outgoing) {
             when (end) {
-                com.max.core.calls.CallEnd.REJECTED -> app.maxly.domain.CallOutcome.DECLINED
-                com.max.core.calls.CallEnd.CANCELED, com.max.core.calls.CallEnd.MISSED -> app.maxly.domain.CallOutcome.CANCELLED
+                com.maxly.core.calls.CallEnd.REJECTED -> app.maxly.domain.CallOutcome.DECLINED
+                com.maxly.core.calls.CallEnd.CANCELED, com.maxly.core.calls.CallEnd.MISSED -> app.maxly.domain.CallOutcome.CANCELLED
                 else -> if (item.durationMs == 0L) app.maxly.domain.CallOutcome.CANCELLED else app.maxly.domain.CallOutcome.ANSWERED
             }
         } else {
-            val missed = item.durationMs == 0L || end in setOf(com.max.core.calls.CallEnd.CANCELED, com.max.core.calls.CallEnd.REJECTED, com.max.core.calls.CallEnd.MISSED)
+            val missed = item.durationMs == 0L || end in setOf(com.maxly.core.calls.CallEnd.CANCELED, com.maxly.core.calls.CallEnd.REJECTED, com.maxly.core.calls.CallEnd.MISSED)
             if (missed) app.maxly.domain.CallOutcome.MISSED else app.maxly.domain.CallOutcome.ANSWERED
         }
     }

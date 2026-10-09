@@ -6,18 +6,18 @@ import app.maxly.domain.ChatType
 import app.maxly.domain.Message
 import app.maxly.domain.MessageReader
 import app.maxly.domain.MessageStatus
-import com.max.core.api.AccountConfig
-import com.max.core.api.Chat
-import com.max.core.api.MaxApi
-import com.max.core.api.MaxMessage
-import com.max.core.api.MessageReaders
-import com.max.core.auth.RequestSink
-import com.max.core.protocol.CmdType
-import com.max.core.protocol.Opcode
-import com.max.core.protocol.PROTOCOL_VERSION
-import com.max.core.protocol.PacketHeader
-import com.max.core.state.MaxState
-import com.max.core.transport.TransportPacket
+import com.maxly.core.api.AccountConfig
+import com.maxly.core.api.Chat
+import com.maxly.core.api.MaxApi
+import com.maxly.core.api.MaxMessage
+import com.maxly.core.api.MessageReaders
+import com.maxly.core.auth.RequestSink
+import com.maxly.core.protocol.CmdType
+import com.maxly.core.protocol.Opcode
+import com.maxly.core.protocol.PROTOCOL_VERSION
+import com.maxly.core.protocol.PacketHeader
+import com.maxly.core.state.MaxState
+import com.maxly.core.transport.TransportPacket
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.serialization.json.Json
@@ -45,7 +45,7 @@ import java.time.ZoneOffset
  * Путь тот же, что у клиентов: пункт меню — [MessageInfoModel.isOffered]; блок и статус —
  * [MessageInfoModel] (клиентские правила: «Избранное», состояние сообщения); список — ядро:
  * `MaxClient.isMessageReadersAvailable` ([MessageReaders.isAvailable] с `max-readmarks` из
- * [AccountConfig]) и `MaxClient.loadMessageReaders` ([com.max.core.api.ReadersApi] над поддельным
+ * [AccountConfig]) и `MaxClient.loadMessageReaders` ([com.maxly.core.api.ReadersApi] над поддельным
  * сокетом: `CHAT_INFO`, `CHAT_MEMBERS`, `MSG_GET_DETAILED_REACTIONS` отвечают данными сценария),
  * затем [MessageMapping.reader], как в `CoreMessageRepository.messageReaders`. Пуши 130 при открытом
  * списке сливаются [MessageReaders.mergeMarks].
@@ -55,7 +55,7 @@ class ReadersFixtureTest {
 
     /**
      * Сценарии, которые пока расходятся с ядром из-за известной недоработки ядра (повтор ключа в
-     * `participants` — ядро берёт последнее значение, правка в max-kmp-core feat/evening).
+     * `participants` — ядро берёт последнее значение, правка в maxly-core feat/evening).
      * Ключ — `файл` или `файл / случай`, значение — почему. Сейчас пусто.
      */
     private val pendingInCore: Map<String, String> = emptyMap()

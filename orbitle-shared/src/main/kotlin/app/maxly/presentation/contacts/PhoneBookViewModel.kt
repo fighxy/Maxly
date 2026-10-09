@@ -7,7 +7,7 @@ import app.maxly.data.ContactRepository
 import app.maxly.data.PreferenceStore
 import app.maxly.domain.Contact
 import app.maxly.domain.PhoneBookEntry
-import com.max.core.api.PhoneNumbers
+import com.maxly.core.api.PhoneNumbers
 import app.maxly.presentation.common.PresenceText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job

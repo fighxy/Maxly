@@ -2,9 +2,9 @@ package app.maxly.data
 
 import app.maxly.domain.ChatDraft
 import app.maxly.domain.TextSpans
-import com.max.core.api.DraftSupersededException
-import com.max.core.api.MaxDraft
-import com.max.shared.MaxClient
+import com.maxly.core.api.DraftSupersededException
+import com.maxly.core.api.MaxDraft
+import com.maxly.shared.MaxClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -85,7 +85,7 @@ class CoreDraftRepository(private val client: MaxClient) : DraftRepository {
     }
 
     /** Что уходит в [MaxClient.saveDraft]: текст без краёв, элементы по нему, ответ. */
-    data class Request(val text: String, val elements: List<com.max.core.api.TextElement>, val replyTo: Long?)
+    data class Request(val text: String, val elements: List<com.maxly.core.api.TextElement>, val replyTo: Long?)
 
     companion object {
         /**
@@ -114,7 +114,7 @@ class CoreDraftRepository(private val client: MaxClient) : DraftRepository {
         }
 
         /** Черновик ядра для экрана; `null` — ни текста, ни ответа. */
-        fun draft(draft: com.max.core.api.MaxDraft): ChatDraft? {
+        fun draft(draft: com.maxly.core.api.MaxDraft): ChatDraft? {
             // Ответ без текста — черновик (так сохраняет и веб). Вложения сервера ядро держит только в `raw`.
             if (draft.text.isBlank() && draft.replyTo == null) return null
             return ChatDraft(

@@ -12,16 +12,16 @@ import app.maxly.data.DraftRepository
 import app.maxly.data.TextMarks
 import app.maxly.domain.ChatDraft
 import app.maxly.domain.TextSpan
-import com.max.core.api.Chat
-import com.max.core.api.Drafts
-import com.max.core.state.MaxState
-import com.max.core.state.StateReducer
-import com.max.core.auth.RequestSink
-import com.max.core.protocol.CmdType
-import com.max.core.protocol.Opcode
-import com.max.core.protocol.PROTOCOL_VERSION
-import com.max.core.protocol.PacketHeader
-import com.max.core.transport.TransportPacket
+import com.maxly.core.api.Chat
+import com.maxly.core.api.Drafts
+import com.maxly.core.state.MaxState
+import com.maxly.core.state.StateReducer
+import com.maxly.core.auth.RequestSink
+import com.maxly.core.protocol.CmdType
+import com.maxly.core.protocol.Opcode
+import com.maxly.core.protocol.PROTOCOL_VERSION
+import com.maxly.core.protocol.PacketHeader
+import com.maxly.core.transport.TransportPacket
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -125,8 +125,8 @@ class DraftsFixtureTest {
     }
 
     /** Сервер черновиков одного чата, как его видит [DraftSync] через [CoreDraftRepository] и `MaxClient`. */
-    private class CoreLikeDrafts(sink: RequestSink, private val address: com.max.core.api.DraftAddress, private var stored: ChatDraft?) : DraftRepository {
-        private val api = com.max.core.api.MaxApi(sink).drafts
+    private class CoreLikeDrafts(sink: RequestSink, private val address: com.maxly.core.api.DraftAddress, private var stored: ChatDraft?) : DraftRepository {
+        private val api = com.maxly.core.api.MaxApi(sink).drafts
         override val drafts: Flow<Map<String, ChatDraft>> = flowOf(emptyMap())
         override fun current(chatId: String): ChatDraft? = stored
         override fun reconcile(chatId: String, local: ChatDraft?): ChatDraft? = error("сценарий outgoing не выбирает черновик")

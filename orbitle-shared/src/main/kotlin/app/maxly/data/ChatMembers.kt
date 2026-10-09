@@ -1,9 +1,9 @@
 package app.maxly.data
 
-import com.max.core.api.ChatMemberEntry
-import com.max.core.api.ChatMemberRole
-import com.max.core.api.PresenceInfo
-import com.max.shared.MaxClient
+import com.maxly.core.api.ChatMemberEntry
+import com.maxly.core.api.ChatMemberRole
+import com.maxly.core.api.PresenceInfo
+import com.maxly.shared.MaxClient
 
 /** Страница участников и `marker` следующей; `null` — страница последняя. */
 data class MemberPage(val members: List<ChatPerson>, val next: Long?)
@@ -18,7 +18,7 @@ interface ChatMembersSource {
 
 /**
  * Участники через ядро: [MaxClient.loadChatMembers] по `marker` и [MaxClient.searchChatMembers].
- * Роли — из карточки чата в сторе ([com.max.core.api.ChatRoles]), имена — [MaxClient.displayLabel].
+ * Роли — из карточки чата в сторе ([com.maxly.core.api.ChatRoles]), имена — [MaxClient.displayLabel].
  */
 class CoreChatMembers(private val client: MaxClient, private val pageSize: Int = PAGE) : ChatMembersSource {
     override suspend fun memberPage(chatId: String, marker: Long?): MemberPage {

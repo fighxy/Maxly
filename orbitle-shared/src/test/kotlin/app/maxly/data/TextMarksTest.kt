@@ -1,8 +1,8 @@
 package app.maxly.data
 
 import app.maxly.domain.TextSpan
-import com.max.core.api.TextElement
-import com.max.core.api.TextElementType
+import com.maxly.core.api.TextElement
+import com.maxly.core.api.TextElementType
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
