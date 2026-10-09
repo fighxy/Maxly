@@ -1,13 +1,13 @@
-# Orbitle
+# Maxly
 
-Orbitle — нативный клиент мессенджера MAX. Протокол, сеть, вход, хранение сессии и логика
+Maxly — нативный клиент мессенджера MAX. Протокол, сеть, вход, хранение сессии и логика
 сервера живут в общем ядре [max-kmp-core](https://github.com/fighxy/max-kmp-core) на Kotlin
-Multiplatform, Orbitle отвечает за нативный интерфейс на каждой платформе.
+Multiplatform, Maxly отвечает за нативный интерфейс на каждой платформе.
 
 Все три клиента рабочие и умеют одно и то же. iOS-клиент — SwiftUI под iOS 26 со стеклом
 Liquid Glass (минимальная версия iOS 17, на iOS 17–18 вместо стекла системные материалы).
 Android-клиент и клиент для компьютера написаны на Kotlin и делят модули `orbitle-shared`
-(модели, данные, view model, протокол звонков) и `orbitle-compose` (общие экраны). Токен сессии хранит ядро. У десктопа свой каталог `~/.orbitle` и
+(модели, данные, view model, протокол звонков) и `orbitle-compose` (общие экраны). Токен сессии хранит ядро. У десктопа свой каталог `~/.maxly` и
 своё пространство сессии `orbitle-desktop`, оно не делит вход с Android.
 
 ## Платформы
@@ -101,14 +101,14 @@ https://github.com/fighxy/Orbitle/releases/download/ios-latest/Orbitle.ipa.
 (eSign, Sideloadly, AltStore и т. п.).
 
 **Android.** Пререлиз `android-latest`:
-https://github.com/fighxy/Orbitle/releases/download/android-latest/Orbitle.apk.
+https://github.com/fighxy/Orbitle/releases/download/android-latest/Maxly.apk.
 Ссылку можно открыть прямо на телефоне и установить `.apk`.
 
 **Компьютер.** Пререлиз `desktop-latest`: Windows —
-https://github.com/fighxy/Orbitle/releases/download/desktop-latest/Orbitle.msi, macOS —
-https://github.com/fighxy/Orbitle/releases/download/desktop-latest/Orbitle.dmg, Linux —
-https://github.com/fighxy/Orbitle/releases/download/desktop-latest/Orbitle.deb. Установщики
-каждого прогона есть и в артефактах `Orbitle-desktop-<формат>-<sha>`. Собрать и запустить
+https://github.com/fighxy/Orbitle/releases/download/desktop-latest/Maxly.msi, macOS —
+https://github.com/fighxy/Orbitle/releases/download/desktop-latest/Maxly.dmg, Linux —
+https://github.com/fighxy/Orbitle/releases/download/desktop-latest/Maxly.deb. Установщики
+каждого прогона есть и в артефактах `Maxly-desktop-<формат>-<sha>`. Собрать и запустить
 самому — в [orbitle-desktop/README.md](orbitle-desktop/README.md).
 
 ## Документация
@@ -117,7 +117,7 @@ https://github.com/fighxy/Orbitle/releases/download/desktop-latest/Orbitle.deb. 
 - [docs/pins.md](docs/pins.md) — несколько закрепов в одном чате.
 - [docs/scheduled.md](docs/scheduled.md) — отложенные сообщения и счётчики опросов.
 - [docs/komet-reference.md](docs/komet-reference.md) — карта функций клиента Komet (сверка поведения).
-- [docs/komet-gap-map.md](docs/komet-gap-map.md) — чего нет в Orbitle по сравнению с Komet, по платформам, и план работ.
+- [docs/komet-gap-map.md](docs/komet-gap-map.md) — чего нет в Maxly по сравнению с Komet, по платформам, и план работ.
 - [docs/account-limits.md](docs/account-limits.md) — ограничения аккаунта после входа и регистрации на всех платформах.
 - [docs/photo-editor.md](docs/photo-editor.md) — расширенный редактор фото на трёх платформах.
 - [orbitle-ios/README.md](orbitle-ios/README.md) — iOS-клиент: слои, сборка, CI, указатель документов.
