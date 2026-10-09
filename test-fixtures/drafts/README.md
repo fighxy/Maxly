@@ -1,8 +1,8 @@
 # Черновики на сервере: общие сценарии
 
 Черновик поля ввода живёт на устройстве и на сервере, чтобы его видели другие сессии.
-Правила слияния одинаковы на Swift (`orbitle-ios`) и Kotlin (`maxly-shared`). Swift
-проигрывает сценарии в `DraftsFixtureTests` (`orbitle-ios/Tests/OrbitleDomainTests`),
+Правила слияния одинаковы на Swift (`maxly-ios`) и Kotlin (`maxly-shared`). Swift
+проигрывает сценарии в `DraftsFixtureTests` (`maxly-ios/Tests/OrbitleDomainTests`),
 логика — `DraftSync` в `OrbitleDomain`. Новый файл без проигрывателя — ошибка.
 
 Здесь только смысл: когда именно сохранять (задержка, уход из чата, фон) — дело клиента.

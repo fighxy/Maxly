@@ -54,7 +54,7 @@ Android-клиент и клиент для компьютера написан�
 
 | Каталог | Платформа | UI | Ядро | Состояние |
 |---|---|---|---|---|
-| [`orbitle-ios/`](orbitle-ios/) | iOS 17+ (собирается с SDK iOS 26) | SwiftUI, Liquid Glass | статический `MaxlyCore.xcframework`, ревизия в `orbitle-ios/core.lock` | рабочий клиент |
+| [`maxly-ios/`](maxly-ios/) | iOS 17+ (собирается с SDK iOS 26) | SwiftUI, Liquid Glass | статический `MaxlyCore.xcframework`, ревизия в `maxly-ios/core.lock` | рабочий клиент |
 | [`maxly-android/`](maxly-android/) | Android | Kotlin, Jetpack Compose, Material 3 | AAR ядра в `maxly-android/vendor`, ревизия в `maxly-android/core.lock` | рабочий клиент |
 | [`maxly-desktop/`](maxly-desktop/) | Windows, macOS, Linux (JVM) | Compose Multiplatform | исходники JVM ядра, ревизия в `maxly-desktop/core.lock` | рабочий клиент |
 
@@ -120,7 +120,7 @@ Android-клиент и клиент для компьютера написан�
 
 | Путь | Что там |
 |---|---|
-| [`orbitle-ios/`](orbitle-ios/) | Xcode-проект, Swift-пакет со слоями, тесты, документация iOS-клиента |
+| [`maxly-ios/`](maxly-ios/) | Xcode-проект, Swift-пакет со слоями, тесты, документация iOS-клиента |
 | [`maxly-android/`](maxly-android/) | Android-приложение, `scripts/fetch-core.sh` (AAR ядра по `core.lock`) |
 | [`maxly-desktop/`](maxly-desktop/) | клиент для компьютера, `scripts/fetch-core.sh` (исходники ядра по `core.lock`) |
 | [`maxly-shared/`](maxly-shared/) | общий Kotlin-код Android и десктопа: модели, данные, view model, протокол звонков и их тесты |
@@ -160,6 +160,6 @@ https://github.com/fighxy/Maxly/releases/download/desktop-latest/Maxly.deb. Ус
 - [docs/komet-gap-map.md](docs/komet-gap-map.md) — чего нет в Maxly по сравнению с Komet, по платформам, и план работ.
 - [docs/account-limits.md](docs/account-limits.md) — ограничения аккаунта после входа и регистрации на всех платформах.
 - [docs/photo-editor.md](docs/photo-editor.md) — расширенный редактор фото на трёх платформах.
-- [orbitle-ios/README.md](orbitle-ios/README.md) — iOS-клиент: слои, сборка, CI, указатель документов.
+- [maxly-ios/README.md](maxly-ios/README.md) — iOS-клиент: слои, сборка, CI, указатель документов.
 - [maxly-android/README.md](maxly-android/README.md) — Android-клиент: сборка, подпись, CI.
 - [maxly-desktop/README.md](maxly-desktop/README.md) — клиент для компьютера: запуск, что готово.

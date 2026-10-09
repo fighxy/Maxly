@@ -1,9 +1,9 @@
 # Имена и номера телефонов: общие сценарии
 
 Какое имя показать у пользователя и как сравнивать номера телефонов с адресной книгой —
-одинаково на Swift (`orbitle-ios`) и Kotlin (`maxly-shared`, Android). Правило принято и
+одинаково на Swift (`maxly-ios`) и Kotlin (`maxly-shared`, Android). Правило принято и
 ядром (max-kmp-core): оно будет и в ядре, и в мосте. Swift проигрывает сценарии в
-`NamesFixtureTests` (`orbitle-ios/Tests/OrbitleDomainTests`), логика — `PhoneNormalizer`,
+`NamesFixtureTests` (`maxly-ios/Tests/OrbitleDomainTests`), логика — `PhoneNormalizer`,
 `DisplayName` и `AddressBookNames` в `OrbitleDomain`. Новый файл без проигрывателя — ошибка.
 
 Адресная книга читается **только на устройстве** и на сервер не уходит (`SYNC` 21 выключен).

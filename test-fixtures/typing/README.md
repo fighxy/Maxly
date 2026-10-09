@@ -1,11 +1,11 @@
 # «Печатает…» и другие действия: общие сценарии
 
 Индикатор «кто чем занят» в личных чатах и группах реализуется в Orbitle дважды: на Swift
-(`orbitle-ios`) и на Kotlin (`maxly-shared`, Android и Desktop). Эти файлы — общие сценарии
+(`maxly-ios`) и на Kotlin (`maxly-shared`, Android и Desktop). Эти файлы — общие сценарии
 для обеих реализаций, чтобы они не разошлись: какой текст показать, сколько живёт отметка и
 когда отправлять свой кадр.
 
-Swift проигрывает их в `TypingFixtureTests` (`orbitle-ios/Tests/OrbitlePresentationTests`).
+Swift проигрывает их в `TypingFixtureTests` (`maxly-ios/Tests/OrbitlePresentationTests`).
 Kotlin-проигрыватель пишется отдельно и должен гонять все файлы каталога, как и Swift: новый
 файл без проигрывателя — ошибка теста.
 

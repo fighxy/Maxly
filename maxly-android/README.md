@@ -1,7 +1,7 @@
 # Maxly для Android
 
 Нативный Android-клиент Maxly: Kotlin, Jetpack Compose и Material 3. Рабочий клиент с тем же
-набором возможностей, что у [iOS](../orbitle-ios/README.md) и компьютера, внешний вид — родной
+набором возможностей, что у [iOS](../maxly-ios/README.md) и компьютера, внешний вид — родной
 для Android. Сеть, протокол, вход и хранение сессии — в общем ядре
 [maxly-core](https://github.com/fighxy/maxly-core) (Android-цель), клиент представляется
 сервису Android-устройством (`DeviceProfile.android` ядра).
@@ -149,7 +149,7 @@ adb shell am start -n app.maxly.android.debug/app.maxly.demo.DemoActivity --es s
 
 ## Ядро
 
-Ревизия ядра закреплена в `core.lock` (та же схема, что `orbitle-ios/core.lock`).
+Ревизия ядра закреплена в `core.lock` (та же схема, что `maxly-ios/core.lock`).
 `scripts/fetch-core.sh` клонирует эту ревизию в `.build/max-kmp-core`, собирает Android-AAR
 модулей `core` и `shared` и кладёт их в `vendor/` (в git не попадает). Приложение
 подключает их файлами, поэтому версии Gradle, AGP и Kotlin у приложения и ядра независимы.

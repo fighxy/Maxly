@@ -1,13 +1,13 @@
 # Обмены ws2 для тестов звонков
 
 Сигналинг звонков (ws2) реализован в Orbitle дважды: на Swift
-(`orbitle-ios/Sources/OrbitleData/Calls`) и на Kotlin (`maxly-shared/.../data/calls`,
+(`maxly-ios/Sources/OrbitleData/Calls`) и на Kotlin (`maxly-shared/.../data/calls`,
 Android и Desktop). Эти файлы — общие сценарии для обеих реализаций, чтобы они не
 разошлись: кадры сервера, действия приложения и то, что клиент должен отправить в ответ.
 Форматы взяты из рабочей реализации iOS (`CallSession.swift`, `Ws2Signaling.swift`).
 
 Kotlin прогоняет их в `Ws2FixtureTest` (`maxly-shared/src/test`), Swift — в
-`CallSessionFixtureTests` (`orbitle-ios/Tests/OrbitleDataTests`). Обе реализации гоняют все
+`CallSessionFixtureTests` (`maxly-ios/Tests/OrbitleDataTests`). Обе реализации гоняют все
 файлы каталога, так что новый сценарий сразу проверяется на обеих. Правка фикстур
 перезапускает и Android/Desktop-тесты, и iOS-тесты в CI.
 
