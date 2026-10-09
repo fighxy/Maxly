@@ -51,10 +51,10 @@ struct StoriesStrip: View {
             Button(action: onAdd) {
                 Image(systemName: "plus")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color.orbitleOnAccent)
+                    .foregroundStyle(Color.maxlyOnAccent)
                     .frame(width: 22, height: 22)
-                    .background(Color.orbitleAccent, in: Circle())
-                    .overlay(Circle().stroke(Color.orbitleBackground, lineWidth: 2))
+                    .background(Color.maxlyAccent, in: Circle())
+                    .overlay(Circle().stroke(Color.maxlyBackground, lineWidth: 2))
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
@@ -88,7 +88,7 @@ struct StoryStack: View {
         HStack(spacing: -size * 0.36) {
             ForEach(Array(rings.prefix(3).enumerated()), id: \.element.owner) { index, ring in
                 StoryRingAvatar(avatar: StoryText.avatar(ring), ring: ring, size: size, reservesRingSpace: true)
-                    .background(Circle().fill(Color.orbitleBackground))
+                    .background(Circle().fill(Color.maxlyBackground))
                     // Первый — сверху.
                     .zIndex(Double(3 - index))
             }

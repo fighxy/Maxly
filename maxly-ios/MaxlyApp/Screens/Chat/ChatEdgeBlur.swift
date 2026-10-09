@@ -125,7 +125,7 @@ struct ChatBottomBlur: View {
                 .frame(width: frame.width, height: frame.height, alignment: .topLeading)
         } else {
             Rectangle()
-                .fill(Color.orbitleChatBackground)
+                .fill(Color.maxlyChatBackground)
                 .frame(width: frame.width, height: frame.height)
         }
     }

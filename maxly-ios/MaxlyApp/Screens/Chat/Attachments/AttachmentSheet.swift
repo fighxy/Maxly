@@ -39,7 +39,7 @@ struct AttachmentSheet: View {
             if preparing {
                 ProgressView("Готовим…")
                     .padding(20)
-                    .orbitleGlassRounded(radius: 18)
+                    .maxlyGlassRounded(radius: 18)
                     .transition(.opacity)
             }
         }
@@ -104,7 +104,7 @@ struct AttachmentSheet: View {
                         .foregroundStyle(.primary)
                 }
                 .buttonStyle(.plain)
-                .orbitleGlassCircle(size: 36)
+                .maxlyGlassCircle(size: 36)
                 .accessibilityLabel("Закрыть")
                 Spacer()
                 if model.hasSelection {
@@ -192,7 +192,7 @@ struct AttachmentSheet: View {
                         .font(.footnote)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .orbitleGlassCapsule()
+                        .maxlyGlassCapsule()
                         .padding(.top, 8)
                         .transition(.opacity)
                 }
@@ -271,8 +271,8 @@ struct AttachmentSheet: View {
                 .multilineTextAlignment(.center)
             Button("Выбрать файл") { pickFiles() }
                 .buttonStyle(.borderedProminent)
-                .foregroundStyle(Color.orbitleOnAccent)
-                .tint(Color.orbitleAccent)
+                .foregroundStyle(Color.maxlyOnAccent)
+                .tint(Color.maxlyAccent)
         }
         .padding(32)
     }
@@ -340,10 +340,10 @@ struct AttachmentSheet: View {
         Group {
             if model.tab == .gallery, model.hasSelection {
                 sendBar
-                    .transition(.orbitleBar(edge: .bottom, reduceMotion: reduceMotion))
+                    .transition(.maxlyBar(edge: .bottom, reduceMotion: reduceMotion))
             } else {
                 tabBar
-                    .transition(.orbitleBar(edge: .bottom, reduceMotion: reduceMotion))
+                    .transition(.maxlyBar(edge: .bottom, reduceMotion: reduceMotion))
             }
         }
         .padding(.horizontal, 16)
@@ -365,12 +365,12 @@ struct AttachmentSheet: View {
                             .minimumScaleFactor(0.8)
                     }
                     .frame(maxWidth: .infinity, minHeight: 50)
-                    .foregroundStyle(model.tab == tab ? Color.orbitleAccent : Color.primary)
+                    .foregroundStyle(model.tab == tab ? Color.maxlyAccent : Color.primary)
                     // Подложка выбранной вкладки переезжает к новой, а не появляется скачком.
                     .background {
                         if model.tab == tab {
                             Capsule()
-                                .fill(Color.orbitleAccent.opacity(0.14))
+                                .fill(Color.maxlyAccent.opacity(0.14))
                                 .matchedGeometryEffect(id: "tab", in: tabHighlight)
                         }
                     }
@@ -382,7 +382,7 @@ struct AttachmentSheet: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .orbitleGlassCapsule()
+        .maxlyGlassCapsule()
     }
 
     private var sendBar: some View {
@@ -395,7 +395,7 @@ struct AttachmentSheet: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 11)
                     .frame(minHeight: 44)
-                    .orbitleGlassCapsule()
+                    .maxlyGlassCapsule()
                 Button {
                     sendSelection()
                 } label: {
@@ -404,9 +404,9 @@ struct AttachmentSheet: View {
                         .padding(.horizontal, 6)
                         .frame(minHeight: 30)
                 }
-                .orbitleProminentButtonStyle()
+                .maxlyProminentButtonStyle()
                 .buttonBorderShape(.capsule)
-                .tint(Color.orbitleAccent)
+                .tint(Color.maxlyAccent)
                 .disabled(preparing)
             }
         }
@@ -568,11 +568,11 @@ private struct AssetCell: View {
     private var badge: some View {
         ZStack {
             if let number {
-                Circle().fill(Color.orbitleAccent)
-                    .transition(.orbitlePop(reduceMotion: reduceMotion))
+                Circle().fill(Color.maxlyAccent)
+                    .transition(.maxlyPop(reduceMotion: reduceMotion))
                 Text("\(number)")
                     .font(.system(size: 13, weight: .bold).monospacedDigit())
-                    .foregroundStyle(Color.orbitleOnAccent)
+                    .foregroundStyle(Color.maxlyOnAccent)
                     .contentTransition(.numericText(value: Double(number)))
             } else {
                 Circle().fill(.black.opacity(0.15))

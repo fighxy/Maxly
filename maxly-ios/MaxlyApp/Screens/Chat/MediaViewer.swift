@@ -177,7 +177,7 @@ private struct VideoPage: View {
                         .font(.headline)
                     Button("Повторить") { player.start(url: url, download: download) }
                         .buttonStyle(.borderedProminent)
-                        .foregroundStyle(Color.orbitleOnAccent)
+                        .foregroundStyle(Color.maxlyOnAccent)
                 }
                 .foregroundStyle(.white)
             case .ready:

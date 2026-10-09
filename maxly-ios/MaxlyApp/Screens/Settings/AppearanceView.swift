@@ -28,7 +28,7 @@ struct AppearanceView: View {
                 AppearancePreview(wallpaper: settings.wallpaper)
                     .dynamicTypeSize(shown.dynamicTypeSize)
                     .animation(MaxlyMotion.fade, value: settings.wallpaper)
-                    .listRowBackground(Color.orbitleBackground)
+                    .listRowBackground(Color.maxlyBackground)
             } header: {
                 Text("Предпросмотр")
             }
@@ -191,7 +191,7 @@ private struct WallpaperOption: View {
                     .clipShape(Self.shape)
                     .overlay {
                         Self.shape.strokeBorder(
-                            isSelected ? Color.orbitleAccent : Color.secondary.opacity(0.35),
+                            isSelected ? Color.maxlyAccent : Color.secondary.opacity(0.35),
                             lineWidth: isSelected ? 2.5 : 0.5
                         )
                     }
@@ -200,7 +200,7 @@ private struct WallpaperOption: View {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 18, weight: .semibold))
                                 .symbolRenderingMode(.palette)
-                                .foregroundStyle(Color.white, Color.orbitleAccent)
+                                .foregroundStyle(Color.white, Color.maxlyAccent)
                                 .padding(6)
                         }
                     }
@@ -237,11 +237,11 @@ private struct WallpaperOption: View {
     private var sampleBubbles: some View {
         VStack(spacing: 5) {
             Capsule()
-                .fill(wallpaper.hasImage ? Color.orbitleIncomingOnWallpaper : Color.orbitleIncoming)
+                .fill(wallpaper.hasImage ? Color.maxlyIncomingOnWallpaper : Color.maxlyIncoming)
                 .frame(width: 34, height: 11)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Capsule()
-                .fill(Color.orbitleOutgoing)
+                .fill(Color.maxlyOutgoing)
                 .frame(width: 28, height: 11)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }

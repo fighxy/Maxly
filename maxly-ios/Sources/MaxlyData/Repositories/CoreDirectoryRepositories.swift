@@ -48,7 +48,7 @@ public actor CoreContactRepository: ContactRepository {
         } catch let error as MaxlyError {
             throw error
         } catch {
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 
@@ -73,7 +73,7 @@ public actor CoreContactRepository: ContactRepository {
         } catch let error as MaxlyError {
             throw error
         } catch {
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
         guard let person = try await findByPhone(phone) else {
             throw .rejected("Человек с таким номером не найден")
@@ -92,7 +92,7 @@ public actor CoreContactRepository: ContactRepository {
         } catch let error as MaxlyError {
             throw error
         } catch {
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 
@@ -118,7 +118,7 @@ public actor CoreContactRepository: ContactRepository {
         } catch let error as MaxlyError {
             throw error
         } catch {
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 
@@ -130,7 +130,7 @@ public actor CoreContactRepository: ContactRepository {
         } catch let error as MaxlyError {
             throw error
         } catch {
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 
@@ -199,7 +199,7 @@ public actor CoreContactRepository: ContactRepository {
             cached = list
         } catch {
             Log.warning(.contacts, "Синхронизация контактов не удалась: \(error)")
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 
@@ -295,7 +295,7 @@ public actor CoreCallHistoryRepository: CallHistoryRepository, CallLogSink {
             try await core.deleteCallHistory(ids: valid)
         } catch {
             Log.warning(.calls, "Звонки не удалились: \(error)")
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
         Log.info(.calls, "Удалено звонков: \(valid.count)")
         if legacy {
@@ -315,7 +315,7 @@ public actor CoreCallHistoryRepository: CallHistoryRepository, CallLogSink {
             throw error
         } catch {
             Log.warning(.calls, "Ссылка на звонок не создалась: \(error)")
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 
@@ -545,7 +545,7 @@ public struct CoreChatProfileRepository: ChatProfileRepository {
             return profile
         } catch {
             Log.warning(.chats, "Карточка чата \(chatId) не загрузилась: \(error)")
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 

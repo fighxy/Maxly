@@ -21,13 +21,13 @@ public final class UserDefaultsSelfCheckStore: SelfCheckStore, @unchecked Sendab
 }
 
 /// Разовая чистка после перехода режима призрака на ядро: до него флаги и выбор приватности
-/// лежали в `UserDefaults` под `orbitle.ghost.*` и `orbitle.privacy.local.*`. Теперь они в ядре
+/// лежали в `UserDefaults` под `maxly.ghost.*` и `maxly.privacy.local.*`. Теперь они в ядре
 /// и на сервере, старые ключи только сбивали бы с толку. «Показывать мой онлайн» переезжает на
 /// новый ключ и остаётся.
 public enum GhostDefaultsMigration {
     public static let doneKey = "maxly.migrations.ghostCore"
-    static let legacyPrefixes = ["orbitle.ghost.", "orbitle.privacy.local."]
-    static let legacySelfCheckKey = "orbitle.ghost.showsOwnPresence"
+    static let legacyPrefixes = ["maxly.ghost.", "maxly.privacy.local."]
+    static let legacySelfCheckKey = "maxly.ghost.showsOwnPresence"
 
     /// Один раз на установку; повторный вызов ничего не делает.
     public static func run(_ defaults: UserDefaults = .standard) {

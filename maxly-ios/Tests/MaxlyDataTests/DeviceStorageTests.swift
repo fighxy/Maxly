@@ -12,10 +12,10 @@ struct DeviceStorageTests {
         let suite: String
 
         init() throws {
-            root = FileManager.default.temporaryDirectory.appending(path: "orbitle-storage-\(UUID().uuidString)", directoryHint: .isDirectory)
+            root = FileManager.default.temporaryDirectory.appending(path: "maxly-storage-\(UUID().uuidString)", directoryHint: .isDirectory)
             layout = StorageLayout(root: root.appending(path: "media", directoryHint: .isDirectory))
             try FileManager.default.createDirectory(at: layout.root, withIntermediateDirectories: true)
-            suite = "orbitle.tests.\(UUID().uuidString)"
+            suite = "maxly.tests.\(UUID().uuidString)"
         }
 
         deinit {

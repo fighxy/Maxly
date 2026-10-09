@@ -20,7 +20,7 @@ struct NewChatSheet: View {
                 }
                 if let notice = model.notice {
                     Text(notice)
-                        .foregroundStyle(Color.orbitleAccent)
+                        .foregroundStyle(Color.maxlyAccent)
                         .listRowSeparator(.hidden)
                 }
                 switch model.step {
@@ -116,7 +116,7 @@ struct NewChatSheet: View {
                 }
             }
         }
-        .tint(Color.orbitleAccent)
+        .tint(Color.maxlyAccent)
         .presentationDetents([.medium, .large])
         .onChange(of: model.opened?.id) { _, id in
             guard let id, let opened = model.opened, opened.id == id else { return }
@@ -165,7 +165,7 @@ struct NewChatSheet: View {
                 Spacer(minLength: 0)
                 if model.step == .group, model.selected.contains(person.id) {
                     Image(systemName: "checkmark")
-                        .foregroundStyle(Color.orbitleAccent)
+                        .foregroundStyle(Color.maxlyAccent)
                 }
             }
         }

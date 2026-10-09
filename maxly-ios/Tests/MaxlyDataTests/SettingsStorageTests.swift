@@ -8,7 +8,7 @@ struct AppearanceStoreTests {
     @Test("Без записи — по умолчанию, запись читается новым хранилищем")
     @MainActor
     func roundTrip() throws {
-        let suite = "orbitle.tests.\(UUID().uuidString)"
+        let suite = "maxly.tests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = UserDefaultsAppearanceStore(defaults: defaults)
@@ -23,7 +23,7 @@ struct AppearanceStoreTests {
     @Test("Обои сохраняются именем; старая запись без обоев и незнакомое имя — без обоев")
     @MainActor
     func wallpaper() throws {
-        let suite = "orbitle.tests.\(UUID().uuidString)"
+        let suite = "maxly.tests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         // Запись до обоев: только размер и тема.
@@ -41,7 +41,7 @@ struct AppearanceStoreTests {
     @Test("Незнакомые значения читаются как значения по умолчанию")
     @MainActor
     func unknownValues() throws {
-        let suite = "orbitle.tests.\(UUID().uuidString)"
+        let suite = "maxly.tests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set("huge", forKey: UserDefaultsAppearanceStore.textSizeKey)
@@ -57,7 +57,7 @@ struct PrivateModeStoreTests {
     @Test("Без записи — выключен, заглушки, кнопка видна; запись читается новым хранилищем")
     @MainActor
     func roundTrip() throws {
-        let suite = "orbitle.tests.\(UUID().uuidString)"
+        let suite = "maxly.tests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = UserDefaultsPrivateModeStore(defaults: defaults)
@@ -73,7 +73,7 @@ struct PrivateModeStoreTests {
     @Test("Незнакомый вид читается как заглушки")
     @MainActor
     func unknownStyle() throws {
-        let suite = "orbitle.tests.\(UUID().uuidString)"
+        let suite = "maxly.tests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: UserDefaultsPrivateModeStore.enabledKey)
@@ -192,7 +192,7 @@ struct AccountLimitsStoreTests {
     @Test("Без записи — отметки нет, запись читается новым хранилищем, пустая отметка стирает ключи")
     @MainActor
     func roundTrip() throws {
-        let suite = "orbitle.tests.\(UUID().uuidString)"
+        let suite = "maxly.tests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = UserDefaultsAccountLimitsStore(defaults: defaults)
@@ -209,7 +209,7 @@ struct AccountLimitsStoreTests {
     @Test("Незнакомый способ входа или запись без времени — отметки нет")
     @MainActor
     func unknownValues() throws {
-        let suite = "orbitle.tests.\(UUID().uuidString)"
+        let suite = "maxly.tests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set("guest", forKey: UserDefaultsAccountLimitsStore.entryKey)

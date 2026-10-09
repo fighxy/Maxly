@@ -450,7 +450,7 @@ struct ChatListDataTests {
 
     @Test("Недавние из поиска: новые первыми, без повторов, очистка")
     func recentSearches() async {
-        let suite = "orbitle.tests.\(UUID().uuidString)"
+        let suite = "maxly.tests.\(UUID().uuidString)"
         let store = RecentSearchesStore(suiteName: suite)
         await store.add(chatId: "a")
         await store.add(chatId: "b")

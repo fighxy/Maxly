@@ -340,7 +340,7 @@ struct ChatListView: View {
         return ChatRow(item: item, storyRing: ring, onStoryTap: openStories, onOpenApp: openApp)
             .tag(item.id)
             .listRowInsets(rowInsets)
-            .listRowBackground(item.isPinned ? Color.orbitlePinnedBackground : nil)
+            .listRowBackground(item.isPinned ? Color.maxlyPinnedBackground : nil)
             .alignmentGuide(.listRowSeparatorLeading) { _ in MaxlyTheme.separatorInset - MaxlyTheme.pad }
             .moveDisabled(!(viewModel.canReorderPinned && item.isPinned))
             .swipeActions(edge: .leading, allowsFullSwipe: true) { leadingActions(item) }
@@ -361,12 +361,12 @@ struct ChatListView: View {
             Button { Task { await viewModel.toggleRead(chatId: item.id) } } label: {
                 Label("Прочитано", systemImage: "envelope.open.fill")
             }
-            .tint(Color.orbitleAccent)
+            .tint(Color.maxlyAccent)
         } else if viewModel.capabilities.contains(.markUnread) {
             Button { Task { await viewModel.toggleRead(chatId: item.id) } } label: {
                 Label("Непрочитано", systemImage: "envelope.badge.fill")
             }
-            .tint(Color.orbitleAccent)
+            .tint(Color.maxlyAccent)
         }
         if viewModel.capabilities.contains(.pin) {
             Button { Task { await viewModel.togglePin(chatId: item.id) } } label: {
@@ -631,17 +631,17 @@ struct ChatListView: View {
             } label: {
                 Image(systemName: settings.isEnabled ? "eye.slash.fill" : "eye")
                     .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(settings.isEnabled ? Color.orbitleAccent : Color.primary)
+                    .foregroundStyle(settings.isEnabled ? Color.maxlyAccent : Color.primary)
                     .contentTransition(.symbolEffect(.replace))
                     .frame(width: 52, height: 52)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
-            .orbitleGlassCircle(size: 52)
+            .maxlyGlassCircle(size: 52)
             .padding(.trailing, MaxlyTheme.pad)
             .padding(.bottom, 12)
             .accessibilityLabel(settings.isEnabled ? "Выключить приватный режим" : "Включить приватный режим")
-            .transition(.orbitlePop(reduceMotion: reduceMotion))
+            .transition(.maxlyPop(reduceMotion: reduceMotion))
         }
     }
 

@@ -64,7 +64,7 @@ struct CommentsView: View {
                     }
                 }
             }
-            .background(Color.orbitleChatBackground.ignoresSafeArea())
+            .background(Color.maxlyChatBackground.ignoresSafeArea())
             .safeAreaInset(edge: .bottom, spacing: 0) { composer }
             .navigationTitle(model.title)
             .navigationBarTitleDisplayMode(.inline)
@@ -172,7 +172,7 @@ struct CommentsView: View {
             ForEach(Array(model.comments.enumerated()), id: \.element.id) { index, comment in
                 bubble(comment, index: index, width: width)
                     .id(comment.id)
-                    .transition(.orbitleBubble(outgoing: model.isOutgoing(comment), reduceMotion: reduceMotion))
+                    .transition(.maxlyBubble(outgoing: model.isOutgoing(comment), reduceMotion: reduceMotion))
             }
         }
     }
@@ -240,7 +240,7 @@ struct CommentsView: View {
                     .foregroundStyle(.red)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
-                    .orbitleGlassCapsule()
+                    .maxlyGlassCapsule()
             }
             MaxlyGlassGroup(spacing: 8) {
                 HStack(alignment: .bottom, spacing: 8) {
@@ -250,7 +250,7 @@ struct CommentsView: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 11)
                         .frame(minHeight: 44)
-                        .orbitleGlassRounded(radius: 22)
+                        .maxlyGlassRounded(radius: 22)
                     Button {
                         Task { await model.send() }
                     } label: {
@@ -258,9 +258,9 @@ struct CommentsView: View {
                             .font(.system(size: 17, weight: .semibold))
                             .frame(width: 30, height: 30)
                     }
-                    .orbitleProminentButtonStyle()
+                    .maxlyProminentButtonStyle()
                     .buttonBorderShape(.circle)
-                    .tint(Color.orbitleAccent)
+                    .tint(Color.maxlyAccent)
                     .disabled(!model.canSend)
                     .accessibilityLabel("Отправить комментарий")
                 }

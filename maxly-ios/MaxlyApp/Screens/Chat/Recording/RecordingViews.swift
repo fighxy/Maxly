@@ -17,16 +17,16 @@ struct RecordButton: View {
             if session.phase == .locked || session.phase == .finishing {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Color.orbitleOnAccent)
+                    .foregroundStyle(Color.maxlyOnAccent)
                     .frame(width: 44, height: 44)
-                    .background(Color.orbitleAccent, in: Circle())
+                    .background(Color.maxlyAccent, in: Circle())
             } else {
                 Image(systemName: session.mode == .voice ? "mic" : "video")
                     .font(.system(size: 19, weight: .medium))
                     .foregroundStyle(.primary)
                     .frame(width: 44, height: 44)
                     .contentTransition(.symbolEffect(.replace))
-                    .orbitleGlassCircle(size: 44)
+                    .maxlyGlassCircle(size: 44)
                     .opacity(session.phase == .recording ? 0 : 1)
             }
         }
@@ -67,16 +67,16 @@ struct RecordButton: View {
     private var recordingKnob: some View {
         ZStack {
             Circle()
-                .fill(Color.orbitleAccent.opacity(0.25))
+                .fill(Color.maxlyAccent.opacity(0.25))
                 .frame(width: 84, height: 84)
                 .scaleEffect(reduceMotion ? 1 : 1 + session.level * 0.6)
                 .animation(.easeOut(duration: 0.12), value: session.level)
             Circle()
-                .fill(Color.orbitleAccent)
+                .fill(Color.maxlyAccent)
                 .frame(width: 84, height: 84)
             Image(systemName: session.mode == .voice ? "mic.fill" : "video.fill")
                 .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(Color.orbitleOnAccent)
+                .foregroundStyle(Color.maxlyOnAccent)
         }
         .offset(x: session.dragX, y: session.dragY)
     }
@@ -90,7 +90,7 @@ struct RecordButton: View {
         }
         .foregroundStyle(.secondary)
         .frame(width: 36, height: 64)
-        .orbitleGlassRounded(radius: 18)
+        .maxlyGlassRounded(radius: 18)
     }
 
     private var accessibilityLabel: String {
@@ -151,7 +151,7 @@ struct RecordingBar: View {
         .padding(.leading, session.phase == .locked ? 6 : 16)
         .padding(.trailing, 16)
         .frame(minHeight: 44)
-        .orbitleGlassCapsule()
+        .maxlyGlassCapsule()
         .accessibilityElement(children: .contain)
     }
 
@@ -178,7 +178,7 @@ struct VideoNoteOverlay: View {
                         .clipShape(Circle())
                     Circle()
                         .trim(from: 0, to: min(1, session.elapsed / VideoNoteRecorder.maximumDuration))
-                        .stroke(Color.orbitleAccent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                        .stroke(Color.maxlyAccent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                         .frame(width: diameter + 12, height: diameter + 12)
                         .animation(.linear(duration: 0.1), value: session.elapsed)

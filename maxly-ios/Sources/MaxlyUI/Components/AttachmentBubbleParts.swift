@@ -51,11 +51,11 @@ struct ContactCardRow: View {
                 Text(contact.name.isEmpty ? "Контакт" : contact.name)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
-                    .foregroundStyle(outgoing ? Color.orbitleOutgoingText : Color.primary)
+                    .foregroundStyle(outgoing ? Color.maxlyOutgoingText : Color.primary)
                 if !contact.phone.isEmpty {
                     Text(contact.phone)
                         .font(.caption)
-                        .foregroundStyle(outgoing ? Color.orbitleOutgoingSecondary : Color.secondary)
+                        .foregroundStyle(outgoing ? Color.maxlyOutgoingSecondary : Color.secondary)
                 }
             }
             Spacer(minLength: 0)
@@ -80,13 +80,13 @@ struct ContactCardRow: View {
     private var initials: some View {
         let letters = contact.name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined()
         return ZStack {
-            Circle().fill(outgoing ? Color.orbitleOutgoingAccent.opacity(0.15) : Color.orbitleAccent)
+            Circle().fill(outgoing ? Color.maxlyOutgoingAccent.opacity(0.15) : Color.maxlyAccent)
             if letters.isEmpty {
-                Image(systemName: "person.fill").foregroundStyle(outgoing ? Color.orbitleOutgoingText : Color.orbitleOnAccent)
+                Image(systemName: "person.fill").foregroundStyle(outgoing ? Color.maxlyOutgoingText : Color.maxlyOnAccent)
             } else {
                 Text(letters.uppercased())
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(outgoing ? Color.orbitleOutgoingText : Color.orbitleOnAccent)
+                    .foregroundStyle(outgoing ? Color.maxlyOutgoingText : Color.maxlyOnAccent)
             }
         }
     }

@@ -59,7 +59,7 @@ struct StickerDataTests {
 
     @Test("Недавние стикеры и эмодзи: новые первыми, без повторов")
     func recents() async {
-        let store = UserDefaultsRecentStickers(suiteName: "orbitle.tests.recents.\(UUID().uuidString)")
+        let store = UserDefaultsRecentStickers(suiteName: "maxly.tests.recents.\(UUID().uuidString)")
         await store.noteEmoji("😀")
         await store.noteEmoji("🔥")
         await store.noteEmoji("😀")

@@ -56,7 +56,7 @@ public struct FlatSearchField: View {
             }
             .padding(.horizontal, 14)
             .frame(minHeight: 40)
-            .background(Color.orbitleField, in: Capsule())
+            .background(Color.maxlyField, in: Capsule())
             .contentShape(Capsule())
             .onTapGesture { focused = true }
             if isActive {
@@ -67,8 +67,8 @@ public struct FlatSearchField: View {
                     withAnimation(MaxlyMotion.quick(reduceMotion: reduceMotion)) { isActive = false }
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(Color.orbitleAccent)
-                .transition(.orbitleBar(edge: .trailing, reduceMotion: reduceMotion))
+                .foregroundStyle(Color.maxlyAccent)
+                .transition(.maxlyBar(edge: .trailing, reduceMotion: reduceMotion))
             }
         }
         .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: isActive)
@@ -131,7 +131,7 @@ public struct FolderStrip: View {
                 withAnimation(MaxlyMotion.quick(reduceMotion: reduceMotion)) { proxy.scrollTo(id, anchor: .center) }
             }
         }
-        .orbitleGlassCapsule(interactive: false)
+        .maxlyGlassCapsule(interactive: false)
     }
 
     private func tabButton(_ tab: ChatFolderTab) -> some View {
@@ -169,7 +169,7 @@ public struct FolderStrip: View {
 public extension View {
     /// Круглая стеклянная подложка кнопки. На iOS 26 — системное стекло, раньше — материал.
     @ViewBuilder
-    func orbitleGlassCircle(size: CGFloat = 44) -> some View {
+    func maxlyGlassCircle(size: CGFloat = 44) -> some View {
         let base = frame(width: size, height: size).contentShape(Circle())
         #if compiler(>=6.2)
         if #available(iOS 26.0, macOS 26.0, *) {
@@ -186,7 +186,7 @@ public extension View {
 
     /// Стеклянная скруглённая плашка (панель ответа над полем ввода).
     @ViewBuilder
-    func orbitleGlassRounded(radius: CGFloat) -> some View {
+    func maxlyGlassRounded(radius: CGFloat) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         #if compiler(>=6.2)
         if #available(iOS 26.0, macOS 26.0, *) {
@@ -204,7 +204,7 @@ public extension View {
     /// Стеклянная капсула для группы кнопок (например, «поиск + добавить»). `interactive` —
     /// стекло отзывается на касание само; у капсулы-контейнера с кнопками внутри — нет.
     @ViewBuilder
-    func orbitleGlassCapsule(interactive: Bool = true) -> some View {
+    func maxlyGlassCapsule(interactive: Bool = true) -> some View {
         #if compiler(>=6.2)
         if #available(iOS 26.0, macOS 26.0, *) {
             glassEffect(interactive ? .regular.interactive() : .regular, in: Capsule())
@@ -246,9 +246,9 @@ public struct MaxlyGlassGroup<Content: View>: View {
 public extension View {
     /// Имя стекла внутри `MaxlyGlassGroup`: на iOS 26 появляющийся и исчезающий элемент
     /// перетекает из соседнего стекла и обратно, а не возникает отдельной каплей.
-    /// Ставится после `orbitleGlassCircle` / `orbitleGlassCapsule`. Раньше iOS 26 ничего не делает.
+    /// Ставится после `maxlyGlassCircle` / `maxlyGlassCapsule`. Раньше iOS 26 ничего не делает.
     @ViewBuilder
-    func orbitleGlassID(_ id: String, in namespace: Namespace.ID) -> some View {
+    func maxlyGlassID(_ id: String, in namespace: Namespace.ID) -> some View {
         #if compiler(>=6.2)
         if #available(iOS 26.0, macOS 26.0, *) {
             glassEffectID(id, in: namespace)
@@ -266,15 +266,15 @@ public extension View {
     /// (`.glassProminent`), раньше — `.borderedProminent`. Выключенная кнопка
     /// серая сама по себе.
     @ViewBuilder
-    func orbitleProminentButtonStyle() -> some View {
+    func maxlyProminentButtonStyle() -> some View {
         #if compiler(>=6.2)
         if #available(iOS 26.0, macOS 26.0, *) {
-            buttonStyle(.glassProminent).foregroundStyle(Color.orbitleOnAccent)
+            buttonStyle(.glassProminent).foregroundStyle(Color.maxlyOnAccent)
         } else {
-            buttonStyle(.borderedProminent).foregroundStyle(Color.orbitleOnAccent)
+            buttonStyle(.borderedProminent).foregroundStyle(Color.maxlyOnAccent)
         }
         #else
-        buttonStyle(.borderedProminent).foregroundStyle(Color.orbitleOnAccent)
+        buttonStyle(.borderedProminent).foregroundStyle(Color.maxlyOnAccent)
         #endif
     }
 }

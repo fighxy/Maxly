@@ -27,7 +27,7 @@ public enum MaxAPIError: Error, Sendable, Equatable {
     }
 
     /// Категория ошибки для UI (architecture.md, «Ошибки и офлайн»).
-    public var orbitleError: MaxlyError {
+    public var maxlyError: MaxlyError {
         switch self {
         case .offline: .networkUnavailable
         case .server(let code, let text): .server(code: code, text: text)

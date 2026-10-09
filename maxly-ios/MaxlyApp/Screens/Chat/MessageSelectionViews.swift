@@ -28,7 +28,7 @@ struct MessageSelectionBar: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
-            .orbitleGlassCapsule()
+            .maxlyGlassCapsule()
         }
         .padding(.horizontal, MaxlyTheme.pad)
         .padding(.vertical, 8)
@@ -46,7 +46,7 @@ struct MessageSelectionBar: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(role == .destructive ? Color.red : Color.orbitleAccent)
+        .foregroundStyle(role == .destructive ? Color.red : Color.maxlyAccent)
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.4)
     }
@@ -82,7 +82,7 @@ struct MessageSelectionDeleteSheet: View {
             }
             if request.options.showsForEveryone {
                 Toggle(chatType == .private ? "Удалить у всех (и у собеседника)" : "Удалить у всех", isOn: $forEveryone)
-                    .tint(.orbitleAccent)
+                    .tint(.maxlyAccent)
             }
             VStack(spacing: 8) {
                 Button(role: .destructive) {

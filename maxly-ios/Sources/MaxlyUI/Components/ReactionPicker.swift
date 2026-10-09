@@ -33,7 +33,7 @@ public struct ReactionPicker: View {
                                 .font(.system(size: 30))
                                 .frame(width: 48, height: 48)
                                 .background(
-                                    emoji == mine ? Color.orbitleAccent.opacity(0.22) : Color.clear,
+                                    emoji == mine ? Color.maxlyAccent.opacity(0.22) : Color.clear,
                                     in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 )
                                 .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))

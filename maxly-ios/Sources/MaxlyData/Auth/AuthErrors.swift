@@ -19,7 +19,7 @@ enum AuthErrors {
 
     static func map(_ error: Error, during step: AuthStep) -> MaxlyError {
         if let error = error as? MaxlyError { return error }
-        guard let failure = error as? CoreFailure else { return CoreMapping.apiError(error).orbitleError }
+        guard let failure = error as? CoreFailure else { return CoreMapping.apiError(error).maxlyError }
         let key = failure.key?.lowercased() ?? ""
         switch failure.kind {
         case "AUTH", "SERVER", "NOT_FOUND":
@@ -32,7 +32,7 @@ enum AuthErrors {
             case .requestCode, .password, .register: return .rejected("Попытка входа устарела. Начните заново")
             }
         default:
-            return CoreMapping.apiError(error).orbitleError
+            return CoreMapping.apiError(error).maxlyError
         }
     }
 

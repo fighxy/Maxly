@@ -71,7 +71,7 @@ struct ChatMembersView: View {
                         if !status.isEmpty {
                             Text(status)
                                 .font(.caption)
-                                .foregroundStyle(model.isOnline(member) ? AnyShapeStyle(Color.orbitleAccent) : AnyShapeStyle(.secondary))
+                                .foregroundStyle(model.isOnline(member) ? AnyShapeStyle(Color.maxlyAccent) : AnyShapeStyle(.secondary))
                                 .lineLimit(1)
                         }
                     }

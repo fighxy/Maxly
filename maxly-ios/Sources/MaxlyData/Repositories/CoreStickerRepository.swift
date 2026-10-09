@@ -37,7 +37,7 @@ public actor CoreStickerRepository: StickerRepository {
         } catch {
             if let catalogCache { return catalogCache }
             Log.warning(.messages, "Каталог стикеров не загрузился: \(error)")
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 
@@ -52,7 +52,7 @@ public actor CoreStickerRepository: StickerRepository {
                 write(Array(stickerCache.values), "stickers.json")
             } catch {
                 Log.warning(.messages, "Стикеры не загрузились: \(error)")
-                if ids.allSatisfy({ stickerCache[$0] == nil }) { throw CoreMapping.apiError(error).orbitleError }
+                if ids.allSatisfy({ stickerCache[$0] == nil }) { throw CoreMapping.apiError(error).maxlyError }
             }
         }
         return ids.compactMap { stickerCache[$0] }
@@ -73,7 +73,7 @@ public actor CoreStickerRepository: StickerRepository {
             return fresh
         } catch {
             if let animojiCache { return animojiCache }
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 

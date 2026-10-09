@@ -490,7 +490,7 @@ struct ChatView: View {
                         }
                         .swipeActions {
                             Button("Сейчас") { Task { await viewModel.sendScheduledNow(item) } }
-                                .tint(.orbitleAccent)
+                                .tint(.maxlyAccent)
                             Button("Отменить", role: .destructive) { Task { await viewModel.cancelScheduled(item) } }
                         }
                         .onTapGesture {
@@ -961,7 +961,7 @@ struct ChatView: View {
         HStack(spacing: 8) {
             Image(systemName: "pin.fill")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.orbitleAccent)
+                .foregroundStyle(Color.maxlyAccent)
             Button {
                 viewModel.cyclePin()
             } label: {
@@ -969,7 +969,7 @@ struct ChatView: View {
                     if let counter {
                         Text(counter)
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(Color.orbitleAccent)
+                            .foregroundStyle(Color.maxlyAccent)
                     }
                     Text(text)
                         .font(.subheadline)
@@ -1012,7 +1012,7 @@ struct ChatView: View {
                             .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
-                    .orbitleGlassCapsule()
+                    .maxlyGlassCapsule()
                 }
                 if !viewModel.messages.isEmpty {
                     Text(PrivateModeMask.revealHint)
@@ -1021,7 +1021,7 @@ struct ChatView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .orbitleGlassRounded(radius: 14)
+                        .maxlyGlassRounded(radius: 14)
                 }
             }
         }
@@ -1029,7 +1029,7 @@ struct ChatView: View {
         .padding(.horizontal, MaxlyTheme.pad)
         .padding(.top, 6)
         .padding(.bottom, 4)
-        .transition(.orbitleBar(edge: .top, reduceMotion: reduceMotion))
+        .transition(.maxlyBar(edge: .top, reduceMotion: reduceMotion))
     }
 
     private var deletionShown: Binding<Bool> {

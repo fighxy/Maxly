@@ -176,6 +176,6 @@ struct CountryPickerView: View {
                 }
             }
         }
-        .tint(Color.orbitleAccent)
+        .tint(Color.maxlyAccent)
     }
 }

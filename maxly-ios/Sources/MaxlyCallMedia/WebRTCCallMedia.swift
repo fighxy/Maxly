@@ -23,7 +23,7 @@ enum WebRTCFactory {
 /// Свои микрофон, камера и экран для одного звонка.
 @MainActor
 public final class WebRTCCallMedia: CallMedia {
-    static let streamId = "orbitle"
+    static let streamId = "maxly"
 
     let audioTrack: RTCAudioTrack
     private let factory: RTCPeerConnectionFactory

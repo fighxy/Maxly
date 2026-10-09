@@ -36,7 +36,7 @@ struct MediaCancellationTests {
     func cancelStalledPreview() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StallingProtocol.self]
-        let directory = FileManager.default.temporaryDirectory.appending(path: "orbitle-media-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let directory = FileManager.default.temporaryDirectory.appending(path: "maxly-media-\(UUID().uuidString)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let media = MediaRepositoryImpl(http: URLSessionClient(configuration: configuration), directory: directory)

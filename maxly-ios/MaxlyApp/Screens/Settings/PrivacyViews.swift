@@ -46,7 +46,7 @@ struct PrivacyChoiceView: View {
                             if model.selected(row) == option {
                                 Image(systemName: "checkmark")
                                     .fontWeight(.semibold)
-                                    .foregroundStyle(Color.orbitleAccent)
+                                    .foregroundStyle(Color.maxlyAccent)
                             }
                         }
                         .contentShape(Rectangle())
@@ -119,7 +119,7 @@ struct OwnPresenceLine: View {
                         .frame(width: 7, height: 7)
                     Text(text)
                         .font(.subheadline)
-                        .foregroundStyle(model.isOwnPresenceOnline ? Color.orbitleAccent : Color.secondary)
+                        .foregroundStyle(model.isOwnPresenceOnline ? Color.maxlyAccent : Color.secondary)
                         .contentTransition(.opacity)
                 }
                 .accessibilityElement(children: .combine)

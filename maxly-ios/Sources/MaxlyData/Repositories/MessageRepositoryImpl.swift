@@ -547,7 +547,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         case .failure(let error):
             Log.warning(.messages, "Реакция не изменена: \(error)")
             try? saveReactions(before, localId: localId, onlyIf: after)
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -648,7 +648,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
                 throw .rejected("Не удалось расшифровать голосовое")
             }
         case .failure(let error):
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -741,7 +741,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         case .success(let users):
             return users
         case .failure(let error):
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -754,7 +754,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         case .success(let readers):
             return readers.map(withKnownProfile)
         case .failure(let error):
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -883,7 +883,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             switch await api.deleteSelection(chatId: chatId, messageIds: serverIds, forEveryone: forEveryone) {
             case .failure(let error):
                 Log.warning(.messages, "Сообщения не удалены: \(error)")
-                throw error.orbitleError
+                throw error.maxlyError
             case .success(let result):
                 let refused = Set(result.failed)
                 if !refused.isEmpty {
@@ -912,20 +912,20 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// Локальная лента чата после очистки переписки. Сервер уже ответил в репозитории чатов.
     public func pin(chatId: String, messageId: String) async throws(MaxlyError) {
         if case .failure(let error) = await api.pinMessage(chatId: chatId, messageId: messageId) {
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
     public func loadPins(chatId: String) async throws(MaxlyError) -> [ChatPin] {
         switch await api.pinnedMessages(chatId: chatId) {
         case .success(let pins): return pins
-        case .failure(let error): throw error.orbitleError
+        case .failure(let error): throw error.maxlyError
         }
     }
 
     public func updatePin(chatId: String, action: String, messageIds: [String], forMe: Bool, notify: Bool) async throws(MaxlyError) {
         if case .failure(let error) = await api.updatePinned(chatId: chatId, action: action, messageIds: messageIds, forMe: forMe, notify: notify) {
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -933,26 +933,26 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { throw .invalidRequest }
         if case .failure(let error) = await api.scheduleMessage(chatId: chatId, text: body, sendAtMs: sendAt.unixMillis) {
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
     public func scheduled(chatId: String) async throws(MaxlyError) -> [FoundMessage] {
         switch await api.scheduledMessages(chatId: chatId) {
         case .success(let hits): return hits
-        case .failure(let error): throw error.orbitleError
+        case .failure(let error): throw error.maxlyError
         }
     }
 
     public func sendPoll(chatId: String, title: String, answers: [String]) async throws(MaxlyError) {
         if case .failure(let error) = await api.sendPoll(chatId: chatId, title: title, answers: answers) {
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
     public func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws(MaxlyError) {
         if case .failure(let error) = await api.votePoll(chatId: chatId, messageId: messageId, pollId: pollId, answerId: answerId) {
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -961,7 +961,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         case .success(let counts):
             return PollCountUpdate(pollId: counts.pollId, total: counts.total, votes: counts.votes, multiple: counts.multiple)
         case .failure(let error):
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -971,7 +971,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         case .success(let counts):
             return counts.map { PollCountUpdate(pollId: $0.pollId, total: $0.total, votes: $0.votes, multiple: $0.multiple) }
         case .failure(let error):
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -1005,20 +1005,20 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     public func editScheduled(chatId: String, messageId: String, text: String, sendAt: Date) async throws(MaxlyError) -> FoundMessage {
         switch await api.editScheduled(chatId: chatId, messageId: messageId, text: text, sendAtMs: sendAt.unixMillis) {
         case .success(let item): return item
-        case .failure(let error): throw error.orbitleError
+        case .failure(let error): throw error.maxlyError
         }
     }
 
     public func cancelScheduled(chatId: String, messageIds: [String]) async throws(MaxlyError) {
         if case .failure(let error) = await api.cancelScheduled(chatId: chatId, messageIds: messageIds) {
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
     public func searchInChat(chatId: String, query: String) async throws(MaxlyError) -> [FoundMessage] {
         switch await api.searchInChat(chatId: chatId, query: query) {
         case .success(let hits): return hits.filter { !$0.messageId.isEmpty }
-        case .failure(let error): throw error.orbitleError
+        case .failure(let error): throw error.maxlyError
         }
     }
 
@@ -1079,7 +1079,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             notify(chatId: chatId)
         case .failure(let error):
             Log.warning(.messages, "Сообщение не изменено: \(error)")
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -1094,7 +1094,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             Log.info(.messages, "Сообщение переслано в чат \(targetChatId)")
         case .failure(let error):
             Log.warning(.messages, "Сообщение не переслано: \(error)")
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -1167,7 +1167,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         case .failure(.offline), .failure(.cancelled):
             return local.map(\.domain)
         case .failure(let error):
-            if local.isEmpty { throw error.orbitleError }
+            if local.isEmpty { throw error.maxlyError }
             return local.map(\.domain)
         }
     }
@@ -1241,7 +1241,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             let gone = pruneMissing(chatId: chatId, page: records, requestedAt: requestedAt)
             if !gone.isEmpty { await outgoingHandler?(.deleted(chatId: chatId, ids: gone)) }
         case .failure(let error):
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -1667,7 +1667,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
                 }
                 .sorted { $0.timestamp < $1.timestamp }
         case .failure(let error):
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 

@@ -2,36 +2,36 @@ import SwiftUI
 
 public extension Color {
     /// Синий акцент действий и контрастный текст на его заливке.
-    static let orbitleAccent = adaptive(light: 0x0070E0, dark: 0x64B5F6)
-    static let orbitleOnAccent = adaptive(light: 0xFFFFFF, dark: 0x102030)
+    static let maxlyAccent = adaptive(light: 0x0070E0, dark: 0x64B5F6)
+    static let maxlyOnAccent = adaptive(light: 0xFFFFFF, dark: 0x102030)
 
     /// Спокойные поверхности чата: серо-голубой фон ленты, белые входящие и светло-зелёные
     /// исходящие (в тёмной теме — тёмные и приглушённые синие); текст и контролы имеют свои токены.
-    static let orbitleChatBackground = adaptive(light: 0xE9EEF2, dark: 0x101A24)
-    static let orbitleOutgoing = adaptive(light: 0xE1FFC7, dark: 0x2B5278)
-    static let orbitleOutgoingText = adaptive(light: 0x15251A, dark: 0xFFFFFF)
-    static let orbitleOutgoingSecondary = adaptive(light: 0x48643F, dark: 0xC0D4E5)
-    static let orbitleOutgoingAccent = adaptive(light: 0x356B37, dark: 0xC0E1FF)
-    static let orbitleOnOutgoingAccent = adaptive(light: 0xFFFFFF, dark: 0x18344D)
+    static let maxlyChatBackground = adaptive(light: 0xE9EEF2, dark: 0x101A24)
+    static let maxlyOutgoing = adaptive(light: 0xE1FFC7, dark: 0x2B5278)
+    static let maxlyOutgoingText = adaptive(light: 0x15251A, dark: 0xFFFFFF)
+    static let maxlyOutgoingSecondary = adaptive(light: 0x48643F, dark: 0xC0D4E5)
+    static let maxlyOutgoingAccent = adaptive(light: 0x356B37, dark: 0xC0E1FF)
+    static let maxlyOnOutgoingAccent = adaptive(light: 0xFFFFFF, dark: 0x18344D)
     /// Синий круг «Избранного» и архива.
-    static let orbitleSpecialAvatar = Color(red: 0.30, green: 0.62, blue: 0.98)
-    static let orbitleOnline = Color(red: 0.20, green: 0.78, blue: 0.35)
+    static let maxlySpecialAvatar = Color(red: 0.30, green: 0.62, blue: 0.98)
+    static let maxlyOnline = Color(red: 0.20, green: 0.78, blue: 0.35)
     /// Серый бейдж чата без звука.
-    static let orbitleMutedBadge = Color.gray.opacity(0.55)
+    static let maxlyMutedBadge = Color.gray.opacity(0.55)
     #if os(iOS)
-    static let orbitleIncoming = adaptive(light: 0xFFFFFF, dark: 0x182533)
-    static let orbitleIncomingOnWallpaper = orbitleIncoming
+    static let maxlyIncoming = adaptive(light: 0xFFFFFF, dark: 0x182533)
+    static let maxlyIncomingOnWallpaper = maxlyIncoming
     /// Подложка плоского поля поиска.
-    static let orbitleField = Color(uiColor: .tertiarySystemFill)
+    static let maxlyField = Color(uiColor: .tertiarySystemFill)
     /// Чуть серый фон закреплённых строк.
-    static let orbitlePinnedBackground = Color(uiColor: .secondarySystemBackground)
-    static let orbitleBackground = Color(uiColor: .systemBackground)
+    static let maxlyPinnedBackground = Color(uiColor: .secondarySystemBackground)
+    static let maxlyBackground = Color(uiColor: .systemBackground)
     #else
-    static let orbitleIncoming = adaptive(light: 0xFFFFFF, dark: 0x182533)
-    static let orbitleIncomingOnWallpaper = orbitleIncoming
-    static let orbitleField = Color.gray.opacity(0.12)
-    static let orbitlePinnedBackground = Color.gray.opacity(0.08)
-    static let orbitleBackground = Color.white
+    static let maxlyIncoming = adaptive(light: 0xFFFFFF, dark: 0x182533)
+    static let maxlyIncomingOnWallpaper = maxlyIncoming
+    static let maxlyField = Color.gray.opacity(0.12)
+    static let maxlyPinnedBackground = Color.gray.opacity(0.08)
+    static let maxlyBackground = Color.white
     #endif
 
     private static func adaptive(light: UInt32, dark: UInt32) -> Color {

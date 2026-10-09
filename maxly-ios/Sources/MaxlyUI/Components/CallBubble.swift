@@ -45,21 +45,21 @@ struct CallBubble: View {
     private var alert: Bool { CallBubbleText.isAlert(call, outgoing: outgoing) }
 
     private var titleColor: Color {
-        if outgoing { return .orbitleOutgoingText }
+        if outgoing { return .maxlyOutgoingText }
         return alert ? .red : .primary
     }
 
     private var iconColor: Color {
-        if outgoing { return .orbitleOutgoingAccent }
-        return alert ? .red : Color.orbitleAccent
+        if outgoing { return .maxlyOutgoingAccent }
+        return alert ? .red : Color.maxlyAccent
     }
 
     private var iconBackground: Color {
-        if outgoing { return Color.orbitleOutgoingAccent.opacity(0.15) }
-        return (alert ? Color.red : Color.orbitleAccent).opacity(0.14)
+        if outgoing { return Color.maxlyOutgoingAccent.opacity(0.15) }
+        return (alert ? Color.red : Color.maxlyAccent).opacity(0.14)
     }
 
     private var secondary: Color {
-        outgoing ? Color.orbitleOutgoingSecondary : Color.secondary
+        outgoing ? Color.maxlyOutgoingSecondary : Color.secondary
     }
 }

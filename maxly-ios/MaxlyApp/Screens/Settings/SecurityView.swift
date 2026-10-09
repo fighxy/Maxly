@@ -265,7 +265,7 @@ struct SecurityView: View {
                 }
             }
             if let notice = model.passwordNotice {
-                Text(notice).foregroundStyle(Color.orbitleAccent)
+                Text(notice).foregroundStyle(Color.maxlyAccent)
             }
             passwordEditor
         } footer: {

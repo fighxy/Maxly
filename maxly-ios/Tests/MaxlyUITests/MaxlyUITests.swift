@@ -52,7 +52,7 @@ struct ChatRowPartsTests {
 
     @Test("Картинка на диске переживает перезапуск и стирается вместе с кэшем")
     func diskCache() throws {
-        let directory = FileManager.default.temporaryDirectory.appending(path: "orbitle-images-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let directory = FileManager.default.temporaryDirectory.appending(path: "maxly-images-\(UUID().uuidString)", directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = try #require(URL(string: "https://example.invalid/p.jpg?r=abc"))
         let other = try #require(URL(string: "https://example.invalid/p.jpg?r=abd"))

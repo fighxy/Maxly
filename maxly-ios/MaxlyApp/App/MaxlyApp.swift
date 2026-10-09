@@ -10,7 +10,7 @@ struct MaxlyApp: App {
         WindowGroup {
             RootView(container: container, router: router)
                 // Системные кнопки, ссылки и переключатели — в синий цвет акцента.
-                .tint(Color.orbitleAccent)
+                .tint(Color.maxlyAccent)
         }
     }
 }

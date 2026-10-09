@@ -82,7 +82,7 @@ struct ChatTranscript: View {
                                 reportReads()
                             }
                             .id(row.id)
-                            .transition(.orbitleBubble(outgoing: row.isOutgoing, reduceMotion: reduceMotion))
+                            .transition(.maxlyBubble(outgoing: row.isOutgoing, reduceMotion: reduceMotion))
                         }
                         newerLoader
                         bottomMarker
@@ -188,7 +188,7 @@ struct ChatTranscript: View {
                                 // Ровно над правой нижней кнопкой: записью, отправкой или поиском канала.
                                 .padding(.trailing, ChatComposer.trailingInset(canWrite: canWrite))
                                 .padding(.bottom, 10)
-                                .transition(.orbitlePop(reduceMotion: reduceMotion))
+                                .transition(.maxlyPop(reduceMotion: reduceMotion))
                         }
                     }
                     .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: bottom.atBottom)
@@ -574,15 +574,15 @@ private struct ScrollDownButton: View {
             Image(systemName: "chevron.down")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.primary)
-                .orbitleGlassCircle(size: ChatControlMetrics.diameter)
+                .maxlyGlassCircle(size: ChatControlMetrics.diameter)
                 .overlay(alignment: .top) {
                     if unseen > 0 {
                         Text(unseen > 99 ? "99+" : "\(unseen)")
                             .font(.caption2.weight(.bold).monospacedDigit())
-                            .foregroundStyle(Color.orbitleOnAccent)
+                            .foregroundStyle(Color.maxlyOnAccent)
                             .padding(.horizontal, 5)
                             .frame(minWidth: 20, minHeight: 20)
-                            .background(Color.orbitleAccent, in: Capsule())
+                            .background(Color.maxlyAccent, in: Capsule())
                             .offset(y: -10)
                             .contentTransition(.numericText())
                     }
@@ -599,9 +599,9 @@ private struct SavedMessagesPlaceholder: View {
         VStack(spacing: 10) {
             Image(systemName: "bookmark.fill")
                 .font(.system(size: 30, weight: .semibold))
-                .foregroundStyle(Color.orbitleOnAccent)
+                .foregroundStyle(Color.maxlyOnAccent)
                 .frame(width: 64, height: 64)
-                .background(Color.orbitleAccent, in: Circle())
+                .background(Color.maxlyAccent, in: Circle())
             Text("Это избранное")
                 .font(.headline)
             Text("Сохраняйте сообщения, медиа и файлы — доступ будет только у вас")
@@ -612,7 +612,7 @@ private struct SavedMessagesPlaceholder: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 20)
         .frame(maxWidth: 360)
-        .orbitleGlassRounded(radius: 24)
+        .maxlyGlassRounded(radius: 24)
         .accessibilityElement(children: .combine)
     }
 }
@@ -825,6 +825,6 @@ private struct FloatingDayPill: View {
             .foregroundStyle(.primary)
             .padding(.horizontal, 12)
             .padding(.vertical, 5)
-            .orbitleGlassCapsule()
+            .maxlyGlassCapsule()
     }
 }

@@ -7,7 +7,7 @@ import MaxlyPresentation
 enum FormattedText {
     static func attributed(_ block: TextBlock, outgoing: Bool) -> AttributedString {
         var result = AttributedString(block.text)
-        let linkColor: Color = outgoing ? .orbitleOutgoingAccent : .orbitleAccent
+        let linkColor: Color = outgoing ? .maxlyOutgoingAccent : .maxlyAccent
         for span in block.spans {
             guard let range = range(of: span.from, span.length, in: result, text: block.text) else { continue }
             switch span.kind {
@@ -19,7 +19,7 @@ enum FormattedText {
                 result[range].inlinePresentationIntent = merged(result[range].inlinePresentationIntent, .strikethrough)
             case .monospaced:
                 result[range].inlinePresentationIntent = merged(result[range].inlinePresentationIntent, .code)
-                result[range].backgroundColor = (outgoing ? Color.orbitleOutgoingText : Color.primary).opacity(0.1)
+                result[range].backgroundColor = (outgoing ? Color.maxlyOutgoingText : Color.primary).opacity(0.1)
             case .underline:
                 result[range].underlineStyle = .single
             case .heading:
@@ -101,14 +101,14 @@ struct MessageTextView: View {
 
     private func line(_ block: TextBlock, last: Bool) -> some View {
         content(block, last: last)
-            .foregroundStyle(outgoing ? Color.orbitleOutgoingText : Color.primary)
+            .foregroundStyle(outgoing ? Color.maxlyOutgoingText : Color.primary)
     }
 
     private func quote(_ block: TextBlock, last: Bool) -> some View {
         // Полоса — в overlay: её высота равна высоте текста цитаты, а не всей доступной.
         content(block, last: last)
             .font(.callout)
-            .foregroundStyle(outgoing ? Color.orbitleOutgoingText.opacity(0.92) : Color.primary.opacity(0.9))
+            .foregroundStyle(outgoing ? Color.maxlyOutgoingText.opacity(0.92) : Color.primary.opacity(0.9))
             .fixedSize(horizontal: false, vertical: true)
             .padding(.vertical, 5)
             .padding(.leading, 13)
@@ -116,10 +116,10 @@ struct MessageTextView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .overlay(alignment: .leading) {
                 Rectangle()
-                    .fill(outgoing ? Color.orbitleOutgoingAccent : Color.orbitleAccent)
+                    .fill(outgoing ? Color.maxlyOutgoingAccent : Color.maxlyAccent)
                     .frame(width: 3)
             }
-            .background((outgoing ? Color.orbitleOutgoingAccent : Color.orbitleAccent).opacity(outgoing ? 0.18 : 0.1))
+            .background((outgoing ? Color.maxlyOutgoingAccent : Color.maxlyAccent).opacity(outgoing ? 0.18 : 0.1))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 

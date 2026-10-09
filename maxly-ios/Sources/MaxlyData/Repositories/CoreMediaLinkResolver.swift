@@ -22,7 +22,7 @@ public actor CoreMediaLinkResolver: MediaLinkResolver {
             text = try await core.mediaLink(chatId: chatId, messageId: messageId, kind: kind.rawValue, attachmentId: attachmentId)
         } catch {
             Log.warning(.media, "Ссылка на \(kind.rawValue) не получена: \(error)")
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
         guard let url = URL(string: text), url.scheme != nil else {
             Log.warning(.media, "Сервер прислал неверную ссылку на \(kind.rawValue)")

@@ -82,7 +82,7 @@ public final class SwiftDataStack: Sendable {
             guard name?.isEmpty != false else { return }
             guard
                 let original = class_getInstanceMethod(Bundle.self, #selector(Bundle.object(forInfoDictionaryKey:))),
-                let replacement = class_getInstanceMethod(Bundle.self, #selector(Bundle.orbitle_object(forInfoDictionaryKey:)))
+                let replacement = class_getInstanceMethod(Bundle.self, #selector(Bundle.maxly_object(forInfoDictionaryKey:)))
             else { return }
             method_exchangeImplementations(original, replacement)
         }()
@@ -118,8 +118,8 @@ extension ModelContext {
 }
 
 private extension Bundle {
-    @objc func orbitle_object(forInfoDictionaryKey key: String) -> Any? {
-        let value = orbitle_object(forInfoDictionaryKey: key)
+    @objc func maxly_object(forInfoDictionaryKey key: String) -> Any? {
+        let value = maxly_object(forInfoDictionaryKey: key)
         guard self === Bundle.main else { return value }
         if key == "CFBundleName", (value as? String)?.isEmpty != false {
             return "Maxly"

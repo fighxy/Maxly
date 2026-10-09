@@ -47,7 +47,7 @@ struct MessageInfoView: View {
     private func row(_ title: String, value: String?, systemImage: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: systemImage)
-                .foregroundStyle(Color.orbitleAccent)
+                .foregroundStyle(Color.maxlyAccent)
                 .frame(width: 24)
             Text(title)
             Spacer(minLength: 8)

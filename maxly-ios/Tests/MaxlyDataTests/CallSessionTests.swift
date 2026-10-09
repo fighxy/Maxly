@@ -256,7 +256,7 @@ struct CallSessionTests {
         #expect(await settle { server.commands("allocate-consumer").count == 1 })
         let peer = try #require(media.peer)
         // Как у настоящего WebRTC: замена дорожки SDP не меняет, в слоте остаётся id камеры.
-        peer.answerSdp = "v=0\r\nm=audio 9 X 111\r\na=mid:0\r\na=msid:orbitle mic\r\nm=video 9 X 96\r\na=mid:1\r\na=sendonly\r\na=msid:orbitle cam-track\r\na=ssrc:21 msid:orbitle cam-track\r\n"
+        peer.answerSdp = "v=0\r\nm=audio 9 X 111\r\na=mid:0\r\na=msid:maxly mic\r\nm=video 9 X 96\r\na=mid:1\r\na=sendonly\r\na=msid:maxly cam-track\r\na=ssrc:21 msid:maxly cam-track\r\n"
         var answer: String { server.commands("accept-producer").last?["description"]?.string ?? "" }
         var settings: JSONValue? { server.commands("change-media-settings").last?["mediaSettings"] }
 

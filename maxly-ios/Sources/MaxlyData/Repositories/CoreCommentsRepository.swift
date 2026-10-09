@@ -17,7 +17,7 @@ public struct CoreCommentsRepository: CommentsRepository {
             return page.map { Self.comment($0, postId: postId) }
         } catch {
             Log.warning(.messages, "Комментарии поста \(postId) в чате \(chatId) не загрузились: \(error)")
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 
@@ -29,7 +29,7 @@ public struct CoreCommentsRepository: CommentsRepository {
             return Self.comment(sent, postId: postId)
         } catch {
             Log.warning(.messages, "Комментарий к посту \(postId) не отправлен: \(error)")
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 
@@ -39,7 +39,7 @@ public struct CoreCommentsRepository: CommentsRepository {
             return try await core.loadCommentCounts(chatId: chatId, postIds: postIds)
         } catch {
             Log.warning(.messages, "Счётчики комментариев не загрузились: \(error)")
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 
@@ -50,7 +50,7 @@ public struct CoreCommentsRepository: CommentsRepository {
             return MessageContentCodec.reactionUpdate(json)
         } catch {
             Log.warning(.messages, "Реакция на комментарий \(commentId) не изменена: \(error)")
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 

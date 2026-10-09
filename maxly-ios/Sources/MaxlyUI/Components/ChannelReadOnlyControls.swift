@@ -30,8 +30,8 @@ public struct ChannelReadOnlyControls: View {
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
-            .foregroundStyle(Color.orbitleAccent)
-            .orbitleGlassCapsule()
+            .foregroundStyle(Color.maxlyAccent)
+            .maxlyGlassCapsule()
             // Симметричные слоты сохраняют центр капсулы, поиск привязан к краю экрана.
             .padding(.horizontal, ChatControlMetrics.diameter + ChatControlMetrics.gap)
             .frame(maxWidth: .infinity)
@@ -41,8 +41,8 @@ public struct ChannelReadOnlyControls: View {
                 Button(action: onSearch) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Color.orbitleAccent)
-                        .orbitleGlassCircle(size: ChatControlMetrics.diameter)
+                        .foregroundStyle(Color.maxlyAccent)
+                        .maxlyGlassCircle(size: ChatControlMetrics.diameter)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Поиск в канале")

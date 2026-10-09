@@ -118,7 +118,7 @@ final class AppContainer {
     private(set) var crashReport: String?
 
     /// Бывший переключатель «Папки по типам чатов»: папки теперь только серверные.
-    private static let retiredLocalFiltersKey = "orbitle.chatList.localFilters"
+    private static let retiredLocalFiltersKey = "maxly.chatList.localFilters"
 
     init() {
         let enabled = UserDefaults.standard.object(forKey: Self.loggingKey) as? Bool ?? true

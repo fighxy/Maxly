@@ -319,7 +319,7 @@ struct MiniAppBridgeTests {
 
     @Test("Биометрия Цифрового ID отвечает локально и помнит токен")
     func biometry() {
-        let defaults = UserDefaults(suiteName: "orbitle.test.miniapp.\(UUID().uuidString)")!
+        let defaults = UserDefaults(suiteName: "maxly.test.miniapp.\(UUID().uuidString)")!
         let bridge = MiniAppBridge(botId: 8250447, deviceId: "dev1", vault: MiniAppVault(defaults: defaults, key: "v"))
         let size = CGSize(width: 390, height: 700)
         #expect(bridge.handle(event: "WebAppBiometryGetInfo", json: #"{"requestId":"b"}"#, viewport: size)

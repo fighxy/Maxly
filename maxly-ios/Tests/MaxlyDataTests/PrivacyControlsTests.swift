@@ -266,7 +266,7 @@ struct PrivacyControlsTests {
 @Suite("Настройки устройства для режима призрака")
 struct GhostDefaultsTests {
     private func defaults() throws -> (UserDefaults, String) {
-        let suite = "orbitle.tests.\(UUID().uuidString)"
+        let suite = "maxly.tests.\(UUID().uuidString)"
         return (try #require(UserDefaults(suiteName: suite)), suite)
     }
 
@@ -284,22 +284,22 @@ struct GhostDefaultsTests {
     func migration() throws {
         let (defaults, suite) = try defaults()
         defer { defaults.removePersistentDomain(forName: suite) }
-        defaults.set(true, forKey: "orbitle.ghost.enabled")
-        defaults.set(true, forKey: "orbitle.ghost.hideReadReceipts")
-        defaults.set(false, forKey: "orbitle.ghost.showsOwnPresence")
-        defaults.set("CONTACTS", forKey: "orbitle.privacy.local.INCOMING_CALL")
-        defaults.set("keep", forKey: "orbitle.chatList.other")
+        defaults.set(true, forKey: "maxly.ghost.enabled")
+        defaults.set(true, forKey: "maxly.ghost.hideReadReceipts")
+        defaults.set(false, forKey: "maxly.ghost.showsOwnPresence")
+        defaults.set("CONTACTS", forKey: "maxly.privacy.local.INCOMING_CALL")
+        defaults.set("keep", forKey: "maxly.chatList.other")
         GhostDefaultsMigration.run(defaults)
-        #expect(defaults.object(forKey: "orbitle.ghost.enabled") == nil)
-        #expect(defaults.object(forKey: "orbitle.ghost.hideReadReceipts") == nil)
-        #expect(defaults.object(forKey: "orbitle.ghost.showsOwnPresence") == nil)
-        #expect(defaults.object(forKey: "orbitle.privacy.local.INCOMING_CALL") == nil)
-        #expect(defaults.string(forKey: "orbitle.chatList.other") == "keep")
+        #expect(defaults.object(forKey: "maxly.ghost.enabled") == nil)
+        #expect(defaults.object(forKey: "maxly.ghost.hideReadReceipts") == nil)
+        #expect(defaults.object(forKey: "maxly.ghost.showsOwnPresence") == nil)
+        #expect(defaults.object(forKey: "maxly.privacy.local.INCOMING_CALL") == nil)
+        #expect(defaults.string(forKey: "maxly.chatList.other") == "keep")
         #expect(!UserDefaultsSelfCheckStore(defaults: defaults).showsOwnPresence())
         #expect(defaults.bool(forKey: GhostDefaultsMigration.doneKey))
         // Второй запуск ничего не трогает.
-        defaults.set(true, forKey: "orbitle.ghost.enabled")
+        defaults.set(true, forKey: "maxly.ghost.enabled")
         GhostDefaultsMigration.run(defaults)
-        #expect(defaults.bool(forKey: "orbitle.ghost.enabled"))
+        #expect(defaults.bool(forKey: "maxly.ghost.enabled"))
     }
 }

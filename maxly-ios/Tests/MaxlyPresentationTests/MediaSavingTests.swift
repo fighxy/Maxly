@@ -60,7 +60,7 @@ struct MediaSavingTests {
     }
 
     private func directory() -> URL {
-        FileManager.default.temporaryDirectory.appending(path: "orbitle-save-\(UUID().uuidString)", directoryHint: .isDirectory)
+        FileManager.default.temporaryDirectory.appending(path: "maxly-save-\(UUID().uuidString)", directoryHint: .isDirectory)
     }
 
     @Test("Имя по времени сообщения, номер со второго вложения")

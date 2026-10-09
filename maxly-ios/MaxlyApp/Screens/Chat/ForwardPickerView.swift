@@ -31,7 +31,7 @@ struct ForwardPickerView: View {
                         if allowsMultiple {
                             Image(systemName: picked.contains(item.id) ? "checkmark.circle.fill" : "circle")
                                 .font(.title3)
-                                .foregroundStyle(picked.contains(item.id) ? Color.orbitleAccent : Color.secondary)
+                                .foregroundStyle(picked.contains(item.id) ? Color.maxlyAccent : Color.secondary)
                         }
                     }
                     .contentShape(Rectangle())
@@ -80,14 +80,14 @@ struct ForwardPickerView: View {
                 .lineLimit(1...4)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .orbitleGlassCapsule(interactive: false)
+                .maxlyGlassCapsule(interactive: false)
             Button {
                 let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
                 onPickMany?(picked, text.isEmpty ? nil : text)
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 34))
-                    .foregroundStyle(Color.orbitleAccent)
+                    .foregroundStyle(Color.maxlyAccent)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Отправить")

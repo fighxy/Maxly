@@ -22,11 +22,11 @@ struct ReactionChips: View {
             ReactionFlow(spacing: 6, trailing: trailing) {
                 ForEach(reactions, id: \.emoji) { reaction in
                     chip(reaction)
-                        .transition(.orbitlePop(reduceMotion: reduceMotion))
+                        .transition(.maxlyPop(reduceMotion: reduceMotion))
                 }
             }
             // Первая реакция «выпрыгивает» вместе с рядом; лента раздвигается по `contentVersion`.
-            .transition(.orbitlePop(reduceMotion: reduceMotion))
+            .transition(.maxlyPop(reduceMotion: reduceMotion))
             .animation(MaxlyMotion.pop(reduceMotion: reduceMotion), value: reactions)
             .sensoryFeedback(.selection, trigger: taps)
         }
@@ -61,13 +61,13 @@ struct ReactionChips: View {
 
 extension ReactionChips {
     fileprivate func foreground(_ reaction: MessageReaction) -> Color {
-        if onOutgoing { return reaction.mine ? Color.orbitleOnOutgoingAccent : Color.orbitleOutgoingAccent }
-        return reaction.mine ? Color.orbitleOnAccent : Color.primary
+        if onOutgoing { return reaction.mine ? Color.maxlyOnOutgoingAccent : Color.maxlyOutgoingAccent }
+        return reaction.mine ? Color.maxlyOnAccent : Color.primary
     }
 
     fileprivate func background(_ reaction: MessageReaction) -> Color {
-        if onOutgoing { return reaction.mine ? Color.orbitleOutgoingAccent : Color.orbitleOutgoingAccent.opacity(0.12) }
-        return reaction.mine ? Color.orbitleAccent : Color.secondary.opacity(0.15)
+        if onOutgoing { return reaction.mine ? Color.maxlyOutgoingAccent : Color.maxlyOutgoingAccent.opacity(0.12) }
+        return reaction.mine ? Color.maxlyAccent : Color.secondary.opacity(0.15)
     }
 }
 

@@ -49,7 +49,7 @@ struct ReactionUsersView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .foregroundStyle(selected ? Color.white : Color.primary)
-                .background(selected ? Color.orbitleAccent : Color.secondary.opacity(0.15), in: Capsule())
+                .background(selected ? Color.maxlyAccent : Color.secondary.opacity(0.15), in: Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])

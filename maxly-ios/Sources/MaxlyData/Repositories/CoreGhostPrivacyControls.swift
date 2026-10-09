@@ -76,7 +76,7 @@ public final class CoreGhostPrivacyControls: GhostControls, PrivacyControls, Sen
             // Сервер промолчал о себе: статус неизвестен, строка в шапке не показывается.
             return try await core.checkOwnPresence()?.presence ?? .unknown
         } catch {
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 
@@ -109,7 +109,7 @@ public final class CoreGhostPrivacyControls: GhostControls, PrivacyControls, Sen
         } catch let error as MaxlyError {
             throw error
         } catch {
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 

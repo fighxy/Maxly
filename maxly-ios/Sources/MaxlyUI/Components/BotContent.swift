@@ -33,13 +33,13 @@ struct LinkPreviewCard: View {
         } label: {
             HStack(alignment: .top, spacing: 8) {
                 RoundedRectangle(cornerRadius: 1.5)
-                    .fill(outgoing ? textColor.opacity(0.7) : Color.orbitleAccent)
+                    .fill(outgoing ? textColor.opacity(0.7) : Color.maxlyAccent)
                     .frame(width: 3)
                 VStack(alignment: .leading, spacing: 3) {
                     if let site = preview.site {
                         Text(site)
                             .font(.footnote.weight(.semibold))
-                            .foregroundStyle(outgoing ? textColor : Color.orbitleAccent)
+                            .foregroundStyle(outgoing ? textColor : Color.maxlyAccent)
                             .lineLimit(1)
                     }
                     if let title = preview.title {
@@ -111,7 +111,7 @@ struct InlineKeyboardView: View {
                             .frame(maxWidth: .infinity, minHeight: 40)
                             .padding(.horizontal, 8)
                             // Цвет входящего пузыря: на обоях кнопка читается так же, как пост над ней.
-                            .background(Color.orbitleIncomingOnWallpaper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .background(Color.maxlyIncomingOnWallpaper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
                         .buttonStyle(.plain)

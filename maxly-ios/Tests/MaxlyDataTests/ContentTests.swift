@@ -394,7 +394,7 @@ struct MessageContentStoreTests {
     @Test("Скачанный файл запоминается у вложения")
     func remembersDownload() async throws {
         let (repository, _) = try await makeMessageStack(api: FakeMaxAPI())
-        let file = FileManager.default.temporaryDirectory.appendingPathComponent("orbitle-voice-\(UUID().uuidString).ogg")
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("maxly-voice-\(UUID().uuidString).ogg")
         try Data([1, 2, 3]).write(to: file)
         defer { try? FileManager.default.removeItem(at: file) }
         let voice = VoiceContent(id: "a1", url: URL(string: "https://cdn.example/a.ogg"), durationMs: 3200)

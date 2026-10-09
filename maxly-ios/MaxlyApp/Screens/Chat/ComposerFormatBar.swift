@@ -76,7 +76,7 @@ struct ComposerFormatBar: View {
         }
         .font(.system(size: 17, weight: .medium))
         .padding(.horizontal, 6)
-        .orbitleGlassCapsule(interactive: false)
+        .maxlyGlassCapsule(interactive: false)
         .alert("Ссылка", isPresented: $linkShown) {
             TextField("https://", text: $linkText)
                 .textInputAutocapitalization(.never)
@@ -108,9 +108,9 @@ struct ComposerFormatBar: View {
             }
         } label: {
             Image(systemName: Self.symbol(kind))
-                .foregroundStyle(active ? Color.orbitleAccent : Color.primary)
+                .foregroundStyle(active ? Color.maxlyAccent : Color.primary)
                 .frame(width: 40, height: 40)
-                .background(active ? Color.orbitleAccent.opacity(0.15) : .clear, in: Circle())
+                .background(active ? Color.maxlyAccent.opacity(0.15) : .clear, in: Circle())
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

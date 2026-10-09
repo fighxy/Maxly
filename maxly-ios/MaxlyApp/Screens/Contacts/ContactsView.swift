@@ -84,7 +84,7 @@ struct ContactsView: View {
                 content
             }
             .listStyle(.plain)
-            .orbitleSectionIndexVisible(showsIndex)
+            .maxlySectionIndexVisible(showsIndex)
             .overlay(alignment: .trailing) {
                 if showsIndex, !SectionIndexSupport.isNative {
                     SectionIndexStrip(titles: ContactsViewModel.indexTitles) { title in
@@ -202,7 +202,7 @@ struct ContactsView: View {
                     Text(section.title)
                 }
             }
-            .orbitleSectionIndexLabel(section.id)
+            .maxlySectionIndexLabel(section.id)
         }
     }
 
@@ -259,7 +259,7 @@ struct ContactRowView: View {
                     if row.isOfficial, !privateMode.isMasked {
                         Image(systemName: "checkmark.seal.fill")
                             .font(.caption)
-                            .foregroundStyle(Color.orbitleAccent)
+                            .foregroundStyle(Color.maxlyAccent)
                             .accessibilityLabel("Официальный аккаунт")
                     }
                 }
@@ -267,7 +267,7 @@ struct ContactRowView: View {
                 if !row.status.isEmpty {
                     Text(row.status)
                         .font(.subheadline)
-                        .foregroundStyle(row.isOnline ? AnyShapeStyle(Color.orbitleAccent) : AnyShapeStyle(.secondary))
+                        .foregroundStyle(row.isOnline ? AnyShapeStyle(Color.maxlyAccent) : AnyShapeStyle(.secondary))
                         .lineLimit(1)
                 }
             }
@@ -327,6 +327,6 @@ struct AddContactSheet: View {
                 }
             }
         }
-        .tint(Color.orbitleAccent)
+        .tint(Color.maxlyAccent)
     }
 }

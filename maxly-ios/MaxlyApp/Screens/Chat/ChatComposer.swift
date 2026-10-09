@@ -57,8 +57,8 @@ struct ChatComposer: View {
                     .foregroundStyle(.red)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
-                    .orbitleGlassCapsule()
-                    .transition(.orbitleBar(edge: .bottom, reduceMotion: reduceMotion))
+                    .maxlyGlassCapsule()
+                    .transition(.maxlyBar(edge: .bottom, reduceMotion: reduceMotion))
             }
             if let hint = recording.hint {
                 Text(hint)
@@ -66,9 +66,9 @@ struct ChatComposer: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .orbitleGlassCapsule()
+                    .maxlyGlassCapsule()
                     .frame(maxWidth: .infinity)
-                    .transition(.orbitleBar(edge: .bottom, reduceMotion: reduceMotion))
+                    .transition(.maxlyBar(edge: .bottom, reduceMotion: reduceMotion))
             }
             if !viewModel.mentionHints.isEmpty {
                 hintRow(viewModel.mentionHints.map(\.name)) { name in
@@ -89,9 +89,9 @@ struct ChatComposer: View {
                     .font(.footnote.weight(.medium))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .orbitleGlassCapsule()
+                    .maxlyGlassCapsule()
                     .frame(maxWidth: .infinity)
-                    .transition(.orbitleBar(edge: .bottom, reduceMotion: reduceMotion))
+                    .transition(.maxlyBar(edge: .bottom, reduceMotion: reduceMotion))
             }
             if let target = viewModel.editTarget {
                 editBar(target)
@@ -106,13 +106,13 @@ struct ChatComposer: View {
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(Color.orbitleAccent)
-                .orbitleGlassCapsule()
+                .foregroundStyle(Color.maxlyAccent)
+                .maxlyGlassCapsule()
             }
             if canWrite, viewModel.formatSelection != nil, !recording.isActive {
                 ComposerFormatBar(viewModel: viewModel)
                     .frame(maxWidth: .infinity)
-                    .transition(.orbitleBar(edge: .bottom, reduceMotion: reduceMotion))
+                    .transition(.maxlyBar(edge: .bottom, reduceMotion: reduceMotion))
             }
             if canWrite {
                 input
@@ -151,14 +151,14 @@ struct ChatComposer: View {
                                 .contentShape(Circle())
                         }
                         .buttonStyle(.plain)
-                        .orbitleGlassCircle(size: 44)
-                        .orbitleGlassID("attach", in: composerGlass)
+                        .maxlyGlassCircle(size: 44)
+                        .maxlyGlassID("attach", in: composerGlass)
                         // При правке слот сохраняется: длинный текст не получает
                         // дополнительный перенос из-за смены ширины на 52 pt.
                         .opacity(viewModel.editTarget == nil ? 1 : 0)
                         .disabled(viewModel.editTarget != nil)
                         .accessibilityHidden(viewModel.editTarget != nil)
-                        .transition(.orbitlePop(reduceMotion: reduceMotion))
+                        .transition(.maxlyPop(reduceMotion: reduceMotion))
                         .accessibilityLabel("Прикрепить")
                     }
                     if !recording.isActive {
@@ -171,8 +171,8 @@ struct ChatComposer: View {
                             panelButton
                         }
                         .frame(minHeight: 44)
-                        .orbitleGlassRounded(radius: 22)
-                        .orbitleGlassID("field", in: composerGlass)
+                        .maxlyGlassRounded(radius: 22)
+                        .maxlyGlassID("field", in: composerGlass)
                     }
                     ZStack {
                         if showsRecordButton {
@@ -200,7 +200,7 @@ struct ChatComposer: View {
                         .font(.subheadline)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
-                        .orbitleGlassCapsule()
+                        .maxlyGlassCapsule()
                 }
             }
         }
@@ -246,9 +246,9 @@ struct ChatComposer: View {
                 .frame(width: 30, height: 30)
                 .contentTransition(.symbolEffect(.replace))
         }
-        .orbitleProminentButtonStyle()
+        .maxlyProminentButtonStyle()
         .buttonBorderShape(.circle)
-        .tint(Color.orbitleAccent)
+        .tint(Color.maxlyAccent)
         .disabled(!viewModel.canSend)
         .accessibilityLabel(viewModel.editTarget == nil ? "Отправить" : "Сохранить правку")
     }
@@ -270,8 +270,8 @@ struct ChatComposer: View {
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
-            .foregroundStyle(Color.orbitleAccent)
-            .orbitleGlassCapsule()
+            .foregroundStyle(Color.maxlyAccent)
+            .maxlyGlassCapsule()
             .disabled(join.busy)
             .frame(maxWidth: .infinity)
             .accessibilityLabel(join.label)
@@ -285,7 +285,7 @@ struct ChatComposer: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .padding(.horizontal, 12)
-                .orbitleGlassCapsule()
+                .maxlyGlassCapsule()
         }
     }
 
@@ -293,11 +293,11 @@ struct ChatComposer: View {
         HStack(spacing: 10) {
             Image(systemName: "pencil")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.orbitleAccent)
+                .foregroundStyle(Color.maxlyAccent)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Редактирование")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.orbitleAccent)
+                    .foregroundStyle(Color.maxlyAccent)
                 Text(privateMode.isMasked ? PrivateModeMask.messageText(outgoing: true) : message.text)
                     .font(.subheadline)
                     .lineLimit(1)
@@ -306,7 +306,7 @@ struct ChatComposer: View {
             .padding(.leading, 9)
             .overlay(alignment: .leading) {
                 Capsule()
-                    .fill(Color.orbitleAccent)
+                    .fill(Color.maxlyAccent)
                     .frame(width: 3)
             }
             Spacer(minLength: 8)
@@ -323,8 +323,8 @@ struct ChatComposer: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .fixedSize(horizontal: false, vertical: true)
-        .orbitleGlassRounded(radius: 20)
-        .transition(.orbitleBar(edge: .bottom, reduceMotion: reduceMotion))
+        .maxlyGlassRounded(radius: 20)
+        .transition(.maxlyBar(edge: .bottom, reduceMotion: reduceMotion))
     }
 
     private func replyTitle(_ message: Message) -> String {
@@ -337,11 +337,11 @@ struct ChatComposer: View {
         HStack(spacing: 10) {
             Image(systemName: "arrowshape.turn.up.left.fill")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.orbitleAccent)
+                .foregroundStyle(Color.maxlyAccent)
             VStack(alignment: .leading, spacing: 1) {
                 Text(privateMode.isMasked ? "Ответ" : replyTitle(message))
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.orbitleAccent)
+                    .foregroundStyle(Color.maxlyAccent)
                     .lineLimit(1)
                 Text(privateMode.isMasked ? PrivateModeMask.messageText(outgoing: viewModel.isOutgoing(message)) : message.replySnippet)
                     .font(.subheadline)
@@ -351,7 +351,7 @@ struct ChatComposer: View {
             .padding(.leading, 9)
             .overlay(alignment: .leading) {
                 Capsule()
-                    .fill(Color.orbitleAccent)
+                    .fill(Color.maxlyAccent)
                     .frame(width: 3)
             }
             Spacer(minLength: 8)
@@ -368,7 +368,7 @@ struct ChatComposer: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .fixedSize(horizontal: false, vertical: true)
-        .orbitleGlassRounded(radius: 20)
-        .transition(.orbitleBar(edge: .bottom, reduceMotion: reduceMotion))
+        .maxlyGlassRounded(radius: 20)
+        .transition(.maxlyBar(edge: .bottom, reduceMotion: reduceMotion))
     }
 }

@@ -23,7 +23,7 @@ struct ChatHeaderTitle: View {
                 if isVerified {
                     Image(systemName: "checkmark.seal.fill")
                         .font(.system(size: 13))
-                        .foregroundStyle(Color.orbitleAccent)
+                        .foregroundStyle(Color.maxlyAccent)
                 }
                 if isMuted {
                     Image(systemName: "speaker.slash.fill")
@@ -41,7 +41,7 @@ struct ChatHeaderTitle: View {
         .frame(maxWidth: 220)
         .padding(.horizontal, 18)
         .frame(height: 44)
-        .orbitleGlassCapsule()
+        .maxlyGlassCapsule()
         .contentShape(Capsule())
     }
 
@@ -58,7 +58,7 @@ struct ChatHeaderTitle: View {
         case .accent(let text):
             Text(text)
                 .font(.system(size: 13))
-                .foregroundStyle(Color.orbitleAccent)
+                .foregroundStyle(Color.maxlyAccent)
                 .lineLimit(1)
         case .typing(let text):
             TypingStatus(text: text)

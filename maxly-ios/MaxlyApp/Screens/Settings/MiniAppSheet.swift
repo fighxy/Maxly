@@ -61,7 +61,7 @@ struct MiniAppSheet: View {
             } actions: {
                 Button("Повторить") { Task { await model.launch() } }
                     .buttonStyle(.borderedProminent)
-                    .foregroundStyle(Color.orbitleOnAccent)
+                    .foregroundStyle(Color.maxlyOnAccent)
             }
         case .ready(let app):
             MiniAppWebView(app: app, model: model, controller: controller) { dismiss() }
@@ -93,7 +93,7 @@ final class MiniAppWebController {
     /// Ответ странице через `window.WebApp.sendEvent(имя, JSON)`; до готовности SDK — в очередь.
     func deliver(event: String, json: String) {
         guard let webView else { return }
-        let script = "window.__orbitleDeliver && window.__orbitleDeliver(\(Self.literal(event)), \(Self.literal(json)));"
+        let script = "window.__maxlyDeliver && window.__maxlyDeliver(\(Self.literal(event)), \(Self.literal(json)));"
         webView.evaluateJavaScript(script, completionHandler: nil)
     }
 
@@ -108,11 +108,11 @@ final class MiniAppWebController {
     }
 
     /// Скрипт до загрузки страницы: `window.WebViewHandler.postEvent` отдаёт события приложению,
-    /// `__orbitleDeliver` держит ответы, пока страница не поднимет `window.WebApp`.
+    /// `__maxlyDeliver` держит ответы, пока страница не поднимет `window.WebApp`.
     static let userScript = """
     (function () {
-      if (window.__orbitleBridgeReady) { return; }
-      window.__orbitleBridgeReady = true;
+      if (window.__maxlyBridgeReady) { return; }
+      window.__maxlyBridgeReady = true;
       var outbox = [];
       function drain() {
         var target = window.WebApp;
@@ -123,14 +123,14 @@ final class MiniAppWebController {
         }
       }
       setInterval(drain, 50);
-      window.__orbitleDeliver = function (name, data) { outbox.push({ name: name, data: data }); drain(); };
+      window.__maxlyDeliver = function (name, data) { outbox.push({ name: name, data: data }); drain(); };
       function post(name, data) {
         var body = data;
         if (body !== undefined && body !== null && typeof body !== 'string') {
           try { body = JSON.stringify(body); } catch (e) { body = null; }
         }
         try {
-          window.webkit.messageHandlers.orbitleWebApp.postMessage({ name: String(name), data: body === undefined ? null : body });
+          window.webkit.messageHandlers.maxlyWebApp.postMessage({ name: String(name), data: body === undefined ? null : body });
         } catch (e) {}
       }
       window.WebViewHandler = { postEvent: post, resolveShare: function () {} };
@@ -156,7 +156,7 @@ struct MiniAppWebView: UIViewRepresentable {
         configuration.websiteDataStore = .default()
         let content = WKUserContentController()
         content.addUserScript(WKUserScript(source: MiniAppWebController.userScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
-        content.add(WeakScriptHandler(context.coordinator), name: "orbitleWebApp")
+        content.add(WeakScriptHandler(context.coordinator), name: "maxlyWebApp")
         configuration.userContentController = content
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
@@ -181,7 +181,7 @@ struct MiniAppWebView: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
-        webView.configuration.userContentController.removeScriptMessageHandler(forName: "orbitleWebApp")
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "maxlyWebApp")
     }
 
     @MainActor

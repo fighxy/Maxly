@@ -111,7 +111,7 @@ struct AuthRegistrationStep: View {
                     .font(.system(size: 26))
                     .symbolRenderingMode(.palette)
                     .foregroundStyle(.white, .tint)
-                    .background(Circle().fill(Color.orbitleBackground).padding(-2))
+                    .background(Circle().fill(Color.maxlyBackground).padding(-2))
                     .offset(x: -2, y: -2)
             }
         }

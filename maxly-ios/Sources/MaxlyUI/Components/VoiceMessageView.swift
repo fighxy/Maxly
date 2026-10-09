@@ -47,7 +47,7 @@ struct VoiceMessageView: View {
                         if case .failed = phase {
                             Text("Не удалось воспроизвести")
                                 .font(.caption2)
-                                .foregroundStyle(outgoing ? Color.orbitleOutgoingText.opacity(0.85) : Color.red)
+                                .foregroundStyle(outgoing ? Color.maxlyOutgoingText.opacity(0.85) : Color.red)
                                 .lineLimit(1)
                         }
                     }
@@ -132,7 +132,7 @@ struct VoiceMessageView: View {
     }
 
     private var accent: Color {
-        outgoing ? Color.orbitleOutgoingAccent : Color.orbitleAccent
+        outgoing ? Color.maxlyOutgoingAccent : Color.maxlyAccent
     }
 
     private func transcribeButton(_ action: @escaping () -> Void) -> some View {
@@ -190,7 +190,7 @@ struct VoiceMessageView: View {
         ZStack(alignment: .bottomTrailing) {
             (transcriptText + Text(verbatim: time == nil ? "" : "\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}").font(.caption2))
                 .font(.body)
-                .foregroundStyle(transcript == .failed ? secondary : (outgoing ? Color.orbitleOutgoingText : Color.primary))
+                .foregroundStyle(transcript == .failed ? secondary : (outgoing ? Color.maxlyOutgoingText : Color.primary))
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
@@ -205,16 +205,16 @@ struct VoiceMessageView: View {
     }
 
     private var secondary: Color {
-        outgoing ? Color.orbitleOutgoingSecondary : Color.secondary
+        outgoing ? Color.maxlyOutgoingSecondary : Color.secondary
     }
 
     private var button: some View {
         Button(action: onToggle) {
             ZStack {
-                Circle().fill(outgoing ? Color.orbitleOutgoingAccent : Color.orbitleAccent)
+                Circle().fill(outgoing ? Color.maxlyOutgoingAccent : Color.maxlyAccent)
                 symbol
                     .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(outgoing ? Color.orbitleOnOutgoingAccent : Color.orbitleOnAccent)
+                    .foregroundStyle(outgoing ? Color.maxlyOnOutgoingAccent : Color.maxlyOnAccent)
             }
             .frame(width: Self.playSize, height: Self.playSize)
         }
@@ -226,7 +226,7 @@ struct VoiceMessageView: View {
     private var symbol: some View {
         switch phase {
         case .downloading:
-            ProgressView().tint(outgoing ? Color.orbitleOnOutgoingAccent : Color.orbitleOnAccent)
+            ProgressView().tint(outgoing ? Color.maxlyOnOutgoingAccent : Color.maxlyOnAccent)
         case .playing:
             Image(systemName: "pause.fill")
         case .failed:
@@ -239,8 +239,8 @@ struct VoiceMessageView: View {
     private var bars: some View {
         let wave = voice.waveform
         let played = scrub ?? ((phase.isPlaying || isPaused) ? phase.progress : 0)
-        let active = outgoing ? Color.orbitleOutgoingAccent : Color.orbitleAccent
-        let rest = outgoing ? Color.orbitleOutgoingAccent.opacity(0.35) : Color.orbitleAccent.opacity(0.35)
+        let active = outgoing ? Color.maxlyOutgoingAccent : Color.maxlyAccent
+        let rest = outgoing ? Color.maxlyOutgoingAccent.opacity(0.35) : Color.maxlyAccent.opacity(0.35)
         return Canvas { context, size in
             // Столбики на всю данную ширину: число — сколько влезает, остаток — в зазоры.
             let layout = WaveformLayout(width: Double(size.width), barWidth: Self.barWidth, spacing: Self.barSpacing)

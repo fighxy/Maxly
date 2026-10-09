@@ -188,7 +188,7 @@ public struct MessageBubble: View {
     public var body: some View {
         if let pin = message.content.pin {
             ServiceMessageNotice(pin: pin, onOpen: onFocusReply)
-                .background(highlighted ? Color.orbitleAccent.opacity(0.12) : Color.clear)
+                .background(highlighted ? Color.maxlyAccent.opacity(0.12) : Color.clear)
         } else {
             messageRow
         }
@@ -231,7 +231,7 @@ public struct MessageBubble: View {
         .background(alignment: .trailing) { replyHint }
         .replySwipe(enabled: allowsReply, onChange: swipeChanged, onEnd: swipeEnded)
         .padding(.top, group.joinsPrevious ? 0 : 4)
-        .background(highlighted ? Color.orbitleAccent.opacity(0.12) : Color.clear)
+        .background(highlighted ? Color.maxlyAccent.opacity(0.12) : Color.clear)
         .animation(MaxlyMotion.fade, value: highlighted)
         .contextMenu {
             if allowsReactions {
@@ -336,7 +336,7 @@ public struct MessageBubble: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 32, height: 32)
-                .background(Color.orbitleAccent.opacity(0.4 + 0.6 * progress), in: Circle())
+                .background(Color.maxlyAccent.opacity(0.4 + 0.6 * progress), in: Circle())
                 .scaleEffect(0.6 + 0.4 * progress)
                 .opacity(progress)
                 .padding(.trailing, 4)
@@ -352,7 +352,7 @@ public struct MessageBubble: View {
         return Button(action: onComments) {
             VStack(spacing: 0) {
                 Rectangle()
-                    .fill((isOutgoing ? Color.orbitleOutgoingText : Color.primary).opacity(0.12))
+                    .fill((isOutgoing ? Color.maxlyOutgoingText : Color.primary).opacity(0.12))
                     .frame(height: 0.5)
                 HStack(spacing: 8) {
                     Image(systemName: "bubble.left.and.bubble.right.fill")
@@ -365,7 +365,7 @@ public struct MessageBubble: View {
                         .font(.system(size: 13, weight: .semibold))
                         .opacity(0.6)
                 }
-                .foregroundStyle(isOutgoing ? Color.orbitleOutgoingAccent : Color.orbitleAccent)
+                .foregroundStyle(isOutgoing ? Color.maxlyOutgoingAccent : Color.maxlyAccent)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
             }
@@ -757,20 +757,20 @@ public struct MessageBubble: View {
         return Button { onFile(file.id) } label: {
             HStack(alignment: .center, spacing: 10) {
                 ZStack {
-                    Circle().fill(isOutgoing ? Color.orbitleOutgoingAccent.opacity(0.15) : Color.orbitleAccent)
+                    Circle().fill(isOutgoing ? Color.maxlyOutgoingAccent.opacity(0.15) : Color.maxlyAccent)
                     if loading {
-                        ProgressView().tint(isOutgoing ? Color.orbitleOutgoingAccent : Color.orbitleOnAccent)
+                        ProgressView().tint(isOutgoing ? Color.maxlyOutgoingAccent : Color.maxlyOnAccent)
                     } else if downloaded {
                         Text(Self.fileBadge(file.name))
                             .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundStyle(isOutgoing ? Color.orbitleOutgoingAccent : Color.orbitleOnAccent)
+                            .foregroundStyle(isOutgoing ? Color.maxlyOutgoingAccent : Color.maxlyOnAccent)
                             .lineLimit(1)
                             .minimumScaleFactor(0.6)
                             .padding(4)
                     } else {
                         Image(systemName: "arrow.down")
                             .font(.system(size: 17, weight: .bold))
-                            .foregroundStyle(isOutgoing ? Color.orbitleOutgoingAccent : Color.orbitleOnAccent)
+                            .foregroundStyle(isOutgoing ? Color.maxlyOutgoingAccent : Color.maxlyOnAccent)
                     }
                 }
                 .frame(width: 44, height: 44)
@@ -805,10 +805,10 @@ public struct MessageBubble: View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Переслано от")
                 .font(.caption)
-                .foregroundStyle(isOutgoing ? Color.orbitleOutgoingAccent : Color.orbitleAccent)
+                .foregroundStyle(isOutgoing ? Color.maxlyOutgoingAccent : Color.maxlyAccent)
             Text(forward.authorName)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(isOutgoing ? Color.orbitleOutgoingAccent : Color.orbitleAccent)
+                .foregroundStyle(isOutgoing ? Color.maxlyOutgoingAccent : Color.maxlyAccent)
                 .lineLimit(1)
         }
         .accessibilityElement(children: .combine)
@@ -877,16 +877,16 @@ public struct MessageBubble: View {
 
     private var fill: Color {
         guard hasFill else { return .clear }
-        if isOutgoing { return Color.orbitleOutgoing }
-        return wallpaper.hasImage ? Color.orbitleIncomingOnWallpaper : Color.orbitleIncoming
+        if isOutgoing { return Color.maxlyOutgoing }
+        return wallpaper.hasImage ? Color.maxlyIncomingOnWallpaper : Color.maxlyIncoming
     }
 
     private var textColor: Color {
-        isOutgoing ? .orbitleOutgoingText : .primary
+        isOutgoing ? .maxlyOutgoingText : .primary
     }
 
     private var metaColor: Color {
-        isOutgoing ? Color.orbitleOutgoingSecondary : Color.secondary
+        isOutgoing ? Color.maxlyOutgoingSecondary : Color.secondary
     }
 
     private var authorColor: Color {
@@ -894,7 +894,7 @@ public struct MessageBubble: View {
     }
 
     private var quoteTint: Color {
-        isOutgoing ? Color.orbitleOutgoingAccent : Color.orbitleAccent
+        isOutgoing ? Color.maxlyOutgoingAccent : Color.maxlyAccent
     }
 
     private var showsComments: Bool {
@@ -954,7 +954,7 @@ private struct PollChoices: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(poll.title)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(outgoing ? Color.orbitleOutgoingText : Color.primary)
+                .foregroundStyle(outgoing ? Color.maxlyOutgoingText : Color.primary)
             ForEach(poll.answers, id: \.id) { answer in
                 Button {
                     if poll.multiple {
@@ -966,16 +966,16 @@ private struct PollChoices: View {
                     HStack {
                         Text(answer.text)
                             .font(.subheadline)
-                            .foregroundStyle(outgoing ? Color.orbitleOutgoingText : Color.primary)
+                            .foregroundStyle(outgoing ? Color.maxlyOutgoingText : Color.primary)
                             .multilineTextAlignment(.leading)
                         Spacer(minLength: 8)
                         Text("\(answer.votes)")
                             .font(.caption.monospacedDigit())
-                            .foregroundStyle(outgoing ? Color.orbitleOutgoingSecondary : Color.secondary)
+                            .foregroundStyle(outgoing ? Color.maxlyOutgoingSecondary : Color.secondary)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
-                    .background((outgoing ? Color.orbitleOutgoingText : Color.primary).opacity(picked.contains(answer.id) ? 0.28 : 0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background((outgoing ? Color.maxlyOutgoingText : Color.primary).opacity(picked.contains(answer.id) ? 0.28 : 0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .disabled(poll.multiple ? onCast == nil : onVote == nil)
@@ -987,7 +987,7 @@ private struct PollChoices: View {
             }
             Text(poll.total == 1 ? "1 голос" : "\(poll.total) голосов")
                 .font(.caption)
-                .foregroundStyle(outgoing ? Color.orbitleOutgoingSecondary : Color.secondary)
+                .foregroundStyle(outgoing ? Color.maxlyOutgoingSecondary : Color.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)

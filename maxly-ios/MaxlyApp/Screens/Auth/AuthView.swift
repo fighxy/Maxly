@@ -31,7 +31,7 @@ struct AuthView: View {
                         .toolbarRole(.editor)
                 }
         }
-        .tint(Color.orbitleAccent)
+        .tint(Color.maxlyAccent)
         .task { viewModel.activate() }
     }
 
@@ -88,7 +88,7 @@ struct AuthStepScroll<Content: View>: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .scrollDismissesKeyboard(.never)
-        .background(Color.orbitleBackground)
+        .background(Color.maxlyBackground)
     }
 }
 
@@ -165,7 +165,7 @@ struct AuthPrimaryButton: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 6)
         }
-        .orbitleProminentButtonStyle()
+        .maxlyProminentButtonStyle()
         .buttonBorderShape(.roundedRectangle(radius: 14))
         .controlSize(.large)
         .disabled(!isEnabled || isBusy)

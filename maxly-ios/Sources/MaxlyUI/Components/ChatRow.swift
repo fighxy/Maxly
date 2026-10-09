@@ -113,15 +113,15 @@ public struct ChatRow: View {
             if item.isVerified {
                 Image(systemName: "checkmark.seal.fill")
                     .font(.caption)
-                    .foregroundStyle(Color.orbitleAccent)
+                    .foregroundStyle(Color.maxlyAccent)
             }
             if item.isBot {
                 Text("бот")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.orbitleAccent)
+                    .foregroundStyle(Color.maxlyAccent)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
-                    .background(Color.orbitleAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 4))
+                    .background(Color.maxlyAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 4))
             }
             if item.isMuted {
                 Image(systemName: "speaker.slash.fill")
@@ -192,7 +192,7 @@ public struct ChatRow: View {
             }
             if let url = item.thumbnailURL {
                 RemoteImage(url: url, maxPixel: 64) {
-                    RoundedRectangle(cornerRadius: 3).fill(Color.orbitleField)
+                    RoundedRectangle(cornerRadius: 3).fill(Color.maxlyField)
                 }
                 .frame(width: 18, height: 18)
                 .privateModeBlur(privateMode, radius: 4)
@@ -214,7 +214,7 @@ public struct ChatRow: View {
         HStack(spacing: 4) {
             if item.hasMention {
                 UnreadBadge(text: "@", muted: false)
-                    .transition(.orbitlePop(reduceMotion: reduceMotion))
+                    .transition(.maxlyPop(reduceMotion: reduceMotion))
             }
             if let badge = item.badge {
                 Group {
@@ -225,13 +225,13 @@ public struct ChatRow: View {
                         UnreadBadge(text: nil, muted: item.badgeMuted)
                     }
                 }
-                .transition(.orbitlePop(reduceMotion: reduceMotion))
+                .transition(.maxlyPop(reduceMotion: reduceMotion))
             } else if item.showsPin {
                 Image(systemName: "pin.fill")
                     .font(.footnote)
                     .rotationEffect(.degrees(45))
                     .foregroundStyle(.tertiary)
-                    .transition(.orbitlePop(reduceMotion: reduceMotion))
+                    .transition(.maxlyPop(reduceMotion: reduceMotion))
             }
         }
         // Бейдж появляется, растёт числом и гаснет плавно — и когда строка не двигается.
@@ -258,14 +258,14 @@ public struct UnreadBadge: View {
                 Text(text)
                     .font(.footnote.weight(.semibold))
                     .monospacedDigit()
-                    .foregroundStyle(Color.orbitleOnAccent)
+                    .foregroundStyle(Color.maxlyOnAccent)
                     .padding(.horizontal, 6)
                     .frame(minWidth: height, minHeight: height)
-                    .background(muted ? Color.orbitleMutedBadge : Color.orbitleAccent, in: Capsule())
+                    .background(muted ? Color.maxlyMutedBadge : Color.maxlyAccent, in: Capsule())
                     .contentTransition(.numericText())
             } else {
                 Circle()
-                    .fill(muted ? Color.orbitleMutedBadge : Color.orbitleAccent)
+                    .fill(muted ? Color.maxlyMutedBadge : Color.maxlyAccent)
                     .frame(width: height * 0.6, height: height * 0.6)
                     .frame(width: height, height: height)
             }
@@ -290,7 +290,7 @@ public struct DeliveryMark: View {
                 .foregroundStyle(.secondary)
         case .sent, .read:
             DeliveryChecks(read: state == .read, lineWidth: 1.6)
-                .foregroundStyle(Color.orbitleAccent)
+                .foregroundStyle(Color.maxlyAccent)
         case .failed:
             Image(systemName: "exclamationmark.circle.fill")
                 .font(.caption)
@@ -332,7 +332,7 @@ struct TypingText: View {
             Text(text)
                 .font(.subheadline)
         }
-        .foregroundStyle(Color.orbitleAccent)
+        .foregroundStyle(Color.maxlyAccent)
     }
 }
 
@@ -404,7 +404,7 @@ public struct ChatRowSkeleton: View {
     public var body: some View {
         HStack(spacing: 12) {
             Circle()
-                .fill(Color.orbitleField)
+                .fill(Color.maxlyField)
                 .frame(width: MaxlyTheme.avatar, height: MaxlyTheme.avatar)
             VStack(alignment: .leading, spacing: 8) {
                 bar(width: 110 + CGFloat(seed * 37 % 80), height: 14)
@@ -425,7 +425,7 @@ public struct ChatRowSkeleton: View {
 
     private func bar(width: CGFloat, height: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: height / 2)
-            .fill(Color.orbitleField)
+            .fill(Color.maxlyField)
             .frame(width: width, height: height)
     }
 }
@@ -443,7 +443,7 @@ private struct OpenAppCapsule: View {
                 .lineLimit(1)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 5)
-                .background(Color.orbitleAccent, in: Capsule())
+                .background(Color.maxlyAccent, in: Capsule())
                 .contentShape(Capsule())
         }
         .buttonStyle(.borderless)

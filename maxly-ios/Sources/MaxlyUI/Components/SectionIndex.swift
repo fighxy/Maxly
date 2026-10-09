@@ -17,7 +17,7 @@ public enum SectionIndexSupport {
 public extension View {
     /// Буква раздела в системном указателе (iOS 26). На прежних версиях ничего не делает.
     @ViewBuilder
-    func orbitleSectionIndexLabel(_ label: String) -> some View {
+    func maxlySectionIndexLabel(_ label: String) -> some View {
         #if compiler(>=6.2)
         if #available(iOS 26.0, macOS 26.0, *) {
             sectionIndexLabel(label)
@@ -31,7 +31,7 @@ public extension View {
 
     /// Показывает системный указатель списка (iOS 26).
     @ViewBuilder
-    func orbitleSectionIndexVisible(_ visible: Bool) -> some View {
+    func maxlySectionIndexVisible(_ visible: Bool) -> some View {
         #if compiler(>=6.2) && os(iOS)
         if #available(iOS 26.0, *) {
             listSectionIndexVisibility(visible ? .visible : .hidden)

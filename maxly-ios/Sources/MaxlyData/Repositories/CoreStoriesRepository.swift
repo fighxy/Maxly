@@ -64,7 +64,7 @@ public struct CoreStoriesRepository: StoriesRepository {
             return try await body()
         } catch {
             Log.warning(.chats, "\(what): \(error)")
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 }

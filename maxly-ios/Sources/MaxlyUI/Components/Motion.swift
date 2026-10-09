@@ -53,7 +53,7 @@ public extension AnyTransition {
     /// Пузырь ленты. Своё сообщение поднимается от поля ввода и чуть растёт от правого
     /// нижнего угла, чужое — всплывает у левого края. Удалённое сжимается к своему краю
     /// и растворяется, а промежуток схлопывается той же анимацией.
-    static func orbitleBubble(outgoing: Bool, reduceMotion: Bool) -> AnyTransition {
+    static func maxlyBubble(outgoing: Bool, reduceMotion: Bool) -> AnyTransition {
         guard !reduceMotion else { return .opacity }
         let anchor: UnitPoint = outgoing ? .bottomTrailing : .bottomLeading
         let insertion = AnyTransition.opacity
@@ -65,12 +65,12 @@ public extension AnyTransition {
     }
 
     /// Бейджи, реакции, кнопки: появляются из точки и растворяются.
-    static func orbitlePop(reduceMotion: Bool) -> AnyTransition {
+    static func maxlyPop(reduceMotion: Bool) -> AnyTransition {
         reduceMotion ? .opacity : .scale(scale: 0.5).combined(with: .opacity)
     }
 
     /// Панели над полем ввода и под заголовком: выезжают от своего края.
-    static func orbitleBar(edge: Edge, reduceMotion: Bool) -> AnyTransition {
+    static func maxlyBar(edge: Edge, reduceMotion: Bool) -> AnyTransition {
         reduceMotion ? .opacity : .move(edge: edge).combined(with: .opacity)
     }
 }

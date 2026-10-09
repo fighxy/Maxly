@@ -19,10 +19,10 @@ struct AccountLimitsSheet: View {
                         .overlay(alignment: .bottomTrailing) {
                             Image(systemName: content.entry == .login ? "lock.fill" : "hourglass")
                                 .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(Color.orbitleOnAccent)
+                                .foregroundStyle(Color.maxlyOnAccent)
                                 .frame(width: 28, height: 28)
-                                .background(Circle().fill(Color.orbitleAccent))
-                                .overlay(Circle().strokeBorder(Color.orbitleBackground, lineWidth: 2.5))
+                                .background(Circle().fill(Color.maxlyAccent))
+                                .overlay(Circle().strokeBorder(Color.maxlyBackground, lineWidth: 2.5))
                                 .offset(x: 6, y: 6)
                         }
                         .padding(.top, 28)
@@ -58,13 +58,13 @@ struct AccountLimitsSheet: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 6)
             }
-            .orbitleProminentButtonStyle()
+            .maxlyProminentButtonStyle()
             .buttonBorderShape(.roundedRectangle(radius: 14))
             .controlSize(.large)
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
         }
-        .tint(Color.orbitleAccent)
+        .tint(Color.maxlyAccent)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }

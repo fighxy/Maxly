@@ -125,7 +125,7 @@ struct CallsView: View {
                             } label: {
                                 Image(systemName: row.isVideo ? "video" : "phone")
                                     .font(.title3)
-                                    .foregroundStyle(Color.orbitleAccent)
+                                    .foregroundStyle(Color.maxlyAccent)
                                     .frame(width: 44, height: 44)
                             }
                             .buttonStyle(.borderless)
@@ -168,7 +168,7 @@ struct CallsView: View {
                     .font(.body)
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(Color.orbitleAccent)
+            .foregroundStyle(Color.maxlyAccent)
             .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
@@ -246,7 +246,7 @@ struct CallLinkSheet: View {
                 }
             }
         }
-        .tint(Color.orbitleAccent)
+        .tint(Color.maxlyAccent)
         .presentationDetents([.medium])
     }
 }
@@ -290,9 +290,9 @@ struct CallRowView: View {
         if row.isGroup {
             Image(systemName: "person.2.fill")
                 .font(.system(size: 20))
-                .foregroundStyle(Color.orbitleAccent)
+                .foregroundStyle(Color.maxlyAccent)
                 .frame(width: MaxlyTheme.smallAvatar, height: MaxlyTheme.smallAvatar)
-                .background(Color.orbitleAccent.opacity(0.14), in: Circle())
+                .background(Color.maxlyAccent.opacity(0.14), in: Circle())
                 .accessibilityHidden(true)
         } else {
             AvatarView(title: row.name, id: row.peerId, url: row.avatarURL, size: MaxlyTheme.smallAvatar)

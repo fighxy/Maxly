@@ -213,7 +213,7 @@ struct ChatProfileView: View {
                 if viewModel.isOfficial || live.isVerified {
                     Image(systemName: "checkmark.seal.fill")
                         .font(.system(size: 18))
-                        .foregroundStyle(Color.orbitleAccent)
+                        .foregroundStyle(Color.maxlyAccent)
                         .accessibilityLabel("Официальный")
                 }
                 if context?.muted == true {
@@ -306,7 +306,7 @@ struct ChatProfileView: View {
         case .plain(let text):
             Text(text).font(font).foregroundStyle(.secondary).lineLimit(1)
         case .accent(let text):
-            Text(text).font(font).foregroundStyle(Color.orbitleAccent).lineLimit(1)
+            Text(text).font(font).foregroundStyle(Color.maxlyAccent).lineLimit(1)
         case .typing(let text):
             TypingStatus(text: text, font: font)
         }
@@ -535,10 +535,10 @@ struct ChatProfileView: View {
                         HStack(spacing: 12) {
                             Image(systemName: "person.2")
                                 .frame(width: 36, height: 36)
-                                .foregroundStyle(Color.orbitleAccent)
+                                .foregroundStyle(Color.maxlyAccent)
                             Text("Все участники и поиск")
                                 .font(.body)
-                                .foregroundStyle(Color.orbitleAccent)
+                                .foregroundStyle(Color.maxlyAccent)
                             Spacer(minLength: 0)
                             Image(systemName: "chevron.right")
                                 .font(.footnote.weight(.semibold))
@@ -634,7 +634,7 @@ struct ChatProfileView: View {
                     .foregroundStyle(.secondary)
                 Text(row.value)
                     .font(.body)
-                    .foregroundStyle(isLink(row) ? AnyShapeStyle(Color.orbitleAccent) : AnyShapeStyle(.primary))
+                    .foregroundStyle(isLink(row) ? AnyShapeStyle(Color.maxlyAccent) : AnyShapeStyle(.primary))
                     .underline(row.action.map { if case .open = $0 { true } else { false } } ?? false)
                     .lineLimit(row.isMultiline ? nil : 1)
                     .multilineTextAlignment(.leading)
@@ -661,7 +661,7 @@ struct ChatProfileView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(command.command)
                     .font(.body.monospaced())
-                    .foregroundStyle(Color.orbitleAccent)
+                    .foregroundStyle(Color.maxlyAccent)
                 if let description = command.description {
                     Text(description)
                         .font(.subheadline)
@@ -735,12 +735,12 @@ struct ChatProfileView: View {
                     } label: {
                         Text(tab.title)
                             .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(selected ? Color.orbitleAccent : .secondary)
+                            .foregroundStyle(selected ? Color.maxlyAccent : .secondary)
                             .padding(.vertical, 12)
                             .overlay(alignment: .bottom) {
                                 if selected {
                                     Capsule()
-                                        .fill(Color.orbitleAccent)
+                                        .fill(Color.maxlyAccent)
                                         .frame(height: 3)
                                         .matchedGeometryEffect(id: "tab", in: tabs)
                                 }
@@ -776,14 +776,14 @@ struct ChatProfileView: View {
                 } label: {
                     SharedRow {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color.orbitleAccent)
+                            .fill(Color.maxlyAccent)
                             .overlay {
                                 if chat.loadingMediaId == item.file.id {
-                                    ProgressView().tint(Color.orbitleOnAccent)
+                                    ProgressView().tint(Color.maxlyOnAccent)
                                 } else {
                                     Text(item.ext)
                                         .font(.system(size: 12, weight: .bold))
-                                        .foregroundStyle(Color.orbitleOnAccent)
+                                        .foregroundStyle(Color.maxlyOnAccent)
                                 }
                             }
                     } title: {
@@ -820,7 +820,7 @@ struct ChatProfileView: View {
                                 Text(context).lineLimit(2)
                             }
                             Text(item.url.absoluteString)
-                                .foregroundStyle(Color.orbitleAccent)
+                                .foregroundStyle(Color.maxlyAccent)
                                 .lineLimit(1)
                         }
                     }
@@ -845,15 +845,15 @@ struct ChatProfileView: View {
                 } label: {
                     SharedRow {
                         Circle()
-                            .fill(Color.orbitleAccent)
+                            .fill(Color.maxlyAccent)
                             .overlay {
                                 switch phase {
                                 case .downloading:
-                                    ProgressView().tint(Color.orbitleOnAccent)
+                                    ProgressView().tint(Color.maxlyOnAccent)
                                 case .playing:
-                                    Image(systemName: "pause.fill").foregroundStyle(Color.orbitleOnAccent)
+                                    Image(systemName: "pause.fill").foregroundStyle(Color.maxlyOnAccent)
                                 case .idle, .paused, .failed:
-                                    Image(systemName: "play.fill").foregroundStyle(Color.orbitleOnAccent).offset(x: 1)
+                                    Image(systemName: "play.fill").foregroundStyle(Color.maxlyOnAccent).offset(x: 1)
                                 }
                             }
                     } title: {
@@ -994,7 +994,7 @@ struct TypingStatus: View {
                 .font(font)
                 .lineLimit(1)
         }
-        .foregroundStyle(Color.orbitleAccent)
+        .foregroundStyle(Color.maxlyAccent)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(text)
     }
@@ -1021,7 +1021,7 @@ private struct ActionTile: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
         }
-        .foregroundStyle(Color.orbitleAccent)
+        .foregroundStyle(Color.maxlyAccent)
         .frame(maxWidth: .infinity, minHeight: 60)
         .background(
             Color(uiColor: .secondarySystemGroupedBackground),

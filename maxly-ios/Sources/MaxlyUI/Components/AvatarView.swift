@@ -28,11 +28,11 @@ public struct ChatAvatarView: View {
                 // Точка «в сети» выдаёт, что чат личный и собеседник рядом.
                 if isOnline, !privateMode.isMasked {
                     Circle()
-                        .fill(Color.orbitleOnline)
+                        .fill(Color.maxlyOnline)
                         .frame(width: size * 0.26, height: size * 0.26)
-                        .overlay(Circle().stroke(Color.orbitleBackground, lineWidth: max(2, size * 0.045)))
+                        .overlay(Circle().stroke(Color.maxlyBackground, lineWidth: max(2, size * 0.045)))
                         .offset(x: -size * 0.02, y: -size * 0.02)
-                        .transition(.orbitlePop(reduceMotion: reduceMotion))
+                        .transition(.maxlyPop(reduceMotion: reduceMotion))
                 }
             }
             .animation(MaxlyMotion.pop(reduceMotion: reduceMotion), value: isOnline)
@@ -85,7 +85,7 @@ public struct ChatAvatarView: View {
     private func special(_ symbol: String) -> some View {
         ZStack {
             LinearGradient(
-                colors: [Color.orbitleSpecialAvatar.opacity(0.85), Color.orbitleSpecialAvatar],
+                colors: [Color.maxlySpecialAvatar.opacity(0.85), Color.maxlySpecialAvatar],
                 startPoint: .top,
                 endPoint: .bottom
             )

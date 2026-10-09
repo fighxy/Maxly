@@ -100,11 +100,11 @@ struct ContactRemovedBanner: View {
             Spacer(minLength: 8)
             Button("Отменить", action: onUndo)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color.orbitleAccent)
+                .foregroundStyle(Color.maxlyAccent)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .orbitleGlassCapsule(interactive: false)
+        .maxlyGlassCapsule(interactive: false)
         .padding(.horizontal, MaxlyTheme.pad)
         .padding(.bottom, 8)
         .task(id: removed.id) {

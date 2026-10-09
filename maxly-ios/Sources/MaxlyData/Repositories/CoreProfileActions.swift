@@ -94,7 +94,7 @@ public actor CoreProfileActions: ProfileActionsRepository {
         do {
             return try await body()
         } catch {
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 }

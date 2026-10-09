@@ -107,7 +107,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
                 await dropMissing(keeping: Set(page.records.map(\.id)), requestedAt: requestedAt)
             }
         case .failure(let error):
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -156,7 +156,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             try ensureCurrent(started)
             try upsert(keepingLocalMute([record], requestedAt: requestedAt))
         case .failure(let error):
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -357,7 +357,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         let reply: CoreReadMark?
         switch await api.markRead(chatId: chatId, messageId: mark.messageId, at: mark.time) {
         case .success(let value): reply = value
-        case .failure(let error): throw error.orbitleError
+        case .failure(let error): throw error.maxlyError
         }
         guard let reply, started == generation else { return }
         try applyReadReply(chatId: chatId, reply: reply, lastBefore: mark.messageId)
@@ -384,7 +384,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         let reply: CoreReadMark?
         switch await api.markRead(chatId: chatId, messageId: messageId, at: mark) {
         case .success(let value): reply = value
-        case .failure(let error): throw error.orbitleError
+        case .failure(let error): throw error.maxlyError
         }
         guard let reply, started == generation else { return }
         try applyReadReply(chatId: chatId, reply: reply, lastBefore: lastBefore)
@@ -427,7 +427,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         let unread: Int
         switch await api.markUnread(chatId: chatId, from: date) {
         case .success(let count): unread = count
-        case .failure(let error): throw error.orbitleError
+        case .failure(let error): throw error.maxlyError
         }
         try ensureCurrent(started)
         // Отметка сервера ушла назад: следующий ответ на прочтение сравнивается уже не с ней.
@@ -511,7 +511,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         case .success(let rows):
             return rows.map { ChatMemberRef(id: $0.id, name: $0.name) }
         case .failure(let error):
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -520,7 +520,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         case .success(let rows):
             return rows.map { BotCommandRef(name: $0.name, summary: $0.summary) }
         case .failure(let error):
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -530,7 +530,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             let text = answer.text.trimmingCharacters(in: .whitespacesAndNewlines)
             return BotButtonAnswer(text: text.isEmpty ? nil : text, url: answer.url.isEmpty ? nil : URL(string: answer.url))
         case .failure(let error):
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -543,7 +543,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         let started = generation
         let time = try eventTimeMs(chatId)
         if case .failure(let error) = await api.deleteChat(chatId: chatId, lastEventTimeMs: time, forEveryone: forEveryone) {
-            throw error.orbitleError
+            throw error.maxlyError
         }
         try ensureCurrent(started)
         try delete(chatId: chatId)
@@ -553,7 +553,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     public func leave(chatId: String) async throws(MaxlyError) {
         let started = generation
         if case .failure(let error) = await api.leaveChat(chatId: chatId) {
-            throw error.orbitleError
+            throw error.maxlyError
         }
         try ensureCurrent(started)
         try delete(chatId: chatId)
@@ -564,7 +564,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         let started = generation
         let time = try eventTimeMs(chatId)
         if case .failure(let error) = await api.clearHistory(chatId: chatId, lastEventTimeMs: time, forEveryone: forEveryone) {
-            throw error.orbitleError
+            throw error.maxlyError
         }
         try ensureCurrent(started)
         try wipeMessages(chatId: chatId)
@@ -619,7 +619,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             try upsert([record])
             return record.id
         case .failure(let error):
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -788,7 +788,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             return results
         case .failure(let error):
             Log.warning(.chats, "Поиск на сервере не удался: \(error)")
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -802,7 +802,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             return found.filter { seen.insert("\($0.chatId)/\($0.messageId)").inserted }
         case .failure(let error):
             Log.warning(.chats, "Поиск сообщений не удался: \(error)")
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -833,7 +833,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
                 try? modelContext.save()
                 notify()
             }
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 
@@ -990,7 +990,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             try applyServerPins(confirmed)
         case .failure(let error):
             Log.warning(.chats, "Закреплённые не сохранены на сервере: \(error)")
-            throw error.orbitleError
+            throw error.maxlyError
         }
     }
 

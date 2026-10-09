@@ -147,7 +147,7 @@ public struct CoreAccountRepository: AccountRepository {
         do {
             return try await body()
         } catch {
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 
@@ -157,7 +157,7 @@ public struct CoreAccountRepository: AccountRepository {
             if failure.key?.lowercased().contains("limit") == true { return .rejected(AuthErrors.tooManyAttempts) }
             return .rejected(message)
         }
-        return CoreMapping.apiError(error).orbitleError
+        return CoreMapping.apiError(error).maxlyError
     }
 }
 
@@ -201,7 +201,7 @@ public struct CoreFolderRepository: FolderRepository {
         do {
             return try await body()
         } catch {
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 }

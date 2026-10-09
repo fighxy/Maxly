@@ -528,7 +528,7 @@ func makeSession() async throws -> SessionParts {
     let sync = SyncEngine(outbox: outbox, chats: chats, messages: messages, pollInterval: .seconds(3600))
     await sync.connectOutgoing()
     let media = FakeMedia()
-    let suite = "orbitle.tests.\(UUID().uuidString)"
+    let suite = "maxly.tests.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))
     let session = SessionManager(
         core: core,
@@ -618,7 +618,7 @@ struct CoreMappingTests {
         #expect(CoreMapping.apiError(CoreFailure(kind: "SERVER", key: "x", serverText: "Нет прав")) == .server(code: "x", text: "Нет прав"))
         #expect(CoreMapping.apiError(CoreFailure(kind: "SERVER", key: "x", serverText: "  ")) == .server(code: "x", text: nil))
         #expect(CoreMapping.apiError(CoreFailure(kind: "NETWORK", key: nil, serverText: "")) == .offline)
-        #expect(MaxAPIError.server(code: "x", text: "Нет прав").orbitleError.userMessage == "Нет прав")
+        #expect(MaxAPIError.server(code: "x", text: "Нет прав").maxlyError.userMessage == "Нет прав")
         #expect(MaxAPIError.server(code: "x", text: "Нет прав").isRetryable)
         #expect(CoreMapping.apiError(CoreFailure(kind: "SERVER", key: "")) == .server(code: "SERVER", text: nil))
         #expect(CoreMapping.apiError(CoreFailure(kind: "NOT_FOUND", key: nil)) == .invalidResponse)
@@ -628,11 +628,11 @@ struct CoreMappingTests {
         #expect(CoreMapping.apiError(URLError(.cancelled)) == .cancelled)
         #expect(CoreMapping.apiError(CancellationError()) == .cancelled)
         #expect(!MaxAPIError.cancelled.isRetryable)
-        #expect(MaxAPIError.cancelled.orbitleError == .cancelled)
-        #expect(MaxAPIError.unknown.orbitleError == .unknown)
+        #expect(MaxAPIError.cancelled.maxlyError == .cancelled)
+        #expect(MaxAPIError.unknown.maxlyError == .unknown)
         #expect(MaxAPIError.offline.isRetryable)
         #expect(!MaxAPIError.sessionExpired.isRetryable)
-        #expect(MaxAPIError.invalidResponse.orbitleError == .invalidRequest)
+        #expect(MaxAPIError.invalidResponse.maxlyError == .invalidRequest)
     }
 
     @Test("События сообщения и чата")

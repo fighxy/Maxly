@@ -107,7 +107,7 @@ public struct CoreCallService: CallService {
             return try await body()
         } catch {
             Log.warning(.calls, "\(what): \(error)")
-            throw CoreMapping.apiError(error).orbitleError
+            throw CoreMapping.apiError(error).maxlyError
         }
     }
 }
