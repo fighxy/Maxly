@@ -9,7 +9,7 @@ val keystorePath = System.getenv("ORBITLE_KEYSTORE_FILE")?.takeIf { it.isNotBlan
 val versionCodeOverride = System.getenv("ORBITLE_VERSION_CODE")?.toIntOrNull()
 
 android {
-    namespace = "app.orbitle"
+    namespace = "app.maxly"
     compileSdk {
         version = release(37) {
             minorApiLevel = 1

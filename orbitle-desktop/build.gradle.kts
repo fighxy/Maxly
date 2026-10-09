@@ -50,11 +50,11 @@ val generateBuildConfig = tasks.register("generateBuildConfig") {
     inputs.property("coreRevision", revision)
     outputs.dir(outputDir)
     doLast {
-        val target = outputDir.get().file("app/orbitle/BuildConfig.kt").asFile
+        val target = outputDir.get().file("app/maxly/BuildConfig.kt").asFile
         target.parentFile.mkdirs()
         target.writeText(
             """
-            |package app.orbitle
+            |package app.maxly
             |
             |/** Сведения сборки для экрана «О приложении». Файл пишет задача generateBuildConfig из core.lock. */
             |object BuildConfig {
@@ -151,7 +151,7 @@ kotlin {
 
 compose.desktop {
     application {
-        mainClass = "app.orbitle.MainKt"
+        mainClass = "app.maxly.MainKt"
         // KCEF читает внутренние классы AWT. Без этих флагов окно страницы не создаётся.
         jvmArgs(
             "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",

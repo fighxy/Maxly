@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "app.orbitle.shared"
+    namespace = "app.maxly.shared"
     compileSdk {
         version = release(37) {
             minorApiLevel = 1

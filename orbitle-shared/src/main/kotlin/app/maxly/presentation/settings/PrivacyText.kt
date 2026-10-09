@@ -1,0 +1,64 @@
+package app.maxly.presentation.settings
+
+import app.maxly.domain.AccountSettings
+import app.maxly.domain.PrivacyAccess
+
+/** Подписи «Конфиденциальности» — как в разделе «Безопасность» MAX. */
+object PrivacyText {
+    const val SAFE_MODE = "Безопасный режим"
+    const val SAFE_MODE_DESCRIPTION =
+        "Найти по номеру, позвонить и пригласить в чат смогут только контакты, контент — только безопасный"
+
+    /** Под запертыми пунктами, пока включён безопасный режим. */
+    const val SAFE_MODE_LOCK =
+        "Пока включён безопасный режим, эти пункты не меняются. Чтобы выбрать другое, выключите безопасный режим."
+
+    /** Под запертыми пунктами и безопасным режимом, пока аккаунт под семейной защитой. */
+    const val FAMILY_LOCK =
+        "Аккаунт под семейной защитой: безопасный режим и эти пункты меняет только тот, кто вас защищает."
+
+    const val FAMILY_PROTECTION = "Семейная защита"
+
+    /** Под статусом семейной защиты в «Безопасности». */
+    const val FAMILY_PROTECTION_NOTE =
+        "Включить или выключить защиту здесь нельзя: мини-приложение семейной защиты ещё не открыто для сторонних клиентов MAX."
+
+    /** Пояснение под запертыми пунктами: семейная защита главнее безопасного режима. */
+    fun lockNote(settings: AccountSettings): String? = when {
+        settings.managedByFamily -> FAMILY_LOCK
+        settings.lockedBySafeMode -> SAFE_MODE_LOCK
+        else -> null
+    }
+
+    const val SEARCH_BY_PHONE = "Найти меня по номеру"
+    const val SEARCH_BY_PHONE_DESCRIPTION = "Кто может найти меня по номеру телефона"
+    const val INCOMING_CALL = "Позвонить"
+    const val INCOMING_CALL_DESCRIPTION = "Кто может мне звонить"
+    const val CHATS_INVITE = "Пригласить в чат"
+    const val CHATS_INVITE_DESCRIPTION = "Кто может пригласить меня в чат"
+    const val CONTENT = "Показывать контент"
+    const val CONTENT_DESCRIPTION = "Безопасный — без материалов 16+ и 18+, в том числе в поиске и рекомендациях"
+
+    const val INFORMATION = "Информация"
+    const val ONLINE = "Видеть статус «в сети»"
+    const val ONLINE_DESCRIPTION = "Кто может видеть, когда я в сети. Если выбрать «Никто», вы тоже не будете видеть, кто в сети."
+    const val PHONE = "Видеть мой номер"
+    const val PHONE_DESCRIPTION = "Кто может видеть мой номер телефона"
+
+    const val BLACKLIST = "Чёрный список"
+    const val BLACKLIST_DESCRIPTION = "Список тех, кто не может вам писать, звонить и добавлять в чаты"
+
+    /** Варианты «Найти меня по номеру», «Позвонить» и «Пригласить в чат»: «Никто» в MAX здесь нет. */
+    val twoWay: List<PrivacyAccess> = listOf(PrivacyAccess.ALL, PrivacyAccess.CONTACTS)
+
+    fun content(safeOnly: Boolean): String = if (safeOnly) "Безопасный" else "Весь"
+
+    fun online(hidden: Boolean): String = if (hidden) "Никто" else "Контакты"
+
+    /** Пояснение варианта «Найти меня по номеру». */
+    fun searchByPhoneHint(access: PrivacyAccess): String? = when (access) {
+        PrivacyAccess.ALL -> "Любой, кто сохранил ваш номер в телефонной книге, сможет найти вас в MAX"
+        PrivacyAccess.CONTACTS -> "Только тот, кто есть в ваших контактах и сохранил ваш номер в телефонной книге, сможет найти вас в MAX"
+        PrivacyAccess.NOBODY -> null
+    }
+}
