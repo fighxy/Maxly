@@ -153,7 +153,7 @@ jobs:
           short="${GITHUB_SHA::7}"
           # Копия под прежним именем — на переходный период, для старых ссылок.
           cp build/Maxly.apk build/Orbitle.apk
-          export TITLE="Maxly Android ${short}"
-          export NOTES="Сборка для Android ${GITHUB_SHA} от $(date -u '+%Y-%m-%d %H:%M') UTC. Откройте Maxly.apk в браузере на телефоне и установите (нужно разрешить установку из этого источника). Orbitle.apk — тот же файл под прежним именем."
+          export TITLE="🕊 Maxly для Android — последняя сборка"
+          export NOTES="Свежая сборка Maxly из \`main\`: клиент MAX без телеметрии и слежки, с режимом призрака. Android 8.0+. Скачайте \`Maxly.apk\`. Maxly ставится отдельным приложением, поэтому войти нужно заново, а старый Orbitle потом можно удалить. Файлы \`Orbitle.*\` оставлены для старых ссылок."$'\n\n'"Коммит ${short} (${GITHUB_SHA}), собран $(date -u '+%Y-%m-%d %H:%M') UTC. Откройте Maxly.apk в браузере на телефоне и установите (нужно разрешить установку из этого источника)."
           ls -lh build/Maxly.apk build/Orbitle.apk
           bash scripts/publish-latest.sh build/Maxly.apk build/Orbitle.apk

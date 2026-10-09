@@ -207,6 +207,6 @@ jobs:
             files+=("release/Maxly.$ext" "release/Orbitle.$ext")
           done
           ls -lh release
-          export TITLE="Maxly Desktop ${short}"
-          export NOTES="Сборка для ПК ${GITHUB_SHA} от $(date -u '+%Y-%m-%d %H:%M') UTC: Windows (Maxly.msi), macOS (Maxly.dmg, без подписи — открыть через «Открыть» в контекстном меню), Linux (Maxly.deb). Для голосовых, кружков и видео нужен ffmpeg в PATH. Orbitle.msi, Orbitle.dmg и Orbitle.deb — те же файлы под прежними именами."
+          export TITLE="🕊 Maxly для Desktop — последняя сборка"
+          export NOTES="Свежая сборка Maxly из \`main\` для Windows, macOS и Linux: \`Maxly.msi\`, \`Maxly.dmg\`, \`Maxly.deb\`. Встаёт поверх Orbitle, вход и настройки сохраняются. Файлы \`Orbitle.*\` оставлены для старых ссылок."$'\n\n'"Коммит ${short} (${GITHUB_SHA}), собран $(date -u '+%Y-%m-%d %H:%M') UTC. macOS: сборка без подписи — открыть через «Открыть» в контекстном меню. Для голосовых, кружков и видео нужен ffmpeg в PATH."
           bash scripts/publish-latest.sh "${files[@]}"
