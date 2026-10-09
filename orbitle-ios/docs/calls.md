@@ -8,7 +8,7 @@
 
 | Слой | Где | Что делает |
 |---|---|---|
-| Ядро | `max-kmp-core`: `CallsApi`, `IosBridge` | 78 начать, 166 войти по ссылке, 76/84 создать ссылку, 89 описание ссылки, 164 удалить из журнала, пуш 137 с `vcp`. Отдаёт адрес ws2 с параметрами клиента (`Ws2ClientInfo.forCalls`) |
+| Ядро | `max-kmp-core`: `CallsApi`, `IosBridge` | 78 начать, 166 войти по ссылке, 76/84 создать ссылку, 89 описание ссылки, 163 журнал по курсору, 164 удалить из журнала, 167 отклонить входящий, пуш 137 с `vcp`, пуш 165 журнала. Отдаёт адрес ws2 с параметрами клиента (`Ws2ClientInfo.forCalls`) |
 | Домен | `OrbitleDomain/Models/Call.swift`, `Protocols/CallService.swift` | `CallConnection`, `IncomingCall`, `CallState`, `CallParticipant`; протоколы `CallService`, `CallControl`, `CallEngine` |
 | Данные | `OrbitleData/Calls` | `Ws2Signaling` (сокет ws2), `CallSession` (весь звонок), разбор SDP (`CallSdp`), каналы SFU (`SfuChannel`), `CoreCallService` |
 | WebRTC | `OrbitleCallMedia` | `WebRTCCallMedia`, `WebRTCPeer`: соединение, микрофон, камера, показ экрана, аудиосессия, вид видео |
@@ -26,7 +26,10 @@ WebRTC — сборка Google WebRTC M154 от stasel (`https://github.com/stas
 | 166 `VIDEO_CHAT_JOIN_BY_LINK` | `{joinLink: токен, internalParams, isVideo}` | `internalParams` или `internalCallerParams` |
 | 76 `VIDEO_CHAT_START` | `{conversationId}` | `joinLink`, `callName`; без ссылки — 84 `{conversationId}` |
 | 89 `LINK_INFO` | `{link: "joincall/<токен>"}` | `videoConference{conferenceId, callName, participantsCount, callType}` |
-| 164 `VIDEO_CHAT_DELETE_HISTORY` | `{historyIds: [id сообщений журнала]}` | — |
+| 163 `CALL_HISTORY` | `{callHistorySync}` (`0` — первая страница) | `{callHistoryItems, callHistorySync, reset}` |
+| 164 `VIDEO_CHAT_DELETE_HISTORY` | `{historyIds: [historyId записей журнала]}` | — |
+| 167 `VIDEO_CHAT_HANGUP` | `{conversationId, reason: REJECTED, internalParams: ""}` (`peerId` только если задан) | `{error?}` |
+| пуш 165 `NOTIF_CALL_HISTORY` | — | `{action: ADD/REMOVE, callHistoryItems или historyIds, callHistorySync}` |
 | пуш 137 `NOTIF_CALL_START` | — | `{callerId, conversationId, type, vcp}` |
 
 `internalParams` — JSON-строка SDK звонков (`platform ANDROID`, `sdkVersion 0.2.1.3`, `clientAppKey`, `deviceId`, `protocolVersion 5`, `hexCapability 3c02f`). Ссылка на звонок — `https://max.ru/joincall/<токен>`; на сервер уходит токен.
@@ -45,7 +48,7 @@ WebRTC — сборка Google WebRTC M154 от stasel (`https://github.com/stas
 
 **Исходящий.** Ядро шлёт 78, приложение открывает ws2. На `connection` (участники, топология, серверы ICE из `conversationParams` — они главнее пуша) создаётся соединение WebRTC: микрофон, камера (если видеозвонок), слот приёма видео. Звонящий шлёт офер собеседнику (`transmit-data`), `accept-call` и слушает гудки. `accepted-call` — разговор начался. Ответ собеседника и его кандидаты приходят `transmitted-data`; кандидаты до ответа ждут.
 
-**Входящий.** Пуш 137 → центр звонков открывает ws2 сразу, ещё до ответа: так видно, что звонящий сбросил (`hungup` или конец звонка — «Пропущенный»). Офер, пришедший до ответа, ждёт. Ответ — соединение WebRTC, `accept-call`, ответ на офер. Отклонить — `hangup REJECTED`; отклонить можно и до того, как сокет открылся.
+**Входящий.** Пуш 137 → центр звонков открывает ws2 сразу, ещё до ответа: так видно, что звонящий сбросил (`hungup` или конец звонка — «Пропущенный»). Офер, пришедший до ответа, ждёт. Ответ — соединение WebRTC, `accept-call`, ответ на офер. Отклонить — `hangup REJECTED` в ws2 и 167 `VIDEO_CHAT_HANGUP` с `REJECTED` на основной сервер (через ядро, `rejectIncomingCall`; `peerId` не уходит). Так у звонящего отбой виден, даже если сокет звонка ещё не открылся. Ошибка 167 только пишется в журнал: сокет звонка отбой всё равно получил. Отклонение с системного экрана (CallKit) идёт тем же путём.
 
 **Причины `hangup`:** до начала разговора у звонящего — `CANCELED`, у вызываемого — `REJECTED`, после — `HUNGUP`. Из `hungup` собеседника: `REJECTED` → «Звонок отклонён», `BUSY` → «Абонент занят», нет ответа → «Нет ответа».
 
@@ -85,6 +88,8 @@ WebRTC — сборка Google WebRTC M154 от stasel (`https://github.com/stas
 
 В фоне звонок продолжается (`UIBackgroundModes`: `audio`, `voip`).
 
+Пока звонок на экране (`CallCenter.onBusyChanged`), приложение держит ядро «на экране» (`setAppActive(true)`, флаг `interactive` в `PING`), даже свёрнутое: иначе сервер решит, что аккаунт ушёл, посреди разговора. Звонок закончился в фоне — ядро получает `false`.
+
 **Ограничение.** Входящий приходит пушем основного сокета, пока Orbitle запущен (на экране или в фоне, пока iOS его не усыпила). VoIP-пушей APNs сервер Max нашему приложению не шлёт, поэтому выгруженное приложение о звонке не узнает.
 
 ## Показ экрана
@@ -97,14 +102,23 @@ ReplayKit `startCapture` внутри приложения: собеседник
 
 ## Журнал звонков
 
-Удаление свайпом уходит на сервер (164) и сразу пропадает из списка; звонок, который сервер не удалил, возвращается с сообщением. Справа в строке — перезвонить (тем же видом звонка). После звонка журнал перечитывается через 2 с.
+Журнал приходит по курсору (163, `callHistory` ядра): первый запрос с пустым курсором, каждый следующий — с `callHistorySync` прошлого ответа. Так приходят и следующие страницы (экран просит их, дойдя до последней строки), и новые звонки (вкладка открылась, приложение вернулось на экран, переподключение, 2 с после звонка). Ответ с `reset` заменяет журнал целиком. Пустая страница или тот же курсор — дальше страниц нет. Журнал живёт в памяти `CoreCallHistoryRepository` и забывается при выходе.
+
+Запись (`CallLogItem`, `OrbitleDomain/Calls/CallLog.swift`): `historyId`, `callerId`, `chatId`, `callName`, вид (`AUDIO`/`VIDEO`), `hangupType`, `durationMs` (`-1` — сервер длительность не прислал), `groupCallType` (`LINK`, `CHAT` или пусто). Свой звонок — `callerId` равен своему id; собеседник своего звонка — второй участник диалога (id диалога — XOR двух id). Исход: входящий `MISSED`/`CANCELED` — пропущенный, `REJECTED` — отклонённый, `HUNGUP` — состоявшийся; исходящий `REJECTED` — отклонён собеседником, `CANCELED`/`MISSED` — отменённый. Имена и аватары — из контактов ядра, остальным — карточка диалога или чата (не больше 20 за проход).
+
+Пуш 165: `remove` сразу убирает записи по `historyId`; `add` перечитывает журнал с курсора (в пуше нет исхода и длительности), и только если запись так и не пришла, она встаёт из пуша. Ядро без 163 (фейки тестов) читает прежний журнал 79.
+
+Удаление свайпом уходит на сервер (164, `historyId`) и сразу пропадает из списка; звонок, который сервер не удалил, возвращается с сообщением. Справа в строке — перезвонить (тем же видом звонка).
 
 ## Тесты
 
 - `OrbitleDataTests/CallProtocolTests.swift` — JSON, сокет ws2 (номера, ошибки, `ping`, закрытие, таймаут), тела команд, SDP (ssrc, кандидаты, слоты, подписи), id участников, MessagePack каналов SFU.
 - `OrbitleDataTests/CallSessionTests.swift` — исходящий и входящий напрямую, отмена и отказ, пропущенный, SFU с пересборкой, показ экрана в слоте SFU, микрофон/камера/экран/динамик, участники и видео по дорожкам, конец по серверу, пробуждение молчащего сервера, переподключение, недоступный сервер, запись и приглашение.
 - `OrbitleDataTests/CallSessionFixtureTests.swift` — общие с Kotlin сценарии ws2 из `test-fixtures/calls/ws2` (формат — в README там же): каждый файл проигрывается шаг за шагом на тех же фейках, проверяются команды клиента по порядку, фазы, причины конца, кандидаты ICE и закрытие сокета. Каталог ищется от файла теста вверх до корня репозитория; новый файл без строки в `played` роняет тест.
-- `OrbitlePresentationTests/CallCenterTests.swift` — центр звонков с фейковыми CallKit и звонком: исходящий, ошибка, сброс до ответа сервера, входящий через систему, занято и истёкший, отклонение, отказ системы, имя позже, группа по ссылке, кнопки; подписи статуса.
+- `OrbitlePresentationTests/CallCenterTests.swift` — центр звонков с фейковыми CallKit и звонком: исходящий, ошибка, сброс до ответа сервера, входящий через систему, занято и истёкший, отклонение (ws2 и 167, ошибка 167 не мешает отбою, отбой после ответа — не отклонение), «занят» для активности ядра, отказ системы, имя позже, группа по ссылке, кнопки; подписи статуса.
+- `OrbitleDomainTests/CallLogTests.swift` — курсор и конец страниц, `reset`, пуши `add`/`remove`, порядок, собеседник по XOR, исходы и длительность `-1`.
+- `OrbitleDataTests/DirectoryRepositoryTests.swift` — журнал по курсору (`""`, затем курсор ответа), имена из контактов, пуши 165, `reset()` при выходе; 167 из `CoreCallService`.
+- `OrbitlePresentationTests/ContactsCallsTests.swift` — листание журнала страницами в `CallsViewModel`.
 - В ядре: `CallsApiTest` (164, 89, токен ссылки), `VcpTest` (`forCalls`), `MaxIosClientTest` (фасад звонков).
 
 ## Что проверить на устройстве
