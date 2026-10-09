@@ -96,7 +96,7 @@ Android-клиент и клиент для компьютера написан�
 `main` ([Releases](https://github.com/fighxy/Orbitle/releases)).
 
 **iPhone.** Неподписанная сборка в пререлизе `ios-latest`:
-https://github.com/fighxy/Orbitle/releases/download/ios-latest/Orbitle.ipa.
+https://github.com/fighxy/Orbitle/releases/download/ios-latest/Maxly.ipa.
 Откройте ссылку в Safari на iPhone, затем подпишите и установите `.ipa` своим сертификатом
 (eSign, Sideloadly, AltStore и т. п.).
 
