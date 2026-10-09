@@ -14,7 +14,10 @@ struct SecurityView: View {
     @Bindable var ghost: GhostSettingsModel
     @Bindable var privateMode: PrivateModeSettings
     let makeEmailFlow: @MainActor () -> RecoveryEmailFlow
+    /// Мини-приложение бота (семейная защита): тот же запуск, что из чата бота.
+    var makeBotApp: ((BotAppRequest) -> MiniAppModel)? = nil
     @State private var emailFlow: RecoveryEmailFlow?
+    @State private var botApp: BotAppRequest?
     @State private var passwordDraft = ""
     @State private var passwordHint = ""
     /// «Имена из адресной книги» (настройка устройства).
@@ -45,6 +48,11 @@ struct SecurityView: View {
             await model.loadTwoFactor()
         }
         .refreshable { await model.loadTwoFactor() }
+        .sheet(item: $botApp) { request in
+            if let makeBotApp {
+                MiniAppSheet(model: makeBotApp(request))
+            }
+        }
         .sheet(isPresented: Binding(get: { emailFlow != nil }, set: { if !$0 { emailFlow = nil } })) {
             if let emailFlow {
                 RecoveryEmailView(flow: emailFlow) { status in model.apply(status) }
@@ -63,25 +71,46 @@ struct SecurityView: View {
         }
     }
 
-    /// Статус семейной защиты из `FAMILY_PROTECTION`. Мини-приложение защиты пока не открывается.
+    /// Статус семейной защиты из `FAMILY_PROTECTION`. Если сервер прислал бота защиты
+    /// (`family-protection-botid`), нажатие открывает его мини-приложение.
     private var familySection: some View {
         Section {
-            LabeledContent {
-                if privacy.settings.isKnown {
-                    Text(privacy.familyProtection.title)
-                } else {
-                    ProgressView()
+            if let request = privacy.familyProtectionApp, makeBotApp != nil {
+                Button {
+                    botApp = request
+                } label: {
+                    LabeledContent {
+                        familyStatus
+                    } label: {
+                        SettingsRowLabel("Семейная защита", systemImage: "figure.and.child.holdinghands", tint: .pink)
+                    }
+                    .contentShape(Rectangle())
                 }
-            } label: {
-                SettingsRowLabel("Семейная защита", systemImage: "figure.and.child.holdinghands", tint: .pink)
+                .foregroundStyle(.primary)
+            } else {
+                LabeledContent {
+                    familyStatus
+                } label: {
+                    SettingsRowLabel("Семейная защита", systemImage: "figure.and.child.holdinghands", tint: .pink)
+                }
             }
         } footer: {
             switch privacy.familyProtection {
+            case .off where privacy.familyProtectionApp != nil: Text("Защита детского профиля настраивается в мини-приложении.")
             case .off: Text("Мини-приложение семейной защиты ещё не открыто для сторонних клиентов MAX.")
             case .admin: Text("Вы управляете защитой другого профиля в официальном приложении MAX.")
             case .manageable: Text("Поиск по номеру, звонки, приглашения, контент и безопасный режим меняет администратор защиты.")
             case .unknown: Text("Сервер прислал незнакомый статус семейной защиты.")
             }
+        }
+    }
+
+    @ViewBuilder
+    private var familyStatus: some View {
+        if privacy.settings.isKnown {
+            Text(privacy.familyProtection.title)
+        } else {
+            ProgressView()
         }
     }
 

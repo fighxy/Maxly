@@ -84,7 +84,8 @@ struct SettingsView: View {
                         privacy: container.privacySettingsModel(),
                         ghost: container.ghostSettingsModel(),
                         privateMode: container.privateMode,
-                        makeEmailFlow: container.recoveryEmailFlow
+                        makeEmailFlow: container.recoveryEmailFlow,
+                        makeBotApp: { container.botAppModel($0) }
                     )
                 } label: {
                     SettingsRowLabel("Безопасность", systemImage: "lock.shield.fill", tint: .gray)
@@ -113,6 +114,14 @@ struct SettingsView: View {
                 }
                 SettingsButtonRow(title: "Избранное", systemImage: "bookmark.fill", tint: .orange) {
                     onOpenChat(Chat.savedMessagesId)
+                }
+                // Архив своих историй: только когда сервер его включил (`stories-history`).
+                if account.settings.storiesHistory, let archive = container.storyArchiveModel() {
+                    NavigationLink {
+                        StoryArchiveView(model: archive)
+                    } label: {
+                        SettingsRowLabel("Мои истории", systemImage: "clock.arrow.circlepath", tint: .pink)
+                    }
                 }
                 SettingsButtonRow(title: "Контакты", systemImage: "person.crop.circle.fill", tint: .gray, isWorking: syncingContacts) {
                     guard !syncingContacts else { return }

@@ -364,6 +364,12 @@ final class AppContainer {
         return model
     }
 
+    /// «Мои истории»: архив своих историй. Модель новая на каждый заход в экран.
+    func storyArchiveModel() -> StoryArchiveModel? {
+        guard let storiesRepository else { return nil }
+        return StoryArchiveModel(repository: storiesRepository)
+    }
+
     func chatListViewModel() -> ChatListViewModel? {
         guard let chats else { return nil }
         if let listModel { return listModel }
