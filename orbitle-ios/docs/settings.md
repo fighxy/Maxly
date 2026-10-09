@@ -27,7 +27,7 @@
 │   ├── Уведомления и звук ›     заглушка
 │   ├── Безопасность ›
 │   │   ├── Пароль для входа (вкл/выкл), почта для восстановления
-│   │   ├── Семейная защита: статус (Отключена / Вы администратор / Профиль под защитой / Неизвестно)
+│   │   ├── Семейная защита: статус; с ботом защиты — открывает его мини-приложение
 │   │   ├── Конфиденциальность — Дополнительно: режим призрака, отметки о прочтении, мой онлайн
 │   │   ├── Безопасный режим, найти по номеру, позвонить, пригласить в чат, контент
 │   │   ├── Информация: статус «в сети», номер телефона (docs/privacy.md)
@@ -42,6 +42,7 @@
 ├── Секция
 │   ├── Сообщения ›              заглушка
 │   ├── Избранное ›              свой чат «Избранное»
+│   ├── Мои истории ›            архив своих историй, если сервер включил (docs/stories-archive.md)
 │   ├── Контакты ›               синхронизация и переход во вкладку
 │   ├── Папки ›                  серверные папки
 │   └── Оформление ›             размер текста, тема, обои чата
@@ -71,7 +72,7 @@
 | Уведомления и звук | — | — | — | заглушка по постановке |
 | Пароль для входа | `TwoFactorApi`: трек 112, 113, 109, 110, 111; `isEnabled` по `profileOptions` | `TwoFactorApi.details(trackId)` и `status()`; `commitEmail`; мост `twoFactorStatus`, шаги смены почты | `AUTH_CREATE_TRACK` 112 `{type:0}`, `AUTH_2FA_DETAILS` 104 `{trackId}` → `{password:{enabled, email, hint}}` | готово |
 | Почта для восстановления | шаги 109 и 110 были | `commitEmail`, мост | 112 → `AUTH_CHECK_PASSWORD` 113 `{trackId, password}` → `AUTH_VERIFY_EMAIL` 109 `{trackId, email}` → `AUTH_CHECK_EMAIL` 110 `{trackId, verifyCode}` → `AUTH_SET_2FA` 111 `{expectedCapabilities:[4], trackId}` | готово |
-| Семейная защита | — | `FAMILY_PROTECTION` строкой: `OFF` / `ADMIN` / `MANAGEABLE` / `UNKNOWN`, сырое значение в `familyProtectionRaw`, блокировка в `privacyLocked` | `LOGIN` 19, `config.user` | частично: статус, мини-приложения нет |
+| Семейная защита | — | `FAMILY_PROTECTION` строкой: `OFF` / `ADMIN` / `MANAGEABLE` / `UNKNOWN`, сырое значение в `familyProtectionRaw`, блокировка в `privacyLocked` | `LOGIN` 19, `config.user`; бот защиты — `config.server["family-protection-botid"]` (`familyProtectionBotId`) | готово: статус и мини-приложение бота |
 | Безопасный режим | `PrivacySettings` без этих ключей | `updateUserSettings` | `CONFIG` 22, ключи ниже (раздел 6.3) | готово |
 | Найти по номеру, позвонить, пригласить, контент | — | чтение `config.user` с умолчаниями веб-клиента; `setPrivacy`, `setPrivacyFlag`, `isPrivacyReadOnly` | `CONFIG` 22 `{SEARCH_BY_PHONE / INCOMING_CALL / CHATS_INVITE / CONTENT_LEVEL_ACCESS}` | готово (docs/privacy.md) |
 | Статус «в сети» | `PrivacySettings.hideOnlineStatus` | чтение `config.user` | `CONFIG` 22 `{HIDDEN: bool}` | готово |
@@ -83,6 +84,7 @@
 | Войти по QR-коду | `MaxClient.approveQrLogin` без подготовки | перед подтверждением `PING {interactive:true}`, `SESSIONS_INFO`, пауза 300 мс (без этого сервер отклоняет); мост | 1, 96, `AUTH_QR_APPROVE` 290 `{qrLink}` | готово |
 | Сообщения | — | — | — | заглушка по постановке |
 | Избранное | чат с id `0` в списке | — | `CHAT_HISTORY` 49 | готово |
+| Мои истории | — | `ownStoryArchive(marker)`, `AccountConfig.storiesHistory` (ядро `ac9c7fb`) | 219 `{marker?}` → `{stories, marker}`, по 30; видимость — `config.server["stories-history"]` | готово (docs/stories-archive.md) |
 | Контакты | контакты только из ответа `LOGIN` | `MaxClient.syncContacts` | `CONTACTS_GET` 8 `{contactsSync:0}` → `{contacts}` | готово |
 | Папки | `getFolders` 272, `createFolder`/`updateFolder` 274 (терял `favorites`), `deleteFolder` 276, пуш 277 | `updateFolder` сохраняет `favorites` и `options`; `reorderFolders` 275; поток папок в мост | `FOLDERS_GET` 272, `FOLDERS_UPDATE` 274, `FOLDERS_REORDER` 275 `{foldersOrder}`, `FOLDERS_DELETE` 276 `{folderIds}`, `NOTIF_FOLDERS` 277 | готово |
 | Оформление | — (только клиент) | — | — | готово |
@@ -139,7 +141,7 @@
 
 ### 6.2. Семейная защита
 
-Строка под паролем показывает `FAMILY_PROTECTION` из `config.user`: «Отключена» (`OFF`), «Вы администратор» (`ADMIN`), «Профиль под защитой» (`MANAGEABLE`), «Неизвестно» (`UNKNOWN`, незнакомое значение сервера). При `MANAGEABLE` четыре строки под безопасным режимом и сам безопасный режим заблокированы. Мини-приложение защиты не открывается. Подробнее — [`privacy.md`](privacy.md), раздел 5.
+Строка под паролем показывает `FAMILY_PROTECTION` из `config.user`: «Отключена» (`OFF`), «Вы администратор» (`ADMIN`), «Профиль под защитой» (`MANAGEABLE`), «Неизвестно» (`UNKNOWN`, незнакомое значение сервера). При `MANAGEABLE` четыре строки под безопасным режимом и сам безопасный режим заблокированы. Если сервер прислал бота защиты (`config.server["family-protection-botid"]`, в настройках `familyProtectionBotId`), строка становится кнопкой и открывает мини-приложение этого бота в листе — тем же запуском `launchBotApp`, что и из чата с ботом. Без бота строка только показывает статус. Подробнее — [`privacy.md`](privacy.md), раздел 5.
 
 ### 6.3. Безопасный режим
 
@@ -179,6 +181,7 @@
 - **Пригласить друзей** — лист как у QR профиля: ссылка `invite-link`, QR, «Поделиться» (текст «Присоединяйся ко мне в MAX: <ссылка>»), «Скопировать».
 - **Уведомления и звук**, **Сообщения** — экраны-заглушки `ContentUnavailableView` «Скоро здесь появятся настройки».
 - **Избранное** — открывает свой чат «Избранное» (id `0`, `Chat.isSavedMessages`) на стеке вкладки «Чаты».
+- **Мои истории** — сразу под «Избранным», только когда `storiesHistory` включён. Открывает архив своих историй (docs/stories-archive.md).
 - **Контакты** — `CONTACTS_GET` 8 `{contactsSync:0}` (полный список контактов, ответ `{contacts}`), затем переключение на вкладку «Контакты». Ошибка синхронизации не мешает переходу: вкладка показывает то, что пришло с `LOGIN`.
 
 ## 9. Мини-приложения
