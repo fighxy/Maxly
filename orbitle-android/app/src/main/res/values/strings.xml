@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Orbitle</string>
+    <string name="app_name">Maxly</string>
 
     <!-- Вкладки -->
     <string name="tab_chats">Чаты</string>
@@ -9,7 +9,7 @@
     <string name="tab_settings">Настройки</string>
 
     <!-- Вход -->
-    <string name="auth_welcome_title">Orbitle</string>
+    <string name="auth_welcome_title">Maxly</string>
     <string name="auth_welcome_subtitle">Мессенджер для Max. Введите номер телефона, чтобы войти</string>
     <string name="auth_country">Страна</string>
     <string name="auth_country_code">Код</string>

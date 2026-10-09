@@ -107,7 +107,7 @@ class AndroidCallSystem(private val context: Context, private val center: CallCe
 
     private fun showIncoming(snapshot: Snapshot) {
         if (!notifications.areNotificationsEnabled()) {
-            CallLog.warning("Входящий: уведомления Orbitle выключены — звонок виден только в открытом приложении")
+            CallLog.warning("Входящий: уведомления Maxly выключены — звонок виден только в открытом приложении")
         }
         if (Build.VERSION.SDK_INT >= 34 && !notifications.canUseFullScreenIntent()) {
             CallLog.warning("Входящий: нет разрешения на полноэкранные уведомления")
@@ -154,7 +154,7 @@ class AndroidCallSystem(private val context: Context, private val center: CallCe
         if (on) {
             if (proximity?.isHeld == true) return
             if (!power.isWakeLockLevelSupported(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK)) return
-            proximity = power.newWakeLock(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK, "orbitle:call").apply { acquire() }
+            proximity = power.newWakeLock(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK, "maxly:call").apply { acquire() }
         } else {
             proximity?.takeIf { it.isHeld }?.release()
             proximity = null

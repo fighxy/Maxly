@@ -22,7 +22,7 @@ object CallPermissions {
     private var pendingPermission: CompletableDeferred<Boolean>? = null
     private var pendingScreen: CompletableDeferred<Intent?>? = null
 
-    const val MICROPHONE_DENIED = "Нет доступа к микрофону. Разрешите его Orbitle в настройках, чтобы звонить."
+    const val MICROPHONE_DENIED = "Нет доступа к микрофону. Разрешите его Maxly в настройках, чтобы звонить."
 
     fun init(context: Context) {
         this.context = context.applicationContext

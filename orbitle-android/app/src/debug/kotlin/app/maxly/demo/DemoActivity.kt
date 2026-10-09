@@ -74,7 +74,7 @@ class DemoActivity : ComponentActivity() {
             override fun put(key: String, value: String) { map[key] = value }
         })
         intent.getStringExtra("wallpaper")?.let { appearance.setWallpaper(ChatWallpaper.valueOf(it)) }
-        val player = ExoVoicePlayer(applicationContext, lifecycleScope, { "Orbitle demo" })
+        val player = ExoVoicePlayer(applicationContext, lifecycleScope, { "Maxly demo" })
         val demoRecents = object : app.maxly.data.RecentStickerStore {
             override var recentEmoji: List<String> = listOf("🔥", "👍", "😂")
             override var recentStickers: List<app.maxly.domain.Sticker> = emptyList()
@@ -309,7 +309,7 @@ private class DemoFiles(private val context: android.content.Context) : MessageF
         if (url.startsWith("android.resource:")) {
             context.contentResolver.openInputStream(android.net.Uri.parse(url))!!.use { input -> target.outputStream().use { input.copyTo(it) } }
         } else {
-            target.writeText("Демо-отчёт Orbitle")
+            target.writeText("Демо-отчёт Maxly")
         }
         return target.absolutePath
     }

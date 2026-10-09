@@ -236,7 +236,7 @@ class AppContainer(context: Context) {
     ).also { center ->
         app.maxly.calls.AndroidWebRtc.init(context.applicationContext)
         app.maxly.calls.CallPermissions.init(context.applicationContext)
-        // Журнал звонков (CallLog) пишет в общий журнал приложения: файл и logcat «Orbitle/calls».
+        // Журнал звонков (CallLog) пишет в общий журнал приложения: файл и logcat «Maxly/calls».
         // Журнал звонков читается заново, когда сервер успел записать звонок.
         center.onCallEnded = {
             scope.launch {

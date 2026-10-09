@@ -15,8 +15,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * Сохранение в общие папки: фото — Pictures/Orbitle, видео — Movies/Orbitle, остальное —
- * Download/Orbitle. С Android 10 через MediaStore без разрешений, раньше — файлом в папку
+ * Сохранение в общие папки: фото — Pictures/Maxly, видео — Movies/Maxly, остальное —
+ * Download/Maxly. С Android 10 через MediaStore без разрешений, раньше — файлом в папку
  * (нужно разрешение на запись, его спрашивает экран).
  */
 class MediaStoreSaver(context: Context) : MediaSaver {
@@ -43,7 +43,7 @@ class MediaStoreSaver(context: Context) : MediaSaver {
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, name)
             put(MediaStore.MediaColumns.MIME_TYPE, mime)
-            put(MediaStore.MediaColumns.RELATIVE_PATH, "$folder/Orbitle")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, "$folder/Maxly")
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
         val resolver = app.contentResolver
@@ -65,7 +65,7 @@ class MediaStoreSaver(context: Context) : MediaSaver {
             SavedKind.VIDEO -> Environment.DIRECTORY_MOVIES
             SavedKind.OTHER -> Environment.DIRECTORY_DOWNLOADS
         }
-        val dir = File(Environment.getExternalStoragePublicDirectory(folder), "Orbitle").apply { mkdirs() }
+        val dir = File(Environment.getExternalStoragePublicDirectory(folder), "Maxly").apply { mkdirs() }
         var target = File(dir, name)
         var n = 1
         while (target.exists()) target = File(dir, "${name.substringBeforeLast('.')} (${n++})" + name.substringAfterLast('.', "").let { if (it.isEmpty()) "" else ".$it" })

@@ -90,7 +90,7 @@ internal fun PhoneBookAccess(model: PhoneBookViewModel) {
                 Text("Найти друзей из контактов", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.size(8.dp))
                 Text(
-                    "Orbitle прочитает имена и номера из телефонной книги, чтобы найти среди них знакомых. " +
+                    "Maxly прочитает имена и номера из телефонной книги, чтобы найти среди них знакомых. " +
                         "Книга читается только на этом телефоне и никуда не отправляется. " +
                         "Доступ можно забрать в любой момент в настройках Android.",
                     style = MaterialTheme.typography.bodyMedium,

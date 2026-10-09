@@ -23,7 +23,7 @@ import java.util.Collections
  * рассказывает система на следующем запуске (`ApplicationExitInfo`, Android 11+).
  */
 object Diagnostics {
-    private const val TAG = "Orbitle"
+    private const val TAG = "Maxly"
     private const val PREFS = "orbitle.diagnostics"
     private const val KEY_EXIT_SEEN = "exitSeenMs"
     private const val EXIT_LOOKBACK_MS = 7L * 24 * 60 * 60 * 1000
@@ -69,7 +69,7 @@ object Diagnostics {
 
     /** Версия, сборка и устройство — в начало отчёта и в строку запуска. */
     fun info(): String = buildString {
-        append("Orbitle ").append(BuildConfig.VERSION_NAME).append(" (").append(BuildConfig.VERSION_CODE).append("), сборка ")
+        append("Maxly ").append(BuildConfig.VERSION_NAME).append(" (").append(BuildConfig.VERSION_CODE).append("), сборка ")
             .append(BuildConfig.BUILD_SHA).append(", ядро ").append(BuildConfig.CORE_REVISION)
         if (BuildConfig.DEBUG) append(", debug")
         append('\n')
@@ -195,13 +195,13 @@ object Diagnostics {
     fun shareLog(context: Context): Boolean {
         val text = log?.read().orEmpty()
         if (text.isBlank()) return false
-        val header = "Журнал Orbitle\n" + info() + "\n\n"
-        return share(context, "orbitle-log.txt", header + text, "Журнал Orbitle")
+        val header = "Журнал Maxly\n" + info() + "\n\n"
+        return share(context, "maxly-log.txt", header + text, "Журнал Maxly")
     }
 
     fun shareReport(context: Context, name: String): Boolean {
         val text = reports?.text(name) ?: return false
-        return share(context, name, text, "Отчёт о сбое Orbitle")
+        return share(context, name, text, "Отчёт о сбое Maxly")
     }
 
     private fun share(context: Context, fileName: String, text: String, subject: String): Boolean = try {
