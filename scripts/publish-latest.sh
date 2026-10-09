@@ -8,7 +8,7 @@
 #
 # Переменные: TAG, TITLE, NOTES; WATCH — пути через пробел, на которые запускается сборка
 # платформы; GITHUB_REPOSITORY, GITHUB_SHA и GH_TOKEN задаёт Actions.
-# Аргументы — файлы выпуска; имя файла становится именем в выпуске (Orbitle.ipa и т. п.).
+# Аргументы — файлы выпуска; имя файла становится именем в выпуске (Maxly.apk, Maxly.msi и т. п.).
 set -euo pipefail
 
 : "${TAG:?}" "${TITLE:?}" "${NOTES:?}" "${WATCH:?}"
