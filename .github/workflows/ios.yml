@@ -130,7 +130,7 @@ jobs:
           rm -rf build/ipa build/Maxly.ipa && mkdir -p build/ipa/Payload
           cp -R "$app" build/ipa/Payload/
           (cd build/ipa && zip -qry ../Maxly.ipa Payload)
-          python3 scripts/validate-ipa.py build/Maxly.ipa --alternate-icon AppIconLight --alternate-icon AppIconBlue
+          python3 scripts/validate-ipa.py build/Maxly.ipa
           ls -lh build/Maxly.ipa
       - name: Upload IPA
         if: ${{ !cancelled() && steps.ipa.outcome == 'success' }}
