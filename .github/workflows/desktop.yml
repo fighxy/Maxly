@@ -205,5 +205,5 @@ jobs:
           done
           ls -lh release
           export TITLE="🕊 Maxly для Desktop — последняя сборка"
-          export NOTES="Свежая сборка Maxly из \`main\` для Windows, macOS и Linux: \`Maxly.msi\`, \`Maxly.dmg\`, \`Maxly.deb\`. После первой установки войдите по номеру телефона."$'\n\n'"Коммит ${short} (${GITHUB_SHA}), собран $(date -u '+%Y-%m-%d %H:%M') UTC. macOS: сборка без подписи — открыть через «Открыть» в контекстном меню. Для голосовых, кружков и видео нужен ffmpeg в PATH."
+          export NOTES="Свежая сборка Maxly из \`main\` для Windows, macOS и Linux: \`Maxly.msi\`, \`Maxly.dmg\`, \`Maxly.deb\`. Maxly ставится отдельным приложением, войти нужно заново, старый Orbitle потом можно удалить."$'\n\n'"Коммит ${short} (${GITHUB_SHA}), собран $(date -u '+%Y-%m-%d %H:%M') UTC. macOS: сборка без подписи — открыть через «Открыть» в контекстном меню. Для голосовых, кружков и видео нужен ffmpeg в PATH."
           bash scripts/publish-latest.sh "${files[@]}"
