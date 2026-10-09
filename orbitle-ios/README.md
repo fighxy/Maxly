@@ -66,7 +66,7 @@ MAX_KMP_CORE_DIR=~/src/maxly-core bash scripts/fetch-core.sh
 bash scripts/build-ipa.sh            # или MAX_KMP_CORE_DIR=… / SKIP_CORE=1
 ```
 
-Скрипт собирает Release для устройства без подписи и кладёт `build/Orbitle.ipa`. Его подписывают своим сертификатом (Sideloadly, AltStore, eSign и т. п.) и ставят на телефон. CI делает то же, выкладывает `.ipa` в артефакты прогона, а зелёная сборка `main` заменяет пререлиз `ios-latest`: https://github.com/fighxy/Orbitle/releases/download/ios-latest/Maxly.ipa. Прежняя ссылка на `Orbitle.ipa` в том же выпуске тоже работает: это копия той же сборки.
+Скрипт собирает Release для устройства без подписи и кладёт `build/Maxly.ipa`. Его подписывают своим сертификатом (Sideloadly, AltStore, eSign и т. п.) и ставят на телефон. CI делает то же, выкладывает `.ipa` в артефакты прогона, а зелёная сборка `main` заменяет пререлиз `ios-latest`: https://github.com/fighxy/Maxly/releases/download/ios-latest/Maxly.ipa. Прежняя ссылка на `Orbitle.ipa` в том же выпуске тоже работает: это копия той же сборки.
 
 Тесты библиотек (`OrbitleDomainTests`, `OrbitleDataTests`, `OrbitlePresentationTests`) ядро не требуют:
 
