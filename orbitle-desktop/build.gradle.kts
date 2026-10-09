@@ -183,7 +183,7 @@ compose.desktop {
             // Только ASCII: WiX собирает .msi в кодовой странице 1252, кириллица в описании ломает packageMsi.
             description = "Maxly desktop client"
             vendor = "Maxly"
-            // Значки собраны из orbitle-ios AppIcon.png (1024 px): .ico 16–256, .icns, .png 512.
+            // Значки собраны из docs/brand/maxly-logo-black.png: .ico 16–256, .icns до 1024, .png 512.
             windows {
                 // Ярлык на рабочем столе и в меню «Пуск», установка без прав администратора
                 // в профиль пользователя с выбором папки.
