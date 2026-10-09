@@ -7,7 +7,7 @@ set -uo pipefail
 
 app="${1:?путь к Maxly.app}"
 wait_seconds="${2:-25}"
-bundle="app.orbitle.ios"
+bundle="app.maxly.ios"
 out="$(mktemp -d)"
 
 # Самая новая среда iOS и последний iPhone из тех, что она поддерживает.
@@ -28,7 +28,7 @@ names = {d["name"]: d for d in phones}
 phone = next((names[n] for n in ("iPhone 17", "iPhone 16") if n in names), phones[-1])
 print(runtime["identifier"], phone["identifier"])
 ')
-udid="$(xcrun simctl create orbitle-smoke "$device_type" "$runtime")"
+udid="$(xcrun simctl create maxly-smoke "$device_type" "$runtime")"
 echo "Симулятор $udid ($device_type, $runtime)"
 cleanup() { xcrun simctl shutdown "$udid" >/dev/null 2>&1; xcrun simctl delete "$udid" >/dev/null 2>&1; }
 trap cleanup EXIT
@@ -38,12 +38,12 @@ xcrun simctl bootstatus "$udid" -b >/dev/null
 xcrun simctl install "$udid" "$app"
 
 xcrun simctl spawn "$udid" log stream --level debug --style compact \
-  --predicate 'subsystem == "app.orbitle.ios" OR process == "Maxly" OR process == "Orbitle"' > "$out/app.log" 2>&1 &
+  --predicate 'subsystem == "app.maxly.ios" OR process == "Maxly" OR process == "Orbitle"' > "$out/app.log" 2>&1 &
 log_pid=$!
 sleep 2
 
 touch "$out/started"
-# simctl launch печатает «app.orbitle.ios: <pid>»; процессы симулятора — процессы хоста.
+# simctl launch печатает «app.maxly.ios: <pid>»; процессы симулятора — процессы хоста.
 pid="$(xcrun simctl launch "$udid" "$bundle" | tee /dev/stderr | awk -F': ' -v b="$bundle" '$1 == b { print $2 }')"
 [[ -n "$pid" ]] || echo "::error::Maxly не запустился"
 sleep "$wait_seconds"
@@ -63,7 +63,7 @@ if [[ "$alive" != 1 ]]; then
   ps -p "${pid:-0}" -o pid,stat,etime,command 2>/dev/null || echo "(процесса $pid нет)"
   xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -i -E "maxly|orbitle" || echo "(в launchctl list нет задания Maxly)"
   xcrun simctl spawn "$udid" log show --last 3m --style compact --predicate \
-    '(process == "runningboardd" OR process == "SpringBoard" OR process == "launchd" OR process == "ReportCrash") AND (eventMessage CONTAINS[c] "orbitle" OR eventMessage CONTAINS[c] "'"${pid:-orbitle}"'")' \
+    '(process == "runningboardd" OR process == "SpringBoard" OR process == "launchd" OR process == "ReportCrash") AND (eventMessage CONTAINS[c] "maxly" OR eventMessage CONTAINS[c] "'"${pid:-maxly}"'")' \
     2>/dev/null | grep -Ei "termin|exit|kill|crash|watchdog|jetsam|signal|reason|invalidat" | tail -n 80
   echo "::endgroup::"
 fi
@@ -71,12 +71,12 @@ fi
 # Собственный журнал Maxly (Application Support/Logs): фазы входа и ядра, соединение, ошибки.
 container="$(xcrun simctl get_app_container "$udid" "$bundle" data 2>/dev/null)"
 echo "::group::Журнал Maxly"
-cat "$container/Library/Application Support/Logs/"orbitle-*.log 2>/dev/null || echo "(файла журнала нет)"
+cat "$container/Library/Application Support/Logs/"maxly-*.log 2>/dev/null || echo "(файла журнала нет)"
 cat "$container/Library/Application Support/Logs/"*.txt 2>/dev/null
 echo "::endgroup::"
 
 echo "::group::Системный журнал процесса (записи Maxly и ошибки)"
-grep -E "app\.orbitle\.ios|[Ee]rror|[Ff]ault|Kotlin|exception" "$out/app.log" | grep -v "KeyboardVisualMode" | tail -n 200
+grep -E "app\.maxly\.ios|[Ee]rror|[Ff]ault|Kotlin|exception" "$out/app.log" | grep -v "KeyboardVisualMode" | tail -n 200
 echo "::endgroup::"
 
 # Отчёты о сбоях симулятора пишутся в отчёты хоста.
