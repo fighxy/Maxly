@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Ставит Orbitle.app в новый симулятор iPhone, запускает и через 25 секунд проверяет,
+# Ставит Maxly.app в новый симулятор iPhone, запускает и через 25 секунд проверяет,
 # что процесс жив. Если нет — печатает отчёт о сбое и журнал приложения и падает.
 #
-#   bash scripts/smoke-launch.sh path/to/Orbitle.app [секунды]
+#   bash scripts/smoke-launch.sh path/to/Maxly.app [секунды]
 set -uo pipefail
 
-app="${1:?путь к Orbitle.app}"
+app="${1:?путь к Maxly.app}"
 wait_seconds="${2:-25}"
 bundle="app.orbitle.ios"
 out="$(mktemp -d)"
@@ -38,14 +38,14 @@ xcrun simctl bootstatus "$udid" -b >/dev/null
 xcrun simctl install "$udid" "$app"
 
 xcrun simctl spawn "$udid" log stream --level debug --style compact \
-  --predicate 'subsystem == "app.orbitle.ios" OR process == "Orbitle"' > "$out/app.log" 2>&1 &
+  --predicate 'subsystem == "app.orbitle.ios" OR process == "Maxly" OR process == "Orbitle"' > "$out/app.log" 2>&1 &
 log_pid=$!
 sleep 2
 
 touch "$out/started"
 # simctl launch печатает «app.orbitle.ios: <pid>»; процессы симулятора — процессы хоста.
 pid="$(xcrun simctl launch "$udid" "$bundle" | tee /dev/stderr | awk -F': ' -v b="$bundle" '$1 == b { print $2 }')"
-[[ -n "$pid" ]] || echo "::error::Orbitle не запустился"
+[[ -n "$pid" ]] || echo "::error::Maxly не запустился"
 sleep "$wait_seconds"
 
 # Жив, если жив его pid или launchd симулятора ещё держит задание приложения.
@@ -61,21 +61,21 @@ if [[ "$alive" != 1 ]]; then
   # Причина завершения (runningboardd, SpringBoard, launchd): сбой, watchdog, jetsam или выход.
   echo "::group::Завершение процесса (pid ${pid:-?})"
   ps -p "${pid:-0}" -o pid,stat,etime,command 2>/dev/null || echo "(процесса $pid нет)"
-  xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -i orbitle || echo "(в launchctl list нет задания Orbitle)"
+  xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -i -E "maxly|orbitle" || echo "(в launchctl list нет задания Maxly)"
   xcrun simctl spawn "$udid" log show --last 3m --style compact --predicate \
     '(process == "runningboardd" OR process == "SpringBoard" OR process == "launchd" OR process == "ReportCrash") AND (eventMessage CONTAINS[c] "orbitle" OR eventMessage CONTAINS[c] "'"${pid:-orbitle}"'")' \
     2>/dev/null | grep -Ei "termin|exit|kill|crash|watchdog|jetsam|signal|reason|invalidat" | tail -n 80
   echo "::endgroup::"
 fi
 
-# Собственный журнал Orbitle (Application Support/Logs): фазы входа и ядра, соединение, ошибки.
+# Собственный журнал Maxly (Application Support/Logs): фазы входа и ядра, соединение, ошибки.
 container="$(xcrun simctl get_app_container "$udid" "$bundle" data 2>/dev/null)"
-echo "::group::Журнал Orbitle"
+echo "::group::Журнал Maxly"
 cat "$container/Library/Application Support/Logs/"orbitle-*.log 2>/dev/null || echo "(файла журнала нет)"
 cat "$container/Library/Application Support/Logs/"*.txt 2>/dev/null
 echo "::endgroup::"
 
-echo "::group::Системный журнал процесса (записи Orbitle и ошибки)"
+echo "::group::Системный журнал процесса (записи Maxly и ошибки)"
 grep -E "app\.orbitle\.ios|[Ee]rror|[Ff]ault|Kotlin|exception" "$out/app.log" | grep -v "KeyboardVisualMode" | tail -n 200
 echo "::endgroup::"
 
@@ -87,10 +87,10 @@ while IFS= read -r report; do
   head -c 120000 "$report"
   echo
   echo "::endgroup::"
-done < <(find "$HOME/Library/Logs/DiagnosticReports" -name 'Orbitle*' -newer "$out/started" 2>/dev/null)
+done < <(find "$HOME/Library/Logs/DiagnosticReports" \( -name 'Maxly*' -o -name 'Orbitle*' \) -newer "$out/started" 2>/dev/null)
 
 if [[ "$alive" != 1 ]]; then
-  echo "::error::Orbitle закрылся в первые $wait_seconds с после запуска$([[ $found == 1 ]] && echo ', отчёт о сбое выше')"
+  echo "::error::Maxly закрылся в первые $wait_seconds с после запуска$([[ $found == 1 ]] && echo ', отчёт о сбое выше')"
   exit 1
 fi
-echo "Orbitle работает $wait_seconds с после запуска"
+echo "Maxly работает $wait_seconds с после запуска"
