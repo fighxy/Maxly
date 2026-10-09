@@ -36,6 +36,20 @@ Android-клиент и клиент для компьютера написан�
 (модели, данные, view model, протокол звонков) и `orbitle-compose` (общие экраны). Токен сессии хранит ядро. У десктопа свой каталог `~/.maxly` и
 своё пространство сессии `orbitle-desktop`, оно не делит вход с Android.
 
+## Скриншоты
+
+Версия на 09.10.2026.
+
+<p align="center">
+  <img src="docs/screenshots/ios-chats.png" width="240" alt="iOS: список чатов">
+  <img src="docs/screenshots/ios-channel.png" width="240" alt="iOS: канал">
+  <img src="docs/screenshots/android-chats.png" width="240" alt="Android: список чатов">
+</p>
+<p align="center">
+  <img src="docs/screenshots/desktop-light.png" width="420" alt="Desktop: светлая тема, приватный режим">
+  <img src="docs/screenshots/desktop-dark.png" width="420" alt="Desktop: тёмная тема, приватный режим">
+</p>
+
 ## Платформы
 
 | Каталог | Платформа | UI | Ядро | Состояние |
