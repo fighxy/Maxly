@@ -132,7 +132,7 @@ adb shell am start -n app.orbitle.android.debug/app.orbitle.demo.DemoActivity --
 
 ## Ghost mode, privacy and activity
 
-The core is pinned to max-kmp-core `33cca05` in `core.lock`. Everything below runs through it.
+The core is pinned to max-kmp-core `1364e91` in `core.lock`. Everything below runs through it.
 
 - **Connection:** the core owns the keepalive and reconnects. It sends `PING` every 29 s (the
   first right after login), answers the server's `PING`, follows a server `RECONNECT` (op 3, only
