@@ -269,7 +269,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = app.orbitle.ios;
+				PRODUCT_BUNDLE_IDENTIFIER = app.maxly.ios;
 				PRODUCT_MODULE_NAME = Orbitle;
 				PRODUCT_NAME = Maxly;
 				SDKROOT = iphoneos;
@@ -301,7 +301,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = app.orbitle.ios;
+				PRODUCT_BUNDLE_IDENTIFIER = app.maxly.ios;
 				PRODUCT_MODULE_NAME = Orbitle;
 				PRODUCT_NAME = Maxly;
 				SDKROOT = iphoneos;

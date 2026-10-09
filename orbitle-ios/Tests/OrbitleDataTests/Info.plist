@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleIdentifier</key>
-	<string>app.orbitle.ios.tests</string>
+	<string>app.maxly.ios.tests</string>
 	<key>CFBundleName</key>
 	<string>OrbitleDataTests</string>
 	<key>CFBundleShortVersionString</key>

@@ -6,9 +6,12 @@ public enum DeepLink: Sendable, Equatable {
     case message(chatId: String, messageId: String)
     case user(id: String)
 
-    /// `orbitle://chat/<id>`, `orbitle://chat/<id>/message/<messageId>`, `orbitle://user/<id>`.
+    /// `maxly://chat/<id>`, `maxly://chat/<id>/message/<messageId>`, `maxly://user/<id>`;
+    /// прежняя схема `orbitle://` открывается так же.
+    static let schemes: Set<String> = ["maxly", "orbitle"]
+
     public static func parse(_ url: URL) -> DeepLink? {
-        guard url.scheme?.lowercased() == "orbitle" else { return nil }
+        guard let scheme = url.scheme?.lowercased(), schemes.contains(scheme) else { return nil }
         let host = url.host?.lowercased()
         let parts = url.path.split(separator: "/").map(String.init).filter { !$0.isEmpty }
         switch host {
