@@ -78,9 +78,7 @@ import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.ui.ExperimentalComposeUiApi
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.isSecondaryPressed
-import androidx.compose.ui.input.pointer.onPointerEvent
+import app.orbitle.ui.components.onSecondaryClick
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -178,9 +176,8 @@ fun BubbleRow(
         Modifier
             .fillMaxWidth()
             .hoverable(hover)
-            .onPointerEvent(PointerEventType.Press) {
-                if (it.buttons.isSecondaryPressed) onLongPress(message)
-            }
+            // Правая кнопка где угодно в строке, в том числе на фото и файле, — меню сообщения.
+            .onSecondaryClick { onLongPress(message) }
             .background(if (highlighted) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent)
             .padding(
                 start = 16.dp,
@@ -400,7 +397,7 @@ private fun BubbleContent(
         content.voices.forEach {
             PlayableVoice(message, it, colors, maxWidth, footer = if (voiceOnly) ({ TimeRow(item, colors.secondary) }) else null)
         }
-        content.files.forEach { file -> FileRow(message, file, colors, onLongPress) }
+        content.files.forEach { file -> FileRow(message, file, colors) }
         content.attachments.filterIsInstance<ChatAttachment.Contact>().forEach { contact ->
             val phone = contact.contact.phone.takeIf { it.isNotEmpty() }?.let { if (it.startsWith("+")) it else "+$it" }
             AttachmentRow(
@@ -408,7 +405,6 @@ private fun BubbleContent(
                 title = contact.contact.name.ifEmpty { "Контакт" },
                 subtitle = phone ?: "контакт MAX",
                 colors = colors,
-                onMenu = onLongPress,
                 onClick = phone?.let { { DesktopActions.copy(it) } },
             )
         }
@@ -428,7 +424,6 @@ private fun BubbleContent(
                 subtitle = CallBubbleText.duration(call) ?: if (call.isVideo) "Видео" else "Аудио",
                 colors = colors,
                 circle = if (alert) MissedRed else null,
-                onMenu = onLongPress,
                 onClick = call.joinLink?.takeIf { it.isNotEmpty() }?.let { link -> { DesktopActions.open(link) } },
             )
         }
@@ -588,7 +583,6 @@ private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modif
         val frame = singleFrame(visuals.first(), maxWidth)
         Box(
             modifier.size(frame.width.dp, frame.height.dp).clip(shape)
-                .contextMenu(onLongPress)
                 .combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(visuals.first()) },
         ) { VisualCell(visuals.first(), frame.width.dp) }
         return
@@ -600,7 +594,6 @@ private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modif
                 row.forEach {
                     Box(
                         Modifier.size(if (row.size == 1) maxWidth else cell, cell)
-                            .contextMenu(onLongPress)
                             .combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(it) },
                     ) { VisualCell(it, if (row.size == 1) maxWidth else cell) }
                 }
@@ -847,20 +840,13 @@ private fun TranscribeMark(color: Color) {
     }
 }
 
-/** Правая кнопка открывает меню сообщения, как долгое нажатие на телефоне. */
-@OptIn(ExperimentalComposeUiApi::class)
-private fun Modifier.contextMenu(onMenu: () -> Unit): Modifier =
-    onPointerEvent(PointerEventType.Press) {
-        if (it.buttons.isSecondaryPressed) onMenu()
-    }
-
 /** Файл: нажатие скачивает и открывает, во время загрузки — кольцо прогресса. */
 @Composable
-private fun FileRow(message: Message, file: FileContent, colors: BubbleColors, onMenu: () -> Unit) {
+private fun FileRow(message: Message, file: FileContent, colors: BubbleColors) {
     val media = LocalBubbleMedia.current
     val progress = media.media.value.downloads[file.id]
     Row(
-        Modifier.clip(RoundedCornerShape(12.dp)).contextMenu(onMenu).clickable { media.onFile(message, file) }
+        Modifier.clip(RoundedCornerShape(12.dp)).clickable { media.onFile(message, file) }
             .padding(start = 8.dp, end = 12.dp, top = 8.dp, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -917,12 +903,10 @@ private fun AttachmentRow(
     subtitle: String,
     colors: BubbleColors,
     circle: Color? = null,
-    onMenu: () -> Unit = {},
     onClick: (() -> Unit)? = null,
 ) {
     Row(
         Modifier
-            .contextMenu(onMenu)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(start = 8.dp, end = 12.dp, top = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

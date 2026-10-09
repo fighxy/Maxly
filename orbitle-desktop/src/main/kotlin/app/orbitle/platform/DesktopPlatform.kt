@@ -2,6 +2,8 @@ package app.orbitle.platform
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import java.awt.Desktop
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
@@ -106,15 +108,19 @@ private val backDispatcher = java.awt.KeyEventDispatcher { event ->
 
 @Composable
 fun BackHandler(enabled: Boolean = true, onBack: () -> Unit) {
-    DisposableEffect(enabled, onBack) {
-        if (enabled) backHandlers.addLast(onBack)
+    // Место в стопке не меняется от новой лямбды на перерисовке: иначе экран под листом,
+    // перерисовавшись, вставал бы сверху и забирал Esc у листа.
+    val current = rememberUpdatedState(onBack)
+    val entry = remember { { current.value() } }
+    DisposableEffect(enabled) {
+        if (enabled) backHandlers.addLast(entry)
         val manager = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
         if (!backDispatcherInstalled) {
             manager.addKeyEventDispatcher(backDispatcher)
             backDispatcherInstalled = true
         }
         onDispose {
-            if (enabled) backHandlers.remove(onBack)
+            if (enabled) backHandlers.remove(entry)
             if (backHandlers.isEmpty() && backDispatcherInstalled) {
                 manager.removeKeyEventDispatcher(backDispatcher)
                 backDispatcherInstalled = false

@@ -1,95 +1,57 @@
 package app.orbitle.ui.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.height
-import androidx.compose.ui.unit.width
-import androidx.compose.ui.window.DialogModalityType
-import androidx.compose.ui.window.WindowDecoration
-import androidx.compose.ui.window.v2.DialogWindow
-import androidx.compose.ui.window.v2.WindowBoundsProvider
-import androidx.compose.ui.window.v2.WindowPositionProvider
-import androidx.compose.ui.window.v2.WindowSizeProvider
-import androidx.compose.ui.window.v2.rememberDialogState
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import app.orbitle.platform.BackHandler
 
 /**
- * Модальное окно поверх родителя. Карточка Material 3 по центру, щелчок по затемнению закрывает.
+ * Лист поверх окна: карточка Material 3 по центру. Щелчок по затемнению и Esc закрывают.
  * Содержимое само решает, как прокручиваться. [wide] — списки пошире (пересылка, папки).
+ *
+ * Лист рисуется слоем в том же окне. Отдельное модальное окно ОС (`window.v2.DialogWindow`,
+ * прозрачное и без рамки) на Windows вешало приложение: меню сообщения по правой кнопке
+ * открывалось пустым окном, которое не отвечало, и закрыть программу удавалось только из
+ * диспетчера задач.
  */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun AppSheet(
     onDismissRequest: () -> Unit,
     wide: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val state = rememberDialogState(
-        initialBoundsProvider = WindowBoundsProvider(
-            positionProvider = WindowPositionProvider.AlignedToParentWindow(
-                anchor = Alignment.TopStart,
-                alignment = Alignment.TopStart,
-            ),
-            sizeProvider = WindowSizeProvider {
-                val bounds = parentWindowMetrics?.bounds
-                if (bounds == null) DpSize(640.dp, 720.dp) else DpSize(bounds.width, bounds.height)
-            },
-        ),
-    )
-    DialogWindow(
-        onCloseRequest = onDismissRequest,
-        state = state,
-        title = "Orbitle",
-        decoration = WindowDecoration.Undecorated(),
-        transparent = true,
-        resizable = false,
-        modalityType = DialogModalityType.DocumentModal,
+    // Esc перехватывает общий обработчик «назад» раньше слоя: лист кладёт в него себя сверху,
+    // иначе Esc закрывал бы экран под листом, а лист оставался открытым.
+    BackHandler(onBack = onDismissRequest)
+    Dialog(
+        onDismissRequest = onDismissRequest,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        BoxWithConstraints(
-            Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismissRequest,
-                ),
-            contentAlignment = Alignment.Center,
+        // Карточка не выше 85 % окна: длинные списки прокручиваются внутри.
+        val windowHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shadowElevation = 6.dp,
+            tonalElevation = 3.dp,
+            modifier = Modifier
+                .padding(24.dp)
+                .widthIn(min = 280.dp, max = if (wide) 720.dp else 560.dp)
+                .heightIn(max = (windowHeight * 0.85f).coerceAtLeast(240.dp)),
         ) {
-            Surface(
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shadowElevation = 6.dp,
-                tonalElevation = 3.dp,
-                modifier = Modifier
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {},
-                    )
-                    .widthIn(min = 280.dp, max = if (wide) 720.dp else 560.dp)
-                    .heightIn(max = maxHeight * 0.85f),
-            ) {
-                Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), content = content)
-            }
+            Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), content = content)
         }
     }
 }
