@@ -19,6 +19,7 @@ struct AttachmentSheet: View {
     @State private var cameraShown = false
     @State private var preparing = false
     @State private var failure: String?
+    @State private var editingVideo: EditablePhoto?
     @State private var editingPhoto: EditablePhoto?
     @State private var editedPhotos: [String: AttachmentDraft] = [:]
     @State private var photoOriginals: [String: AttachmentDraft] = [:]
@@ -70,6 +71,13 @@ struct AttachmentSheet: View {
                 onCancel: { cameraShown = false }
             )
             .ignoresSafeArea()
+        }
+        .fullScreenCover(item: $editingVideo) { video in
+            VideoEditor(draft: video.draft, onSave: { edited in
+                editingVideo = nil
+                if video.fromCamera { onSend([edited], "") }
+                else { editedPhotos[video.id] = edited }
+            }, onClose: { editingVideo = nil })
         }
         .fullScreenCover(item: $editingPhoto) { photo in
             PhotoEditor(draft: photo.draft, initialHistory: photoHistories[photo.id] ?? PhotoEditHistory(), onSave: { edited, history in
@@ -167,18 +175,18 @@ struct AttachmentSheet: View {
                             AssetCell(
                                 asset: asset,
                                 number: model.number(of: asset.localIdentifier),
-                                editedPath: editedPhotos[asset.localIdentifier]?.path,
+                                editedPath: asset.mediaType == .image ? editedPhotos[asset.localIdentifier]?.path : nil,
                                 manager: ManagerRef(manager: library.images)
                             ) {
                                 model.toggle(asset.localIdentifier)
                             }
                             .overlay(alignment: .bottomTrailing) {
-                                if asset.mediaType == .image {
+                                if asset.mediaType == .image || asset.mediaType == .video {
                                     Button { editAsset(asset) } label: {
                                         Image(systemName: "pencil").font(.system(size: 14, weight: .semibold))
                                             .foregroundStyle(.white).frame(width: 32, height: 32)
                                             .background(.black.opacity(0.55), in: Circle())
-                                    }.buttonStyle(.plain).padding(6).accessibilityLabel("Редактировать фото")
+                                    }.buttonStyle(.plain).padding(6).accessibilityLabel(asset.mediaType == .video ? "Редактировать видео" : "Редактировать фото")
                                 }
                             }
                         }
@@ -454,9 +462,11 @@ struct AttachmentSheet: View {
                     draft = try MediaExporter.draft(camera: image)
                     editingPhoto = EditablePhoto(id: UUID().uuidString, draft: draft, fromCamera: true)
                     return
-                case .video(let url): draft = try await MediaExporter.draft(cameraVideo: url)
+                case .video(let url):
+                    draft = try await MediaExporter.draft(cameraVideo: url)
+                    editingVideo = EditablePhoto(id: UUID().uuidString, draft: draft, fromCamera: true)
+                    return
                 }
-                onSend([draft], "")
             } catch {
                 failure = error.localizedDescription
             }
@@ -475,7 +485,11 @@ struct AttachmentSheet: View {
                 let draft: AttachmentDraft
                 if let original = photoOriginals[asset.localIdentifier] { draft = original }
                 else { draft = try await MediaExporter.draft(for: AssetRef(asset: asset));photoOriginals[asset.localIdentifier] = draft }
-                editingPhoto = EditablePhoto(id: asset.localIdentifier, draft: draft, fromCamera: false)
+                if asset.mediaType == .video {
+                    editingVideo = EditablePhoto(id: asset.localIdentifier, draft: editedPhotos[asset.localIdentifier] ?? draft, fromCamera: false)
+                } else {
+                    editingPhoto = EditablePhoto(id: asset.localIdentifier, draft: draft, fromCamera: false)
+                }
             } catch { failure = error.localizedDescription }
         }
     }

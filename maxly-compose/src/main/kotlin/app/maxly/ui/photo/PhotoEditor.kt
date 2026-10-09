@@ -11,6 +11,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +46,13 @@ interface PhotoEditorSource {
 data class PhotoEditorSession(val original: OutgoingFile, val history: PhotoEditHistory)
 
 private enum class Tool(val title: String) { CROP("Кадр"), ROTATE("Поворот"), DRAW("Рисунок"), TEXT("Текст"), FILTER("Фильтры") }
+private val Tool.icon: ImageVector get() = when (this) {
+    Tool.CROP -> Icons.Default.Crop
+    Tool.ROTATE -> Icons.Default.RotateRight
+    Tool.DRAW -> Icons.Default.Brush
+    Tool.TEXT -> Icons.Default.TextFields
+    Tool.FILTER -> Icons.Default.Tune
+}
 private val inkColors = listOf(0xffffffff.toInt(), 0xff111111.toInt(), 0xffef5350.toInt(), 0xffffca28.toInt(), 0xff66bb6a.toInt(), 0xff42a5f5.toInt())
 
 @Composable
@@ -68,6 +78,8 @@ fun PhotoEditor(
     var filter by remember { mutableStateOf(PhotoFilter.MONO) }
     var amount by remember { mutableFloatStateOf(1f) }
     var filterPreview by remember { mutableStateOf(false) }
+    var confirmClose by remember { mutableStateOf(false) }
+    var confirmReset by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var rendering by remember { mutableStateOf(false) }
     var failure by remember { mutableStateOf<String?>(null) }
@@ -126,6 +138,18 @@ fun PhotoEditor(
             commit(added); selectText(added)
         }
     }
+    fun applyPending() {
+        pending.forEach { history = history.add(it) }
+        if (tool == Tool.CROP && crop != PhotoCrop.FULL) history = history.add(PhotoEdit.Crop(crop))
+        if (tool == Tool.TEXT && selectedText == null && text.isNotBlank())
+            history = history.add(PhotoEdit.Text(text.trim(), PhotoPoint(.1f, .45f), ink, textSize, style=textStyle, font=textFont, alignment=textAlignment))
+        resetPending()
+    }
+    fun requestClose() {
+        if (busy) return
+        if (history != (session?.history ?: PhotoEditHistory()) || pending.isNotEmpty() || crop != PhotoCrop.FULL || text.isNotBlank()) confirmClose = true
+        else onClose()
+    }
     fun finish() {
         val loaded = source ?: return
         val extra = when {
@@ -144,18 +168,30 @@ fun PhotoEditor(
         }
     }
 
-    Dialog(onDismissRequest = { if (!busy) onClose() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = ::requestClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-            Column(Modifier.safeDrawingPadding().imePadding()) {
+            BoxWithConstraints(Modifier.safeDrawingPadding().imePadding()) {
+            if (confirmClose || confirmReset) AlertDialog(
+                onDismissRequest = { confirmClose = false; confirmReset = false },
+                title = { Text(if (confirmClose) "Выйти без сохранения?" else "Сбросить все правки?") },
+                text = { Text("Оригинал фото останется без изменений.") },
+                confirmButton = { TextButton(onClick = {
+                    if (confirmClose) onClose() else { history = PhotoEditHistory(); resetPending() }
+                    confirmClose = false; confirmReset = false
+                }) { Text(if (confirmClose) "Выйти" else "Сбросить") } },
+                dismissButton = { TextButton(onClick = { confirmClose = false; confirmReset = false }) { Text("Продолжить") } },
+            )
+            val panelHeight = (maxHeight * .38f).coerceAtMost(280.dp)
+            Column {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = onClose, enabled = !busy) { Text("Отмена") }
+                    TextButton(onClick = ::requestClose, enabled = !busy) { Text("Отмена") }
                     Text("Редактор фото", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                     TextButton(onClick = ::finish, enabled = source != null && !busy && !rendering && preview != null) { Text("Готово") }
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
-                    TextButton(onClick = { history = history.undo(); resetPending() }, enabled = history.edits.isNotEmpty() && !busy) { Text("Назад") }
-                    TextButton(onClick = { history = history.redo(); resetPending() }, enabled = history.undone.isNotEmpty() && !busy) { Text("Повторить") }
-                    TextButton(onClick = { history = PhotoEditHistory(); resetPending() }, enabled = !busy) { Text("Сбросить") }
+                    TextButton(onClick = { history = history.undo(); resetPending() }, enabled = history.edits.isNotEmpty() && !busy) { Icon(Icons.Default.Undo, "Отменить действие") }
+                    TextButton(onClick = { history = history.redo(); resetPending() }, enabled = history.undone.isNotEmpty() && !busy) { Icon(Icons.Default.Redo, "Повторить действие") }
+                    TextButton(onClick = { confirmReset = true }, enabled = !busy) { Text("Сбросить") }
                     TextButton(onClick = { originalShown = !originalShown }, enabled = !busy) { Text(if(originalShown) "Результат" else "Оригинал") }
                 }
                 BoxWithConstraints(Modifier.fillMaxWidth().weight(1f).background(Color.Black), contentAlignment = Alignment.Center) {
@@ -228,9 +264,9 @@ fun PhotoEditor(
                             }
                         }
                     }
-                    if (source == null || rendering || busy) CircularProgressIndicator(Modifier.size(36.dp))
+                    if ((source == null && failure == null) || rendering || busy) CircularProgressIndicator(Modifier.size(36.dp))
                 }
-                Column(Modifier.fillMaxWidth().heightIn(max=280.dp).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp)) {
+                Column(Modifier.fillMaxWidth().heightIn(max=panelHeight).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp)) {
                     if (failure != null) {
                         Text(failure!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                         TextButton(onClick = { failure = null }) { Text("Закрыть сообщение") }
@@ -273,15 +309,16 @@ fun PhotoEditor(
                                 PhotoChoices(PhotoShape.entries,shape,{it.title},{shape=it},!busy)
                                 if(shape!=null) Row(verticalAlignment=Alignment.CenterVertically){Checkbox(filled,{filled=it});Text("Заливка")}
                             }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                                 inkColors.forEach { color ->
-                                    TextButton(onClick = { ink = color }, contentPadding = PaddingValues(2.dp), modifier = Modifier.size(36.dp), enabled = !busy) {
+                                    TextButton(onClick = { ink = color }, contentPadding = PaddingValues(2.dp), modifier = Modifier.size(44.dp), enabled = !busy) {
                                         Box(Modifier.size(if (ink == color) 28.dp else 20.dp).clip(CircleShape).background(Color(color)))
                                     }
                                 }
-                                Slider(if (tool == Tool.DRAW) brush else textSize, { if (tool == Tool.DRAW) brush = it else textSize = it },
-                                    Modifier.weight(1f), valueRange = if (tool == Tool.DRAW) .004f.. .04f else .035f.. .15f, enabled = !busy)
                             }
+                            Text(if (tool == Tool.DRAW) "Размер кисти" else "Размер текста", style = MaterialTheme.typography.labelMedium)
+                            Slider(if (tool == Tool.DRAW) brush else textSize, { if (tool == Tool.DRAW) brush = it else textSize = it },
+                                    Modifier.fillMaxWidth(), valueRange = if (tool == Tool.DRAW) .004f.. .04f else .035f.. .15f, enabled = !busy)
                             OutlinedTextField(hexColor,{ value ->
                                 hexColor=value.filter { it.isDigit() || it.uppercaseChar() in 'A'..'F' }.take(6)
                                 if(hexColor.length==6) hexColor.toLongOrNull(16)?.let { ink=(it or 0xff000000).toInt() }
@@ -314,11 +351,19 @@ fun PhotoEditor(
                         }
                     }
                 }
-                    Row(Modifier.fillMaxWidth().padding(horizontal=12.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Tool.entries.forEach { item -> FilterChip(selected = tool == item, onClick = {
-                            if(item!=tool) { pending.forEach { history=history.add(it) }; if(tool==Tool.CROP&&crop!=PhotoCrop.FULL) history=history.add(PhotoEdit.Crop(crop)); resetPending(); tool=item; points=emptyList() }
-                        }, label = { Text(item.title) }, enabled = !busy) }
+                HorizontalDivider()
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    Tool.entries.forEach { item ->
+                        TextButton(onClick = { if (item != tool) { applyPending(); tool = item; points = emptyList() } }, enabled = !busy) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(item.icon, null, tint = if (tool == item) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(item.title, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
                     }
+                }
+            }
+
             }
         }
     }

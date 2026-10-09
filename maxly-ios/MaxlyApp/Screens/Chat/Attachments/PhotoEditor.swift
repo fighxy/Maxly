@@ -23,6 +23,9 @@ struct PhotoEditor: View {
     @State private var filter = PhotoFilter.mono
     @State private var amount = 1.0
     @State private var filterPreview = false
+    @State private var confirmClose = false
+    @State private var confirmReset = false
+    private let initialHistory: PhotoEditHistory
     @State private var busy = false
     @State private var rendering = false
     @State private var failure: String?
@@ -42,7 +45,7 @@ struct PhotoEditor: View {
     @State private var originalShown = false
 
     init(draft: AttachmentDraft, initialHistory: PhotoEditHistory = PhotoEditHistory(), onSave: @escaping (AttachmentDraft, PhotoEditHistory)->Void, onClose: @escaping ()->Void) {
-        self.draft = draft; self.onSave = onSave; self.onClose = onClose
+        self.initialHistory = initialHistory; self.draft = draft; self.onSave = onSave; self.onClose = onClose
         _history = State(initialValue: initialHistory)
     }
 
@@ -68,9 +71,10 @@ struct PhotoEditor: View {
     private var canEdit: Bool { renderer != nil && preview != nil && !busy && !rendering && !originalShown }
 
     var body: some View {
+        GeometryReader { available in
         VStack(spacing: 0) {
             HStack {
-                Button("Отмена", action: onClose).disabled(busy)
+                Button("Отмена", action: requestClose).disabled(busy)
                 Spacer()
                 Text("Редактор фото").font(.headline)
                 Spacer()
@@ -78,9 +82,9 @@ struct PhotoEditor: View {
             }.padding()
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack {
-                    Button("Назад") { history.undo(); resetPending() }.disabled(history.edits.isEmpty || busy)
-                    Button("Повторить") { history.redo(); resetPending() }.disabled(history.undone.isEmpty || busy)
-                    Button("Сбросить") { history = PhotoEditHistory(); resetPending() }.disabled(busy)
+                    Button { history.undo(); resetPending() } label: { Label("Отменить действие", systemImage: "arrow.uturn.backward").labelStyle(.iconOnly) }.disabled(history.edits.isEmpty || busy)
+                    Button { history.redo(); resetPending() } label: { Label("Повторить действие", systemImage: "arrow.uturn.forward").labelStyle(.iconOnly) }.disabled(history.undone.isEmpty || busy)
+                    Button("Сбросить") { confirmReset = true }.disabled(busy)
                     Button(originalShown ? "Результат" : "Оригинал") { originalShown.toggle() }.disabled(busy)
                 }.padding(.horizontal)
             }.padding(.bottom, 8)
@@ -96,7 +100,7 @@ struct PhotoEditor: View {
                             .contentShape(Rectangle())
                             .gesture(gesture(frame))
                     }
-                    if renderer == nil || rendering || busy { ProgressView().tint(.white) }
+                    if (renderer == nil && failure == nil) || rendering || busy { ProgressView().tint(.white) }
                 }
             }
             VStack(spacing: 8) {
@@ -104,25 +108,43 @@ struct PhotoEditor: View {
                     Text(failure).font(.footnote).foregroundStyle(.red)
                     Button("Закрыть сообщение") { self.failure = nil }
                 }
-                ScrollView { VStack(spacing: 8) { controls } }.frame(maxHeight: 230)
+                ScrollView { VStack(spacing: 8) { controls } }.frame(maxHeight: min(260, available.size.height * 0.36))
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(Tool.allCases, id: \.self) { item in
-                            Button(item.rawValue) {
+                            Button {
                                 guard item != tool else { return }
                                 for edit in pending { history.add(edit) }
                                 if tool == .crop && crop != .full { history.add(.crop(crop)) }
+                                if tool == .text && selectedText == nil && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    history.add(.text(makeText(PhotoPoint(x: 0.1, y: 0.45))))
+                                }
                                 resetPending(); tool = item; points = []
+                            } label: {
+                                VStack(spacing: 5) {
+                                    Image(systemName: icon(item)).font(.title3)
+                                    Text(item.rawValue).font(.caption)
+                                }.frame(minWidth: 54, minHeight: 48)
                             }
-                                .buttonStyle(.bordered).tint(tool == item ? .accentColor : .secondary)
+                                .buttonStyle(.plain).foregroundStyle(tool == item ? Color.accentColor : Color.secondary)
+                                .accessibilityAddTraits(tool == item ? .isSelected : [])
                                 .disabled(busy)
                         }
                     }
                 }
             }.padding(12)
         }
+        }
         .background(Color(uiColor: .systemBackground))
-        .interactiveDismissDisabled(busy)
+        .interactiveDismissDisabled(true)
+        .confirmationDialog("Выйти без сохранения?", isPresented: $confirmClose, titleVisibility: .visible) {
+            Button("Выйти без сохранения", role: .destructive, action: onClose)
+            Button("Продолжить редактирование", role: .cancel) {}
+        }
+        .confirmationDialog("Сбросить все правки?", isPresented: $confirmReset, titleVisibility: .visible) {
+            Button("Сбросить", role: .destructive) { history = PhotoEditHistory(); resetPending() }
+            Button("Отмена", role: .cancel) {}
+        }
         .task {
             do {
                 let loaded = try await PhotoRenderer.load(draft)
@@ -297,6 +319,19 @@ struct PhotoEditor: View {
         }
     }
 
+    private func icon(_ tool: Tool) -> String {
+        switch tool {
+        case .crop: "crop"
+        case .rotate: "rotate.right"
+        case .draw: "paintbrush.pointed"
+        case .text: "textformat"
+        case .filter: "slider.horizontal.3"
+        }
+    }
+    private func requestClose() {
+        if history.edits != initialHistory.edits || !pending.isEmpty || crop != .full || !text.isEmpty { confirmClose = true }
+        else { onClose() }
+    }
     private func finish() {
         guard let renderer else { return }
         var finalHistory = PhotoEditHistory(edits: history.edits + pending)
