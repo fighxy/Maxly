@@ -17,9 +17,6 @@ struct AttachmentSheet: View {
     @State private var library = PhotoLibrary()
     @State private var feed = CameraFeed()
     @State private var cameraShown = false
-    @State private var importerShown = false
-    /// Файлы, выбранные в окне «Файлы»: уходят, когда окно закрылось.
-    @State private var pendingFiles: [URL] = []
     @State private var preparing = false
     @State private var failure: String?
     @State private var editingPhoto: EditablePhoto?
@@ -60,22 +57,7 @@ struct AttachmentSheet: View {
             feed.stop()
         }
         .onChange(of: model.tab) { _, tab in
-            if tab == .file { importerShown = true }
-        }
-        // Системное окно «Файлы» в режиме копии: iOS сама скачивает файл из iCloud и копирует его
-        // в песочницу. Выбор обрабатывается, когда окно закрылось целиком: `.fileImporter` в этом
-        // листе молча не отдавал выбор — «Открыть» ничего не делало, а ошибка терялась вместе
-        // с закрытием окна.
-        .sheet(isPresented: $importerShown, onDismiss: {
-            let urls = pendingFiles
-            pendingFiles = []
-            importFiles(urls)
-        }) {
-            FileImportPicker { urls in
-                pendingFiles = urls
-                importerShown = false
-            }
-            .ignoresSafeArea()
+            if tab == .file { pickFiles() }
         }
         .fullScreenCover(isPresented: $cameraShown, onDismiss: {
             if let shot = pendingShot { pendingShot = nil; sendShot(shot) }
@@ -287,7 +269,7 @@ struct AttachmentSheet: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button("Выбрать файл") { importerShown = true }
+            Button("Выбрать файл") { pickFiles() }
                 .buttonStyle(.borderedProminent)
                 .foregroundStyle(Color.orbitleOnAccent)
                 .tint(Color.orbitleAccent)
@@ -498,6 +480,11 @@ struct AttachmentSheet: View {
         }
     }
 
+    /// Системное окно «Файлы». Выбранное приходит, когда окно уже закрылось.
+    private func pickFiles() {
+        FileImportPresenter.present { urls in importFiles(urls) }
+    }
+
     private func importFiles(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
         do {
@@ -601,42 +588,64 @@ private struct AssetCell: View {
     }
 }
 
-/// Системное окно выбора файлов любого типа, несколько сразу. Файлы приходят копиями в песочнице
-/// приложения (`asCopy`), поэтому доступ к ним не теряется после закрытия окна.
-private struct FileImportPicker: UIViewControllerRepresentable {
-    /// Выбранные файлы; пустой список — окно закрыли без выбора.
-    let onFinish: ([URL]) -> Void
+/// Системное окно выбора файлов любого типа, несколько сразу, поверх верхнего экрана.
+///
+/// Окно показывается через UIKit, а не листом SwiftUI: после «Открыть» оно закрывает себя само,
+/// и лист SwiftUI об этом не узнавал — выбор лежал до следующего закрытия окна, и файл уходил,
+/// только когда окно открывали и закрывали ещё раз. Файлы приходят копиями в песочнице
+/// (`asCopy`): iOS сама скачивает их из iCloud, доступ не теряется после закрытия окна.
+@MainActor
+final class FileImportPresenter: NSObject, UIDocumentPickerDelegate {
+    /// Открытое окно держит своего делегата, пока не закроется.
+    private static var current: FileImportPresenter?
+    private let onPick: ([URL]) -> Void
 
-    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+    private init(onPick: @escaping ([URL]) -> Void) {
+        self.onPick = onPick
+    }
+
+    /// Показать окно. Пустой выбор (окно закрыли) [onPick] не вызывает.
+    static func present(onPick: @escaping ([URL]) -> Void) {
+        guard current == nil, let top = topController() else { return }
+        let presenter = FileImportPresenter(onPick: onPick)
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
         picker.allowsMultipleSelection = true
         picker.shouldShowFileExtensions = true
-        picker.delegate = context.coordinator
-        return picker
+        picker.delegate = presenter
+        current = presenter
+        top.present(picker, animated: true)
     }
 
-    func updateUIViewController(_ controller: UIDocumentPickerViewController, context: Context) {}
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        finish(controller, urls)
+    }
 
-    func makeCoordinator() -> Coordinator { Coordinator(onFinish: onFinish) }
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        finish(controller, [])
+    }
 
-    final class Coordinator: NSObject, UIDocumentPickerDelegate {
-        private let onFinish: ([URL]) -> Void
-        private var finished = false
-
-        init(onFinish: @escaping ([URL]) -> Void) { self.onFinish = onFinish }
-
-        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-            finish(urls)
+    /// Выбор отдаётся после того, как окно закрылось: лист под ним может сразу закрыться сам.
+    private func finish(_ controller: UIViewController, _ urls: [URL]) {
+        Self.current = nil
+        guard !urls.isEmpty else { return }
+        let onPick = onPick
+        Task { @MainActor in
+            // Окно закрывается само; ждём конца анимации, но не дольше двух секунд.
+            for _ in 0..<40 {
+                if controller.presentingViewController == nil { break }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            onPick(urls)
         }
+    }
 
-        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-            finish([])
+    private static func topController() -> UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        var top = scene?.keyWindow?.rootViewController
+        while let presented = top?.presentedViewController, !presented.isBeingDismissed {
+            top = presented
         }
-
-        private func finish(_ urls: [URL]) {
-            guard !finished else { return }
-            finished = true
-            onFinish(urls)
-        }
+        return top
     }
 }
