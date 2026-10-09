@@ -1,4 +1,30 @@
-# Maxly
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/maxly-logo-black.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/brand/maxly-logo-white.png">
+    <img src="docs/brand/maxly-logo-black.png" width="160" alt="Maxly">
+  </picture>
+</p>
+
+<h1 align="center">Maxly</h1>
+
+<p align="center">
+  <img alt="Kotlin 2.4.20" src="https://img.shields.io/badge/Kotlin-2.4.20-7F52FF?style=flat&logo=kotlin&logoColor=white">
+  <img alt="Jetpack Compose" src="https://img.shields.io/badge/Jetpack_Compose-BOM_2026.10-4285F4?style=flat&logo=jetpackcompose&logoColor=white">
+  <img alt="Compose Multiplatform 1.12.1" src="https://img.shields.io/badge/Compose_Multiplatform-1.12.1-4285F4?style=flat&logo=jetpackcompose&logoColor=white">
+  <img alt="Android 8.0+" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=flat&logo=android&logoColor=white">
+  <img alt="Desktop: Windows, macOS, Linux" src="https://img.shields.io/badge/Desktop-Windows_%7C_macOS_%7C_Linux-007396?style=flat&logo=openjdk&logoColor=white">
+  <img alt="Swift 6" src="https://img.shields.io/badge/Swift-6-F05138?style=flat&logo=swift&logoColor=white">
+  <img alt="SwiftUI" src="https://img.shields.io/badge/SwiftUI-0D96F6?style=flat&logo=swift&logoColor=white">
+  <img alt="iOS 17+" src="https://img.shields.io/badge/iOS-17%2B-000000?style=flat&logo=apple&logoColor=white">
+  <img alt="Kotlin Multiplatform core" src="https://img.shields.io/badge/Kotlin_Multiplatform-core-7F52FF?style=flat&logo=kotlin&logoColor=white">
+</p>
+
+<p align="center">
+  <a href="https://github.com/fighxy/Maxly/actions/workflows/android.yml"><img alt="Android CI" src="https://github.com/fighxy/Maxly/actions/workflows/android.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/fighxy/Maxly/actions/workflows/desktop.yml"><img alt="Desktop CI" src="https://github.com/fighxy/Maxly/actions/workflows/desktop.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/fighxy/Maxly/actions/workflows/ios.yml"><img alt="iOS CI" src="https://github.com/fighxy/Maxly/actions/workflows/ios.yml/badge.svg?branch=main"></a>
+</p>
 
 Maxly — нативный клиент мессенджера MAX. Протокол, сеть, вход, хранение сессии и логика
 сервера живут в общем ядре [max-kmp-core](https://github.com/fighxy/max-kmp-core) на Kotlin
