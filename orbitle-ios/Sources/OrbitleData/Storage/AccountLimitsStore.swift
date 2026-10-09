@@ -7,9 +7,9 @@ import OrbitleDomain
 /// Незнакомый способ входа читается как отсутствие отметки.
 @MainActor
 public final class UserDefaultsAccountLimitsStore: AccountLimitsStore {
-    public static let entryKey = "orbitle.accountLimits.entry"
-    public static let grantedAtKey = "orbitle.accountLimits.grantedAt"
-    public static let shownKey = "orbitle.accountLimits.shown"
+    public static let entryKey = "maxly.accountLimits.entry"
+    public static let grantedAtKey = "maxly.accountLimits.grantedAt"
+    public static let shownKey = "maxly.accountLimits.shown"
 
     private let defaults: UserDefaults
 

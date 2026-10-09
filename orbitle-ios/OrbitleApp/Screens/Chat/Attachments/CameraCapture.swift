@@ -61,7 +61,7 @@ struct ChatCameraPicker: UIViewControllerRepresentable {
 /// сам лист доступ не спрашивает, его спросит системная камера по нажатию.
 final class CameraFeed: @unchecked Sendable {
     let session = AVCaptureSession()
-    private let queue = DispatchQueue(label: "orbitle.attachments.camera")
+    private let queue = DispatchQueue(label: "maxly.attachments.camera")
     private var configured = false
 
     static var isAuthorized: Bool {

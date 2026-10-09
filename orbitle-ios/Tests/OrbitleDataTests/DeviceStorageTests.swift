@@ -42,7 +42,7 @@ struct DeviceStorageTests {
         try box.file(.voice, "v.ogg", bytes: 5_000)
         let database = box.root.appending(path: "db", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: database, withIntermediateDirectories: true)
-        try Data(count: 7_000).write(to: database.appending(path: "Orbitle.store"))
+        try Data(count: 7_000).write(to: database.appending(path: "Maxly.store"))
         let storage = DeviceStorage(layout: box.layout, database: database, defaultsSuite: box.suite)
 
         let usage = await storage.usage()

@@ -46,6 +46,6 @@ public final class UserDefaultsCallHistoryMarks: CallHistoryMarks {
         defaults.removeObject(forKey: hiddenKey(userId))
     }
 
-    private static func seenKey(_ userId: String) -> String { "orbitle.calls.\(userId).lastSeen" }
-    private static func hiddenKey(_ userId: String) -> String { "orbitle.calls.\(userId).hidden" }
+    private static func seenKey(_ userId: String) -> String { "maxly.calls.\(userId).lastSeen" }
+    private static func hiddenKey(_ userId: String) -> String { "maxly.calls.\(userId).hidden" }
 }

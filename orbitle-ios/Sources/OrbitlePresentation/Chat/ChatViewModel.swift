@@ -2116,7 +2116,7 @@ public final class ChatViewModel {
         guard !safe.isEmpty, safe != url.lastPathComponent else { return url }
         let folder = id.filter { $0.isLetter || $0.isNumber }
         let directory = FileManager.default.temporaryDirectory
-            .appending(path: "OrbitleFiles", directoryHint: .isDirectory)
+            .appending(path: "MaxlyFiles", directoryHint: .isDirectory)
             .appending(path: folder.isEmpty ? "file" : folder, directoryHint: .isDirectory)
         let target = directory.appending(path: safe)
         let manager = FileManager.default

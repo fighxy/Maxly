@@ -3,7 +3,7 @@ import OrbitleDomain
 
 /// «Показывать мой онлайн» в `UserDefaults`. По умолчанию включено.
 public final class UserDefaultsSelfCheckStore: SelfCheckStore, @unchecked Sendable {
-    public static let key = "orbitle.settings.showsOwnPresence"
+    public static let key = "maxly.settings.showsOwnPresence"
 
     private let defaults: UserDefaults
 
@@ -25,7 +25,7 @@ public final class UserDefaultsSelfCheckStore: SelfCheckStore, @unchecked Sendab
 /// и на сервере, старые ключи только сбивали бы с толку. «Показывать мой онлайн» переезжает на
 /// новый ключ и остаётся.
 public enum GhostDefaultsMigration {
-    public static let doneKey = "orbitle.migrations.ghostCore"
+    public static let doneKey = "maxly.migrations.ghostCore"
     static let legacyPrefixes = ["orbitle.ghost.", "orbitle.privacy.local."]
     static let legacySelfCheckKey = "orbitle.ghost.showsOwnPresence"
 

@@ -78,7 +78,7 @@ final class ImageDiskCache: @unchecked Sendable {
     let directory: URL
     private let lock = NSLock()
     private var touched: Set<String> = []
-    private let queue = DispatchQueue(label: "orbitle.images.disk", qos: .utility)
+    private let queue = DispatchQueue(label: "maxly.images.disk", qos: .utility)
 
     init(directory: URL) {
         self.directory = directory

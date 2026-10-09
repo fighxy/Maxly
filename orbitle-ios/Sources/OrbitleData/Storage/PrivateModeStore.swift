@@ -5,9 +5,9 @@ import OrbitleDomain
 /// и вход в другой их не трогают. Незнакомый стиль читается как заглушки.
 @MainActor
 public final class UserDefaultsPrivateModeStore: PrivateModeStore {
-    public static let enabledKey = "orbitle.privateMode.enabled"
-    public static let styleKey = "orbitle.privateMode.style"
-    public static let quickToggleKey = "orbitle.privateMode.quickToggle"
+    public static let enabledKey = "maxly.privateMode.enabled"
+    public static let styleKey = "maxly.privateMode.style"
+    public static let quickToggleKey = "maxly.privateMode.quickToggle"
 
     private let defaults: UserDefaults
 

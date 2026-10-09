@@ -13,7 +13,7 @@ extension UserDefaults: @retroactive @unchecked Sendable {}
 /// бросает `OrbitleError.cancelled`. Исключение — успешный вход: ядро к этому моменту уже
 /// сохранило токен, и приложение входит, чтобы не расходиться с ядром.
 public actor SessionManager: AuthService, ConnectionStatusProvider {
-    static let userDefaultsKey = "orbitle.lastUserId"
+    static let userDefaultsKey = "maxly.lastUserId"
 
     private let core: any MaxCore
     private let stack: SwiftDataStack

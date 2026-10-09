@@ -145,7 +145,7 @@ final class VoiceEncoder: @unchecked Sendable {
         case noCodec
     }
 
-    private let queue = DispatchQueue(label: "orbitle.voice.encoder")
+    private let queue = DispatchQueue(label: "maxly.voice.encoder")
     private let pcmFormat: AVAudioFormat
     private let opusFormat: AVAudioFormat
     private let resampler: AVAudioConverter

@@ -10,7 +10,7 @@ public actor RecentSearchesStore: RecentSearchStore {
     private let key: String
 
     /// `suiteName == nil` — стандартные настройки приложения. Тесты передают свой набор.
-    public init(suiteName: String? = nil, key: String = "orbitle.recentSearches") {
+    public init(suiteName: String? = nil, key: String = "maxly.recentSearches") {
         self.suiteName = suiteName
         self.key = key
     }

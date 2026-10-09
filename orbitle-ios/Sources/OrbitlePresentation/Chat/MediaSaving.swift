@@ -94,7 +94,7 @@ enum SaveFormat {
     static func folder(for id: String) -> URL {
         let name = id.filter { $0.isLetter || $0.isNumber }
         return FileManager.default.temporaryDirectory
-            .appending(path: "OrbitleFiles", directoryHint: .isDirectory)
+            .appending(path: "MaxlyFiles", directoryHint: .isDirectory)
             .appending(path: name.isEmpty ? "file" : name, directoryHint: .isDirectory)
     }
 

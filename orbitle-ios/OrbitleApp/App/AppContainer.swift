@@ -112,7 +112,7 @@ final class AppContainer {
     /// Ограничения нового сеанса: панель после входа и строка в настройках. Выход стирает отметку.
     let accountLimits: AccountLimitsSettings
 
-    static let loggingKey = "orbitle.debug.logging"
+    static let loggingKey = "maxly.debug.logging"
 
     /// Отчёт о сбое прошлого запуска. Пока он есть, экран показывает его вместо запуска ядра.
     private(set) var crashReport: String?
@@ -660,7 +660,7 @@ final class AppContainer {
         }
         extras.append(.init(url: manager.temporaryDirectory, minimumAge: 3_600))
         let database = manager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
-            .appending(path: "Orbitle", directoryHint: .isDirectory)
+            .appending(path: "Maxly", directoryHint: .isDirectory)
         return DeviceStorage(layout: layout, database: database, extras: extras, includesSystemCache: true)
     }
 

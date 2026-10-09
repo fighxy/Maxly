@@ -106,7 +106,7 @@ final class CaptureController: NSObject, AVCaptureFileOutputRecordingDelegate, @
 
     let session = AVCaptureSession()
     private let output = AVCaptureMovieFileOutput()
-    private let queue = DispatchQueue(label: "orbitle.note.capture")
+    private let queue = DispatchQueue(label: "maxly.note.capture")
     // Меняется только на `queue`.
     private var configured = false
     private var finished: CheckedContinuation<URL?, Never>?
@@ -401,7 +401,7 @@ private final class SamplePump: @unchecked Sendable {
     init(input: AVAssetWriterInput, output: AVAssetReaderOutput, label: String) {
         self.input = input
         self.output = output
-        queue = DispatchQueue(label: "orbitle.note.\(label)")
+        queue = DispatchQueue(label: "maxly.note.\(label)")
     }
 
     func run() async {

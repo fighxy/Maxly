@@ -308,7 +308,7 @@ struct QRScannerView: UIViewControllerRepresentable {
 /// Все обращения к нему идут через одну последовательную очередь.
 private final class CaptureRunner: @unchecked Sendable {
     let session = AVCaptureSession()
-    private let queue = DispatchQueue(label: "app.orbitle.qr-scanner")
+    private let queue = DispatchQueue(label: "app.maxly.qr-scanner")
 
     func start() {
         queue.async { if !self.session.isRunning { self.session.startRunning() } }

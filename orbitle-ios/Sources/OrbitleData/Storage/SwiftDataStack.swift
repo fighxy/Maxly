@@ -42,7 +42,7 @@ public final class SwiftDataStack: Sendable {
             if inMemory {
                 // Своё имя у каждой базы в памяти: хранилища разных контейнеров не пересекаются.
                 let configuration = ModelConfiguration(
-                    "Orbitle-\(UUID().uuidString)",
+                    "Maxly-\(UUID().uuidString)",
                     schema: schema,
                     isStoredInMemoryOnly: true,
                     cloudKitDatabase: .none
@@ -55,7 +55,7 @@ public final class SwiftDataStack: Sendable {
                     appropriateFor: nil,
                     create: true
                 )
-                let directory = support.appending(path: "Orbitle", directoryHint: .isDirectory)
+                let directory = support.appending(path: "Maxly", directoryHint: .isDirectory)
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 #if os(iOS)
                 try FileManager.default.setAttributes(
@@ -63,7 +63,7 @@ public final class SwiftDataStack: Sendable {
                     ofItemAtPath: directory.path
                 )
                 #endif
-                let storeURL = directory.appending(path: "Orbitle.store")
+                let storeURL = directory.appending(path: "Maxly.store")
                 let configuration = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
                 container = try ModelContainer(for: schema, configurations: [configuration])
             }
@@ -122,10 +122,10 @@ private extension Bundle {
         let value = orbitle_object(forInfoDictionaryKey: key)
         guard self === Bundle.main else { return value }
         if key == "CFBundleName", (value as? String)?.isEmpty != false {
-            return "Orbitle"
+            return "Maxly"
         }
         if key == "CFBundleIdentifier", (value as? String)?.isEmpty != false {
-            return "app.orbitle.ios"
+            return "app.maxly.ios"
         }
         return value
     }

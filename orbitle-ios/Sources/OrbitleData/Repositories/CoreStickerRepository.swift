@@ -116,8 +116,8 @@ public final class UserDefaultsRecentStickers: RecentStickerStore, @unchecked Se
 
     private let defaults: UserDefaults
     private let lock = NSLock()
-    private let emojiKey = "orbitle.recent.emoji"
-    private let stickerKey = "orbitle.recent.stickers"
+    private let emojiKey = "maxly.recent.emoji"
+    private let stickerKey = "maxly.recent.stickers"
 
     public init(suiteName: String? = nil) {
         defaults = suiteName.flatMap(UserDefaults.init(suiteName:)) ?? .standard

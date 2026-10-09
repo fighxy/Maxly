@@ -11,7 +11,7 @@ public final class MiniAppVault: @unchecked Sendable {
     private let key: String
     private let lock = NSLock()
 
-    public init(defaults: UserDefaults = .standard, key: String = "orbitle.miniAppVault") {
+    public init(defaults: UserDefaults = .standard, key: String = "maxly.miniAppVault") {
         self.defaults = defaults
         self.key = key
     }

@@ -7,9 +7,9 @@ import OrbitleDomain
 /// по умолчанию.
 @MainActor
 public final class UserDefaultsAppearanceStore: AppearanceStore {
-    public static let textSizeKey = "orbitle.appearance.textSize"
-    public static let themeKey = "orbitle.appearance.theme"
-    public static let wallpaperKey = "orbitle.appearance.wallpaper"
+    public static let textSizeKey = "maxly.appearance.textSize"
+    public static let themeKey = "maxly.appearance.theme"
+    public static let wallpaperKey = "maxly.appearance.wallpaper"
 
     private let defaults: UserDefaults
 

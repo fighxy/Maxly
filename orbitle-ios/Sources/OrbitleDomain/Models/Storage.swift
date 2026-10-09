@@ -109,7 +109,7 @@ public struct StorageLayout: Hashable, Sendable {
             appropriateFor: nil,
             create: true
         )
-        var root = support.appending(path: "OrbitleMedia", directoryHint: .isDirectory)
+        var root = support.appending(path: "MaxlyMedia", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         var values = URLResourceValues()
         values.isExcludedFromBackup = true

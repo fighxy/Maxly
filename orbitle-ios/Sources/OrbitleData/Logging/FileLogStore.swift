@@ -16,7 +16,7 @@ public final class FileLogStore: @unchecked Sendable {
     public let directory: URL
     private let maxFileSize: Int
     private let maxFiles: Int
-    private let queue = DispatchQueue(label: "app.orbitle.log")
+    private let queue = DispatchQueue(label: "app.maxly.log")
     private let formatter: ISO8601DateFormatter
     private var handle: FileHandle?
     private var currentSize = 0
@@ -137,7 +137,7 @@ public final class FileLogStore: @unchecked Sendable {
     // MARK: Внутреннее (только на `queue`)
 
     private func fileURL(_ index: Int) -> URL {
-        directory.appendingPathComponent("orbitle-\(index).\(Self.fileExtension)")
+        directory.appendingPathComponent("maxly-\(index).\(Self.fileExtension)")
     }
 
     /// Отчёты о сбоях (`*.txt`), которые аварийный журнал кладёт в тот же каталог.
@@ -195,7 +195,7 @@ public final class FileLogStore: @unchecked Sendable {
 
     private func logger(for category: Log.Category) -> Logger {
         if let logger = loggers[category] { return logger }
-        let logger = Logger(subsystem: "app.orbitle.ios", category: category.rawValue)
+        let logger = Logger(subsystem: "app.maxly.ios", category: category.rawValue)
         loggers[category] = logger
         return logger
     }
