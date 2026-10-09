@@ -270,8 +270,26 @@ class CallCenter(
         control.accept(video)
     }
 
-    /** Отклонить входящий. */
-    suspend fun decline() = hangUp()
+    /**
+     * Отклонить входящий: сначала отбой на сервере (167, `REJECTED`) — так звонок перестаёт звонить
+     * на других устройствах и без открытого сокета звонка, — затем трубка кладётся как раньше.
+     * Ошибка 167 не мешает отбою через сокет.
+     */
+    suspend fun decline() {
+        val call = _state.value.call
+        if (call != null && call.isRinging && call.conversationId.isNotEmpty()) {
+            try {
+                service.reject(call.conversationId, call.peer.id)?.takeIf { it.isNotBlank() }?.let {
+                    CallLog.warning("167 не принят: $it")
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                CallLog.warning("167 не ушёл: $e")
+            }
+        }
+        hangUp()
+    }
 
     /** Положить трубку. */
     suspend fun hangUp() {

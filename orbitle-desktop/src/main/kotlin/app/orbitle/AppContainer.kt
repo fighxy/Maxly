@@ -69,7 +69,7 @@ class AppContainer {
     val chatAdmin: app.orbitle.data.ChatAdminRepository = app.orbitle.data.CoreChatAdminRepository(client)
     val account: AccountRepository = CoreAccountRepository(client)
     val messages: MessageRepository = CoreMessageRepository(client)
-    val calls: CallRepository = CoreCallRepository(client)
+    val calls: CallRepository = CoreCallRepository(client, scope)
     val contacts: ContactRepository = CoreContactRepository(client)
     /** Телефонной книги на компьютере нет: вход «Найти друзей из контактов» не показывается. */
     val addressBook: app.orbitle.data.AddressBook = app.orbitle.platform.DesktopAddressBook

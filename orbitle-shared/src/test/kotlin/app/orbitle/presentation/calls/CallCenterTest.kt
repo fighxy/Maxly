@@ -76,6 +76,11 @@ private class FakeService : CallService {
     var failStart: Exception? = null
     var startGate: CompletableDeferred<Unit>? = null
     val started = mutableListOf<Pair<String, Boolean>>()
+    val rejected = mutableListOf<Pair<String, String?>>()
+    override suspend fun reject(conversationId: String, peerId: String?): String? {
+        rejected += conversationId to peerId
+        return null
+    }
 
     override suspend fun startCall(peerId: String, isVideo: Boolean): CallConnection {
         started += peerId to isVideo
@@ -191,6 +196,8 @@ class CallCenterTest {
         center.decline()
         runCurrent()
         assertEquals(CallPhase.Ended(CallEndReason.Rejected), center.state.value.call!!.state.phase)
+        // Отбой ушёл и на сервер (167), только для неотвеченного входящего.
+        assertEquals(listOf("in2" to "9"), service.rejected)
     }
 
     @Test

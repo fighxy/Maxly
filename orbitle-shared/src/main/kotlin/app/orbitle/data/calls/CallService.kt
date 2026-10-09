@@ -37,10 +37,19 @@ interface CallService {
 
     /** Входящие звонки, пока подписка жива. */
     fun incomingCalls(): Flow<IncomingCall> = emptyFlow()
+
+    /**
+     * Отклонить входящий на сервере (`VIDEO_CHAT_HANGUP` 167, `REJECTED`). Ответ — `error` сервера,
+     * `null` — отбой принят. По умолчанию ничего не шлёт.
+     */
+    suspend fun reject(conversationId: String, peerId: String?): String? = null
 }
 
-/** Звонки через ядро: 78 начать, 166 войти по ссылке, 76/84 ссылка, 89 описание ссылки, пуш 137. */
+/** Звонки через ядро: 78 начать, 166 войти по ссылке, 76/84 ссылка, 89 описание ссылки, 167 отклонить, пуш 137. */
 class CoreCallService(private val client: MaxClient) : CallService {
+    override suspend fun reject(conversationId: String, peerId: String?): String? =
+        MaxCoreGateway.call { client.rejectIncomingCall(conversationId, peerId?.takeIf { it.isNotEmpty() }) }
+
     override suspend fun startCall(peerId: String, isVideo: Boolean): CallConnection {
         val callee = peerId.toLongOrNull() ?: throw OrbitleError.InvalidRequest
         val signal = MaxCoreGateway.call { client.api.calls.initiateCall(callee, isVideo, client.device.deviceId) }

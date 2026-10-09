@@ -65,7 +65,7 @@ class AppContainer(context: Context) {
 
     val messages: MessageRepository = CoreMessageRepository(client)
 
-    val calls: CallRepository = CoreCallRepository(client)
+    val calls: CallRepository = CoreCallRepository(client, scope)
 
     val contacts: ContactRepository = CoreContactRepository(client)
 
