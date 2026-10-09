@@ -511,28 +511,52 @@ class CoreMessageRepository(
         }
     }
 
-    override suspend fun schedule(chatId: String, text: String, sendAt: Long) {
+    override suspend fun schedule(chatId: String, text: String, sendAt: Long, notify: Boolean) {
         val chat = chatId.toLongOrNull() ?: return
-        MaxCoreGateway.call { client.api.messages.scheduleMessage(chat, text, sendAt) }
+        MaxCoreGateway.call { client.scheduleMessage(chat, text, sendAt, notify) }
     }
 
-    override suspend fun scheduled(chatId: String): List<app.orbitle.domain.FoundMessage> {
+    override suspend fun scheduled(chatId: String): List<app.orbitle.domain.ScheduledMessage> {
         val chat = chatId.toLongOrNull() ?: return emptyList()
-        val page = MaxCoreGateway.call {
-            client.api.messages.getChatHistory(chat, itemType = com.max.core.api.HistoryItemType.DELAYED)
-        }
-        val me = client.store.state.value.me
-        return page.messages.map { message ->
-            app.orbitle.domain.FoundMessage(
-                chatId = chatId,
-                messageId = message.id.toString(),
-                senderName = null,
-                isOutgoing = message.sender != null && message.sender == me,
-                text = message.text.trim(),
-                timeMs = message.time,
-            )
+        val page = MaxCoreGateway.call { client.scheduledMessages(chat) }
+        return app.orbitle.presentation.chat.ScheduledList.sorted(page.messages.map(::scheduledOf))
+    }
+
+    override suspend fun editScheduled(chatId: String, messageId: String, text: String, sendAt: Long) {
+        val chat = chatId.toLongOrNull() ?: return
+        val id = messageId.toLongOrNull() ?: return
+        MaxCoreGateway.call { client.editScheduledMessage(chat, id, text, sendAt) }
+    }
+
+    override suspend fun cancelScheduled(chatId: String, messageIds: List<String>): DeleteOutcome {
+        val chat = chatId.toLongOrNull() ?: return DeleteOutcome(emptyList(), messageIds)
+        val ids = messageIds.mapNotNull { it.toLongOrNull() }
+        if (ids.isEmpty()) return DeleteOutcome(emptyList(), messageIds)
+        val result = MaxCoreGateway.call { client.cancelScheduledMessages(chat, ids) }
+        return DeleteOutcome(result.deleted.map { it.toString() }, result.failed.map { it.toString() })
+    }
+
+    override fun scheduledChanges(chatId: String): Flow<app.orbitle.domain.ScheduledChange> {
+        val chat = chatId.toLongOrNull()
+        return client.events.all.filterIsInstance<MaxEvent.DelayedUpdated>().filter { it.chatId == chat }.map { event ->
+            val ids = event.messageIds.map { it.toString() }
+            when (event.updateType) {
+                com.max.core.api.DelayedUpdate.CREATED, com.max.core.api.DelayedUpdate.EDITED ->
+                    event.message?.let { app.orbitle.domain.ScheduledChange.Upsert(scheduledOf(it)) }
+                        ?: app.orbitle.domain.ScheduledChange.Reload
+                com.max.core.api.DelayedUpdate.DELETED -> app.orbitle.domain.ScheduledChange.Removed(ids, fired = false)
+                com.max.core.api.DelayedUpdate.FIRE_SUCCESS -> app.orbitle.domain.ScheduledChange.Removed(ids, fired = true)
+                null -> app.orbitle.domain.ScheduledChange.Reload
+            }
         }
     }
+
+    private fun scheduledOf(message: com.max.core.api.MaxMessage) = app.orbitle.domain.ScheduledMessage(
+        id = message.id.toString(),
+        text = message.text.trim(),
+        sendAt = message.fireAt,
+        failed = message.status == "DELAYED_FIRE_ERROR",
+    )
 
     override suspend fun sendPoll(chatId: String, title: String, answers: List<String>) {
         val chat = chatId.toLongOrNull() ?: return
@@ -543,12 +567,26 @@ class CoreMessageRepository(
         client.store.putSentMessage(chat, sent)
     }
 
-    override suspend fun votePoll(chatId: String, messageId: String, pollId: String, answerId: String) {
-        val chat = chatId.toLongOrNull() ?: return
-        val message = messageId.toLongOrNull() ?: return
-        val poll = pollId.toLongOrNull() ?: return
-        val answer = answerId.toLongOrNull() ?: return
-        MaxCoreGateway.call { client.api.messages.votePoll(chat, message, poll, listOf(answer)) }
+    override suspend fun votePoll(chatId: String, messageId: String, pollId: String, answerIds: List<String>): app.orbitle.domain.PollTally? {
+        val chat = chatId.toLongOrNull() ?: return null
+        val message = messageId.toLongOrNull() ?: return null
+        val poll = pollId.toLongOrNull() ?: return null
+        val answers = answerIds.mapNotNull { it.toLongOrNull() }
+        if (answers.isEmpty()) return null
+        val state = MaxCoreGateway.call { client.votePoll(chat, message, poll, answers) }
+        return app.orbitle.domain.PollTally(state.total, state.results.associate { it.answerId.toString() to it.voteCount })
+    }
+
+    override suspend fun pollUpdates(chatId: String, polls: List<Pair<String, String>>): Map<String, app.orbitle.domain.PollContent> {
+        val chat = chatId.toLongOrNull() ?: return emptyMap()
+        val refs = polls.mapNotNull { (message, poll) ->
+            val m = message.toLongOrNull() ?: return@mapNotNull null
+            val p = poll.toLongOrNull() ?: return@mapNotNull null
+            com.max.core.api.PollRef(m, p)
+        }
+        if (refs.isEmpty()) return emptyMap()
+        val fresh = MaxCoreGateway.call { client.pollUpdates(chat, refs) }
+        return fresh.mapNotNull { MessageMapping.poll(it.raw) }.associateBy { it.id }
     }
 
     override suspend fun searchInChat(chatId: String, query: String): List<app.orbitle.domain.FoundMessage> {

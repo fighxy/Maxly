@@ -326,7 +326,13 @@ object MessageMapping {
         if (answers.size < 2) return null
         val total = integer((map["state"] as? Map<*, *>)?.get("total")) ?: answers.sumOf { it.votes }
         val title = (map["title"] as? String)?.trim().orEmpty().ifEmpty { "Опрос" }
-        return PollContent(id, title, answers, total)
+        val flags = com.max.core.api.PollFlag.of(integer(map["settings"]) ?: 0)
+        return PollContent(
+            id, title, answers, total,
+            multiple = com.max.core.api.PollFlag.MULTISELECT in flags,
+            revote = com.max.core.api.PollFlag.REVOTE in flags,
+            closed = com.max.core.api.PollFlag.CLOSED in flags,
+        )
     }
 
     /** Звонок: id вложения постоянный, чтобы пузырь не пересоздавался при каждом разборе. */

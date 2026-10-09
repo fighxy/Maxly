@@ -199,12 +199,21 @@ sealed interface ChatAttachment {
     data class Poll(val poll: PollContent) : ChatAttachment { override val id get() = poll.id }
 }
 
-/** Опрос в сообщении. [id] — `pollId`, по нему уходит голос. */
+/**
+ * Опрос в сообщении. [id] — `pollId`, по нему уходит голос. [multiple], [revote], [closed] —
+ * биты `settings`. [mine] — за что голосовали с этого устройства, [picked] — отмеченные, но ещё
+ * не отправленные ответы опроса с несколькими ответами.
+ */
 data class PollContent(
     val id: String,
     val title: String,
     val answers: List<PollAnswer>,
     val total: Int = 0,
+    val multiple: Boolean = false,
+    val revote: Boolean = false,
+    val closed: Boolean = false,
+    val mine: Set<String> = emptySet(),
+    val picked: Set<String> = emptySet(),
 )
 
 data class PollAnswer(val id: String, val text: String, val votes: Int = 0)

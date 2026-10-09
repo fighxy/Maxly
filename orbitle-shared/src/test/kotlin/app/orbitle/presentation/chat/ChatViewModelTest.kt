@@ -186,6 +186,32 @@ class FakeMessages : MessageRepository {
         }
     }
     override fun pinChanges(chatId: String) = pinPushes
+
+    val votes = mutableListOf<Triple<String, String, List<String>>>()
+    var tally: app.orbitle.domain.PollTally? = null
+    val pollRefreshes = mutableListOf<List<Pair<String, String>>>()
+    var freshPolls: Map<String, app.orbitle.domain.PollContent> = emptyMap()
+    override suspend fun votePoll(chatId: String, messageId: String, pollId: String, answerIds: List<String>): app.orbitle.domain.PollTally? {
+        votes += Triple(messageId, pollId, answerIds)
+        return tally
+    }
+    override suspend fun pollUpdates(chatId: String, polls: List<Pair<String, String>>): Map<String, app.orbitle.domain.PollContent> {
+        pollRefreshes += polls
+        return freshPolls
+    }
+
+    var scheduledList: List<app.orbitle.domain.ScheduledMessage> = emptyList()
+    val scheduledSent = mutableListOf<Pair<String, Long>>()
+    val scheduledPushes = kotlinx.coroutines.flow.MutableSharedFlow<app.orbitle.domain.ScheduledChange>(extraBufferCapacity = 8)
+    val cancelled = mutableListOf<String>()
+    override suspend fun schedule(chatId: String, text: String, sendAt: Long, notify: Boolean) { scheduledSent += text to sendAt }
+    override suspend fun scheduled(chatId: String) = scheduledList
+    override suspend fun editScheduled(chatId: String, messageId: String, text: String, sendAt: Long) {}
+    override suspend fun cancelScheduled(chatId: String, messageIds: List<String>): app.orbitle.data.DeleteOutcome {
+        cancelled += messageIds
+        return app.orbitle.data.DeleteOutcome(messageIds, emptyList())
+    }
+    override fun scheduledChanges(chatId: String) = scheduledPushes
     override fun ownReactionChanges(chatId: String) = ownReactions
     override suspend fun mediaLink(chatId: String, messageId: String, attachment: app.orbitle.domain.ChatAttachment): String {
         linkCalls += attachment.id
@@ -851,6 +877,91 @@ class ChatViewModelTest {
         repo.forwardFailure = app.orbitle.domain.OrbitleError.Rejected("Нельзя переслать")
         model.forward(msg("5"), "20")
         assertEquals("Нельзя переслать", model.messages.value)
+    }
+
+    private fun pollMessage(id: String, multiple: Boolean = false) = msg(id, text = "").copy(
+        content = MessageContent(
+            attachments = listOf(
+                app.orbitle.domain.ChatAttachment.Poll(
+                    app.orbitle.domain.PollContent(
+                        "p$id", "Куда идём?",
+                        listOf(app.orbitle.domain.PollAnswer("1", "Кино"), app.orbitle.domain.PollAnswer("2", "Парк")),
+                        multiple = multiple,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    private fun shownPoll(model: ChatViewModel, id: String) =
+        model.state.value.items.filterIsInstance<ChatItem.Bubble>().first { it.message.id == id }.message.content.poll!!
+
+    @Test
+    fun singleAnswerVoteGoesOutAndShowsTally() {
+        val poll = pollMessage("30")
+        repo.list.value = listOf(poll)
+        repo.tally = app.orbitle.domain.PollTally(3, mapOf("1" to 2, "2" to 1))
+        val model = vm()
+        model.vote(poll, "1")
+        assertEquals(Triple("30", "p30", listOf("1")), repo.votes.single())
+        val shown = shownPoll(model, "30")
+        assertEquals(3, shown.total)
+        assertEquals(setOf("1"), shown.mine)
+        assertEquals(listOf(listOf("30" to "p30")), repo.pollRefreshes)
+        model.vote(poll, "2")
+        assertEquals(1, repo.votes.size)
+    }
+
+    @Test
+    fun multiAnswerPollCollectsPicksUntilSubmit() {
+        val poll = pollMessage("31", multiple = true)
+        repo.list.value = listOf(poll)
+        val model = vm()
+        model.vote(poll, "1")
+        model.vote(poll, "2")
+        model.vote(poll, "1")
+        assertTrue(repo.votes.isEmpty())
+        assertEquals(setOf("2"), shownPoll(model, "31").picked)
+        model.vote(poll, PollRules.SUBMIT)
+        assertEquals(listOf("2"), repo.votes.single().third)
+        assertEquals(emptySet<String>(), shownPoll(model, "31").picked)
+    }
+
+    @Test
+    fun visibleChatRefreshesPollCounts() {
+        val poll = pollMessage("32")
+        repo.list.value = listOf(poll)
+        repo.freshPolls = mapOf("p32" to poll.content.poll!!.copy(total = 7, closed = true))
+        val model = vm()
+        model.setActive(true)
+        assertEquals(7, shownPoll(model, "32").total)
+        assertFalse(PollRules.canVote(shownPoll(model, "32")))
+    }
+
+    @Test
+    fun scheduledListFollowsPushes() {
+        repo.scheduledList = listOf(app.orbitle.domain.ScheduledMessage("5", "позже", 2_000L))
+        val model = vm()
+        model.loadScheduled()
+        repo.scheduledPushes.tryEmit(app.orbitle.domain.ScheduledChange.Upsert(app.orbitle.domain.ScheduledMessage("6", "раньше", 1_000L)))
+        assertEquals(listOf("6", "5"), model.scheduled.value.map { it.id })
+        repo.scheduledPushes.tryEmit(app.orbitle.domain.ScheduledChange.Removed(listOf("6"), fired = true))
+        assertEquals(listOf("5"), model.scheduled.value.map { it.id })
+        model.cancelScheduled(model.scheduled.value.single())
+        assertEquals(listOf("5"), repo.cancelled)
+        assertTrue(model.scheduled.value.isEmpty())
+    }
+
+    @Test
+    fun schedulingClearsTheFieldAndRejectsPastTimes() {
+        val model = vm()
+        model.setDraft("напомнить")
+        model.scheduleAt("напомнить", now - 1)
+        assertTrue(repo.scheduledSent.isEmpty())
+        assertEquals("Выберите время в будущем", model.messages.value)
+        model.scheduleAt("напомнить", now + day)
+        assertEquals(listOf("напомнить" to now + day), repo.scheduledSent)
+        assertEquals("", model.state.value.draft)
     }
 
     @Test

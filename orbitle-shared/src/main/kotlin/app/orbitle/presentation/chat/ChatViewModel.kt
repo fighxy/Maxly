@@ -217,8 +217,16 @@ class ChatViewModel(
     fun memberPresence(person: app.orbitle.data.ChatPerson): String? = formatter.presence(person.isOnline, person.lastSeenMs, now(), person.presence)
     val tools: StateFlow<ChatToolsState> = _tools.asStateFlow()
 
-    private val _scheduled = MutableStateFlow<List<FoundMessage>>(emptyList())
-    val scheduled: StateFlow<List<FoundMessage>> = _scheduled.asStateFlow()
+    private val _scheduled = MutableStateFlow<List<app.orbitle.domain.ScheduledMessage>>(emptyList())
+    /** Отложенные сообщения чата: читаются при открытии листа и правятся пушами 154. */
+    val scheduled: StateFlow<List<app.orbitle.domain.ScheduledMessage>> = _scheduled.asStateFlow()
+    /** Свежие опросы с сервера (306) по `pollId`. */
+    private val pollFresh = HashMap<String, app.orbitle.domain.PollContent>()
+    /** Свои голоса с этого устройства по `pollId`. */
+    private val pollMine = HashMap<String, Set<String>>()
+    /** Отмеченные, но не отправленные ответы опросов с несколькими ответами. */
+    private val pollPicked = HashMap<String, Set<String>>()
+    private var pollRefresh: kotlinx.coroutines.Job? = null
 
     /** Голосовые, расшифровка, просмотр фото и видео, файлы. */
     val media = ChatMedia(chatId, repository, viewModelScope, voicePlayer, files, mediaSaver, onNotice = { _messages.value = it }, onError = { show(it) })
@@ -390,6 +398,12 @@ class ChatViewModel(
             }
         }
         loadPins()
+        viewModelScope.launch {
+            repository.scheduledChanges(chatId).collect { change ->
+                val next = ScheduledList.apply(_scheduled.value, change)
+                if (next != null) _scheduled.value = next else loadScheduled(quiet = true)
+            }
+        }
         viewModelScope.launch {
             val catalog = repository.reactionCatalog()
             if (catalog.isNotEmpty()) _state.update { it.copy(reactionCatalog = catalog, quickReactions = ReactionPalette.quick(catalog)) }
@@ -708,6 +722,7 @@ class ChatViewModel(
             markingUnread = false
             markRead()
             refreshExpiredPhotos()
+            refreshPolls()
         } else {
             cancelPendingRead()
         }
@@ -1864,7 +1879,7 @@ class ChatViewModel(
             }
         }
         val result = feedItems(
-            visible, formatter, nowMs, isGroup, ::isOutgoing, ::commentsFooter,
+            visible.map(::withPollState), formatter, nowMs, isGroup, ::isOutgoing, ::commentsFooter,
             savedMessages = chatId == Chat.SAVED_MESSAGES_ID, unreadAnchorId = unreadAnchorId,
         )
         // Скрытое приветствие «Избранного» не считается: без других сообщений видна подсказка.
@@ -2066,16 +2081,26 @@ class ChatViewModel(
         }
     }
 
-    fun scheduleAt(text: String, sendAt: Long) {
+    /** Отложить текст до [sendAt]. Текст из поля после успеха убирается. */
+    fun scheduleAt(text: String, sendAt: Long, notify: Boolean = true) {
         val body = text.trim()
         if (body.isEmpty()) {
             _messages.value = "Нечего откладывать"
             return
         }
+        if (sendAt <= now()) {
+            _messages.value = "Выберите время в будущем"
+            return
+        }
         viewModelScope.launch {
             try {
-                repository.schedule(chatId, body, sendAt)
+                repository.schedule(chatId, body, sendAt, notify)
+                if (_state.value.draft.trim() == body) {
+                    _state.update { it.copy(draft = "", formatting = emptyList()) }
+                    dropDraft()
+                }
                 _messages.value = "Сообщение отложено"
+                loadScheduled(quiet = true)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -2084,10 +2109,54 @@ class ChatViewModel(
         }
     }
 
-    fun loadScheduled() {
+    fun loadScheduled(quiet: Boolean = false) {
         viewModelScope.launch {
             try {
                 _scheduled.value = repository.scheduled(chatId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (!quiet) show(e)
+            }
+        }
+    }
+
+    /** Новый текст и время отложенного. */
+    fun editScheduled(item: app.orbitle.domain.ScheduledMessage, text: String, sendAt: Long) {
+        val body = text.trim()
+        if (body.isEmpty()) {
+            _messages.value = "Текст не может быть пустым"
+            return
+        }
+        if (sendAt <= now()) {
+            _messages.value = "Выберите время в будущем"
+            return
+        }
+        viewModelScope.launch {
+            try {
+                repository.editScheduled(chatId, item.id, body, sendAt)
+                ScheduledList.apply(_scheduled.value, app.orbitle.domain.ScheduledChange.Upsert(item.copy(text = body, sendAt = sendAt, failed = false)))
+                    ?.let { _scheduled.value = it }
+                _messages.value = "Отложенное изменено"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                show(e)
+            }
+        }
+    }
+
+    /** Отменить отложенное. */
+    fun cancelScheduled(item: app.orbitle.domain.ScheduledMessage) {
+        viewModelScope.launch {
+            try {
+                val outcome = repository.cancelScheduled(chatId, listOf(item.id))
+                if (item.id in outcome.failed) {
+                    _messages.value = "Не удалось отменить"
+                } else {
+                    _scheduled.value = _scheduled.value.filterNot { it.id == item.id }
+                    _messages.value = "Отправка отменена"
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -2113,17 +2182,66 @@ class ChatViewModel(
         }
     }
 
+    /** Опрос сообщения со свежими счётчиками, своим голосом и отметками. */
+    private fun withPollState(message: Message): Message {
+        val poll = message.content.poll ?: return message
+        val merged = PollRules.merge(poll, pollFresh[poll.id], pollMine[poll.id], pollPicked[poll.id])
+        if (merged == poll) return message
+        val attachments = message.content.attachments.map { if (it is app.orbitle.domain.ChatAttachment.Poll) app.orbitle.domain.ChatAttachment.Poll(merged) else it }
+        return message.copy(content = message.content.copy(attachments = attachments))
+    }
+
+    /**
+     * Касание ответа опроса. С одним ответом — голос сразу, с несколькими — отметка;
+     * [PollRules.SUBMIT] отправляет отмеченные.
+     */
     fun vote(message: Message, answerId: String) {
-        val poll = message.content.poll ?: return
         if (!isServer(message)) return
+        val poll = withPollState(message).content.poll ?: return
+        if (!PollRules.canVote(poll)) return
+        if (answerId == PollRules.SUBMIT) {
+            if (poll.picked.isNotEmpty()) submitVote(message.id, poll, poll.picked.toList())
+            return
+        }
+        if (poll.multiple) {
+            pollPicked[poll.id] = PollRules.toggle(poll, poll.picked, answerId)
+            rebuild()
+            return
+        }
+        submitVote(message.id, poll, listOf(answerId))
+    }
+
+    private fun submitVote(messageId: String, poll: app.orbitle.domain.PollContent, answers: List<String>) {
         viewModelScope.launch {
             try {
-                repository.votePoll(chatId, message.id, poll.id, answerId)
-                repository.refreshLatest(chatId)
+                val tally = repository.votePoll(chatId, messageId, poll.id, answers)
+                if (tally != null) pollFresh[poll.id] = PollRules.applyTally(pollFresh[poll.id] ?: poll.copy(mine = emptySet(), picked = emptySet()), tally)
+                pollMine[poll.id] = answers.toSet()
+                pollPicked.remove(poll.id)
+                rebuild()
+                refreshPolls(force = true)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 show(e)
+            }
+        }
+    }
+
+    /** Счётчики опросов загруженной ленты (306): пуша нет, поэтому при показе чата и после голоса. */
+    private fun refreshPolls(force: Boolean = false) {
+        if (!force && pollRefresh?.isActive == true) return
+        val refs = history.filter { isServer(it) }.mapNotNull { m -> m.content.poll?.let { m.id to it.id } }.takeLast(POLL_REFRESH_LIMIT)
+        if (refs.isEmpty()) return
+        pollRefresh = viewModelScope.launch {
+            try {
+                val fresh = repository.pollUpdates(chatId, refs)
+                if (fresh.isEmpty()) return@launch
+                pollFresh.putAll(fresh)
+                rebuild()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
             }
         }
     }
@@ -2452,6 +2570,8 @@ class ChatViewModel(
     companion object {
         /** Сообщений в одном запросе реакций. */
         const val REACTIONS_BATCH = 100
+        /** Сколько последних опросов ленты перезапрашивать за раз (306). */
+        const val POLL_REFRESH_LIMIT = 20
         /** Пауза перед повтором реакций и счётчиков после ошибки сервера. */
         const val RETRY_AFTER_ERROR_MS = 30_000L
         /** Постов в одном запросе счётчиков комментариев. */

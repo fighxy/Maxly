@@ -5,6 +5,7 @@ import app.orbitle.domain.ChatAttachment
 import app.orbitle.domain.OrbitleError
 import app.orbitle.domain.OutgoingFile
 import app.orbitle.domain.Message
+import app.orbitle.domain.PollContent
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 
@@ -263,17 +264,33 @@ interface MessageRepository {
     suspend fun refreshExpiredPhotos(chatId: String, nowMs: Long) {}
 
 
-    /** Отложить текст до [sendAt] (мс). В обычную ленту оно не встаёт. */
-    suspend fun schedule(chatId: String, text: String, sendAt: Long) {}
+    /** Отложить текст до [sendAt] (мс). В обычную ленту оно не встаёт. [notify] `false` — без звука. */
+    suspend fun schedule(chatId: String, text: String, sendAt: Long, notify: Boolean = true) {}
 
-    /** Уже отложенные сообщения этого чата. */
-    suspend fun scheduled(chatId: String): List<app.orbitle.domain.FoundMessage> = emptyList()
+    /** Отложенные сообщения этого чата (`CHAT_HISTORY` 49, `DELAYED`), раньше уходящие — первыми. */
+    suspend fun scheduled(chatId: String): List<app.orbitle.domain.ScheduledMessage> = emptyList()
+
+    /** Новый текст и время отложенного (`MSG_EDIT` 67). Вложения не трогаются. */
+    suspend fun editScheduled(chatId: String, messageId: String, text: String, sendAt: Long): Unit =
+        throw OrbitleError.Rejected("Правка отложенных недоступна")
+
+    /** Отменить отложенные (`MSG_DELETE` 66, `DELAYED`). */
+    suspend fun cancelScheduled(chatId: String, messageIds: List<String>): DeleteOutcome = DeleteOutcome(emptyList(), messageIds)
+
+    /** Пуши отложенных этого чата (154). */
+    fun scheduledChanges(chatId: String): Flow<app.orbitle.domain.ScheduledChange> = emptyFlow()
 
     /** Опрос: вопрос и минимум два ответа. */
     suspend fun sendPoll(chatId: String, title: String, answers: List<String>) {}
 
-    /** Голос за один ответ опроса. */
-    suspend fun votePoll(chatId: String, messageId: String, pollId: String, answerId: String) {}
+    /** Голос (`SEND_VOTE` 304) за ответы [answerIds]; ответ — новые счётчики, если сервер их прислал. */
+    suspend fun votePoll(chatId: String, messageId: String, pollId: String, answerIds: List<String>): app.orbitle.domain.PollTally? = null
+
+    /**
+     * Свежее состояние опросов (`GET_POLL_UPDATES` 306): [polls] — пары id сообщения и `pollId`.
+     * Ответ — по `pollId`. Пуша счётчиков нет, поэтому экран перезапрашивает сам.
+     */
+    suspend fun pollUpdates(chatId: String, polls: List<Pair<String, String>>): Map<String, PollContent> = emptyMap()
 
     /** Поиск по сообщениям открытого чата (`MSG_SEARCH` 73). */
     suspend fun searchInChat(chatId: String, query: String): List<app.orbitle.domain.FoundMessage> = emptyList()

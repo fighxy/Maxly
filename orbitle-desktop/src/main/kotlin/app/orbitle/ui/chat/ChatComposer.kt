@@ -39,6 +39,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -167,11 +168,14 @@ import kotlinx.coroutines.launch
 
 /** Поле ввода с плашкой ответа или правки. */
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 internal fun Composer(
     state: ChatUiState,
     /** Новый текст поля и курсор после правки (по нему разметка понимает, где набрали). */
     onDraft: (String, Int) -> Unit,
     onSend: () -> Unit,
+    /** Долгое нажатие на «Отправить»: выбрать время отложенной отправки; `null` — нельзя. */
+    onScheduleSend: (() -> Unit)? = null,
     onCancelReply: () -> Unit,
     onCancelEdit: () -> Unit,
     onAttach: () -> Unit,
@@ -394,7 +398,11 @@ internal fun Composer(
                         .size(44.dp)
                         .clip(CircleShape)
                         .background(if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest)
-                        .clickable(enabled = enabled, onClick = onSend),
+                        .combinedClickable(
+                            enabled = enabled,
+                            onLongClick = onScheduleSend?.takeIf { state.editing == null && state.attachments.isEmpty() },
+                            onClick = onSend,
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(

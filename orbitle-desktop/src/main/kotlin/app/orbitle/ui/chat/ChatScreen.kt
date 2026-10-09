@@ -471,6 +471,7 @@ fun ChatScreen(
                     state = state,
                     onDraft = model::setDraft,
                     onSend = model::send,
+                    onScheduleSend = { scheduling = true },
                     onCancelReply = model::cancelReply,
                     onCancelEdit = model::cancelEdit,
                     onAttach = { attaching = true },

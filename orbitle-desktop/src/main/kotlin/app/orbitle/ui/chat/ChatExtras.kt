@@ -1,6 +1,8 @@
 package app.orbitle.ui.chat
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -344,9 +346,14 @@ fun PollComposerSheet(onSend: (String, List<String>) -> Unit, onDismiss: () -> U
 fun ScheduleSheet(model: ChatViewModel, onDismiss: () -> Unit) {
     val draft = model.state.collectAsStateWithLifecycle().value.draft
     val scheduled by model.scheduled.collectAsStateWithLifecycle()
+    var picking by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<app.orbitle.domain.ScheduledMessage?>(null) }
     LaunchedEffect(Unit) { model.loadScheduled() }
     AppSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)
+                .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+        ) {
             Text("Отложить", style = MaterialTheme.typography.titleLarge)
             Text(
                 draft.trim().ifBlank { "В поле нет текста" },
@@ -355,32 +362,107 @@ fun ScheduleSheet(model: ChatViewModel, onDismiss: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp),
             )
-            ListItem(
-                headlineContent = { Text("Через час") },
-                modifier = Modifier.clickable {
-                    model.scheduleAt(draft, ScheduleWhen.inOneHour(System.currentTimeMillis()))
-                    onDismiss()
-                },
-            )
-            ListItem(
-                headlineContent = { Text("Завтра в 9:00") },
-                modifier = Modifier.clickable {
-                    model.scheduleAt(draft, ScheduleWhen.tomorrowAtNine(System.currentTimeMillis(), ZoneId.systemDefault()))
-                    onDismiss()
-                },
-            )
+            if (draft.isNotBlank()) {
+                ListItem(
+                    headlineContent = { Text("Через час") },
+                    modifier = Modifier.clickable {
+                        model.scheduleAt(draft, ScheduleWhen.inOneHour(System.currentTimeMillis()))
+                        onDismiss()
+                    },
+                )
+                ListItem(
+                    headlineContent = { Text("Завтра в 9:00") },
+                    modifier = Modifier.clickable {
+                        model.scheduleAt(draft, ScheduleWhen.tomorrowAtNine(System.currentTimeMillis(), ZoneId.systemDefault()))
+                        onDismiss()
+                    },
+                )
+                if (picking) {
+                    ScheduleTimePicker(null, confirm = "Отложить") { at ->
+                        model.scheduleAt(draft, at)
+                        onDismiss()
+                    }
+                } else {
+                    ListItem(
+                        headlineContent = { Text("Выбрать дату и время…") },
+                        modifier = Modifier.clickable { picking = true },
+                    )
+                }
+            }
             if (scheduled.isNotEmpty()) {
                 SectionTitle("Уже отложено")
                 scheduled.forEach { item ->
-                    Text(
-                        listOf(formatWhen(item.timeMs), item.text.ifBlank { "Сообщение" }).filter { it.isNotBlank() }.joinToString(" — "),
-                        modifier = Modifier.padding(vertical = 4.dp),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                    ListItem(
+                        headlineContent = { Text(item.text.ifBlank { "Сообщение" }, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                        supportingContent = {
+                            val time = item.sendAt?.let(::formatWhen).orEmpty().ifBlank { "Время не указано" }
+                            Text(
+                                if (item.failed) "$time — не отправилось" else time,
+                                color = if (item.failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
+                        trailingContent = {
+                            Row {
+                                TextButton(onClick = { editing = item }) { Text("Изменить") }
+                                TextButton(onClick = { model.cancelScheduled(item) }) { Text("Отменить") }
+                            }
+                        },
                     )
                 }
             }
             Spacer(Modifier.size(8.dp))
+        }
+    }
+    editing?.let { item ->
+        var text by remember(item.id) { mutableStateOf(item.text) }
+        AlertDialog(
+            onDismissRequest = { editing = null },
+            title = { Text("Изменить отложенное") },
+            text = {
+                Column {
+                    OutlinedTextField(text, { text = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Текст") })
+                    ScheduleTimePicker(item.sendAt, confirm = "Сохранить") { at ->
+                        model.editScheduled(item, text, at)
+                        editing = null
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { editing = null }) { Text("Отмена") } },
+        )
+    }
+}
+
+/** Ручной выбор времени: день из ближайшей недели, час и минута кнопками. */
+@Composable
+private fun ScheduleTimePicker(initialMs: Long?, confirm: String, onPicked: (Long) -> Unit) {
+    val zone = ZoneId.systemDefault()
+    val now = remember { System.currentTimeMillis() }
+    var choice by remember(initialMs) { mutableStateOf(ScheduleWhen.initial(initialMs, now, zone)) }
+    val days = remember { ScheduleWhen.days(now, zone) }
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState())) {
+            days.forEach { day ->
+                androidx.compose.material3.FilterChip(
+                    selected = day == choice.day,
+                    onClick = { choice = choice.copy(day = day) },
+                    label = { Text(ScheduleWhen.dayLabel(day, days.first())) },
+                    modifier = Modifier.padding(end = 6.dp),
+                )
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+            TextButton(onClick = { choice = ScheduleWhen.shift(choice, hours = -1) }) { Text("−1 ч") }
+            TextButton(onClick = { choice = ScheduleWhen.shift(choice, minutes = -5) }) { Text("−5 мин") }
+            Text(choice.clock, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 8.dp))
+            TextButton(onClick = { choice = ScheduleWhen.shift(choice, minutes = 5) }) { Text("+5 мин") }
+            TextButton(onClick = { choice = ScheduleWhen.shift(choice, hours = 1) }) { Text("+1 ч") }
+        }
+        val at = choice.toMillis(zone)
+        val future = at > System.currentTimeMillis()
+        Button(onClick = { onPicked(at) }, enabled = future) { Text(confirm) }
+        if (!future) {
+            Text("Это время уже прошло", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

@@ -423,20 +423,28 @@ private fun BubbleContent(
 /** Ответы опроса. Касание строки отправляет голос, если сообщение уже на сервере. */
 @Composable
 private fun PollChoices(poll: PollContent, colors: BubbleColors, onVote: (String) -> Unit) {
+    val canVote = app.orbitle.presentation.chat.PollRules.canVote(poll)
     Column(Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp).fillMaxWidth()) {
         Text(poll.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         poll.answers.forEach { answer ->
             val fraction = if (poll.total <= 0) 0f else answer.votes.toFloat() / poll.total.toFloat()
+            val chosen = answer.id in poll.picked || (poll.picked.isEmpty() && answer.id in poll.mine)
             Column(
                 Modifier
                     .padding(top = 6.dp)
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
-                    .clickable { onVote(answer.id) }
+                    .clickable(enabled = canVote) { onVote(answer.id) }
                     .padding(horizontal = 8.dp, vertical = 6.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(answer.text, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        if (chosen) "✓ ${answer.text}" else answer.text,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = if (chosen) FontWeight.SemiBold else null,
+                    )
                     Text(answer.votes.toString(), style = MaterialTheme.typography.labelMedium, color = colors.secondary)
                 }
                 Box(
@@ -456,8 +464,14 @@ private fun PollChoices(poll: PollContent, colors: BubbleColors, onVote: (String
                 }
             }
         }
+        if (poll.multiple && canVote) {
+            androidx.compose.material3.TextButton(
+                onClick = { onVote(app.orbitle.presentation.chat.PollRules.SUBMIT) },
+                enabled = poll.picked.isNotEmpty(),
+            ) { Text("Голосовать") }
+        }
         Text(
-            "Голосов: ${poll.total}",
+            app.orbitle.presentation.chat.PollRules.footer(poll),
             style = MaterialTheme.typography.labelSmall,
             color = colors.secondary,
             modifier = Modifier.padding(top = 4.dp, start = 4.dp),
