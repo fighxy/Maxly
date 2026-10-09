@@ -34,10 +34,7 @@ class PreferenceRecentSearches(
     private val store: PreferenceStore,
     private val key: String = KEY,
 ) : RecentSearchStore {
-    override fun recent(): List<String> = RecentSearchList.decode(store.get(key) ?: legacy())
-
-    /** Список под ключом до переименования (`orbitle.recentSearches`), пока под новым ничего нет. */
-    private fun legacy(): String? = if (key == KEY) store.get(LEGACY_KEY)?.takeIf { it.isNotEmpty() } else null
+    override fun recent(): List<String> = RecentSearchList.decode(store.get(key))
 
     override fun add(chatId: String) {
         store.put(key, RecentSearchList.encode(RecentSearchList.add(recent(), chatId)))
@@ -49,13 +46,9 @@ class PreferenceRecentSearches(
 
     override fun clear() {
         store.put(key, "")
-        if (key == KEY && !store.get(LEGACY_KEY).isNullOrEmpty()) store.remove(LEGACY_KEY)
     }
 
     companion object {
         const val KEY = "maxly.recentSearches"
-
-        /** Ключ до переименования Orbitle → Maxly: его список читается, пока нет нового. */
-        const val LEGACY_KEY = "orbitle.recentSearches"
     }
 }

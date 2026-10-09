@@ -198,8 +198,7 @@ compose.desktop {
                 iconFile.set(project.file("icons/maxly.ico"))
             }
             macOS {
-                // Прежний bundle ID: macOS сохраняет за приложением выданные разрешения.
-                bundleID = "app.orbitle.desktop"
+                bundleID = "app.maxly.desktop"
                 iconFile.set(project.file("icons/maxly.icns"))
                 // Без этих строк macOS не даст звонку микрофон и камеру.
                 infoPlist {
@@ -212,9 +211,7 @@ compose.desktop {
                 }
             }
             linux {
-                // Имя пакета dpkg прежнее: .deb с Maxly обновляет установленный пакет orbitle,
-                // а не ставится рядом вторым приложением.
-                packageName = "orbitle"
+                packageName = "maxly"
                 shortcut = true
                 menuGroup = "Network;InstantMessaging"
                 iconFile.set(project.file("icons/maxly.png"))

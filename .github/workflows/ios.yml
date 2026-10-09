@@ -142,7 +142,7 @@ jobs:
           retention-days: 30
           compression-level: 0
 
-  # Один пререлиз ios-latest с Maxly.ipa и её копией Orbitle.ipa (прежняя ссылка продолжает работать):
+  # Один пререлиз ios-latest с Maxly.ipa:
   # ссылка постоянная, внутри последняя сборка main, у
   # которой прошли тесты, запуск в симуляторе и проверка .ipa. Артефакт прогона скачивается
   # ZIP-архивом, и «Файлы» на iPhone его часто не открывают, а ссылка из выпуска в Safari
@@ -174,7 +174,6 @@ jobs:
           set -euo pipefail
           short="${GITHUB_SHA::7}"
           export TITLE="🕊 Maxly для iOS — последняя сборка"
-          export NOTES="Свежая сборка Maxly из \`main\`, iOS 17+: \`Maxly.ipa\`. После смены Bundle ID приложение ставится отдельно, войти нужно заново. Файл \`Orbitle.ipa\` оставлен для старых ссылок."$'\n\n'"Коммит ${short} (${GITHUB_SHA}), собран $(date -u '+%Y-%m-%d %H:%M') UTC."
-          cp build/Maxly.ipa build/Orbitle.ipa
-          ls -lh build/Maxly.ipa build/Orbitle.ipa
-          bash scripts/publish-latest.sh build/Maxly.ipa build/Orbitle.ipa
+          export NOTES="Свежая сборка Maxly из \`main\`, iOS 17+: \`Maxly.ipa\`. Подпишите IPA своим сертификатом и установите на iPhone. После первой установки войдите по номеру телефона."$'\n\n'"Коммит ${short} (${GITHUB_SHA}), собран $(date -u '+%Y-%m-%d %H:%M') UTC."
+          ls -lh build/Maxly.ipa
+          bash scripts/publish-latest.sh build/Maxly.ipa

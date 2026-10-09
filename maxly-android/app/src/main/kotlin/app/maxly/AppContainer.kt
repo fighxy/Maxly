@@ -310,7 +310,7 @@ class AppContainer(context: Context) {
     }
 
     private companion object {
-        const val CORE_NAMESPACE = PrefsMigration.CORE_NAMESPACE
+        const val CORE_NAMESPACE = "maxly"
         const val KEY_LAST_USER = "lastUserId"
         /**
          * Сообщений одного чата в сторе ядра: `0` — без предела. Стор при переполнении выбрасывает
