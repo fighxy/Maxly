@@ -81,6 +81,11 @@ data class ChatListItem(
     val isUnread: Boolean = false,
     /** Собеседник личного чата: по нему находится кольцо историй. */
     val peerId: String? = null,
+    /**
+     * В строке кнопка «Открыть»: личный чат с ботом и [Chat.hasWebApp].
+     * Касание кнопки открывает мини-приложение, касание остальной строки — чат.
+     */
+    val openApp: Boolean = false,
 ) {
     enum class PreviewStyle { MESSAGE, DRAFT, TYPING, EMPTY }
 
@@ -159,6 +164,7 @@ class ChatListFormatter(private val zone: ZoneId = ZoneId.systemDefault()) {
             accessibilityLabel = "",
             isUnread = chat.isUnread,
             peerId = chat.peerId.takeIf { chat.type == ChatType.PRIVATE && !chat.isSavedMessages && it != "0" },
+            openApp = chat.type == ChatType.PRIVATE && chat.isBot && chat.hasWebApp && !chat.isSavedMessages,
         )
         return item.copy(accessibilityLabel = spoken(item, chat))
     }
@@ -295,6 +301,7 @@ class ChatListFormatter(private val zone: ZoneId = ZoneId.systemDefault()) {
         }
         if (chat.unreadCount > 0) parts += unreadPhrase(chat.unreadCount) else if (chat.isMarkedUnread) parts += "помечен непрочитанным"
         if (item.hasMention) parts += "есть упоминание"
+        if (item.openApp) parts += "открыть приложение"
         return parts.joinToString(", ")
     }
 }

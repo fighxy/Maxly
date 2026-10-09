@@ -1,6 +1,9 @@
 package app.orbitle.ui.main
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.MaterialTheme
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -58,6 +61,7 @@ import app.orbitle.ui.calls.CallsScreen
 import app.orbitle.ui.contacts.ContactsScreen
 import app.orbitle.ui.settings.AppearanceScreen
 import app.orbitle.ui.settings.DevicesScreen
+import app.orbitle.presentation.chat.BotAppRequest
 import app.orbitle.presentation.chat.ChatViewModel
 import app.orbitle.presentation.profile.ProfileViewModel
 import app.orbitle.ui.profile.ProfileChatActions
@@ -163,6 +167,7 @@ fun MainScreen(
     }
     // Действие из профиля чата (поиск, «О чате», звонок, очистка, удаление): чат откроет его после возврата.
     var chatAction by remember { mutableStateOf<Pair<String, ChatAction>?>(null) }
+    var listBotApp by remember { mutableStateOf<BotAppRequest?>(null) }
     // Найденное в общем поиске сообщение: чат откроется на нём (id чата, id сообщения, время).
     var openMessage by remember { mutableStateOf<Triple<String, String, Long>?>(null) }
     fun openChat(id: String, title: String? = null) {
@@ -192,6 +197,10 @@ fun MainScreen(
         ChatListScreen(
             chatList,
             onOpenChat = { openChat(it.id) },
+            onOpenApp = { item ->
+                val botId = item.peerId
+                if (botId != null) listBotApp = BotAppRequest(botId, item.id, null, item.title)
+            },
             onOpenFound = { openChat(it.id, it.title) },
             onOpenMessage = {
                 openMessage = Triple(it.chatId, it.messageId, it.timeMs)
@@ -441,6 +450,17 @@ fun MainScreen(
         )
         }
     }
+    }
+    listBotApp?.let { request ->
+        BackHandler { listBotApp = null }
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+            val app = viewModel(key = "list-bot-app-${request.botId}-${request.chatId}") {
+                MiniAppViewModel(null, container.account, request.title) {
+                    container.account.launchBotApp(request.botId, request.chatId, request.startParam)
+                }
+            }
+            MiniAppScreen(app) { listBotApp = null }
+        }
     }
     stories.viewer?.let { viewer ->
         StoryViewer(

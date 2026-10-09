@@ -101,6 +101,8 @@ data class Chat(
     val isMarkedUnread: Boolean = false,
     val isArchived: Boolean = false,
     val isBot: Boolean = false,
+    /** Диалог с ботом, у которого есть мини-приложение. Ставит ядро (`Chat.hasWebApp`). */
+    val hasWebApp: Boolean = false,
     val isVerified: Boolean = false,
     val isOnline: Boolean = false,
     val unreadMentions: Int = 0,

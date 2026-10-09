@@ -73,6 +73,7 @@ import app.orbitle.ui.keys.LocalSendKey
 import app.orbitle.ui.settings.KeyboardScreen
 import app.orbitle.platform.BackHandler
 import app.orbitle.presentation.calls.CallsViewModel
+import app.orbitle.presentation.chat.BotAppRequest
 import app.orbitle.presentation.chat.ChatViewModel
 import app.orbitle.presentation.chatlist.ChatListFormatter
 import app.orbitle.presentation.chatlist.ChatListViewModel
@@ -152,6 +153,7 @@ fun MainScreen(
     val storiesModel = viewModel { StoriesViewModel(container.stories, container.session.connection) }
     val stories by storiesModel.state.collectAsStateWithLifecycle()
     var composingStory by remember { mutableStateOf<OutgoingStory?>(null) }
+    var listBotApp by remember { mutableStateOf<BotAppRequest?>(null) }
     val storyScope = rememberCoroutineScope()
     val storySnack = remember { SnackbarHostState() }
     val addStory = app.orbitle.platform.rememberDesktopFilePicker(
@@ -291,6 +293,10 @@ fun MainScreen(
                         ChatListScreen(
                             chatList,
                             onOpenChat = { openChat(it.id) },
+                            onOpenApp = { item ->
+                                val botId = item.peerId
+                                if (botId != null) listBotApp = BotAppRequest(botId, item.id, null, item.title)
+                            },
                             onOpenFound = { openChat(it.id, it.title) },
                             onOpenMessage = {
                                 openChat(it.chatId)
@@ -405,6 +411,17 @@ fun MainScreen(
                 onClose = storiesModel::close,
                 onDelete = storiesModel::deleteCurrent,
             )
+        }
+        listBotApp?.let { request ->
+            BackHandler { listBotApp = null }
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+                val app = viewModel(key = "list-bot-app-${request.botId}-${request.chatId}") {
+                    MiniAppViewModel(null, container.account, request.title) {
+                        container.account.launchBotApp(request.botId, request.chatId, request.startParam)
+                    }
+                }
+                MiniAppScreen(app) { listBotApp = null }
+            }
         }
         composingStory?.let { story ->
             StoryComposer(

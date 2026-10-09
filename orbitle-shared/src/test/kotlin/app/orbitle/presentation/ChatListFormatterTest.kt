@@ -161,6 +161,19 @@ class ChatListFormatterTest {
     }
 
     @Test
+    fun openAppOnlyForBotDialogWithWebApp() {
+        val bot = chat().copy(isBot = true, hasWebApp = true, peerId = "7")
+        val item = formatter.item(bot, now)
+        assertTrue(item.openApp)
+        assertEquals("7", item.peerId)
+        assertTrue(item.accessibilityLabel.contains("открыть приложение"))
+        assertEquals(false, formatter.item(bot.copy(hasWebApp = false), now).openApp)
+        assertEquals(false, formatter.item(bot.copy(isBot = false), now).openApp)
+        assertEquals(false, formatter.item(bot.copy(type = ChatType.GROUP), now).openApp)
+        assertEquals(false, formatter.item(bot.copy(id = Chat.SAVED_MESSAGES_ID), now).openApp)
+    }
+
+    @Test
     fun unreadPhrases() {
         assertEquals("1 непрочитанное сообщение", ChatListFormatter.unreadPhrase(1))
         assertEquals("3 непрочитанных сообщения", ChatListFormatter.unreadPhrase(3))

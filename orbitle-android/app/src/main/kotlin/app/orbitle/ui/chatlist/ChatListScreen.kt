@@ -135,6 +135,8 @@ import app.orbitle.ui.components.DragReorder
 import kotlinx.coroutines.launch
 import app.orbitle.ui.components.privateBlur
 import coil3.compose.AsyncImage
+import androidx.compose.ui.platform.LocalDensity
+import app.orbitle.presentation.media.ImageRequests
 
 /** Вкладка «Чаты»: папки, поиск, закреплённые, плашка соединения. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -157,6 +159,8 @@ fun ChatListScreen(
     onRetryLogin: () -> Unit = {},
     /** Баннер временного отказа во входе: «Выйти из аккаунта». */
     onLogout: () -> Unit = {},
+    /** «Открыть» в строке бота: мини-приложение, не чат. */
+    onOpenApp: (ChatListItem) -> Unit = {},
 ) {
     LifecycleResumeEffect(viewModel) {
         viewModel.reloadLocal()
@@ -323,6 +327,7 @@ fun ChatListScreen(
                         folderPage.content, folderPage.items, searching = false, listState = listStates.of(folderPage.id),
                         onOpenChat = open, actions = actions, onRetry = viewModel::refresh,
                         canReorderPins = state.canReorderPins && folderPage.id == ChatFolder.ALL_ID,
+                        onOpenApp = onOpenApp,
                     )
                 }
             } else {
@@ -331,14 +336,15 @@ fun ChatListScreen(
                 val showsResults = state.content == ChatListContent.List || state.content == ChatListContent.Empty
                 val hasFound = state.global.isNotEmpty() || state.messages.isNotEmpty() || state.isSearchingServer
                 if (state.isSearchActive && state.searchQuery.isBlank()) {
-                    RecentSearches(state.recent, looseListState, open, viewModel::removeRecent, viewModel::clearRecent, actions)
+                    RecentSearches(state.recent, looseListState, open, viewModel::removeRecent, viewModel::clearRecent, actions, onOpenApp)
                 } else if (searching && showsResults && hasFound) {
-                    SearchResults(state, looseListState, open, openFound, openMessage, actions)
+                    SearchResults(state, looseListState, open, openFound, openMessage, actions, onOpenApp)
                 } else {
                     ChatListBody(
                         state.content, state.items, searching = searching, listState = looseListState,
                         onOpenChat = open, actions = actions, onRetry = viewModel::refresh,
                         canReorderPins = state.canReorderPins,
+                        onOpenApp = onOpenApp,
                     )
                 }
             }
@@ -370,10 +376,11 @@ private fun ChatListBody(
     canReorderPins: Boolean = false,
     /** Первая строка списка: полоса историй. */
     header: (@Composable () -> Unit)? = null,
+    onOpenApp: (ChatListItem) -> Unit = {},
 ) {
     when (content) {
         ChatListContent.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        ChatListContent.List -> ChatList(items, listState, onOpenChat, actions, canReorderPins, header)
+        ChatListContent.List -> ChatList(items, listState, onOpenChat, actions, canReorderPins, header, onOpenApp)
         ChatListContent.Empty -> Placeholder(
             icon = { Icon(Icons.Outlined.ChatBubbleOutline, null, Modifier.size(56.dp)) },
             title = stringResource(if (searching) R.string.chats_search_empty else R.string.chats_empty),
@@ -458,6 +465,7 @@ private fun ChatList(
     actions: ChatRowActions,
     canReorderPins: Boolean = false,
     header: (@Composable () -> Unit)? = null,
+    onOpenApp: (ChatListItem) -> Unit = {},
 ) {
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         if (header != null) item(key = "stories-strip") { header() }
@@ -468,6 +476,7 @@ private fun ChatList(
                 actions = actions,
                 modifier = Modifier.animateItem(),
                 canReorderPins = canReorderPins && item.isPinned,
+                onOpenApp = { onOpenApp(item) },
             )
         }
     }
@@ -589,6 +598,7 @@ private fun RecentSearches(
     onRemove: (String) -> Unit,
     onClear: () -> Unit,
     actions: ChatRowActions,
+    onOpenApp: (ChatListItem) -> Unit = {},
 ) {
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         if (rows.isEmpty()) return@LazyColumn
@@ -608,7 +618,7 @@ private fun RecentSearches(
         }
         items(rows, key = { "recent-${it.id}" }) { item ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                ChatRow(item, onClick = { onOpenChat(item) }, actions = actions, modifier = Modifier.weight(1f))
+                ChatRow(item, onClick = { onOpenChat(item) }, actions = actions, modifier = Modifier.weight(1f), onOpenApp = { onOpenApp(item) })
                 IconButton(onClick = { onRemove(item.id) }) {
                     Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.chats_search_remove_recent))
                 }
@@ -626,10 +636,11 @@ private fun SearchResults(
     onOpenFound: (ChatSearchResult) -> Unit,
     onOpenMessage: (FoundMessageItem) -> Unit,
     actions: ChatRowActions,
+    onOpenApp: (ChatListItem) -> Unit = {},
 ) {
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         items(state.items, key = { it.id }) { item ->
-            ChatRow(item, onClick = { onOpenChat(item) }, actions = actions, modifier = Modifier.animateItem())
+            ChatRow(item, onClick = { onOpenChat(item) }, actions = actions, modifier = Modifier.animateItem(), onOpenApp = { onOpenApp(item) })
         }
         if (state.global.isNotEmpty() || (state.isSearchingServer && state.messages.isEmpty())) {
             item(key = "global-header") { SectionHeader(stringResource(R.string.chats_search_global)) }
@@ -776,6 +787,8 @@ fun ChatRow(
     modifier: Modifier = Modifier,
     /** В меню есть «Изменить порядок»: строка закреплена, а список — папка «Все» без поиска. */
     canReorderPins: Boolean = false,
+    /** «Открыть» у бота с мини-приложением. Пусто — кнопки нет. */
+    onOpenApp: () -> Unit = {},
 ) {
     var menu by remember { mutableStateOf(false) }
     var erase by remember { mutableStateOf<app.orbitle.ui.chat.ChatErase?>(null) }
@@ -844,6 +857,22 @@ fun ChatRow(
                 Spacer(Modifier.height(3.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Preview(item, Modifier.weight(1f).privateBlur(privacy, 7.dp))
+                    if (item.openApp) {
+                        Spacer(Modifier.width(8.dp))
+                        // Высота строки задаётся аватаром: кнопка сидит во второй строке и не растит её.
+                        Text(
+                            "Открыть",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            modifier = Modifier
+                                .defaultMinSize(minWidth = 0.dp, minHeight = 0.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable(onClick = onOpenApp)
+                                .semantics { contentDescription = "Открыть приложение" }
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
                     Spacer(Modifier.width(8.dp))
                     Trailing(item)
                 }
@@ -925,7 +954,7 @@ private fun Preview(item: ChatListItem, modifier: Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         item.thumbnailUrl?.let {
             AsyncImage(
-                model = it,
+                model = ImageRequests.width(it, 20f, LocalDensity.current.density),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.size(20.dp).clip(RoundedCornerShape(4.dp)),

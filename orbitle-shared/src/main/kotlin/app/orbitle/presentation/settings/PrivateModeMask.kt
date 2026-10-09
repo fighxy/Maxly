@@ -60,6 +60,7 @@ object PrivateModeMask {
             isOnline = false,
             isVerified = false,
             isBot = false,
+            openApp = false,
             sender = null,
             preview = preview,
             media = null,

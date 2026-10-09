@@ -156,6 +156,18 @@ class ChatMappingTest {
     }
 
     @Test
+    fun webAppFlagComesFromTheCoreChat() {
+        val bot = user(2, "Бот", options = listOf("BOT"))
+        val plain = dialog()
+        val flagged = plain.copy(hasWebApp = true)
+        val s = state(flagged, users = listOf(bot))
+        val chat = ChatMapping.chat(flagged, s, null, 0)
+        assertTrue(chat.isBot)
+        assertTrue(chat.hasWebApp)
+        assertFalse(ChatMapping.chat(plain, state(plain, users = listOf(bot)), null, 0).hasWebApp)
+    }
+
+    @Test
     fun foldersSkipNothingAndMarkAll() {
         val folders = com.max.core.api.ChatFolders(
             listOf(

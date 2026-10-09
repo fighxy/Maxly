@@ -30,7 +30,7 @@ https://github.com/fighxy/Orbitle/releases/download/android-latest/Orbitle.apk. 
   «Изменить порядок» долгим нажатием, перетаскивание за ручку), папки сервера с бейджами непрочитанных, превью как в iOS («Фотография»,
   «Голосовое сообщение», «Вы:» и имя автора в группах, пересланные, черновики, «печатает…»),
   галочки доставки и прочтения, «без звука», подтверждённые аккаунты, «в сети», поиск по
-  загруженным чатам, плашка «Подключение…», потянуть вниз — обновить.
+  загруженным чатам, плашка «Подключение…», потянуть вниз — обновить. У диалога с ботом, у которого есть мини-приложение, в строке кнопка «Открыть»: она открывает мини-приложение сразу, остальная строка открывает чат, высота строки не меняется.
 - **Чат:** история из стора ядра с догрузкой старых страниц при прокрутке вверх (заранее, за
   20 строк до верха; без предела — стор ядра больше не обрезает старые страницы; страницу,
   которую листающий ждёт, пауза фоновых чтений не держит, отказ повторяется сам). В канале,
@@ -139,6 +139,8 @@ The core is pinned to max-kmp-core `1364e91` in `core.lock`. Everything below ru
   to `oneme.ru` hosts) and backs off reconnects from 3 s to 96 s with ±10 % jitter. Neither
   server `PING` nor `RECONNECT` reaches `pushes`; the app has no ping or reconnect code of its own.
 - **Images:** avatars ask the core for a square `fn` and photos for a width `fn`: the first step of the ladder that is not smaller than the view size in dp times the screen density (`ImageRequests`). A full-screen viewer and a file on disk keep the original URL. When the server turns on `photo-url-refresh`, an open chat refreshes expired photo URLs with opcode 203 (`MaxClient.refreshPhotoUrls`), at most the server's batch and not more than once a second; the new address replaces the photo in the feed.
+
+- **Bot apps in the list:** a bot dialog with `Chat.hasWebApp` shows «Открыть» on the row. The button opens that bot's mini app immediately; the rest of the row opens the chat. The row height does not change.
 - **Login rejection:** when the server refuses the stored token (`ClientState.TokenRejected`),
   the app never shows an empty chat list. `login.token` and `login.blocked`: the core has cleared
   the token, so the app also clears its own session state (chats, caches, last user id, feed

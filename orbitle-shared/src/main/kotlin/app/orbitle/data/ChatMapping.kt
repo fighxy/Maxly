@@ -82,6 +82,7 @@ object ChatMapping {
             pinOrder = pinOrder,
             isMuted = mutes?.isMuted(chat.id, config, nowMs) ?: (config?.chatMuteState(chat.id, nowMs) ?: false),
             isBot = "BOT" in peerOptions,
+            hasWebApp = chat.hasWebApp,
             isVerified = "OFFICIAL" in peerOptions || options?.get("OFFICIAL") == true,
             isOnline = PresenceTime.isOnline(presence),
             commentsEnabled = when (options?.get("COMMENTS")) {
