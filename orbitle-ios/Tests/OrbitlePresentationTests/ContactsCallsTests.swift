@@ -73,6 +73,19 @@ final class FakeCallSource: CallHistoryRepository, @unchecked Sendable {
         if failDelete { throw .networkUnavailable }
         lock.withLock { deleted.append(ids) }
     }
+
+    /// Страницы для `loadMore`: каждая — новый полный список; после последней больше нет.
+    var pages: [[CallRecord]] = []
+    private(set) var pageRequests = 0
+
+    func loadMore() async -> Bool {
+        let next: [CallRecord]? = lock.withLock {
+            pageRequests += 1
+            return pages.isEmpty ? nil : pages.removeFirst()
+        }
+        if let next { send(next) }
+        return lock.withLock { !pages.isEmpty }
+    }
 }
 
 private func moscowCalendar() -> Calendar {
@@ -281,6 +294,34 @@ struct CallsViewModelTests {
         #expect(model.rows[2].isGroup)
         // Пропущенный 400 дней назад старше последнего просмотра, в бейдж идёт только свежий.
         #expect(model.unseenMissedCount == 1)
+    }
+
+    @Test("Журнал страницами: последняя строка просит следующую, пока сервер их даёт")
+    func paging() async {
+        let first = Array(sample.prefix(2))
+        let (model, source) = make(first, capabilities: [.history, .paging])
+        #expect(await eventually { model.state == .ready })
+        #expect(model.canLoadMore)
+        source.pages = [Array(sample.prefix(4)), sample]
+        await model.loadMore()
+        #expect(model.canLoadMore)
+        #expect(await eventually { model.rows.flatMap(\.callIds).count == 4 })
+        await model.loadMore()
+        #expect(!model.canLoadMore)
+        #expect(await eventually { model.rows.flatMap(\.callIds).count == 6 })
+        #expect(model.loadedPages == 2)
+        // Больше страниц нет: новых запросов не будет.
+        await model.loadMore()
+        #expect(source.pageRequests == 2)
+    }
+
+    @Test("Источник без страниц не листается")
+    func noPaging() async {
+        let (model, source) = make(sample)
+        #expect(await eventually { model.state == .ready })
+        #expect(!model.canLoadMore)
+        await model.loadMore()
+        #expect(source.pageRequests == 0)
     }
 
     @Test("«Пропущенные» оставляют только пропущенные входящие")

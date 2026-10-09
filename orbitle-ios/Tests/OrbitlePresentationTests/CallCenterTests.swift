@@ -99,6 +99,9 @@ final class FakeCallService: CallService, @unchecked Sendable {
         (stream, continuation) = AsyncStream.makeStream(of: IncomingCall.self)
     }
 
+    private var _rejected: [String] = []
+    var rejectError: OrbitleError?
+    var rejected: [String] { lock.withLock { _rejected } }
     var started: [(String, Bool)] { lock.withLock { _started } }
     var joined: [String] { lock.withLock { _joined } }
 
@@ -126,6 +129,11 @@ final class FakeCallService: CallService, @unchecked Sendable {
     func preview(link: String) async throws(OrbitleError) -> CallLinkPreview? { linkPreview }
 
     func incomingCalls() -> AsyncStream<IncomingCall> { stream }
+
+    func reject(conversationId: String, peerId: String) async throws(OrbitleError) {
+        lock.withLock { _rejected.append(conversationId) }
+        if let rejectError { throw rejectError }
+    }
 }
 
 /// CallKit без системы: действие сразу уходит делегату, как делает `CXProvider`.
@@ -300,12 +308,58 @@ struct CallCenterTests {
         #expect(await eventually { engine.last?.hungUp == 1 })
         #expect(center.call?.state.phase == .ended(.rejected))
         #expect(system?.ended.isEmpty == true)
+        // Отклонение ушло и на основной сервер (167).
+        #expect(await eventually { service.rejected == ["in-1"] })
 
         let (plain, plainService, plainEngine, _) = makeCenter(system: nil)
         plainService.ring(incoming())
         #expect(await eventually { plain.call != nil })
         await plain.answer()
         #expect(plainEngine.last?.accepted == [false])
+    }
+
+    @Test("Сервер не принял отклонение: звонок всё равно закрыт сокетом звонка")
+    func declineRejectFails() async throws {
+        let (center, service, engine, _) = makeCenter(system: nil)
+        service.rejectError = .networkUnavailable
+        service.ring(incoming())
+        #expect(await eventually { center.call != nil })
+        await center.decline()
+        #expect(service.rejected == ["in-1"])
+        #expect(engine.last?.hungUp == 1)
+        #expect(center.call?.state.phase == .ended(.rejected))
+    }
+
+    @Test("Отбой после ответа и свой исходящий не уходят на сервер как отклонение")
+    func hangUpIsNotReject() async throws {
+        let (center, service, engine, _) = makeCenter(system: nil)
+        service.ring(incoming())
+        #expect(await eventually { center.call != nil })
+        await center.answer()
+        engine.last?.move(to: .active)
+        await center.hangUp()
+        #expect(engine.last?.hungUp == 1)
+        #expect(service.rejected.isEmpty)
+        #expect(await eventually { center.call == nil })
+
+        await center.startCall(to: peer, video: false)
+        await center.hangUp()
+        #expect(service.rejected.isEmpty)
+    }
+
+    @Test("Пока звонок на экране, центр сообщает «занят»: приложение держит ядро активным")
+    func busyHook() async throws {
+        let (center, service, _, _) = makeCenter(system: nil)
+        var busy: [Bool] = []
+        center.onBusyChanged = { busy.append($0) }
+        service.ring(incoming())
+        #expect(await eventually { center.call != nil })
+        #expect(busy == [true])
+        await center.answer()
+        #expect(busy == [true])
+        await center.hangUp()
+        #expect(await eventually { center.call == nil })
+        #expect(busy == [true, false])
     }
 
     @Test("Система не приняла действие — центр делает его сам")

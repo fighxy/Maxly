@@ -172,6 +172,32 @@ actor FakeMaxCore: MaxCore {
 
     private(set) var deletedCalls: [[String]] = []
 
+    /// Ответы `callHistory` (163) по очереди; `nil` — ядро его не умеет (прежний журнал 79).
+    var callPages: [CallLogPage]?
+    private(set) var callHistorySyncs: [String] = []
+    private(set) var rejectedCalls: [String] = []
+    var rejectError: CoreFailure?
+
+    func setCallPages(_ pages: [CallLogPage]?) { callPages = pages }
+
+    func callHistory(sync: String) async throws -> CallLogPage {
+        guard var pages = callPages else { throw CoreFailure(kind: "UNKNOWN", key: "unsupported") }
+        callHistorySyncs.append(sync)
+        if let directoryError { throw directoryError }
+        guard !pages.isEmpty else { return CallLogPage(sync: sync, items: []) }
+        let page = pages.removeFirst()
+        callPages = pages
+        return page
+    }
+
+    func rejectIncomingCall(conversationId: String, peerId: String, reason: String) async throws {
+        rejectedCalls.append("\(conversationId)/\(peerId)/\(reason)")
+        if let rejectError { throw rejectError }
+    }
+
+    func setRejectError(_ error: CoreFailure?) { rejectError = error }
+    func setUserId(_ id: String) { userId = id }
+
     func deleteCallHistory(ids: [String]) async throws {
         if let directoryError { throw directoryError }
         deletedCalls.append(ids)

@@ -72,6 +72,72 @@ struct DirectoryRepositoryTests {
         await #expect(throws: OrbitleError.networkUnavailable) { try await repository.delete(ids: ["2"]) }
     }
 
+    private func logItem(_ id: String, caller: String = "20", hangup: String = "MISSED", time: Int64) -> CallLogItem {
+        CallLogItem(historyId: id, callId: "c\(id)", callerId: caller, hangupType: hangup, timeMs: time)
+    }
+
+    @Test("Журнал по курсору: первая страница с пустым курсором, следующая — с курсором ответа")
+    func callLogPaging() async {
+        let core = FakeMaxCore()
+        await core.setUserId("10")
+        await core.setDirectory(contacts: [
+            CoreContact(id: "20", firstName: "Анна", lastName: "", phone: "", avatarURL: "", lastSeenMs: 0, online: false),
+        ])
+        await core.setCallPages([
+            CallLogPage(sync: "5", items: [logItem("1", time: 2_000)]),
+            CallLogPage(sync: "9", items: [logItem("2", caller: "10", hangup: "HUNGUP", time: 1_000)]),
+            CallLogPage(sync: "9", items: []),
+        ])
+        let repository = CoreCallHistoryRepository(core: core)
+        #expect(repository.capabilities.contains(.paging))
+        var iterator = repository.calls().makeAsyncIterator()
+        #expect(await iterator.next()?.map(\.id) == ["1"])
+        // Имя собеседника из контактов ядра.
+        #expect(await iterator.next()?.first?.title == "Анна")
+        #expect(await repository.loadMore())
+        let second = await iterator.next()
+        #expect(second?.map(\.id) == ["1", "2"])
+        #expect(second?.last?.direction == .outgoing)
+        #expect(await repository.loadMore() == false)
+        #expect(await core.callHistorySyncs == ["", "5", "9"])
+    }
+
+    @Test("Пуш журнала: remove сразу убирает запись, add перечитывает журнал с курсора")
+    func callLogPushes() async {
+        let core = FakeMaxCore()
+        await core.setUserId("10")
+        await core.setCallPages([
+            CallLogPage(sync: "5", items: [logItem("1", time: 2_000), logItem("2", time: 1_000)]),
+            CallLogPage(sync: "6", items: [logItem("3", time: 3_000)]),
+        ])
+        let repository = CoreCallHistoryRepository(core: core)
+        var iterator = repository.calls().makeAsyncIterator()
+        #expect(await iterator.next()?.map(\.id) == ["1", "2"])
+        await repository.callLogChanged(action: "remove", item: CallLogItem(historyId: "2"))
+        #expect(await iterator.next()?.map(\.id) == ["1"])
+        await repository.callLogChanged(action: "add", item: CallLogItem(historyId: "3", callerId: "20", timeMs: 3_000))
+        #expect(await iterator.next()?.map(\.id) == ["3", "1"])
+        #expect(await core.callHistorySyncs == ["", "5"])
+
+        // reset() забывает журнал и курсор: новый аккаунт начинает с первой страницы.
+        await repository.reset()
+        await core.setCallPages([CallLogPage(sync: "1", reset: true, items: [logItem("7", time: 1)])])
+        var fresh = repository.calls().makeAsyncIterator()
+        #expect(await fresh.next()?.map(\.id) == ["7"])
+        #expect(await core.callHistorySyncs == ["", "5", ""])
+    }
+
+    @Test("Отклонение входящего уходит в ядро (167) без причины и собеседника")
+    func rejectCall() async throws {
+        let core = FakeMaxCore()
+        let service = CoreCallService(core: core)
+        try await service.reject(conversationId: "conv-1", peerId: "")
+        #expect(await core.rejectedCalls == ["conv-1//"])
+        await core.setRejectError(CoreFailure(kind: "NETWORK", key: nil))
+        await #expect(throws: OrbitleError.networkUnavailable) { try await service.reject(conversationId: "conv-2", peerId: "") }
+        await #expect(throws: OrbitleError.invalidRequest) { try await service.reject(conversationId: "", peerId: "") }
+    }
+
     @Test("Звонки из ядра: адрес ws2, свой номер, ICE и срок входящего")
     func callService() throws {
         let incoming = try #require(CoreCallService.incoming(CoreIncomingCall(
