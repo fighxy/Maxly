@@ -173,8 +173,8 @@ jobs:
         run: |
           set -euo pipefail
           short="${GITHUB_SHA::7}"
-          export TITLE="Maxly iOS ${short}"
-          export NOTES="Неподписанная сборка ${GITHUB_SHA} от $(date -u '+%Y-%m-%d %H:%M') UTC. Скачайте Maxly.ipa в Safari на iPhone и откройте в eSign. Orbitle.ipa — та же сборка под прежним именем, чтобы старая ссылка продолжала работать."
+          export TITLE="🕊 Maxly для iOS — последняя сборка"
+          export NOTES="Свежая сборка Maxly из \`main\`, iOS 17+: \`Maxly.ipa\`. После смены Bundle ID приложение ставится отдельно, войти нужно заново. Файл \`Orbitle.ipa\` оставлен для старых ссылок."$'\n\n'"Коммит ${short} (${GITHUB_SHA}), собран $(date -u '+%Y-%m-%d %H:%M') UTC."
           cp build/Maxly.ipa build/Orbitle.ipa
           ls -lh build/Maxly.ipa build/Orbitle.ipa
           bash scripts/publish-latest.sh build/Maxly.ipa build/Orbitle.ipa
