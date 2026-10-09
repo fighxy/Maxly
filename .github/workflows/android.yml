@@ -111,19 +111,20 @@ jobs:
           for class in Lorg/jni_zero/JniInit\; Lorg/webrtc/PeerConnectionFactory\;; do
             grep -aq "$class" "$RUNNER_TEMP/classes.dex" || { echo "::error::R8 выкинул $class из APK"; exit 1; }
           done
-          mkdir -p ../build && cp "$apk" ../build/Orbitle.apk
-          ls -lh ../build/Orbitle.apk
+          mkdir -p ../build && cp "$apk" ../build/Maxly.apk
+          ls -lh ../build/Maxly.apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Orbitle-apk-${{ github.sha }}
-          path: build/Orbitle.apk
+          name: Maxly-apk-${{ github.sha }}
+          path: build/Maxly.apk
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
 
-  # Один пререлиз android-latest с Orbitle.apk: ссылка постоянная, её можно открыть в браузере
+  # Один пререлиз android-latest с Maxly.apk: ссылка постоянная, её можно открыть в браузере
   # на телефоне и сразу поставить. Внутри последняя сборка main, у которой прошли тесты.
+  # На переходный период тот же APK выкладывается и как Orbitle.apk: старые ссылки не ломаются.
   publish:
     name: Publish android-latest
     needs: build
@@ -140,7 +141,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: Orbitle-apk-${{ github.sha }}
+          name: Maxly-apk-${{ github.sha }}
           path: build
       - name: Publish APK
         env:
@@ -150,7 +151,9 @@ jobs:
         run: |
           set -euo pipefail
           short="${GITHUB_SHA::7}"
-          export TITLE="Orbitle Android ${short}"
-          export NOTES="Сборка для Android ${GITHUB_SHA} от $(date -u '+%Y-%m-%d %H:%M') UTC. Откройте Orbitle.apk в браузере на телефоне и установите (нужно разрешить установку из этого источника)."
-          ls -lh build/Orbitle.apk
-          bash scripts/publish-latest.sh build/Orbitle.apk
+          # Копия под прежним именем — на переходный период, для старых ссылок.
+          cp build/Maxly.apk build/Orbitle.apk
+          export TITLE="Maxly Android ${short}"
+          export NOTES="Сборка для Android ${GITHUB_SHA} от $(date -u '+%Y-%m-%d %H:%M') UTC. Откройте Maxly.apk в браузере на телефоне и установите (нужно разрешить установку из этого источника). Orbitle.apk — тот же файл под прежним именем."
+          ls -lh build/Maxly.apk build/Orbitle.apk
+          bash scripts/publish-latest.sh build/Maxly.apk build/Orbitle.apk

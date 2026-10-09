@@ -156,15 +156,16 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: Orbitle-desktop-${{ matrix.format }}-${{ github.sha }}
+          name: Maxly-desktop-${{ matrix.format }}-${{ github.sha }}
           path: build/*.${{ matrix.format }}
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
 
   # Один пререлиз desktop-latest с установщиками всех трёх ОС под постоянными именами
-  # (Orbitle.msi, Orbitle.dmg, Orbitle.deb): внутри последняя сборка main, у которой прошли
-  # тесты и собрались все три установщика.
+  # (Maxly.msi, Maxly.dmg, Maxly.deb): внутри последняя сборка main, у которой прошли
+  # тесты и собрались все три установщика. На переходный период те же файлы выкладываются
+  # и под прежними именами Orbitle.msi, Orbitle.dmg, Orbitle.deb: старые ссылки не ломаются.
   publish:
     name: Publish desktop-latest
     needs: package
@@ -181,7 +182,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: Orbitle-desktop-*-${{ github.sha }}
+          pattern: Maxly-desktop-*-${{ github.sha }}
           path: installers
           merge-multiple: true
       - name: Publish installers
@@ -200,10 +201,12 @@ jobs:
               echo "::error::Нужен ровно один .$ext, есть: ${found[*]}"
               exit 1
             fi
+            cp "${found[0]}" "release/Maxly.$ext"
+            # Копия под прежним именем — на переходный период, для старых ссылок.
             cp "${found[0]}" "release/Orbitle.$ext"
-            files+=("release/Orbitle.$ext")
+            files+=("release/Maxly.$ext" "release/Orbitle.$ext")
           done
           ls -lh release
-          export TITLE="Orbitle Desktop ${short}"
-          export NOTES="Сборка для ПК ${GITHUB_SHA} от $(date -u '+%Y-%m-%d %H:%M') UTC: Windows (Orbitle.msi), macOS (Orbitle.dmg, без подписи — открыть через «Открыть» в контекстном меню), Linux (Orbitle.deb). Для голосовых, кружков и видео нужен ffmpeg в PATH."
+          export TITLE="Maxly Desktop ${short}"
+          export NOTES="Сборка для ПК ${GITHUB_SHA} от $(date -u '+%Y-%m-%d %H:%M') UTC: Windows (Maxly.msi), macOS (Maxly.dmg, без подписи — открыть через «Открыть» в контекстном меню), Linux (Maxly.deb). Для голосовых, кружков и видео нужен ffmpeg в PATH. Orbitle.msi, Orbitle.dmg и Orbitle.deb — те же файлы под прежними именами."
           bash scripts/publish-latest.sh "${files[@]}"
