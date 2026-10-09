@@ -18,9 +18,9 @@ import java.util.Collections
 
 /**
  * Журнал и отчёты о сбоях на компьютере. Включается первой строкой `main`:
- * - журнал — `~/.orbitle/logs/app.log` (до пяти файлов по мегабайту), туда же уходят
+ * - журнал — `~/.maxly/logs/app.log` (до пяти файлов по мегабайту), туда же уходят
  *   `System.out` и `System.err`: у установленного приложения Windows консоли нет;
- * - отчёты — `~/.orbitle/crashes`: необработанные исключения, ошибки корутин, зависания окна
+ * - отчёты — `~/.maxly/crashes`: необработанные исключения, ошибки корутин, зависания окна
  *   со стеками всех потоков ([UiWatchdog]) и запуски, которые не завершились штатно (процесс
  *   сняли из диспетчера задач или он упал в нативном коде).
  *
@@ -73,7 +73,7 @@ object DesktopDiagnostics {
 
     /** Версия, сборка, ОС и Java — в начало отчёта и в строку запуска. */
     fun info(): String = buildString {
-        append("Orbitle ").append(BuildConfig.VERSION_NAME).append(", сборка ").append(BuildConfig.BUILD_SHA)
+        append("Maxly ").append(BuildConfig.VERSION_NAME).append(", сборка ").append(BuildConfig.BUILD_SHA)
             .append(", ядро ").append(BuildConfig.CORE_REVISION).append('\n')
         append(System.getProperty("os.name")).append(' ').append(System.getProperty("os.version"))
             .append(" (").append(System.getProperty("os.arch")).append("), Java ")
@@ -162,14 +162,14 @@ object DesktopDiagnostics {
         val lock = runCatching { file.channel.tryLock() }.getOrNull()
         if (lock == null) {
             file.close()
-            AppLog.w(TAG, "Orbitle уже запущен в другом процессе")
+            AppLog.w(TAG, "Maxly уже запущен в другом процессе")
             return
         }
         runLock = lock
         runFile = file
         runLine = "pid=${ProcessHandle.current().pid()} started=${System.currentTimeMillis()}"
         markHung(false)
-        Runtime.getRuntime().addShutdownHook(Thread({ markCleanExit(home) }, "orbitle-exit"))
+        Runtime.getRuntime().addShutdownHook(Thread({ markCleanExit(home) }, "maxly-exit"))
         if (!existed) return
         val started = previous.substringAfter("started=", "").substringBefore(' ').toLongOrNull()
         val native = nativeCrashLog(started)

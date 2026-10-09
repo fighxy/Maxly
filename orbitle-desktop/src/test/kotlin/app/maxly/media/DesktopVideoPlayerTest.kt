@@ -78,7 +78,7 @@ class DesktopVideoPlayerTest {
 
     /** Ролик из генератора ffmpeg: полосы и тон. */
     private fun sample(width: Int, height: Int, seconds: Double, audio: Boolean = true): File {
-        val file = Files.createTempFile("orbitle-video", ".mp4").toFile().apply { deleteOnExit() }
+        val file = Files.createTempFile("maxly-video", ".mp4").toFile().apply { deleteOnExit() }
         val args = mutableListOf("ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=${width}x$height:rate=25:duration=$seconds")
         if (audio) args += listOf("-f", "lavfi", "-i", "sine=frequency=440:duration=$seconds")
         args += listOf("-pix_fmt", "yuv420p", "-shortest", file.absolutePath)
@@ -133,7 +133,7 @@ class DesktopVideoPlayerTest {
     @Test
     fun colorsArriveAsRgba(): Unit = runBlocking {
         assumeTrue("нет ffmpeg в PATH", ffmpeg())
-        val file = Files.createTempFile("orbitle-red", ".mp4").toFile().apply { deleteOnExit() }
+        val file = Files.createTempFile("maxly-red", ".mp4").toFile().apply { deleteOnExit() }
         val code = ProcessBuilder(
             "ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:size=64x64:rate=25:duration=0.5",
             "-pix_fmt", "yuv420p", file.absolutePath,
@@ -158,7 +158,7 @@ class DesktopVideoPlayerTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val player = DesktopVideoPlayer(scope)
         try {
-            player.open("/nonexistent/orbitle.mp4", "test")
+            player.open("/nonexistent/maxly.mp4", "test")
             val failed = withTimeout(10_000) { player.state.first { it.failed } }
             assertFalse(failed.isPlaying)
         } finally {

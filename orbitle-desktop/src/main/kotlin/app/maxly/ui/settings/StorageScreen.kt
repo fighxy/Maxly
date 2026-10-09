@@ -66,7 +66,7 @@ fun StorageScreen(model: StorageViewModel, onBack: () -> Unit) {
             Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(StorageViewModel.format(usage.total), style = MaterialTheme.typography.displaySmall)
                 Spacer(Modifier.height(4.dp))
-                Text("занимает кэш Orbitle", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("занимает кэш Maxly", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             StorageCategory.entries.forEach { category ->
                 val bytes = usage.of(category)

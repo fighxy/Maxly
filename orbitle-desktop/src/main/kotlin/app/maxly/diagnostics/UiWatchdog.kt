@@ -82,7 +82,7 @@ class UiWatchdog(
                 // Сторож не должен умирать от ошибки в журнале.
             }
         }
-    }, "orbitle-ui-watchdog").apply {
+    }, "maxly-ui-watchdog").apply {
         isDaemon = true
         start()
     }

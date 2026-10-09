@@ -163,7 +163,7 @@ private fun RuntimeGate(content: @Composable () -> Unit) {
     val scope = rememberCoroutineScope()
     when {
         restart -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-            Text("Перезапустите Orbitle, чтобы открыть мини-приложение.")
+            Text("Перезапустите Maxly, чтобы открыть мини-приложение.")
         }
         failed != null -> FailedPane(failed ?: "Не удалось подготовить браузер", Modifier.fillMaxSize()) {
             scope.launch { DesktopWebRuntime.ensure() }
@@ -430,7 +430,7 @@ private class MiniAppSession(url: String, mobileUserAgent: Boolean) {
                 ).get(1_500, TimeUnit.MILLISECONDS)
             }
             open()
-        }, "orbitle-mini-app").apply { isDaemon = true }.start()
+        }, "maxly-mini-app").apply { isDaemon = true }.start()
     }
 
     fun close() {

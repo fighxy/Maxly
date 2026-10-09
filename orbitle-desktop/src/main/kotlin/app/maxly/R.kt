@@ -79,12 +79,12 @@ object R {
 }
 
 internal val STRING_TABLE: Map<Int, String> = mapOf(
-    R.string.app_name to "Orbitle",
+    R.string.app_name to "Maxly",
     R.string.tab_chats to "Чаты",
     R.string.tab_calls to "Звонки",
     R.string.tab_contacts to "Контакты",
     R.string.tab_settings to "Настройки",
-    R.string.auth_welcome_title to "Orbitle",
+    R.string.auth_welcome_title to "Maxly",
     R.string.auth_welcome_subtitle to "Мессенджер для Max. Введите номер телефона, чтобы войти",
     R.string.auth_country to "Страна",
     R.string.auth_country_code to "Код",

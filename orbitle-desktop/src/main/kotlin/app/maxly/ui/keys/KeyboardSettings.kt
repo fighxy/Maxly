@@ -48,7 +48,7 @@ object HotkeyCatalog {
                     Entry(listOf("$command+0"), "Избранное"),
                     Entry(listOf("$command+,"), "Настройки"),
                     Entry(listOf("Esc"), "Назад: закрыть окно, поиск, профиль или чат"),
-                    Entry(listOf("$command+Q"), "Выйти из Orbitle"),
+                    Entry(listOf("$command+Q"), "Выйти из Maxly"),
                 ),
             ),
             Group(

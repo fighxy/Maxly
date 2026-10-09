@@ -91,7 +91,7 @@ private fun MainWindow(container: AppContainer, owner: DesktopOwner, onExit: () 
     )
     Window(
         onCloseRequest = onExit,
-        title = "Orbitle",
+        title = "Maxly",
         icon = painterResource(R.drawable.app_icon),
         state = state,
     ) {

@@ -54,7 +54,7 @@ class FilePrefs(private val file: File) {
                 if (value == null) map.remove(key) else map.setProperty(key, value)
             }
             file.parentFile?.mkdirs()
-            file.outputStream().use { map.store(it, "orbitle") }
+            file.outputStream().use { map.store(it, "maxly") }
         }
     }
 

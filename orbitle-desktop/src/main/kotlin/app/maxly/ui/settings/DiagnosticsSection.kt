@@ -148,8 +148,8 @@ private fun saveLog(): File? {
     val log = DesktopDiagnostics.log ?: return null
     return runCatching {
         val stamp = FileLog.timestamp(System.currentTimeMillis()).take(19).replace(':', '-').replace(' ', '_')
-        val file = File(AppPaths.downloads, "orbitle-log-$stamp.txt")
-        file.writeText("Журнал Orbitle\n" + DesktopDiagnostics.info() + "\n\n" + log.read())
+        val file = File(AppPaths.downloads, "maxly-log-$stamp.txt")
+        file.writeText("Журнал Maxly\n" + DesktopDiagnostics.info() + "\n\n" + log.read())
         DesktopActions.openFile(AppPaths.downloads)
         file
     }.getOrNull()

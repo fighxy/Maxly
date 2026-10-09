@@ -129,7 +129,7 @@ class DownloadsSaver : MediaSaver {
     override suspend fun save(path: String, name: String, kind: SavedKind) {
         withContext(Dispatchers.IO) {
             val source = File(path)
-            val safe = name.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "Orbitle" }
+            val safe = name.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "Maxly" }
             var target = File(AppPaths.downloads, safe)
             var index = 2
             while (target.exists()) {

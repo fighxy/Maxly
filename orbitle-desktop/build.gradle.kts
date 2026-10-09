@@ -166,7 +166,7 @@ compose.desktop {
             // работает: jdk.unsupported — sun.misc.Unsafe для библиотек, java.management — стеки
             // потоков с блокировками в отчёте о зависании окна.
             modules("java.instrument", "java.management", "java.prefs", "java.scripting", "jdk.unsupported")
-            packageName = "Orbitle"
+            packageName = "Maxly"
             // Установщик не принимает старший номер 0: версия пакета отдельно от версии клиента.
             packageVersion = "1.0.0"
             // Код продукта MSI считается из имени и версии. Пока версия 1.0.0, Windows видит
@@ -181,15 +181,15 @@ compose.desktop {
                 "$major.$minor.$build"
             }
             // Только ASCII: WiX собирает .msi в кодовой странице 1252, кириллица в описании ломает packageMsi.
-            description = "Orbitle desktop client"
-            vendor = "Orbitle"
+            description = "Maxly desktop client"
+            vendor = "Maxly"
             // Значки собраны из orbitle-ios AppIcon.png (1024 px): .ico 16–256, .icns, .png 512.
             windows {
                 // Ярлык на рабочем столе и в меню «Пуск», установка без прав администратора
                 // в профиль пользователя с выбором папки.
                 shortcut = true
                 menu = true
-                menuGroup = "Orbitle"
+                menuGroup = "Maxly"
                 perUserInstall = true
                 dirChooser = true
                 // Постоянный UUID: новая версия .msi обновляет установленную, а не ставится рядом.
@@ -198,19 +198,23 @@ compose.desktop {
                 iconFile.set(project.file("icons/maxly.ico"))
             }
             macOS {
+                // Прежний bundle ID: macOS сохраняет за приложением выданные разрешения.
                 bundleID = "app.orbitle.desktop"
                 iconFile.set(project.file("icons/maxly.icns"))
                 // Без этих строк macOS не даст звонку микрофон и камеру.
                 infoPlist {
                     extraKeysRawXml = """
                         <key>NSMicrophoneUsageDescription</key>
-                        <string>Orbitle uses the microphone for calls.</string>
+                        <string>Maxly uses the microphone for calls.</string>
                         <key>NSCameraUsageDescription</key>
-                        <string>Orbitle uses the camera for video calls.</string>
+                        <string>Maxly uses the camera for video calls.</string>
                     """.trimIndent()
                 }
             }
             linux {
+                // Имя пакета dpkg прежнее: .deb с Maxly обновляет установленный пакет orbitle,
+                // а не ставится рядом вторым приложением.
+                packageName = "orbitle"
                 shortcut = true
                 menuGroup = "Network;InstantMessaging"
                 iconFile.set(project.file("icons/maxly.png"))

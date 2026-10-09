@@ -48,7 +48,7 @@ class DesktopPhotoEditorTest {
     }
 
     @Test fun exportWritesSeparateJpegAndActualMetadata() = runBlocking {
-        val folder=Files.createTempDirectory("orbitle-photo-test").toFile()
+        val folder=Files.createTempDirectory("maxly-photo-test").toFile()
         try {
             val original=java.io.File(folder,"original.png");ImageIO.write(image(),"png",original)
             val bytes=original.readBytes()
