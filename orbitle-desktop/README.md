@@ -56,7 +56,7 @@
 
 ## Ghost mode, privacy and activity
 
-The core is pinned to max-kmp-core `05ab213` in `core.lock`. Everything below runs through it.
+The core is pinned to max-kmp-core `df5a4e1` in `core.lock`. Everything below runs through it.
 
 - **Connection:** the core owns the keepalive and reconnects. It sends `PING` every 29 s (the
   first right after login), answers the server's `PING`, follows a server `RECONNECT` (op 3, only
