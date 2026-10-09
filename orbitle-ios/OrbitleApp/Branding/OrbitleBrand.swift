@@ -1,13 +1,13 @@
 import SwiftUI
 
-/// Логотип Orbitle в двух видах.
+/// Логотип Maxly в двух видах.
 ///
 /// Картинки лежат в каталоге приложения (`Assets.xcassets`): `OrbitleLogo` — логотип целиком
-/// на тёмном фоне, `OrbitleMark` — только светящийся знак на прозрачном фоне, его цвет задаёт
-/// экран. Иконка приложения (`AppIcon`) и экран запуска (`LaunchLogo`, `LaunchBackground`)
-/// собраны из того же рисунка.
+/// на чёрном фоне, `OrbitleMark` — только силуэт знака на прозрачном фоне, его цвет задаёт
+/// экран. Иконка приложения (`AppIcon`) и экран запуска (`LaunchLogo` на чёрном
+/// `LaunchBackground`) собраны из того же рисунка.
 enum OrbitleBrand {
-    /// Фон экрана запуска и заставки: тёмный синий из логотипа.
+    /// Фон экрана запуска и заставки: чёрный, как фон логотипа.
     static let background = Color("LaunchBackground")
 }
 
@@ -48,7 +48,7 @@ struct OrbitleMark: View {
 }
 
 /// Заставка, пока открывается база и ядро подключается. Продолжает экран запуска:
-/// тот же фон и тот же знак, поэтому переход от системной заставки незаметен.
+/// тот же фон и тот же логотип, поэтому переход от системной заставки незаметен.
 struct OrbitleSplash: View {
     var caption: String?
 
@@ -56,8 +56,10 @@ struct OrbitleSplash: View {
         ZStack {
             OrbitleBrand.background
             VStack(spacing: 28) {
-                OrbitleMark(size: 200)
-                    .foregroundStyle(.white)
+                Image("LaunchLogo")
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 200, height: 200)
                 VStack(spacing: 10) {
                     ProgressView()
                         .tint(.white)
