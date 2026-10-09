@@ -52,7 +52,8 @@ import kotlinx.coroutines.flow.map
 
 /** Зависимости окна: одно ядро, одна сессия, репозитории над стором ядра. Токен хранит само ядро. */
 class AppContainer {
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    /** Исключение в корутине приложения пишется в журнал и отчёт, но не роняет процесс. */
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + app.orbitle.diagnostics.DesktopDiagnostics.coroutineHandler)
 
     /**
      * Без догрузки дыр истории после переподключения (`fillGapsOnReconnect`), как на iOS: ядро
@@ -100,6 +101,8 @@ class AppContainer {
     }
 
     val appearance = AppearanceSettings(preferenceStore)
+    /** Где было окно, когда его закрыли. */
+    val windowPlacement = app.orbitle.platform.WindowPlacementStore(preferenceStore)
     val keyboard = app.orbitle.ui.keys.KeyboardSettings(preferenceStore)
     val privateMode = PrivateModeSettings(preferenceStore)
 
@@ -248,6 +251,8 @@ class AppContainer {
     )
 
     init {
+        // Состояние соединения — в журнал: по нему видно, был ли клиент в сети в момент беды.
+        scope.launch { session.connection.collect { app.orbitle.data.diagnostics.AppLog.i("net", "Соединение: $it") } }
         // Профиль поменяли на другом устройстве (пуш 159): перечитать свой профиль.
         scope.launch { account.profileChanges.collect { runCatching { account.reload() } } }
     }

@@ -259,7 +259,7 @@ fun SettingsItem(
     )
 }
 
-/** «О приложении»: версия, сборка, ревизия ядра. */
+/** «О приложении»: версия, сборка, ревизия ядра, журнал и отчёты о сбоях. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutScreen(onBack: () -> Unit) {
@@ -306,6 +306,7 @@ fun AboutScreen(onBack: () -> Unit) {
                     DesktopActions.open("https://github.com/fighxy/Orbitle")
                 },
             )
+            DiagnosticsSection()
         }
     }
 }

@@ -12,7 +12,7 @@ data class CrashReport(val name: String, val timeMs: Long, val kind: String, val
  *
  * Виды: [CRASH] — необработанное исключение, [ERROR] — исключение, которое поймал обработчик
  * корутин, [NATIVE] и [ANR] — падение в нативном коде и зависание, о которых система
- * рассказала после перезапуска.
+ * рассказала после перезапуска, [UNCLEAN] — запуск, который не дошёл до штатного выхода.
  */
 class CrashReports(
     val dir: File,
@@ -87,6 +87,8 @@ class CrashReports(
         const val ERROR = "error"
         const val NATIVE = "native"
         const val ANR = "anr"
+        /** Процесс не дошёл до штатного выхода: его сняли или он упал мимо обработчика. */
+        const val UNCLEAN = "unclean"
         private const val PREFIX = "crash-"
         private const val TITLE_LIMIT = 300
 
@@ -105,6 +107,7 @@ class CrashReports(
             ERROR -> "Ошибка"
             NATIVE -> "Сбой в нативном коде"
             ANR -> "Приложение зависло"
+            UNCLEAN -> "Аварийное завершение"
             else -> "Отчёт"
         }
 

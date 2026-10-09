@@ -161,6 +161,11 @@ compose.desktop {
         )
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Dmg, TargetFormat.Deb)
+            // Модули JDK сверх набора плагина (java.base, java.desktop, java.logging, jdk.crypto.ec) —
+            // по suggestRuntimeModules. Без них установленная сборка падает там, где запуск из IDE
+            // работает: jdk.unsupported — sun.misc.Unsafe для библиотек, java.management — стеки
+            // потоков с блокировками в отчёте о зависании окна.
+            modules("java.instrument", "java.management", "java.prefs", "java.scripting", "jdk.unsupported")
             packageName = "Orbitle"
             // Установщик не принимает старший номер 0: версия пакета отдельно от версии клиента.
             packageVersion = "1.0.0"
