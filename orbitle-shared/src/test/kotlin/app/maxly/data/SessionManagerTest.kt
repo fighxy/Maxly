@@ -3,7 +3,7 @@ package app.maxly.data
 import app.maxly.domain.AccountLimits
 import app.maxly.domain.AuthPhase
 import app.maxly.domain.ConnectionState
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.SessionRejection
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -82,11 +82,11 @@ class SessionManagerTest {
         onFreshSession = { freshEntries += it },
     )
 
-    private suspend inline fun expectError(expected: OrbitleError, block: () -> Unit) {
+    private suspend inline fun expectError(expected: MaxlyError, block: () -> Unit) {
         try {
             block()
             fail("ожидалась ошибка $expected")
-        } catch (e: OrbitleError) {
+        } catch (e: MaxlyError) {
             assertEquals(expected, e)
         }
     }
@@ -186,9 +186,9 @@ class SessionManagerTest {
         val s = session()
         s.requestCode("+79991234567")
         core.verifyFailure = CoreFailure("SERVER", "verify.code.wrong")
-        expectError(OrbitleError.Rejected("Неверный код")) { s.verifyCode("111111") }
+        expectError(MaxlyError.Rejected("Неверный код")) { s.verifyCode("111111") }
         core.verifyFailure = CoreFailure("SERVER", "too.many.attempts")
-        expectError(OrbitleError.Rejected(AuthErrors.TOO_MANY_ATTEMPTS)) { s.verifyCode("111111") }
+        expectError(MaxlyError.Rejected(AuthErrors.TOO_MANY_ATTEMPTS)) { s.verifyCode("111111") }
     }
 
     @Test
@@ -196,7 +196,7 @@ class SessionManagerTest {
         val s = session()
         s.requestCode("+79991234567")
         core.verifyFailure = CoreFailure("SESSION_EXPIRED", "login.token")
-        expectError(OrbitleError.codeRenewed) { s.verifyCode("111111") }
+        expectError(MaxlyError.codeRenewed) { s.verifyCode("111111") }
         assertEquals(listOf("+79991234567" to false, "+79991234567" to false), core.requests)
         assertEquals(AuthPhase.CodeSent(6), s.phase.value)
     }
@@ -204,11 +204,11 @@ class SessionManagerTest {
     @Test
     fun requestCodeErrors() = runTest(UnconfinedTestDispatcher()) {
         val s = session()
-        expectError(OrbitleError.Rejected("Введите номер телефона")) { s.requestCode("  ") }
+        expectError(MaxlyError.Rejected("Введите номер телефона")) { s.requestCode("  ") }
         core.codeFailure = CoreFailure("NETWORK", null)
-        expectError(OrbitleError.NetworkUnavailable) { s.requestCode("+79991234567") }
+        expectError(MaxlyError.NetworkUnavailable) { s.requestCode("+79991234567") }
         core.codeFailure = CoreFailure("SERVER", "phone.invalid")
-        expectError(OrbitleError.Rejected("Не удалось отправить код. Проверьте номер телефона")) { s.requestCode("+79991234567") }
+        expectError(MaxlyError.Rejected("Не удалось отправить код. Проверьте номер телефона")) { s.requestCode("+79991234567") }
     }
 
     @Test
@@ -218,7 +218,7 @@ class SessionManagerTest {
         s.requestCode("+79991234567")
         s.verifyCode("123456")
         assertEquals(AuthPhase.Password("подсказка"), s.phase.value)
-        expectError(OrbitleError.Rejected("Неверный пароль")) { s.submitPassword("wrong") }
+        expectError(MaxlyError.Rejected("Неверный пароль")) { s.submitPassword("wrong") }
         s.submitPassword("right")
         assertEquals(AuthPhase.SignedIn("100"), s.phase.value)
     }
@@ -230,7 +230,7 @@ class SessionManagerTest {
         s.requestCode("+79991234567")
         s.verifyCode("123456")
         assertEquals(AuthPhase.Registration, s.phase.value)
-        expectError(OrbitleError.Rejected("Введите имя")) { s.register(" ", "") }
+        expectError(MaxlyError.Rejected("Введите имя")) { s.register(" ", "") }
         s.register("Иван", "")
         assertEquals(AuthPhase.SignedIn("100"), s.phase.value)
     }
@@ -246,7 +246,7 @@ class SessionManagerTest {
         s.cancelLogin()
         core.verifyGate?.complete(Unit)
         job.join()
-        assertEquals(OrbitleError.Cancelled, error)
+        assertEquals(MaxlyError.Cancelled, error)
         assertEquals(AuthPhase.SignedOut, s.phase.value)
     }
 

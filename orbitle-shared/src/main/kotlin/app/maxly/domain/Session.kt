@@ -56,7 +56,7 @@ enum class ConnectionState { CONNECTING, ONLINE, OFFLINE }
 
 /**
  * Вход, восстановление и завершение сессии. Ошибки шагов приходят уже с русским текстом
- * ([OrbitleError.Rejected]). Ответ из отменённой попытки бросает [OrbitleError.Cancelled].
+ * ([MaxlyError.Rejected]). Ответ из отменённой попытки бросает [MaxlyError.Cancelled].
  */
 interface AuthService {
     val phase: StateFlow<AuthPhase>

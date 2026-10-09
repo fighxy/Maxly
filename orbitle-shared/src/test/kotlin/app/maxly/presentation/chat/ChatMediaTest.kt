@@ -6,7 +6,7 @@ import app.maxly.domain.FileContent
 import app.maxly.domain.Message
 import app.maxly.domain.MessageContent
 import app.maxly.domain.MessageStatus
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.PhotoContent
 import app.maxly.domain.VideoContent
 import app.maxly.domain.VoiceContent
@@ -126,7 +126,7 @@ class ChatMediaTest {
 
     @Test
     fun failedTranscriptCollapses() {
-        repo.transcribeFailure = OrbitleError.Rejected("нет")
+        repo.transcribeFailure = MaxlyError.Rejected("нет")
         media.toggleTranscript(msg(), voice)
         assertNull(media.state.value.transcripts["5"])
         assertEquals(1, errors.size)

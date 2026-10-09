@@ -25,7 +25,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import app.maxly.MainActivity
-import app.maxly.OrbitleApp
+import app.maxly.MaxlyApp
 import app.maxly.R
 import app.maxly.data.calls.CallLog
 import app.maxly.presentation.calls.ActiveCall
@@ -190,7 +190,7 @@ class AndroidCallSystem(private val context: Context, private val center: CallCe
 /** «Отклонить» и «Завершить» из уведомления: без открытия приложения. */
 class CallActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val container = (context.applicationContext as OrbitleApp).container
+        val container = (context.applicationContext as MaxlyApp).container
         CallLog.info("Кнопка уведомления: ${intent.action?.substringAfterLast('.')}")
         container.scope.launch {
             when (intent.action) {

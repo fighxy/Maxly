@@ -43,7 +43,7 @@ import app.maxly.ui.keys.HotkeyAction
 import app.maxly.ui.keys.HotkeyHandler
 import app.maxly.ui.main.MainScreen
 import app.maxly.ui.res.painterResource
-import app.maxly.ui.theme.OrbitleTheme
+import app.maxly.ui.theme.MaxlyTheme
 import kotlinx.coroutines.launch
 
 /** Тема, размер текста и обои поверх всего окна. */
@@ -55,7 +55,7 @@ internal fun AppRoot(container: AppContainer) {
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
-    OrbitleTheme(darkTheme = dark) {
+    MaxlyTheme(darkTheme = dark) {
         val density = LocalDensity.current
         CompositionLocalProvider(
             LocalDensity provides Density(density.density, density.fontScale * prefs.textSize.scale),
@@ -135,6 +135,6 @@ private fun CallHotkeys(center: CallCenter, actions: CallActions) {
 @Composable
 private fun Launch() {
     Box(Modifier.fillMaxSize().background(Color(0xFF0C0E14)), contentAlignment = Alignment.Center) {
-        Image(painterResource(R.drawable.orbitle_mark), contentDescription = null, modifier = Modifier.size(120.dp))
+        Image(painterResource(R.drawable.maxly_mark), contentDescription = null, modifier = Modifier.size(120.dp))
     }
 }

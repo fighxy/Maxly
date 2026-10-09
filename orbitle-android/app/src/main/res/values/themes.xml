@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Заставка на Android 8–11. После неё активность переходит на обычную тему. -->
-    <style name="Theme.Orbitle" parent="Theme.SplashScreen">
+    <style name="Theme.Maxly" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/launch_background</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/splash_mark</item>
-        <item name="postSplashScreenTheme">@style/Theme.Orbitle.Main</item>
+        <item name="postSplashScreenTheme">@style/Theme.Maxly.Main</item>
     </style>
-    <style name="Theme.Orbitle.Main" parent="android:Theme.Material.NoActionBar">
+    <style name="Theme.Maxly.Main" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/launch_background</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>

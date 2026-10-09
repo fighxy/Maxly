@@ -8,7 +8,7 @@ import app.maxly.domain.ChatProfile
 import app.maxly.domain.FileContent
 import app.maxly.domain.Message
 import app.maxly.domain.MessageContent
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.PhotoContent
 import app.maxly.domain.SharedMediaTab
 import app.maxly.domain.TextSpan
@@ -124,7 +124,7 @@ class ProfileViewModelTest {
 
     @Test
     fun failureKeepsKnownCard() {
-        profiles.failure = OrbitleError.NetworkUnavailable
+        profiles.failure = MaxlyError.NetworkUnavailable
         val model = vm()
         assertEquals("Анна", model.state.value.title)
         assertNull(model.state.value.error)
@@ -132,9 +132,9 @@ class ProfileViewModelTest {
 
     @Test
     fun failureWithoutAnythingShowsError() {
-        profiles.failure = OrbitleError.NetworkUnavailable
+        profiles.failure = MaxlyError.NetworkUnavailable
         val model = vm(title = null)
-        assertEquals(OrbitleError.NetworkUnavailable.userMessage, model.state.value.error)
+        assertEquals(MaxlyError.NetworkUnavailable.userMessage, model.state.value.error)
         assertEquals("Пользователь", model.state.value.title)
     }
 
@@ -243,8 +243,8 @@ private class BlockAccount : app.maxly.data.AccountRepository {
     override suspend fun startEmailChange(password: String) = "track"
     override suspend fun sendEmailCode(trackId: String, email: String) = 60
     override suspend fun confirmEmail(trackId: String, code: String) = app.maxly.domain.TwoFactorStatus(true)
-    override suspend fun launchMiniApp(kind: app.maxly.domain.MiniApp.Kind): app.maxly.domain.MiniApp = throw app.maxly.domain.OrbitleError.InvalidRequest
-    override suspend fun miniAppCallback(url: String): app.maxly.domain.MiniApp = throw app.maxly.domain.OrbitleError.InvalidRequest
+    override suspend fun launchMiniApp(kind: app.maxly.domain.MiniApp.Kind): app.maxly.domain.MiniApp = throw app.maxly.domain.MaxlyError.InvalidRequest
+    override suspend fun miniAppCallback(url: String): app.maxly.domain.MiniApp = throw app.maxly.domain.MaxlyError.InvalidRequest
 }
 
 class ProfileBlockingTest {

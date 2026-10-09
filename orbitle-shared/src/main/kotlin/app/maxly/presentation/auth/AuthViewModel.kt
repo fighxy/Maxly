@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.maxly.domain.AuthPhase
 import app.maxly.domain.AuthService
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -82,7 +82,7 @@ class AuthViewModel(
 
     private var step: AuthStep = AuthStep.Phone
     private var isBusy = false
-    private var error: OrbitleError? = null
+    private var error: MaxlyError? = null
     private var sessionExpired = false
     private var notice: LoginNotice? = null
     private var sentTo: String? = null
@@ -202,7 +202,7 @@ class AuthViewModel(
     fun requestCode() {
         if (isBusy) return
         val number = normalizedPhone ?: run {
-            error = OrbitleError.Rejected(
+            error = MaxlyError.Rejected(
                 if (countryDigits == PhoneCountry.russia.code) "Введите номер в формате +7 900 000-00-00" else "Проверьте код страны и номер",
             )
             publish()
@@ -233,12 +233,12 @@ class AuthViewModel(
         if (!canVerify) return
         val code = codeText
         perform({ auth.verifyCode(code) }) { ok ->
-            if (!ok && error == OrbitleError.codeRenewed) {
+            if (!ok && error == MaxlyError.codeRenewed) {
                 // Сервис уже выслал новый код: таймер повтора начинается заново.
                 resendAvailableAt = now() + resendIntervalMs
             }
             // Неверный код стирается, чтобы набрать новый без лишних действий.
-            if (!ok && error is OrbitleError.Rejected) codeText = ""
+            if (!ok && error is MaxlyError.Rejected) codeText = ""
         }
     }
 
@@ -246,7 +246,7 @@ class AuthViewModel(
         if (!canSubmitPassword) return
         val value = password
         perform({ auth.submitPassword(value) }) { ok ->
-            if (!ok && error is OrbitleError.Rejected) password = ""
+            if (!ok && error is MaxlyError.Rejected) password = ""
         }
     }
 
@@ -255,12 +255,12 @@ class AuthViewModel(
         val first = firstName.trim()
         val last = lastName.trim()
         if (first.isEmpty()) {
-            error = OrbitleError.Rejected("Введите имя")
+            error = MaxlyError.Rejected("Введите имя")
             publish()
             return
         }
         if (first.length > MAX_NAME_LENGTH || last.length > MAX_NAME_LENGTH) {
-            error = OrbitleError.Rejected("Имя и фамилия не длиннее $MAX_NAME_LENGTH символов")
+            error = MaxlyError.Rejected("Имя и фамилия не длиннее $MAX_NAME_LENGTH символов")
             publish()
             return
         }
@@ -336,20 +336,20 @@ class AuthViewModel(
         publish()
         val id = ++operationId
         operation = viewModelScope.launch {
-            val failure: OrbitleError? = try {
+            val failure: MaxlyError? = try {
                 body()
                 null
-            } catch (e: OrbitleError) {
+            } catch (e: MaxlyError) {
                 e
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                OrbitleError.Unknown
+                MaxlyError.Unknown
             }
             if (id != operationId) return@launch
             operation = null
             isBusy = false
-            error = if (failure == OrbitleError.Cancelled) null else failure
+            error = if (failure == MaxlyError.Cancelled) null else failure
             done(failure == null)
             publish()
         }

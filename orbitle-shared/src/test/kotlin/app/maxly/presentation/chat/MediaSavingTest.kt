@@ -75,7 +75,7 @@ class MediaSavingTest {
         assertFalse(media.canSave(msg(ChatAttachment.Photo(PhotoContent("p1", "u")), id = "local-1"), SaveTarget.GALLERY))
         saver.failure = RuntimeException()
         media.save(msg(ChatAttachment.Photo(PhotoContent("p1", "https://cdn/p1"))), SaveTarget.GALLERY)
-        assertEquals("Не удалось сохранить", (errors.single() as app.maxly.domain.OrbitleError.Rejected).text)
+        assertEquals("Не удалось сохранить", (errors.single() as app.maxly.domain.MaxlyError.Rejected).text)
         assertTrue(media.state.value.saving.isEmpty())
     }
 

@@ -8,7 +8,7 @@ import app.maxly.domain.AccountSettings
 import app.maxly.domain.BlockedUser
 import app.maxly.domain.InactiveTtl
 import app.maxly.domain.MiniApp
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.PrivacyAccess
 import app.maxly.domain.PrivacyChange
 import app.maxly.domain.TwoFactorStatus
@@ -96,7 +96,7 @@ class AccountSettingsViewModelTest {
 
     @Test
     fun `failed change rolls back only its own field`() {
-        val repo = FakeAccount().apply { gate = CompletableDeferred(); failure = OrbitleError.NetworkUnavailable }
+        val repo = FakeAccount().apply { gate = CompletableDeferred(); failure = MaxlyError.NetworkUnavailable }
         val model = AccountSettingsViewModel(repo)
         model.setSafeMode(true)
         assertTrue(model.state.value.settings.safeMode)
@@ -111,7 +111,7 @@ class AccountSettingsViewModelTest {
 
     @Test
     fun `same value sends nothing`() {
-        val repo = FakeAccount().apply { failure = OrbitleError.Unknown }
+        val repo = FakeAccount().apply { failure = MaxlyError.Unknown }
         val model = AccountSettingsViewModel(repo)
         model.setOnlineHidden(false)
         assertNull(model.state.value.error)
@@ -134,7 +134,7 @@ class AccountSettingsViewModelTest {
 
     @Test
     fun `profile error keeps the screen open`() {
-        val repo = FakeAccount().apply { failure = OrbitleError.Server("x") }
+        val repo = FakeAccount().apply { failure = MaxlyError.Server("x") }
         val model = AccountSettingsViewModel(repo)
         var saved = false
         model.saveProfile("Иван", "", "", onSaved = { saved = true })
@@ -168,7 +168,7 @@ class AccountSettingsViewModelTest {
         val model = AccountSettingsViewModel(repo)
         model.uploadPhoto(byteArrayOf(1, 2))
         assertEquals(2, repo.uploaded!!.size)
-        repo.failure = OrbitleError.NetworkUnavailable
+        repo.failure = MaxlyError.NetworkUnavailable
         model.removePhoto()
         assertTrue(model.state.value.error!!.startsWith("Не удалось удалить фото"))
         assertFalse(model.state.value.updatingPhoto)
@@ -183,7 +183,7 @@ class AccountSettingsViewModelTest {
         model.unblock(model.state.value.blocked!![1])
         assertEquals(listOf("21"), model.state.value.blocked!!.map { it.id })
         assertEquals(listOf("22"), repo.unblocked)
-        repo.failure = OrbitleError.NetworkUnavailable
+        repo.failure = MaxlyError.NetworkUnavailable
         model.unblock(model.state.value.blocked!![0])
         assertEquals(listOf("21"), model.state.value.blocked!!.map { it.id })
         assertNotNull(model.state.value.error)
@@ -282,7 +282,7 @@ class AccountSettingsViewModelTest {
 
     @Test
     fun `failed deletion shows the error and does not log out`() {
-        val repo = FakeAccount().apply { deletionFailure = OrbitleError.NetworkUnavailable }
+        val repo = FakeAccount().apply { deletionFailure = MaxlyError.NetworkUnavailable }
         val model = AccountSettingsViewModel(repo)
         model.deleteAccount("УДАЛИТЬ")
         val s = model.state.value

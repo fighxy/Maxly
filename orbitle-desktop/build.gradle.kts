@@ -195,11 +195,11 @@ compose.desktop {
                 // Постоянный UUID: новая версия .msi обновляет установленную, а не ставится рядом.
                 upgradeUuid = "27980db0-5d2d-4976-a4b1-28b2c36ed9b4"
                 msiPackageVersion = windowsMsiVersion
-                iconFile.set(project.file("icons/orbitle.ico"))
+                iconFile.set(project.file("icons/maxly.ico"))
             }
             macOS {
                 bundleID = "app.orbitle.desktop"
-                iconFile.set(project.file("icons/orbitle.icns"))
+                iconFile.set(project.file("icons/maxly.icns"))
                 // Без этих строк macOS не даст звонку микрофон и камеру.
                 infoPlist {
                     extraKeysRawXml = """
@@ -213,7 +213,7 @@ compose.desktop {
             linux {
                 shortcut = true
                 menuGroup = "Network;InstantMessaging"
-                iconFile.set(project.file("icons/orbitle.png"))
+                iconFile.set(project.file("icons/maxly.png"))
             }
         }
     }

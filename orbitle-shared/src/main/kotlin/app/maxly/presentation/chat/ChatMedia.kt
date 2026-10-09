@@ -5,7 +5,7 @@ import app.maxly.domain.ChatAttachment
 import app.maxly.domain.FileContent
 import app.maxly.domain.Message
 import app.maxly.domain.MessageStatus
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.VoiceContent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -99,7 +99,7 @@ class ChatMedia(
         val player = player ?: return
         val url = voice.url
         if (url.isNullOrEmpty()) {
-            onError(OrbitleError.Rejected("Голосовое ещё не загружено"))
+            onError(MaxlyError.Rejected("Голосовое ещё не загружено"))
             return
         }
         val current = player.playback.value
@@ -264,7 +264,7 @@ class ChatMedia(
                 throw e
             } catch (e: Exception) {
                 _state.update { it.copy(downloads = it.downloads - file.id) }
-                onError(e as? OrbitleError ?: OrbitleError.Rejected("Не удалось скачать файл"))
+                onError(e as? MaxlyError ?: MaxlyError.Rejected("Не удалось скачать файл"))
             } finally {
                 loads.remove(key)
             }
@@ -302,10 +302,10 @@ class ChatMedia(
                 items.forEachIndexed { position, attachment ->
                     val index = indexBase + position
                     val (url, cacheName) = when (attachment) {
-                        is ChatAttachment.Photo -> (attachment.photo.url ?: throw OrbitleError.Rejected("Фото недоступно")) to "photo-${attachment.id}"
+                        is ChatAttachment.Photo -> (attachment.photo.url ?: throw MaxlyError.Rejected("Фото недоступно")) to "photo-${attachment.id}"
                         is ChatAttachment.Video -> repository.mediaLink(chatId, messageId, attachment) to "video-${attachment.id}.mp4"
                         is ChatAttachment.File -> (attachment.file.url?.takeIf { it.isNotEmpty() } ?: repository.mediaLink(chatId, messageId, attachment)) to attachment.file.name
-                        is ChatAttachment.Voice -> (attachment.voice.url ?: throw OrbitleError.Rejected("Голосовое недоступно")) to "voice-${attachment.id}.m4a"
+                        is ChatAttachment.Voice -> (attachment.voice.url ?: throw MaxlyError.Rejected("Голосовое недоступно")) to "voice-${attachment.id}.m4a"
                         else -> return@forEachIndexed
                     }
                     val path = files.download(url, attachment.id, cacheName) {}
@@ -322,7 +322,7 @@ class ChatMedia(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                onError(e as? OrbitleError ?: OrbitleError.Rejected("Не удалось сохранить"))
+                onError(e as? MaxlyError ?: MaxlyError.Rejected("Не удалось сохранить"))
             } finally {
                 _state.update { it.copy(saving = it.saving - messageId) }
             }

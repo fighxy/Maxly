@@ -52,7 +52,7 @@ import app.maxly.ui.auth.AuthScreen
 import app.maxly.presentation.settings.AccountLimitsText
 import app.maxly.ui.auth.AccountLimitsNotice
 import app.maxly.ui.main.MainScreen
-import app.maxly.ui.theme.OrbitleTheme
+import app.maxly.ui.theme.MaxlyTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -61,14 +61,14 @@ class MainActivity : ComponentActivity() {
         // Разрешение на книгу могли дать или отозвать в настройках, пока приложение было в фоне.
         val granted = androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_CONTACTS) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
-        (application as OrbitleApp).container.syncAddressBook(granted)
+        (application as MaxlyApp).container.syncAddressBook(granted)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        val container = (application as OrbitleApp).container
+        val container = (application as MaxlyApp).container
         CallPermissions.attach(this)
         handleCallIntent(intent)
         setContent {
@@ -84,7 +84,7 @@ class MainActivity : ComponentActivity() {
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
                 onDispose {}
             }
-            OrbitleTheme(darkTheme = dark) {
+            MaxlyTheme(darkTheme = dark) {
                 val density = LocalDensity.current
                 CompositionLocalProvider(
                     LocalDensity provides Density(density.density, density.fontScale * prefs.textSize.scale),
@@ -108,7 +108,7 @@ class MainActivity : ComponentActivity() {
 
     /** «Ответить» и нажатие на уведомление звонка. */
     private fun handleCallIntent(intent: Intent?) {
-        val container = (application as OrbitleApp).container
+        val container = (application as MaxlyApp).container
         when (intent?.action) {
             AndroidCallSystem.ACTION_ANSWER -> AndroidCalls.answer(container, video = false)
             AndroidCallSystem.ACTION_OPEN -> container.callCenter.expand()
@@ -173,6 +173,6 @@ private fun Root(container: AppContainer) {
 @Composable
 private fun Launch() {
     Box(Modifier.fillMaxSize().background(Color(0xFF0C0E14)), contentAlignment = Alignment.Center) {
-        Image(painterResource(R.drawable.orbitle_mark), contentDescription = null, modifier = Modifier.size(120.dp))
+        Image(painterResource(R.drawable.maxly_mark), contentDescription = null, modifier = Modifier.size(120.dp))
     }
 }

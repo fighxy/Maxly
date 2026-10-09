@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import app.maxly.data.AccountRepository
 import app.maxly.data.CoreErrors
 import app.maxly.domain.MiniApp
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,7 +47,7 @@ class MiniAppViewModel(
     private var ticket = 0
 
     fun launch() = work {
-        start?.invoke() ?: repository.launchMiniApp(kind ?: throw OrbitleError.InvalidRequest)
+        start?.invoke() ?: repository.launchMiniApp(kind ?: throw MaxlyError.InvalidRequest)
     }
 
     /** Возврат с внешнего шага: сервер даёт новый запуск, лист открывает его. */

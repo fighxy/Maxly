@@ -4,7 +4,7 @@ import app.maxly.MainDispatcherRule
 import app.maxly.data.ChatMemberRow
 import app.maxly.domain.Message
 import app.maxly.domain.MessageContent
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.TextSpan
 import app.maxly.domain.TextSpan.Kind.EMPHASIZED
 import app.maxly.domain.TextSpan.Kind.LINK
@@ -167,7 +167,7 @@ class ComposerFormattingTest {
     @Test
     fun failedEditReturnsWithItsFormatting() {
         val model = vm()
-        repo.editFailure = OrbitleError.Rejected("Не вышло")
+        repo.editFailure = MaxlyError.Rejected("Не вышло")
         model.beginEdit(own("5", "текст"))
         model.toggleFormat(STRONG, 0, 5)
         model.send()

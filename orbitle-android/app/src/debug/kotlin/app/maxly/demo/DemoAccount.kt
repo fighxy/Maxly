@@ -5,7 +5,7 @@ import app.maxly.domain.Account
 import app.maxly.domain.AccountSettings
 import app.maxly.domain.BlockedUser
 import app.maxly.domain.MiniApp
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.PrivacyChange
 import app.maxly.domain.TwoFactorStatus
 import kotlinx.coroutines.delay
@@ -49,7 +49,7 @@ class DemoAccount : AccountRepository {
 
     override suspend fun change(change: PrivacyChange): AccountSettings {
         delay(700)
-        if (change is PrivacyChange.SafeMode) throw OrbitleError.NetworkUnavailable
+        if (change is PrivacyChange.SafeMode) throw MaxlyError.NetworkUnavailable
         config.value = config.value.applying(change)
         return config.value
     }
@@ -68,7 +68,7 @@ class DemoAccount : AccountRepository {
 
     override suspend fun startEmailChange(password: String): String {
         delay(400)
-        if (password != "secret") throw OrbitleError.Rejected("Неверный пароль")
+        if (password != "secret") throw MaxlyError.Rejected("Неверный пароль")
         return "track"
     }
 
@@ -79,7 +79,7 @@ class DemoAccount : AccountRepository {
 
     override suspend fun confirmEmail(trackId: String, code: String): TwoFactorStatus {
         delay(400)
-        if (code != "123456") throw OrbitleError.Rejected("Неверный код")
+        if (code != "123456") throw MaxlyError.Rejected("Неверный код")
         return TwoFactorStatus.of(true, "ivan@ya.ru")
     }
 

@@ -7,7 +7,7 @@ import app.maxly.data.ChatAdminSnapshot
 import app.maxly.data.ChatPerson
 import app.maxly.data.CoreErrors
 import app.maxly.data.GroupOption
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.presentation.common.PresenceText
 import app.maxly.presentation.settings.ProfileLink
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -195,8 +195,8 @@ class ChatManageViewModel(
 
     private fun fail(error: Throwable, fallback: String) {
         val mapped = CoreErrors.map(error)
-        if (mapped == OrbitleError.Cancelled) return
-        val text = if (mapped == OrbitleError.Unknown) fallback else mapped.message ?: fallback
+        if (mapped == MaxlyError.Cancelled) return
+        val text = if (mapped == MaxlyError.Unknown) fallback else mapped.message ?: fallback
         _state.update { it.copy(message = text) }
     }
 

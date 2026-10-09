@@ -9,7 +9,7 @@ import app.maxly.domain.Message
 import app.maxly.domain.MessageContent
 import app.maxly.domain.MessageForward
 import app.maxly.domain.MessageStatus
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.PhotoContent
 import app.maxly.presentation.common.PresenceText
 import org.junit.Assert.assertEquals
@@ -267,7 +267,7 @@ class MessageSelectionTest {
         val model = vm()
         model.startSelection(msg("1"))
         model.toggleSelection(msg("2"))
-        repo.forwardFailure = OrbitleError.Rejected("Нельзя переслать")
+        repo.forwardFailure = MaxlyError.Rejected("Нельзя переслать")
         model.forwardSelection("20")
         assertEquals("Нельзя переслать", model.messages.value)
         assertTrue(repo.forwards.isEmpty())

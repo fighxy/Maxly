@@ -2,7 +2,7 @@ package app.maxly.data
 
 import app.maxly.domain.Message
 import app.maxly.domain.MessageReaction
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import com.max.shared.MaxClient
 
 /** Комментарии под постами канала. */
@@ -25,7 +25,7 @@ interface CommentsRepository {
 
     /** Своя реакция на комментарий или её снятие (`null`). Ответ — реакции от сервера, если он их прислал. */
     suspend fun setReaction(chatId: String, postId: String, commentId: String, emoji: String?): List<MessageReaction>? =
-        throw OrbitleError.Rejected("Реакции недоступны")
+        throw MaxlyError.Rejected("Реакции недоступны")
 }
 
 class CoreCommentsRepository(

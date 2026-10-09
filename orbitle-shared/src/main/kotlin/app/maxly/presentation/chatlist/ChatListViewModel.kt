@@ -12,7 +12,7 @@ import app.maxly.domain.ConnectionState
 import app.maxly.domain.SessionRejection
 import app.maxly.presentation.auth.LoginNotice
 import app.maxly.presentation.auth.LoginNotices
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.ChatSearchResult
 import kotlinx.coroutines.CancellationException
 import app.maxly.domain.ChatType
@@ -121,7 +121,7 @@ class ChatListViewModel(
     private var typing: Map<String, List<app.maxly.domain.Typist>> = emptyMap()
     private var connection = ConnectionState.CONNECTING
     private var loginNotice: LoginNotice? = null
-    private var refreshError: OrbitleError? = null
+    private var refreshError: MaxlyError? = null
     private var pendingPins: MutableMap<String, Int?> = mutableMapOf()
     /** Порядок закреплённых после перетаскивания, пока снимок стора его не показал. */
     private var pendingPinOrder: List<String>? = null
@@ -205,7 +205,7 @@ class ChatListViewModel(
                 repository.refresh()
                 null
             } catch (e: Throwable) {
-                CoreErrors.map(e).takeIf { it != OrbitleError.Cancelled }
+                CoreErrors.map(e).takeIf { it != MaxlyError.Cancelled }
             }
             hasRefreshed = true
             _state.value = _state.value.copy(isRefreshing = false)

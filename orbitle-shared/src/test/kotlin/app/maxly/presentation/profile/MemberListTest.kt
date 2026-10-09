@@ -3,7 +3,7 @@ package app.maxly.presentation.profile
 import app.maxly.data.ChatMembersSource
 import app.maxly.data.ChatPerson
 import app.maxly.data.MemberPage
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -103,7 +103,7 @@ class MemberListTest {
     fun failedSearchKeepsLocalMatchesAndSaysSo() {
         list.load()
         scope.runCurrent()
-        source.searchFailure = OrbitleError.Rejected("Сервер занят")
+        source.searchFailure = MaxlyError.Rejected("Сервер занят")
         list.search("иван")
         scope.advanceTimeBy(400)
         scope.runCurrent()

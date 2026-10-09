@@ -2,7 +2,7 @@ package app.maxly.data
 
 import app.maxly.domain.ChatAttachment
 import app.maxly.domain.Message
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.OutgoingFile
 import app.maxly.domain.PhotoContent
 import app.maxly.domain.VideoContent
@@ -406,11 +406,11 @@ class CoreMessageRepository(
                         // Сервер не принял файл (пуш с id вложения или отказ отправки): показывается
                         // его причина, а не «попробуйте позже» — повтор того же файла не пройдёт.
                         // Частые запросы — пауза, а не отказ: такая ошибка остаётся прежней.
-                        if (e.kind != "SERVER" && e.kind != "UPLOAD" || e.key == OrbitleError.RATE_LIMIT_CODE) throw e
-                        throw OrbitleError.Rejected(app.maxly.presentation.chat.AttachmentFailures.text(e.serverText ?: e.key))
+                        if (e.kind != "SERVER" && e.kind != "UPLOAD" || e.key == MaxlyError.RATE_LIMIT_CODE) throw e
+                        throw MaxlyError.Rejected(app.maxly.presentation.chat.AttachmentFailures.text(e.serverText ?: e.key))
                     } catch (e: kotlinx.coroutines.CancellationException) {
                         // Сервер отверг вложение (пуш без id): сообщение остаётся с «Повторить».
-                        rejectedUploads.remove(local.id)?.let { throw OrbitleError.Rejected(app.maxly.presentation.chat.AttachmentFailures.text(it)) }
+                        rejectedUploads.remove(local.id)?.let { throw MaxlyError.Rejected(app.maxly.presentation.chat.AttachmentFailures.text(it)) }
                         // Отменили кнопкой: сообщение уже убрано, это не ошибка.
                         if (work.isCancelled) return@withContext
                         throw e
@@ -705,7 +705,7 @@ class CoreMessageRepository(
         return when (result.status) {
             1 -> result.text.orEmpty()
             0 -> null
-            else -> throw OrbitleError.Rejected("Не удалось расшифровать голосовое")
+            else -> throw MaxlyError.Rejected("Не удалось расшифровать голосовое")
         }
     }
 
@@ -722,9 +722,9 @@ class CoreMessageRepository(
         val message = messageId.toLong()
         return when (attachment) {
             is ChatAttachment.Video -> MaxCoreGateway.call { client.media.getVideoLink(chat, message, attachment.video.id.toLong()) }.url
-                ?: throw OrbitleError.Rejected("Видео недоступно")
+                ?: throw MaxlyError.Rejected("Видео недоступно")
             is ChatAttachment.File -> MaxCoreGateway.call { client.media.getFileLink(chat, message, attachment.file.id.toLong()) }.url
-            else -> throw OrbitleError.Rejected("Вложение недоступно")
+            else -> throw MaxlyError.Rejected("Вложение недоступно")
         }
     }
 

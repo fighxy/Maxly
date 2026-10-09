@@ -11,7 +11,7 @@ import app.maxly.domain.CallRecord
 import app.maxly.domain.ChatWallpaper
 import app.maxly.domain.ConnectionState
 import app.maxly.domain.Contact
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.TextSizeStep
 import app.maxly.domain.ThemeMode
 import app.maxly.domain.WallpaperImage
@@ -36,7 +36,7 @@ class FakeCalls : CallRepository {
     val deleted = mutableListOf<List<String>>()
     var failDelete = false
     override suspend fun delete(ids: List<String>) {
-        if (failDelete) throw OrbitleError.NetworkUnavailable
+        if (failDelete) throw MaxlyError.NetworkUnavailable
         deleted += ids
         calls.value = calls.value?.filterNot { it.id in ids }
     }
@@ -96,7 +96,7 @@ class CallsViewModelTest {
         model.delete(model.state.value.rows.first())
         assertEquals(listOf("1"), model.state.value.rows.map { it.id })
         assertEquals(emptySet<String>(), marks.hiddenIds)
-        assertEquals(OrbitleError.NetworkUnavailable.userMessage, model.state.value.error)
+        assertEquals(MaxlyError.NetworkUnavailable.userMessage, model.state.value.error)
     }
 
     @Test

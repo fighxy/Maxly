@@ -8,7 +8,7 @@ import app.maxly.domain.AccountSettings
 import app.maxly.domain.BlockedUser
 import app.maxly.domain.FamilyProtection
 import app.maxly.domain.MiniApp
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.PrivacyAccess
 import app.maxly.domain.PrivacyChange
 import app.maxly.domain.TwoFactorStatus
@@ -276,7 +276,7 @@ class MaxPrivacySettingsTest {
 
     @Test
     fun `failed safe mode rolls back the four items too`() {
-        val repo = PrivacyAccount().apply { gate = CompletableDeferred(); failure = OrbitleError.NetworkUnavailable }
+        val repo = PrivacyAccount().apply { gate = CompletableDeferred(); failure = MaxlyError.NetworkUnavailable }
         val model = AccountSettingsViewModel(repo)
         model.setSafeMode(true)
         assertEquals(PrivacyAccess.CONTACTS, model.state.value.settings.searchByPhone)
@@ -305,7 +305,7 @@ class MaxPrivacySettingsTest {
         val model = AccountSettingsViewModel(repo)
         model.countBlocked()
         assertEquals(1, model.state.value.blocked?.size)
-        repo.failure = OrbitleError.NetworkUnavailable
+        repo.failure = MaxlyError.NetworkUnavailable
         val offline = AccountSettingsViewModel(repo)
         offline.countBlocked()
         assertNull(offline.state.value.blocked)

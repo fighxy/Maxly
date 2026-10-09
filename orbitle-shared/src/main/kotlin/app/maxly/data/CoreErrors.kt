@@ -1,6 +1,6 @@
 package app.maxly.data
 
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -11,34 +11,34 @@ object CoreErrors {
     /** Запасной текст, когда об ошибке сказать нечего. */
     const val UNKNOWN_TEXT = "Что-то пошло не так"
 
-    fun map(error: Throwable): OrbitleError {
-        if (error is OrbitleError) return error
-        if (error is CancellationException) return OrbitleError.Cancelled
-        val failure = error as? CoreFailure ?: return OrbitleError.Unknown
+    fun map(error: Throwable): MaxlyError {
+        if (error is MaxlyError) return error
+        if (error is CancellationException) return MaxlyError.Cancelled
+        val failure = error as? CoreFailure ?: return MaxlyError.Unknown
         return when (failure.kind) {
-            "NETWORK", "TIMEOUT", "CLOSED" -> OrbitleError.NetworkUnavailable
-            "SESSION_EXPIRED" -> OrbitleError.AuthExpired
+            "NETWORK", "TIMEOUT", "CLOSED" -> MaxlyError.NetworkUnavailable
+            "SESSION_EXPIRED" -> MaxlyError.AuthExpired
             // Отказ шага входа переводит AuthErrors, а вне входа это отклонённый запрос.
-            "AUTH", "NOT_FOUND" -> failure.serverText?.let(OrbitleError::Rejected) ?: OrbitleError.InvalidRequest
-            "SERVER", "UPLOAD" -> OrbitleError.Server(failure.key ?: failure.kind, failure.serverText)
+            "AUTH", "NOT_FOUND" -> failure.serverText?.let(MaxlyError::Rejected) ?: MaxlyError.InvalidRequest
+            "SERVER", "UPLOAD" -> MaxlyError.Server(failure.key ?: failure.kind, failure.serverText)
             // Сервер ответил без нужных полей: это его сбой, а не ошибка пользователя.
-            "MALFORMED_REPLY" -> OrbitleError.Server(failure.kind)
-            "CANCELLED" -> OrbitleError.Cancelled
-            else -> OrbitleError.Unknown
+            "MALFORMED_REPLY" -> MaxlyError.Server(failure.kind)
+            "CANCELLED" -> MaxlyError.Cancelled
+            else -> MaxlyError.Unknown
         }
     }
 
     /**
      * Текст ошибки для экрана, где у действия есть свой текст [fallback]: сначала текст сервера,
-     * затем текст уже переведённой ошибки ([OrbitleError.userMessage]), затем [fallback].
+     * затем текст уже переведённой ошибки ([MaxlyError.userMessage]), затем [fallback].
      */
     fun text(error: Throwable, fallback: String = UNKNOWN_TEXT): String =
-        serverText(error) ?: (error as? OrbitleError)?.userMessage ?: fallback
+        serverText(error) ?: (error as? MaxlyError)?.userMessage ?: fallback
 
     /** Текст, который прислал сервер, если он есть у [error]. */
     fun serverText(error: Throwable): String? = when (error) {
         is CoreFailure -> error.serverText
-        is OrbitleError -> error.serverText
+        is MaxlyError -> error.serverText
         else -> null
     }
 }
@@ -54,16 +54,16 @@ enum class AuthStep { REQUEST_CODE, VERIFY_CODE, PASSWORD, REGISTER }
 object AuthErrors {
     const val TOO_MANY_ATTEMPTS = "Слишком много попыток. Подождите немного и попробуйте снова"
 
-    fun map(error: Throwable, step: AuthStep): OrbitleError {
-        if (error is OrbitleError) return error
+    fun map(error: Throwable, step: AuthStep): MaxlyError {
+        if (error is MaxlyError) return error
         val failure = error as? CoreFailure ?: return CoreErrors.map(error)
         val key = failure.key?.lowercase().orEmpty()
         val server = failure.serverText
         return when (failure.kind) {
-            "AUTH", "SERVER", "NOT_FOUND" -> OrbitleError.Rejected(
+            "AUTH", "SERVER", "NOT_FOUND" -> MaxlyError.Rejected(
                 server ?: if (isRateLimit(key)) TOO_MANY_ATTEMPTS else rejection(step, key),
             )
-            "SESSION_EXPIRED" -> OrbitleError.Rejected(
+            "SESSION_EXPIRED" -> MaxlyError.Rejected(
                 server ?: when (step) {
                     AuthStep.VERIFY_CODE -> "Код устарел. Запросите новый"
                     else -> "Попытка входа устарела. Начните заново"
@@ -98,14 +98,14 @@ object AuthErrors {
 object TwoFactorErrors {
     private val REJECTION = setOf("AUTH", "SERVER", "NOT_FOUND")
 
-    fun password(error: Throwable): OrbitleError = AuthErrors.map(error, AuthStep.PASSWORD)
+    fun password(error: Throwable): MaxlyError = AuthErrors.map(error, AuthStep.PASSWORD)
 
-    fun rejection(error: Throwable, message: String): OrbitleError {
+    fun rejection(error: Throwable, message: String): MaxlyError {
         val failure = error as? CoreFailure
         if (failure != null && failure.kind in REJECTION) {
-            failure.serverText?.let { return OrbitleError.Rejected(it) }
-            if (failure.key?.lowercase()?.contains("limit") == true) return OrbitleError.Rejected(AuthErrors.TOO_MANY_ATTEMPTS)
-            return OrbitleError.Rejected(message)
+            failure.serverText?.let { return MaxlyError.Rejected(it) }
+            if (failure.key?.lowercase()?.contains("limit") == true) return MaxlyError.Rejected(AuthErrors.TOO_MANY_ATTEMPTS)
+            return MaxlyError.Rejected(message)
         }
         return CoreErrors.map(error)
     }

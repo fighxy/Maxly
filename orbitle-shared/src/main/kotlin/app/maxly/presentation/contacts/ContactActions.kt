@@ -121,11 +121,11 @@ class ContactActions(
                 throw e
             } catch (e: Exception) {
                 val mapped = CoreErrors.map(e)
-                val text = if (mapped == app.maxly.domain.OrbitleError.Unknown) fallback else mapped.userMessage?.takeIf { it.isNotBlank() } ?: fallback
+                val text = if (mapped == app.maxly.domain.MaxlyError.Unknown) fallback else mapped.userMessage?.takeIf { it.isNotBlank() } ?: fallback
                 _state.update { it.copy(busy = false, error = text) }
             }
         }
     }
 
-    private fun unsupported() = app.maxly.domain.OrbitleError.Rejected("Действие недоступно")
+    private fun unsupported() = app.maxly.domain.MaxlyError.Rejected("Действие недоступно")
 }

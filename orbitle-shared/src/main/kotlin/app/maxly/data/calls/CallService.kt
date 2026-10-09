@@ -5,7 +5,7 @@ import app.maxly.domain.CallConnection
 import app.maxly.domain.CallIceServer
 import app.maxly.domain.CallLinkPreview
 import app.maxly.domain.IncomingCall
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import com.max.core.calls.CallLink
 import com.max.core.calls.CallSignaling
 import com.max.core.calls.Ws2ClientInfo
@@ -51,13 +51,13 @@ class CoreCallService(private val client: MaxClient) : CallService {
         MaxCoreGateway.call { client.rejectIncomingCall(conversationId, peerId?.takeIf { it.isNotEmpty() }) }
 
     override suspend fun startCall(peerId: String, isVideo: Boolean): CallConnection {
-        val callee = peerId.toLongOrNull() ?: throw OrbitleError.InvalidRequest
+        val callee = peerId.toLongOrNull() ?: throw MaxlyError.InvalidRequest
         val signal = MaxCoreGateway.call { client.api.calls.initiateCall(callee, isVideo, client.device.deviceId) }
         return connection(signal, joinLink = null)
     }
 
     override suspend fun join(link: String, isVideo: Boolean): CallConnection {
-        val token = CallLink.token(link.trim()) ?: throw OrbitleError.InvalidRequest
+        val token = CallLink.token(link.trim()) ?: throw MaxlyError.InvalidRequest
         val signal = MaxCoreGateway.call { client.api.calls.joinByLink(token, isVideo, client.device.deviceId) }
         return connection(signal, joinLink = CallLink.url(token))
     }
@@ -110,7 +110,7 @@ class CoreCallService(private val client: MaxClient) : CallService {
         val url = ws2UrlFromEndpoint(signal.endpoint, Ws2ClientInfo.forCalls(client.device.userAgent))
         if (!url.startsWith("ws")) {
             CallLog.warning("Сервер дал адрес звонка не ws")
-            throw OrbitleError.InvalidRequest
+            throw MaxlyError.InvalidRequest
         }
         return CallConnection(
             conversationId = signal.conversationId,

@@ -3,27 +3,27 @@ package app.maxly.domain
 /**
  * Категории ошибок, которые видит UI. Слой данных переводит в них ошибки ядра и сервера.
  */
-sealed class OrbitleError(message: String) : Exception(message) {
+sealed class MaxlyError(message: String) : Exception(message) {
     /** Нет сети или соединение с сервером потеряно. */
-    data object NetworkUnavailable : OrbitleError("Нет соединения с сервером")
+    data object NetworkUnavailable : MaxlyError("Нет соединения с сервером")
     /** Сессия истекла, нужно войти заново. */
-    data object AuthExpired : OrbitleError("Сессия истекла, войдите снова")
+    data object AuthExpired : MaxlyError("Сессия истекла, войдите снова")
     /**
      * Сервер вернул ошибку. Показывается его [text], если он прислал; иначе свой: на частые
      * запросы ([RATE_LIMIT_CODE]) — просьба подождать, на остальное — код ошибки.
      */
-    data class Server(val code: String, val text: String? = null) : OrbitleError(
+    data class Server(val code: String, val text: String? = null) : MaxlyError(
         text ?: if (code == RATE_LIMIT_CODE) "Сервер просит подождать: слишком много запросов" else "Ошибка сервера ($code). Попробуйте позже",
     )
     /** Запрос отклонён как неверный. */
-    data object InvalidRequest : OrbitleError("Сервер отклонил запрос")
+    data object InvalidRequest : MaxlyError("Сервер отклонил запрос")
     /** Пользовательский ввод отклонён. Текст можно показать как есть. */
-    data class Rejected(val text: String) : OrbitleError(text)
-    data object StorageError : OrbitleError("Не удалось сохранить данные на устройстве")
-    data object SyncFailed : OrbitleError("Не удалось синхронизироваться с сервером")
+    data class Rejected(val text: String) : MaxlyError(text)
+    data object StorageError : MaxlyError("Не удалось сохранить данные на устройстве")
+    data object SyncFailed : MaxlyError("Не удалось синхронизироваться с сервером")
     /** Действие отменено. Экран такую ошибку не показывает. */
-    data object Cancelled : OrbitleError("Действие отменено")
-    data object Unknown : OrbitleError("Что-то пошло не так")
+    data object Cancelled : MaxlyError("Действие отменено")
+    data object Unknown : MaxlyError("Что-то пошло не так")
 
     /** Текст для экрана. `null` у отмены: её пользователю не показывают. */
     val userMessage: String? get() = if (this == Cancelled) null else message

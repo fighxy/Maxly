@@ -6,7 +6,7 @@ import app.maxly.domain.Account
 import app.maxly.domain.AccountSettings
 import app.maxly.domain.BlockedUser
 import app.maxly.domain.MiniApp
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.PrivacyChange
 import app.maxly.domain.TwoFactorStatus
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -181,7 +181,7 @@ class MiniAppTest {
         val next = model.state.value.phase as MiniAppViewModel.Phase.Ready
         assertEquals("https://id.example/back", next.app.url)
         assertEquals(listOf("https://digital-id.max.ru/cb?externalCallback=1"), repo.callbacks)
-        repo.failure = OrbitleError.NetworkUnavailable
+        repo.failure = MaxlyError.NetworkUnavailable
         model.launch()
         val failed = model.state.value.phase as MiniAppViewModel.Phase.Failed
         assertEquals("Нет соединения с сервером", failed.message)
@@ -193,7 +193,7 @@ class MiniAppTest {
 private class MiniAccount : AccountRepository {
     override val account = MutableStateFlow<Account?>(null)
     override val settings = MutableStateFlow(AccountSettings())
-    var failure: OrbitleError? = null
+    var failure: MaxlyError? = null
     val callbacks = mutableListOf<String>()
 
     override suspend fun reload() = Unit

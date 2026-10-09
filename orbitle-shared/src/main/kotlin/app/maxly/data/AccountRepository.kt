@@ -6,7 +6,7 @@ import app.maxly.domain.BlockedUser
 import app.maxly.domain.FamilyProtection
 import app.maxly.domain.InactiveTtl
 import app.maxly.domain.MiniApp
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.PrivacyAccess
 import app.maxly.domain.PrivacyChange
 import app.maxly.domain.TwoFactorStatus
@@ -56,7 +56,7 @@ interface AccountRepository {
     suspend fun blockedUsers(): List<BlockedUser>
     suspend fun unblock(userId: String)
     /** Заблокировать пользователя (`CONTACT_UPDATE` 34 `BLOCK`). */
-    suspend fun block(userId: String): Unit = throw OrbitleError.Rejected("Заблокировать нельзя")
+    suspend fun block(userId: String): Unit = throw MaxlyError.Rejected("Заблокировать нельзя")
 
     /** Пароль для входа и почта восстановления (`AUTH_2FA_DETAILS` 104). */
     suspend fun twoFactorStatus(): TwoFactorStatus
@@ -99,7 +99,7 @@ interface AccountRepository {
 
     /** Мини-приложение бота (`WEB_APP_INIT_DATA` 160): «Открыть приложение» в чате, кнопка `OPEN_APP`. */
     suspend fun launchBotApp(botId: String, chatId: String?, startParam: String?): MiniApp =
-        throw app.maxly.domain.OrbitleError.InvalidRequest
+        throw app.maxly.domain.MaxlyError.InvalidRequest
 }
 
 class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
@@ -233,7 +233,7 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
         miniAppOf(next.botId, client.api.bots.getWebAppInitData(next.botId, startParam = next.startParam), client.device.deviceId)
     }
 
-    private suspend fun <T> guarded(map: (Throwable) -> OrbitleError, block: suspend () -> T): T = try {
+    private suspend fun <T> guarded(map: (Throwable) -> MaxlyError, block: suspend () -> T): T = try {
         MaxCoreGateway.call(block)
     } catch (e: CancellationException) {
         throw e

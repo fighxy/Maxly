@@ -148,7 +148,7 @@ private fun PhoneStep(state: AuthUiState, viewModel: AuthViewModel) {
         contentAlignment = Alignment.Center,
     ) {
         Image(
-            painterResource(R.drawable.orbitle_mark),
+            painterResource(R.drawable.maxly_mark),
             contentDescription = null,
             modifier = Modifier.size(72.dp),
             colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onPrimary),

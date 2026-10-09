@@ -5,7 +5,7 @@ import app.maxly.data.AddedContact
 import app.maxly.data.ContactRepository
 import app.maxly.domain.ChatProfile
 import app.maxly.domain.Contact
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.SharedMediaTab
 import app.maxly.presentation.chat.FakeMessages
 import app.maxly.presentation.profile.ProfileViewModel
@@ -83,7 +83,7 @@ class ContactActionsTest {
     fun removeAsksFirstAndKeepsTheDialogOnFailure() {
         model.askRemove("2")
         assertEquals(ContactDialog.Remove("2", "Анна Смирнова"), model.actions.state.value.dialog)
-        repo.failure = OrbitleError.Rejected("Сервер занят")
+        repo.failure = MaxlyError.Rejected("Сервер занят")
         model.actions.remove()
         assertEquals("Сервер занят", model.actions.state.value.error)
         assertTrue(model.actions.state.value.dialog is ContactDialog.Remove)

@@ -9,7 +9,7 @@ import app.maxly.domain.CallPhase
 import app.maxly.domain.CallRole
 import app.maxly.domain.CallState
 import app.maxly.domain.CallTopology
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -53,7 +53,7 @@ interface CallControl {
     /** Запись звонка на сервере. Включать может админ группового звонка. */
     suspend fun setRecording(on: Boolean)
 
-    /** Позвать в идущий звонок пользователей Max. Бросает [OrbitleError]. */
+    /** Позвать в идущий звонок пользователей Max. Бросает [MaxlyError]. */
     suspend fun invite(userIds: List<String>)
 
     fun dismissNotice()
@@ -316,14 +316,14 @@ class CallSession(
     override suspend fun invite(userIds: List<String>) {
         if (userIds.isEmpty()) return
         val signaling = signaling
-        if (signaling == null || ended) throw OrbitleError.InvalidRequest
+        if (signaling == null || ended) throw MaxlyError.InvalidRequest
         try {
             signaling.send("add-participant", mapOf("externalIds" to element(userIds)))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             CallLog.warning("Не позвали в звонок: $e")
-            throw OrbitleError.InvalidRequest
+            throw MaxlyError.InvalidRequest
         }
     }
 

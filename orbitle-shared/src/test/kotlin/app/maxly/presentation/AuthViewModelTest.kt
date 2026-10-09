@@ -4,7 +4,7 @@ import app.maxly.MainDispatcherRule
 import app.maxly.domain.AuthPhase
 import app.maxly.domain.AuthService
 import app.maxly.domain.ConnectionState
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.SessionRejection
 import app.maxly.presentation.auth.AuthStep
 import app.maxly.presentation.auth.AuthViewModel
@@ -23,8 +23,8 @@ class FakeAuth : AuthService {
     val requested = mutableListOf<String>()
     val codes = mutableListOf<String>()
     var codeLength: Int? = 6
-    var verifyError: OrbitleError? = null
-    var passwordError: OrbitleError? = null
+    var verifyError: MaxlyError? = null
+    var passwordError: MaxlyError? = null
     var nextAfterCode: AuthPhase = AuthPhase.SignedIn("1")
     var resends = 0
     var cancels = 0
@@ -132,7 +132,7 @@ class AuthViewModelTest {
 
     @Test
     fun wrongCodeClearsField() {
-        auth.verifyError = OrbitleError.Rejected("Неверный код")
+        auth.verifyError = MaxlyError.Rejected("Неверный код")
         vm.setNationalNumber("9991234567")
         vm.requestCode()
         vm.setCode("111111")
@@ -142,7 +142,7 @@ class AuthViewModelTest {
 
     @Test
     fun renewedCodeRestartsTimer() {
-        auth.verifyError = OrbitleError.codeRenewed
+        auth.verifyError = MaxlyError.codeRenewed
         vm.setNationalNumber("9991234567")
         vm.requestCode()
         clock += 40_000
@@ -171,7 +171,7 @@ class AuthViewModelTest {
         vm.setCode("123456")
         assertEquals(AuthStep.Password("кот"), vm.state.value.step)
         assertEquals("Аккаунт защищён облачным паролем. Подсказка: кот", vm.state.value.passwordPrompt)
-        auth.passwordError = OrbitleError.Rejected("Неверный пароль")
+        auth.passwordError = MaxlyError.Rejected("Неверный пароль")
         vm.setPassword("secret")
         vm.submitPassword()
         assertEquals("", vm.state.value.password)

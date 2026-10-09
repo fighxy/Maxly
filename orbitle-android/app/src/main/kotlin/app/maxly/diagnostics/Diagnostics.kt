@@ -17,7 +17,7 @@ import java.io.File
 import java.util.Collections
 
 /**
- * Журнал и отчёты о сбоях на Android. Включается первым делом в `OrbitleApp.onCreate`:
+ * Журнал и отчёты о сбоях на Android. Включается первым делом в `MaxlyApp.onCreate`:
  * журнал пишется в `files/logs`, отчёты — в `files/crashes`; оба показывает экран
  * «О приложении». Нативные падения (WebRTC) и зависания Java-обработчик не видит — о них
  * рассказывает система на следующем запуске (`ApplicationExitInfo`, Android 11+).

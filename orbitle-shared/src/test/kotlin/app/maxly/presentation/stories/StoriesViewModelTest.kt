@@ -3,7 +3,7 @@ package app.maxly.presentation.stories
 import app.maxly.MainDispatcherRule
 import app.maxly.data.OwnerStories
 import app.maxly.data.StoriesRepository
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.OutgoingStory
 import app.maxly.domain.Story
 import app.maxly.domain.StoryAudience
@@ -216,7 +216,7 @@ class StoriesViewModelTest {
     fun failuresBecomeMessages() {
         repo.feed = listOf(ring("3", 1, 0, 100))
         val model = StoriesViewModel(repo)
-        repo.failure = OrbitleError.NetworkUnavailable
+        repo.failure = MaxlyError.NetworkUnavailable
         model.open("3")
         assertNull(model.state.value.viewer)
         assertEquals("Нет соединения с сервером", model.state.value.message)

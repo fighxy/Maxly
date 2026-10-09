@@ -19,7 +19,7 @@ import app.maxly.domain.ChatType
 import app.maxly.domain.PinChange
 import app.maxly.domain.Message
 import app.maxly.domain.MessageStatus
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.OutgoingFile
 import app.maxly.domain.SavedMessagesWelcome
 import app.maxly.domain.AnimatedEmoji
@@ -1507,7 +1507,7 @@ class ChatViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                show(OrbitleError.Rejected(reactionFailure(e)))
+                show(MaxlyError.Rejected(reactionFailure(e)))
             }
         }
     }
@@ -2596,7 +2596,7 @@ class ChatViewModel(
         /** Текст отказа реакции: свой текст отказа или текст сервера, иначе [REACTION_FAILURE]. */
         fun reactionFailure(error: Throwable): String {
             val mapped = app.maxly.data.CoreErrors.map(error)
-            return (mapped as? OrbitleError.Rejected)?.text ?: mapped.serverText ?: REACTION_FAILURE
+            return (mapped as? MaxlyError.Rejected)?.text ?: mapped.serverText ?: REACTION_FAILURE
         }
     }
 }

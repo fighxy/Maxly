@@ -18,7 +18,7 @@ interface SessionRepository {
     suspend fun sessions(): List<DeviceSession>
     suspend fun closeOthers()
     /** Подтвердить вход на другом устройстве по ссылке из его QR-кода. */
-    suspend fun approveQrLogin(link: String): Unit = throw app.maxly.domain.OrbitleError.Rejected("Вход по QR-коду недоступен")
+    suspend fun approveQrLogin(link: String): Unit = throw app.maxly.domain.MaxlyError.Rejected("Вход по QR-коду недоступен")
 }
 
 class CoreSessionRepository(private val client: MaxClient) : SessionRepository {

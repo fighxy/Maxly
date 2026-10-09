@@ -5,7 +5,7 @@ import app.maxly.domain.AuthService
 import app.maxly.domain.AccountLimits
 import app.maxly.domain.freshEntry
 import app.maxly.domain.ConnectionState
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.SessionRejection
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -24,7 +24,7 @@ interface UserIdStore {
  *
  * Попытка входа нумеруется ([attempt]). `cancelLogin` и `logout` начинают новую попытку,
  * поэтому поздний ответ ядра из старой попытки не меняет шаг, а метод бросает
- * [OrbitleError.Cancelled]. Исключение — успешный вход: ядро уже сохранило токен.
+ * [MaxlyError.Cancelled]. Исключение — успешный вход: ядро уже сохранило токен.
  */
 class SessionManager(
     private val core: CoreGateway,
@@ -126,8 +126,8 @@ class SessionManager(
 
     override suspend fun requestCode(phone: String) {
         val number = phone.trim()
-        if (number.isEmpty()) throw OrbitleError.Rejected("Введите номер телефона")
-        if (isAuthorized) throw OrbitleError.InvalidRequest
+        if (number.isEmpty()) throw MaxlyError.Rejected("Введите номер телефона")
+        if (isAuthorized) throw MaxlyError.InvalidRequest
         val generation = attempt
         val code = try {
             core.requestCode(number, resend = false)
@@ -143,7 +143,7 @@ class SessionManager(
     }
 
     override suspend fun resendCode() {
-        if (phone.isEmpty() || codeToken == null) throw OrbitleError.InvalidRequest
+        if (phone.isEmpty() || codeToken == null) throw MaxlyError.InvalidRequest
         val generation = attempt
         val code = try {
             core.requestCode(phone, resend = true)
@@ -157,14 +157,14 @@ class SessionManager(
 
     override suspend fun verifyCode(code: String) {
         val digits = code.filterNot { it.isWhitespace() }
-        if (digits.isEmpty()) throw OrbitleError.Rejected("Введите код из SMS")
-        val token = codeToken ?: throw OrbitleError.InvalidRequest
+        if (digits.isEmpty()) throw MaxlyError.Rejected("Введите код из SMS")
+        val token = codeToken ?: throw MaxlyError.InvalidRequest
         val generation = attempt
         val epoch = logouts
         val step = try {
             core.verifyCode(token, digits)
         } catch (e: Throwable) {
-            if (AuthErrors.isExpiredCode(e) && renewCode(generation)) throw OrbitleError.codeRenewed
+            if (AuthErrors.isExpiredCode(e) && renewCode(generation)) throw MaxlyError.codeRenewed
             throw AuthErrors.map(e, AuthStep.VERIFY_CODE)
         }
         apply(step, generation, epoch)
@@ -181,8 +181,8 @@ class SessionManager(
     }
 
     override suspend fun submitPassword(password: String) {
-        if (password.isEmpty()) throw OrbitleError.Rejected("Введите пароль")
-        val track = trackId ?: throw OrbitleError.InvalidRequest
+        if (password.isEmpty()) throw MaxlyError.Rejected("Введите пароль")
+        val track = trackId ?: throw MaxlyError.InvalidRequest
         val generation = attempt
         val epoch = logouts
         val step = try {
@@ -196,8 +196,8 @@ class SessionManager(
     override suspend fun register(firstName: String, lastName: String) {
         val first = firstName.trim()
         val last = lastName.trim()
-        if (first.isEmpty()) throw OrbitleError.Rejected("Введите имя")
-        val token = registerToken ?: throw OrbitleError.InvalidRequest
+        if (first.isEmpty()) throw MaxlyError.Rejected("Введите имя")
+        val token = registerToken ?: throw MaxlyError.InvalidRequest
         val generation = attempt
         val epoch = logouts
         val step = try {
@@ -232,7 +232,7 @@ class SessionManager(
     }
 
     private fun ensureCurrent(generation: Int) {
-        if (generation != attempt || isLoggingOut) throw OrbitleError.Cancelled
+        if (generation != attempt || isLoggingOut) throw MaxlyError.Cancelled
     }
 
     private fun forgetLoginAttempt() {
@@ -246,7 +246,7 @@ class SessionManager(
         when (step) {
             is CoreAuthStep.LoggedIn -> {
                 // Токен уже у ядра: отменённая попытка всё равно входит. Выход важнее.
-                if (isLoggingOut || epoch != logouts) throw OrbitleError.Cancelled
+                if (isLoggingOut || epoch != logouts) throw MaxlyError.Cancelled
                 enter(step.userId.ifEmpty { core.currentUserId() }, epoch)
             }
             is CoreAuthStep.Password -> {

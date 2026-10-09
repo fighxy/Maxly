@@ -12,7 +12,7 @@ import app.maxly.domain.CallRole
 import app.maxly.domain.CallState
 import app.maxly.domain.CallTopology
 import app.maxly.domain.IncomingCall
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -149,7 +149,7 @@ class CallCenterTest {
     @Test
     fun failedStartShowsError() = runTest {
         val center = center()
-        service.failStart = OrbitleError.NetworkUnavailable
+        service.failStart = MaxlyError.NetworkUnavailable
         center.startCall(CallPeerInfo("7", "Анна"), video = false)
         assertNull(center.state.value.call)
         assertEquals("Нет соединения с сервером", center.state.value.errorMessage)

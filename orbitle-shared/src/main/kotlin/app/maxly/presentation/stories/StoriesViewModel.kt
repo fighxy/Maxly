@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import app.maxly.data.CoreErrors
 import app.maxly.data.StoriesRepository
 import app.maxly.domain.ConnectionState
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.OutgoingStory
 import app.maxly.domain.Story
 import app.maxly.domain.StoryAudience
@@ -383,8 +383,8 @@ class StoriesViewModel(
 
     private fun fail(e: Throwable, fallback: String) {
         val error = CoreErrors.map(e)
-        if (error == OrbitleError.Cancelled) return
-        val text = if (error == OrbitleError.Unknown) fallback else error.message ?: fallback
+        if (error == MaxlyError.Cancelled) return
+        val text = if (error == MaxlyError.Unknown) fallback else error.message ?: fallback
         _state.value = _state.value.copy(message = text)
     }
 

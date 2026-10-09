@@ -14,7 +14,7 @@ import app.maxly.domain.MessageContent
 import app.maxly.domain.MessageReaction
 import app.maxly.data.CoreFailure
 import app.maxly.domain.MessageStatus
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.TextSpan
 import app.maxly.domain.ServerFolder
 import app.maxly.domain.InlineButton
@@ -95,7 +95,7 @@ class FakeMessages : MessageRepository {
     var forwardFailAfter: Int? = null
     override suspend fun forward(chatId: String, messageId: String, targetChatId: String) {
         forwardFailure?.let { throw it }
-        forwardFailAfter?.let { if (forwards.size >= it) throw app.maxly.domain.OrbitleError.Rejected("Сервер не ответил") }
+        forwardFailAfter?.let { if (forwards.size >= it) throw app.maxly.domain.MaxlyError.Rejected("Сервер не ответил") }
         forwards += Triple(chatId, messageId, targetChatId)
     }
     override suspend fun retry(chatId: String, localId: String) = Unit
@@ -239,7 +239,7 @@ class ChatViewModelTest {
     @Test
     fun rateLimitKeepsStoredFeedQuiet() {
         repo.list.value = listOf(msg("1"))
-        repo.latestFailure = OrbitleError.Server(OrbitleError.RATE_LIMIT_CODE)
+        repo.latestFailure = MaxlyError.Server(MaxlyError.RATE_LIMIT_CODE)
         val model = vm()
         assertNull(model.messages.value)
         assertFalse(model.state.value.isLoading)
@@ -247,7 +247,7 @@ class ChatViewModelTest {
 
     @Test
     fun rateLimitOnEmptyChatExplainsThePauseAndRetries() {
-        repo.latestFailure = OrbitleError.Server(OrbitleError.RATE_LIMIT_CODE)
+        repo.latestFailure = MaxlyError.Server(MaxlyError.RATE_LIMIT_CODE)
         val model = vm()
         // Не «Здесь пока нет сообщений»: история просто не пришла. Снекбара нет — он закрыл бы низ.
         assertEquals(ChatViewModel.RATE_LIMIT_HINT, model.state.value.emptyHint)
@@ -262,7 +262,7 @@ class ChatViewModelTest {
 
     @Test
     fun refusedChatStopsRetryingAfterAFewTries() {
-        repo.latestFailure = OrbitleError.Server(OrbitleError.RATE_LIMIT_CODE)
+        repo.latestFailure = MaxlyError.Server(MaxlyError.RATE_LIMIT_CODE)
         val model = vm()
         // Открытие и три повтора с паузами 20, 40 и 80 с — и всё: каждый отказ продлевает лимит.
         main.dispatcher.scheduler.advanceTimeBy(10 * 60_000L)
@@ -273,7 +273,7 @@ class ChatViewModelTest {
 
     @Test
     fun emptyChatAfterRetrySaysSo() {
-        repo.latestFailure = OrbitleError.Server(OrbitleError.RATE_LIMIT_CODE)
+        repo.latestFailure = MaxlyError.Server(MaxlyError.RATE_LIMIT_CODE)
         val model = vm()
         repo.latestFailure = null
         main.dispatcher.scheduler.advanceTimeBy(ChatViewModel.RATE_LIMIT_RETRY_MS + 1)
@@ -284,7 +284,7 @@ class ChatViewModelTest {
     @Test
     fun olderPagePausesAfterFailure() {
         repo.list.value = listOf(msg("1"), msg("2"))
-        repo.olderFailure = OrbitleError.Server(OrbitleError.RATE_LIMIT_CODE)
+        repo.olderFailure = MaxlyError.Server(MaxlyError.RATE_LIMIT_CODE)
         val model = vm()
         model.loadOlder()
         assertEquals(1, repo.olderCalls)
@@ -521,7 +521,7 @@ class ChatViewModelTest {
     @Test
     fun sendFailureIsShown() {
         val model = vm()
-        repo.sendFailure = OrbitleError.NetworkUnavailable
+        repo.sendFailure = MaxlyError.NetworkUnavailable
         model.setDraft("x")
         model.send()
         assertEquals("Нет соединения с сервером", model.messages.value)
@@ -590,7 +590,7 @@ class ChatViewModelTest {
     fun failedEditGoesBackToComposer() {
         val model = vm()
         val own = msg("8", author = "1", text = "старый")
-        repo.editFailure = OrbitleError.Rejected("нельзя")
+        repo.editFailure = MaxlyError.Rejected("нельзя")
         model.beginEdit(own)
         model.setDraft("новый")
         model.send()
@@ -874,7 +874,7 @@ class ChatViewModelTest {
     @Test
     fun forwardFailureShowsError() {
         val model = vm()
-        repo.forwardFailure = app.maxly.domain.OrbitleError.Rejected("Нельзя переслать")
+        repo.forwardFailure = app.maxly.domain.MaxlyError.Rejected("Нельзя переслать")
         model.forward(msg("5"), "20")
         assertEquals("Нельзя переслать", model.messages.value)
     }
@@ -1222,7 +1222,7 @@ private class FakeChats : ChatRepository {
     var leaveFails = false
     override suspend fun leaveChat(chatId: String) {
         left += chatId
-        if (leaveFails) throw OrbitleError.Rejected("нельзя")
+        if (leaveFails) throw MaxlyError.Rejected("нельзя")
     }
     override suspend fun joinByLink(link: String): String? {
         joined += link

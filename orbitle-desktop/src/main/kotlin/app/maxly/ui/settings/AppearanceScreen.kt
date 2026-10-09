@@ -57,7 +57,7 @@ import app.maxly.ui.components.ChatBackdrop
 import app.maxly.ui.components.ChatWallpaperBackground
 import app.maxly.ui.components.LocalChatBackdrop
 import app.maxly.ui.components.resource
-import app.maxly.ui.theme.OrbitleOutgoing
+import app.maxly.ui.theme.MaxlyOutgoing
 
 /** «Оформление»: образец переписки, размер текста, тема и обои чата. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -133,7 +133,7 @@ private fun Preview(backdrop: ChatBackdrop) {
                 Text("Доброе утро! Как тебе новые обои?", Modifier.padding(horizontal = 12.dp, vertical = 8.dp), fontSize = 16.sp)
             }
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-                Surface(shape = RoundedCornerShape(18.dp, 18.dp, 6.dp, 18.dp), color = OrbitleOutgoing, contentColor = Color.White) {
+                Surface(shape = RoundedCornerShape(18.dp, 18.dp, 6.dp, 18.dp), color = MaxlyOutgoing, contentColor = Color.White) {
                     Text("Очень уютно 🍂", Modifier.padding(horizontal = 12.dp, vertical = 8.dp), fontSize = 16.sp)
                 }
             }

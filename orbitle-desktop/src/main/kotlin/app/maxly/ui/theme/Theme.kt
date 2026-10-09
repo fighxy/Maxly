@@ -11,7 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 /** Пузырь своих сообщений. Тот же индиго, что у акцента темы, но без затемнения под белый текст. */
-val OrbitleOutgoing = Color(0xFF5C6BF5)
+val MaxlyOutgoing = Color(0xFF5C6BF5)
 
 private val Indigo = Color(0xFF3E4AD8)
 private val IndigoLight = Color(0xFFBDC2FF)
@@ -110,7 +110,7 @@ object AvatarPalette {
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun OrbitleTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+fun MaxlyTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     MaterialExpressiveTheme(
         colorScheme = if (darkTheme) DarkColors else LightColors,
         motionScheme = MotionScheme.expressive(),

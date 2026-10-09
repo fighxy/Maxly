@@ -1,6 +1,6 @@
 package app.maxly.data
 
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.presentation.chat.ChatViewModel
 import com.max.core.protocol.CmdType
 import com.max.core.protocol.Opcode
@@ -42,7 +42,7 @@ class ServerErrorTextsTest {
     @Test
     fun serverErrorPrefersItsText() {
         val withText = CoreErrors.map(failure("SERVER", "chat.denied", "Нет доступа"))
-        assertEquals(OrbitleError.Server("chat.denied", "Нет доступа"), withText)
+        assertEquals(MaxlyError.Server("chat.denied", "Нет доступа"), withText)
         assertEquals("Нет доступа", withText.userMessage)
         assertEquals("Нет доступа", withText.serverText)
         val bare = CoreErrors.map(failure("SERVER", "chat.denied"))
@@ -53,50 +53,50 @@ class ServerErrorTextsTest {
 
     @Test
     fun rateLimitStaysARateLimitWithTheServerText() {
-        val error = CoreErrors.map(failure("SERVER", OrbitleError.RATE_LIMIT_CODE, "Подождите минуту"))
+        val error = CoreErrors.map(failure("SERVER", MaxlyError.RATE_LIMIT_CODE, "Подождите минуту"))
         assertTrue(error.isRateLimit)
         assertTrue(error.isTransient)
         assertEquals("Подождите минуту", error.userMessage)
-        assertEquals("Сервер просит подождать: слишком много запросов", CoreErrors.map(failure("SERVER", OrbitleError.RATE_LIMIT_CODE)).userMessage)
+        assertEquals("Сервер просит подождать: слишком много запросов", CoreErrors.map(failure("SERVER", MaxlyError.RATE_LIMIT_CODE)).userMessage)
     }
 
     @Test
     fun rejectedRequestShowsTheServerText() {
-        assertEquals(OrbitleError.Rejected("Нельзя"), CoreErrors.map(failure("AUTH", text = "Нельзя")))
-        assertEquals(OrbitleError.Rejected("Не найдено"), CoreErrors.map(failure("NOT_FOUND", text = "Не найдено")))
-        assertEquals(OrbitleError.InvalidRequest, CoreErrors.map(failure("AUTH")))
-        assertEquals(OrbitleError.NetworkUnavailable, CoreErrors.map(failure("NETWORK")))
+        assertEquals(MaxlyError.Rejected("Нельзя"), CoreErrors.map(failure("AUTH", text = "Нельзя")))
+        assertEquals(MaxlyError.Rejected("Не найдено"), CoreErrors.map(failure("NOT_FOUND", text = "Не найдено")))
+        assertEquals(MaxlyError.InvalidRequest, CoreErrors.map(failure("AUTH")))
+        assertEquals(MaxlyError.NetworkUnavailable, CoreErrors.map(failure("NETWORK")))
     }
 
     @Test
     fun loginStepsPreferTheServerText() {
         for (step in AuthStep.values()) {
-            assertEquals(step.name, OrbitleError.Rejected("Код неверный, осталось 2 попытки"), AuthErrors.map(failure("SERVER", "verify.code", "Код неверный, осталось 2 попытки"), step))
-            assertEquals(step.name, OrbitleError.Rejected("Попробуйте через час"), AuthErrors.map(failure("SERVER", "too.many.attempts", "Попробуйте через час"), step))
-            assertEquals(step.name, OrbitleError.Rejected("Начните заново"), AuthErrors.map(failure("SESSION_EXPIRED", "verify.token", "Начните заново"), step))
+            assertEquals(step.name, MaxlyError.Rejected("Код неверный, осталось 2 попытки"), AuthErrors.map(failure("SERVER", "verify.code", "Код неверный, осталось 2 попытки"), step))
+            assertEquals(step.name, MaxlyError.Rejected("Попробуйте через час"), AuthErrors.map(failure("SERVER", "too.many.attempts", "Попробуйте через час"), step))
+            assertEquals(step.name, MaxlyError.Rejected("Начните заново"), AuthErrors.map(failure("SESSION_EXPIRED", "verify.token", "Начните заново"), step))
         }
         // Без текста сервера — свои тексты, как раньше.
-        assertEquals(OrbitleError.Rejected("Неверный код"), AuthErrors.map(failure("SERVER", "verify.code"), AuthStep.VERIFY_CODE))
-        assertEquals(OrbitleError.Rejected("Неверный пароль"), AuthErrors.map(failure("AUTH"), AuthStep.PASSWORD))
-        assertEquals(OrbitleError.Rejected(AuthErrors.TOO_MANY_ATTEMPTS), AuthErrors.map(failure("SERVER", "too.many.attempts"), AuthStep.REQUEST_CODE))
-        assertEquals(OrbitleError.Rejected("Код устарел. Запросите новый"), AuthErrors.map(failure("SESSION_EXPIRED"), AuthStep.VERIFY_CODE))
+        assertEquals(MaxlyError.Rejected("Неверный код"), AuthErrors.map(failure("SERVER", "verify.code"), AuthStep.VERIFY_CODE))
+        assertEquals(MaxlyError.Rejected("Неверный пароль"), AuthErrors.map(failure("AUTH"), AuthStep.PASSWORD))
+        assertEquals(MaxlyError.Rejected(AuthErrors.TOO_MANY_ATTEMPTS), AuthErrors.map(failure("SERVER", "too.many.attempts"), AuthStep.REQUEST_CODE))
+        assertEquals(MaxlyError.Rejected("Код устарел. Запросите новый"), AuthErrors.map(failure("SESSION_EXPIRED"), AuthStep.VERIFY_CODE))
     }
 
     @Test
     fun recoveryEmailPrefersTheServerText() {
-        assertEquals(OrbitleError.Rejected("Адрес занят"), TwoFactorErrors.rejection(failure("SERVER", "email.limit", "Адрес занят"), "Неверный код"))
-        assertEquals(OrbitleError.Rejected(AuthErrors.TOO_MANY_ATTEMPTS), TwoFactorErrors.rejection(failure("SERVER", "email.limit"), "Неверный код"))
-        assertEquals(OrbitleError.Rejected("Неверный код"), TwoFactorErrors.rejection(failure("SERVER", "email.code"), "Неверный код"))
+        assertEquals(MaxlyError.Rejected("Адрес занят"), TwoFactorErrors.rejection(failure("SERVER", "email.limit", "Адрес занят"), "Неверный код"))
+        assertEquals(MaxlyError.Rejected(AuthErrors.TOO_MANY_ATTEMPTS), TwoFactorErrors.rejection(failure("SERVER", "email.limit"), "Неверный код"))
+        assertEquals(MaxlyError.Rejected("Неверный код"), TwoFactorErrors.rejection(failure("SERVER", "email.code"), "Неверный код"))
     }
 
     @Test
     fun screenTextOrder() {
         // Сервер, затем переведённая ошибка, затем свой текст действия.
         assertEquals("Нет доступа", CoreErrors.text(failure("SERVER", "chat.denied", "Нет доступа"), "Не удалось удалить чат"))
-        assertEquals("Нет доступа", CoreErrors.text(OrbitleError.Server("chat.denied", "Нет доступа"), "Не удалось удалить чат"))
+        assertEquals("Нет доступа", CoreErrors.text(MaxlyError.Server("chat.denied", "Нет доступа"), "Не удалось удалить чат"))
         assertEquals("Не удалось удалить чат", CoreErrors.text(failure("SERVER", "chat.denied"), "Не удалось удалить чат"))
-        assertEquals("Нет соединения с сервером", CoreErrors.text(OrbitleError.NetworkUnavailable, "Не удалось удалить чат"))
-        assertEquals("Не удалось удалить чат", CoreErrors.text(OrbitleError.Cancelled, "Не удалось удалить чат"))
+        assertEquals("Нет соединения с сервером", CoreErrors.text(MaxlyError.NetworkUnavailable, "Не удалось удалить чат"))
+        assertEquals("Не удалось удалить чат", CoreErrors.text(MaxlyError.Cancelled, "Не удалось удалить чат"))
         assertEquals(CoreErrors.UNKNOWN_TEXT, CoreErrors.text(IllegalStateException("x")))
         assertEquals(CoreErrors.UNKNOWN_TEXT, CoreErrors.text(CancellationException("x")))
     }
@@ -104,7 +104,7 @@ class ServerErrorTextsTest {
     @Test
     fun reactionFailureText() {
         assertEquals("Реакции в этом чате выключены", ChatViewModel.reactionFailure(failure("SERVER", "reactions.disabled", "Реакции в этом чате выключены")))
-        assertEquals("Слишком много реакций", ChatViewModel.reactionFailure(OrbitleError.Rejected("Слишком много реакций")))
+        assertEquals("Слишком много реакций", ChatViewModel.reactionFailure(MaxlyError.Rejected("Слишком много реакций")))
         assertEquals(ChatViewModel.REACTION_FAILURE, ChatViewModel.reactionFailure(failure("SERVER", "reactions.disabled")))
         assertEquals(ChatViewModel.REACTION_FAILURE, ChatViewModel.reactionFailure(failure("NETWORK")))
     }

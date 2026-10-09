@@ -1,6 +1,6 @@
 package app.maxly.data
 
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -48,7 +48,7 @@ class ServerRateLimitTest {
             fail("пауза должна отказать")
         } catch (e: CoreFailure) {
             assertTrue(ServerRateLimit.isLimit(e.key))
-            assertEquals(OrbitleError.Server(OrbitleError.RATE_LIMIT_CODE), CoreErrors.map(e))
+            assertEquals(MaxlyError.Server(MaxlyError.RATE_LIMIT_CODE), CoreErrors.map(e))
         }
         assertFalse(asked)
 
@@ -71,9 +71,9 @@ class ServerRateLimitTest {
 
     @Test
     fun rateLimitTextAsksToWait() {
-        val error = OrbitleError.Server("too.many.requests")
+        val error = MaxlyError.Server("too.many.requests")
         assertTrue(error.isRateLimit)
         assertEquals("Сервер просит подождать: слишком много запросов", error.userMessage)
-        assertFalse(OrbitleError.Server("not.found").isRateLimit)
+        assertFalse(MaxlyError.Server("not.found").isRateLimit)
     }
 }

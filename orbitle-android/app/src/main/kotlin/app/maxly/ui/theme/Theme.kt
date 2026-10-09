@@ -9,17 +9,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 /** Пузырь своих сообщений (как `orbitleOutgoing` в iOS-версии). */
-val OrbitleOutgoing = Color(0xFF5C6BF5)
+val MaxlyOutgoing = Color(0xFF5C6BF5)
 
 /**
  * Подсветка системных кнопок и надписей (`primary`): глубокий графит в светлой теме, серебро
  * в тёмной — как `orbitleAccent` в iOS-версии.
  */
-val OrbitleGraphite = Color(0xFF212327)
-val OrbitleSilver = Color(0xFFCCD0D6)
+val MaxlyGraphite = Color(0xFF212327)
+val MaxlySilver = Color(0xFFCCD0D6)
 
 private val LightColors = lightColorScheme(
-    primary = OrbitleGraphite,
+    primary = MaxlyGraphite,
     onPrimary = Color.White,
     primaryContainer = Color(0xFFE3E4E7),
     onPrimaryContainer = Color(0xFF17181B),
@@ -38,7 +38,7 @@ private val LightColors = lightColorScheme(
 )
 
 private val DarkColors = darkColorScheme(
-    primary = OrbitleSilver,
+    primary = MaxlySilver,
     onPrimary = Color(0xFF15171A),
     primaryContainer = Color(0xFF3A3D43),
     onPrimaryContainer = Color(0xFFE4E6EA),
@@ -75,7 +75,7 @@ object AvatarPalette {
 }
 
 @Composable
-fun OrbitleTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+fun MaxlyTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = if (darkTheme) DarkColors else LightColors,
         typography = Typography(),

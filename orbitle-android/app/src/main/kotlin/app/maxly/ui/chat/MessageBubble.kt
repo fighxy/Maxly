@@ -116,7 +116,7 @@ import app.maxly.presentation.chat.WaveformLayout
 import app.maxly.presentation.chatlist.ChatListFormatter
 import app.maxly.ui.components.Avatar
 import app.maxly.ui.theme.AvatarPalette
-import app.maxly.ui.theme.OrbitleOutgoing
+import app.maxly.ui.theme.MaxlyOutgoing
 import coil3.compose.AsyncImage
 
 private val MissedRed = Color(0xFFE5484D)
@@ -129,7 +129,7 @@ fun bubbleColors(outgoing: Boolean): BubbleColors {
     val scheme = MaterialTheme.colorScheme
     return if (outgoing) {
         // Свой пузырь в обеих темах — фирменный акцент с белым текстом.
-        BubbleColors(OrbitleOutgoing, Color.White, Color.White.copy(alpha = 0.72f), Color.White)
+        BubbleColors(MaxlyOutgoing, Color.White, Color.White.copy(alpha = 0.72f), Color.White)
     } else {
         // На обоях в светлой теме чужой пузырь белый, чтобы читался на светлом узоре.
         val backdrop = app.maxly.ui.components.LocalChatBackdrop.current

@@ -61,7 +61,7 @@ class CoreProfileRepository(private val client: MaxClient) : ProfileRepository {
         if (peer == null || peer == me || peer == 0L) return ChatProfile(ChatProfile.Kind.SAVED, chatId)
         val user = MaxCoreGateway.read { client.loadUsers(listOf(peer)) }.firstOrNull { it.id == peer }
             ?: client.store.state.value.users[peer]
-            ?: throw app.maxly.domain.OrbitleError.Rejected("Пользователь не найден")
+            ?: throw app.maxly.domain.MaxlyError.Rejected("Пользователь не найден")
         val bot = if ("BOT" !in user.options) null else runCatching { MaxCoreGateway.read { client.api.bots.getBotInfo(peer) } }.getOrNull()
         return userProfile(chatId, bot?.contact ?: user, bot?.commands?.map { ChatProfile.BotCommand(it.name, it.description) }, displayFrom = user)
     }

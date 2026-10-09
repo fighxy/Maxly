@@ -7,7 +7,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.webkit.MimeTypeMap
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.presentation.chat.MediaSaver
 import app.maxly.presentation.chat.SavedKind
 import kotlinx.coroutines.Dispatchers
@@ -24,12 +24,12 @@ class MediaStoreSaver(context: Context) : MediaSaver {
 
     override suspend fun save(path: String, name: String, kind: SavedKind) = withContext(Dispatchers.IO) {
         val source = File(path)
-        if (!source.isFile) throw OrbitleError.Rejected("Файл не найден")
+        if (!source.isFile) throw MaxlyError.Rejected("Файл не найден")
         val mime = mimeOf(name, kind)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) insert(source, name, mime, kind) else legacy(source, name, mime, kind)
         } catch (e: SecurityException) {
-            throw OrbitleError.Rejected("Нет доступа к памяти телефона")
+            throw MaxlyError.Rejected("Нет доступа к памяти телефона")
         }
     }
 
@@ -47,10 +47,10 @@ class MediaStoreSaver(context: Context) : MediaSaver {
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
         val resolver = app.contentResolver
-        val uri = resolver.insert(collection, values) ?: throw OrbitleError.Rejected("Не удалось сохранить")
+        val uri = resolver.insert(collection, values) ?: throw MaxlyError.Rejected("Не удалось сохранить")
         try {
             resolver.openOutputStream(uri)?.use { out -> source.inputStream().use { it.copyTo(out) } }
-                ?: throw OrbitleError.Rejected("Не удалось сохранить")
+                ?: throw MaxlyError.Rejected("Не удалось сохранить")
             resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
         } catch (e: Exception) {
             resolver.delete(uri, null, null)

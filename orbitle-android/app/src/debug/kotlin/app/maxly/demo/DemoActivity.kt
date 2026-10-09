@@ -31,7 +31,7 @@ import app.maxly.presentation.chat.ChatViewModel
 import app.maxly.ui.chat.ChatScreen
 import app.maxly.ui.chatlist.ChatListScreen
 import app.maxly.presentation.chatlist.ChatListViewModel
-import app.maxly.ui.theme.OrbitleTheme
+import app.maxly.ui.theme.MaxlyTheme
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -82,7 +82,7 @@ class DemoActivity : ComponentActivity() {
         setContent {
             val prefs by appearance.state.collectAsState()
             val dark = isSystemInDarkTheme()
-            OrbitleTheme {
+            MaxlyTheme {
                 CompositionLocalProvider(LocalChatBackdrop provides ChatBackdrop(prefs.wallpaper, dark)) {
                     when (screen) {
                         "chats" -> ChatListScreen(viewModel { ChatListViewModel(DemoChats(), local = DemoMarks()) }, onOpenChat = {})
@@ -284,7 +284,7 @@ private class DemoProfiles(private val group: Boolean) : app.maxly.data.ProfileR
 private class DemoStickers : app.maxly.data.StickerRepository {
     private val res = listOf(
         app.maxly.R.drawable.wallpaper_autumn_thumb, app.maxly.R.drawable.wallpaper_autumn_dark_thumb,
-        app.maxly.R.drawable.wallpaper_autumn_night_thumb, app.maxly.R.drawable.orbitle_mark,
+        app.maxly.R.drawable.wallpaper_autumn_night_thumb, app.maxly.R.drawable.maxly_mark,
     )
     override suspend fun catalog() = app.maxly.domain.StickerCatalog(
         listOf("1"),

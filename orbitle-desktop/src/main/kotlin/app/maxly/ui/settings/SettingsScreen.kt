@@ -279,7 +279,7 @@ fun AboutScreen(onBack: () -> Unit) {
         ) {
             Spacer(Modifier.height(24.dp))
             Image(
-                painterResource(R.drawable.orbitle_mark),
+                painterResource(R.drawable.maxly_mark),
                 contentDescription = null,
                 modifier = Modifier.size(96.dp).background(MaterialTheme.colorScheme.primary, CircleShape).padding(12.dp),
                 colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onPrimary),

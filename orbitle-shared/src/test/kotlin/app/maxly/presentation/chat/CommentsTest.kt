@@ -10,7 +10,7 @@ import app.maxly.domain.Message
 import app.maxly.domain.MessageContent
 import app.maxly.domain.MessageReaction
 import app.maxly.domain.MessageStatus
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestCoroutineScheduler
@@ -86,7 +86,7 @@ class CommentsTest {
 
     @Test
     fun failedFirstLoadOffersRetry() {
-        repo.failure = OrbitleError.Rejected("нет")
+        repo.failure = MaxlyError.Rejected("нет")
         model.load()
         assertEquals(CommentsState.Phase.Failed("нет"), model.state.value.phase)
         repo.failure = null
@@ -109,7 +109,7 @@ class CommentsTest {
     @Test
     fun failedSendKeepsTextAndCanRetry() {
         model.load()
-        repo.sendFailure = OrbitleError.Rejected("нельзя")
+        repo.sendFailure = MaxlyError.Rejected("нельзя")
         model.setDraft("привет")
         model.send()
         val failed = model.state.value.comments.last()
@@ -182,7 +182,7 @@ class CommentsTest {
         assertTrue(repo.asked.isEmpty())
     }
 
-    private val rateLimited = OrbitleError.Server(OrbitleError.RATE_LIMIT_CODE)
+    private val rateLimited = MaxlyError.Server(MaxlyError.RATE_LIMIT_CODE)
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun limitedModel(scheduler: TestCoroutineScheduler) =

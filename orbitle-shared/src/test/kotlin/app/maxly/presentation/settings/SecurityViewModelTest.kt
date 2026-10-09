@@ -8,7 +8,7 @@ import app.maxly.domain.Account
 import app.maxly.domain.AccountSettings
 import app.maxly.domain.BlockedUser
 import app.maxly.domain.MiniApp
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.PrivacyChange
 import app.maxly.domain.TwoFactorStatus
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -92,7 +92,7 @@ class SecurityViewModelTest {
         model.load()
         assertEquals(true, model.state.value.status?.isEnabled)
         assertEquals("i•••n@ya.ru", model.maskedEmail)
-        repo.failure = OrbitleError.NetworkUnavailable
+        repo.failure = MaxlyError.NetworkUnavailable
         model.load()
         assertNull(model.state.value.status)
         assertEquals("Нет соединения с сервером", model.state.value.failure)
@@ -129,7 +129,7 @@ class SecurityViewModelTest {
 private class EmailAccount : AccountRepository {
     override val account = MutableStateFlow<Account?>(null)
     override val settings = MutableStateFlow(AccountSettings())
-    var failure: OrbitleError? = null
+    var failure: MaxlyError? = null
     val emailCodes = mutableListOf<Pair<String, String>>()
     var confirmedCode: String? = null
 
@@ -164,7 +164,7 @@ private class EmailAccount : AccountRepository {
     }
 
     override suspend fun startEmailChange(password: String): String {
-        if (password != "secret") throw OrbitleError.Rejected("Неверный пароль")
+        if (password != "secret") throw MaxlyError.Rejected("Неверный пароль")
         return "track"
     }
 

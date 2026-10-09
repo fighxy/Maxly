@@ -2,7 +2,7 @@ package app.maxly.data
 
 import app.maxly.domain.Chat
 import app.maxly.domain.ChatAttachment
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.OutgoingFile
 import app.maxly.domain.Message
 import app.maxly.domain.PollContent
@@ -115,15 +115,15 @@ interface MessageRepository {
      * [progress] получает долю загрузки 0…1.
      */
     suspend fun sendMedia(chatId: String, items: List<OutgoingFile>, caption: String, replyTo: String?, progress: (Float) -> Unit = {}): Unit =
-        throw OrbitleError.Rejected("Отправка вложений недоступна")
+        throw MaxlyError.Rejected("Отправка вложений недоступна")
 
     /** Отправить записанное голосовое. Сообщение сразу встаёт в ленту, как вложения. */
     suspend fun sendVoice(chatId: String, recording: app.maxly.domain.VoiceRecording, replyTo: String?): Unit =
-        throw OrbitleError.Rejected("Голосовые недоступны")
+        throw MaxlyError.Rejected("Голосовые недоступны")
 
     /** Отправить записанный кружок (`videoType` 1). Сообщение сразу встаёт в ленту. */
     suspend fun sendVideoNote(chatId: String, recording: app.maxly.domain.VideoNoteRecording, replyTo: String?): Unit =
-        throw OrbitleError.Rejected("Видеосообщения недоступны")
+        throw MaxlyError.Rejected("Видеосообщения недоступны")
 
     /** Отправить стикер каталога. */
     /**
@@ -133,7 +133,7 @@ interface MessageRepository {
     suspend fun sendTyping(chatId: String, kind: app.maxly.domain.TypingKind, postId: String? = null): Boolean = false
 
     suspend fun sendSticker(chatId: String, sticker: app.maxly.domain.Sticker, replyTo: String?): Unit =
-        throw OrbitleError.Rejected("Стикеры недоступны")
+        throw MaxlyError.Rejected("Стикеры недоступны")
 
     /** Повторить не ушедшее сообщение. */
     /** Остановить загрузку вложений своего сообщения [localId]: оно убирается, ничего не уходит. */
@@ -173,7 +173,7 @@ interface MessageRepository {
      * прочтения перед ним. Видно и на других устройствах. Возвращает новое число непрочитанных.
      */
     suspend fun markUnread(chatId: String, fromMs: Long): Int =
-        throw app.maxly.domain.OrbitleError.Rejected("Пометка непрочитанным недоступна")
+        throw app.maxly.domain.MaxlyError.Rejected("Пометка непрочитанным недоступна")
 
     /** Поставить реакцию или снять свою (`null`). */
     suspend fun react(chatId: String, messageId: String, emoji: String?)
@@ -191,7 +191,7 @@ interface MessageRepository {
      * Расшифровка голосового [voiceId] сообщения [messageId]. `null` — сервер ещё расшифровывает,
      * готовый текст придёт в [transcriptions].
      */
-    suspend fun transcribe(chatId: String, messageId: String, voiceId: String): String? = throw OrbitleError.Rejected("Расшифровка недоступна")
+    suspend fun transcribe(chatId: String, messageId: String, voiceId: String): String? = throw MaxlyError.Rejected("Расшифровка недоступна")
 
     /** Готовые расшифровки, присланные сервером позже: id сообщения → текст. */
     fun transcriptions(): Flow<Pair<String, String>> = emptyFlow()
@@ -205,10 +205,10 @@ interface MessageRepository {
     suspend fun messageReaders(chatId: String, messageId: String): List<app.maxly.domain.MessageReader>? = null
 
     suspend fun reactionUsers(chatId: String, messageId: String): List<app.maxly.domain.ReactionUser> =
-        throw OrbitleError.Rejected("Список недоступен")
+        throw MaxlyError.Rejected("Список недоступен")
 
     /** Пересылает сообщение [messageId] из [chatId] в чат [targetChatId]. */
-    suspend fun forward(chatId: String, messageId: String, targetChatId: String): Unit = throw OrbitleError.Rejected("Пересылка недоступна")
+    suspend fun forward(chatId: String, messageId: String, targetChatId: String): Unit = throw MaxlyError.Rejected("Пересылка недоступна")
 
     /**
      * Переслать несколько сообщений из [chatId] в [targetChatId] по порядку [messageIds] (от
@@ -272,7 +272,7 @@ interface MessageRepository {
 
     /** Новый текст и время отложенного (`MSG_EDIT` 67). Вложения не трогаются. */
     suspend fun editScheduled(chatId: String, messageId: String, text: String, sendAt: Long): Unit =
-        throw OrbitleError.Rejected("Правка отложенных недоступна")
+        throw MaxlyError.Rejected("Правка отложенных недоступна")
 
     /** Отменить отложенные (`MSG_DELETE` 66, `DELAYED`). */
     suspend fun cancelScheduled(chatId: String, messageIds: List<String>): DeleteOutcome = DeleteOutcome(emptyList(), messageIds)
@@ -295,7 +295,7 @@ interface MessageRepository {
     /** Поиск по сообщениям открытого чата (`MSG_SEARCH` 73). */
     suspend fun searchInChat(chatId: String, query: String): List<app.maxly.domain.FoundMessage> = emptyList()
 
-    suspend fun mediaLink(chatId: String, messageId: String, attachment: ChatAttachment): String = throw OrbitleError.Rejected("Вложение недоступно")
+    suspend fun mediaLink(chatId: String, messageId: String, attachment: ChatAttachment): String = throw MaxlyError.Rejected("Вложение недоступно")
 }
 
 /** Итог удаления выбранного: [failed] — id, которые сервер оставил. */

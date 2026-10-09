@@ -23,7 +23,7 @@ interface ChatRepository : ChatMembersSource {
      * после них в прежнем порядке.
      */
     suspend fun reorderPinned(chatIds: List<String>): Unit =
-        throw app.maxly.domain.OrbitleError.Rejected("Порядок закреплённых здесь не меняется")
+        throw app.maxly.domain.MaxlyError.Rejected("Порядок закреплённых здесь не меняется")
 
     /** Выключить уведомления чата насовсем или включить обратно. */
     suspend fun setMuted(chatId: String, muted: Boolean) {}
@@ -105,11 +105,11 @@ interface ChatRepository : ChatMembersSource {
      * приходит сообщением; здесь — короткий текст или адрес, если сервер их прислал.
      */
     suspend fun pressButton(chatId: String, messageId: String, callbackId: String, payload: String?): ButtonAnswer =
-        throw app.maxly.domain.OrbitleError.Rejected("Кнопка не поддерживается")
+        throw app.maxly.domain.MaxlyError.Rejected("Кнопка не поддерживается")
 
     /** Выйти из группы или отписаться от канала (`CHAT_LEAVE` 58): чат уходит из списка. */
     suspend fun leaveChat(chatId: String): Unit =
-        throw app.maxly.domain.OrbitleError.Rejected("Выйти из чата нельзя")
+        throw app.maxly.domain.MaxlyError.Rejected("Выйти из чата нельзя")
 
     /** Забыть всё про аккаунт (выход). */
     fun clear()

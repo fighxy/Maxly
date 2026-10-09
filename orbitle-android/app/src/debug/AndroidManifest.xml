@@ -5,7 +5,7 @@
         <activity
             android:name="app.maxly.demo.DemoActivity"
             android:exported="true"
-            android:theme="@style/Theme.Orbitle"
+            android:theme="@style/Theme.Maxly"
             android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>

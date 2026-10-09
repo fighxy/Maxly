@@ -3,7 +3,7 @@ package app.maxly.presentation.stories
 import app.maxly.MainDispatcherRule
 import app.maxly.data.OwnerStories
 import app.maxly.data.StoriesRepository
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.OutgoingStory
 import app.maxly.domain.Story
 import app.maxly.domain.StoryArchive
@@ -64,7 +64,7 @@ class MyStoriesViewModelTest {
     @Test
     fun failureKeepsListAndAllowsRetry() {
         val repo = Archive(mutableMapOf(null to StoryArchive(listOf(story(1)), 5L)))
-        repo.failure = OrbitleError.Rejected("Нет сети")
+        repo.failure = MaxlyError.Rejected("Нет сети")
         val model = MyStoriesViewModel(repo)
         assertFalse(model.state.value.loaded)
         assertEquals("Нет сети", model.state.value.error)

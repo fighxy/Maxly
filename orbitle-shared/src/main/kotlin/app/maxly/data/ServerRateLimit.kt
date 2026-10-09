@@ -1,6 +1,6 @@
 package app.maxly.data
 
-import app.maxly.domain.OrbitleError
+import app.maxly.domain.MaxlyError
 
 /**
  * Пауза после ответа сервера `too.many.requests`.
@@ -38,7 +38,7 @@ class ServerRateLimit(private val clock: () -> Long = System::currentTimeMillis)
 
     companion object {
         /** Ключ ошибки сервера, по которому включается пауза. */
-        const val KEY = OrbitleError.RATE_LIMIT_CODE
+        const val KEY = MaxlyError.RATE_LIMIT_CODE
         private val PAUSES_MS = longArrayOf(15_000, 30_000, 60_000, 120_000)
 
         /** Одна пауза на процесс: сервер считает запросы всей сессии. */

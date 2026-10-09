@@ -6,7 +6,7 @@ import com.max.shared.PlatformSession
 import com.max.shared.init
 import kotlinx.coroutines.launch
 
-class OrbitleApp : Application() {
+class MaxlyApp : Application() {
     lateinit var container: AppContainer
         private set
 

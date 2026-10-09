@@ -66,7 +66,7 @@ object R {
     }
 
     object drawable {
-        const val orbitle_mark = 1001
+        const val maxly_mark = 1001
         const val splash_mark = 1002
         const val wallpaper_autumn = 1003
         const val wallpaper_autumn_thumb = 1004
@@ -142,7 +142,7 @@ internal val STRING_TABLE: Map<Int, String> = mapOf(
 )
 
 internal val DRAWABLE_FILES: Map<Int, String> = mapOf(
-    R.drawable.orbitle_mark to "orbitle_mark.png",
+    R.drawable.maxly_mark to "maxly_mark.png",
     R.drawable.splash_mark to "splash_mark.png",
     R.drawable.wallpaper_autumn to "wallpaper_autumn.jpg",
     R.drawable.wallpaper_autumn_thumb to "wallpaper_autumn_thumb.jpg",

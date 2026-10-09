@@ -17,14 +17,14 @@ class CoreChatAdminRepository(private val client: MaxClient) : ChatAdminReposito
 
     override suspend fun saveCard(chatId: String, title: String, description: String) {
         val name = title.trim()
-        if (name.isEmpty()) throw app.maxly.domain.OrbitleError.Rejected("Название не может быть пустым")
+        if (name.isEmpty()) throw app.maxly.domain.MaxlyError.Rejected("Название не может быть пустым")
         store(MaxCoreGateway.call {
             client.api.chats.updateProfile(id(chatId), title = name, description = description.trim())
         })
     }
 
     override suspend fun setPhoto(chatId: String, jpeg: ByteArray) {
-        if (jpeg.isEmpty()) throw app.maxly.domain.OrbitleError.Rejected("Файл пустой")
+        if (jpeg.isEmpty()) throw app.maxly.domain.MaxlyError.Rejected("Файл пустой")
         val token = MaxCoreGateway.call { client.media.uploadPhoto(jpeg, "chat.jpg").photoToken }
         store(MaxCoreGateway.call { client.api.chats.updateProfile(id(chatId), photoToken = token) })
     }
