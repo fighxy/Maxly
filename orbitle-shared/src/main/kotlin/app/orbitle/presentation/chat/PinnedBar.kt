@@ -59,4 +59,13 @@ object PinChoices {
 object AttachmentFailures {
     fun target(inFlight: Collection<String>, uploadId: Long? = null): String? =
         if (uploadId != null) null else inFlight.singleOrNull()
+
+    /**
+     * Текст для экрана, как на iOS: «Вложение не отправлено: <ошибка сервера>». Причина нужна:
+     * сервер может не принять файл по типу или размеру, и повтор тогда не поможет.
+     */
+    fun text(server: String?): String =
+        server?.trim()?.takeIf { it.isNotEmpty() }?.let { "$NOT_SENT: $it" } ?: NOT_SENT
+
+    private const val NOT_SENT = "Вложение не отправлено"
 }

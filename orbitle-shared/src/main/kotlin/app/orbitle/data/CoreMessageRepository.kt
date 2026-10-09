@@ -255,14 +255,17 @@ class CoreMessageRepository(
     private val uploads = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Job>()
     /** Загрузки живут дольше экрана: уход из чата их не обрывает. */
     private val uploadScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
-    /** Загрузки, которые сервер отверг пушем `NOTIF_ATTACH` с `error`: они встают «не отправлено». */
-    private val rejectedUploads = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    /**
+     * Загрузки, которые сервер отверг пушем `NOTIF_ATTACH` с `error`, и его текст: они встают
+     * «не отправлено» с причиной.
+     */
+    private val rejectedUploads = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     init {
         uploadScope.launch {
             client.events.all.filterIsInstance<MaxEvent.AttachmentFailed>().collect {
                 val id = app.orbitle.presentation.chat.AttachmentFailures.target(uploads.keys.toList(), it.id) ?: return@collect
-                rejectedUploads += id
+                rejectedUploads[id] = it.error
                 uploads[id]?.cancel()
             }
         }
@@ -399,9 +402,15 @@ class CoreMessageRepository(
                     uploads[local.id] = work
                     try {
                         work.await()
+                    } catch (e: CoreFailure) {
+                        // Сервер не принял файл (пуш с id вложения или отказ отправки): показывается
+                        // его причина, а не «попробуйте позже» — повтор того же файла не пройдёт.
+                        // Частые запросы — пауза, а не отказ: такая ошибка остаётся прежней.
+                        if (e.kind != "SERVER" && e.kind != "UPLOAD" || e.key == OrbitleError.RATE_LIMIT_CODE) throw e
+                        throw OrbitleError.Rejected(app.orbitle.presentation.chat.AttachmentFailures.text(e.serverText ?: e.key))
                     } catch (e: kotlinx.coroutines.CancellationException) {
                         // Сервер отверг вложение (пуш без id): сообщение остаётся с «Повторить».
-                        if (rejectedUploads.remove(local.id)) throw OrbitleError.Rejected("Сервер не принял вложение")
+                        rejectedUploads.remove(local.id)?.let { throw OrbitleError.Rejected(app.orbitle.presentation.chat.AttachmentFailures.text(it)) }
                         // Отменили кнопкой: сообщение уже убрано, это не ошибка.
                         if (work.isCancelled) return@withContext
                         throw e

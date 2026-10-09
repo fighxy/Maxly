@@ -77,4 +77,12 @@ class PinnedBarTest {
         // С id вложения загрузку обрывает само ядро.
         assertNull(AttachmentFailures.target(listOf("local-1"), uploadId = 77L))
     }
+
+    @Test
+    fun attachmentFailureTextCarriesServerReason() {
+        assertEquals("Вложение не отправлено: file.type.forbidden", AttachmentFailures.text("file.type.forbidden"))
+        assertEquals("Вложение не отправлено: Файл слишком большой", AttachmentFailures.text("  Файл слишком большой "))
+        assertEquals("Вложение не отправлено", AttachmentFailures.text(null))
+        assertEquals("Вложение не отправлено", AttachmentFailures.text(" "))
+    }
 }
