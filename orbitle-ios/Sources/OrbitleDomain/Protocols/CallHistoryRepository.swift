@@ -13,6 +13,8 @@ public struct CallCapabilities: OptionSet, Sendable {
     public static let createLink = CallCapabilities(rawValue: 1 << 2)
     /// Вход в звонок по ссылке.
     public static let join = CallCapabilities(rawValue: 1 << 3)
+    /// Журнал приходит страницами (`loadMore`).
+    public static let paging = CallCapabilities(rawValue: 1 << 4)
 }
 
 public protocol CallHistoryRepository: Sendable {
@@ -22,6 +24,8 @@ public protocol CallHistoryRepository: Sendable {
     /// Загрузить историю с сервера заново: новый список приходит в `calls()`, звонки,
     /// удалённые на другом устройстве, из него пропадают.
     func refresh() async
+    /// Следующая страница журнала (курсор сервера). `true` — за ней может быть ещё.
+    func loadMore() async -> Bool
     func delete(ids: [String]) async throws(OrbitleError)
     func createCallLink() async throws(OrbitleError) -> URL
     func join(link: String) async throws(OrbitleError)
@@ -29,6 +33,7 @@ public protocol CallHistoryRepository: Sendable {
 
 public extension CallHistoryRepository {
     func refresh() async {}
+    func loadMore() async -> Bool { false }
     func delete(ids: [String]) async throws(OrbitleError) { throw .invalidRequest }
     func createCallLink() async throws(OrbitleError) -> URL { throw .invalidRequest }
     func join(link: String) async throws(OrbitleError) { throw .invalidRequest }

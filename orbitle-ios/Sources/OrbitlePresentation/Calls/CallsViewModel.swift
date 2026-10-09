@@ -57,6 +57,10 @@ public final class CallsViewModel {
     public private(set) var state: State = .loading
     public private(set) var rows: [CallRow] = []
     public private(set) var errorMessage: String?
+    /// За последней строкой журнала может быть ещё страница: экран просит её, дойдя до конца.
+    public private(set) var canLoadMore = false
+    /// Сколько раз догружали страницы: экран перезапускает по нему догрузку у последней строки.
+    public private(set) var loadedPages = 0
     /// Ссылка на только что созданный звонок: экран предлагает ею поделиться.
     public var createdLink: URL?
 
@@ -77,6 +81,8 @@ public final class CallsViewModel {
     @ObservationIgnored private let marks: any CallHistoryMarks
     /// Вкладка «Звонки» на экране: всё, что пришло, пока она видна, считается просмотренным.
     @ObservationIgnored private var isVisible = false
+    @ObservationIgnored private var loadingMore = false
+    @ObservationIgnored private var receivedOnce = false
 
     public init(
         calls: any CallHistoryRepository,
@@ -113,6 +119,8 @@ public final class CallsViewModel {
         watch?.cancel()
         watch = nil
         isVisible = false
+        receivedOnce = false
+        canLoadMore = false
     }
 
     /// Вкладка «Звонки» открылась: пропущенные просмотрены, история грузится заново.
@@ -130,6 +138,17 @@ public final class CallsViewModel {
     /// Загрузить историю заново (например, приложение вернулось на передний план).
     public func refresh() async {
         await repository.refresh()
+    }
+
+    /// Экран дошёл до последней строки: следующая страница журнала. Повторный вызов, пока
+    /// страница грузится, ничего не делает.
+    public func loadMore() async {
+        guard canLoadMore, !loadingMore else { return }
+        loadingMore = true
+        let more = await repository.loadMore()
+        loadingMore = false
+        loadedPages += 1
+        if more != canLoadMore { canLoadMore = more }
     }
 
     /// Удаляет строку со всеми звонками группы. Без поддержки сервера запись
@@ -182,6 +201,11 @@ public final class CallsViewModel {
 
     private func receive(_ list: [CallRecord]) {
         records = list
+        // Первая страница пришла: дальше листание просит следующие, пока сервер их даёт.
+        if !receivedOnce {
+            receivedOnce = true
+            canLoadMore = repository.capabilities.contains(.paging)
+        }
         // Звонки, которых больше нет на сервере, скрывать уже незачем. Пустой список может
         // быть ошибкой загрузки, по нему скрытые не чистятся.
         if !list.isEmpty {

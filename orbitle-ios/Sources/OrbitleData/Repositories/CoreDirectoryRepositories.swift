@@ -245,20 +245,39 @@ public actor CoreContactRepository: ContactRepository {
     }
 }
 
-/// Журнал звонков из ядра (`VIDEO_CHAT_HISTORY`).
+/// Пуши журнала звонков (`NOTIF_CALL_HISTORY` 165), которые раздаёт `SyncEngine`.
+public protocol CallLogSink: Sendable {
+    /// `action` — `add` или `remove`; `item.historyId` пуст, если пуш пришёл без записей.
+    func callLogChanged(action: String, item: CallLogItem) async
+}
+
+/// Журнал звонков из ядра (`CALL_HISTORY` 163 по курсору, пуш 165).
 ///
-/// Подписка сразу получает последний загруженный список (если он есть), затем свежий из ядра
-/// и дальше каждый следующий: `refresh()` грузит историю заново и раздаёт её всем живым
-/// подпискам, так что звонки, удалённые на другом устройстве, пропадают без перезапуска.
+/// Первый запрос идёт с пустым курсором, следующие — с курсором прошлого ответа: так приходят
+/// следующие страницы (`loadMore`) и новые звонки (`refresh`). Ответ с `reset` заменяет журнал.
+/// Пуш `add` перечитывает журнал с курсора, пуш `remove` сразу убирает записи.
+/// Ядро без `callHistory` (фейки в тестах) читает прежний журнал `VIDEO_CHAT_HISTORY` 79.
+///
+/// Подписка сразу получает последний собранный список (если он есть), затем свежий. Имена и
+/// аватары собеседников берутся из контактов ядра, остальные — из карточки диалога или чата.
 /// Список живёт только в памяти: `reset()` забывает его при выходе и смене аккаунта.
-public actor CoreCallHistoryRepository: CallHistoryRepository {
+public actor CoreCallHistoryRepository: CallHistoryRepository, CallLogSink {
     private let core: any MaxCore
     private var cached: [CallRecord]?
+    private var log = CallLog()
+    /// Ядро не умеет `CALL_HISTORY` 163: журнал целиком из `VIDEO_CHAT_HISTORY` 79.
+    private var legacy = false
+    private var me: String?
+    /// Имена и аватары по id собеседника (у группового — по id чата).
+    private var peers: [String: CallLogPeer] = [:]
+    private var lookedUp: Set<String> = []
     private var subscribers: [UUID: AsyncStream<[CallRecord]>.Continuation] = [:]
     private var loading: Task<Void, Never>?
     private var loads = 0
     /// Растёт при `reset()`: ответ, начатый до выхода, не попадает к следующему аккаунту.
     private var generation = 0
+    /// Сколько карточек спрашивать за один проход: остальные — при следующем.
+    private let profileLookups = 20
 
     public init(core: any MaxCore) {
         self.core = core
@@ -266,9 +285,9 @@ public actor CoreCallHistoryRepository: CallHistoryRepository {
 
     /// Удаление уходит на сервер (`VIDEO_CHAT_DELETE_HISTORY`), ссылка создаётся там же.
     /// Вход по ссылке открывает звонок, поэтому его делает центр звонков, а не журнал.
-    public nonisolated var capabilities: CallCapabilities { [.history, .delete, .createLink, .join] }
+    public nonisolated var capabilities: CallCapabilities { [.history, .delete, .createLink, .join, .paging] }
 
-    /// Удаляет звонки на сервере и загружает журнал заново.
+    /// Удаляет звонки на сервере (`historyIds`) и сразу убирает их из списка.
     public func delete(ids: [String]) async throws(OrbitleError) {
         let valid = ids.filter { Int64($0) != nil }
         guard !valid.isEmpty else { return }
@@ -279,8 +298,12 @@ public actor CoreCallHistoryRepository: CallHistoryRepository {
             throw CoreMapping.apiError(error).orbitleError
         }
         Log.info(.calls, "Удалено звонков: \(valid.count)")
-        cached = cached?.filter { !valid.contains($0.id) }
-        if let cached { broadcast(cached) }
+        if legacy {
+            cached = cached?.filter { !valid.contains($0.id) }
+            if let cached { broadcast(cached) }
+        } else if log.remove(valid) {
+            await publish(generation)
+        }
     }
 
     public func createCallLink() async throws(OrbitleError) -> URL {
@@ -313,10 +336,45 @@ public actor CoreCallHistoryRepository: CallHistoryRepository {
         await load()
     }
 
+    /// Следующая страница с курсора прошлого ответа.
+    public func loadMore() async -> Bool {
+        guard !legacy, log.hasMore else { return false }
+        if let loading { await loading.value }
+        guard log.hasMore else { return false }
+        await load()
+        return !legacy && log.hasMore
+    }
+
     public func reset() {
         generation += 1
         cached = nil
+        log = CallLog()
+        legacy = false
+        me = nil
+        peers = [:]
+        lookedUp = []
     }
+
+    // MARK: Пуши
+
+    public func callLogChanged(action: String, item: CallLogItem) async {
+        guard !legacy else {
+            await refresh()
+            return
+        }
+        switch action {
+        case "remove" where !item.historyId.isEmpty:
+            if log.remove([item.historyId]) { await publish(generation) }
+        case "add" where !item.historyId.isEmpty:
+            // В пуше нет исхода и длительности: полная запись приходит с курсора.
+            await refresh()
+            if log.items[item.historyId] == nil, log.add([item]) { await publish(generation) }
+        default:
+            await refresh()
+        }
+    }
+
+    // MARK: Загрузка
 
     private func subscribe(_ id: UUID, _ continuation: AsyncStream<[CallRecord]>.Continuation) async {
         guard !Task.isCancelled else { return }
@@ -352,6 +410,29 @@ public actor CoreCallHistoryRepository: CallHistoryRepository {
     }
 
     private func fetch(_ started: Int) async {
+        if legacy {
+            await fetchLegacy(started)
+            return
+        }
+        do {
+            let page = try await core.callHistory(sync: log.sync)
+            guard started == generation else { return }
+            log.apply(page)
+            Log.info(.calls, "Журнал звонков: +\(page.items.count)\(page.reset ? ", заново" : ""), всего \(log.items.count)")
+            await publish(started)
+        } catch let failure as CoreFailure where failure.key == "unsupported" {
+            guard started == generation else { return }
+            legacy = true
+            await fetchLegacy(started)
+        } catch {
+            Log.warning(.calls, "Журнал звонков не загрузился: \(error)")
+            // Экран не должен вечно показывать загрузку, а известный список остаётся.
+            guard started == generation, cached == nil else { return }
+            broadcast([])
+        }
+    }
+
+    private func fetchLegacy(_ started: Int) async {
         do {
             let list = try await core.loadCallHistory().map(CoreMapping.call)
                 .sorted { $0.date > $1.date }
@@ -361,10 +442,78 @@ public actor CoreCallHistoryRepository: CallHistoryRepository {
             broadcast(list)
         } catch {
             Log.warning(.calls, "Журнал звонков не загрузился: \(error)")
-            // Экран не должен вечно показывать загрузку, а известный список остаётся.
             guard started == generation, cached == nil else { return }
             broadcast([])
         }
+    }
+
+    /// Собирает строки из журнала и раздаёт их; незнакомые имена ищет и раздаёт ещё раз.
+    private func publish(_ started: Int) async {
+        let mine = await ownId()
+        guard started == generation else { return }
+        emit(mine)
+        let unknown = unknownPeers(mine)
+        guard !unknown.isEmpty else { return }
+        lookedUp.formUnion(unknown.map(\.key))
+        let found = await resolve(unknown, me: mine)
+        guard started == generation, !found.isEmpty else { return }
+        peers.merge(found) { _, new in new }
+        emit(mine)
+    }
+
+    private func emit(_ mine: String) {
+        let list = log.ordered.map { item in
+            CallLog.record(item, me: mine, peer: peers[Self.peerKey(item, me: mine)])
+        }
+        cached = list
+        broadcast(list)
+    }
+
+    private func ownId() async -> String {
+        if let me, !me.isEmpty { return me }
+        let id = await core.currentUserId()
+        me = id
+        return id
+    }
+
+    /// Ключ имени: собеседник, у группового — чат.
+    private static func peerKey(_ item: CallLogItem, me: String) -> String {
+        item.isGroup ? item.chatId : CallLog.peerId(of: item, me: me)
+    }
+
+    private struct Unknown: Sendable {
+        var key: String
+        var isGroup: Bool
+    }
+
+    private func unknownPeers(_ mine: String) -> [Unknown] {
+        var seen: Set<String> = []
+        var list: [Unknown] = []
+        for item in log.ordered where item.callName.isEmpty {
+            let key = Self.peerKey(item, me: mine)
+            guard !key.isEmpty, peers[key] == nil, !lookedUp.contains(key), seen.insert(key).inserted else { continue }
+            list.append(Unknown(key: key, isGroup: item.isGroup))
+        }
+        return list
+    }
+
+    /// Сначала контакты ядра (они уже в памяти), остальным — карточка диалога или чата.
+    private func resolve(_ unknown: [Unknown], me mine: String) async -> [String: CallLogPeer] {
+        var found: [String: CallLogPeer] = [:]
+        if unknown.contains(where: { !$0.isGroup }), let contacts = try? await core.loadContacts() {
+            let wanted = Set(unknown.filter { !$0.isGroup }.map(\.key))
+            for contact in contacts where wanted.contains(contact.id) {
+                let name = [contact.firstName, contact.lastName].filter { !$0.isEmpty }.joined(separator: " ")
+                guard !name.isEmpty else { continue }
+                found[contact.id] = CallLogPeer(name: name, avatarURL: contact.avatarURL.isEmpty ? nil : URL(string: contact.avatarURL))
+            }
+        }
+        for entry in unknown.filter({ found[$0.key] == nil }).prefix(profileLookups) {
+            let chatId = entry.isGroup ? entry.key : CallLog.dialogChatId(me: mine, peerId: entry.key)
+            guard !chatId.isEmpty, let profile = try? await core.loadProfile(chatId: chatId), !profile.title.isEmpty else { continue }
+            found[entry.key] = CallLogPeer(name: profile.title, avatarURL: profile.avatarURL.isEmpty ? nil : URL(string: profile.avatarURL))
+        }
+        return found
     }
 
     private func broadcast(_ list: [CallRecord]) {

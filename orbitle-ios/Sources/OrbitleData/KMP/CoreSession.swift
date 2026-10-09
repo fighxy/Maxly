@@ -433,6 +433,9 @@ public struct CoreEvent: Sendable, Equatable {
         /// Отложенное сообщение (`created`, `edited`, `deleted`, `fired` в `text`).
         /// В базу не пишется: список перечитывает открытый чат.
         case scheduled
+        /// Журнал звонков изменился (`NOTIF_CALL_HISTORY` 165): `text` — `add` или `remove`,
+        /// `messageId` — `historyId` записи (пусто — пуш без записей, журнал перечитывается).
+        case callLog
     }
 
     public var kind: Kind
@@ -589,6 +592,12 @@ public protocol MaxCore: Sendable {
     func events() -> AsyncStream<CoreEvent>
     func loadContacts() async throws -> [CoreContact]
     func loadCallHistory() async throws -> [CoreCall]
+    /// Журнал звонков по курсору (`CALL_HISTORY` 163): пусто или `0` — первая страница, дальше
+    /// `sync` прошлого ответа. Ответ с `reset` заменяет журнал.
+    func callHistory(sync: String) async throws -> CallLogPage
+    /// Отклонить входящий (`VIDEO_CHAT_HANGUP` 167). Пустой `reason` — `REJECTED`, пустой `peerId`
+    /// не уходит. Ошибка — сервер не принял отбой.
+    func rejectIncomingCall(conversationId: String, peerId: String, reason: String) async throws
     func loadProfile(chatId: String) async throws -> CoreProfile
     /// Задать закреплённые чаты сервера целиком, сверху вниз (`FOLDERS_UPDATE`, поле `favorites`
     /// папки «Все чаты»). Закрепить, открепить и переставить — это один и тот же вызов.
@@ -839,6 +848,12 @@ public extension MaxCore {
         throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
     }
     func loadCallHistory() async throws -> [CoreCall] { [] }
+    func callHistory(sync: String) async throws -> CallLogPage {
+        throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
+    }
+    func rejectIncomingCall(conversationId: String, peerId: String, reason: String) async throws {
+        throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
+    }
     func loadProfile(chatId: String) async throws -> CoreProfile {
         throw CoreFailure(kind: "NOT_FOUND", key: nil)
     }

@@ -23,6 +23,8 @@ public actor SyncEngine {
     private var pinHub: PinHub?
     /// Пуши отложенных сообщений. В базу не пишутся.
     private var scheduledHub: ScheduledHub?
+    /// Журнал звонков: ему уходят события `callLog`.
+    private var callLogSink: (any CallLogSink)?
 
     private var pollTask: Task<Void, Never>?
     private var eventTask: Task<Void, Never>?
@@ -76,6 +78,11 @@ public actor SyncEngine {
 
     public func attachScheduled(_ hub: ScheduledHub?) {
         scheduledHub = hub
+    }
+
+    /// Пуши журнала звонков (`callLog`): их применяет журнал звонков.
+    public func attachCallLog(_ sink: (any CallLogSink)?) {
+        callLogSink = sink
     }
 
     /// Чаты, история которых сейчас опрашивается.
@@ -291,6 +298,13 @@ public actor SyncEngine {
         case .scheduled:
             guard !event.chatId.isEmpty else { return }
             scheduledHub?.publish(ScheduledPush(chatId: event.chatId, messageId: event.messageId, action: event.text))
+        case .callLog:
+            // Журнал звонков живёт в памяти у `CoreCallHistoryRepository`, базе он не нужен.
+            let item = CallLogItem(
+                historyId: event.messageId, callName: event.title, callerId: event.authorId,
+                chatId: event.chatId, isVideo: event.unread == 1, timeMs: event.timeMs
+            )
+            await callLogSink?.callLogChanged(action: event.text, item: item)
         case .typing:
             let mine = await messages.currentUser()
             guard !event.authorId.isEmpty, event.authorId != mine else { return }

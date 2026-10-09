@@ -87,7 +87,12 @@ public final class CallCenter: CallSystemDelegate {
         }
     }
 
-    public private(set) var call: Call?
+    public private(set) var call: Call? {
+        didSet {
+            let busy = call != nil
+            if busy != (oldValue != nil) { onBusyChanged?(busy) }
+        }
+    }
     /// Экран звонка развёрнут; свёрнутый — плашка над приложением.
     public var isExpanded = true
     public private(set) var errorMessage: String?
@@ -95,6 +100,9 @@ public final class CallCenter: CallSystemDelegate {
     public private(set) var names: [String: Peer] = [:]
     /// Звонок закончился: приложение обновляет журнал звонков.
     @ObservationIgnored public var onCallEnded: (() -> Void)?
+    /// Звонок появился (`true`) или ушёл с экрана (`false`). Пока он есть, приложение держит
+    /// ядро «на экране» (`setAppActive(true)`), даже свёрнутое: так сервер не считает аккаунт ушедшим.
+    @ObservationIgnored public var onBusyChanged: ((Bool) -> Void)?
 
     /// Исходящий звонит у собеседника: играют гудки.
     public var playsRingback: Bool {
@@ -407,6 +415,20 @@ public final class CallCenter: CallSystemDelegate {
 
     private func performEnd(_ id: UUID) async {
         guard let call, call.id == id else { return }
+        // Отклонение входящего уходит и на основной сервер (167): у звонящего сразу «отклонён»,
+        // даже если сокет звонка ещё не открылся. Сокет звонка тоже получает отбой.
+        var rejection: Task<Void, Never>?
+        if call.isRinging, !call.conversationId.isEmpty {
+            let service = self.service
+            let conversationId = call.conversationId
+            rejection = Task {
+                do {
+                    try await service.reject(conversationId: conversationId, peerId: "")
+                } catch {
+                    Log.warning(.calls, "Сервер не принял отклонение \(conversationId): \(error)")
+                }
+            }
+        }
         if let control {
             await control.hangUp()
         } else {
@@ -415,6 +437,7 @@ public final class CallCenter: CallSystemDelegate {
             state.phase = .ended(.hungUp)
             update(id, state)
         }
+        await rejection?.value
     }
 
     private func attach(_ control: any CallControl, to id: UUID) {

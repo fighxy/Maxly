@@ -140,6 +140,13 @@ struct CallsView: View {
                         }
                     }
                 }
+                // Журнал приходит страницами: дойдя до конца, экран просит следующую.
+                if viewModel.canLoadMore {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .listRowSeparator(.hidden)
+                        .task(id: viewModel.loadedPages) { await viewModel.loadMore() }
+                }
             }
         }
     }

@@ -13,10 +13,15 @@ public protocol CallService: Sendable {
     func preview(link: String) async throws(OrbitleError) -> CallLinkPreview?
     /// Входящие звонки, пока подписка жива.
     func incomingCalls() -> AsyncStream<IncomingCall>
+    /// Отклонить входящий через основной сервер (`VIDEO_CHAT_HANGUP` 167, причина `REJECTED`).
+    /// Пустой `peerId` не уходит. Ошибка — сервер не принял отбой.
+    func reject(conversationId: String, peerId: String) async throws(OrbitleError)
 }
 
 public extension CallService {
     func preview(link: String) async throws(OrbitleError) -> CallLinkPreview? { nil }
+    /// Источник без отбоя через сервер: входящий отклоняется только в сокете звонка.
+    func reject(conversationId: String, peerId: String) async throws(OrbitleError) {}
 }
 
 /// Один звонок: подключение к серверу звонков, звук и видео.

@@ -94,6 +94,8 @@ final class AppContainer {
     @ObservationIgnored private var privacyScreenModel: PrivacySettingsModel?
     /// Приложение на экране (`scenePhase`): шапка настроек спрашивает свой статус только так.
     @ObservationIgnored private var isAppForeground = true
+    /// Идёт звонок (`CallCenter.onBusyChanged`): ядро держится «на экране» до его конца.
+    @ObservationIgnored private var isInCall = false
     @ObservationIgnored private var devicesScreenModel: DevicesModel?
     @ObservationIgnored private var foldersScreenModel: FoldersModel?
     @ObservationIgnored private var phaseTask: Task<Void, Never>?
@@ -225,6 +227,8 @@ final class AppContainer {
             self.presenceService = CorePresenceService(core: core, store: self.presence)
             self.activityCore = core
             let coreCalls = CoreCallHistoryRepository(core: core)
+            // Пуши журнала звонков (165) — в журнал, он живёт в памяти.
+            await sync.attachCallLog(coreCalls)
             typingReporter = TypingReporter(sender: CoreTypingSender(core: core))
             // Правило имён ядра живёт до перезапуска: задаётся при каждом старте.
             await core.setPreferAddressBookNames(Self.prefersAddressBookNames)
@@ -255,6 +259,9 @@ final class AppContainer {
                     try? await Task.sleep(for: .seconds(2))
                     await calls.refresh()
                 }
+            }
+            center.onBusyChanged = { [weak self] busy in
+                self?.callBusyChanged(busy)
             }
             self.callKit = callKit
             self.callCenter = center
@@ -760,11 +767,24 @@ final class AppContainer {
 
     /// Приложение вернулось на экран: сверка с сервером того, что могло прийти без пушей.
     /// Приложение на экране или в фоне (`scenePhase`): ядро передаёт это серверу в `PING`.
+    /// Пока идёт звонок, ядро остаётся «на экране» и в фоне (`interactive` в `PING`), как у
+    /// приложения Max: иначе сервер решит, что аккаунт ушёл, посреди разговора.
     func setAppActive(_ active: Bool) {
         isAppForeground = active
         ghostScreenModel?.setAppForeground(active)
+        sendInteractive()
+    }
+
+    /// Звонок появился или закончился: ядро узнаёт, на экране ли приложение для сервера.
+    private func callBusyChanged(_ busy: Bool) {
+        isInCall = busy
+        sendInteractive()
+    }
+
+    private func sendInteractive() {
         guard let core = activityCore else { return }
-        Task { await core.setAppActive(active) }
+        let interactive = isAppForeground || isInCall
+        Task { await core.setAppActive(interactive) }
     }
 
     func appBecameActive() async {

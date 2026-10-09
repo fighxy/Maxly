@@ -2,7 +2,7 @@ import Foundation
 import OrbitleDomain
 
 /// Звонки через ядро: начать (78), войти по ссылке (166), создать ссылку (76/84), описание
-/// ссылки (89) и входящие (пуш 137).
+/// ссылки (89), отклонить входящий (167) и входящие (пуш 137).
 public struct CoreCallService: CallService {
     private let core: any MaxCore
 
@@ -33,6 +33,14 @@ public struct CoreCallService: CallService {
               let url = URL(string: info.url)
         else { return nil }
         return CallLinkPreview(url: url, name: info.name.isEmpty ? nil : info.name, participants: info.participants, isVideo: info.isVideo)
+    }
+
+    public func reject(conversationId: String, peerId: String) async throws(OrbitleError) {
+        guard !conversationId.isEmpty else { throw .invalidRequest }
+        try await run("Отклонить \(conversationId)") {
+            try await core.rejectIncomingCall(conversationId: conversationId, peerId: peerId, reason: "")
+        }
+        Log.info(.calls, "Входящий \(conversationId) отклонён")
     }
 
     public func incomingCalls() -> AsyncStream<IncomingCall> {
