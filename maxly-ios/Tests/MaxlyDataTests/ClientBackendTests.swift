@@ -1,0 +1,939 @@
+import Foundation
+import Testing
+import MaxlyDomain
+@testable import MaxlyData
+
+actor FakeMaxCore: MaxCore {
+    /// Звук чатов в конфиге ядра: код `isChatMuted` и сырой `dontDisturbUntil`.
+    var mutes: [String: (code: Int, until: Int64)] = [:]
+    func setMute(chatId: String, code: Int, until: Int64) { mutes[chatId] = (code, until) }
+    func isChatMuted(chatId: String) async -> Int { mutes[chatId]?.code ?? -1 }
+    func chatMuteUntil(chatId: String) async -> Int64 { mutes[chatId]?.until ?? Int64.min }
+    /// Статусы ядра: ответ `loadPresence`, синхронный `presenceOf` и вкл/выкл приложения.
+    var presenceAnswer: [CorePresence] = []
+    var presenceHeld: [String: CorePresence] = [:]
+    var presenceError: CoreFailure?
+    private(set) var presenceRequests: [[String]] = []
+    private(set) var appActive: [Bool] = []
+    func setPresence(answer: [CorePresence], held: [String: CorePresence] = [:], error: CoreFailure? = nil) {
+        presenceAnswer = answer
+        presenceHeld = held
+        presenceError = error
+    }
+    func loadPresence(userIds: [String]) async throws -> [CorePresence] {
+        presenceRequests.append(userIds)
+        if let presenceError { throw presenceError }
+        return presenceAnswer.filter { userIds.contains($0.userId) }
+    }
+    func presenceOf(userId: String) async -> CorePresence {
+        presenceHeld[userId] ?? CorePresence(userId: userId, status: -1)
+    }
+    func setAppActive(_ active: Bool) async { appActive.append(active) }
+    var loginRejectionValue: CoreLoginRejection?
+    func loginRejection() async -> CoreLoginRejection? { loginRejectionValue }
+    func setLoginRejection(_ value: CoreLoginRejection?) { loginRejectionValue = value }
+    private(set) var startCount = 0
+    var phase: CorePhase = .idle
+    var userId = ""
+    var storedToken = false
+    var startPhase: CorePhase = .ready
+    var startError: CoreFailure?
+    var chats: [CoreChat] = []
+    var history: [CoreMessage] = []
+    var historyBefore: Int64 = -1
+    var sent = CoreMessage(id: "srv-1", chatId: "c1", authorId: "me", text: "ok", timeMs: 5_000)
+    var sendError: CoreFailure?
+    var loadError: CoreFailure?
+    var code = CoreCode(token: "code-token", codeLength: 6)
+    var authStep: CoreAuthStep = .loggedIn(userId: "u1")
+    var authError: CoreFailure?
+    var verifyGate: Gate?
+    var verifyError: CoreFailure?
+    var logoutError: CoreFailure?
+    var contactList: [CoreContact] = []
+    var callLog: [CoreCall] = []
+    var directoryError: CoreFailure?
+    private(set) var marked: [String] = []
+    private(set) var unreadMarks: [Int64] = []
+    private(set) var mediaCalls: [(items: [CoreOutgoingMedia], caption: String, replyTo: String)] = []
+    private(set) var contactCalls: [(contactId: String, replyTo: String)] = []
+    private(set) var didLogout = false
+    private(set) var lastText = ""
+    private(set) var requestedPhones: [String] = []
+    private(set) var resendCount = 0
+    private(set) var verifiedCodes: [String] = []
+    private(set) var registeredNames: [String] = []
+    /// Пуши, которые шлёт тест. `nil`: поток событий сразу закрыт.
+    nonisolated let pushes: AsyncStream<CoreEvent>.Continuation?
+    private nonisolated let pushStream: AsyncStream<CoreEvent>?
+
+    // Стикеры (docs/stickers.md): без каталога ядро «без сети».
+    var stickerCatalog: StickerCatalog?
+    private(set) var stickerCalls: [(stickerId: String, replyTo: String)] = []
+
+    func setStickerCatalog(_ catalog: StickerCatalog?) { stickerCatalog = catalog }
+
+    // Черновики сервера (`DRAFT_SAVE` 176, `DRAFT_DISCARD` 177).
+    var serverDraftList: [CoreDraft] = []
+    private(set) var draftCalls: [String] = []
+
+    var discardMarks: [String: Int64] = [:]
+    func setServerDrafts(_ list: [CoreDraft]) { serverDraftList = list }
+    func setDiscardMark(_ time: Int64, chatId: String) { discardMarks[chatId] = time }
+    func draftDiscardedAt(chatId: String) async -> Int64 { discardMarks[chatId] ?? 0 }
+
+    func saveDraft(chatId: String, text: String, elementsJSON: String, replyTo: String) async throws -> Int64 {
+        draftCalls.append(replyTo.isEmpty ? "save \(chatId) \(text)" : "save \(chatId) \(text) ↩\(replyTo)")
+        // Как ядро: сохранённый черновик сразу в списке черновиков сервера.
+        serverDraftList.removeAll { $0.chatId == chatId }
+        serverDraftList.insert(CoreDraft(chatId: chatId, text: text, elementsJSON: elementsJSON, replyTo: replyTo, updateTime: 9_000), at: 0)
+        return 9_000
+    }
+
+    func discardDraft(chatId: String, time: Int64) async throws {
+        draftCalls.append("discard \(chatId) \(time)")
+        serverDraftList.removeAll { $0.chatId == chatId }
+        discardMarks[chatId] = 9_500
+    }
+
+    func serverDrafts() async -> [CoreDraft] { serverDraftList }
+
+    func loadStickerCatalog() async throws -> StickerCatalog {
+        guard let stickerCatalog else { throw CoreFailure(kind: "NETWORK", key: nil) }
+        return stickerCatalog
+    }
+
+    func loadStickers(ids: [String]) async throws -> [Sticker] {
+        guard stickerCatalog != nil else { throw CoreFailure(kind: "NETWORK", key: nil) }
+        return ids.map { Sticker(id: $0, url: URL(string: "https://st/\($0).webp")) }
+    }
+
+    func sendSticker(chatId: String, stickerId: String, replyTo: String) async throws -> CoreMessage {
+        stickerCalls.append((stickerId, replyTo))
+        if let sendError { throw sendError }
+        return sent
+    }
+
+    func loadContacts() async throws -> [CoreContact] {
+        if let directoryError { throw directoryError }
+        return contactList
+    }
+
+    // Реакции (docs/reactions.md).
+    var reactionReply = ""
+    var reactionError: CoreFailure?
+    private(set) var reactionCalls: [String] = []
+    var reactionsById: [String: String] = [:]
+    var reactionUserList: [ReactionUser] = []
+    var readerList: [MessageReader] = []
+    var readerError: CoreFailure?
+    private(set) var readerCalls: [String] = []
+
+    func setReaction(chatId: String, messageId: String, postId: String, emoji: String) async throws -> String {
+        reactionCalls.append("\(chatId)/\(messageId)/\(postId)/\(emoji)")
+        if let reactionError { throw reactionError }
+        return reactionReply
+    }
+
+    func loadReactions(chatId: String, messageIds: [String]) async throws -> [String: String] {
+        if let reactionError { throw reactionError }
+        return reactionsById.filter { messageIds.contains($0.key) }
+    }
+
+    func loadReactionCatalog() async throws -> [String] { ["👍", "🔥"] }
+
+    func loadReactionUsers(chatId: String, messageId: String) async throws -> [ReactionUser] {
+        if let reactionError { throw reactionError }
+        return reactionUserList
+    }
+
+    func loadMessageReaders(chatId: String, messageId: String) async throws -> [MessageReader] {
+        readerCalls.append("\(chatId)/\(messageId)")
+        if let readerError { throw readerError }
+        return readerList
+    }
+
+    func setReaders(_ readers: [MessageReader], error: CoreFailure? = nil) {
+        readerList = readers
+        readerError = error
+    }
+
+    func setReactions(reply: String = "", error: CoreFailure? = nil, byId: [String: String] = [:], users: [ReactionUser] = []) {
+        reactionReply = reply
+        reactionError = error
+        reactionsById = byId
+        reactionUserList = users
+    }
+
+    func loadCallHistory() async throws -> [CoreCall] {
+        if let directoryError { throw directoryError }
+        return callLog
+    }
+
+    private(set) var deletedCalls: [[String]] = []
+
+    /// Ответы `callHistory` (163) по очереди; `nil` — ядро его не умеет (прежний журнал 79).
+    var callPages: [CallLogPage]?
+    private(set) var callHistorySyncs: [String] = []
+    private(set) var rejectedCalls: [String] = []
+    var rejectError: CoreFailure?
+
+    func setCallPages(_ pages: [CallLogPage]?) { callPages = pages }
+
+    func callHistory(sync: String) async throws -> CallLogPage {
+        guard var pages = callPages else { throw CoreFailure(kind: "UNKNOWN", key: "unsupported") }
+        callHistorySyncs.append(sync)
+        if let directoryError { throw directoryError }
+        guard !pages.isEmpty else { return CallLogPage(sync: sync, items: []) }
+        let page = pages.removeFirst()
+        callPages = pages
+        return page
+    }
+
+    func rejectIncomingCall(conversationId: String, peerId: String, reason: String) async throws {
+        rejectedCalls.append("\(conversationId)/\(peerId)/\(reason)")
+        if let rejectError { throw rejectError }
+    }
+
+    func setRejectError(_ error: CoreFailure?) { rejectError = error }
+    func setUserId(_ id: String) { userId = id }
+
+    func deleteCallHistory(ids: [String]) async throws {
+        if let directoryError { throw directoryError }
+        deletedCalls.append(ids)
+    }
+
+    // Настройки аккаунта (docs/settings.md).
+    nonisolated let folderList: [ServerFolder] = [
+        ServerFolder(id: "all.chat.folder", title: "Все", isAllChats: true),
+        ServerFolder(id: "w", title: "Работа", chatIds: ["g"], filters: ["2"]),
+    ]
+    var sessionList: [DeviceSession] = []
+
+    nonisolated func folders() -> AsyncStream<[ServerFolder]> {
+        let list = folderList
+        return AsyncStream { $0.yield(list); $0.finish() }
+    }
+
+    func loadSessions() async throws -> [DeviceSession] { sessionList }
+
+    func setSessions(_ list: [DeviceSession]) { sessionList = list }
+
+    func startEmailChange(password: String) async throws -> String {
+        guard password == "ok" else { throw CoreFailure(kind: "AUTH", key: "error.password.invalid") }
+        return "track-1"
+    }
+
+    func setDirectory(contacts: [CoreContact] = [], calls: [CoreCall] = [], error: CoreFailure? = nil) {
+        contactList = contacts
+        callLog = calls
+        directoryError = error
+    }
+
+    /// Ответ полной синхронизации контактов; `nil` — ядро её не умеет.
+    var syncedContacts: [CoreContact]?
+    private(set) var contactSyncs = 0
+
+    func syncContacts() async throws -> [CoreContact] {
+        contactSyncs += 1
+        guard let syncedContacts else { throw CoreFailure(kind: "UNKNOWN", key: "unsupported") }
+        return syncedContacts
+    }
+
+    func setSyncedContacts(_ contacts: [CoreContact]?) {
+        syncedContacts = contacts
+    }
+
+    /// Ответы `CONTACT_INFO_BY_PHONE`: ключ — телефон `+` и цифры.
+    var peopleByPhone: [String: CoreContact] = [:]
+    var phoneFailure: CoreFailure?
+    private(set) var phoneQueries: [String] = []
+    private(set) var contactAdds: [(id: String, firstName: String)] = []
+
+    func setPerson(phone: String, _ person: CoreContact?) {
+        if let person { peopleByPhone[phone] = person } else { peopleByPhone[phone] = nil }
+    }
+
+    func setPhoneFailure(_ error: CoreFailure?) { phoneFailure = error }
+
+    func findByPhone(phone: String) async throws -> CoreContact {
+        phoneQueries.append(phone)
+        if let phoneFailure { throw phoneFailure }
+        guard let person = peopleByPhone[phone] else {
+            throw CoreFailure(kind: "MALFORMED_REPLY", key: "no valid contact")
+        }
+        return person
+    }
+
+    func addContact(userId: String, firstName: String) async throws -> CoreContact {
+        contactAdds.append((userId, firstName))
+        if let directoryError { throw directoryError }
+        let saved = CoreContact(
+            id: userId, firstName: firstName, lastName: "", phone: "", avatarURL: "", lastSeenMs: 0, online: false
+        )
+        contactList.removeAll { $0.id == userId }
+        contactList.append(saved)
+        return saved
+    }
+
+    private(set) var groups: [(title: String, members: [String])] = []
+    private(set) var channels: [String] = []
+    private(set) var links: [String] = []
+    var createdChat: CoreChat?
+
+    func createGroup(title: String, memberIds: [String]) async throws -> CoreChat? {
+        groups.append((title, memberIds))
+        if let loadError { throw loadError }
+        return createdChat
+    }
+
+    func createChannel(title: String) async throws -> CoreChat? {
+        channels.append(title)
+        if let loadError { throw loadError }
+        return createdChat
+    }
+
+    func joinByLink(_ link: String) async throws -> CoreChat {
+        links.append(link)
+        if let loadError { throw loadError }
+        guard let createdChat else { throw CoreFailure(kind: "MALFORMED_REPLY", key: nil) }
+        return createdChat
+    }
+
+    init(livePushes: Bool = false) {
+        if livePushes {
+            let pair = AsyncStream.makeStream(of: CoreEvent.self)
+            pushStream = pair.stream
+            pushes = pair.continuation
+        } else {
+            pushStream = nil
+            pushes = nil
+        }
+    }
+
+    func phaseName() async -> CorePhase { phase }
+    func currentUserId() async -> String { userId }
+    func hasStoredToken() async -> Bool { storedToken }
+
+    func start() async throws -> CorePhase {
+        startCount += 1
+        if let startError { throw startError }
+        phase = startPhase
+        return startPhase
+    }
+
+    func requestCode(phone: String, resend: Bool) async throws -> CoreCode {
+        if let authError { throw authError }
+        requestedPhones.append(phone)
+        if resend { resendCount += 1 }
+        return code
+    }
+
+    func verifyCode(token: String, code: String) async throws -> CoreAuthStep {
+        verifiedCodes.append(code)
+        if let verifyGate { await verifyGate.wait() }
+        if let error = verifyError ?? authError { throw error }
+        return authStep
+    }
+
+    func checkPassword(trackId: String, password: String) async throws -> CoreAuthStep {
+        if let authError { throw authError }
+        return authStep
+    }
+
+    func register(token: String, firstName: String, lastName: String) async throws -> CoreAuthStep {
+        if let authError { throw authError }
+        registeredNames.append("\(firstName)|\(lastName)")
+        return authStep
+    }
+
+    func logout() async throws {
+        didLogout = true
+        if let logoutError { throw logoutError }
+    }
+    func loadChats() async throws -> [CoreChat] {
+        if let loadError { throw loadError }
+        return chats
+    }
+
+    func loadChat(id: String) async throws -> CoreChat {
+        if let chat = chats.first(where: { $0.id == id }) { return chat }
+        throw CoreFailure(kind: "NOT_FOUND", key: nil)
+    }
+
+    func loadHistory(chatId: String, beforeMs: Int64, limit: Int) async throws -> [CoreMessage] {
+        historyBefore = beforeMs
+        return Array(history.prefix(limit))
+    }
+
+    func sendText(chatId: String, text: String) async throws -> CoreMessage {
+        if let sendError { throw sendError }
+        lastText = text
+        return sent
+    }
+
+    func markRead(chatId: String, messageId: String) async throws {
+        marked.append(messageId)
+    }
+
+    /// Отметки временем сообщения (мс), как их получило ядро.
+    private(set) var readAt: [Int64] = []
+
+    func markRead(chatId: String, messageId: String, mark: Int64) async throws -> CoreReadMark {
+        marked.append(messageId)
+        readAt.append(mark)
+        return CoreReadMark(unread: 0, mark: mark)
+    }
+
+    func markUnread(chatId: String, mark: Int64) async throws -> Int {
+        unreadMarks.append(mark)
+        return 4
+    }
+
+    func sendMedia(chatId: String, items: [CoreOutgoingMedia], caption: String, replyTo: String,
+                   progress: @escaping @Sendable (Double) -> Void) async throws -> CoreMessage {
+        if let sendError { throw sendError }
+        mediaCalls.append((items, caption, replyTo))
+        progress(1)
+        return sent
+    }
+
+    func sendContact(chatId: String, contactId: String, replyTo: String) async throws -> CoreMessage {
+        if let sendError { throw sendError }
+        contactCalls.append((contactId, replyTo))
+        return sent
+    }
+
+    private(set) var recordingCalls: [(path: String, kind: String, durationMs: Int64, wave: [Int], replyTo: String)] = []
+
+    func sendRecording(chatId: String, path: String, kind: String, durationMs: Int64, wave: [Int], replyTo: String,
+                       progress: @escaping @Sendable (Double) -> Void) async throws -> CoreMessage {
+        if let sendError { throw sendError }
+        recordingCalls.append((path, kind, durationMs, wave, replyTo))
+        progress(1)
+        return sent
+    }
+
+    nonisolated func phases() -> AsyncStream<CorePhase> {
+        AsyncStream { $0.finish() }
+    }
+
+    nonisolated func events() -> AsyncStream<CoreEvent> {
+        pushStream ?? AsyncStream { $0.finish() }
+    }
+
+    /// Закреплённые чаты ядра: как `StateFlow`, новый подписчик сразу получает текущий список.
+    nonisolated let pins = PinBox()
+    var pinError: CoreFailure?
+    private(set) var pinRequests: [[String]] = []
+
+    func setPinError(_ error: CoreFailure?) { pinError = error }
+
+    func setPinnedChats(_ chatIds: [String]) async throws -> [String] {
+        pinRequests.append(chatIds)
+        if let pinError { throw pinError }
+        pins.publish(chatIds)
+        return chatIds
+    }
+
+    nonisolated func pinnedChats() -> AsyncStream<[String]> {
+        pins.subscribe()
+    }
+}
+
+/// Текущий список закреплённых и подписчики фейкового ядра.
+final class PinBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: [String]?
+    private var subscribers: [UUID: AsyncStream<[String]>.Continuation] = [:]
+
+    var subscriberCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return subscribers.count
+    }
+
+    /// Новый список: вход, свой запрос или изменение с другого устройства.
+    func publish(_ ids: [String]) {
+        lock.lock()
+        current = ids
+        let targets = Array(subscribers.values)
+        lock.unlock()
+        targets.forEach { $0.yield(ids) }
+    }
+
+    func subscribe() -> AsyncStream<[String]> {
+        let (stream, continuation) = AsyncStream.makeStream(of: [String].self)
+        let id = UUID()
+        lock.lock()
+        subscribers[id] = continuation
+        let value = current
+        lock.unlock()
+        if let value { continuation.yield(value) }
+        continuation.onTermination = { [weak self] _ in
+            guard let self else { return }
+            self.lock.lock()
+            self.subscribers[id] = nil
+            self.lock.unlock()
+        }
+        return stream
+    }
+}
+
+actor FakeMedia: MediaRepository {
+    private(set) var clearCount = 0
+    /// Следующая очистка кэша ждёт, пока тест не откроет задвижку.
+    private var clearGate: Gate?
+
+    func holdNextClear(_ gate: Gate) { clearGate = gate }
+
+    func preview(for item: MediaItem) async throws(MaxlyError) -> URL {
+        throw .networkUnavailable
+    }
+
+    nonisolated func download(_ item: MediaItem) -> AsyncThrowingStream<Double, Error> {
+        AsyncThrowingStream { $0.finish() }
+    }
+
+    func clearCache() async {
+        clearCount += 1
+        if let gate = clearGate {
+            clearGate = nil
+            await gate.wait()
+        }
+    }
+}
+
+struct SessionParts: Sendable {
+    var core: FakeMaxCore
+    var api: FakeMaxAPI
+    var stack: SwiftDataStack
+    var chats: ChatRepositoryImpl
+    var messages: MessageRepositoryImpl
+    var sync: SyncEngine
+    var media: FakeMedia
+    var session: SessionManager
+    var defaults: UserDefaults
+    var suite: String
+}
+
+func makeSession() async throws -> SessionParts {
+    let core = FakeMaxCore()
+    let api = FakeMaxAPI()
+    let stack = try SwiftDataStack(inMemory: true)
+    let chats = ChatRepositoryImpl.make(stack: stack, api: api)
+    let messages = MessageRepositoryImpl.make(stack: stack, api: api)
+    let outbox = OutboxQueue(api: api, sleep: { _ in })
+    await messages.attach(outbox: outbox)
+    let sync = SyncEngine(outbox: outbox, chats: chats, messages: messages, pollInterval: .seconds(3600))
+    await sync.connectOutgoing()
+    let media = FakeMedia()
+    let suite = "orbitle.tests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    let session = SessionManager(
+        core: core,
+        stack: stack,
+        chats: chats,
+        messages: messages,
+        sync: sync,
+        media: media,
+        defaults: defaults
+    )
+    return SessionParts(
+        core: core,
+        api: api,
+        stack: stack,
+        chats: chats,
+        messages: messages,
+        sync: sync,
+        media: media,
+        session: session,
+        defaults: defaults,
+        suite: suite
+    )
+}
+
+func withSession(_ body: (SessionParts) async throws -> Void) async throws {
+    let parts = try await makeSession()
+    defer { parts.defaults.removePersistentDomain(forName: parts.suite) }
+    try await body(parts)
+}
+
+func snapshot(_ chats: ChatRepositoryImpl) async -> [Chat] {
+    let stream = chats.chats()
+    for await page in stream { return page }
+    return []
+}
+
+func phase(of session: SessionManager) async -> AuthPhase {
+    let stream = session.phases()
+    for await value in stream { return value }
+    return .restoring
+}
+
+func isSuccess(_ result: Result<Void, MaxAPIError>) -> Bool {
+    if case .success = result { return true }
+    return false
+}
+
+@Suite("Ядро и маппинг")
+struct CoreMappingTests {
+    @Test("Миллисекунды Unix переживают круг через Date")
+    func unixMillis() {
+        let date = Date(unixMillis: 1_700_000_000_123)
+        #expect(date.unixMillis == 1_700_000_000_123)
+    }
+
+    @Test("Чат из ядра: тип, пустой заголовок и пустое превью")
+    func chatRecord() {
+        let dialog = CoreMapping.chat(CoreChat(
+            id: "1", title: "", type: "DIALOG", lastMessageId: "", lastText: "", updatedAtMs: 1_500, unread: 2
+        ))
+        #expect(dialog.type == .private)
+        #expect(dialog.title == "")
+        #expect(dialog.lastMessageId == nil)
+        #expect(dialog.preview == nil)
+        #expect(dialog.unreadCount == 2)
+        #expect(dialog.updatedAt == Date(timeIntervalSince1970: 1.5))
+
+        let channel = CoreMapping.chat(CoreChat(
+            id: "2", title: "Новости", type: "CHANNEL", lastMessageId: "m", lastText: "эфир", updatedAtMs: 0, unread: 0
+        ))
+        #expect(channel.type == .channel)
+        #expect(channel.preview == "эфир")
+        #expect(CoreMapping.chat(CoreChat(
+            id: "3", title: "Группа", type: "CHAT", lastMessageId: "", lastText: "", updatedAtMs: 0, unread: 0
+        )).type == .group)
+    }
+
+    @Test("Ошибки ядра становятся категориями API")
+    func errors() {
+        #expect(CoreMapping.apiError(CoreFailure(kind: "NETWORK", key: nil)) == .offline)
+        #expect(CoreMapping.apiError(CoreFailure(kind: "TIMEOUT", key: nil)) == .offline)
+        #expect(CoreMapping.apiError(CoreFailure(kind: "CLOSED", key: nil)) == .offline)
+        #expect(CoreMapping.apiError(CoreFailure(kind: "CANCELLED", key: nil)) == .cancelled)
+        #expect(CoreMapping.apiError(CoreFailure(kind: "SESSION_EXPIRED", key: nil)) == .sessionExpired)
+        #expect(CoreMapping.apiError(CoreFailure(kind: "AUTH", key: nil)) == .invalidResponse)
+        #expect(CoreMapping.apiError(CoreFailure(kind: "SERVER", key: "proto.bad")) == .server(code: "proto.bad", text: nil))
+        #expect(CoreMapping.apiError(CoreFailure(kind: "SERVER", key: "x", serverText: "Нет прав")) == .server(code: "x", text: "Нет прав"))
+        #expect(CoreMapping.apiError(CoreFailure(kind: "SERVER", key: "x", serverText: "  ")) == .server(code: "x", text: nil))
+        #expect(CoreMapping.apiError(CoreFailure(kind: "NETWORK", key: nil, serverText: "")) == .offline)
+        #expect(MaxAPIError.server(code: "x", text: "Нет прав").orbitleError.userMessage == "Нет прав")
+        #expect(MaxAPIError.server(code: "x", text: "Нет прав").isRetryable)
+        #expect(CoreMapping.apiError(CoreFailure(kind: "SERVER", key: "")) == .server(code: "SERVER", text: nil))
+        #expect(CoreMapping.apiError(CoreFailure(kind: "NOT_FOUND", key: nil)) == .invalidResponse)
+        #expect(CoreMapping.apiError(CoreFailure(kind: "MALFORMED_REPLY", key: nil)) == .server(code: "MALFORMED_REPLY", text: nil))
+        #expect(CoreMapping.apiError(CoreFailure(kind: "UNKNOWN", key: nil)) == .unknown)
+        #expect(CoreMapping.apiError(URLError(.notConnectedToInternet)) == .offline)
+        #expect(CoreMapping.apiError(URLError(.cancelled)) == .cancelled)
+        #expect(CoreMapping.apiError(CancellationError()) == .cancelled)
+        #expect(!MaxAPIError.cancelled.isRetryable)
+        #expect(MaxAPIError.cancelled.orbitleError == .cancelled)
+        #expect(MaxAPIError.unknown.orbitleError == .unknown)
+        #expect(MaxAPIError.offline.isRetryable)
+        #expect(!MaxAPIError.sessionExpired.isRetryable)
+        #expect(MaxAPIError.invalidResponse.orbitleError == .invalidRequest)
+    }
+
+    @Test("События сообщения и чата")
+    func events() {
+        let message = MessageRecord(CoreEvent(
+            kind: .message, chatId: "c", messageId: "m", authorId: "bob", text: "Привет",
+            title: "", chatType: "", timeMs: 5_000, unread: -1
+        ))
+        #expect(message?.text == "Привет")
+        #expect(message?.status == .sent)
+        #expect(message?.serverId == "m")
+        #expect(MessageRecord(CoreEvent(
+            kind: .deleted, chatId: "c", messageId: "m", authorId: "", text: "",
+            title: "", chatType: "", timeMs: 0, unread: -1
+        )) == nil)
+
+        let chat = ChatRecord(CoreEvent(
+            kind: .chat, chatId: "c", messageId: "", authorId: "", text: "",
+            title: "Канал", chatType: "CHANNEL", timeMs: 0, unread: -1
+        ))
+        #expect(chat?.type == .channel)
+        #expect(chat?.title == "Канал")
+        #expect(chat?.unreadCount == 0)
+        #expect(chat?.preview == nil)
+    }
+}
+
+@Suite("MaxAPIClient")
+struct MaxAPIClientTests {
+    @Test("Список, история и отправка идут через ядро")
+    func mapsCalls() async {
+        let core = FakeMaxCore()
+        await core.setChats()
+        let client = MaxAPIClient(core: core)
+
+        let chats = await client.fetchChats()
+        guard case .success(let records) = chats else {
+            Issue.record("чаты \(chats)")
+            return
+        }
+        #expect(records.first?.type == .private)
+        #expect(records.first?.preview == "Привет")
+        #expect(records.first?.updatedAt == Date(unixMillis: 5_000))
+
+        let before = Date(timeIntervalSince1970: 1.5)
+        _ = await client.fetchMessages(chatId: "1", before: before, limit: 20)
+        #expect(await core.historyBefore == before.unixMillis)
+
+        _ = await client.fetchMessages(chatId: "1", before: nil, limit: 20)
+        #expect(await core.historyBefore == 0)
+
+        let sent = await client.sendMessage(chatId: "1", text: "текст", clientId: "local-1")
+        guard case .success(let message) = sent else {
+            Issue.record("отправка \(sent)")
+            return
+        }
+        #expect(message.serverId == "srv-1")
+        #expect(message.timestamp == Date(unixMillis: 5_000))
+        #expect(await core.lastText == "текст")
+    }
+
+    @Test("Пустой messageId не зовёт ядро, сеть и сессия различаются")
+    func markAndErrors() async {
+        let core = FakeMaxCore()
+        let client = MaxAPIClient(core: core)
+        let skipped = await client.markRead(chatId: "1", messageId: nil)
+        let empty = await client.markRead(chatId: "1", messageId: "")
+        #expect(isSuccess(skipped))
+        #expect(isSuccess(empty))
+        #expect(await core.marked.isEmpty)
+
+        let marked = await client.markRead(chatId: "1", messageId: "55")
+        #expect(isSuccess(marked))
+        #expect(await core.marked == ["55"])
+
+        // Пометка «непрочитано» уходит с временем сообщения в миллисекундах.
+        #expect(await client.markUnread(chatId: "1", from: Date(unixMillis: 1_700_000_000_123)) == .success(4))
+        #expect(await core.unreadMarks == [1_700_000_000_123])
+
+        await core.failSend()
+        #expect(await client.sendMessage(chatId: "1", text: "x", clientId: "local") == .failure(.offline))
+        await core.failSession()
+        #expect(await client.fetchChats() == .failure(.sessionExpired))
+        await core.failLoad(kind: "AUTH")
+        #expect(await client.fetchChats() == .failure(.invalidResponse))
+    }
+}
+
+extension FakeMaxCore {
+    func setChats() {
+        chats = [CoreChat(
+            id: "1", title: "Аня", type: "DIALOG", lastMessageId: "m", lastText: "Привет", updatedAtMs: 5_000, unread: 1
+        )]
+    }
+
+    func failSend() { sendError = CoreFailure(kind: "NETWORK", key: nil) }
+    func failSession() { loadError = CoreFailure(kind: "SESSION_EXPIRED", key: nil) }
+    func failLoad(kind: String) { loadError = CoreFailure(kind: kind, key: nil) }
+    func setUser(_ id: String) { userId = id }
+    func setSent(_ message: CoreMessage) { sent = message }
+    func setHistory(_ messages: [CoreMessage]) { history = messages }
+    func setStoredToken(_ value: Bool) { storedToken = value }
+    func setStartPhase(_ phase: CorePhase) { startPhase = phase }
+    func setStartError(_ error: CoreFailure?) { startError = error }
+    func setAuthStep(_ step: CoreAuthStep) { authStep = step }
+    func setAuthError(_ error: CoreFailure?) { authError = error }
+    func setVerifyGate(_ gate: Gate?) { verifyGate = gate }
+    func setVerifyError(_ error: CoreFailure?) { verifyError = error }
+    func setCode(_ value: CoreCode) { code = value }
+    func setLogoutError(_ error: CoreFailure?) { logoutError = error }
+    func setCreatedChat(_ chat: CoreChat?) { createdChat = chat }
+}
+
+@Suite("Сессия")
+struct SessionManagerTests {
+    @Test("Готовое ядро показывает чаты и запоминает пользователя")
+    func restoreReady() async throws {
+        try await withSession { parts in
+            await parts.core.setUser("42")
+            await parts.core.setStoredToken(true)
+            await parts.api.setChats([makeChat()])
+            await parts.session.restoreSession()
+            #expect(await phase(of: parts.session) == .signedIn(userId: "42"))
+            let chats = await snapshot(parts.chats)
+            #expect(chats.count == 1)
+            #expect(chats.first?.preview == "Последнее")
+            #expect(parts.defaults.string(forKey: SessionManager.userDefaultsKey) == "42")
+            #expect(await parts.media.clearCount == 0)
+        }
+    }
+
+    @Test("Отклонённый токен стирает базу и не просит ядро выйти ещё раз")
+    func tokenRejectedClearsCache() async throws {
+        try await withSession { parts in
+            try await parts.chats.upsert([makeChat(id: "keep")])
+            await parts.core.setStartPhase(.tokenRejected)
+            await parts.core.setStoredToken(true)
+            await parts.session.restoreSession()
+            #expect(await phase(of: parts.session) == .expired)
+            #expect(await snapshot(parts.chats).isEmpty)
+            #expect(await parts.media.clearCount == 1)
+            #expect(await parts.core.didLogout == false)
+            #expect(await parts.session.currentLoginNotice?.place == .loginForm)
+            #expect(await parts.session.currentLoginNotice?.title == "Сессия завершена")
+        }
+    }
+
+    @Test("Ошибка сети при сохранённом токене показывает кэш")
+    func offlineShowsCache() async throws {
+        try await withSession { parts in
+            parts.defaults.set("u1", forKey: SessionManager.userDefaultsKey)
+            try await parts.chats.upsert([makeChat(id: "cached")])
+            await parts.core.setStoredToken(true)
+            await parts.core.setStartError(CoreFailure(kind: "NETWORK", key: nil))
+            await parts.session.restoreSession()
+            #expect(await phase(of: parts.session) == .signedIn(userId: "u1"))
+            let cached = await snapshot(parts.chats)
+            #expect(cached.contains(where: { $0.id == "cached" }))
+            #expect(await parts.media.clearCount == 0)
+        }
+    }
+
+    @Test("Выход стирает чаты, медиа и id")
+    func logoutClears() async throws {
+        try await withSession { parts in
+            await parts.core.setUser("42")
+            await parts.api.setChats([makeChat()])
+            await parts.session.restoreSession()
+            await parts.session.logout()
+            #expect(await phase(of: parts.session) == .signedOut)
+            #expect(await snapshot(parts.chats).isEmpty)
+            #expect(parts.defaults.string(forKey: SessionManager.userDefaultsKey) == nil)
+            #expect(await parts.core.didLogout)
+            #expect(await parts.media.clearCount == 1)
+        }
+    }
+
+    @Test("Другой пользователь стирает чужой кэш до загрузки своих чатов")
+    func otherUserErases() async throws {
+        try await withSession { parts in
+            parts.defaults.set("user-a", forKey: SessionManager.userDefaultsKey)
+            try await parts.chats.upsert([makeChat(id: "old")])
+            await parts.core.setUser("user-b")
+            await parts.api.setChats([makeChat(id: "fresh")])
+            await parts.session.restoreSession()
+            let chats = await snapshot(parts.chats)
+            #expect(chats.contains(where: { $0.id == "fresh" }))
+            #expect(chats.contains(where: { $0.id == "old" }) == false)
+            #expect(parts.defaults.string(forKey: SessionManager.userDefaultsKey) == "user-b")
+            #expect(await parts.media.clearCount == 1)
+        }
+    }
+
+    @Test("Тот же пользователь кэш не стирает")
+    func sameUserKeeps() async throws {
+        try await withSession { parts in
+            parts.defaults.set("u1", forKey: SessionManager.userDefaultsKey)
+            try await parts.chats.upsert([makeChat(id: "mine")])
+            await parts.core.setUser("u1")
+            await parts.session.restoreSession()
+            let mine = await snapshot(parts.chats)
+            #expect(mine.contains(where: { $0.id == "mine" }))
+            #expect(await parts.media.clearCount == 0)
+        }
+    }
+
+    @Test("Код, пароль и регистрация")
+    func authSteps() async throws {
+        try await withSession { parts in
+            try await parts.session.requestCode(phone: "+79990001122")
+            #expect(await phase(of: parts.session) == .codeSent(codeLength: 6))
+
+            await parts.core.setAuthStep(.password(trackId: "track", hint: "смс"))
+            try await parts.session.verifyCode("1234")
+            #expect(await phase(of: parts.session) == .password(hint: "смс"))
+
+            await parts.core.setAuthStep(.register(token: "reg"))
+            try await parts.session.submitPassword("secret")
+            #expect(await phase(of: parts.session) == .registration)
+
+            await parts.core.setAuthStep(.loggedIn(userId: "7"))
+            await parts.core.setUser("7")
+            try await parts.session.register(firstName: "Иван", lastName: "К")
+            #expect(await phase(of: parts.session) == .signedIn(userId: "7"))
+        }
+    }
+
+    @Test("Повтор кода без номера и сеть на запросе кода")
+    func codeErrors() async throws {
+        try await withSession { parts in
+            do {
+                try await parts.session.resendCode()
+                Issue.record("повтор без номера")
+            } catch let error as MaxlyError {
+                #expect(error == .invalidRequest)
+            } catch {
+                Issue.record("повтор \(error)")
+            }
+            await parts.core.setAuthError(CoreFailure(kind: "NETWORK", key: nil))
+            do {
+                try await parts.session.requestCode(phone: "+7")
+                Issue.record("сеть")
+            } catch let error as MaxlyError {
+                #expect(error == .networkUnavailable)
+            } catch {
+                Issue.record("сеть \(error)")
+            }
+        }
+    }
+}
+
+@Suite("События синхронизации")
+struct SyncEventTests {
+    @Test("Входящее «Привет» пишется в базу и увеличивает непрочитанные")
+    func incomingMessage() async throws {
+        let api = FakeMaxAPI()
+        let stack = try SwiftDataStack(inMemory: true)
+        let chats = ChatRepositoryImpl.make(stack: stack, api: api)
+        let messages = MessageRepositoryImpl.make(stack: stack, api: api)
+        let outbox = OutboxQueue(api: api, sleep: { _ in })
+        await messages.attach(outbox: outbox)
+        let sync = SyncEngine(outbox: outbox, chats: chats, messages: messages, pollInterval: .seconds(3600))
+        try await chats.upsert([makeChat()])
+        await messages.setCurrentUser(id: "me")
+
+        await sync.consume(CoreEvent(
+            kind: .message, chatId: "c1", messageId: "m1", authorId: "bob", text: "Привет",
+            title: "", chatType: "DIALOG", timeMs: 1_700_000_000_000, unread: -1
+        ))
+        let page = try await messages.page(chatId: "c1", before: nil)
+        #expect(page.first?.text == "Привет")
+        #expect(page.first?.authorId == "bob")
+        let list = await snapshot(chats)
+        #expect(list.first?.preview == "Привет")
+        #expect(list.first?.unreadCount == 4)
+
+        await sync.consume(CoreEvent(
+            kind: .edited, chatId: "c1", messageId: "m1", authorId: "bob", text: "Новый",
+            title: "", chatType: "DIALOG", timeMs: 1_700_000_000_000, unread: -1
+        ))
+        #expect(try await messages.page(chatId: "c1", before: nil).first?.text == "Новый")
+        #expect(await snapshot(chats).first?.unreadCount == 4)
+
+        await sync.consume(CoreEvent(
+            kind: .message, chatId: "c1", messageId: "m2", authorId: "me", text: "своё",
+            title: "", chatType: "DIALOG", timeMs: 1_700_000_000_500, unread: -1
+        ))
+        #expect(await snapshot(chats).first?.unreadCount == 4)
+
+        await sync.consume(CoreEvent(
+            kind: .read, chatId: "c1", messageId: "", authorId: "me", text: "",
+            title: "", chatType: "", timeMs: 1_700_000_000_500, unread: 0
+        ))
+        #expect(await snapshot(chats).first?.unreadCount == 0)
+
+        await sync.consume(CoreEvent(
+            kind: .deleted, chatId: "c1", messageId: "m1", authorId: "", text: "",
+            title: "", chatType: "", timeMs: 0, unread: -1
+        ))
+        let left = try await messages.page(chatId: "c1", before: nil)
+        #expect(left.contains(where: { $0.id == "m1" }) == false)
+        #expect(left.contains(where: { $0.text == "своё" }))
+    }
+}

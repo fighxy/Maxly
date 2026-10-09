@@ -25,7 +25,7 @@ if [[ ! -d maxly-ios/Vendor/MaxlyCore.xcframework ]]; then
   exit 1
 fi
 
-xcodebuild -project maxly-ios/Orbitle.xcodeproj -scheme Orbitle -configuration Release \
+xcodebuild -project maxly-ios/Maxly.xcodeproj -scheme Maxly -configuration Release \
   -destination 'generic/platform=iOS' -derivedDataPath build/device ARCHS=arm64 \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
 
