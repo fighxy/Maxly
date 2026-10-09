@@ -27,7 +27,7 @@
 - Коммит `f616833` «feat(ios): bridge API»:
   - `sendMedia(chatId, items, caption, replyTo, onProgress, onResult)` возвращает `IosTask`. `items` — список `IosOutgoingMedia(path, kind, fileName)`. `onProgress` получает `IosUploadProgress(sent, total)` в байтах. `IosTask.cancel()` прерывает загрузку, и `onResult` приходит с видом ошибки `CANCELLED`.
   - `sendContact(chatId, contactId, replyTo, onResult)`.
-- Оба коммита пока только локальные. Orbitle закрепляет ядро на `f616833` в `core.lock` (коммит `9fb8e0f`). Поэтому сначала нужно выложить ядро, потом Orbitle.
+- Оба коммита пока только локальные. Maxly закрепляет ядро на `f616833` в `core.lock` (коммит `9fb8e0f`). Поэтому сначала нужно выложить ядро, потом Maxly.
 
 ## Клиент
 

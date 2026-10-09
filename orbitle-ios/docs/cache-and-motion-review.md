@@ -26,6 +26,6 @@ This Linux workspace has no Swift/Xcode runtime. Local validation is source revi
 
 ## Remaining protocol limitation
 
-An own-message echo can arrive before the send acknowledgement supplies its server ID. Orbitle retains local identity and removes the duplicate once the acknowledgement arrives, but it cannot reliably associate an earlier server ID with a local send. The core currently does not expose the correlation required for a definitive fix. This PR does not merge records based on matching text or hide potentially real messages from another device. A separate core/client correlation change is required to remove that intermediate duplicate safely.
+An own-message echo can arrive before the send acknowledgement supplies its server ID. Maxly retains local identity and removes the duplicate once the acknowledgement arrives, but it cannot reliably associate an earlier server ID with a local send. The core currently does not expose the correlation required for a definitive fix. This PR does not merge records based on matching text or hide potentially real messages from another device. A separate core/client correlation change is required to remove that intermediate duplicate safely.
 
 The fixed shape and button slots address composer layout; replacing the native TextField or changing its five-line limit requires an observed cursor/scroll problem on device, rather than assuming that native multiline editing is broken.
