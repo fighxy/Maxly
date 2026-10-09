@@ -1,7 +1,7 @@
 # Выбор сообщений: удаление, пересылка, копирование — общие сценарии
 
 Режим выбора нескольких сообщений («Выбрать» в меню сообщения) есть на Swift (`orbitle-ios`)
-и Kotlin (`orbitle-shared`). Swift проигрывает сценарии в `SelectionFixtureTests`
+и Kotlin (`maxly-shared`). Swift проигрывает сценарии в `SelectionFixtureTests`
 (`orbitle-ios/Tests/OrbitleDomainTests`), логика — `MessageSelectionRules` в `OrbitleDomain`.
 Новый файл без проигрывателя — ошибка.
 

@@ -1,6 +1,6 @@
 # Участники группы: общие сценарии
 
-Список «Участники» группы или канала на Swift (`orbitle-ios`) и Kotlin (`orbitle-shared`).
+Список «Участники» группы или канала на Swift (`orbitle-ios`) и Kotlin (`maxly-shared`).
 Swift проигрывает сценарии в `MembersFixtureTests` (`orbitle-ios/Tests/OrbitleDomainTests`),
 логика — `ChatMembersRules` в `OrbitleDomain`. Новый файл без проигрывателя — ошибка.
 

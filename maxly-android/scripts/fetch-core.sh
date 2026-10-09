@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Собирает Android-библиотеки ядра (core и shared, .aar) из ревизии orbitle-android/core.lock
-# и кладёт их в orbitle-android/vendor. Приложение подключает их как файлы, поэтому версии
+# Собирает Android-библиотеки ядра (core и shared, .aar) из ревизии maxly-android/core.lock
+# и кладёт их в maxly-android/vendor. Приложение подключает их как файлы, поэтому версии
 # Gradle, AGP и Kotlin у приложения и ядра не обязаны совпадать.
 set -euo pipefail
 
-# root — папка orbitle-android.
+# root — папка maxly-android.
 root="$(cd "$(dirname "$0")/.." && pwd)"
 lock="$root/core.lock"
 revision="$(grep '^revision=' "$lock" | head -n 1 | cut -d= -f2- | tr -d '[:space:]')"
@@ -15,7 +15,7 @@ if [[ -z "$revision" || -z "$repository" ]]; then
   exit 1
 fi
 
-# Локальная копия ядра вместо GitHub: MAX_KMP_CORE_DIR=~/src/maxly-core bash orbitle-android/scripts/fetch-core.sh
+# Локальная копия ядра вместо GitHub: MAX_KMP_CORE_DIR=~/src/maxly-core bash maxly-android/scripts/fetch-core.sh
 # Собирается то, что лежит в этой папке сейчас, ревизия из core.lock не проверяется.
 if [[ -n "${MAX_KMP_CORE_DIR:-}" ]]; then
   dest="$(cd "$MAX_KMP_CORE_DIR" && pwd)"
@@ -61,4 +61,4 @@ mkdir -p "$vendor"
 cp "$dest/core/build/outputs/aar/core-release.aar" "$vendor/max-core.aar"
 cp "$dest/shared/build/outputs/aar/shared-release.aar" "$vendor/max-shared.aar"
 printf '%s\n' "$revision" > "$vendor/REVISION"
-echo "Ядро $revision: orbitle-android/vendor/max-core.aar, max-shared.aar"
+echo "Ядро $revision: maxly-android/vendor/max-core.aar, max-shared.aar"

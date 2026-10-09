@@ -1,7 +1,7 @@
 # Статус «в сети / был(а)»: общие сценарии
 
 Строку статуса человека (контакты, профиль, шапка личного чата) Orbitle собирает дважды: на
-Swift (`orbitle-ios`) и на Kotlin (`orbitle-shared`, Android и Desktop). Эти файлы — общие
+Swift (`orbitle-ios`) и на Kotlin (`maxly-shared`, Android и Desktop). Эти файлы — общие
 сценарии, чтобы тексты не разошлись.
 
 Swift проигрывает их в `PresenceFixtureTests` (`orbitle-ios/Tests/OrbitlePresentationTests`):

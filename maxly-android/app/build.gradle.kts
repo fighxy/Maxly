@@ -60,7 +60,7 @@ android {
         buildConfig = true
     }
 
-    sourceSets["main"].kotlin.srcDir("../../orbitle-compose/src/main/kotlin")
+    sourceSets["main"].kotlin.srcDir("../../maxly-compose/src/main/kotlin")
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -88,7 +88,7 @@ fun coreRevision(): String {
 
 val coreAars = listOf("../vendor/max-core.aar", "../vendor/max-shared.aar")
 if (coreAars.any { !file(it).exists() }) {
-    throw GradleException("Нет AAR ядра в orbitle-android/vendor: запустите bash orbitle-android/scripts/fetch-core.sh")
+    throw GradleException("Нет AAR ядра в maxly-android/vendor: запустите bash maxly-android/scripts/fetch-core.sh")
 }
 
 dependencies {

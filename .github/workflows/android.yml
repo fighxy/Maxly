@@ -5,18 +5,18 @@ on:
   push:
     branches: [main]
     paths:
-      - "orbitle-android/**"
-      - "orbitle-shared/**"
-      - "orbitle-compose/**"
+      - "maxly-android/**"
+      - "maxly-shared/**"
+      - "maxly-compose/**"
       - "test-fixtures/calls/**"
       - "test-fixtures/client-rules/**"
       - "scripts/publish-latest.sh"
       - ".github/workflows/android.yml"
   pull_request:
     paths:
-      - "orbitle-android/**"
-      - "orbitle-shared/**"
-      - "orbitle-compose/**"
+      - "maxly-android/**"
+      - "maxly-shared/**"
+      - "maxly-compose/**"
       - "test-fixtures/calls/**"
       - "test-fixtures/client-rules/**"
       - "scripts/publish-latest.sh"
@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 45
     defaults:
       run:
-        working-directory: orbitle-android
+        working-directory: maxly-android
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -58,8 +58,8 @@ jobs:
         id: core-cache
         uses: actions/cache@v4
         with:
-          path: orbitle-android/vendor
-          key: max-core-aar-${{ hashFiles('orbitle-android/core.lock', 'orbitle-android/scripts/fetch-core.sh') }}
+          path: maxly-android/vendor
+          key: max-core-aar-${{ hashFiles('maxly-android/core.lock', 'maxly-android/scripts/fetch-core.sh') }}
       - name: Fetch maxly-core
         if: steps.core-cache.outputs.cache-hit != 'true'
         env:
@@ -70,13 +70,13 @@ jobs:
       - name: Test report
         if: failure()
         run: |
-          find app/build/test-results ../orbitle-shared/build/test-results -name '*.xml' -exec grep -l '<failure' {} + 2>/dev/null | while read -r report; do
+          find app/build/test-results ../maxly-shared/build/test-results -name '*.xml' -exec grep -l '<failure' {} + 2>/dev/null | while read -r report; do
             echo "::group::$report"
             head -c 20000 "$report"
             echo "::endgroup::"
           done
       # Ключ подписи: секрет ORBITLE_KEYSTORE_BASE64 (с паролями), иначе общий ключ разработки
-      # из orbitle-android/signing. Один ключ на все сборки — обновления ставятся поверх.
+      # из maxly-android/signing. Один ключ на все сборки — обновления ставятся поверх.
       - name: Signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.ORBITLE_KEYSTORE_BASE64 }}
@@ -147,7 +147,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: android-latest
-          WATCH: orbitle-android/ orbitle-shared/ orbitle-compose/ scripts/publish-latest.sh .github/workflows/android.yml
+          WATCH: maxly-android/ maxly-shared/ maxly-compose/ scripts/publish-latest.sh .github/workflows/android.yml
         run: |
           set -euo pipefail
           short="${GITHUB_SHA::7}"

@@ -15,4 +15,4 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "orbitle-desktop"
+rootProject.name = "maxly-desktop"

@@ -1,7 +1,7 @@
 # Форматирование текста: общие сценарии
 
 Разметка текста (`elements` сообщения) читается и пишется в Orbitle дважды: на Swift
-(`orbitle-ios`) и на Kotlin (`orbitle-shared`). Эти файлы — общие сценарии для обеих
+(`orbitle-ios`) и на Kotlin (`maxly-shared`). Эти файлы — общие сценарии для обеих
 реализаций. Swift проигрывает их в `FormattingFixtureTests`
 (`orbitle-ios/Tests/OrbitleDomainTests`), логика — `MessageMarkup` в `OrbitleDomain`.
 Проигрыватель должен гонять все файлы каталога: новый файл без проигрывателя — ошибка теста.

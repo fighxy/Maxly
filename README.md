@@ -32,9 +32,9 @@ Multiplatform, Maxly отвечает за нативный интерфейс �
 
 Все три клиента рабочие и умеют одно и то же. iOS-клиент — SwiftUI под iOS 26 со стеклом
 Liquid Glass (минимальная версия iOS 17, на iOS 17–18 вместо стекла системные материалы).
-Android-клиент и клиент для компьютера написаны на Kotlin и делят модули `orbitle-shared`
-(модели, данные, view model, протокол звонков) и `orbitle-compose` (общие экраны). Токен сессии хранит ядро. У десктопа свой каталог `~/.maxly` и
-своё пространство сессии `orbitle-desktop`, оно не делит вход с Android.
+Android-клиент и клиент для компьютера написаны на Kotlin и делят модули `maxly-shared`
+(модели, данные, view model, протокол звонков) и `maxly-compose` (общие экраны). Токен сессии хранит ядро. У десктопа свой каталог `~/.maxly` и
+своё пространство сессии `maxly-desktop`, оно не делит вход с Android.
 
 ## Скриншоты
 
@@ -55,8 +55,8 @@ Android-клиент и клиент для компьютера написан�
 | Каталог | Платформа | UI | Ядро | Состояние |
 |---|---|---|---|---|
 | [`orbitle-ios/`](orbitle-ios/) | iOS 17+ (собирается с SDK iOS 26) | SwiftUI, Liquid Glass | статический `MaxlyCore.xcframework`, ревизия в `orbitle-ios/core.lock` | рабочий клиент |
-| [`orbitle-android/`](orbitle-android/) | Android | Kotlin, Jetpack Compose, Material 3 | AAR ядра в `orbitle-android/vendor`, ревизия в `orbitle-android/core.lock` | рабочий клиент |
-| [`orbitle-desktop/`](orbitle-desktop/) | Windows, macOS, Linux (JVM) | Compose Multiplatform | исходники JVM ядра, ревизия в `orbitle-desktop/core.lock` | рабочий клиент |
+| [`maxly-android/`](maxly-android/) | Android | Kotlin, Jetpack Compose, Material 3 | AAR ядра в `maxly-android/vendor`, ревизия в `maxly-android/core.lock` | рабочий клиент |
+| [`maxly-desktop/`](maxly-desktop/) | Windows, macOS, Linux (JVM) | Compose Multiplatform | исходники JVM ядра, ревизия в `maxly-desktop/core.lock` | рабочий клиент |
 
 ## Ядро
 
@@ -102,7 +102,7 @@ Android-клиент и клиент для компьютера написан�
 
 ## Что умеют Android и компьютер
 
-Оба клиента написаны на Kotlin и делят `orbitle-shared` (модели, данные, view model, протокол звонков) и `orbitle-compose` (шапка списка чатов, экран звонка). На Android используется Jetpack Compose и Material 3, на компьютере — Compose Multiplatform для Windows, macOS и Linux.
+Оба клиента написаны на Kotlin и делят `maxly-shared` (модели, данные, view model, протокол звонков) и `maxly-compose` (шапка списка чатов, экран звонка). На Android используется Jetpack Compose и Material 3, на компьютере — Compose Multiplatform для Windows, macOS и Linux.
 
 - **Вход:** номер с маской и выбором страны, SMS-код с повтором, облачный пароль, регистрация, восстановление сессии, панель ограничений нового сеанса.
 - **Список чатов:** папки сервера с бейджами, закреплённые чаты с перестановкой, превью, черновики, «печатает…», «без звука», поиск, плашка соединения. Шапка как на iOS: поиск и папки капсулами, истории спрятаны над поиском.
@@ -114,17 +114,17 @@ Android-клиент и клиент для компьютера написан�
 - **Контакты и настройки:** контакты с поиском, устройства и сеансы, оформление (тема, размер текста, обои), приватный режим.
 - **Компьютер:** список и чат открыты рядом, горячие клавиши для чатов, ответов, папок и звонков (работают в любой раскладке), встроенный проигрыватель видео на ffmpeg.
 
-Подробности — в [orbitle-android/README.md](orbitle-android/README.md) и [orbitle-desktop/README.md](orbitle-desktop/README.md).
+Подробности — в [maxly-android/README.md](maxly-android/README.md) и [maxly-desktop/README.md](maxly-desktop/README.md).
 
 ## Устройство репозитория
 
 | Путь | Что там |
 |---|---|
 | [`orbitle-ios/`](orbitle-ios/) | Xcode-проект, Swift-пакет со слоями, тесты, документация iOS-клиента |
-| [`orbitle-android/`](orbitle-android/) | Android-приложение, `scripts/fetch-core.sh` (AAR ядра по `core.lock`) |
-| [`orbitle-desktop/`](orbitle-desktop/) | клиент для компьютера, `scripts/fetch-core.sh` (исходники ядра по `core.lock`) |
-| [`orbitle-shared/`](orbitle-shared/) | общий Kotlin-код Android и десктопа: модели, данные, view model, протокол звонков и их тесты |
-| [`orbitle-compose/`](orbitle-compose/) | общие Compose-экраны Android и десктопа: шапка списка чатов, экран звонка |
+| [`maxly-android/`](maxly-android/) | Android-приложение, `scripts/fetch-core.sh` (AAR ядра по `core.lock`) |
+| [`maxly-desktop/`](maxly-desktop/) | клиент для компьютера, `scripts/fetch-core.sh` (исходники ядра по `core.lock`) |
+| [`maxly-shared/`](maxly-shared/) | общий Kotlin-код Android и десктопа: модели, данные, view model, протокол звонков и их тесты |
+| [`maxly-compose/`](maxly-compose/) | общие Compose-экраны Android и десктопа: шапка списка чатов, экран звонка |
 | [`test-fixtures/calls/ws2/`](test-fixtures/calls/ws2/) | общие сценарии сигналинга звонков, их проигрывают тесты Swift и Kotlin |
 | [`scripts/`](scripts/) | `fetch-core.sh` (ядро для iOS), `fetch-core.ps1` (исходники ядра для десктопа на Windows), `build-ipa.sh`, `smoke-launch.sh`, `validate-ipa.py`, `publish-latest.sh` (пререлизы `*-latest`) |
 | [`docs/`](docs/) | общая архитектура клиентов, памятка по клиенту Komet, бренд |
@@ -149,7 +149,7 @@ https://github.com/fighxy/Maxly/releases/download/desktop-latest/Maxly.msi, macO
 https://github.com/fighxy/Maxly/releases/download/desktop-latest/Maxly.dmg, Linux —
 https://github.com/fighxy/Maxly/releases/download/desktop-latest/Maxly.deb. Установщики
 каждого прогона есть и в артефактах `Maxly-desktop-<формат>-<sha>`. Собрать и запустить
-самому — в [orbitle-desktop/README.md](orbitle-desktop/README.md).
+самому — в [maxly-desktop/README.md](maxly-desktop/README.md).
 
 ## Документация
 
@@ -161,5 +161,5 @@ https://github.com/fighxy/Maxly/releases/download/desktop-latest/Maxly.deb. Ус
 - [docs/account-limits.md](docs/account-limits.md) — ограничения аккаунта после входа и регистрации на всех платформах.
 - [docs/photo-editor.md](docs/photo-editor.md) — расширенный редактор фото на трёх платформах.
 - [orbitle-ios/README.md](orbitle-ios/README.md) — iOS-клиент: слои, сборка, CI, указатель документов.
-- [orbitle-android/README.md](orbitle-android/README.md) — Android-клиент: сборка, подпись, CI.
-- [orbitle-desktop/README.md](orbitle-desktop/README.md) — клиент для компьютера: запуск, что готово.
+- [maxly-android/README.md](maxly-android/README.md) — Android-клиент: сборка, подпись, CI.
+- [maxly-desktop/README.md](maxly-desktop/README.md) — клиент для компьютера: запуск, что готово.

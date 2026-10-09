@@ -6,7 +6,7 @@
 Источники Komet: строки интерфейса (`lib/l10n/app_ru.arb`, около 1900 строк), экраны `lib/frontend/screens/**`,
 модули `lib/backend/modules/**`, таблица опкодов `lib/core/protocol/opcode_map.dart`. Состояние Maxly проверено по
 коду клиентов (репозитории, view model, экраны). Документация клиентов местами отстаёт от кода, например раздел
-«Что готово» в `orbitle-android/README.md`.
+«Что готово» в `maxly-android/README.md`.
 
 ## Обозначения
 
@@ -18,7 +18,7 @@
 | `?` | — | схемы нет ни в Komet, ни в PyMax и kolibri |
 | `н/п` | не применимо к платформе | работа только на стороне клиента |
 
-Столбец «ПК» — `orbitle-desktop`. Android и ПК делят `orbitle-shared` (модели, данные, view model), а экраны Compose
+Столбец «ПК» — `maxly-desktop`. Android и ПК делят `maxly-shared` (модели, данные, view model), а экраны Compose
 у них почти одинаковые копии. Поэтому `+` на Android обычно значит `+` и на ПК, если не мешает платформа.
 
 ## Коротко
@@ -347,8 +347,8 @@ ConnectionService), ПК (WebRTC для JVM). Отдельный большой 
 
 ## 20. Замечание по устройству
 
-Экраны Android (`orbitle-android/.../ui`) и ПК (`orbitle-desktop/.../ui`) почти совпадают: `ChatExtras.kt` и
+Экраны Android (`maxly-android/.../ui`) и ПК (`maxly-desktop/.../ui`) почти совпадают: `ChatExtras.kt` и
 `SecurityScreen.kt` идентичны, `ChatListScreen.kt` отличается двумя строками, `ChatScreen.kt` — 75 строками. Каждая
-функция из плана пишется дважды. Если вынести общие экраны Compose в `orbitle-shared` (Compose Multiplatform
+функция из плана пишется дважды. Если вынести общие экраны Compose в `maxly-shared` (Compose Multiplatform
 работает и на Android, и на JVM), а платформенные места (камера, файлы, плеер) оставить за интерфейсами, работа по
 этапам 1–4 для Android и ПК сократится примерно вдвое. Это отдельное решение, в план выше не включено.

@@ -41,8 +41,8 @@ UIKit/Core Image. Пока не сделаны неон, автоматичес�
 
 ## Код и проверки
 
-- Общая модель и обработка цвета: `orbitle-shared/.../presentation/photo/`.
-- Общий интерфейс Android/ПК: `orbitle-compose/.../ui/photo/PhotoEditor.kt`.
+- Общая модель и обработка цвета: `maxly-shared/.../presentation/photo/`.
+- Общий интерфейс Android/ПК: `maxly-compose/.../ui/photo/PhotoEditor.kt`.
 - Рендеры: `AndroidPhotoEditor.kt`, `DesktopPhotoEditor.kt`, `PhotoRenderer.swift`.
 - Модель и интерфейс iOS: `PhotoEdits.swift`, `PhotoAdjustments.swift`, `PhotoEditor.swift`.
 - Тесты: `PhotoEditsTest`, `DesktopPhotoEditorTest`, `PhotoEditsTests`.

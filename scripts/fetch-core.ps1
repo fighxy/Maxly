@@ -1,9 +1,9 @@
-# Кладёт исходники max-kmp-core ревизии из orbitle-desktop/core.lock в .build\max-kmp-core
+# Кладёт исходники max-kmp-core ревизии из maxly-desktop/core.lock в .build\max-kmp-core
 # в корне репозитория: десктоп собирает ядро из них сам. Для Linux и macOS то же делает
-# orbitle-desktop/scripts/fetch-core.sh.
+# maxly-desktop/scripts/fetch-core.sh.
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
-$lockPath = Join-Path (Join-Path $root "orbitle-desktop") "core.lock"
+$lockPath = Join-Path (Join-Path $root "maxly-desktop") "core.lock"
 $revision = $null
 $repository = $null
 foreach ($line in Get-Content -Path $lockPath) {

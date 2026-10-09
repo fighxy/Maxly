@@ -5,9 +5,9 @@ on:
   push:
     branches: [main]
     paths:
-      - "orbitle-desktop/**"
-      - "orbitle-shared/**"
-      - "orbitle-compose/**"
+      - "maxly-desktop/**"
+      - "maxly-shared/**"
+      - "maxly-compose/**"
       - "test-fixtures/calls/**"
       - "test-fixtures/client-rules/**"
       - "scripts/fetch-core.ps1"
@@ -15,9 +15,9 @@ on:
       - ".github/workflows/desktop.yml"
   pull_request:
     paths:
-      - "orbitle-desktop/**"
-      - "orbitle-shared/**"
-      - "orbitle-compose/**"
+      - "maxly-desktop/**"
+      - "maxly-shared/**"
+      - "maxly-compose/**"
       - "test-fixtures/calls/**"
       - "test-fixtures/client-rules/**"
       - "scripts/fetch-core.ps1"
@@ -38,7 +38,7 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        working-directory: orbitle-desktop
+        working-directory: maxly-desktop
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -46,7 +46,7 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
-      # Десктоп собирает ядро из исходников ревизии orbitle-desktop/core.lock.
+      # Десктоп собирает ядро из исходников ревизии maxly-desktop/core.lock.
       - name: Fetch maxly-core
         env:
           MAX_KMP_CORE_TOKEN: ${{ secrets.MAX_KMP_CORE_TOKEN }}
@@ -54,7 +54,7 @@ jobs:
       # ffmpeg для тестов встроенного проигрывателя видео: без него они пропускаются.
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
-      # build включает jvmTest: тесты общего кода из orbitle-shared на библиотеках десктопа.
+      # build включает jvmTest: тесты общего кода из maxly-shared на библиотеках десктопа.
       - name: Build and tests
         env:
           ORBITLE_BUILD_SHA: ${{ github.sha }}
@@ -88,7 +88,7 @@ jobs:
             task: packageDmg
     defaults:
       run:
-        working-directory: orbitle-desktop
+        working-directory: maxly-desktop
         shell: bash
     steps:
       - uses: actions/checkout@v4
@@ -189,7 +189,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: desktop-latest
-          WATCH: orbitle-desktop/ orbitle-shared/ orbitle-compose/ scripts/fetch-core.ps1 scripts/publish-latest.sh .github/workflows/desktop.yml
+          WATCH: maxly-desktop/ maxly-shared/ maxly-compose/ scripts/fetch-core.ps1 scripts/publish-latest.sh .github/workflows/desktop.yml
         run: |
           set -euo pipefail
           short="${GITHUB_SHA::7}"

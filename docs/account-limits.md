@@ -28,14 +28,14 @@
 
 | Слой | iOS | Android и ПК |
 |---|---|---|
-| Модель | `OrbitleDomain/Models/AccountLimits.swift`: `AccountLimits`, `AuthPhase.freshEntry` | `orbitle-shared/.../domain/AccountLimits.kt`, `AuthPhase.freshEntry()` в `Session.kt` |
+| Модель | `OrbitleDomain/Models/AccountLimits.swift`: `AccountLimits`, `AuthPhase.freshEntry` | `maxly-shared/.../domain/AccountLimits.kt`, `AuthPhase.freshEntry()` в `Session.kt` |
 | Хранение | `UserDefaultsAccountLimitsStore` (`orbitle.accountLimits.*`) | `AccountLimitsStore` над `PreferenceStore` (ключ `accountLimits`) |
 | Тексты | `AccountLimitsText`, `AccountLimitsSettings` (`OrbitlePresentation/Settings`) | `AccountLimitsText` (`presentation/settings`) |
 | Экран | `AccountLimitsSheet`, строка в `SettingsView` | `AccountLimitsNotice`, строка в `SettingsScreen` |
 | Отметка | `AppContainer`: вход после шага кода, пароля или имени → `grant`, `signedOut` → `clear` | `SessionManager.onFreshSession(entry)` → `grant`, `onSignedOut` → `clear` |
 
 Тесты: `AccountLimitsTests` (iOS, презентация), `AccountLimitsStoreTests` (iOS, хранение),
-`AccountLimitsTest` и `SessionManagerTest` (`orbitle-shared`).
+`AccountLimitsTest` и `SessionManagerTest` (`maxly-shared`).
 
 ## Проверка на устройстве
 

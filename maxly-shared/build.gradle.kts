@@ -1,6 +1,6 @@
 // Общий код Android и десктопа: domain, data, presentation и их тесты.
-// В сборке orbitle-android это Android-библиотека :shared; десктоп собирает те же исходники
-// в своей JVM-цели (см. orbitle-desktop/build.gradle.kts).
+// В сборке maxly-android это Android-библиотека :shared; десктоп собирает те же исходники
+// в своей JVM-цели (см. maxly-desktop/build.gradle.kts).
 plugins {
     alias(libs.plugins.android.library)
 }
@@ -35,7 +35,7 @@ kotlin {
 // локальный AAR нельзя упаковать в другой AAR.
 val coreAars = listOf("vendor/max-core.aar", "vendor/max-shared.aar").map { rootProject.file(it) }
 if (coreAars.any { !it.exists() }) {
-    throw GradleException("Нет AAR ядра в orbitle-android/vendor: запустите bash orbitle-android/scripts/fetch-core.sh")
+    throw GradleException("Нет AAR ядра в maxly-android/vendor: запустите bash maxly-android/scripts/fetch-core.sh")
 }
 
 dependencies {

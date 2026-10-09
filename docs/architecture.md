@@ -47,17 +47,17 @@ Repository
 - **Сеть:** URLSession.
 - **Ядро:** подключается как XCFramework через SPM или CocoaPods. Потоки Kotlin (`Flow`) и `suspend`-функции оборачиваются в репозитории в Swift-обёртки (async/await, AsyncSequence), поэтому типы Kotlin выше репозитория не видны.
 
-### Android (`orbitle-android/`)
+### Android (`maxly-android/`)
 - **UI:** нативные Android Views. ViewModel взяты из Jetpack, состояние отдаётся через `StateFlow`.
 - **База:** Room.
 - **Сеть:** OkHttp.
 - **Ядро:** обычная Gradle-зависимость. Язык общий, поэтому корутины и `Flow` ядра используются в репозитории без обёрток.
 
-### Desktop (`orbitle-desktop/`)
+### Desktop (`maxly-desktop/`)
 - **UI:** Compose Multiplatform на JVM. Окно: боковой рельс, список чатов и открытый чат рядом. ViewModel держат состояние в `StateFlow`.
 - **База:** стор ядра (`MaxClient.store`). Настройки окна — файл `~/.maxly/preferences.properties`. Отдельной SQLDelight нет.
 - **Сеть:** OkHttp, как у Android. Голос пишется через Java Sound и уходит в Ogg/Opus через ffmpeg.
-- **Ядро:** исходники `commonMain`, `jvmMain` и `jvmAndroidShared` собираются внутри клиента. Ревизия в `orbitle-desktop/core.lock`. Пространство сессии — `orbitle-desktop`.
+- **Ядро:** исходники `commonMain`, `jvmMain` и `jvmAndroidShared` собираются внутри клиента. Ревизия в `maxly-desktop/core.lock`. Пространство сессии — `maxly-desktop`.
 
 ## Что общее, а что нет
 

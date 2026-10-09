@@ -14,7 +14,7 @@ val coreDir = System.getenv("MAX_KMP_CORE_DIR")?.takeIf { it.isNotBlank() }?.let
     ?: rootProject.file("../.build/max-kmp-core")
 if (!coreDir.resolve("core/src/commonMain/kotlin").isDirectory) {
     throw GradleException(
-        "Нет ядра в $coreDir. Запустите bash orbitle-desktop/scripts/fetch-core.sh " +
+        "Нет ядра в $coreDir. Запустите bash maxly-desktop/scripts/fetch-core.sh " +
             "(Windows: scripts/fetch-core.ps1) из корня репозитория",
     )
 }
@@ -37,7 +37,7 @@ val webrtcNatives: String = run {
 /** Ревизия ядра из core.lock: короткий хеш для экрана «О приложении». */
 val coreRevision: String = file("core.lock").readLines()
     .firstOrNull { it.startsWith("revision=") }?.substringAfter('=')?.trim()?.take(7)
-    ?: throw GradleException("В orbitle-desktop/core.lock нет строки revision=")
+    ?: throw GradleException("В maxly-desktop/core.lock нет строки revision=")
 
 // BuildConfig собирается из core.lock и переменных CI при каждой сборке, поэтому не устаревает.
 val generateBuildConfig = tasks.register("generateBuildConfig") {
@@ -95,9 +95,9 @@ kotlin {
                     coreDir.resolve("core/src/jvmMain/kotlin"),
                     coreDir.resolve("core/src/jvmAndroidShared/kotlin"),
                     coreDir.resolve("shared/src/jvmMain/kotlin"),
-                    // Общий с Android код (domain, data, presentation). Его тесты — в jvmTest ниже и в сборке orbitle-android.
-                    layout.projectDirectory.dir("../orbitle-shared/src/main/kotlin"),
-                    layout.projectDirectory.dir("../orbitle-compose/src/main/kotlin"),
+                    // Общий с Android код (domain, data, presentation). Его тесты — в jvmTest ниже и в сборке maxly-android.
+                    layout.projectDirectory.dir("../maxly-shared/src/main/kotlin"),
+                    layout.projectDirectory.dir("../maxly-compose/src/main/kotlin"),
                     layout.projectDirectory.dir("src/main/kotlin"),
                 ),
             )
@@ -132,7 +132,7 @@ kotlin {
             kotlin.setSrcDirs(
                 listOf(
                     // Тесты общего кода: здесь они проверяют его на версиях библиотек десктопа.
-                    layout.projectDirectory.dir("../orbitle-shared/src/test/kotlin"),
+                    layout.projectDirectory.dir("../maxly-shared/src/test/kotlin"),
                     layout.projectDirectory.dir("src/test/kotlin"),
                 ),
             )
