@@ -522,7 +522,11 @@ fun ChatScreen(
     } }
 
     editingPhoto?.let { original ->
-        app.maxly.ui.photo.PhotoEditor(
+        if (original.kind == OutgoingFile.Kind.VIDEO) app.maxly.ui.video.VideoEditor(
+            file = original,
+            onClose = { editingPhoto = null },
+            onSave = { edited -> model.replaceAttachment(original, edited); editingPhoto = null },
+        ) else app.maxly.ui.photo.PhotoEditor(
             file = original,
             load = app.maxly.media.AndroidPhotoEditor::load,
             onClose = { editingPhoto = null },

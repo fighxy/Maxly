@@ -103,11 +103,35 @@ enum MediaExporter {
         )
     }
 
+    static func editVideo(_ draft: AttachmentDraft, start: Double, end: Double, muted: Bool) async throws -> AttachmentDraft {
+        let source = AVURLAsset(url: URL(fileURLWithPath: draft.path))
+        let duration = try await source.load(.duration).seconds
+        guard start.isFinite, end.isFinite, start >= 0, end > start, end <= duration + 0.01 else { throw Failure.unreadable }
+        let composition = AVMutableComposition()
+        let range = CMTimeRange(start: CMTime(seconds: start, preferredTimescale: 600), duration: CMTime(seconds: end - start, preferredTimescale: 600))
+        let videos = try await source.loadTracks(withMediaType: .video)
+        guard let video = videos.first,
+              let target = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else { throw Failure.unreadable }
+        try target.insertTimeRange(range, of: video, at: .zero)
+        target.preferredTransform = try await video.load(.preferredTransform)
+        if !muted, let audio = try await source.loadTracks(withMediaType: .audio).first,
+           let outputAudio = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
+            let audioRange = try await audio.load(.timeRange)
+            let intersection = CMTimeRangeGetIntersection(range, otherRange: audioRange)
+            if intersection.duration.seconds > 0 {
+                try outputAudio.insertTimeRange(intersection, of: audio, at: CMTimeSubtract(intersection.start, range.start))
+            }
+        }
+        return try await exportVideo(composition)
+    }
+
     private static func exportVideo(_ asset: AVAsset) async throws -> AttachmentDraft {
         guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPreset1920x1080) else {
             throw Failure.exportFailed(nil)
         }
         let target = try makeFolder().appendingPathComponent("video.mp4")
+        var completed = false
+        defer { if !completed { try? FileManager.default.removeItem(at: target.deletingLastPathComponent()) } }
         session.shouldOptimizeForNetworkUse = true
         if #available(iOS 18.0, *) {
             do {
@@ -125,6 +149,7 @@ enum MediaExporter {
                 throw Failure.exportFailed(session.error?.localizedDescription)
             }
         }
+        completed = true
         let exported = AVURLAsset(url: target)
         let duration = (try? await exported.load(.duration)).map(CMTimeGetSeconds) ?? 0
         var width: Int?

@@ -418,7 +418,7 @@ internal fun AttachmentStrip(items: List<OutgoingFile>, onRemove: (OutgoingFile)
             Box(Modifier.size(72.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
                 when (item.kind) {
                     OutgoingFile.Kind.PHOTO -> AsyncImage(File(item.path), "Редактировать фото: ${item.name}", Modifier.fillMaxSize().clickable { onEditPhoto(item) }, contentScale = ContentScale.Crop)
-                    OutgoingFile.Kind.VIDEO -> Icon(Icons.Filled.Videocam, item.name, Modifier.align(Alignment.Center), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutgoingFile.Kind.VIDEO -> Icon(Icons.Filled.Videocam, item.name, Modifier.align(Alignment.Center).size(48.dp).clickable { onEditPhoto(item) }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutgoingFile.Kind.FILE -> Column(Modifier.align(Alignment.Center).padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Outlined.InsertDriveFile, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(item.name, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
@@ -428,9 +428,9 @@ internal fun AttachmentStrip(items: List<OutgoingFile>, onRemove: (OutgoingFile)
                     Modifier.align(Alignment.TopEnd).padding(3.dp).size(22.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)).clickable { onRemove(item) },
                     contentAlignment = Alignment.Center,
                 ) { Icon(Icons.Filled.Close, "Убрать", tint = Color.White, modifier = Modifier.size(14.dp)) }
-                if (item.kind == OutgoingFile.Kind.PHOTO) {
+                if (item.kind == OutgoingFile.Kind.PHOTO || item.kind == OutgoingFile.Kind.VIDEO) {
                     Box(Modifier.align(Alignment.BottomStart).padding(3.dp).size(24.dp).clip(CircleShape).background(Color.Black.copy(alpha = .55f)).clickable { onEditPhoto(item) }, contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.Edit, "Редактировать фото", tint = Color.White, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Filled.Edit, "Редактировать вложение", tint = Color.White, modifier = Modifier.size(14.dp))
                     }
                 }
             }
