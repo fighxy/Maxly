@@ -1,7 +1,7 @@
 import Foundation
 import OrbitleData
 import OrbitleDomain
-import MaxIos
+import MaxlyCore
 
 /// Настройки аккаунта, режим призрака и приватность через `MaxIosClient` (docs/settings.md,
 /// docs/privacy.md).

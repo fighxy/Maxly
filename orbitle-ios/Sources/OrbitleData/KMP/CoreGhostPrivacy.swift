@@ -2,7 +2,7 @@ import Foundation
 import OrbitleDomain
 
 /// Режим призрака и приватность в мосте ядра (`MaxIosClient`, docs/privacy.md). Реализация с
-/// `import MaxIos` — `MaxIosCore` в приложении, тесты подставляют фейк.
+/// `import MaxlyCore` — `MaxIosCore` в приложении, тесты подставляют фейк.
 ///
 /// Сеть целиком на ядре: в режиме призрака оно шлёт `PING` / `LOGIN` с `interactive: false` и
 /// не шлёт набор любого вида; без отметок о прочтении `markRead` / `markReadAt` читают чат

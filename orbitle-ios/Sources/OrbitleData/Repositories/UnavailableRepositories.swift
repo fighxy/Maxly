@@ -1,7 +1,7 @@
 import Foundation
 import OrbitleDomain
 
-/// Контакты, пока мост ядра (`MaxIos`) их не отдаёт: пустой список без возможностей.
+/// Контакты, пока мост ядра (`MaxlyCore`) их не отдаёт: пустой список без возможностей.
 /// Экран по `capabilities` показывает, что раздел ещё недоступен.
 public struct UnavailableContactRepository: ContactRepository {
     public init() {}

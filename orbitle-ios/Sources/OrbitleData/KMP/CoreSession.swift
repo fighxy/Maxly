@@ -510,7 +510,7 @@ public struct CoreEvent: Sendable, Equatable {
     }
 }
 
-/// Узкий вход в max-kmp-core. Реализация с `import MaxIos` живёт в приложении, тесты подставляют фейк.
+/// Узкий вход в maxly-core. Реализация с `import MaxlyCore` живёт в приложении, тесты подставляют фейк.
 public protocol MaxCore: Sendable {
     func phaseName() async -> CorePhase
     func currentUserId() async -> String

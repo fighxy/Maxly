@@ -54,7 +54,7 @@ jobs:
           done
 
   app:
-    name: App and MaxIos
+    name: App and MaxlyCore
     runs-on: macos-15
     timeout-minutes: 90
     outputs:
@@ -81,17 +81,17 @@ jobs:
           MAX_KMP_CORE_TOKEN: ${{ secrets.MAX_KMP_CORE_TOKEN }}
         run: |
           if [ -z "$MAX_KMP_CORE_TOKEN" ]; then
-            echo "::warning::Нет секрета MAX_KMP_CORE_TOKEN (PAT с чтением fighxy/max-kmp-core). Сборка приложения пропущена."
+            echo "::warning::Нет секрета MAX_KMP_CORE_TOKEN (PAT с чтением fighxy/maxly-core). Сборка приложения пропущена."
             echo "present=false" >> "$GITHUB_OUTPUT"
           else
             echo "present=true" >> "$GITHUB_OUTPUT"
           fi
-      - name: Fetch MaxIos.xcframework
+      - name: Fetch MaxlyCore.xcframework
         if: steps.token.outputs.present == 'true'
         env:
           MAX_KMP_CORE_TOKEN: ${{ secrets.MAX_KMP_CORE_TOKEN }}
           # Kotlin/Native 2.1.10 в ядре не читает заголовки SDK 26 (cinterop), поэтому
-          # MaxIos.xcframework собирается Xcode 16.2, как раньше. Статическую библиотеку
+          # MaxlyCore.xcframework собирается Xcode 16.2, как раньше. Статическую библиотеку
           # потом компонует Xcode 26.
           DEVELOPER_DIR: /Applications/Xcode_16.2.app
         run: bash scripts/fetch-core.sh

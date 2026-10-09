@@ -25,7 +25,7 @@
 - В настройках аккаунта есть `DOUBLE_TAP_REACTION_DISABLED` и `DOUBLE_TAP_REACTION_VALUE`. Реакция по двойному касанию не сделана.
 - Уведомлений APNs о реакциях нет.
 
-## Ядро `max-kmp-core`
+## Ядро `maxly-core`
 
 - `MessagesApi`: `setReaction` и `removeReaction` (с `postId` для комментариев), `getReactions`, `getDetailedReactions`.
 - `AssetsApi`: наборы анимодзи и сами анимодзи. `reactionCatalog()` отдаёт эмодзи без повторов.

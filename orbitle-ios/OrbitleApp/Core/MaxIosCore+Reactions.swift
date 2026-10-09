@@ -1,7 +1,7 @@
 import Foundation
 import OrbitleData
 import OrbitleDomain
-import MaxIos
+import MaxlyCore
 
 /// Реакции на сообщения через `MaxIosClient` (docs/reactions.md).
 extension MaxIosCore {

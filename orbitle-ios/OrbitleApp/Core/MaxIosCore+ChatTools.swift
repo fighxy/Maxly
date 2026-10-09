@@ -1,7 +1,7 @@
 import Foundation
 import OrbitleData
 import OrbitleDomain
-import MaxIos
+import MaxlyCore
 
 extension MaxIosCore {
     func sendRichText(chatId: String, text: String, replyTo: String, animoji: [CoreAnimojiMark], mentions: [CoreMentionMark]) async throws -> CoreMessage {

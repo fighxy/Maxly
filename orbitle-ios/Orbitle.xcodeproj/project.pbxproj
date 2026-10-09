@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AA0000000000000000000006 /* MaxIos.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000005 /* MaxIos.xcframework */; };
+		AA0000000000000000000006 /* MaxlyCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000005 /* MaxlyCore.xcframework */; };
 		AA000000000000000000000A /* OrbitleDomain in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000007 /* OrbitleDomain */; };
 		AA000000000000000000000B /* OrbitleData in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000008 /* OrbitleData */; };
 		AA000000000000000000000C /* OrbitleUI in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000009 /* OrbitleUI */; };
@@ -17,7 +17,7 @@
 
 /* Begin PBXFileReference section */
 		AA0000000000000000000004 /* Maxly.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Maxly.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		AA0000000000000000000005 /* MaxIos.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Vendor/MaxIos.xcframework; sourceTree = "<group>"; };
+		AA0000000000000000000005 /* MaxlyCore.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Vendor/MaxlyCore.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -55,7 +55,7 @@
 				AA000000000000000000000C /* OrbitleUI in Frameworks */,
 				AA000000000000000000001A /* OrbitlePresentation in Frameworks */,
 				AA000000000000000000001E /* OrbitleCallMedia in Frameworks */,
-				AA0000000000000000000006 /* MaxIos.xcframework in Frameworks */,
+				AA0000000000000000000006 /* MaxlyCore.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -66,7 +66,7 @@
 			isa = PBXGroup;
 			children = (
 				AA000000000000000000000E /* OrbitleApp */,
-				AA0000000000000000000005 /* MaxIos.xcframework */,
+				AA0000000000000000000005 /* MaxlyCore.xcframework */,
 				AA0000000000000000000018 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -86,7 +86,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = AA0000000000000000000012 /* Build configuration list for PBXNativeTarget "Orbitle" */;
 			buildPhases = (
-				AA0000000000000000000019 /* Check MaxIos */,
+				AA0000000000000000000019 /* Check MaxlyCore */,
 				AA0000000000000000000002 /* Sources */,
 				AA0000000000000000000003 /* Frameworks */,
 				AA000000000000000000001C /* Resources */,
@@ -161,7 +161,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		AA0000000000000000000019 /* Check MaxIos */ = {
+		AA0000000000000000000019 /* Check MaxlyCore */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -171,14 +171,14 @@
 			);
 			inputPaths = (
 			);
-			name = "Check MaxIos";
+			name = "Check MaxlyCore";
 			outputFileListPaths = (
 			);
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ ! -d \"$PROJECT_DIR/Vendor/MaxIos.xcframework\" ]; then\n  echo \"error: Нет Vendor/MaxIos.xcframework. Соберите его скриптом scripts/fetch-core.sh\"\n  exit 1\nfi\n";
+			shellScript = "if [ ! -d \"$PROJECT_DIR/Vendor/MaxlyCore.xcframework\" ]; then\n  echo \"error: Нет Vendor/MaxlyCore.xcframework. Соберите его скриптом scripts/fetch-core.sh\"\n  exit 1\nfi\n";
 			showEnvVarsInLog = 0;
 		};
 		AA000000000000000000001D /* Stamp version */ = {

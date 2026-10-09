@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Собирает статический MaxIos.xcframework из ревизии orbitle-ios/core.lock.
+# Собирает статический MaxlyCore.xcframework из ревизии orbitle-ios/core.lock.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -12,7 +12,7 @@ if [[ -z "$revision" || -z "$repository" ]]; then
   exit 1
 fi
 
-# Локальная копия ядра вместо GitHub: MAX_KMP_CORE_DIR=~/src/max-kmp-core bash scripts/fetch-core.sh
+# Локальная копия ядра вместо GitHub: MAX_KMP_CORE_DIR=~/src/maxly-core bash scripts/fetch-core.sh
 # Собирается то, что лежит в этой папке сейчас, ревизия из core.lock не проверяется.
 if [[ -n "${MAX_KMP_CORE_DIR:-}" ]]; then
   dest="$(cd "$MAX_KMP_CORE_DIR" && pwd)"
@@ -41,7 +41,7 @@ fi
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "Ядро $revision лежит в $dest."
-  echo "MaxIos.xcframework собирается только на macOS с JDK 17 и Xcode."
+  echo "MaxlyCore.xcframework собирается только на macOS с JDK 17 и Xcode."
   exit 0
 fi
 
@@ -51,15 +51,15 @@ if ! command -v java >/dev/null 2>&1; then
 fi
 
 chmod +x "$dest/gradlew"
-( cd "$dest" && ./gradlew :ios:assembleMaxIosReleaseXCFramework --no-daemon --stacktrace )
+( cd "$dest" && ./gradlew :ios:assembleMaxlyCoreReleaseXCFramework --no-daemon --stacktrace )
 
-framework="$dest/ios/build/XCFrameworks/release/MaxIos.xcframework"
+framework="$dest/ios/build/XCFrameworks/release/MaxlyCore.xcframework"
 if [[ ! -d "$framework" ]]; then
   echo "Gradle не положил $framework" >&2
   exit 1
 fi
 
 mkdir -p "$root/orbitle-ios/Vendor"
-rm -rf "$root/orbitle-ios/Vendor/MaxIos.xcframework"
-cp -R "$framework" "$root/orbitle-ios/Vendor/MaxIos.xcframework"
-echo "MaxIos.xcframework из $revision лежит в orbitle-ios/Vendor."
+rm -rf "$root/orbitle-ios/Vendor/MaxlyCore.xcframework"
+cp -R "$framework" "$root/orbitle-ios/Vendor/MaxlyCore.xcframework"
+echo "MaxlyCore.xcframework из $revision лежит в orbitle-ios/Vendor."

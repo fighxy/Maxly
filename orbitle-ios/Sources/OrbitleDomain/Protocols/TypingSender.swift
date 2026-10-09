@@ -1,7 +1,7 @@
 import Foundation
 
 /// Отправка «я печатаю» (`MSG_TYPING` 65, ответа нет). Подключается, когда мост ядра
-/// (`MaxIos`) отдаст `sendTyping`; до этого приложение держит заглушку, которая ничего не шлёт.
+/// (`MaxlyCore`) отдаст `sendTyping`; до этого приложение держит заглушку, которая ничего не шлёт.
 public protocol TypingSender: Sendable {
     /// `postId` — комментарий под постом канала, иначе `nil`.
     func sendTyping(chatId: String, type: String, postId: String?) async throws

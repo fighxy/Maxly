@@ -1,7 +1,7 @@
 import Foundation
 import OrbitleDomain
 
-/// Управление чатом через мост ядра. Пока собранный `MaxIos` не содержит эти методы,
+/// Управление чатом через мост ядра. Пока собранный `MaxlyCore` не содержит эти методы,
 /// запись отвечает отказом, а список участников берётся из уже существующего `chatMembers`.
 public struct CoreChatAdminRepository: ChatAdminRepository, Sendable {
     private let core: any MaxCore
@@ -69,7 +69,7 @@ public struct CoreChatAdminRepository: ChatAdminRepository, Sendable {
     }
 }
 
-/// Методы моста, которых ещё нет в опубликованном `MaxIos`. Реализация по умолчанию — отказ.
+/// Методы моста, которых ещё нет в опубликованном `MaxlyCore`. Реализация по умолчанию — отказ.
 /// Когда ядро начнёт их отдавать, `MaxIosCore` перекроет эти методы.
 public extension MaxCore {
     func chatAdminSnapshot(chatId: String) async throws(OrbitleError) -> ChatAdminSnapshot { throw .rejected(chatAdminBridgeMissing) }

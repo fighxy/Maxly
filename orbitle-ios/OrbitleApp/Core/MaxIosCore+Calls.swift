@@ -1,5 +1,5 @@
 import Foundation
-import MaxIos
+import MaxlyCore
 import OrbitleDomain
 import OrbitleData
 

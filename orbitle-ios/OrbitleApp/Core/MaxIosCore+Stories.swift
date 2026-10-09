@@ -1,7 +1,7 @@
 import Foundation
 import OrbitleData
 import OrbitleDomain
-import MaxIos
+import MaxlyCore
 
 /// Истории через `MaxIosClient` (схема Komet `feature/FullStack`, docs/protocol.md ядра).
 extension MaxIosCore {

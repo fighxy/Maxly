@@ -1,7 +1,7 @@
 import Foundation
 import OrbitleData
 import OrbitleDomain
-import MaxIos
+import MaxlyCore
 
 /// Разметка, удаление выбранного, черновики сервера, участники с ролями, правка контактов
 /// и адресная книга. Числа в колбэках Kotlin приходят упакованными.

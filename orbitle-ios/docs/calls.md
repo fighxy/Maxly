@@ -8,7 +8,7 @@
 
 | Слой | Где | Что делает |
 |---|---|---|
-| Ядро | `max-kmp-core`: `CallsApi`, `IosBridge` | 78 начать, 166 войти по ссылке, 76/84 создать ссылку, 89 описание ссылки, 163 журнал по курсору, 164 удалить из журнала, 167 отклонить входящий, пуш 137 с `vcp`, пуш 165 журнала. Отдаёт адрес ws2 с параметрами клиента (`Ws2ClientInfo.forCalls`) |
+| Ядро | `maxly-core`: `CallsApi`, `IosBridge` | 78 начать, 166 войти по ссылке, 76/84 создать ссылку, 89 описание ссылки, 163 журнал по курсору, 164 удалить из журнала, 167 отклонить входящий, пуш 137 с `vcp`, пуш 165 журнала. Отдаёт адрес ws2 с параметрами клиента (`Ws2ClientInfo.forCalls`) |
 | Домен | `OrbitleDomain/Models/Call.swift`, `Protocols/CallService.swift` | `CallConnection`, `IncomingCall`, `CallState`, `CallParticipant`; протоколы `CallService`, `CallControl`, `CallEngine` |
 | Данные | `OrbitleData/Calls` | `Ws2Signaling` (сокет ws2), `CallSession` (весь звонок), разбор SDP (`CallSdp`), каналы SFU (`SfuChannel`), `CoreCallService` |
 | WebRTC | `OrbitleCallMedia` | `WebRTCCallMedia`, `WebRTCPeer`: соединение, микрофон, камера, показ экрана, аудиосессия, вид видео |

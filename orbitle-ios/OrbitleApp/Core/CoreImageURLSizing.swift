@@ -1,5 +1,5 @@
 import Foundation
-import MaxIos
+import MaxlyCore
 import OrbitleDomain
 
 /// Размеры картинок считает ядро. Приложение только передаёт сторону в пикселях.

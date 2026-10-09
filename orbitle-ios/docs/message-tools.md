@@ -1,6 +1,6 @@
 # Выбор сообщений, форматирование, участники, контакты, адресная книга, черновики
 
-Шесть функций, которые держатся на вызовах ядра `max-kmp-core` (ревизия в `core.lock`). Общие
+Шесть функций, которые держатся на вызовах ядра `maxly-core` (ревизия в `core.lock`). Общие
 с Kotlin сценарии лежат в `test-fixtures/`: `selection`, `formatting`, `members`, `names`,
 `drafts`. Формат файлов — `{kind, name, description, cases}`, подробности — в README каждой
 папки. Правила из Domain (`MessageMarkup`, `ContactNames`, `DraftSync`, `MessageSelection`,

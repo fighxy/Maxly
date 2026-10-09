@@ -1,7 +1,7 @@
 import Foundation
 import OrbitleData
 import OrbitleDomain
-import MaxIos
+import MaxlyCore
 
 /// Стикеры и анимодзи через `MaxIosClient` (docs/stickers.md).
 extension MaxIosCore {

@@ -1,7 +1,7 @@
 import Foundation
 import OrbitleData
 import OrbitleDomain
-import MaxIos
+import MaxlyCore
 
 /// Фото, видео, файлы и карточки контактов через `MaxIosClient` (docs/attachments.md).
 extension MaxIosCore {

@@ -1,7 +1,7 @@
 import Foundation
 import OrbitleData
 import OrbitleDomain
-import MaxIos
+import MaxlyCore
 
 /// Живой мост к `MaxIosClient`. Колбэки ядра приходят не с главного потока.
 final class MaxIosCore: MaxCore, @unchecked Sendable {
