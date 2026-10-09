@@ -75,9 +75,9 @@
 
 `UserDefaults` устройства, ключи:
 
-- `orbitle.privateMode.enabled`;
-- `orbitle.privateMode.style` (`placeholder` / `blur`);
-- `orbitle.privateMode.quickToggle`.
+- `maxly.privateMode.enabled`;
+- `maxly.privateMode.style` (`placeholder` / `blur`);
+- `maxly.privateMode.quickToggle`.
 
 Настройка не привязана к аккаунту: выход и вход другим аккаунтом её не сбрасывают. Незнакомое значение вида читается как «Заглушки». Если ключа кнопки нет, кнопка показывается.
 

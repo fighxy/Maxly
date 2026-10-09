@@ -183,7 +183,7 @@ protocol PrivacyControls: Sendable {
 **Разовая чистка.** До ядра флаги и выбор приватности лежали в `UserDefaults`
 (`orbitle.ghost.*`, `orbitle.privacy.local.*`). `GhostDefaultsMigration.run()` при запуске
 (`AppContainer.init`) один раз удаляет эти ключи; «Показывать мой онлайн» переезжает на
-`orbitle.settings.showsOwnPresence`. Отметка выполнения — `orbitle.migrations.ghostCore`.
+`maxly.settings.showsOwnPresence`. Отметка выполнения — `maxly.migrations.ghostCore`.
 
 Что ещё открыто:
 

@@ -4,7 +4,7 @@ iOS-клиент Maxly на SwiftUI. Слои описаны в [`docs/architect
 
 ## Слои
 
-- `Sources/OrbitleDomain` — модели, протоколы репозиториев, ошибки, разбор ссылок `orbitle://`. Чистый Swift.
+- `Sources/OrbitleDomain` — модели, протоколы репозиториев, ошибки, разбор ссылок `maxly://` (и прежних `orbitle://`). Чистый Swift.
 - `Sources/OrbitleData` — SwiftData, URLSession, очередь исходящих, синхронизация и сессия. Ядро сюда входит только как протокол `MaxCore`.
 - `Sources/OrbitlePresentation` — логика экранов без SwiftUI: `AuthViewModel`, `PhoneNumber`, `ChatListViewModel`, `ChatListFormatter`, `ChatViewModel`. Зависит только от `OrbitleDomain`, покрыта тестами `Tests/OrbitlePresentationTests` на фейковых репозиториях.
 - `Sources/OrbitleUI` — цвета, отступы, аватар, строка чата (принимает готовые строки), пузырь сообщения.
@@ -67,6 +67,8 @@ bash scripts/build-ipa.sh            # или MAX_KMP_CORE_DIR=… / SKIP_CORE=1
 ```
 
 Скрипт собирает Release для устройства без подписи и кладёт `build/Maxly.ipa`. Его подписывают своим сертификатом (Sideloadly, AltStore, eSign и т. п.) и ставят на телефон. CI делает то же, выкладывает `.ipa` в артефакты прогона, а зелёная сборка `main` заменяет пререлиз `ios-latest`: https://github.com/fighxy/Maxly/releases/download/ios-latest/Maxly.ipa. Прежняя ссылка на `Orbitle.ipa` в том же выпуске тоже работает: это копия той же сборки.
+
+**Переход с Orbitle.** У Maxly свой Bundle ID `app.maxly.ios` (у Orbitle был `app.orbitle.ios`), поэтому Maxly ставится отдельным приложением рядом с Orbitle и данные Orbitle не видит: нужен новый вход по номеру, чаты подтянутся с сервера. Настройки начинаются заново (ключи `maxly.*`), база лежит в `Application Support/Maxly/Maxly.store`, кэш — в `MaxlyMedia`. После входа в Maxly старый Orbitle можно удалить. Ссылки `orbitle://` Maxly открывает так же, как `maxly://`, но пока стоит и Orbitle, iOS может отдать их ему.
 
 Тесты библиотек (`OrbitleDomainTests`, `OrbitleDataTests`, `OrbitlePresentationTests`) ядро не требуют:
 
