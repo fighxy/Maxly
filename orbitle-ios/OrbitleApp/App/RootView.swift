@@ -245,7 +245,8 @@ struct MainTabView: View {
                 ChatListView(
                     viewModel: list, selection: $router.chatId, newChat: container.newChatModel(), onOpened: openCreated,
                     onOpenMessage: openFound,
-                    selfAvatar: selfAvatar, onAddStory: { pickingStory = true }
+                    selfAvatar: selfAvatar, onAddStory: { pickingStory = true },
+                    makeBotApp: { container.botAppModel($0) }
                 )
                 .safeAreaInset(edge: .top, spacing: 0) { loginHoldBanner }
                     .navigationDestination(for: String.self) { id in
@@ -257,7 +258,8 @@ struct MainTabView: View {
                 ChatListView(
                     viewModel: list, selection: $router.chatId, newChat: container.newChatModel(), onOpened: openCreated,
                     onOpenMessage: openFound,
-                    selfAvatar: selfAvatar, onAddStory: { pickingStory = true }
+                    selfAvatar: selfAvatar, onAddStory: { pickingStory = true },
+                    makeBotApp: { container.botAppModel($0) }
                 )
                 .safeAreaInset(edge: .top, spacing: 0) { loginHoldBanner }
             } detail: {

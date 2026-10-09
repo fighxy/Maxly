@@ -50,6 +50,9 @@ public struct ChatRecord: Sendable, Hashable {
     /// Аккаунт участвует в чате. Не хранится: неактивный чат из ответа сервера убирается из
     /// списка (как в Komet), а не записывается.
     public var isActive: Bool = true
+    /// Диалог с ботом, у которого есть мини-приложение: в списке чатов кнопка «Открыть».
+    /// `nil` — неизвестно, в базе остаётся прежнее значение.
+    public var hasWebApp: Bool?
 
     public init(
         id: String,
@@ -125,6 +128,8 @@ public struct ChatRecord: Sendable, Hashable {
             commentsEnabled: chat.commentsEnabled,
             canWrite: chat.canWrite
         )
+        // Из домена — только «да»: снимает флаг лишь ответ ядра.
+        self.hasWebApp = chat.hasWebApp ? true : nil
     }
 
     public var domain: Chat {
@@ -146,7 +151,8 @@ public struct ChatRecord: Sendable, Hashable {
             isBot: isBot ?? false,
             isVerified: isVerified ?? false,
             commentsEnabled: commentsEnabled,
-            canWrite: canWrite
+            canWrite: canWrite,
+            hasWebApp: hasWebApp ?? false
         )
     }
 }

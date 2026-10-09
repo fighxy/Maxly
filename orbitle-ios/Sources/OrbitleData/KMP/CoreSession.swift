@@ -145,13 +145,17 @@ public struct CoreChat: Sendable, Equatable {
     /// Серверное время последнего сообщения, мс. `0` — сообщений нет или ядро не сказало.
     /// В отличие от `updatedAtMs` (его двигают и правки, и реакции) с ним сравниваются отметки.
     public var lastTimeMs: Int64
+    /// Диалог с ботом, у которого есть мини-приложение (ядро знает его опции). `false` у групп,
+    /// каналов, людей и бота, о котором ядро ещё ничего не загрузило.
+    public var hasWebApp: Bool
 
     public init(
         id: String, title: String, type: String, lastMessageId: String, lastText: String, updatedAtMs: Int64, unread: Int,
         avatarURL: String = "", lastAuthorId: String = "", lastMedia: String = "", lastThumbURL: String = "", comments: Int = -1,
         canWrite: Int = -1, muted: Int = -1, lastAuthorName: String = "", lastFromMe: Int = -1, lastForwarded: Bool = false,
-        peerReadMs: Int64 = 0, active: Bool = true, lastTimeMs: Int64 = 0
+        peerReadMs: Int64 = 0, active: Bool = true, lastTimeMs: Int64 = 0, hasWebApp: Bool = false
     ) {
+        self.hasWebApp = hasWebApp
         self.active = active
         self.lastTimeMs = lastTimeMs
         self.id = id

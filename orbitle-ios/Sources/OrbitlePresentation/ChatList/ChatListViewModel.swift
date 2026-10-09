@@ -655,6 +655,16 @@ public final class ChatListViewModel {
         reorder()
     }
 
+    /// «Открыть» в строке бота с мини-приложением: запуск того же `launchBotApp`, что и из чата,
+    /// но без открытия чата. Бот — `id чата ^ свой id`. `nil`, если у строки нет кнопки.
+    public func botApp(for item: ChatListItem) -> BotAppRequest? {
+        guard item.hasWebApp, item.type == .private, item.id != Chat.savedMessagesId,
+              let id = Int64(item.id), let me = Int64(currentUserId), me != 0 else { return nil }
+        let bot = id ^ me
+        guard bot > 0, bot != me else { return nil }
+        return BotAppRequest(botId: String(bot), chatId: item.id, startParam: nil, title: item.title)
+    }
+
     /// Собеседник личного чата: `id чата ^ свой id`. У групп, ботов и «Избранного» нет.
     func peer(of chat: Chat) -> String? {
         guard chat.type == .private, !chat.isBot, !chat.isSavedMessages,

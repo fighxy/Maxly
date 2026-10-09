@@ -128,6 +128,8 @@ public struct Chat: Identifiable, Hashable, Sendable {
     /// Можно ли писать в чат: `false` — канал без прав, покинутый чат, служебный аккаунт.
     /// `nil` — сервер не сказал.
     public var canWrite: Bool?
+    /// Диалог с ботом, у которого есть мини-приложение: строка списка показывает «Открыть».
+    public var hasWebApp: Bool
 
     public init(
         id: String,
@@ -149,7 +151,8 @@ public struct Chat: Identifiable, Hashable, Sendable {
         unreadMentions: Int = 0,
         draft: ChatDraft? = nil,
         commentsEnabled: Bool? = nil,
-        canWrite: Bool? = nil
+        canWrite: Bool? = nil,
+        hasWebApp: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -171,6 +174,7 @@ public struct Chat: Identifiable, Hashable, Sendable {
         self.draft = draft
         self.commentsEnabled = commentsEnabled
         self.canWrite = canWrite
+        self.hasWebApp = hasWebApp
     }
 
     public var isPinned: Bool { pinOrder != nil }

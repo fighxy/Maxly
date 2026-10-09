@@ -37,6 +37,8 @@ final class SDChat {
     var isMuted: Bool = false
     var isArchived: Bool = false
     var isBot: Bool = false
+    /// Бот с мини-приложением: кнопка «Открыть» в строке списка.
+    var hasWebApp: Bool = false
     var isVerified: Bool = false
     var avatarURLString: String?
     var draftText: String?

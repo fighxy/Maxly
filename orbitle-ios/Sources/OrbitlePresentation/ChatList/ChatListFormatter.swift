@@ -99,6 +99,8 @@ public struct ChatListItem: Identifiable, Hashable, Sendable {
     public var lastIsOutgoing = false
     /// То же «печатает…», но без имён («2 участника печатают…»): его показывает приватный режим.
     public var anonymousTyping: String?
+    /// Диалог с ботом, у которого есть мини-приложение: справа в строке кнопка «Открыть».
+    public var hasWebApp = false
 
     /// Булавка видна у закреплённых, пока нет бейджа.
     public var showsPin: Bool { isPinned && badge == nil && !hasMention }
@@ -198,7 +200,9 @@ public struct ChatListFormatter: Sendable {
             lastIsOutgoing: chat.lastMessage?.isOutgoing == true,
             anonymousTyping: anonymousTyping
         )
-        return item.withAccessibility(spoken(item, chat: chat))
+        var spokenItem = item.withAccessibility(spoken(item, chat: chat))
+        spokenItem.hasWebApp = chat.type == .private && chat.hasWebApp && !chat.isSavedMessages
+        return spokenItem
     }
 
     /// Заголовок. У личных чатов ядро может не прислать имя, тогда подставляется тип.
@@ -387,7 +391,8 @@ extension ChatListItem {
             previewStyle: previewStyle, media: media, thumbnailURL: thumbnailURL, delivery: delivery,
             time: time, unreadCount: unreadCount, unreadBadge: unreadBadge, badge: badge,
             badgeMuted: badgeMuted, hasMention: hasMention, accessibilityLabel: label,
-            isForwarded: isForwarded, lastIsOutgoing: lastIsOutgoing, anonymousTyping: anonymousTyping
+            isForwarded: isForwarded, lastIsOutgoing: lastIsOutgoing, anonymousTyping: anonymousTyping,
+            hasWebApp: hasWebApp
         )
     }
 }

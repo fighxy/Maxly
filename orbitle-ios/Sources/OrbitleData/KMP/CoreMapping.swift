@@ -69,6 +69,10 @@ enum CoreMapping {
             lastMessageAt: chat.lastTimeMs
         )
         record.isActive = chat.active
+        // Ядро пересчитывает флаг, когда узнаёт собеседника, поэтому его ответ — всегда правда.
+        // Мини-приложение бывает только у бота: заодно строка узнаёт, что это бот.
+        record.hasWebApp = chat.hasWebApp
+        if chat.hasWebApp { record.isBot = true }
         return record
     }
 

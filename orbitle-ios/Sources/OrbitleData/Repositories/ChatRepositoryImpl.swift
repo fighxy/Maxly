@@ -293,6 +293,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         if let muted = record.isMuted { chat.isMuted = muted }
         if let archived = record.isArchived { chat.isArchived = archived }
         if let bot = record.isBot { chat.isBot = bot }
+        if let webApp = record.hasWebApp { chat.hasWebApp = webApp }
         if let verified = record.isVerified { chat.isVerified = verified }
         if let comments = record.commentsEnabled { chat.commentsOption = comments ? 1 : 0 }
         if let canWrite = record.canWrite { chat.canWriteOption = canWrite ? 1 : 0 }
@@ -1241,7 +1242,8 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             isVerified: chat.isVerified,
             draft: draft,
             commentsEnabled: chat.commentsOption < 0 ? nil : chat.commentsOption == 1,
-            canWrite: chat.canWriteOption < 0 ? nil : chat.canWriteOption == 1
+            canWrite: chat.canWriteOption < 0 ? nil : chat.canWriteOption == 1,
+            hasWebApp: chat.hasWebApp
         )
     }
 }

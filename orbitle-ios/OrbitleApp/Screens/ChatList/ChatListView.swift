@@ -16,6 +16,9 @@ struct ChatListView: View {
     /// Свой аватар для плитки «Ваша история» и кнопка новой истории; без них полосы нет.
     var selfAvatar: ChatAvatar?
     var onAddStory: (() -> Void)?
+    /// Мини-приложение бота из строки («Открыть»): тот же запуск, что и из чата с ботом.
+    var makeBotApp: ((BotAppRequest) -> MiniAppModel)?
+    @State private var botApp: BotAppRequest?
     @State private var composeShown = false
     /// Истории: полоса над чатами и кольца на аватарах личных чатов. `nil` в превью.
     @Environment(StoriesViewModel.self) private var stories: StoriesViewModel?
@@ -55,6 +58,11 @@ struct ChatListView: View {
         .onChange(of: selection) { _, id in
             guard let id, viewModel.isSearchActive else { return }
             Task { await viewModel.selectSearchResult(chatId: id) }
+        }
+        .sheet(item: $botApp) { request in
+            if let makeBotApp {
+                MiniAppSheet(model: makeBotApp(request))
+            }
         }
         .sheet(isPresented: $composeShown, onDismiss: { newChat?.dismiss() }) {
             if let newChat {
@@ -327,7 +335,9 @@ struct ChatListView: View {
         let ring = match.flatMap { stories?.ring(of: $0.id, kind: $0.kind) }
         var openStories: (() -> Void)?
         if let match, let stories { openStories = { stories.open(match.id, kind: match.kind) } }
-        return ChatRow(item: item, storyRing: ring, onStoryTap: openStories)
+        var openApp: (() -> Void)?
+        if makeBotApp != nil, let request = viewModel.botApp(for: item) { openApp = { botApp = request } }
+        return ChatRow(item: item, storyRing: ring, onStoryTap: openStories, onOpenApp: openApp)
             .tag(item.id)
             .listRowInsets(rowInsets)
             .listRowBackground(item.isPinned ? Color.orbitlePinnedBackground : nil)

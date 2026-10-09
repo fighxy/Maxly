@@ -8,6 +8,8 @@ import OrbitlePresentation
 /// Первая строка: заголовок, значки типа, «без звука», галочки и время.
 /// Вторая и третья: в группах автор и текст, в остальных чатах текст в две строки.
 /// Справа внизу бейдж непрочитанных, упоминание или булавка закреплённого.
+/// У бота с мини-приложением перед ними капсула «Открыть» (`onOpenApp`): она запускает
+/// мини-приложение, остальная строка по-прежнему открывает чат.
 ///
 /// В приватном режиме строка с заглушками берётся из `PrivateModeMask.item`, с размытием —
 /// настоящая, но заголовок, автор, текст, миниатюра и аватар размыты.
@@ -16,14 +18,25 @@ public struct ChatRow: View {
     /// Кольцо историй собеседника; касание аватара открывает истории (`onStoryTap`).
     private let storyRing: StoryRing?
     private let onStoryTap: (() -> Void)?
+    /// «Открыть» у бота с мини-приложением. `nil` — кнопки нет.
+    private let onOpenApp: (() -> Void)?
     @ScaledMetric(relativeTo: .body) private var avatarSize = OrbitleTheme.avatar
     @Environment(\.privateMode) private var privateMode
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(item: ChatListItem, storyRing: StoryRing? = nil, onStoryTap: (() -> Void)? = nil) {
+    public init(
+        item: ChatListItem, storyRing: StoryRing? = nil, onStoryTap: (() -> Void)? = nil, onOpenApp: (() -> Void)? = nil
+    ) {
         self.original = item
         self.storyRing = storyRing
         self.onStoryTap = onStoryTap
+        self.onOpenApp = onOpenApp
+    }
+
+    /// Кнопка видна, только если строка — бот с мини-приложением и запуск передан.
+    /// Заглушки приватного режима её не показывают (`item.hasWebApp` у них `false`).
+    private var openApp: (() -> Void)? {
+        item.hasWebApp ? onOpenApp : nil
     }
 
     /// Что рисуется: при заглушках — строка без имён и текста.
@@ -44,6 +57,9 @@ public struct ChatRow: View {
                 HStack(alignment: .top, spacing: 6) {
                     previewLines
                         .frame(maxWidth: .infinity, alignment: .leading)
+                    if let openApp {
+                        OpenAppCapsule(action: openApp)
+                    }
                     trailingMarker
                         .padding(.top, 2)
                 }
@@ -55,6 +71,11 @@ public struct ChatRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spokenLabel)
         .accessibilityAddTraits(.isButton)
+        .accessibilityActions {
+            if let openApp {
+                Button("Открыть приложение", action: openApp)
+            }
+        }
     }
 
     /// Аватар; с историями — в кольце, и касание по нему открывает истории, а не чат.
@@ -406,5 +427,27 @@ public struct ChatRowSkeleton: View {
         RoundedRectangle(cornerRadius: height / 2)
             .fill(Color.orbitleField)
             .frame(width: width, height: height)
+    }
+}
+
+/// Капсула «Открыть» справа в строке бота. Своя кнопка (`borderless`), поэтому касание по ней
+/// не выбирает строку списка и чат не открывается.
+private struct OpenAppCapsule: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text("Открыть")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(Color.orbitleAccent, in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.borderless)
+        .fixedSize()
+        .padding(.top, 2)
     }
 }

@@ -13,6 +13,29 @@ func makeList(connection: FakeConnection? = nil) -> (ChatListViewModel, FakeChat
     return (model, repository)
 }
 
+@Suite("Список чатов: мини-приложение бота")
+@MainActor
+struct ChatListBotAppTests {
+    @Test("«Открыть» знает бота по id чата и своему id")
+    func botApp() {
+        let (model, repository) = makeList()
+        model.currentUserId = "5"
+        var bot = Chat(id: String(5 ^ 700), title: "Помощник", type: .private, updatedAt: Date(), hasWebApp: true)
+        repository.emit([bot])
+        let item = ChatListFormatter().item(for: bot, now: Date())
+        #expect(item.hasWebApp)
+        let request = model.botApp(for: item)
+        #expect(request?.botId == "700")
+        #expect(request?.chatId == bot.id)
+        #expect(request?.startParam == nil)
+        #expect(request?.title == "Помощник")
+        bot.hasWebApp = false
+        #expect(model.botApp(for: ChatListFormatter().item(for: bot, now: Date())) == nil)
+        model.currentUserId = ""
+        #expect(model.botApp(for: item) == nil)
+    }
+}
+
 @Suite("Список чатов: состояние")
 @MainActor
 struct ChatListStateTests {

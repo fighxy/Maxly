@@ -208,4 +208,23 @@ struct ChatListRowTests {
         #expect(ChatListFormatter.typingText(count: 5, type: .group) == "5 участников печатают…")
         #expect(ChatListFormatter.typingText(count: 21, type: .group) == "21 участник печатает…")
     }
+
+    @Test("«Открыть» только у личного чата с ботом, у которого есть мини-приложение")
+    func webApp() {
+        var bot = chat("b", at: 1, title: "Помощник", type: .private)
+        bot.hasWebApp = true
+        let botItem = formatter.item(for: bot, now: now)
+        #expect(botItem.hasWebApp)
+
+        var group = chat("g", at: 1, title: "Команда", type: .group)
+        group.hasWebApp = true
+        #expect(!formatter.item(for: group, now: now).hasWebApp)
+
+        let plain = chat("p", at: 1, title: "Аня", type: .private)
+        #expect(!formatter.item(for: plain, now: now).hasWebApp)
+
+        var saved = chat(Chat.savedMessagesId, at: 1, title: "Избранное", type: .private)
+        saved.hasWebApp = true
+        #expect(!formatter.item(for: saved, now: now).hasWebApp)
+    }
 }
