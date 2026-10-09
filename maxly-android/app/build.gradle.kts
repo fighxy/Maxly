@@ -3,10 +3,10 @@ plugins {
     alias(libs.plugins.compose.compiler)
 }
 
-// Подпись: в CI ключ берётся из секретов (ORBITLE_KEYSTORE_*), иначе — общий ключ разработки
+// Подпись: в CI ключ берётся из секретов (переменные MAXLY_KEYSTORE_*), иначе — общий ключ разработки
 // из репозитория, чтобы сборки ставились поверх друг друга.
-val keystorePath = System.getenv("ORBITLE_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
-val versionCodeOverride = System.getenv("ORBITLE_VERSION_CODE")?.toIntOrNull()
+val keystorePath = System.getenv("MAXLY_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
+val versionCodeOverride = System.getenv("MAXLY_VERSION_CODE")?.toIntOrNull()
 
 android {
     namespace = "app.maxly"
@@ -23,19 +23,20 @@ android {
         versionCode = versionCodeOverride ?: 1
         versionName = "0.1.0"
         buildConfigField("String", "CORE_REVISION", "\"${coreRevision()}\"")
-        buildConfigField("String", "BUILD_SHA", "\"${System.getenv("ORBITLE_BUILD_SHA") ?: "dev"}\"")
+        buildConfigField("String", "BUILD_SHA", "\"${System.getenv("MAXLY_BUILD_SHA") ?: "dev"}\"")
     }
 
     signingConfigs {
-        create("orbitle") {
+        create("maxly") {
             if (keystorePath != null) {
                 storeFile = file(keystorePath)
-                storePassword = System.getenv("ORBITLE_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("ORBITLE_KEY_ALIAS")
-                keyPassword = System.getenv("ORBITLE_KEY_PASSWORD")
+                storePassword = System.getenv("MAXLY_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("MAXLY_KEY_ALIAS")
+                keyPassword = System.getenv("MAXLY_KEY_PASSWORD")
             } else {
-                storeFile = rootProject.file("signing/orbitle-dev.keystore")
+                storeFile = rootProject.file("signing/maxly-dev.keystore")
                 storePassword = "android"
+                // Имя записи внутри файла ключа — прежнее: сам ключ (и подпись APK) не менялся.
                 keyAlias = "orbitle"
                 keyPassword = "android"
             }
@@ -44,13 +45,13 @@ android {
 
     buildTypes {
         debug {
-            signingConfig = signingConfigs.getByName("orbitle")
+            signingConfig = signingConfigs.getByName("maxly")
             applicationIdSuffix = ".debug"
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("orbitle")
+            signingConfig = signingConfigs.getByName("maxly")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

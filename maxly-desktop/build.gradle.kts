@@ -43,7 +43,7 @@ val coreRevision: String = file("core.lock").readLines()
 val generateBuildConfig = tasks.register("generateBuildConfig") {
     val outputDir = layout.buildDirectory.dir("generated/buildConfig")
     val versionName = "0.1.0"
-    val buildSha = System.getenv("ORBITLE_BUILD_SHA")?.takeIf { it.isNotBlank() } ?: "dev"
+    val buildSha = System.getenv("MAXLY_BUILD_SHA")?.takeIf { it.isNotBlank() } ?: "dev"
     val revision = coreRevision
     inputs.property("versionName", versionName)
     inputs.property("buildSha", buildSha)

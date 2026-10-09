@@ -321,7 +321,7 @@ class AndroidCallMedia(private val context: Context) : CallMedia {
     }
 
     internal companion object {
-        const val STREAM_ID = "orbitle"
+        const val STREAM_ID = "maxly"
     }
 }
 

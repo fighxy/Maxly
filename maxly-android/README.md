@@ -19,8 +19,9 @@ Maxly ставится отдельным приложением рядом со
 
 Сборки подписаны одним ключом, поэтому новая версия Maxly ставится поверх предыдущей без потери входа.
 Если в репозитории есть секрет `ORBITLE_KEYSTORE_BASE64` (с `ORBITLE_KEYSTORE_PASSWORD`,
-`ORBITLE_KEY_ALIAS`, `ORBITLE_KEY_PASSWORD`), CI подписывает им; иначе — ключом разработки
-`signing/orbitle-dev.keystore` (пароли `android`). Ключ разработки лежит в открытом
+`ORBITLE_KEY_ALIAS`, `ORBITLE_KEY_PASSWORD`; секреты сохранили имена до переименования), CI
+подписывает им, передавая сборке переменные `MAXLY_KEYSTORE_*`; иначе — ключом разработки
+`signing/maxly-dev.keystore` (пароли `android`, запись ключа внутри файла по-прежнему `orbitle`). Ключ разработки лежит в открытом
 репозитории, поэтому для раздачи пользователям нужен свой ключ в секретах. Сменить ключ
 можно только с переустановкой приложения.
 
@@ -128,13 +129,16 @@ Maxly ставится отдельным приложением рядом со
 
 Пакеты Kotlin — `app.maxly.*`, `applicationId` — `app.maxly.android` (отладочная сборка —
 `app.maxly.android.debug`). До переименования он был `app.orbitle.android`, поэтому Maxly
-ставится рядом со старым Orbitle, а не поверх него.
+ставится рядом со старым Orbitle, а не поверх него. Первые сборки с `app.maxly.android` ещё
+хранили вход ядра и настройки в файлах `SharedPreferences` с именем `orbitle`; при запуске
+`PrefsMigration` переносит их в файлы `maxly*` (`max_kmp_maxly`, `maxly`, `maxly.chat`,
+`maxly.diagnostics`), так что входить заново не нужно.
 
 | Пакет | Что внутри |
 |---|---|
-| `domain` | модели UI (`Chat`, `ChatFolder`, `Message` с вложениями, `AuthPhase`, `MaxlyError`) — как `OrbitleDomain` в iOS |
+| `domain` | модели UI (`Chat`, `ChatFolder`, `Message` с вложениями, `AuthPhase`, `MaxlyError`) — как доменный модуль iOS-клиента |
 | `data` | мост к ядру: `MaxCoreGateway` (вызовы `MaxClient`, ошибки ядра → `CoreFailure`), `SessionManager` (шаги входа, попытки, выход), `ChatMapping` и `MessageMapping` (чаты и сообщения стора → модели, разбор вложений, цитат, пересылок и реакций), репозитории над `MaxClient.store` |
-| `presentation` | логика экранов без Android UI: `AuthViewModel`, `PhoneNumber`, `PhoneCountry`, `ChatListFormatter`, `ChatListViewModel`, `ChatViewModel`, `CallBubbleText`, `ChatContentFormat`, `WaveformLayout` — перенесены из `OrbitlePresentation` iOS-клиента вместе с тестами |
+| `presentation` | логика экранов без Android UI: `AuthViewModel`, `PhoneNumber`, `PhoneCountry`, `ChatListFormatter`, `ChatListViewModel`, `ChatViewModel`, `CallBubbleText`, `ChatContentFormat`, `WaveformLayout` — перенесены из слоя презентации iOS-клиента вместе с тестами |
 | `ui` | Compose-экраны и тема Material 3 (подсветка кнопок и надписей: графит `#212327` в светлой теме, серебро `#CCD0D6` в тёмной; свои пузыри `#5C6BF5`; тёмный фон `#0C0E14`; палитра аватаров как в iOS) |
 
 Логика `presentation` и `data` проверяется JVM-тестами (`app/src/test`), без эмулятора.

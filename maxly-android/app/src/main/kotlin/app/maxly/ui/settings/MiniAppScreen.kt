@@ -243,7 +243,7 @@ private fun MiniAppWeb(
                     fun postEvent(name: String, data: String?) {
                         post { handle(this@apply, name, data?.takeIf { it.isNotEmpty() }) }
                     }
-                }, "OrbitleWebApp")
+                }, "MaxlyWebApp")
                 webViewClient = object : WebViewClient() {
                     override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
                         if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
@@ -297,7 +297,7 @@ private fun MiniAppWeb(
         },
         onRelease = { view ->
             page.pressBack = {}
-            view.removeJavascriptInterface("OrbitleWebApp")
+            view.removeJavascriptInterface("MaxlyWebApp")
             view.destroy()
         },
     )

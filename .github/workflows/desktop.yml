@@ -57,7 +57,7 @@ jobs:
       # build включает jvmTest: тесты общего кода из maxly-shared на библиотеках десктопа.
       - name: Build and tests
         env:
-          ORBITLE_BUILD_SHA: ${{ github.sha }}
+          MAXLY_BUILD_SHA: ${{ github.sha }}
         run: ./gradlew --console=plain build
       - name: Test report
         if: failure()
@@ -120,13 +120,13 @@ jobs:
       - name: Build installer
         if: runner.os != 'Windows'
         env:
-          ORBITLE_BUILD_SHA: ${{ github.sha }}
+          MAXLY_BUILD_SHA: ${{ github.sha }}
         run: ./gradlew --console=plain ${{ matrix.task }}
       - name: Build installer
         if: runner.os == 'Windows'
         shell: pwsh
         env:
-          ORBITLE_BUILD_SHA: ${{ github.sha }}
+          MAXLY_BUILD_SHA: ${{ github.sha }}
         run: .\gradlew.bat --console=plain ${{ matrix.task }}
       # Ошибки jpackage, WiX и hdiutil пишутся в файлы, в лог шага они не попадают.
       - name: Packaging logs

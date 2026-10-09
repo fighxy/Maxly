@@ -8,12 +8,12 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-/** Пузырь своих сообщений (как `orbitleOutgoing` в iOS-версии). */
+/** Пузырь своих сообщений (как цвет своих пузырей в iOS-версии). */
 val MaxlyOutgoing = Color(0xFF5C6BF5)
 
 /**
  * Подсветка системных кнопок и надписей (`primary`): глубокий графит в светлой теме, серебро
- * в тёмной — как `orbitleAccent` в iOS-версии.
+ * в тёмной — как акцентный цвет iOS-версии.
  */
 val MaxlyGraphite = Color(0xFF212327)
 val MaxlySilver = Color(0xFFCCD0D6)

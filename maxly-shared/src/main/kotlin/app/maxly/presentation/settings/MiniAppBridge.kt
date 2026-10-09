@@ -128,13 +128,13 @@ class MiniAppBridge(
     }
 
     /**
-     * Вызов `window.__orbitleDeliver`. Строки — литералы JavaScript,
+     * Вызов `window.__maxlyDeliver`. Строки — литералы JavaScript,
      * чтобы страница получила тот же JSON, что собран здесь.
      */
     fun deliverCall(event: String, json: String): String {
         val name = Json.encodeToString(event)
         val payload = Json.encodeToString(json)
-        return "window.__orbitleDeliver && window.__orbitleDeliver($name, $payload);"
+        return "window.__maxlyDeliver && window.__maxlyDeliver($name, $payload);"
     }
 
     private fun biometryInfo(name: String, requestId: String?): Action =
@@ -308,8 +308,8 @@ class MiniAppBridge(
         private const val KEY_LIMIT = 128
         private const val VALUE_LIMIT = 8192
 
-        /** Вызов интерфейса Android `OrbitleWebApp.postEvent`. */
-        const val ANDROID_POST = "OrbitleWebApp.postEvent(String(name), String(body));"
+        /** Вызов интерфейса Android `MaxlyWebApp.postEvent`. */
+        const val ANDROID_POST = "MaxlyWebApp.postEvent(String(name), String(body));"
 
         /**
          * Вызов `window.cefQuery`. Пока маршрутизатор CEF не поднял функцию,
@@ -327,8 +327,8 @@ class MiniAppBridge(
          */
         fun userScript(postStatement: String): String = """
             (function () {
-              if (window.__orbitleBridgeReady) { return; }
-              window.__orbitleBridgeReady = true;
+              if (window.__maxlyBridgeReady) { return; }
+              window.__maxlyBridgeReady = true;
               var outbox = [];
               function drain() {
                 var target = window.WebApp;
@@ -339,7 +339,7 @@ class MiniAppBridge(
                 }
               }
               setInterval(drain, 50);
-              window.__orbitleDeliver = function (name, data) {
+              window.__maxlyDeliver = function (name, data) {
                 outbox.push({ name: name, data: data });
                 drain();
               };

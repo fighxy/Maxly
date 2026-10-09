@@ -75,8 +75,8 @@ jobs:
             head -c 20000 "$report"
             echo "::endgroup::"
           done
-      # Ключ подписи: секрет ORBITLE_KEYSTORE_BASE64 (с паролями), иначе общий ключ разработки
-      # из maxly-android/signing. Один ключ на все сборки — обновления ставятся поверх.
+      # Ключ подписи: секрет ORBITLE_KEYSTORE_BASE64 (с паролями; секреты репозитория сохранили
+      # имена до переименования), иначе общий ключ разработки из maxly-android/signing. Один ключ на все сборки — обновления ставятся поверх.
       - name: Signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.ORBITLE_KEYSTORE_BASE64 }}
@@ -85,12 +85,12 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ORBITLE_KEY_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/orbitle.keystore"
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/maxly.keystore"
             {
-              echo "ORBITLE_KEYSTORE_FILE=$RUNNER_TEMP/orbitle.keystore"
-              echo "ORBITLE_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
-              echo "ORBITLE_KEY_ALIAS=$KEY_ALIAS"
-              echo "ORBITLE_KEY_PASSWORD=$KEY_PASSWORD"
+              echo "MAXLY_KEYSTORE_FILE=$RUNNER_TEMP/maxly.keystore"
+              echo "MAXLY_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+              echo "MAXLY_KEY_ALIAS=$KEY_ALIAS"
+              echo "MAXLY_KEY_PASSWORD=$KEY_PASSWORD"
             } >> "$GITHUB_ENV"
             echo "Подпись ключом из секрета ORBITLE_KEYSTORE_BASE64"
           else
@@ -98,8 +98,8 @@ jobs:
           fi
       - name: Build APK
         env:
-          ORBITLE_BUILD_SHA: ${{ github.sha }}
-          ORBITLE_VERSION_CODE: ${{ github.run_number }}
+          MAXLY_BUILD_SHA: ${{ github.sha }}
+          MAXLY_VERSION_CODE: ${{ github.run_number }}
         run: |
           set -euo pipefail
           ./gradlew --console=plain assembleRelease
