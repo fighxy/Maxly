@@ -622,6 +622,19 @@ class ChatListViewModelTest {
         assertTrue(store.recent().isEmpty())
     }
 
+    @Test
+    fun preferenceRecentSearchesReadsTheListSavedBeforeTheRename() {
+        val prefs = MemPrefs()
+        prefs.put(PreferenceRecentSearches.LEGACY_KEY, "a\nb")
+        val store = PreferenceRecentSearches(prefs)
+        assertEquals(listOf("a", "b"), store.recent())
+        store.add("c")
+        assertEquals(listOf("c", "a", "b"), RecentSearchList.decode(prefs.map[PreferenceRecentSearches.KEY]))
+        store.clear()
+        assertTrue(store.recent().isEmpty())
+        assertTrue(prefs.map[PreferenceRecentSearches.LEGACY_KEY].isNullOrEmpty())
+    }
+
     private fun listWith(store: RecentSearchStore) = ChatListViewModel(
         repo, connection, ChatListFormatter(ZoneOffset.UTC), now = { now }, local = marks, recents = store,
     )

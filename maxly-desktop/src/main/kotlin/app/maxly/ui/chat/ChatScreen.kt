@@ -240,9 +240,12 @@ fun ChatScreen(
     }
     // Голосовое или кружок: режим кнопки запоминается на устройстве.
     val recording = remember {
-        val prefs = java.util.prefs.Preferences.userRoot().node("app/orbitle/chat")
+        val root = java.util.prefs.Preferences.userRoot()
+        val prefs = root.node("app/maxly/chat")
+        // Узел до переименования: выбранный там режим читается, пока не сохранён новый.
+        val legacy = runCatching { if (root.nodeExists("app/orbitle/chat")) root.node("app/orbitle/chat") else null }.getOrNull()
         val store = object : app.maxly.data.PreferenceStore {
-            override fun get(key: String): String? = prefs.get(key, null)
+            override fun get(key: String): String? = prefs.get(key, null) ?: legacy?.get(key, null)
             override fun put(key: String, value: String) = prefs.put(key, value)
         }
         app.maxly.presentation.chat.RecordingController(composerRecorder, recorderScope, app.maxly.presentation.chat.RecordingModeSettings(store))

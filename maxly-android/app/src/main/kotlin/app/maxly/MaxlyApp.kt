@@ -12,6 +12,8 @@ class MaxlyApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Настройки и вход из файлов с прежним именем orbitle — до первого чтения.
+        PrefsMigration.run(this)
         // Журнал и отчёты о сбоях — раньше всего остального, чтобы поймать и сбой запуска.
         Diagnostics.init(this)
         // Ядру нужен контекст для хранилища токена до создания клиента.

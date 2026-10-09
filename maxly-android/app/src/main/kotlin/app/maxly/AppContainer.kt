@@ -92,7 +92,7 @@ class AppContainer(context: Context) {
     /** Источник Media3 для видео с тем же User-Agent. */
     fun videoSourceUserAgent(): String = mediaUserAgent()
 
-    private val prefs = context.getSharedPreferences("orbitle", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("maxly", Context.MODE_PRIVATE)
 
     private val preferenceStore = object : PreferenceStore {
         override fun get(key: String): String? = prefs.getString(key, null)
@@ -310,7 +310,7 @@ class AppContainer(context: Context) {
     }
 
     private companion object {
-        const val CORE_NAMESPACE = "orbitle"
+        const val CORE_NAMESPACE = PrefsMigration.CORE_NAMESPACE
         const val KEY_LAST_USER = "lastUserId"
         /**
          * Сообщений одного чата в сторе ядра: `0` — без предела. Стор при переполнении выбрасывает

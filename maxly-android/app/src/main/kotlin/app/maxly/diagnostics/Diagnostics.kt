@@ -24,7 +24,7 @@ import java.util.Collections
  */
 object Diagnostics {
     private const val TAG = "Maxly"
-    private const val PREFS = "orbitle.diagnostics"
+    private const val PREFS = "maxly.diagnostics"
     private const val KEY_EXIT_SEEN = "exitSeenMs"
     private const val EXIT_LOOKBACK_MS = 7L * 24 * 60 * 60 * 1000
     private const val TRACE_LIMIT = 64 * 1024

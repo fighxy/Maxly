@@ -242,7 +242,7 @@ fun ChatScreen(
     }
     // Голосовое или кружок: режим кнопки запоминается на устройстве.
     val recording = remember {
-        val prefs = context.getSharedPreferences("orbitle.chat", android.content.Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences("maxly.chat", android.content.Context.MODE_PRIVATE)
         val store = object : app.maxly.data.PreferenceStore {
             override fun get(key: String): String? = prefs.getString(key, null)
             override fun put(key: String, value: String) = prefs.edit().putString(key, value).apply()
