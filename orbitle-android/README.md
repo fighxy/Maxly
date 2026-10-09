@@ -48,8 +48,8 @@ https://github.com/fighxy/Orbitle/releases/download/android-latest/Orbitle.apk. 
   и листает к следующему, крестик снимает показанное, «Открепить все» — все. В личном чате
   можно закрепить «только у меня», в группе и канале — без уведомления. Закрепы, своя реакция и
   профиль, изменённые на другом устройстве, подтягиваются по пушам; готовая расшифровка
-  голосового приходит пушем `TranscriptionReady`; вложение, которое сервер не принял, встаёт
-  «не отправлено» с повтором. Отложенные: долгое нажатие на «Отправить» (или «Отложить» в
+  голосового приходит пушем `TranscriptionReady`; вложение, которое сервер не принял, сразу встаёт
+  «не отправлено» с повтором (ядро сопоставляет отказ с загрузкой по id вложения). Отложенные: долгое нажатие на «Отправить» (или «Отложить» в
   меню вложений) — «Через час», «Завтра в 9:00» или свой день и время; в том же листе список
   отложенных чата с «Изменить» (текст и время) и «Отменить», не ушедшие помечены «не
   отправилось»; список правится пушами. Отправить отложенное сразу ядро не умеет — кнопки
@@ -153,7 +153,7 @@ adb shell am start -n app.orbitle.android.debug/app.orbitle.demo.DemoActivity --
 
 ## Ghost mode, privacy and activity
 
-The core is pinned to max-kmp-core `1364e91` in `core.lock`. Everything below runs through it.
+The core is pinned to max-kmp-core `05ab213` in `core.lock`. Everything below runs through it.
 
 - **Connection:** the core owns the keepalive and reconnects. It sends `PING` every 29 s (the
   first right after login), answers the server's `PING`, follows a server `RECONNECT` (op 3, only

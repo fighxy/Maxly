@@ -261,7 +261,7 @@ class CoreMessageRepository(
     init {
         uploadScope.launch {
             client.events.all.filterIsInstance<MaxEvent.AttachmentFailed>().collect {
-                val id = app.orbitle.presentation.chat.AttachmentFailures.target(uploads.keys.toList()) ?: return@collect
+                val id = app.orbitle.presentation.chat.AttachmentFailures.target(uploads.keys.toList(), it.id) ?: return@collect
                 rejectedUploads += id
                 uploads[id]?.cancel()
             }
@@ -400,7 +400,7 @@ class CoreMessageRepository(
                     try {
                         work.await()
                     } catch (e: kotlinx.coroutines.CancellationException) {
-                        // Сервер отверг вложение: сообщение остаётся с «Повторить».
+                        // Сервер отверг вложение (пуш без id): сообщение остаётся с «Повторить».
                         if (rejectedUploads.remove(local.id)) throw OrbitleError.Rejected("Сервер не принял вложение")
                         // Отменили кнопкой: сообщение уже убрано, это не ошибка.
                         if (work.isCancelled) return@withContext

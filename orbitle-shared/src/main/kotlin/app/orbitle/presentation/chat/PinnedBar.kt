@@ -52,9 +52,11 @@ object PinChoices {
 }
 
 /**
- * Пуш «вложение не обработано» (`NOTIF_ATTACH` с `error`) не называет вложение. Он относится
- * к загрузке, только когда она одна; при нескольких непонятно к какой, и ни одна не трогается.
+ * Пуш «вложение не обработано» (`NOTIF_ATTACH` с `error`). Если в нём есть id вложения, ядро само
+ * обрывает загрузку с этим id ошибкой сервера, и клиенту трогать ничего не нужно. Без id пуш
+ * относится к загрузке, только когда она одна; при нескольких непонятно к какой, и ни одна не трогается.
  */
 object AttachmentFailures {
-    fun target(inFlight: Collection<String>): String? = inFlight.singleOrNull()
+    fun target(inFlight: Collection<String>, uploadId: Long? = null): String? =
+        if (uploadId != null) null else inFlight.singleOrNull()
 }

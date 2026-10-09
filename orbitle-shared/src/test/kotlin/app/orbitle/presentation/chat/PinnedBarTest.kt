@@ -74,5 +74,7 @@ class PinnedBarTest {
         assertEquals("local-1", AttachmentFailures.target(listOf("local-1")))
         assertNull(AttachmentFailures.target(emptyList()))
         assertNull(AttachmentFailures.target(listOf("local-1", "local-2")))
+        // С id вложения загрузку обрывает само ядро.
+        assertNull(AttachmentFailures.target(listOf("local-1"), uploadId = 77L))
     }
 }
