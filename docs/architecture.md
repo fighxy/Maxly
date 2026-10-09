@@ -1,6 +1,6 @@
-# Архитектура клиента Orbitle
+# Архитектура клиента Maxly
 
-Orbitle состоит из трёх независимых клиентов: iOS на SwiftUI, Android на нативном Kotlin и desktop на Compose Multiplatform (JVM). Общий код между ними один, это ядро [max-kmp-core](https://github.com/fighxy/max-kmp-core). Оно подключается к каждому клиенту как внешняя зависимость. Протокол, авторизация и модели сообщений берутся из ядра, а интерфейс, хранение и порядок синхронизации каждый клиент решает сам по одной и той же схеме.
+Maxly состоит из трёх независимых клиентов: iOS на SwiftUI, Android на нативном Kotlin и desktop на Compose Multiplatform (JVM). Общий код между ними один, это ядро [max-kmp-core](https://github.com/fighxy/max-kmp-core). Оно подключается к каждому клиенту как внешняя зависимость. Протокол, авторизация и модели сообщений берутся из ядра, а интерфейс, хранение и порядок синхронизации каждый клиент решает сам по одной и той же схеме.
 
 ## Слои
 
@@ -55,7 +55,7 @@ Repository
 
 ### Desktop (`orbitle-desktop/`)
 - **UI:** Compose Multiplatform на JVM. Окно: боковой рельс, список чатов и открытый чат рядом. ViewModel держат состояние в `StateFlow`.
-- **База:** стор ядра (`MaxClient.store`). Настройки окна — файл `~/.orbitle/preferences.properties`. Отдельной SQLDelight нет.
+- **База:** стор ядра (`MaxClient.store`). Настройки окна — файл `~/.maxly/preferences.properties`. Отдельной SQLDelight нет.
 - **Сеть:** OkHttp, как у Android. Голос пишется через Java Sound и уходит в Ogg/Opus через ffmpeg.
 - **Ядро:** исходники `commonMain`, `jvmMain` и `jvmAndroidShared` собираются внутри клиента. Ревизия в `orbitle-desktop/core.lock`. Пространство сессии — `orbitle-desktop`.
 
@@ -102,7 +102,7 @@ Repository
   - `OrbitlePresentation` содержит ViewModel экранов (вход, список чатов, чат) и форматирование строк. Зависит только от `OrbitleDomain`: без SwiftUI, без `OrbitleData` и без ядра, поэтому тестируется на фейковых репозиториях и на Linux.
   - `OrbitleUI` это дизайн-система и общие компоненты. Компоненты получают готовые строки и не форматируют данные сами.
 - SwiftUI-экраны живут в таргете приложения и остаются тонкими: раскладка, фокус, навигация. Состояние и решения берутся из `OrbitlePresentation`. Всё связывает основной таргет приложения (`AppContainer`).
-- TCA (The Composable Architecture) не используем, для Orbitle она избыточна.
+- TCA (The Composable Architecture) не используем, для Maxly она избыточна.
 
 ## Ошибки и офлайн
 

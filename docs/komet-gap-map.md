@@ -1,10 +1,10 @@
-# Карта недостающего функционала: Orbitle против Komet
+# Карта недостающего функционала: Maxly против Komet
 
-Сверка на 04.10.2026. Orbitle — `main` на `d2d159f`. Ядро — `max-kmp-core` `bd0f435` (ревизия из `core.lock`
+Сверка на 04.10.2026. Maxly — `main` на `d2d159f`. Ядро — `max-kmp-core` `bd0f435` (ревизия из `core.lock`
 всех трёх клиентов). Komet — ветка `feature/FullStack` (`KometSource/Komet-feature-FullStack`).
 
 Источники Komet: строки интерфейса (`lib/l10n/app_ru.arb`, около 1900 строк), экраны `lib/frontend/screens/**`,
-модули `lib/backend/modules/**`, таблица опкодов `lib/core/protocol/opcode_map.dart`. Состояние Orbitle проверено по
+модули `lib/backend/modules/**`, таблица опкодов `lib/core/protocol/opcode_map.dart`. Состояние Maxly проверено по
 коду клиентов (репозитории, view model, экраны). Документация клиентов местами отстаёт от кода, например раздел
 «Что готово» в `orbitle-android/README.md`.
 
@@ -264,7 +264,7 @@
 | Функция | Ядро | iOS | Android | ПК | Заметка |
 |---|---|---|---|---|---|
 | Ссылки `max.ru` (профиль, чат, вступление, звонок) из системы и из сообщений | + | ± | − | − | `resolveLink` (89) в ядре есть. iOS открывает только `orbitle://`, у Android в манифесте нет фильтра ссылок |
-| «Поделиться» в Orbitle из других приложений | н/п | − | − | н/п | iOS Share Extension, Android `ACTION_SEND` |
+| «Поделиться» в Maxly из других приложений | н/п | − | − | н/п | iOS Share Extension, Android `ACTION_SEND` |
 | Номер телефона и карта в тексте: скопировать, позвонить | н/п | − | − | − | |
 | Сворачивание в трей и системные уведомления | н/п | н/п | н/п | − | |
 
