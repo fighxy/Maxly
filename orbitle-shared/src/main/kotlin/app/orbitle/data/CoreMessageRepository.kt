@@ -456,12 +456,11 @@ class CoreMessageRepository(
         MaxCoreGateway.call { client.api.messages.pinMessage(chat, message) }
     }
 
-    override suspend fun pinnedMessages(chatId: String): List<Message>? {
-        val id = chatId.toLongOrNull() ?: return null
-        val found = MaxCoreGateway.call { client.pinnedMessages(id) }
-        val state = client.store.state.value
-        return found.map { MessageMapping.message(it, id, state) }.sortedByDescending { it.timeMs }
-    }
+    /**
+     * Списка закрепов не запрашиваем: мобильный сервер не знает запросы 240 и 241 и рвёт на них
+     * соединение. Закреп берётся из чата и пуша 243.
+     */
+    override suspend fun pinnedMessages(chatId: String): List<Message>? = null
 
     override suspend fun updatePins(chatId: String, change: app.orbitle.domain.PinChange, messageIds: List<String>, forMe: Boolean, notify: Boolean) {
         val id = chatId.toLongOrNull() ?: return

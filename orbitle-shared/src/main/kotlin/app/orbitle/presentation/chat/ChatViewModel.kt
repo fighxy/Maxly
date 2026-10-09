@@ -1963,7 +1963,7 @@ class ChatViewModel(
 
     fun isPinned(message: Message): Boolean = pins?.contains(message.id) ?: (_state.value.pinnedMessageId == message.id)
 
-    /** Список закрепов с сервера (241). Ошибка или его отсутствие оставляют закреп из истории. */
+    /** Список закрепов, если хранилище его отдаёт. Без него остаётся закреп из чата и истории. */
     private fun loadPins() {
         viewModelScope.launch {
             try {
