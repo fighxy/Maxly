@@ -750,6 +750,9 @@ public protocol MaxCore: Sendable {
                       progress: @escaping @Sendable (Double) -> Void) async throws -> OwnerStories
     /// Удалить свои истории (`STORIES_DELETE` 218).
     func deleteStories(ids: [String]) async throws
+    /// Архив своих историй (`STORIES_HISTORY_GET_BY_OWNER_ID` 219), 30 на страницу. Пустой
+    /// `marker` — первая страница; пустой `marker` ответа — страниц больше нет.
+    func ownStoryArchive(marker: String) async throws -> StoryArchivePage
     /// Пуши колец (`NOTIF_STORIES_UPDATE` 216). Пустое кольцо — историй у владельца не осталось.
     func storyUpdates() -> AsyncStream<StoryRing>
 
@@ -1001,6 +1004,7 @@ public extension MaxCore {
     func publishStory(path: String, isVideo: Bool, durationMs: Int64, audience: Int,
                       progress: @escaping @Sendable (Double) -> Void) async throws -> OwnerStories { throw unsupported }
     func deleteStories(ids: [String]) async throws { throw unsupported }
+    func ownStoryArchive(marker: String) async throws -> StoryArchivePage { throw unsupported }
     func storyUpdates() -> AsyncStream<StoryRing> { AsyncStream { $0.finish() } }
 }
 

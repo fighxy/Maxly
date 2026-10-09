@@ -100,6 +100,21 @@ public struct OwnerStories: Hashable, Sendable {
     }
 }
 
+/// Страница архива своих историй (`STORIES_HISTORY_GET_BY_OWNER_ID` 219). `marker` — курсор
+/// следующей страницы; пусто — страниц больше нет.
+public struct StoryArchivePage: Hashable, Sendable {
+    public var stories: [Story]
+    public var marker: String
+
+    public init(stories: [Story], marker: String) {
+        self.stories = stories
+        self.marker = marker
+    }
+
+    /// Последняя страница: сервер не прислал курсор (или прислал `0`).
+    public var isLast: Bool { marker.isEmpty || marker == "0" }
+}
+
 /// Файл новой истории на устройстве: фото или видео, у видео — длина, если известна.
 public struct OutgoingStory: Hashable, Sendable {
     public var fileURL: URL

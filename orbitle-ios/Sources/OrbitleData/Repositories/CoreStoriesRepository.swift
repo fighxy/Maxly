@@ -2,7 +2,7 @@ import Foundation
 import OrbitleDomain
 
 /// Истории через ядро: лента (208), истории владельца (210), просмотр (214), публикация (215),
-/// удаление (218) и пуши колец (216).
+/// удаление (218), архив своих (219) и пуши колец (216).
 public struct CoreStoriesRepository: StoriesRepository {
     private let core: any MaxCore
 
@@ -48,6 +48,15 @@ public struct CoreStoriesRepository: StoriesRepository {
         let ids = storyIds.filter { Int64($0) != nil }
         guard !ids.isEmpty else { return }
         try await run("Удаление историй") { try await core.deleteStories(ids: ids) }
+    }
+
+    /// Курсор уходит, только если он не ноль: пустой и `0` — первая страница.
+    public func archive(marker: String) async throws(OrbitleError) -> StoryArchivePage {
+        let cursor = marker.trimmingCharacters(in: .whitespaces)
+        let sent = cursor == "0" ? "" : cursor
+        let page = try await run("Архив историй") { try await core.ownStoryArchive(marker: sent) }
+        Log.info(.chats, "Архив историй: \(page.stories.count)\(page.isLast ? ", конец" : "")")
+        return StoryArchivePage(stories: page.stories, marker: page.isLast ? "" : page.marker)
     }
 
     private func run<T: Sendable>(_ what: String, _ body: () async throws -> T) async throws(OrbitleError) -> T {

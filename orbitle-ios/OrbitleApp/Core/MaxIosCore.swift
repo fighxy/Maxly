@@ -648,14 +648,14 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     /// продлевает паузу для фоновых чтений.
     private static let pacedCalls: Set<String> = [
         "loadHistory", "loadCommentCounts", "loadSharedMedia", "loadProfile",
-        "loadChat", "loadChats", "loadReactions", "loadCallHistory", "loadAnimojis", "loadStoriesFeed",
+        "loadChat", "loadChats", "loadReactions", "loadCallHistory", "callHistory", "loadAnimojis", "loadStoriesFeed",
     ]
     /// Чтения, отказ которым включает паузу, хотя сами они её не ждут. Истории владельца открыл
     /// пользователь, как и комментарии; окно вокруг далёкого сообщения — переход по цитате,
     /// закрепу или поиску и листание от его краёв; старые страницы ленты — листание вверх
     /// (раньше они ждали паузы от чужих отказов, и лента молча вставала).
     private static let limitAwareCalls: Set<String> = pacedCalls.union([
-        "loadComments", "loadOpenedHistory", "loadOwnerStories", "loadHistoryAround", "loadOlderHistory",
+        "loadComments", "loadOpenedHistory", "loadOwnerStories", "loadHistoryAround", "loadOlderHistory", "ownStoryArchive",
     ])
 
     /// Текст сервера читается сразу в колбэке, пока `IosErrors.current()` ещё жив.

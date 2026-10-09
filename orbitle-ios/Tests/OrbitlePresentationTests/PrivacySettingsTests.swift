@@ -163,6 +163,16 @@ struct PrivacySettingsModelTests {
         }
     }
 
+    @Test("Семейная защита открывает мини-приложение бота из конфига, без бота — только статус")
+    func familyApp() async {
+        let model = await activated(FakePrivacyControls(AccountSettings(isKnown: true, familyProtectionBotId: "4242")))
+        #expect(model.familyProtectionApp == BotAppRequest(botId: "4242", chatId: "", startParam: nil, title: "Семейная защита"))
+        for none in ["", "0", "-5", "бот"] {
+            let plain = await activated(FakePrivacyControls(AccountSettings(isKnown: true, familyProtectionBotId: none)))
+            #expect(plain.familyProtectionApp == nil)
+        }
+    }
+
     @Test("Незнакомая семейная защита сама не блокирует, блокирует ядро")
     func unknownFamily() async {
         let open = await activated(FakePrivacyControls(AccountSettings(isKnown: true, familyProtection: .unknown, familyProtectionRaw: "PARTIAL")))

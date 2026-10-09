@@ -147,6 +147,14 @@ public final class PrivacySettingsModel {
 
     public var familyProtection: FamilyProtection { settings.familyProtection }
 
+    /// Мини-приложение семейной защиты: бот из `family-protection-botid` конфига сервера.
+    /// `nil`, пока сервер его не прислал: строка тогда только показывает статус.
+    public var familyProtectionApp: BotAppRequest? {
+        let botId = settings.familyProtectionBotId.trimmingCharacters(in: .whitespaces)
+        guard let id = Int64(botId), id > 0 else { return nil }
+        return BotAppRequest(botId: botId, chatId: "", startParam: nil, title: "Семейная защита")
+    }
+
     /// Почему строку нельзя менять. `nil` — можно. Свои причины (безопасный режим, семейная
     /// защита) видны сразу после переключения; остальное — по ответу ядра.
     public func lockReason(_ row: PrivacyRow) -> String? {

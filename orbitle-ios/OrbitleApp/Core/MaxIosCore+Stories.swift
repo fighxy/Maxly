@@ -88,6 +88,20 @@ extension MaxIosCore {
 
     /// Пуши колец приходят событием `stories`: владелец в `chatId`, его тип в `chatType`,
     /// время кольца в `timeMs`, непросмотренные в `unread`, всего историй в `text`.
+    func ownStoryArchive(marker: String) async throws -> StoryArchivePage {
+        try await call("ownStoryArchive") { done in
+            self.client.ownStoryArchive(marker: marker) { archive, kind, key in
+                if let kind {
+                    done(.failure(Self.failed(kind: kind, key: key)))
+                } else if let archive {
+                    done(.success(StoryArchivePage(stories: archive.stories.map(Self.story), marker: archive.marker)))
+                } else {
+                    done(.failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)))
+                }
+            }
+        }
+    }
+
     func storyUpdates() -> AsyncStream<StoryRing> {
         AsyncStream { continuation in
             let watch = WatchBox(client.watchEvents { event in

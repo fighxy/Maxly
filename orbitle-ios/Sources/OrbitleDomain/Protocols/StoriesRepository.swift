@@ -16,4 +16,12 @@ public protocol StoriesRepository: Sendable {
     func publish(_ story: OutgoingStory, audience: StoryAudience, progress: @escaping @Sendable (Double) -> Void) async throws(OrbitleError) -> StoryRing?
     /// Удаляет свои истории.
     func delete(storyIds: [String]) async throws(OrbitleError)
+    /// Страница архива своих историй, 30 штук. Пустой `marker` — первая страница, дальше —
+    /// `marker` прошлого ответа.
+    func archive(marker: String) async throws(OrbitleError) -> StoryArchivePage
+}
+
+public extension StoriesRepository {
+    /// Источник без архива: «Мои истории» показывают ошибку.
+    func archive(marker: String) async throws(OrbitleError) -> StoryArchivePage { throw .invalidRequest }
 }
