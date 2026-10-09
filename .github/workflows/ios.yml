@@ -97,7 +97,7 @@ jobs:
         run: bash scripts/fetch-core.sh
       # Подпись ad-hoc нужна симулятору для Keychain: без неё ядро не создаётся, и запуск
       # не доходит до подключения к серверу.
-      - name: Build Orbitle
+      - name: Build Maxly
         if: steps.token.outputs.present == 'true'
         run: xcodebuild -project orbitle-ios/Orbitle.xcodeproj -scheme Orbitle -destination 'generic/platform=iOS Simulator' -derivedDataPath build/sim ARCHS=arm64 CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- build
       # Запуск в симуляторе ловит падения, которых не видно при сборке. Если приложение
@@ -109,7 +109,7 @@ jobs:
         timeout-minutes: 10
         env:
           ORBITLE_SIM_RUNTIME: "26.2"
-        run: bash scripts/smoke-launch.sh build/sim/Build/Products/Debug-iphonesimulator/Orbitle.app
+        run: bash scripts/smoke-launch.sh build/sim/Build/Products/Debug-iphonesimulator/Maxly.app
       # Неподписанный .ipa для iPhone: подписать его можно своим сертификатом
       # (Sideloadly, AltStore, eSign и т. п.) и поставить на устройство.
       - name: Build unsigned IPA
@@ -121,28 +121,29 @@ jobs:
           xcodebuild -project orbitle-ios/Orbitle.xcodeproj -scheme Orbitle -configuration Release \
             -destination 'generic/platform=iOS' -derivedDataPath build/device ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
-          app="build/device/Build/Products/Release-iphoneos/Orbitle.app"
+          app="build/device/Build/Products/Release-iphoneos/Maxly.app"
           test -d "$app"
           # Стекло iOS 26 действительно в сборке: бинарник ссылается на API SwiftUI iOS 26.
-          glass="$(nm -u "$app/Orbitle" | grep -c -E 'glassEffect|GlassProminent' || true)"
-          echo "Символов стекла iOS 26 в Orbitle: $glass"
+          glass="$(nm -u "$app/Maxly" | grep -c -E 'glassEffect|GlassProminent' || true)"
+          echo "Символов стекла iOS 26 в Maxly: $glass"
           if [ "$glass" -eq 0 ]; then echo "::error::В сборке нет кода iOS 26 (glassEffect)"; exit 1; fi
-          rm -rf build/ipa build/Orbitle.ipa && mkdir -p build/ipa/Payload
+          rm -rf build/ipa build/Maxly.ipa && mkdir -p build/ipa/Payload
           cp -R "$app" build/ipa/Payload/
-          (cd build/ipa && zip -qry ../Orbitle.ipa Payload)
-          python3 scripts/validate-ipa.py build/Orbitle.ipa --alternate-icon AppIconLight --alternate-icon AppIconBlue
-          ls -lh build/Orbitle.ipa
+          (cd build/ipa && zip -qry ../Maxly.ipa Payload)
+          python3 scripts/validate-ipa.py build/Maxly.ipa --alternate-icon AppIconLight --alternate-icon AppIconBlue
+          ls -lh build/Maxly.ipa
       - name: Upload IPA
         if: ${{ !cancelled() && steps.ipa.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
-          name: Orbitle-unsigned-ipa-${{ github.sha }}
-          path: build/Orbitle.ipa
+          name: Maxly-unsigned-ipa-${{ github.sha }}
+          path: build/Maxly.ipa
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
 
-  # Один пререлиз ios-latest с Orbitle.ipa: ссылка постоянная, внутри последняя сборка main, у
+  # Один пререлиз ios-latest с Maxly.ipa и её копией Orbitle.ipa (прежняя ссылка продолжает работать):
+  # ссылка постоянная, внутри последняя сборка main, у
   # которой прошли тесты, запуск в симуляторе и проверка .ipa. Артефакт прогона скачивается
   # ZIP-архивом, и «Файлы» на iPhone его часто не открывают, а ссылка из выпуска в Safari
   # скачивает саму .ipa, её сразу можно открыть в eSign.
@@ -162,7 +163,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: Orbitle-unsigned-ipa-${{ github.sha }}
+          name: Maxly-unsigned-ipa-${{ github.sha }}
           path: build
       - name: Publish IPA
         env:
@@ -172,7 +173,8 @@ jobs:
         run: |
           set -euo pipefail
           short="${GITHUB_SHA::7}"
-          export TITLE="Orbitle iOS ${short}"
-          export NOTES="Неподписанная сборка ${GITHUB_SHA} от $(date -u '+%Y-%m-%d %H:%M') UTC. Скачайте Orbitle.ipa в Safari на iPhone и откройте в eSign."
-          ls -lh build/Orbitle.ipa
-          bash scripts/publish-latest.sh build/Orbitle.ipa
+          export TITLE="Maxly iOS ${short}"
+          export NOTES="Неподписанная сборка ${GITHUB_SHA} от $(date -u '+%Y-%m-%d %H:%M') UTC. Скачайте Maxly.ipa в Safari на iPhone и откройте в eSign. Orbitle.ipa — та же сборка под прежним именем, чтобы старая ссылка продолжала работать."
+          cp build/Maxly.ipa build/Orbitle.ipa
+          ls -lh build/Maxly.ipa build/Orbitle.ipa
+          bash scripts/publish-latest.sh build/Maxly.ipa build/Orbitle.ipa
