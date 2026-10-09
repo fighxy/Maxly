@@ -108,7 +108,7 @@ jobs:
         # таймауту, а сборка и публикация .ipa ниже всё равно выполняются.
         timeout-minutes: 10
         env:
-          ORBITLE_SIM_RUNTIME: "26.2"
+          MAXLY_SIM_RUNTIME: "26.2"
         run: bash scripts/smoke-launch.sh build/sim/Build/Products/Debug-iphonesimulator/Maxly.app
       # Неподписанный .ipa для iPhone: подписать его можно своим сертификатом
       # (Sideloadly, AltStore, eSign и т. п.) и поставить на устройство.

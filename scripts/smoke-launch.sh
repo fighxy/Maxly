@@ -11,12 +11,12 @@ bundle="app.maxly.ios"
 out="$(mktemp -d)"
 
 # Самая новая среда iOS и последний iPhone из тех, что она поддерживает.
-# ORBITLE_SIM_RUNTIME=26.2 выбирает среду этой версии (под SDK выбранного Xcode).
-export ORBITLE_SIM_RUNTIME="${ORBITLE_SIM_RUNTIME:-}"
+# MAXLY_SIM_RUNTIME=26.2 выбирает среду этой версии (под SDK выбранного Xcode).
+export MAXLY_SIM_RUNTIME="${MAXLY_SIM_RUNTIME:-}"
 read -r runtime device_type < <(xcrun simctl list runtimes -j | python3 -c '
 import json, os, sys
 runtimes = [r for r in json.load(sys.stdin)["runtimes"] if r["platform"] == "iOS" and r["isAvailable"]]
-wanted = os.environ.get("ORBITLE_SIM_RUNTIME", "")
+wanted = os.environ.get("MAXLY_SIM_RUNTIME", "")
 if wanted:
     runtimes = [r for r in runtimes if r["version"] == wanted or r["version"].startswith(wanted + ".")]
 if not runtimes:
@@ -38,7 +38,7 @@ xcrun simctl bootstatus "$udid" -b >/dev/null
 xcrun simctl install "$udid" "$app"
 
 xcrun simctl spawn "$udid" log stream --level debug --style compact \
-  --predicate 'subsystem == "app.maxly.ios" OR process == "Maxly" OR process == "Orbitle"' > "$out/app.log" 2>&1 &
+  --predicate 'subsystem == "app.maxly.ios" OR process == "Maxly"' > "$out/app.log" 2>&1 &
 log_pid=$!
 sleep 2
 
@@ -61,7 +61,7 @@ if [[ "$alive" != 1 ]]; then
   # Причина завершения (runningboardd, SpringBoard, launchd): сбой, watchdog, jetsam или выход.
   echo "::group::Завершение процесса (pid ${pid:-?})"
   ps -p "${pid:-0}" -o pid,stat,etime,command 2>/dev/null || echo "(процесса $pid нет)"
-  xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -i -E "maxly|orbitle" || echo "(в launchctl list нет задания Maxly)"
+  xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -i maxly || echo "(в launchctl list нет задания Maxly)"
   xcrun simctl spawn "$udid" log show --last 3m --style compact --predicate \
     '(process == "runningboardd" OR process == "SpringBoard" OR process == "launchd" OR process == "ReportCrash") AND (eventMessage CONTAINS[c] "maxly" OR eventMessage CONTAINS[c] "'"${pid:-maxly}"'")' \
     2>/dev/null | grep -Ei "termin|exit|kill|crash|watchdog|jetsam|signal|reason|invalidat" | tail -n 80
@@ -87,7 +87,7 @@ while IFS= read -r report; do
   head -c 120000 "$report"
   echo
   echo "::endgroup::"
-done < <(find "$HOME/Library/Logs/DiagnosticReports" \( -name 'Maxly*' -o -name 'Orbitle*' \) -newer "$out/started" 2>/dev/null)
+done < <(find "$HOME/Library/Logs/DiagnosticReports" -name 'Maxly*' -newer "$out/started" 2>/dev/null)
 
 if [[ "$alive" != 1 ]]; then
   echo "::error::Maxly закрылся в первые $wait_seconds с после запуска$([[ $found == 1 ]] && echo ', отчёт о сбое выше')"
