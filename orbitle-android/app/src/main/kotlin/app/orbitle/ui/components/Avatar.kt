@@ -17,11 +17,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.orbitle.presentation.chatlist.ChatAvatar
+import app.orbitle.presentation.media.ImageRequests
 import app.orbitle.ui.theme.AvatarPalette
 import coil3.compose.SubcomposeAsyncImage
 
@@ -39,7 +41,7 @@ fun Avatar(avatar: ChatAvatar, size: Dp, modifier: Modifier = Modifier, online: 
                 Icon(Icons.Filled.Bookmark, contentDescription = null, tint = Color.White, modifier = Modifier.size(size * 0.5f))
             }
             is ChatAvatar.Kind.Photo -> SubcomposeAsyncImage(
-                model = kind.url,
+                model = ImageRequests.square(kind.url, size.value, LocalDensity.current.density),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.size(size).clip(CircleShape),

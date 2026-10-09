@@ -358,6 +358,7 @@ class ChatViewModel(
                 rebuild()
                 markRead()
                 requestReactions()
+                if (active) refreshExpiredPhotos()
             }
         }
         viewModelScope.launch {
@@ -683,8 +684,19 @@ class ChatViewModel(
         if (value) {
             markingUnread = false
             markRead()
+            refreshExpiredPhotos()
         } else {
             cancelPendingRead()
+        }
+    }
+
+    /** Просроченные адреса фото: код 203, только пока чат на экране. */
+    private var photoRefresh: kotlinx.coroutines.Job? = null
+
+    private fun refreshExpiredPhotos() {
+        if (photoRefresh?.isActive == true) return
+        photoRefresh = viewModelScope.launch {
+            repository.refreshExpiredPhotos(chatId, now())
         }
     }
 

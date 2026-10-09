@@ -86,6 +86,9 @@ import app.orbitle.ui.chat.MediaViewer
 import app.orbitle.ui.components.Avatar
 import app.orbitle.ui.theme.AvatarPalette
 import coil3.compose.AsyncImage
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.platform.LocalDensity
+import app.orbitle.presentation.media.ImageRequests
 
 /**
  * Действия чата, из которого открыт профиль. Раньше они были кнопками «Поиск» и «Ещё» в шапке
@@ -462,8 +465,8 @@ private fun Card(title: String? = null, content: @Composable () -> Unit) {
 
 @Composable
 private fun VisualTile(visual: SharedMedia.Visual, modifier: Modifier, onClick: () -> Unit) {
-    Box(modifier.aspectRatio(1f).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onClick)) {
-        AsyncImage(visual.thumbnailUrl, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+    BoxWithConstraints(modifier.aspectRatio(1f).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onClick)) {
+        AsyncImage(ImageRequests.width(visual.thumbnailUrl, maxWidth.value, LocalDensity.current.density), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         if (visual.attachment is ChatAttachment.Video) {
             Row(
                 Modifier.align(Alignment.BottomStart).padding(4.dp).clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 4.dp, vertical = 1.dp),

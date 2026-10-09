@@ -232,6 +232,13 @@ interface MessageRepository {
     /** Закрепить сообщение. `"0"` снимает закреп (`pinMessageId` 0). */
     suspend fun pin(chatId: String, messageId: String) {}
 
+    /**
+     * Обновляет просроченные адреса фото чата (код 203), если сервер включил `photo-url-refresh`.
+     * По умолчанию ничего не делает: так устроены подмены в тестах.
+     */
+    suspend fun refreshExpiredPhotos(chatId: String, nowMs: Long) {}
+
+
     /** Отложить текст до [sendAt] (мс). В обычную ленту оно не встаёт. */
     suspend fun schedule(chatId: String, text: String, sendAt: Long) {}
 

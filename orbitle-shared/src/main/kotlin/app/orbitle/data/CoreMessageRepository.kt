@@ -9,6 +9,9 @@ import app.orbitle.domain.VideoContent
 import app.orbitle.domain.FileContent
 import com.max.core.media.OutgoingMedia
 import app.orbitle.domain.MessageContent
+import app.orbitle.presentation.media.PhotoRefreshKeys
+import app.orbitle.presentation.media.PhotoRefreshQueue
+import app.orbitle.presentation.media.withPhotoUrls
 import app.orbitle.domain.MessageReply
 import app.orbitle.domain.MessageStatus
 import app.orbitle.domain.TextSpan
@@ -46,6 +49,9 @@ class CoreMessageRepository(
 
     /** Свои сообщения, которых ещё нет на сервере: id чата → сообщения. */
     private val pending = MutableStateFlow<Map<String, List<Message>>>(emptyMap())
+    /** Свежие адреса фото (id фото → адрес), полученные кодом 203. */
+    private val photoUrls = MutableStateFlow<Map<String, String>>(emptyMap())
+    private val photoQueue = PhotoRefreshQueue()
     private val localIds = AtomicLong(0)
 
     override val currentUserId: String? get() = client.store.state.value.me?.toString()
@@ -58,10 +64,11 @@ class CoreMessageRepository(
 
     override fun messages(chatId: String): Flow<List<Message>> {
         val id = chatId.toLongOrNull() ?: 0L
-        return combine(client.store.state, pending) { state, queued ->
+        return combine(client.store.state, pending, photoUrls) { state, queued, urls ->
             val chat = state.chats[id]
             val peerRead = chat?.let { ReadMarks.peer(it, state) } ?: 0L
-            val stored = state.messagesOf(id).filterNot(MessageMapping::isComment).map { MessageMapping.message(it, id, state, peerRead) }
+            val stored = state.messagesOf(id).filterNot(MessageMapping::isComment)
+                .map { MessageMapping.message(it, id, state, peerRead).withPhotoUrls(urls) }
             stored + queued[chatId].orEmpty()
         }.distinctUntilChanged()
     }
@@ -430,6 +437,33 @@ class CoreMessageRepository(
         val chat = chatId.toLongOrNull() ?: return
         val message = messageId.toLongOrNull() ?: return
         MaxCoreGateway.call { client.api.messages.pinMessage(chat, message) }
+    }
+
+    override suspend fun refreshExpiredPhotos(chatId: String, nowMs: Long) {
+        val id = chatId.toLongOrNull() ?: return
+        val config = client.accountConfig.value ?: return
+        if (!config.photoUrlRefresh) return
+        photoQueue.maxPerRequest = config.photoUrlRefreshMaxMedia
+        val urls = photoUrls.value
+        photoQueue.enqueue(PhotoRefreshKeys.expired(id, client.store.state.value.messagesOf(id), urls, nowMs))
+        val batch = photoQueue.take(nowMs) ?: return
+        try {
+            val fresh = MaxCoreGateway.read {
+                client.refreshPhotoUrls(PhotoRefreshQueue.media(batch), config.photoUrlRefreshMaxMedia)
+            }
+            val updates = LinkedHashMap<String, String>()
+            for (photo in fresh) {
+                val next = photo.baseUrl?.takeIf { it.isNotBlank() } ?: continue
+                updates[photo.photoId.toString()] = next
+            }
+            if (updates.isNotEmpty()) photoUrls.update { it + updates }
+            photoQueue.complete(batch)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            photoQueue.requeue(batch)
+            throw e
+        } catch (e: Exception) {
+            photoQueue.requeue(batch)
+        }
     }
 
     override suspend fun schedule(chatId: String, text: String, sendAt: Long) {

@@ -101,6 +101,7 @@ import app.orbitle.domain.ChatAttachment
 import app.orbitle.domain.PollContent
 import app.orbitle.domain.FileContent
 import app.orbitle.domain.Message
+import app.orbitle.presentation.media.ImageRequests
 import app.orbitle.domain.MessageReaction
 import app.orbitle.domain.MessageStatus
 import app.orbitle.domain.TextSpan
@@ -544,14 +545,14 @@ fun ReplyQuote(author: String, preview: String, colors: BubbleColors, modifier: 
 private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modifier = Modifier, shape: Shape, onLongPress: () -> Unit = {}, onDoubleTap: () -> Unit = {}, onOpen: (ChatAttachment) -> Unit) {
     if (visuals.size == 1) {
         val frame = singleFrame(visuals.first(), maxWidth)
-        Box(modifier.size(frame.width.dp, frame.height.dp).clip(shape).combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(visuals.first()) }) { VisualCell(visuals.first()) }
+        Box(modifier.size(frame.width.dp, frame.height.dp).clip(shape).combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(visuals.first()) }) { VisualCell(visuals.first(), frame.width.dp) }
         return
     }
     val cell = (maxWidth - 2.dp) / 2
     Column(modifier.clip(shape), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         visuals.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                row.forEach { Box(Modifier.size(if (row.size == 1) maxWidth else cell, cell).combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(it) }) { VisualCell(it) } }
+                row.forEach { Box(Modifier.size(if (row.size == 1) maxWidth else cell, cell).combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(it) }) { VisualCell(it, if (row.size == 1) maxWidth else cell) } }
             }
         }
     }
@@ -572,26 +573,27 @@ private fun visualsWidth(visuals: List<ChatAttachment>, maxWidth: Dp): Dp =
     if (visuals.size == 1) singleFrame(visuals.first(), maxWidth).width.dp else maxWidth
 
 @Composable
-private fun VisualCell(attachment: ChatAttachment) {
+private fun VisualCell(attachment: ChatAttachment, width: Dp) {
     val fill = Modifier.fillMaxWidth().fillMaxHeight()
     when (attachment) {
-        is ChatAttachment.Photo -> PhotoCell(attachment.photo, fill)
-        is ChatAttachment.Video -> VideoCell(attachment.video, fill)
+        is ChatAttachment.Photo -> PhotoCell(attachment.photo, fill, width)
+        is ChatAttachment.Video -> VideoCell(attachment.video, fill, width)
         else -> Unit
     }
 }
 
 @Composable
-private fun PhotoCell(photo: PhotoContent, modifier: Modifier) {
+private fun PhotoCell(photo: PhotoContent, modifier: Modifier, width: Dp) {
+    val model = ImageRequests.width(photo.url, width.value, LocalDensity.current.density)
     Box(modifier.background(Color.Black.copy(alpha = 0.2f))) {
-        AsyncImage(photo.url, "Фото", Modifier.fillMaxWidth().fillMaxHeight(), contentScale = ContentScale.Crop)
+        AsyncImage(model, "Фото", Modifier.fillMaxWidth().fillMaxHeight(), contentScale = ContentScale.Crop)
     }
 }
 
 @Composable
-private fun VideoCell(video: VideoContent, modifier: Modifier) {
+private fun VideoCell(video: VideoContent, modifier: Modifier, width: Dp) {
     Box(modifier.background(Color.Black.copy(alpha = 0.4f)), contentAlignment = Alignment.Center) {
-        AsyncImage(video.posterUrl, "Видео", Modifier.fillMaxWidth().fillMaxHeight(), contentScale = ContentScale.Crop)
+        AsyncImage(ImageRequests.width(video.posterUrl, width.value, LocalDensity.current.density), "Видео", Modifier.fillMaxWidth().fillMaxHeight(), contentScale = ContentScale.Crop)
         Box(Modifier.size(44.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
             Icon(Icons.Filled.PlayArrow, null, tint = Color.White)
         }

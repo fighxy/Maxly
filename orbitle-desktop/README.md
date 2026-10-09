@@ -62,6 +62,7 @@ The core is pinned to max-kmp-core `1364e91` in `core.lock`. Everything below ru
   first right after login), answers the server's `PING`, follows a server `RECONNECT` (op 3, only
   to `oneme.ru` hosts) and backs off reconnects from 3 s to 96 s with ±10 % jitter. Neither
   server `PING` nor `RECONNECT` reaches `pushes`; the app has no ping or reconnect code of its own.
+- **Images:** avatars ask the core for a square `fn` and photos for a width `fn`: the first step of the ladder that is not smaller than the view size in dp times the screen density (`ImageRequests`). A full-screen viewer and a file on disk keep the original URL. When the server turns on `photo-url-refresh`, an open chat refreshes expired photo URLs with opcode 203 (`MaxClient.refreshPhotoUrls`), at most the server's batch and not more than once a second; the new address replaces the photo in the feed.
 - **Login rejection:** when the server refuses the stored token (`ClientState.TokenRejected`),
   the app never shows an empty chat list. `login.token` and `login.blocked`: the core has cleared
   the token, so the app also clears its own session state (chats, caches, last user id, feed
