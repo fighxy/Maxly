@@ -22,7 +22,7 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationRail
@@ -254,14 +254,16 @@ fun MainScreen(
             NavigationRail(
                 containerColor = MaterialTheme.colorScheme.surfaceContainer,
                 header = {
-                    FloatingActionButton(
+                    // Кнопка размером с пункт панели: большая FAB на компьютере выглядит чужой.
+                    androidx.compose.material3.SmallFloatingActionButton(
                         onClick = {
                             tab = Tab.CHATS
                             newChat.show()
                         },
                         modifier = Modifier.padding(vertical = 8.dp),
+                        elevation = androidx.compose.material3.FloatingActionButtonDefaults.bottomAppBarFabElevation(),
                     ) {
-                        Icon(Icons.Filled.Edit, contentDescription = "Новое сообщение")
+                        Icon(Icons.Filled.Edit, contentDescription = "Новое сообщение (Ctrl+N)", modifier = Modifier.size(20.dp))
                     }
                 },
             ) {

@@ -121,6 +121,7 @@ import app.orbitle.ui.components.Avatar
 import app.orbitle.ui.theme.AvatarPalette
 import app.orbitle.ui.theme.OrbitleOutgoing
 import coil3.compose.AsyncImage
+import androidx.compose.ui.graphics.FilterQuality
 
 private val MissedRed = Color(0xFFE5484D)
 
@@ -628,16 +629,32 @@ private fun VisualCell(attachment: ChatAttachment, width: Dp) {
 
 @Composable
 private fun PhotoCell(photo: PhotoContent, modifier: Modifier, width: Dp) {
-    val model = ImageRequests.width(photo.url, width.value, LocalDensity.current.density)
-    Box(modifier.background(Color.Black.copy(alpha = 0.2f))) {
-        AsyncImage(model, "Фото", Modifier.fillMaxWidth().fillMaxHeight(), contentScale = ContentScale.Crop)
+    BoxWithConstraints(modifier.background(Color.Black.copy(alpha = 0.2f))) {
+        val model = ImageRequests.width(photo.url, cropWidth(width, maxHeight, photo.width, photo.height).value, feedDensity())
+        AsyncImage(model, "Фото", Modifier.fillMaxWidth().fillMaxHeight(), contentScale = ContentScale.Crop, filterQuality = FilterQuality.High)
     }
 }
+
+/**
+ * Ширина, которую фото займёт после обрезки по ячейке: широкое фото в высокой ячейке
+ * растягивается по высоте, и ширины ячейки ему мало — картинка была бы мыльной.
+ */
+private fun cropWidth(cell: Dp, cellHeight: Dp, photoWidth: Int?, photoHeight: Int?): Dp {
+    if (photoWidth == null || photoHeight == null || photoWidth <= 0 || photoHeight <= 0 || !cellHeight.value.isFinite()) return cell
+    return maxOf(cell, cellHeight * (photoWidth.toFloat() / photoHeight))
+}
+
+/**
+ * Плотность для адреса фото в ленте — не меньше 2: на Windows с масштабом 100 % плотность 1,
+ * и ступень лестницы впритык к ячейке выглядит мыльной рядом с Telegram.
+ */
+@Composable
+private fun feedDensity(): Float = maxOf(LocalDensity.current.density, 2f)
 
 @Composable
 private fun VideoCell(video: VideoContent, modifier: Modifier, width: Dp) {
     Box(modifier.background(Color.Black.copy(alpha = 0.4f)), contentAlignment = Alignment.Center) {
-        AsyncImage(ImageRequests.width(video.posterUrl, width.value, LocalDensity.current.density), "Видео", Modifier.fillMaxWidth().fillMaxHeight(), contentScale = ContentScale.Crop)
+        AsyncImage(ImageRequests.width(video.posterUrl, width.value, feedDensity()), "Видео", Modifier.fillMaxWidth().fillMaxHeight(), contentScale = ContentScale.Crop, filterQuality = FilterQuality.High)
         Box(Modifier.size(44.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
             Icon(Icons.Filled.PlayArrow, null, tint = Color.White)
         }

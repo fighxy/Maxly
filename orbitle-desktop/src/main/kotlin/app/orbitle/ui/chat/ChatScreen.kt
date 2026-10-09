@@ -475,6 +475,28 @@ fun ChatScreen(
                     onCancelReply = model::cancelReply,
                     onCancelEdit = model::cancelEdit,
                     onAttach = { attaching = true },
+                    attachMenu = {
+                        AttachMenu(
+                            expanded = attaching,
+                            onDismiss = { attaching = false },
+                            onMedia = {
+                                attaching = false
+                                importPicked(true)
+                            },
+                            onFile = {
+                                attaching = false
+                                importPicked(false)
+                            },
+                            onPoll = {
+                                attaching = false
+                                makingPoll = true
+                            },
+                            onSchedule = {
+                                attaching = false
+                                scheduling = true
+                            },
+                        )
+                    },
                     onRemoveAttachment = model::removeAttachment,
                     onEditPhoto = { editingPhoto = it },
                     panel = model.stickers,
@@ -502,6 +524,13 @@ fun ChatScreen(
                     onLink = model::setLink,
                     linkAt = model::linkAt,
                     onEditLast = model::editLast,
+                    onPaste = {
+                        val files = app.orbitle.media.ClipboardImport.files()
+                        if (files.isNotEmpty()) {
+                            importScope.launch { model.addAttachments(AttachmentImporter.import(files.take(OutgoingFile.LIMIT))) }
+                        }
+                        files.isNotEmpty()
+                    },
                 )
             } else if (state.join != null) {
                 val join = state.join!!
@@ -567,27 +596,6 @@ fun ChatScreen(
         )
     }
 
-    if (attaching) {
-        AttachSheet(
-            onDismiss = { attaching = false },
-            onMedia = {
-                attaching = false
-                importPicked(true)
-            },
-            onFile = {
-                attaching = false
-                importPicked(false)
-            },
-            onPoll = {
-                attaching = false
-                makingPoll = true
-            },
-            onSchedule = {
-                attaching = false
-                scheduling = true
-            },
-        )
-    }
     mediaState.value.viewer?.let { viewer ->
         MediaViewer(
             viewer, mediaUserAgent, onPage = model.media::showPage, onClose = model.media::closeViewer,

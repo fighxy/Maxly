@@ -63,6 +63,10 @@ import app.orbitle.domain.VideoContent
 import app.orbitle.presentation.chat.ChatFormatter
 import app.orbitle.presentation.chat.MediaViewerState
 import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
+import coil3.request.ImageRequest
+import coil3.size.Size
+import androidx.compose.ui.graphics.FilterQuality
 import kotlinx.coroutines.launch
 
 /** Фото и видео сообщения на весь экран: листание, зум фото щипком и двойным касанием. */
@@ -285,8 +289,13 @@ private fun ZoomablePhoto(
             },
         contentAlignment = Alignment.Center,
     ) {
+        // Оригинал декодируется целиком, а не под размер окна: иначе приближение растягивает
+        // уменьшенную копию и фото мылится.
+        val context = LocalPlatformContext.current
+        val request = remember(url) { ImageRequest.Builder(context).data(url).size(Size.ORIGINAL).build() }
         AsyncImage(
-            model = url,
+            model = request,
+            filterQuality = FilterQuality.High,
             contentDescription = "Фото",
             contentScale = ContentScale.Fit,
             onSuccess = { imageSize = it.painter.intrinsicSize },

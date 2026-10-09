@@ -104,6 +104,8 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -179,6 +181,8 @@ internal fun Composer(
     onCancelReply: () -> Unit,
     onCancelEdit: () -> Unit,
     onAttach: () -> Unit,
+    /** Меню вложений у скрепки: рисуется рядом с кнопкой, открытым его держит экран. */
+    attachMenu: @Composable () -> Unit = {},
     onRemoveAttachment: (OutgoingFile) -> Unit,
     onEditPhoto: (OutgoingFile) -> Unit,
     panel: StickerPanel? = null,
@@ -200,6 +204,8 @@ internal fun Composer(
     linkAt: (Int, Int) -> String? = { _, _ -> null },
     /** ↑ в пустом поле: правка своего последнего сообщения. `false` — править нечего. */
     onEditLast: () -> Boolean = { false },
+    /** Ctrl+V / Shift+Insert: `true` — из буфера взяты файлы или картинка, текст не вставляется. */
+    onPaste: () -> Boolean = { false },
 ) {
     var showPanel by rememberSaveable { mutableStateOf(false) }
     val sendKey = app.orbitle.ui.keys.LocalSendKey.current
@@ -318,8 +324,11 @@ internal fun Composer(
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.Bottom) {
                 if (editing == null) {
-                    IconButton(onClick = onAttach, modifier = Modifier.size(44.dp)) {
-                        Icon(Icons.Filled.AttachFile, "Прикрепить", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Box {
+                        IconButton(onClick = onAttach, modifier = Modifier.size(44.dp)) {
+                            Icon(Icons.Filled.AttachFile, "Прикрепить", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        attachMenu()
                     }
                     Spacer(Modifier.width(2.dp))
                 }
@@ -362,7 +371,7 @@ internal fun Composer(
                                     focused = it.isFocused
                                     if (it.isFocused && showPanel) onPanel(false)
                                 }
-                                .onPreviewKeyEvent { composerKey(it, sendKey, field.text.isEmpty(), state.canSend, onSend, onEditLast) },
+                                .onPreviewKeyEvent { composerKey(it, sendKey, field.text.isEmpty(), state.canSend, onSend, onEditLast, onPaste) },
                         )
                     }
                     FormatToggle(formatOpen, onToggle = { formatOpen = !formatOpen })
@@ -474,48 +483,41 @@ internal fun AttachmentStrip(items: List<OutgoingFile>, onRemove: (OutgoingFile)
         }
     }
 }
-
-/** Что прикрепить: фото и видео из галереи или любой файл. */
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Меню вложений — выпадает у скрепки, как в Telegram Desktop: фото и видео, файл, опрос,
+ * отложенное. Картинку и файлы можно и вставить из буфера (Ctrl+V).
+ */
 @Composable
-internal fun AttachSheet(
+internal fun AttachMenu(
+    expanded: Boolean,
     onDismiss: () -> Unit,
     onMedia: () -> Unit,
     onFile: () -> Unit,
     onPoll: () -> Unit,
     onSchedule: () -> Unit,
 ) {
-    AppSheet(onDismissRequest = onDismiss) {
-        val colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-        ListItem(
-            headlineContent = { Text("Фото или видео") },
-            supportingContent = { Text("Из галереи, до ${OutgoingFile.LIMIT} за раз") },
-            leadingContent = { Icon(Icons.Outlined.Image, null, tint = MaterialTheme.colorScheme.primary) },
-            colors = colors,
-            modifier = Modifier.clickable(onClick = onMedia),
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        val tint = MaterialTheme.colorScheme.primary
+        DropdownMenuItem(
+            text = { Text("Фото или видео") },
+            leadingIcon = { Icon(Icons.Outlined.Image, null, tint = tint) },
+            onClick = onMedia,
         )
-        ListItem(
-            headlineContent = { Text("Файл") },
-            supportingContent = { Text("Документ любого типа") },
-            leadingContent = { Icon(Icons.AutoMirrored.Outlined.InsertDriveFile, null, tint = MaterialTheme.colorScheme.primary) },
-            colors = colors,
-            modifier = Modifier.clickable(onClick = onFile),
+        DropdownMenuItem(
+            text = { Text("Файл") },
+            leadingIcon = { Icon(Icons.AutoMirrored.Outlined.InsertDriveFile, null, tint = tint) },
+            onClick = onFile,
         )
-        ListItem(
-            headlineContent = { Text("Опрос") },
-            supportingContent = { Text("Вопрос и ответы") },
-            leadingContent = { Icon(Icons.Outlined.Poll, null, tint = MaterialTheme.colorScheme.primary) },
-            colors = colors,
-            modifier = Modifier.clickable(onClick = onPoll),
+        DropdownMenuItem(
+            text = { Text("Опрос") },
+            leadingIcon = { Icon(Icons.Outlined.Poll, null, tint = tint) },
+            onClick = onPoll,
         )
-        ListItem(
-            headlineContent = { Text("Отложить") },
-            supportingContent = { Text("Отправить текст из поля позже") },
-            leadingContent = { Icon(Icons.Outlined.Schedule, null, tint = MaterialTheme.colorScheme.primary) },
-            colors = colors,
-            modifier = Modifier.clickable(onClick = onSchedule),
+        DropdownMenuItem(
+            text = { Text("Отложить сообщение") },
+            leadingIcon = { Icon(Icons.Outlined.Schedule, null, tint = tint) },
+            onClick = onSchedule,
         )
-        Spacer(Modifier.size(24.dp))
     }
 }
 
@@ -531,6 +533,7 @@ private fun composerKey(
     canSend: Boolean,
     onSend: () -> Unit,
     onEditLast: () -> Boolean,
+    onPaste: () -> Boolean,
 ): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
     val command = event.isCtrlPressed || event.isMetaPressed
@@ -544,6 +547,9 @@ private fun composerKey(
             sends
         }
         Key.DirectionUp -> empty && !command && !event.isShiftPressed && !event.isAltPressed && onEditLast()
+        // Скриншот или файлы из проводника — вложениями; текст поле вставит само.
+        Key.V -> command && !event.isAltPressed && onPaste()
+        Key.Insert -> event.isShiftPressed && !command && onPaste()
         else -> false
     }
 }
