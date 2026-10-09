@@ -12,7 +12,7 @@ import java.io.File
 import java.nio.file.Files
 
 class DiagnosticsTest {
-    private val root: File = Files.createTempDirectory("orbitle-diag").toFile()
+    private val root: File = Files.createTempDirectory("maxly-diag").toFile()
     private val savedHandler = Thread.getDefaultUncaughtExceptionHandler()
 
     @After
@@ -115,13 +115,13 @@ class DiagnosticsTest {
     fun errorReportHasTitleThreadInfoStackAndLog() {
         val reports = CrashReports(File(root, "crashes"), now = { 0L })
         val error = RuntimeException("обёртка", UnsatisfiedLinkError("no jingle"))
-        val file = reports.recordError(CrashReports.CRASH, error, "main", "Orbitle 0.1.0\nAndroid 14", "12:00 I calls: старт\n")
+        val file = reports.recordError(CrashReports.CRASH, error, "main", "Maxly 0.1.0\nAndroid 14", "12:00 I calls: старт\n")
         assertNotNull(file)
         val text = file!!.readText()
         val lines = text.lines()
         assertEquals("Сбой: java.lang.RuntimeException: обёртка ← java.lang.UnsatisfiedLinkError", lines[0])
         assertTrue(text.contains("Поток: main"))
-        assertTrue(text.contains("Orbitle 0.1.0\nAndroid 14"))
+        assertTrue(text.contains("Maxly 0.1.0\nAndroid 14"))
         assertTrue(text.contains("Caused by: java.lang.UnsatisfiedLinkError: no jingle"))
         assertTrue(text.contains("Журнал перед сбоем:\n12:00 I calls: старт"))
     }
@@ -133,10 +133,10 @@ class DiagnosticsTest {
         log.append('I', "calls", "последняя строка")
         var forwarded: Throwable? = null
         Thread.setDefaultUncaughtExceptionHandler { _, error -> forwarded = error }
-        CrashHandler.install(reports, log) { "Orbitle test" }
+        CrashHandler.install(reports, log) { "Maxly test" }
         // Повторная установка не заворачивает обработчик сам в себя.
         val handler = Thread.getDefaultUncaughtExceptionHandler()
-        CrashHandler.install(reports, log) { "Orbitle test" }
+        CrashHandler.install(reports, log) { "Maxly test" }
         assertSame(handler, Thread.getDefaultUncaughtExceptionHandler())
 
         val boom = IllegalStateException("Service.startForeground() not allowed")
@@ -149,7 +149,7 @@ class DiagnosticsTest {
         assertEquals(CrashReports.CRASH, report.kind)
         val text = reports.text(report.name)!!
         assertTrue(text, text.contains("Поток: call-worker"))
-        assertTrue(text.contains("Orbitle test"))
+        assertTrue(text.contains("Maxly test"))
         assertTrue(text.contains("последняя строка"))
         assertTrue(log.read().contains("E crash: Необработанное исключение в потоке call-worker"))
     }

@@ -23,11 +23,11 @@ interface MediaSaver {
 object SaveNaming {
     private val format = DateTimeFormatter.ofPattern("yyyy-MM-dd HH.mm.ss", Locale.US)
 
-    /** «Orbitle 2026-10-01 14.05.33.jpg», со второго вложения — « 2», « 3»… */
+    /** «Maxly 2026-10-01 14.05.33.jpg», со второго вложения — « 2», « 3»… */
     fun name(timeMs: Long, index: Int, ext: String, zone: ZoneId = ZoneId.systemDefault()): String {
         val stamp = format.format(Instant.ofEpochMilli(timeMs).atZone(zone))
         val suffix = if (index > 0) " ${index + 1}" else ""
-        return "Orbitle $stamp$suffix.$ext"
+        return "Maxly $stamp$suffix.$ext"
     }
 
     /** Расширение картинки по сигнатуре; неизвестное — jpg. */

@@ -57,7 +57,7 @@ class MediaSavingTest {
         assertFalse(media.canSave(m, SaveTarget.DOWNLOADS))
         media.save(m, SaveTarget.GALLERY)
         assertEquals(listOf("https://cdn/p1", "https://cdn/video-v1"), files.urls)
-        assertEquals(listOf("Orbitle 2026-10-01 14.05.33.jpg" to SavedKind.IMAGE, "Orbitle 2026-10-01 14.05.33 2.mp4" to SavedKind.VIDEO), saver.saved)
+        assertEquals(listOf("Maxly 2026-10-01 14.05.33.jpg" to SavedKind.IMAGE, "Maxly 2026-10-01 14.05.33 2.mp4" to SavedKind.VIDEO), saver.saved)
         assertEquals(listOf("Сохранено в галерею"), notices)
         assertTrue(media.state.value.saving.isEmpty())
     }
@@ -85,6 +85,6 @@ class MediaSavingTest {
         assertEquals("gif", SaveNaming.imageExtension("GIF89a".toByteArray()))
         assertEquals("webp", SaveNaming.imageExtension("RIFF\u0000\u0000\u0000\u0000WEBP".toByteArray()))
         assertEquals("jpg", SaveNaming.imageExtension(byteArrayOf(0xFF.toByte(), 0xD8.toByte())))
-        assertEquals("Orbitle 1970-01-01 00.00.00 3.png", SaveNaming.name(0, 2, "png", ZoneOffset.UTC))
+        assertEquals("Maxly 1970-01-01 00.00.00 3.png", SaveNaming.name(0, 2, "png", ZoneOffset.UTC))
     }
 }
