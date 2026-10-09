@@ -20,12 +20,12 @@ fi
 if [[ -z "${SKIP_CORE:-}" ]]; then
   bash scripts/fetch-core.sh
 fi
-if [[ ! -d orbitle-ios/Vendor/MaxlyCore.xcframework ]]; then
-  echo "Нет orbitle-ios/Vendor/MaxlyCore.xcframework: запустите без SKIP_CORE." >&2
+if [[ ! -d maxly-ios/Vendor/MaxlyCore.xcframework ]]; then
+  echo "Нет maxly-ios/Vendor/MaxlyCore.xcframework: запустите без SKIP_CORE." >&2
   exit 1
 fi
 
-xcodebuild -project orbitle-ios/Orbitle.xcodeproj -scheme Orbitle -configuration Release \
+xcodebuild -project maxly-ios/Orbitle.xcodeproj -scheme Orbitle -configuration Release \
   -destination 'generic/platform=iOS' -derivedDataPath build/device ARCHS=arm64 \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
 

@@ -1,6 +1,6 @@
 .build/
 maxly-shared/.gradle/
-orbitle-ios/Vendor/
+maxly-ios/Vendor/
 .swiftpm/
 xcuserdata/
 *.xcuserstate

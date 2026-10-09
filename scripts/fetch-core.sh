@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Собирает статический MaxlyCore.xcframework из ревизии orbitle-ios/core.lock.
+# Собирает статический MaxlyCore.xcframework из ревизии maxly-ios/core.lock.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-lock="$root/orbitle-ios/core.lock"
+lock="$root/maxly-ios/core.lock"
 revision="$(grep '^revision=' "$lock" | head -n 1 | cut -d= -f2- | tr -d '[:space:]')"
 repository="$(grep '^repository=' "$lock" | head -n 1 | cut -d= -f2- | tr -d '[:space:]')"
 
@@ -59,7 +59,7 @@ if [[ ! -d "$framework" ]]; then
   exit 1
 fi
 
-mkdir -p "$root/orbitle-ios/Vendor"
-rm -rf "$root/orbitle-ios/Vendor/MaxlyCore.xcframework"
-cp -R "$framework" "$root/orbitle-ios/Vendor/MaxlyCore.xcframework"
-echo "MaxlyCore.xcframework из $revision лежит в orbitle-ios/Vendor."
+mkdir -p "$root/maxly-ios/Vendor"
+rm -rf "$root/maxly-ios/Vendor/MaxlyCore.xcframework"
+cp -R "$framework" "$root/maxly-ios/Vendor/MaxlyCore.xcframework"
+echo "MaxlyCore.xcframework из $revision лежит в maxly-ios/Vendor."

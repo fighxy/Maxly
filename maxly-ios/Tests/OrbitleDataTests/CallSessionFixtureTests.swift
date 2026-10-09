@@ -38,13 +38,13 @@ struct CallSessionFixtureTests {
 
 /// Файлы сценариев. Ресурсом пакета их не сделать: SwiftPM не берёт файлы вне каталога пакета,
 /// поэтому путь ищется от этого файла вверх до корня репозитория. Так работает и на CI
-/// (`swift test --package-path orbitle-ios` из корня checkout), и локально из любого каталога.
+/// (`swift test --package-path maxly-ios` из корня checkout), и локально из любого каталога.
 enum Ws2Fixture {
     static let relativePath = "test-fixtures/calls/ws2"
 
     static func directory() throws -> URL {
         let file = #filePath
-        // Каталоги от файла теста вверх: …/orbitle-ios/Tests/OrbitleDataTests, …/orbitle-ios/Tests, ….
+        // Каталоги от файла теста вверх: …/maxly-ios/Tests/OrbitleDataTests, …/maxly-ios/Tests, ….
         var components = URL(fileURLWithPath: file).deletingLastPathComponent().pathComponents
         while !components.isEmpty {
             let candidate = URL(fileURLWithPath: NSString.path(withComponents: components), isDirectory: true)

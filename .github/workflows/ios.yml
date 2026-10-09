@@ -5,14 +5,14 @@ on:
   push:
     branches: [main]
     paths:
-      - "orbitle-ios/**"
+      - "maxly-ios/**"
       - "scripts/**"
       - "test-fixtures/**"
       - "test-fixtures/client-rules/**"
       - ".github/workflows/ios.yml"
   pull_request:
     paths:
-      - "orbitle-ios/**"
+      - "maxly-ios/**"
       - "scripts/**"
       - "test-fixtures/**"
       - "test-fixtures/client-rules/**"
@@ -36,11 +36,11 @@ jobs:
           swift --version
       - name: Test libraries
         run: |
-          swift test --package-path orbitle-ios \
+          swift test --package-path maxly-ios \
             -Xlinker=-sectcreate \
             -Xlinker=__TEXT \
             -Xlinker=__info_plist \
-            -Xlinker="$GITHUB_WORKSPACE/orbitle-ios/Tests/OrbitleDataTests/Info.plist"
+            -Xlinker="$GITHUB_WORKSPACE/maxly-ios/Tests/OrbitleDataTests/Info.plist"
       - name: Test IPA validation
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Crash reports
@@ -99,7 +99,7 @@ jobs:
       # не доходит до подключения к серверу.
       - name: Build Maxly
         if: steps.token.outputs.present == 'true'
-        run: xcodebuild -project orbitle-ios/Orbitle.xcodeproj -scheme Orbitle -destination 'generic/platform=iOS Simulator' -derivedDataPath build/sim ARCHS=arm64 CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- build
+        run: xcodebuild -project maxly-ios/Orbitle.xcodeproj -scheme Orbitle -destination 'generic/platform=iOS Simulator' -derivedDataPath build/sim ARCHS=arm64 CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- build
       # Запуск в симуляторе ловит падения, которых не видно при сборке. Если приложение
       # закрылось, шаг печатает отчёт о сбое (стек) и журнал приложения.
       - name: Launch in Simulator
@@ -118,7 +118,7 @@ jobs:
         if: ${{ !cancelled() && steps.token.outputs.present == 'true' }}
         run: |
           set -euo pipefail
-          xcodebuild -project orbitle-ios/Orbitle.xcodeproj -scheme Orbitle -configuration Release \
+          xcodebuild -project maxly-ios/Orbitle.xcodeproj -scheme Orbitle -configuration Release \
             -destination 'generic/platform=iOS' -derivedDataPath build/device ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
           app="build/device/Build/Products/Release-iphoneos/Maxly.app"
@@ -169,7 +169,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ios-latest
-          WATCH: orbitle-ios/ scripts/ .github/workflows/ios.yml
+          WATCH: maxly-ios/ scripts/ .github/workflows/ios.yml
         run: |
           set -euo pipefail
           short="${GITHUB_SHA::7}"

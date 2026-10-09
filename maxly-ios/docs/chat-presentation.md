@@ -2,7 +2,7 @@
 
 Лента, группы сообщений, прокрутка и раскладка пузырей подчиняются единым правилам ниже.
 Реализация использует существующий SwiftUI,
-Liquid Glass для элементов управления. Изменения ограничены `orbitle-ios`.
+Liquid Glass для элементов управления. Изменения ограничены `maxly-ios`.
 
 ## Оформление
 
@@ -110,7 +110,7 @@ Liquid Glass для элементов управления. Изменения 
 Регрессии покрывают `MessageBubbleLayoutTests`, `TranscriptLayoutTests`,
 `TranscriptBottomStateTests`, `ChatTimelineTests` (окно перехода, возвраты, счётчик «вниз»,
 рост окна до непрочитанного, место в ленте) и сравнение отрисованного аватара в `ChatAvatarLayoutTests`.
-Полный пакет: `swift test --package-path orbitle-ios`
+Полный пакет: `swift test --package-path maxly-ios`
 на macOS с Xcode 26; workflow iOS дополнительно собирает приложение и запускает симулятор.
 
 Ручная проверка на iOS 17 и 18/26 нужна для поведения SwiftUI при прокрутке:

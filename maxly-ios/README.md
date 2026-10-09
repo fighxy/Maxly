@@ -1,4 +1,4 @@
-# orbitle-ios
+# maxly-ios
 
 iOS-клиент Maxly на SwiftUI. Слои описаны в [`docs/architecture.md`](../docs/architecture.md). Komet — карта функций клиента Max ([`docs/komet-reference.md`](../docs/komet-reference.md)), не образец структуры. Вкладка «Настройки» описана в [`docs/settings.md`](docs/settings.md). Реакции на сообщения — в [`docs/reactions.md`](docs/reactions.md). Вложения (фото, видео, файлы, контакты) — в [`docs/attachments.md`](docs/attachments.md). Размеры адресов картинок — в [`docs/image-urls.md`](docs/image-urls.md). Приватный режим — в [`docs/privacy-mode.md`](docs/privacy-mode.md). Анимации и правила плавности — в [`docs/animations.md`](docs/animations.md). Кэш медиа и экран «Данные и память» — в [`docs/storage.md`](docs/storage.md). Сохранение в «Фото» и «Файлы» — в [`docs/saving.md`](docs/saving.md). Расшифровка голосовых — в [`docs/transcription.md`](docs/transcription.md). Шапка чата и профиль — в [`docs/profile.md`](docs/profile.md). Эмодзи и стикеры — в [`docs/stickers.md`](docs/stickers.md). Звонки (ws2, WebRTC, CallKit) — в [`docs/calls.md`](docs/calls.md). «Печатает…» и другие действия собеседника — в [`docs/typing.md`](docs/typing.md). Статус «в сети / был(а)» — в [`docs/presence.md`](docs/presence.md).
 
@@ -73,7 +73,7 @@ bash scripts/build-ipa.sh            # или MAX_KMP_CORE_DIR=… / SKIP_CORE=1
 Тесты библиотек (`OrbitleDomainTests`, `OrbitleDataTests`, `OrbitlePresentationTests`) ядро не требуют:
 
 ```bash
-swift test --package-path orbitle-ios
+swift test --package-path maxly-ios
 ```
 
 Они собираются и для macOS 14, чтобы прогон шёл на CI. Само приложение остаётся iOS 17.
