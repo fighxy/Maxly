@@ -16,6 +16,7 @@ import androidx.compose.material.icons.outlined.Contacts
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Storage
@@ -93,6 +94,8 @@ fun SettingsScreen(
     onSecurity: () -> Unit = {},
     onStorage: () -> Unit = {},
     onFolders: () -> Unit = {},
+    /** «Мои истории»; `null` — пункта нет (сервер не включил `stories-history`). */
+    onMyStories: (() -> Unit)? = null,
     onMessages: () -> Unit = {},
     onDigitalId: () -> Unit = {},
     onSferum: () -> Unit = {},
@@ -140,6 +143,9 @@ fun SettingsScreen(
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
             SettingsItem(Icons.AutoMirrored.Outlined.Chat, "Сообщения", onClick = onMessages)
             SettingsItem(Icons.Outlined.BookmarkBorder, "Избранное", onClick = onSaved)
+            if (onMyStories != null) {
+                SettingsItem(Icons.Outlined.History, "Мои истории", onClick = onMyStories)
+            }
             SettingsItem(Icons.Outlined.Contacts, "Контакты", onClick = onContacts)
             SettingsItem(Icons.Outlined.Folder, "Папки", onClick = onFolders)
             SettingsItem(Icons.Outlined.Palette, "Оформление", onClick = onAppearance)

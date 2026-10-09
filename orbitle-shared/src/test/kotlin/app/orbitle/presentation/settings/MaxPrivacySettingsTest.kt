@@ -320,4 +320,14 @@ class MaxPrivacySettingsTest {
         assertEquals("Безопасный", PrivacyText.content(true))
         assertEquals("Контакты", PrivacyText.online(false))
     }
+
+    @Test
+    fun storiesHistoryAndFamilyBotComeFromServerConfig() {
+        val off = CoreAccountRepository.settingsOf(AccountConfig(user = emptyMap()))
+        assertEquals(false, off.storiesHistory)
+        assertEquals(null, off.familyProtectionBotId)
+        val on = CoreAccountRepository.settingsOf(AccountConfig(server = mapOf("stories-history" to "ON", "family-protection-botid" to "4401")))
+        assertEquals(true, on.storiesHistory)
+        assertEquals("4401", on.familyProtectionBotId)
+    }
 }

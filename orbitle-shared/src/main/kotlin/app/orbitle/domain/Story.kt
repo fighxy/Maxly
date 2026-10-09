@@ -49,3 +49,6 @@ data class Story(
 
 /** Файл новой истории на устройстве: фото или видео, у видео — длительность, если известна. */
 data class OutgoingStory(val path: String, val isVideo: Boolean, val durationMs: Long? = null)
+
+/** Страница своего архива историй (219): [marker] `null` — дальше страниц нет. */
+data class StoryArchive(val stories: List<Story>, val marker: Long?)

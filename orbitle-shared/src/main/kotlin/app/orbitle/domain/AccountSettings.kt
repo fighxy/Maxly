@@ -72,6 +72,10 @@ data class AccountSettings(
     val quickReactionEnabled: Boolean = true,
     /** Семейная защита: только статус, см. [managedByFamily]. */
     val familyProtection: FamilyProtection = FamilyProtection.OFF,
+    /** Пункт «Мои истории» в настройках (`stories-history`). */
+    val storiesHistory: Boolean = false,
+    /** Бот мини-приложения семейной защиты (`family-protection-botid`); `null` — строка только показывает статус. */
+    val familyProtectionBotId: String? = null,
 ) {
     /** Пункты «Найти меня по номеру», «Позвонить», «Пригласить в чат» и «Показывать контент» не меняются. */
     val lockedBySafeMode: Boolean get() = safeMode

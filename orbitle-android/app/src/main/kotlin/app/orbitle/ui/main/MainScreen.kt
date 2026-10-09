@@ -109,6 +109,7 @@ import app.orbitle.ui.stories.LocalStoryRings
 import app.orbitle.ui.stories.StoriesStrip
 import app.orbitle.ui.stories.StoryStack
 import app.orbitle.ui.stories.StoryComposer
+import app.orbitle.ui.stories.MyStoriesScreen
 import app.orbitle.ui.stories.StoryFiles
 import app.orbitle.ui.stories.StoryRings
 import app.orbitle.ui.stories.StoryViewer
@@ -216,6 +217,7 @@ fun MainScreen(
                     self = selfAvatar,
                     onOpen = storiesModel::open,
                     onAdd = addStory,
+                    onArchive = if (accountState.settings.storiesHistory) ({ nav.navigate("my-stories") }) else null,
                 )
             },
             storyStack = if (stackItems.isEmpty()) null else ({ StoryStack(stackItems) }),
@@ -309,6 +311,7 @@ fun MainScreen(
                     onSferum = { nav.navigate("mini-app/${MiniApp.Kind.SFERUM.wire}") },
                     onStorage = { nav.navigate("storage") },
                     onFolders = { nav.navigate("folders") },
+                    onMyStories = if (accountState.settings.storiesHistory) ({ nav.navigate("my-stories") }) else null,
                     onMessages = { nav.navigate("messages") },
                     profileLink = app.orbitle.presentation.settings.ProfileLink.link(accountState.settings.inviteLink, account?.link),
                     accountLimits = limits,
@@ -325,7 +328,13 @@ fun MainScreen(
             composable("profile-edit") { ProfileEditScreen(accountModel, onBack = { nav.popBackStack() }, onLogout = onLogout) }
             composable("privacy") { PrivacyScreen(accountModel, onBack = { nav.popBackStack() }, onBlocked = { nav.navigate("blocked") }, privateMode = container.privateMode, ghost = ghostModel) }
             composable("security") {
-                SecurityScreen(securityModel, onBack = { nav.popBackStack() }, onChangeEmail = { nav.navigate("recovery-email") }, account = accountModel)
+                SecurityScreen(
+                    securityModel,
+                    onBack = { nav.popBackStack() },
+                    onChangeEmail = { nav.navigate("recovery-email") },
+                    account = accountModel,
+                    onFamilyProtection = { botId -> listBotApp = BotAppRequest(botId, "", null, "Семейная защита") },
+                )
             }
             composable(
                 "mini-app/{kind}",
@@ -351,6 +360,13 @@ fun MainScreen(
                     viewModel { FoldersViewModel(container.folders) },
                     count = chatList::folderCount,
                     candidates = chatList::folderCandidates,
+                    onBack = { nav.popBackStack() },
+                )
+            }
+            composable("my-stories") {
+                MyStoriesScreen(
+                    viewModel { app.orbitle.presentation.stories.MyStoriesViewModel(container.stories) },
+                    onCreate = addStory,
                     onBack = { nav.popBackStack() },
                 )
             }

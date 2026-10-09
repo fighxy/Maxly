@@ -7,6 +7,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -195,7 +196,10 @@ fun StoriesStrip(
     onOpen: (String) -> Unit,
     onAdd: () -> Unit,
     modifier: Modifier = Modifier,
+    /** «Открыть мои истории» в меню своего кружка (долгое нажатие); `null` — архива нет. */
+    onArchive: (() -> Unit)? = null,
 ) {
+    var ownMenu by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     LazyRow(
         modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
@@ -207,8 +211,27 @@ fun StoriesStrip(
                 title = StoryText.YOUR_STORY,
                 dim = false,
                 onClick = { if (own != null) onOpen(own.owner.id) else onAdd() },
+                onLongClick = onArchive?.let { { ownMenu = true } },
             ) {
                 Box {
+                    androidx.compose.material3.DropdownMenu(expanded = ownMenu, onDismissRequest = { ownMenu = false }) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Новая история") },
+                            onClick = {
+                                ownMenu = false
+                                onAdd()
+                            },
+                        )
+                        if (onArchive != null) {
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("Открыть мои истории") },
+                                onClick = {
+                                    ownMenu = false
+                                    onArchive()
+                                },
+                            )
+                        }
+                    }
                     StoryRingAvatar(self, own, 60.dp, progress = state.publishProgress)
                     Box(
                         Modifier
@@ -233,10 +256,13 @@ fun StoriesStrip(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun Tile(title: String, dim: Boolean, onClick: () -> Unit, avatar: @Composable () -> Unit) {
+private fun Tile(title: String, dim: Boolean, onClick: () -> Unit, onLongClick: (() -> Unit)? = null, avatar: @Composable () -> Unit) {
     Column(
-        Modifier.width(72.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(vertical = 4.dp),
+        Modifier.width(72.dp).clip(RoundedCornerShape(12.dp))
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         avatar()

@@ -280,6 +280,8 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
                 quickReaction = quickReactionOf(c),
                 quickReactionEnabled = c.userFlag("DOUBLE_TAP_REACTION_DISABLED") != true,
                 familyProtection = familyOf(privacy.familyProtection),
+                storiesHistory = c.storiesHistory,
+                familyProtectionBotId = c.familyProtectionBotId?.toString(),
             )
         }
 

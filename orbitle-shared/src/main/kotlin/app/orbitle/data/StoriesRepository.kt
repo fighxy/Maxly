@@ -42,6 +42,12 @@ interface StoriesRepository {
 
     /** Удаляет свои истории. */
     suspend fun delete(storyIds: List<String>)
+
+    /**
+     * Страница своего архива историй (`STORIES_HISTORY_GET_BY_OWNER_ID` 219, по 30). [marker]
+     * `null` — первая страница.
+     */
+    suspend fun ownArchive(marker: Long?): app.orbitle.domain.StoryArchive = app.orbitle.domain.StoryArchive(emptyList(), null)
 }
 
 class CoreStoriesRepository(private val client: MaxClient) : StoriesRepository {
@@ -98,6 +104,11 @@ class CoreStoriesRepository(private val client: MaxClient) : StoriesRepository {
         val ids = storyIds.mapNotNull { it.toLongOrNull() }
         if (ids.isEmpty()) return
         MaxCoreGateway.call { client.api.stories.delete(ids) }
+    }
+
+    override suspend fun ownArchive(marker: Long?): app.orbitle.domain.StoryArchive {
+        val page = MaxCoreGateway.read { client.ownStoryArchive(marker) }
+        return app.orbitle.domain.StoryArchive(page.stories.map(::story), page.marker)
     }
 
     /** Подгружает неизвестных владельцев-людей. Без имён кольца всё равно показываются. */

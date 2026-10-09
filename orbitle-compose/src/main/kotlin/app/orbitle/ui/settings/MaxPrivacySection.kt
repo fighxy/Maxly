@@ -101,18 +101,22 @@ fun MaxPrivacySection(model: AccountSettingsViewModel) {
 }
 
 /**
- * Статус семейной защиты для «Безопасности»: только чтение — включается и выключается она
- * в мини-приложении MAX. Пока конфиг не пришёл, вместо статуса «…».
+ * Статус семейной защиты для «Безопасности»: включается и выключается она в мини-приложении
+ * MAX. Если сервер прислал бота этого мини-приложения (`family-protection-botid`), касание
+ * открывает его через [onOpen]; без бота строка только показывает статус. Пока конфиг не
+ * пришёл, вместо статуса «…».
  */
 @Composable
-fun FamilyProtectionRow(model: AccountSettingsViewModel) {
+fun FamilyProtectionRow(model: AccountSettingsViewModel, onOpen: ((String) -> Unit)? = null) {
     val state by model.state.collectAsStateWithLifecycle()
     val settings = state.settings
+    val botId = settings.familyProtectionBotId?.takeIf { onOpen != null }
     ListItem(
         leadingContent = { Icon(Icons.Outlined.FamilyRestroom, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
         headlineContent = { Text(PrivacyText.FAMILY_PROTECTION) },
         supportingContent = { Text(if (settings.known) settings.familyProtection.title else "…") },
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = if (botId != null && onOpen != null) Modifier.clickable { onOpen(botId) } else Modifier,
     )
     Text(
         if (settings.managedByFamily) PrivacyText.FAMILY_LOCK else PrivacyText.FAMILY_PROTECTION_NOTE,

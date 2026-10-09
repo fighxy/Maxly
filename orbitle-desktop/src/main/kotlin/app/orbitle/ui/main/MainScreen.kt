@@ -121,7 +121,7 @@ enum class Tab(val title: Int, val icon: ImageVector, val selectedIcon: ImageVec
     SETTINGS(R.string.tab_settings, Icons.Outlined.Settings, Icons.Filled.Settings),
 }
 
-private enum class SettingsPage { Home, About, Devices, Appearance, Profile, Privacy, Security, RecoveryEmail, Storage, Folders, Blocked, MiniApp, Messages, Keyboard }
+private enum class SettingsPage { Home, About, Devices, Appearance, Profile, Privacy, Security, RecoveryEmail, Storage, Folders, Blocked, MiniApp, Messages, Keyboard, MyStories }
 
 /** Окно после входа: рельс вкладок, список чатов и открытый чат рядом. */
 @Composable
@@ -312,6 +312,10 @@ fun MainScreen(
                                     self = selfAvatar,
                                     onOpen = storiesModel::open,
                                     onAdd = addStory,
+                                    onArchive = if (accountState.settings.storiesHistory) ({
+                                        tab = Tab.SETTINGS
+                                        settingsPage = SettingsPage.MyStories
+                                    }) else null,
                                 )
                             },
                             storyStack = if (stackItems.isEmpty()) null else ({ StoryStack(stackItems) }),
@@ -393,6 +397,8 @@ fun MainScreen(
                         onLogout = onLogout,
                         onSaved = { openChat(Chat.SAVED_MESSAGES_ID) },
                         onContacts = { tab = Tab.CONTACTS },
+                        onAddStory = addStory,
+                        onFamilyProtection = { botId -> listBotApp = BotAppRequest(botId, "", null, "Семейная защита") },
                     )
                 }
             }
@@ -563,6 +569,8 @@ private fun SettingsPane(
     onLogout: () -> Unit,
     onSaved: () -> Unit,
     onContacts: () -> Unit,
+    onAddStory: () -> Unit,
+    onFamilyProtection: (String) -> Unit,
     recoveryKey: Int,
     onOpenRecovery: () -> Unit,
     miniAppKey: Int,
@@ -571,6 +579,7 @@ private fun SettingsPane(
     expanded: Boolean,
 ) {
     val securityModel = viewModel { SecurityViewModel(container.account) }
+    val paneAccount by accountModel.state.collectAsStateWithLifecycle()
     val ghostModel = viewModel { GhostModeViewModel(container.ghostMode, container.ownPresence, foreground = container.windowShown) }
     val limits by container.accountLimits.state.collectAsStateWithLifecycle()
     // Мини-приложение занимает всю область: рядом со списком настроек ему тесно.
@@ -590,6 +599,7 @@ private fun SettingsPane(
         SettingsPage.MiniApp -> if (miniKind == MiniApp.Kind.SFERUM.wire) "sferum" else "digital-id"
         SettingsPage.Messages -> "messages"
         SettingsPage.Keyboard -> "keyboard"
+        SettingsPage.MyStories -> "my-stories"
     }
     Row(Modifier.fillMaxSize()) {
         if (showList) {
@@ -609,6 +619,7 @@ private fun SettingsPane(
                     onSferum = { onOpenMiniApp(MiniApp.Kind.SFERUM) },
                     onStorage = { onOpen(SettingsPage.Storage) },
                     onFolders = { onOpen(SettingsPage.Folders) },
+                    onMyStories = if (paneAccount.settings.storiesHistory) ({ onOpen(SettingsPage.MyStories) }) else null,
                     onMessages = { onOpen(SettingsPage.Messages) },
                     onKeyboard = { onOpen(SettingsPage.Keyboard) },
                     profileLink = profileLink,
@@ -640,7 +651,12 @@ private fun SettingsPane(
         SettingsPage.Appearance -> AppearanceScreen(container.appearance, onBack)
         SettingsPage.Profile -> ProfileEditScreen(accountModel, onBack, onLogout)
         SettingsPage.Privacy -> PrivacyScreen(accountModel, onBack, onBlocked = { onOpen(SettingsPage.Blocked) }, privateMode = container.privateMode, ghost = ghostModel)
-        SettingsPage.Security -> SecurityScreen(securityModel, onBack, onChangeEmail = onOpenRecovery, account = accountModel)
+        SettingsPage.Security -> SecurityScreen(securityModel, onBack, onChangeEmail = onOpenRecovery, account = accountModel, onFamilyProtection = onFamilyProtection)
+        SettingsPage.MyStories -> app.orbitle.ui.stories.MyStoriesScreen(
+            viewModel { app.orbitle.presentation.stories.MyStoriesViewModel(container.stories) },
+            onCreate = onAddStory,
+            onBack = onBack,
+        )
         SettingsPage.RecoveryEmail -> {
             val flow = viewModel(key = "recovery-$recoveryKey") { RecoveryEmailViewModel(container.account) }
             RecoveryEmailScreen(

@@ -55,7 +55,14 @@ import kotlinx.coroutines.delay
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SecurityScreen(model: SecurityViewModel, onBack: () -> Unit, onChangeEmail: () -> Unit, account: AccountSettingsViewModel) {
+fun SecurityScreen(
+    model: SecurityViewModel,
+    onBack: () -> Unit,
+    onChangeEmail: () -> Unit,
+    account: AccountSettingsViewModel,
+    /** Касание «Семейной защиты»: мини-приложение бота из конфига (его id). */
+    onFamilyProtection: (String) -> Unit = {},
+) {
     val state by model.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { model.load() }
     Scaffold(
@@ -136,7 +143,7 @@ fun SecurityScreen(model: SecurityViewModel, onBack: () -> Unit, onChangeEmail: 
                 TextButton(onClick = { model.load() }, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Повторить") }
             }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
-            FamilyProtectionRow(account)
+            FamilyProtectionRow(account, onOpen = onFamilyProtection)
         }
     }
 }
