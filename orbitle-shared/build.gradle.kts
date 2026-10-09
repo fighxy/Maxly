@@ -7,7 +7,11 @@ plugins {
 
 android {
     namespace = "app.orbitle.shared"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 1
+        }
+    }
 
     defaultConfig {
         minSdk = 26

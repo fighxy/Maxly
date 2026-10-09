@@ -46,11 +46,11 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: ""
-      # Приложению нужен SDK 37, ядру (AGP 8.7) — SDK 35.
+      # Приложению нужен SDK 37.1, ядру (AGP 8.7) — SDK 35.
       - name: Android SDK packages
         run: |
           yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager --install "platforms;android-37.0" "platforms;android-35" "build-tools;37.0.0" "build-tools;35.0.0" > /dev/null
+          sdkmanager --install "platforms;android-37.1" "platforms;android-37.0" "platforms;android-35" "build-tools;37.0.0" "build-tools;35.0.0" > /dev/null
           echo "sdk.dir=$ANDROID_HOME" > local.properties
       - uses: gradle/actions/setup-gradle@v4
       # AAR ядра зависят только от ревизии в core.lock: кэш экономит сборку ядра.

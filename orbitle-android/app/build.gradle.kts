@@ -10,7 +10,11 @@ val versionCodeOverride = System.getenv("ORBITLE_VERSION_CODE")?.toIntOrNull()
 
 android {
     namespace = "app.orbitle"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 1
+        }
+    }
 
     defaultConfig {
         applicationId = "app.orbitle.android"
