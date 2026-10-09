@@ -54,7 +54,7 @@ Android-клиент и клиент для компьютера написан�
 
 | Каталог | Платформа | UI | Ядро | Состояние |
 |---|---|---|---|---|
-| [`orbitle-ios/`](orbitle-ios/) | iOS 17+ (собирается с SDK iOS 26) | SwiftUI, Liquid Glass | статический `MaxIos.xcframework`, ревизия в `orbitle-ios/core.lock` | рабочий клиент |
+| [`orbitle-ios/`](orbitle-ios/) | iOS 17+ (собирается с SDK iOS 26) | SwiftUI, Liquid Glass | статический `MaxlyCore.xcframework`, ревизия в `orbitle-ios/core.lock` | рабочий клиент |
 | [`orbitle-android/`](orbitle-android/) | Android | Kotlin, Jetpack Compose, Material 3 | AAR ядра в `orbitle-android/vendor`, ревизия в `orbitle-android/core.lock` | рабочий клиент |
 | [`orbitle-desktop/`](orbitle-desktop/) | Windows, macOS, Linux (JVM) | Compose Multiplatform | исходники JVM ядра, ревизия в `orbitle-desktop/core.lock` | рабочий клиент |
 
