@@ -18,6 +18,8 @@ struct AttachmentSheet: View {
     @State private var feed = CameraFeed()
     @State private var cameraShown = false
     @State private var importerShown = false
+    /// Файлы, выбранные в окне «Файлы»: уходят, когда окно закрылось.
+    @State private var pendingFiles: [URL] = []
     @State private var preparing = false
     @State private var failure: String?
     @State private var editingPhoto: EditablePhoto?
@@ -60,8 +62,20 @@ struct AttachmentSheet: View {
         .onChange(of: model.tab) { _, tab in
             if tab == .file { importerShown = true }
         }
-        .fileImporter(isPresented: $importerShown, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
-            importFiles(result)
+        // Системное окно «Файлы» в режиме копии: iOS сама скачивает файл из iCloud и копирует его
+        // в песочницу. Выбор обрабатывается, когда окно закрылось целиком: `.fileImporter` в этом
+        // листе молча не отдавал выбор — «Открыть» ничего не делало, а ошибка терялась вместе
+        // с закрытием окна.
+        .sheet(isPresented: $importerShown, onDismiss: {
+            let urls = pendingFiles
+            pendingFiles = []
+            importFiles(urls)
+        }) {
+            FileImportPicker { urls in
+                pendingFiles = urls
+                importerShown = false
+            }
+            .ignoresSafeArea()
         }
         .fullScreenCover(isPresented: $cameraShown, onDismiss: {
             if let shot = pendingShot { pendingShot = nil; sendShot(shot) }
@@ -484,17 +498,14 @@ struct AttachmentSheet: View {
         }
     }
 
-    private func importFiles(_ result: Result<[URL], Error>) {
-        switch result {
-        case .success(let urls):
-            guard !urls.isEmpty else { return }
-            do {
-                let drafts = try urls.map { try MediaExporter.draft(file: $0) }
-                onSend(drafts, "")
-            } catch {
-                failure = error.localizedDescription
-            }
-        case .failure(let error):
+    private func importFiles(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        do {
+            let drafts = try urls.map { try MediaExporter.draft(file: $0) }
+            Log.info(.media, "Файлы из «Файлов»: \(drafts.count)")
+            onSend(drafts, "")
+        } catch {
+            Log.warning(.media, "Файл не прочитался: \(error)")
             failure = error.localizedDescription
         }
     }
@@ -587,5 +598,45 @@ private struct AssetCell: View {
     static func duration(_ seconds: TimeInterval) -> String {
         let total = Int(seconds.rounded())
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+/// Системное окно выбора файлов любого типа, несколько сразу. Файлы приходят копиями в песочнице
+/// приложения (`asCopy`), поэтому доступ к ним не теряется после закрытия окна.
+private struct FileImportPicker: UIViewControllerRepresentable {
+    /// Выбранные файлы; пустой список — окно закрыли без выбора.
+    let onFinish: ([URL]) -> Void
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
+        picker.allowsMultipleSelection = true
+        picker.shouldShowFileExtensions = true
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ controller: UIDocumentPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(onFinish: onFinish) }
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        private let onFinish: ([URL]) -> Void
+        private var finished = false
+
+        init(onFinish: @escaping ([URL]) -> Void) { self.onFinish = onFinish }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            finish(urls)
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            finish([])
+        }
+
+        private func finish(_ urls: [URL]) {
+            guard !finished else { return }
+            finished = true
+            onFinish(urls)
+        }
     }
 }
