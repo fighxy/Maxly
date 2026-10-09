@@ -9,7 +9,7 @@
 ## Скачать
 
 Последняя зелёная сборка `main` — в пререлизе `android-latest`, ссылка постоянная:
-https://github.com/fighxy/Orbitle/releases/download/android-latest/Maxly.apk. Её можно
+https://github.com/fighxy/Maxly/releases/download/android-latest/Maxly.apk. Её можно
 открыть прямо на телефоне: браузер скачает `.apk`, остаётся разрешить установку из этого
 источника. На переходный период тот же файл лежит и под прежним именем `Orbitle.apk`.
 

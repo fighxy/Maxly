@@ -93,21 +93,21 @@ Android-клиент и клиент для компьютера написан�
 ## Установка
 
 У каждой платформы один пререлиз с постоянной ссылкой: его заменяет каждая зелёная сборка
-`main` ([Releases](https://github.com/fighxy/Orbitle/releases)).
+`main` ([Releases](https://github.com/fighxy/Maxly/releases)).
 
 **iPhone.** Неподписанная сборка в пререлизе `ios-latest`:
-https://github.com/fighxy/Orbitle/releases/download/ios-latest/Maxly.ipa.
+https://github.com/fighxy/Maxly/releases/download/ios-latest/Maxly.ipa.
 Откройте ссылку в Safari на iPhone, затем подпишите и установите `.ipa` своим сертификатом
 (eSign, Sideloadly, AltStore и т. п.).
 
 **Android.** Пререлиз `android-latest`:
-https://github.com/fighxy/Orbitle/releases/download/android-latest/Maxly.apk.
+https://github.com/fighxy/Maxly/releases/download/android-latest/Maxly.apk.
 Ссылку можно открыть прямо на телефоне и установить `.apk`.
 
 **Компьютер.** Пререлиз `desktop-latest`: Windows —
-https://github.com/fighxy/Orbitle/releases/download/desktop-latest/Maxly.msi, macOS —
-https://github.com/fighxy/Orbitle/releases/download/desktop-latest/Maxly.dmg, Linux —
-https://github.com/fighxy/Orbitle/releases/download/desktop-latest/Maxly.deb. Установщики
+https://github.com/fighxy/Maxly/releases/download/desktop-latest/Maxly.msi, macOS —
+https://github.com/fighxy/Maxly/releases/download/desktop-latest/Maxly.dmg, Linux —
+https://github.com/fighxy/Maxly/releases/download/desktop-latest/Maxly.deb. Установщики
 каждого прогона есть и в артефактах `Maxly-desktop-<формат>-<sha>`. Собрать и запустить
 самому — в [orbitle-desktop/README.md](orbitle-desktop/README.md).
 

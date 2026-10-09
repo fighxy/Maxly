@@ -295,9 +295,9 @@ fun AboutScreen(onBack: () -> Unit) {
             ListItem(
                 headlineContent = { Text(stringResource(R.string.about_source)) },
                 leadingContent = { Icon(Icons.Outlined.Code, null) },
-                supportingContent = { Text("github.com/fighxy/Orbitle") },
+                supportingContent = { Text("github.com/fighxy/Maxly") },
                 modifier = Modifier.clickable {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/fighxy/Orbitle")))
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/fighxy/Maxly")))
                 },
             )
             DiagnosticsSection()
