@@ -167,7 +167,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     public func loadOlder(chatId: String) async throws(MaxlyError) {
         let shown = windows[chatId] ?? Self.pageSize
         let window = (try? fetchPage(chatId: chatId, before: nil, limit: shown)) ?? []
-        _ = try await loadMore(chatId: chatId, before: window.last?.timestamp)
+        _ = try await loadMore(chatId: chatId, before: window.last?.timestamp, requiresSuccess: true)
         windows[chatId] = shown + Self.pageSize
         notify(chatId: chatId)
     }
@@ -1142,6 +1142,10 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     /// догружается с сервера, сохраняется и страница читается заново.
     /// Без сети возвращается то, что есть в кэше.
     public func loadMore(chatId: String, before: Date?) async throws(MaxlyError) -> [Message] {
+        try await loadMore(chatId: chatId, before: before, requiresSuccess: false)
+    }
+
+    private func loadMore(chatId: String, before: Date?, requiresSuccess: Bool) async throws(MaxlyError) -> [Message] {
         let local = try page(chatId: chatId, before: before)
         guard local.count < Self.pageSize else { return local.map(\.domain) }
 
@@ -1164,9 +1168,12 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             try ensureCurrent(started)
             try upsert(records)
             return try page(chatId: chatId, before: before).map(\.domain)
-        case .failure(.offline), .failure(.cancelled):
-            return local.map(\.domain)
         case .failure(let error):
+            if requiresSuccess { throw error.maxlyError }
+            switch error {
+            case .offline, .cancelled: return local.map(\.domain)
+            default: break
+            }
             if local.isEmpty { throw error.maxlyError }
             return local.map(\.domain)
         }

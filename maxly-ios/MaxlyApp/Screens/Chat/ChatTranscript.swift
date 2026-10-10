@@ -40,7 +40,6 @@ struct ChatTranscript: View {
     @State private var bottom = TranscriptBottomState()
     @State private var isOpening = true
     @State private var position: String?
-    @State private var olderAnchor: String?
     /// Верх ленты на экране: не пришедшая страница старого спрашивается снова, пока он виден.
     @State private var headerVisible = false
     /// Рамки видимых строк для отметки прочтения. Не состояние экрана: прокрутка не
@@ -208,6 +207,9 @@ struct ChatTranscript: View {
                 .onChange(of: isOpening) { _, opening in
                     if !opening { reportReads() }
                 }
+                .task(id: headerVisible && !isOpening && !viewModel.isRestoringHistory) {
+                    if headerVisible && !isOpening && !viewModel.isRestoringHistory { await loadOlderFromTop() }
+                }
                 .onChange(of: headerBottom) { _, _ in reportReads() }
                 .onChange(of: bottomControlsTop) { _, _ in reportReads() }
                 .onChange(of: keyboardTop) { _, _ in reportReads() }
@@ -295,10 +297,16 @@ struct ChatTranscript: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 32)
-            .onAppear {
-                headerVisible = true
-                loadOlderFromTop()
+            .overlay {
+                if !viewModel.isLoadingOlder {
+                    Button("Загрузить предыдущие сообщения") { Task { await loadOlderFromTop() } }
+                        .font(.caption)
+                }
             }
+            .onGeometryChange(for: Bool.self) { geometry in
+                let frame = geometry.frame(in: .named("transcript-viewport"))
+                return frame.maxY >= 0 && frame.minY < 100
+            } action: { visible in headerVisible = visible }
             .onDisappear { headerVisible = false }
         }
     }
@@ -319,14 +327,25 @@ struct ChatTranscript: View {
     /// Старое ложится сверху, а верхнее сообщение остаётся на месте (`follow`). Страница не
     /// пришла (пауза сервера после too.many.requests, сеть), а верх всё ещё на экране — она
     /// спрашивается снова через 3, 6 и 12 секунд: раньше лента молча вставала до новой прокрутки.
-    private func loadOlderFromTop(attempt: Int = 0) {
-        guard !viewModel.messages.isEmpty, !viewModel.isLoadingOlder, !viewModel.isRestoringHistory, !isOpening else { return }
-        olderAnchor = viewModel.messages.first?.id
-        Task {
+    private func loadOlderFromTop() async {
+        var failures = 0
+        while headerVisible && !Task.isCancelled {
+            guard !viewModel.messages.isEmpty, !viewModel.isLoadingOlder,
+                  !viewModel.isRestoringHistory, !isOpening, viewModel.canLoadOlder else { return }
+            let oldest = viewModel.messages.first?.id
             await viewModel.loadOlder()
-            guard viewModel.olderFailed, attempt < 3 else { return }
-            try? await Task.sleep(for: .seconds(3 << attempt))
-            if headerVisible { loadOlderFromTop(attempt: attempt + 1) }
+            if Task.isCancelled { return }
+            if viewModel.olderFailed {
+                guard failures < 3 else { return }
+                do { try await Task.sleep(for: .seconds(3 << failures)) } catch { return }
+                failures += 1
+                continue
+            }
+            failures = 0
+            // Allow the repository stream and layout to publish the new page.
+            do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
+            // An empty/overlapping page must not create an unbounded request loop.
+            guard viewModel.messages.first?.id != oldest else { return }
         }
     }
 
@@ -374,13 +393,8 @@ struct ChatTranscript: View {
         // Модель просит прокрутку (переход, возврат): ленту ставит она, а не смена состава.
         if viewModel.scrollTarget != nil { return }
         let change = viewModel.messagesChange
-        if case .prepended = change, let anchor = olderAnchor {
-            olderAnchor = nil
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) { proxy.scrollTo(anchor, anchor: .top) }
-            return
-        }
+        // scrollPosition keeps the actual visible row when history is prepended.
+        // Never jump to the oldest loaded row after a delayed network response.
         if isOpening {
             var transaction = Transaction()
             transaction.disablesAnimations = true
@@ -691,7 +705,7 @@ private struct TranscriptBottomTracking: ViewModifier {
 /// отступов или положения, когда палец не на ленте и инерции нет.
 private struct TranscriptOverscrollGuard: UIViewRepresentable {
     func makeUIView(context: Context) -> GuardView { GuardView() }
-    func updateUIView(_ view: GuardView, context: Context) {}
+    func updateUIView(_ view: GuardView, context: Context) { view.attachIfNeeded() }
 
     final class GuardView: UIView {
         /// Дальше этого за концом ленты — пустота под пузырями, а не погрешность.
@@ -716,7 +730,22 @@ private struct TranscriptOverscrollGuard: UIViewRepresentable {
                 scrollView = nil
                 return
             }
-            guard scrollView == nil, let found = enclosingScrollView() else { return }
+            attachIfNeeded()
+        }
+
+        override func didMoveToSuperview() {
+            super.didMoveToSuperview()
+            attachIfNeeded()
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            attachIfNeeded()
+            schedule()
+        }
+
+        func attachIfNeeded() {
+            guard window != nil, scrollView == nil, let found = enclosingScrollView() else { return }
             scrollView = found
             // Касание статус-бара или пустого места панели навигации (рядом с кнопками шапки)
             // система превращает в прокрутку к началу. Ленте чата это не нужно: она уезжала к
@@ -742,10 +771,11 @@ private struct TranscriptOverscrollGuard: UIViewRepresentable {
         }
 
         /// Проверка — после того как SwiftUI закончит раскладку этого прохода.
-        private func schedule() {
+        private func schedule(afterMotion: Bool = false) {
             guard !scheduled else { return }
             scheduled = true
             Task { @MainActor [weak self] in
+                if afterMotion { try? await Task.sleep(for: .milliseconds(80)) }
                 guard let self else { return }
                 self.scheduled = false
                 self.clamp()
@@ -755,11 +785,16 @@ private struct TranscriptOverscrollGuard: UIViewRepresentable {
         private func clamp() {
             // SwiftUI может вернуть свойство при пересборке прокрутки.
             if scrollView?.scrollsToTop == true { scrollView?.scrollsToTop = false }
-            guard let scroll = scrollView, scroll.window != nil,
-                  !scroll.isTracking, !scroll.isDragging, !scroll.isDecelerating else { return }
+            guard let scroll = scrollView, scroll.window != nil else { return }
             let insets = scroll.adjustedContentInset
             let maxY = max(-insets.top, scroll.contentSize.height + insets.bottom - scroll.bounds.height)
             guard scroll.contentOffset.y > maxY + Self.slack else { return }
+            // A final KVO callback can arrive before deceleration becomes false.
+            // Keep the correction pending until motion ends, without fighting the finger.
+            if scroll.isTracking || scroll.isDragging || scroll.isDecelerating {
+                schedule(afterMotion: true)
+                return
+            }
             scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x, y: maxY), animated: false)
         }
     }
