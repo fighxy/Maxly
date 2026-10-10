@@ -691,7 +691,7 @@ private struct TranscriptBottomTracking: ViewModifier {
 /// отступов или положения, когда палец не на ленте и инерции нет.
 private struct TranscriptOverscrollGuard: UIViewRepresentable {
     func makeUIView(context: Context) -> GuardView { GuardView() }
-    func updateUIView(_ view: GuardView, context: Context) {}
+    func updateUIView(_ view: GuardView, context: Context) { view.attachIfNeeded() }
 
     final class GuardView: UIView {
         /// Дальше этого за концом ленты — пустота под пузырями, а не погрешность.
@@ -716,7 +716,16 @@ private struct TranscriptOverscrollGuard: UIViewRepresentable {
                 scrollView = nil
                 return
             }
-            guard scrollView == nil, let found = enclosingScrollView() else { return }
+            attachIfNeeded()
+        }
+
+        override func didMoveToSuperview() {
+            super.didMoveToSuperview()
+            attachIfNeeded()
+        }
+
+        func attachIfNeeded() {
+            guard window != nil, scrollView == nil, let found = enclosingScrollView() else { return }
             scrollView = found
             // Касание статус-бара или пустого места панели навигации (рядом с кнопками шапки)
             // система превращает в прокрутку к началу. Ленте чата это не нужно: она уезжала к
@@ -742,10 +751,11 @@ private struct TranscriptOverscrollGuard: UIViewRepresentable {
         }
 
         /// Проверка — после того как SwiftUI закончит раскладку этого прохода.
-        private func schedule() {
+        private func schedule(afterMotion: Bool = false) {
             guard !scheduled else { return }
             scheduled = true
             Task { @MainActor [weak self] in
+                if afterMotion { try? await Task.sleep(for: .milliseconds(80)) }
                 guard let self else { return }
                 self.scheduled = false
                 self.clamp()
@@ -755,11 +765,16 @@ private struct TranscriptOverscrollGuard: UIViewRepresentable {
         private func clamp() {
             // SwiftUI может вернуть свойство при пересборке прокрутки.
             if scrollView?.scrollsToTop == true { scrollView?.scrollsToTop = false }
-            guard let scroll = scrollView, scroll.window != nil,
-                  !scroll.isTracking, !scroll.isDragging, !scroll.isDecelerating else { return }
+            guard let scroll = scrollView, scroll.window != nil else { return }
             let insets = scroll.adjustedContentInset
             let maxY = max(-insets.top, scroll.contentSize.height + insets.bottom - scroll.bounds.height)
             guard scroll.contentOffset.y > maxY + Self.slack else { return }
+            // A final KVO callback can arrive before deceleration becomes false.
+            // Keep the correction pending until motion ends, without fighting the finger.
+            if scroll.isTracking || scroll.isDragging || scroll.isDecelerating {
+                schedule(afterMotion: true)
+                return
+            }
             scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x, y: maxY), animated: false)
         }
     }
