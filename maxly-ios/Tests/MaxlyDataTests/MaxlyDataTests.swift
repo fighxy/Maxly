@@ -5,6 +5,31 @@ import MaxlyDomain
 
 @Suite("Пагинация")
 struct PaginationTests {
+    @Test("Ошибка старой страницы не маскируется кэшем и допускает повтор")
+    func olderFailureCanBeRetried() async throws {
+        let api = FakeMaxAPI()
+        let history = makeHistory(chatId: "c1", count: 100)
+        await api.setHistory(history)
+        let (repository, _) = try await makeMessageStack(api: api)
+        try await repository.upsert(Array(history.suffix(60)))
+        await api.setHistoryError(.offline)
+
+        do {
+            try await repository.loadOlder(chatId: "c1")
+            Issue.record("Offline pagination must fail so the UI can retry")
+        } catch {
+            #expect(error == .networkUnavailable)
+        }
+        // Ordinary cache reads remain available offline.
+        let cached = try await repository.loadMore(chatId: "c1", before: nil)
+        #expect(cached.count == 50)
+        await api.setHistoryError(nil)
+        try await repository.loadOlder(chatId: "c1")
+        let older = try await repository.loadMore(chatId: "c1", before: cached.last?.timestamp)
+        #expect(older.count == 50)
+        #expect(older.last?.id == "m0")
+    }
+
     @Test("100 сообщений в кэше читаются двумя страницами по 50")
     func localPages() async throws {
         let api = FakeMaxAPI()

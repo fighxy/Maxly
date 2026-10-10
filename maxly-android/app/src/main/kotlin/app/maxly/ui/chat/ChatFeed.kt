@@ -284,6 +284,7 @@ internal fun ChatFeed(
     var highlighted by remember { mutableStateOf<String?>(null) }
     val items by rememberUpdatedState(state.items)
     val hasNewer by rememberUpdatedState(state.hasNewer)
+    val loadingOlder by rememberUpdatedState(state.isLoadingOlder)
 
     // Запросы модели: выполнить один раз и снять.
     val request = state.scroll
@@ -318,9 +319,10 @@ internal fun ChatFeed(
     LaunchedEffect(listState) {
         snapshotFlow {
             val info = listState.layoutInfo
-            Triple(info.visibleItemsInfo.firstOrNull()?.index, info.visibleItemsInfo.lastOrNull()?.index, info.totalItemsCount to hasNewer)
-        }.collect { (first, last, total) ->
-            if (last != null && total.first > 0 && last >= total.first - PAGE_TRIGGER) model.loadOlder()
+            Triple(info.visibleItemsInfo.firstOrNull()?.index, info.visibleItemsInfo.lastOrNull()?.index, info.totalItemsCount to hasNewer) to loadingOlder
+        }.collect { (edge, loading) ->
+            val (first, last, total) = edge
+            if (!loading && last != null && total.first > 0 && last >= total.first - PAGE_TRIGGER) model.loadOlder()
             if (first != null && total.second && first <= NEWER_TRIGGER) model.loadNewer()
         }
     }

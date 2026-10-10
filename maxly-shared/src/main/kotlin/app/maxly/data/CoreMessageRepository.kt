@@ -136,7 +136,9 @@ class CoreMessageRepository(
         val page = MaxCoreGateway.readNow { client.loadHistory(id, from = null, backward = PAGE) }
         latestAt[chatId] = clock()
         resolveSenders(id)
-        val span = span(page.messages, reachedOldest = page.messages.size < PAGE / 2, reachedNewest = true)
+        // A short latest page does not prove there are no older messages.
+        // Only an explicit older-page request can establish the beginning.
+        val span = span(page.messages, reachedNewest = true)
         if (span != null) latestSpans[chatId] = span else latestSpans.remove(chatId)
         return span
     }
