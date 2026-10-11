@@ -46,6 +46,9 @@ struct ChatTranscript: View {
     /// перерисовывает ленту, модель узнаёт только смену самого нового увиденного.
     @State private var reads = TranscriptReadTracker()
     @State private var diagnostics = TranscriptDiagnostics()
+    /// Последнее сообщение, к которому лента уже встала при открытии: вторая сверка с тем же
+    /// последним сообщением ленту не двигает.
+    @State private var openedAtLatest: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.chatWallpaper) private var wallpaper
 
@@ -54,6 +57,8 @@ struct ChatTranscript: View {
     static let feedInset: CGFloat = 8
     /// Сколько последних сообщений прогревают кэш картинок при открытии и новых сообщениях.
     static let prefetchCount = 40
+    /// Сколько проходов цикла доводится к низу открытие на последнем сообщении.
+    static let settlePasses = 3
     /// iOS 17 требует ручного следования за новыми сообщениями; iOS 18 удерживает
     /// низ через sizeChanges. Первое открытие на обеих версиях использует id сообщения.
     private static var scrollsToBottomByHand: Bool {
@@ -417,8 +422,33 @@ struct ChatTranscript: View {
             bottom.beginReadingHistory()
             position = place
         } else {
+            let latest = viewModel.messages.last?.id
+            // Вторая сверка при открытии (история пришла с сервера) с тем же последним
+            // сообщением ленту не переставляет: она уже стоит и держится низом.
+            guard latest != openedAtLatest else { return }
+            // Пока шла сверка, ленту увели пальцем вверх: её место не трогаем.
+            guard openedAtLatest == nil || bottom.atBottom else { return }
+            openedAtLatest = latest
             recordScroll("open-target=latest", immediate: true)
-            position = viewModel.messages.last?.id
+            position = latest
+            settleAtBottom(proxy)
+        }
+    }
+
+    /// Доводка открытия к настоящему низу. Последнее сообщение ставится по прикидке высот ещё
+    /// не измеренных строк, и лента вставала выше конца (в журнале — на 600 точек, на экране
+    /// ни одной строки, пока ленту не тронут). Несколько проходов цикла лента без анимации
+    /// доезжает до метки низа уже по измеренным строкам. Палец во время доводки её отменяет:
+    /// это прыжок «вниз» (`TranscriptBottomState.beginJump`), его снимает `userTookOver`.
+    private func settleAtBottom(_ proxy: ScrollViewProxy) {
+        let jump = bottom.beginJump()
+        Task { @MainActor in
+            for _ in 0..<Self.settlePasses {
+                await Task.yield()
+                guard bottom.jump == jump else { return }
+                jumpToBottom(proxy)
+            }
+            _ = bottom.finishJump(jump)
         }
     }
 
@@ -695,13 +725,15 @@ private struct TranscriptBottomTracking: ViewModifier {
                     // Палец взял ленту во время прыжка «вниз»: доводки к низу не будет.
                     if phase == .tracking || phase == .interacting { update { $0.userTookOver() } }
                 }
-                // Доезд до низа по расстоянию — только признак «внизу»; уход от низа решает
-                // метка низа и только под пальцем (см. `TranscriptBottomState.markerMoved`).
+                // Доезд до низа по расстоянию включает признак «внизу». Уход от низа у самого
+                // низа решает метка низа и только под пальцем (`TranscriptBottomState.markerMoved`);
+                // по расстоянию признак снимается, только когда палец увёл ленту дальше экрана:
+                // метку ленивая лента к тому времени выгружает, и признак иначе залипал.
                 .onScrollGeometryChange(for: CGFloat.self) { geometry in
                     geometry.contentSize.height + geometry.contentInsets.bottom
                         - geometry.contentOffset.y - geometry.containerSize.height
                 } action: { _, distance in
-                    update { $0.scrolled(distance: Double(distance), dragging: false) }
+                    update { $0.scrolled(distance: Double(distance), dragging: dragging, leaveAfter: Double(viewportHeight)) }
                 }
                 .onPreferenceChange(TranscriptBottomPreference.self) { bottomY in
                     update { $0.markerMoved(bottomY: Double(bottomY), viewportHeight: Double(viewportHeight), dragging: dragging) }
