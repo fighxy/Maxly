@@ -65,7 +65,10 @@ fun DiagnosticsSection() {
     ListItem(
         headlineContent = { Text("Подробная диагностика на 15 минут") },
         supportingContent = { Text("После включения повторите проблему и сохраните журнал") },
-        modifier = Modifier.clickable { DiagnosticEvent.enableDetailed() },
+        modifier = Modifier.clickable {
+            DiagnosticEvent.enableDetailed()
+            Toast.makeText(context, "Подробная запись включена на 15 минут", Toast.LENGTH_SHORT).show()
+        },
     )
     ListItem(
         headlineContent = { Text(stringResource(R.string.diag_log_share)) },

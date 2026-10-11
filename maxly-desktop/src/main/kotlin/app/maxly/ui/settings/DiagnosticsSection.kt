@@ -56,6 +56,7 @@ fun DiagnosticsSection() {
 
     HorizontalDivider(Modifier.padding(top = 8.dp))
     SectionTitle("Диагностика")
+    var detailNotice by remember { mutableStateOf(false) }
     var marker by remember { mutableStateOf<String?>(null) }
     ListItem(
         headlineContent = { Text("Проблема сейчас") },
@@ -66,7 +67,7 @@ fun DiagnosticsSection() {
     ListItem(
         headlineContent = { Text("Подробная диагностика на 15 минут") },
         supportingContent = { Text("После включения повторите проблему и сохраните журнал") },
-        modifier = Modifier.clickable { DiagnosticEvent.enableDetailed() },
+        modifier = Modifier.clickable { DiagnosticEvent.enableDetailed(); detailNotice = true },
     )
     ListItem(
         headlineContent = { Text("Открыть папку журнала") },
@@ -91,6 +92,15 @@ fun DiagnosticsSection() {
                 saved = null
                 revision++
             },
+        )
+    }
+
+    if (detailNotice) {
+        AlertDialog(
+            onDismissRequest = { detailNotice = false },
+            title = { Text("Подробная запись включена на 15 минут") },
+            text = { Text("Повторите проблему, затем сохраните журнал.") },
+            confirmButton = { TextButton(onClick = { detailNotice = false }) { Text("OK") } },
         )
     }
 

@@ -30,7 +30,7 @@ class MaxCoreGateway(private val client: MaxClient) : CoreGateway {
         (client.state.value as? ClientState.TokenRejected)?.let(::rejectionOf) ?: lastRejection
 
     private fun remember(state: ClientState) {
-        DiagnosticEvent.event("network.state", mapOf("phase" to phaseOf(state).name), snapshot = true)
+        DiagnosticEvent.event("network.state", mapOf("phase" to phaseOf(state).name.lowercase()), snapshot = true)
         if (state is ClientState.TokenRejected) lastRejection = rejectionOf(state)
     }
 

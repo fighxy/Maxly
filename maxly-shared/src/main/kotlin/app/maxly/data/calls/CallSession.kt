@@ -120,7 +120,7 @@ class CallSession(
         set(value) {
             val previous = _state.value
             if (previous.phase != value.phase || previous.mediaConnected != value.mediaConnected || previous.speakerOn != value.speakerOn || previous.muted != value.muted) {
-                DiagnosticEvent.event("call.state", mapOf("phase" to value.phase.javaClass.simpleName,
+                DiagnosticEvent.event("call.state", mapOf("phase" to value.phase.javaClass.simpleName.lowercase(),
                     "media_connected" to value.mediaConnected.toString(), "speaker" to value.speakerOn.toString(),
                     "muted" to value.muted.toString(), "camera" to value.cameraOn.toString(), "topology" to value.topology.name), snapshot = true)
             }
