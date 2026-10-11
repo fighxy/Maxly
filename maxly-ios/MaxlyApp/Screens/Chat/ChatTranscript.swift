@@ -45,6 +45,7 @@ struct ChatTranscript: View {
     /// Рамки видимых строк для отметки прочтения. Не состояние экрана: прокрутка не
     /// перерисовывает ленту, модель узнаёт только смену самого нового увиденного.
     @State private var reads = TranscriptReadTracker()
+    @State private var diagnostics = TranscriptDiagnostics()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.chatWallpaper) private var wallpaper
 
@@ -75,6 +76,7 @@ struct ChatTranscript: View {
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
                                 reads.rows[row.id] = frame
                                 reportReads()
+                                if row.id == viewModel.rows.last?.id { recordScroll("last-row-geometry") }
                             }
                             .onDisappear {
                                 reads.rows[row.id] = nil
@@ -95,7 +97,7 @@ struct ChatTranscript: View {
                     .scrollTargetLayout()
                     .padding(.horizontal, Self.feedInset)
                     .padding(.bottom, 8)
-                    .background { TranscriptOverscrollGuard().frame(width: 0, height: 0) }
+                    .background { TranscriptOverscrollGuard(diagnostics: diagnostics).frame(width: 0, height: 0) }
                     // Новое снизу, удалённое, переставленное — плавно; первая страница и старая
                     // история сверху — сразу, иначе лента дёргается. Правило в `CollectionChange`.
                     .animation(
@@ -116,6 +118,7 @@ struct ChatTranscript: View {
                 } action: { viewport in
                     reads.viewport = viewport
                     reportReads()
+                    recordScroll("viewport")
                 }
                 // Чат открывается сразу внизу, а не сверху до загрузки истории.
                 .defaultScrollAnchor(.bottom)
@@ -135,8 +138,12 @@ struct ChatTranscript: View {
                 // Касание ленты прячет клавиатуру. Без клавиатуры жест выключен, чтобы лента
                 // не ждала его при каждом касании.
                 .simultaneousGesture(TapGesture().onEnded { focus.wrappedValue = false }, including: focus.wrappedValue ? .all : .subviews)
-                .onChange(of: viewModel.transcriptVersion, initial: true) { _, _ in follow(proxy) }
+                .onChange(of: viewModel.transcriptVersion, initial: true) { _, _ in
+                    recordScroll("transcript-change", immediate: true)
+                    follow(proxy)
+                }
                 .onChange(of: viewModel.isRestoringHistory) { _, restoring in
+                    recordScroll("restoring-\(restoring)", immediate: true)
                     guard !restoring else { return }
                     let opening = isOpening
                     isOpening = false
@@ -212,8 +219,12 @@ struct ChatTranscript: View {
                 }
                 .onChange(of: headerBottom) { _, _ in reportReads() }
                 .onChange(of: bottomControlsTop) { _, _ in reportReads() }
-                .onChange(of: keyboardTop) { _, _ in reportReads() }
+                .onChange(of: keyboardTop) { _, _ in
+                    reportReads()
+                    recordScroll("keyboard", immediate: true)
+                }
                 .onAppear {
+                    recordScroll("appear", immediate: true)
                     // Просьба прокрутки от прошлого захода к этому открытию не относится. Пришедшая,
                     // пока лента была скрыта (профиль), выполняется сейчас: иначе она держала бы `follow`.
                     if isOpening { viewModel.consumeScroll() } else { perform(viewModel.scrollTarget, proxy: proxy) }
@@ -221,7 +232,14 @@ struct ChatTranscript: View {
                     // увиденное — сообщаем его заново.
                     reportReads()
                 }
+                .task {
+                    for delay in [150, 350, 1000, 2000] {
+                        do { try await Task.sleep(for: .milliseconds(delay)) } catch { return }
+                        recordScroll("opening-settled", immediate: true)
+                    }
+                }
                 .onDisappear {
+                    recordScroll("disappear", immediate: true)
                     viewModel.savePlace(position, atBottom: bottom.atBottom)
                     // Следующий показ сообщит модели всё заново: прежнее увиденное она забыла.
                     reads.reported = nil
@@ -241,6 +259,18 @@ struct ChatTranscript: View {
                 }
             }
         }
+    }
+
+    /// Global row frames and viewport use the same coordinate system. A missing
+    /// last frame is useful too: LazyVStack has not materialized that row.
+    private func recordScroll(_ event: String, immediate: Bool = false) {
+        let last = viewModel.rows.last.flatMap { reads.rows[$0.id] }
+        let viewport = reads.viewport
+        let visible = reads.rows.values.filter { frame in
+            viewport.map { frame.intersects($0.frame) } ?? false
+        }.count
+        diagnostics.context = "chat=\(viewModel.chatId) rows=\(viewModel.rows.count) measured=\(reads.rows.count) visible=\(visible) opening=\(isOpening) restoring=\(viewModel.isRestoringHistory) atBottom=\(bottom.atBottom) jumped=\(viewModel.isJumped) position=\(position ?? "nil") lastFrame={\(TranscriptDiagnostics.frame(last))} viewportFrame={\(TranscriptDiagnostics.frame(viewport?.frame))} composerTop=\(TranscriptDiagnostics.n(bottomControlsTop)) keyboardTop=\(keyboardTop.map(TranscriptDiagnostics.n) ?? "nil")"
+        diagnostics.record(event, immediate: immediate)
     }
 
     // MARK: Отметка прочтения
@@ -372,18 +402,22 @@ struct ChatTranscript: View {
     private func openAtStart(_ proxy: ScrollViewProxy) {
         // Чат открыт на найденном сообщении: переход к нему ставит ленту сам, когда история сверена.
         if viewModel.hasPendingOpen {
+            recordScroll("open-target=pending", immediate: true)
             bottom.beginReadingHistory()
             if !viewModel.isRestoringHistory { viewModel.startPendingOpen() }
             return
         }
         if let anchor = viewModel.unreadAnchorId {
+            recordScroll("open-target=unread:\(anchor)", immediate: true)
             bottom.beginReadingHistory()
             proxy.scrollTo(anchor, anchor: UnitPoint(x: 0.5, y: 0.12))
         } else if let place = viewModel.restoredPlace {
+            recordScroll("open-target=restored:\(place)", immediate: true)
             // Вернулись в чат, из которого ушли посреди истории, — на то же место.
             bottom.beginReadingHistory()
             position = place
         } else {
+            recordScroll("open-target=latest", immediate: true)
             position = viewModel.messages.last?.id
         }
     }
@@ -440,6 +474,7 @@ struct ChatTranscript: View {
         viewModel.consumeScroll()
         switch target {
         case .message(let id, _):
+            recordScroll("scroll-target=message:\(id)", immediate: true)
             bottom.beginReadingHistory()
             center(id, proxy)
             Task { @MainActor in
@@ -447,6 +482,7 @@ struct ChatTranscript: View {
                 center(id, proxy)
             }
         case .bottom:
+            recordScroll("scroll-target=bottom", immediate: true)
             let jump = bottom.beginJump()
             jumpToBottom(proxy)
             Task { @MainActor in
@@ -462,6 +498,7 @@ struct ChatTranscript: View {
     /// строк: без доводки прокрутка иногда вставала выше последнего сообщения. Доводка
     /// повторяется на следующем проходе цикла — к нему строки у низа уже измерены.
     private func scrollToLatest(_ proxy: ScrollViewProxy) {
+        recordScroll("scroll-target=latest", immediate: true)
         let jump = bottom.beginJump()
         withAnimation(MaxlyMotion.standard(reduceMotion: reduceMotion)) {
             proxy.scrollTo(Self.bottomId, anchor: .bottom)
@@ -483,6 +520,7 @@ struct ChatTranscript: View {
     }
 
     private func jumpToBottom(_ proxy: ScrollViewProxy) {
+        recordScroll("scroll-correction=bottom", immediate: true)
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
@@ -704,13 +742,22 @@ private struct TranscriptBottomTracking: ViewModifier {
 /// Поэтому проверка смотрит прямо в `UIScrollView` ленты: после каждого изменения размера,
 /// отступов или положения, когда палец не на ленте и инерции нет.
 private struct TranscriptOverscrollGuard: UIViewRepresentable {
-    func makeUIView(context: Context) -> GuardView { GuardView() }
-    func updateUIView(_ view: GuardView, context: Context) { view.attachIfNeeded() }
+    let diagnostics: TranscriptDiagnostics
+    func makeUIView(context: Context) -> GuardView {
+        let view = GuardView()
+        view.diagnostics = diagnostics
+        return view
+    }
+    func updateUIView(_ view: GuardView, context: Context) {
+        view.diagnostics = diagnostics
+        view.attachIfNeeded()
+    }
 
     final class GuardView: UIView {
         /// Дальше этого за концом ленты — пустота под пузырями, а не погрешность.
         static let slack: CGFloat = 2
 
+        weak var diagnostics: TranscriptDiagnostics?
         private weak var scrollView: UIScrollView?
         private var observations: [NSKeyValueObservation] = []
         private var scheduled = false
@@ -726,6 +773,7 @@ private struct TranscriptOverscrollGuard: UIViewRepresentable {
         override func didMoveToWindow() {
             super.didMoveToWindow()
             guard window != nil else {
+                diagnostics?.detach()
                 observations = []
                 scrollView = nil
                 return
@@ -747,6 +795,7 @@ private struct TranscriptOverscrollGuard: UIViewRepresentable {
         func attachIfNeeded() {
             guard window != nil, scrollView == nil, let found = enclosingScrollView() else { return }
             scrollView = found
+            diagnostics?.attach(found)
             // Касание статус-бара или пустого места панели навигации (рядом с кнопками шапки)
             // система превращает в прокрутку к началу. Ленте чата это не нужно: она уезжала к
             // самым старым загруженным сообщениям.
@@ -786,6 +835,7 @@ private struct TranscriptOverscrollGuard: UIViewRepresentable {
             // SwiftUI может вернуть свойство при пересборке прокрутки.
             if scrollView?.scrollsToTop == true { scrollView?.scrollsToTop = false }
             guard let scroll = scrollView, scroll.window != nil else { return }
+            diagnostics?.record("scroll-geometry")
             let insets = scroll.adjustedContentInset
             let maxY = max(-insets.top, scroll.contentSize.height + insets.bottom - scroll.bounds.height)
             guard scroll.contentOffset.y > maxY + Self.slack else { return }
@@ -795,6 +845,7 @@ private struct TranscriptOverscrollGuard: UIViewRepresentable {
                 schedule(afterMotion: true)
                 return
             }
+            diagnostics?.record("overscroll-clamp", immediate: true)
             scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x, y: maxY), animated: false)
         }
     }
