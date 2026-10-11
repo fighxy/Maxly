@@ -1,5 +1,7 @@
 package app.maxly.data
 
+import app.maxly.data.diagnostics.DiagnosticEvent
+
 import app.maxly.domain.ChatAttachment
 import app.maxly.domain.Message
 import app.maxly.domain.MaxlyError
@@ -130,48 +132,65 @@ class CoreMessageRepository(
     private val latestSpans = java.util.concurrent.ConcurrentHashMap<String, HistorySpan>()
 
     override suspend fun openLatestPage(chatId: String): HistorySpan? {
-        val at = latestAt[chatId]
-        if (at != null && clock() - at < latestReuseMs) return latestSpans[chatId]
-        val id = chatId.toLong()
-        val page = MaxCoreGateway.readNow { client.loadHistory(id, from = null, backward = PAGE) }
-        latestAt[chatId] = clock()
-        resolveSenders(id)
-        // A short latest page does not prove there are no older messages.
-        // Only an explicit older-page request can establish the beginning.
-        val span = span(page.messages, reachedNewest = true)
-        if (span != null) latestSpans[chatId] = span else latestSpans.remove(chatId)
-        return span
+        return DiagnosticEvent.operation("history.open", mapOf("chat" to DiagnosticEvent.id(chatId))) {
+            val at = latestAt[chatId]
+            if (at != null && clock() - at < latestReuseMs) {
+                DiagnosticEvent.event("history.cache", mapOf("chat" to DiagnosticEvent.id(chatId), "hit" to "true"))
+                return@operation latestSpans[chatId]
+            }
+            val id = chatId.toLong()
+            val page = MaxCoreGateway.readNow { client.loadHistory(id, from = null, backward = PAGE) }
+            latestAt[chatId] = clock()
+            DiagnosticEvent.event("history.page", mapOf("chat" to DiagnosticEvent.id(chatId), "direction" to "openLatestPage", "received" to page.messages.size.toString()))
+            resolveSenders(id)
+            // A short latest page does not prove there are no older messages.
+            // Only an explicit older-page request can establish the beginning.
+            val span = span(page.messages, reachedNewest = true)
+            if (span != null) latestSpans[chatId] = span else latestSpans.remove(chatId)
+            return@operation span
+        }
     }
 
     override suspend fun olderPage(chatId: String, beforeMs: Long): HistorySpan? {
-        val id = chatId.toLong()
-        // Страницу ждёт листающий читатель: она уходит и во время паузы фоновых чтений
-        // после чужого too.many.requests (реакции, счётчики), иначе лента молча вставала.
-        val page = MaxCoreGateway.readNow { client.loadHistory(id, from = beforeMs, backward = PAGE) }
-        resolveSenders(id)
-        val older = page.messages.filter { it.time < beforeMs }
-        return span(older, reachedOldest = older.isEmpty()) ?: HistorySpan.START
+        return DiagnosticEvent.operation("history.older", mapOf("chat" to DiagnosticEvent.id(chatId), "cursor" to DiagnosticEvent.id(beforeMs.toString()))) {
+            val id = chatId.toLong()
+            // Страницу ждёт листающий читатель: она уходит и во время паузы фоновых чтений
+            // после чужого too.many.requests (реакции, счётчики), иначе лента молча вставала.
+            val page = MaxCoreGateway.readNow { client.loadHistory(id, from = beforeMs, backward = PAGE) }
+            resolveSenders(id)
+            DiagnosticEvent.event("history.page", mapOf("chat" to DiagnosticEvent.id(chatId), "direction" to "older", "received" to page.messages.size.toString()))
+            val older = page.messages.filter { it.time < beforeMs }
+            DiagnosticEvent.event("history.boundary", mapOf("chat" to DiagnosticEvent.id(chatId), "direction" to "older", "accepted" to older.size.toString(), "reached_end" to older.isEmpty().toString()))
+            return@operation span(older, reachedOldest = older.isEmpty()) ?: HistorySpan.START
+        }
     }
 
     override suspend fun newerPage(chatId: String, afterMs: Long): HistorySpan? {
-        val id = chatId.toLong()
-        val page = MaxCoreGateway.readNow {
-            client.api.messages.getChatHistory(id, from = afterMs, forward = PAGE, backward = 0).also { client.store.putHistory(id, it) }
+        return DiagnosticEvent.operation("history.newer", mapOf("chat" to DiagnosticEvent.id(chatId), "cursor" to DiagnosticEvent.id(afterMs.toString()))) {
+            val id = chatId.toLong()
+            val page = MaxCoreGateway.readNow {
+                client.api.messages.getChatHistory(id, from = afterMs, forward = PAGE, backward = 0).also { client.store.putHistory(id, it) }
+            }
+            DiagnosticEvent.event("history.page", mapOf("chat" to DiagnosticEvent.id(chatId), "direction" to "newerPage", "received" to page.messages.size.toString()))
+            resolveSenders(id)
+            val newer = page.messages.filter { it.time > afterMs }
+            DiagnosticEvent.event("history.boundary", mapOf("chat" to DiagnosticEvent.id(chatId), "direction" to "newer", "accepted" to newer.size.toString(), "reached_end" to (newer.isEmpty() || reachesNewest(id, newer)).toString()))
+            return@operation span(newer, reachedNewest = newer.isEmpty() || reachesNewest(id, newer)) ?: HistorySpan(afterMs, afterMs, 0, reachedNewest = true)
         }
-        resolveSenders(id)
-        val newer = page.messages.filter { it.time > afterMs }
-        return span(newer, reachedNewest = newer.isEmpty() || reachesNewest(id, newer)) ?: HistorySpan(afterMs, afterMs, 0, reachedNewest = true)
     }
 
     override suspend fun pageAround(chatId: String, timeMs: Long): HistorySpan? {
-        val id = chatId.toLong()
-        // Чуть больше вперёд: переход показывает цель у верха, ниже — что было после неё.
-        val page = MaxCoreGateway.readNow {
-            client.api.messages.getChatHistory(id, from = timeMs, forward = AROUND_FORWARD, backward = AROUND_BACKWARD).also { client.store.putHistory(id, it) }
+        return DiagnosticEvent.operation("history.around", mapOf("chat" to DiagnosticEvent.id(chatId), "cursor" to DiagnosticEvent.id(timeMs.toString()))) {
+            val id = chatId.toLong()
+            // Чуть больше вперёд: переход показывает цель у верха, ниже — что было после неё.
+            val page = MaxCoreGateway.readNow {
+                client.api.messages.getChatHistory(id, from = timeMs, forward = AROUND_FORWARD, backward = AROUND_BACKWARD).also { client.store.putHistory(id, it) }
+            }
+            DiagnosticEvent.event("history.page", mapOf("chat" to DiagnosticEvent.id(chatId), "direction" to "pageAround", "received" to page.messages.size.toString()))
+            resolveSenders(id)
+            val older = page.messages.count { it.time < timeMs }
+            return@operation span(page.messages, reachedOldest = older == 0, reachedNewest = reachesNewest(id, page.messages))
         }
-        resolveSenders(id)
-        val older = page.messages.count { it.time < timeMs }
-        return span(page.messages, reachedOldest = older == 0, reachedNewest = reachesNewest(id, page.messages))
     }
 
     override suspend fun findMessage(chatId: String, messageId: String): Message? {
@@ -379,55 +398,62 @@ class CoreMessageRepository(
     }
 
     private suspend fun deliver(chatId: String, local: Message, replyTo: String?, progress: (Float) -> Unit = {}) {
-        // Уход с экрана не должен обрывать отправку на полпути.
-        try {
-            val media = pendingMedia[local.id]
-            val recording = pendingVoice[local.id]
-            val note = pendingNotes[local.id]
-            withContext(NonCancellable) {
-                if (recording != null) {
-                    MaxCoreGateway.call { uploadVoice(chatId, recording, replyTo, progress) }
-                } else if (note != null) {
-                    MaxCoreGateway.call { uploadVideoNote(chatId, note, replyTo, progress) }
-                } else if (media == null) {
-                    val elements = TextMarks.toElements(local.text, local.content.formatting)
-                    MaxCoreGateway.call { client.sendFormattedText(chatId.toLong(), local.text, elements, replyTo?.toLongOrNull()) }
-                } else {
-                    val outgoing = media.map { OutgoingMedia(it.path, coreKind(it.kind), it.name) }
-                    val work = uploadScope.async {
-                        MaxCoreGateway.call {
-                            client.sendMedia(chatId.toLong(), outgoing, local.text.takeIf { it.isNotBlank() }, replyTo?.toLongOrNull()) { sent, total ->
-                                if (total > 0) progress((sent.toFloat() / total).coerceIn(0f, 1f))
+        return DiagnosticEvent.operation("send.deliver", mapOf("chat" to DiagnosticEvent.id(chatId), "message" to DiagnosticEvent.id(local.id))) {
+            val uploadProgress = app.maxly.data.diagnostics.DiagnosticProgress(mapOf("message" to DiagnosticEvent.id(local.id)))
+            val reportProgress: (Float) -> Unit = { value -> uploadProgress.report(value); progress(value) }
+            // Уход с экрана не должен обрывать отправку на полпути.
+            try {
+                val media = pendingMedia[local.id]
+                val recording = pendingVoice[local.id]
+                val note = pendingNotes[local.id]
+                DiagnosticEvent.event("send.stage", mapOf("message" to DiagnosticEvent.id(local.id), "stage" to if (media != null || recording != null || note != null) "upload_and_send" else "send"))
+                var uploadCancelled = false
+                withContext(NonCancellable) {
+                    if (recording != null) {
+                        MaxCoreGateway.call { uploadVoice(chatId, recording, replyTo, reportProgress) }
+                    } else if (note != null) {
+                        MaxCoreGateway.call { uploadVideoNote(chatId, note, replyTo, reportProgress) }
+                    } else if (media == null) {
+                        val elements = TextMarks.toElements(local.text, local.content.formatting)
+                        MaxCoreGateway.call { client.sendFormattedText(chatId.toLong(), local.text, elements, replyTo?.toLongOrNull()) }
+                    } else {
+                        val outgoing = media.map { OutgoingMedia(it.path, coreKind(it.kind), it.name) }
+                        val work = uploadScope.async {
+                            MaxCoreGateway.call {
+                                client.sendMedia(chatId.toLong(), outgoing, local.text.takeIf { it.isNotBlank() }, replyTo?.toLongOrNull()) { sent, total ->
+                                    if (total > 0) reportProgress((sent.toFloat() / total).coerceIn(0f, 1f))
+                                }
                             }
                         }
-                    }
-                    uploads[local.id] = work
-                    try {
-                        work.await()
-                    } catch (e: CoreFailure) {
-                        // Сервер не принял файл (пуш с id вложения или отказ отправки): показывается
-                        // его причина, а не «попробуйте позже» — повтор того же файла не пройдёт.
-                        // Частые запросы — пауза, а не отказ: такая ошибка остаётся прежней.
-                        if (e.kind != "SERVER" && e.kind != "UPLOAD" || e.key == MaxlyError.RATE_LIMIT_CODE) throw e
-                        throw MaxlyError.Rejected(app.maxly.presentation.chat.AttachmentFailures.text(e.serverText ?: e.key))
-                    } catch (e: kotlinx.coroutines.CancellationException) {
-                        // Сервер отверг вложение (пуш без id): сообщение остаётся с «Повторить».
-                        rejectedUploads.remove(local.id)?.let { throw MaxlyError.Rejected(app.maxly.presentation.chat.AttachmentFailures.text(it)) }
-                        // Отменили кнопкой: сообщение уже убрано, это не ошибка.
-                        if (work.isCancelled) return@withContext
-                        throw e
-                    } finally {
-                        uploads.remove(local.id)
+                        uploads[local.id] = work
+                        try {
+                            work.await()
+                        } catch (e: CoreFailure) {
+                            // Сервер не принял файл (пуш с id вложения или отказ отправки): показывается
+                            // его причина, а не «попробуйте позже» — повтор того же файла не пройдёт.
+                            // Частые запросы — пауза, а не отказ: такая ошибка остаётся прежней.
+                            if (e.kind != "SERVER" && e.kind != "UPLOAD" || e.key == MaxlyError.RATE_LIMIT_CODE) throw e
+                            throw MaxlyError.Rejected(app.maxly.presentation.chat.AttachmentFailures.text(e.serverText ?: e.key))
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            // Сервер отверг вложение (пуш без id): сообщение остаётся с «Повторить».
+                            rejectedUploads.remove(local.id)?.let { throw MaxlyError.Rejected(app.maxly.presentation.chat.AttachmentFailures.text(it)) }
+                            // Отменили кнопкой: сообщение уже убрано, это не ошибка.
+                            if (work.isCancelled) { uploadCancelled = true; return@withContext }
+                            throw e
+                        } finally {
+                            uploads.remove(local.id)
+                        }
                     }
                 }
+                DiagnosticEvent.event("send.stage", mapOf("message" to DiagnosticEvent.id(local.id), "stage" to if (uploadCancelled) "cancelled" else "acknowledged"))
+                pendingMedia.remove(local.id)
+                pendingVoice.remove(local.id)?.let { java.io.File(it.path).delete() }
+                pendingNotes.remove(local.id)?.let { java.io.File(it.path).delete() }
+                remove(chatId, local.id)
+            } catch (failure: Exception) {
+                put(chatId, local.copy(status = MessageStatus.FAILED))
+                throw failure
             }
-            pendingMedia.remove(local.id)
-            pendingVoice.remove(local.id)?.let { java.io.File(it.path).delete() }
-            pendingNotes.remove(local.id)?.let { java.io.File(it.path).delete() }
-            remove(chatId, local.id)
-        } catch (failure: Exception) {
-            put(chatId, local.copy(status = MessageStatus.FAILED))
-            throw failure
         }
     }
 

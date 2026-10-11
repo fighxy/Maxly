@@ -1,5 +1,7 @@
 package app.maxly.media
 
+import app.maxly.data.diagnostics.DiagnosticEvent
+
 import app.maxly.data.StorageRepository
 import app.maxly.domain.OutgoingFile
 import app.maxly.domain.StorageCategory
@@ -89,8 +91,12 @@ class FileDownloader(private val userAgent: () -> String, root: File = File(AppP
 
     fun cached(fileId: String, name: String): File? = target(fileId, name).takeIf { it.isFile && it.length() > 0 }
 
-    suspend fun download(url: String, fileId: String, name: String, progress: (Float) -> Unit = {}): File = withContext(Dispatchers.IO) {
-        cached(fileId, name)?.let { return@withContext it }
+    suspend fun download(url: String, fileId: String, name: String, progress: (Float) -> Unit = {}): File = DiagnosticEvent.operation("media.download", mapOf("media" to DiagnosticEvent.id(fileId))) { withContext(Dispatchers.IO) {
+        cached(fileId, name)?.let {
+            DiagnosticEvent.event("media.cache", mapOf("hit" to "true", "bytes" to it.length().toString()))
+            return@withContext it
+        }
+        DiagnosticEvent.event("media.cache", mapOf("hit" to "false"))
         val target = target(fileId, name)
         target.parentFile?.mkdirs()
         val partial = File(target.parentFile, target.name + ".part")
@@ -115,8 +121,9 @@ class FileDownloader(private val userAgent: () -> String, root: File = File(AppP
             }
         }
         if (!partial.renameTo(target)) throw IOException("rename failed")
+        DiagnosticEvent.event("media.stored", mapOf("bytes" to target.length().toString()))
         target
-    }
+    } }
 
     private fun target(fileId: String, name: String): File {
         val safe = name.replace(Regex("[\\\\/:*?\"<>|\\x00-\\x1f]"), "_").trim().ifEmpty { "file" }.take(120)

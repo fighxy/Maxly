@@ -17,6 +17,9 @@ public final class FileLogStore: @unchecked Sendable {
     private let maxFileSize: Int
     private let maxFiles: Int
     private let queue = DispatchQueue(label: "app.maxly.log")
+    private let pendingLock = NSLock()
+    private var pending = 0
+    private var dropped = 0
     private let formatter: ISO8601DateFormatter
     private var handle: FileHandle?
     private var currentSize = 0
@@ -55,11 +58,26 @@ public final class FileLogStore: @unchecked Sendable {
     }
 
     public func write(_ entry: Log.Entry) {
+        pendingLock.lock()
+        guard pending < 512 else {
+            dropped += 1
+            pendingLock.unlock()
+            return
+        }
+        pending += 1
+        pendingLock.unlock()
+        let entry = Log.Entry(date: entry.date, level: entry.level, category: entry.category, message: entry.category == .diagnostics ? entry.message : String(entry.message.prefix(16_384)))
         queue.async { [self] in
+            defer { pendingLock.lock(); pending -= 1; pendingLock.unlock() }
+            pendingLock.lock()
+            let lost = dropped
+            dropped = 0
+            pendingLock.unlock()
             logger(for: entry.category).log(level: entry.level.osLevel, "\(entry.message, privacy: .public)")
             guard enabled else { return }
             let line = "\(formatter.string(from: entry.date)) \(entry.level.rawValue.uppercased()) [\(entry.category.rawValue)] \(entry.message)\n"
-            append(Data(line.utf8))
+            if lost > 0 { append(Data("\(formatter.string(from: entry.date)) WARNING [diagnostics] queue_dropped=\(lost)\n".utf8)) }
+            append(Data((entry.category == .diagnostics ? entry.message + "\n" : line).utf8))
         }
     }
 

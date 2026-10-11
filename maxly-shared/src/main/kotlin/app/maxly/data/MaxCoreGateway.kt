@@ -1,5 +1,7 @@
 package app.maxly.data
 
+import app.maxly.data.diagnostics.DiagnosticEvent
+
 import app.maxly.domain.SessionRejection
 import com.maxly.core.auth.CodeRequestType
 import com.maxly.core.auth.LoginRejection
@@ -28,6 +30,7 @@ class MaxCoreGateway(private val client: MaxClient) : CoreGateway {
         (client.state.value as? ClientState.TokenRejected)?.let(::rejectionOf) ?: lastRejection
 
     private fun remember(state: ClientState) {
+        DiagnosticEvent.event("network.state", mapOf("phase" to phaseOf(state).name), snapshot = true)
         if (state is ClientState.TokenRejected) lastRejection = rejectionOf(state)
     }
 
@@ -87,7 +90,7 @@ class MaxCoreGateway(private val client: MaxClient) : CoreGateway {
          * Отказ `too.many.requests` включает паузу [ServerRateLimit] для чтений [read].
          */
         suspend fun <T> call(block: suspend () -> T): T = try {
-            block()
+            DiagnosticEvent.operation("network.operation") { block() }
         } catch (e: CancellationException) {
             throw e
         } catch (e: CoreFailure) {

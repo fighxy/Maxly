@@ -8,6 +8,7 @@ import android.os.Build
 import android.util.Log
 import androidx.core.content.FileProvider
 import app.maxly.BuildConfig
+import app.maxly.data.diagnostics.DiagnosticEvent
 import app.maxly.data.diagnostics.AppLog
 import app.maxly.data.diagnostics.CrashHandler
 import app.maxly.data.diagnostics.CrashReports
@@ -57,6 +58,9 @@ object Diagnostics {
             Log.println(priority, "$TAG/$tag", text)
         }
         AppLog.file = log
+        DiagnosticEvent.event("app.start", mapOf("platform" to "android", "version" to BuildConfig.VERSION_NAME,
+            "build_sha" to BuildConfig.BUILD_SHA, "core_revision" to BuildConfig.CORE_REVISION), snapshot = true)
+        DiagnosticEvent.event("notification.capability", mapOf("message_push" to "not_implemented", "incoming_call" to "system_notification"), snapshot = true)
         CrashHandler.install(reports, log) { info() }
         // Сначала — что случилось в прошлый раз: хвост журнала ещё от того запуска.
         try {

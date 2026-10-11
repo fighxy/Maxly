@@ -1,5 +1,7 @@
 package app.maxly.data.calls
 
+import app.maxly.data.diagnostics.DiagnosticEvent
+
 import app.maxly.domain.CallCameraPosition
 import app.maxly.domain.CallConnection
 import app.maxly.domain.CallEndReason
@@ -116,6 +118,12 @@ class CallSession(
     private var current: CallState
         get() = _state.value
         set(value) {
+            val previous = _state.value
+            if (previous.phase != value.phase || previous.mediaConnected != value.mediaConnected || previous.speakerOn != value.speakerOn || previous.muted != value.muted) {
+                DiagnosticEvent.event("call.state", mapOf("phase" to value.phase.javaClass.simpleName,
+                    "media_connected" to value.mediaConnected.toString(), "speaker" to value.speakerOn.toString(),
+                    "muted" to value.muted.toString(), "camera" to value.cameraOn.toString(), "topology" to value.topology.name), snapshot = true)
+            }
             _state.value = value
         }
 

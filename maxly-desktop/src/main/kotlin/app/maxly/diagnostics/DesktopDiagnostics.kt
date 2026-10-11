@@ -2,6 +2,7 @@ package app.maxly.diagnostics
 
 import app.maxly.BuildConfig
 import app.maxly.data.calls.CallLog
+import app.maxly.data.diagnostics.DiagnosticEvent
 import app.maxly.data.diagnostics.AppLog
 import app.maxly.data.diagnostics.CrashHandler
 import app.maxly.data.diagnostics.CrashReports
@@ -58,6 +59,9 @@ object DesktopDiagnostics {
             error?.printStackTrace(console)
         }
         AppLog.file = log
+        DiagnosticEvent.event("app.start", mapOf("platform" to "desktop", "version" to BuildConfig.VERSION_NAME,
+            "build_sha" to BuildConfig.BUILD_SHA, "core_revision" to BuildConfig.CORE_REVISION), snapshot = true)
+        DiagnosticEvent.event("notification.capability", mapOf("message_push" to "not_implemented", "incoming_call" to "in_app"), snapshot = true)
         CrashHandler.install(reports, log) { info() }
         // Звонки пишут в общий журнал с тегом calls, стек ошибки — отдельной строкой.
         CallLog.sink = { level, message -> if (level == 'W') AppLog.w(CallLog.TAG, message) else AppLog.i(CallLog.TAG, message) }
@@ -104,7 +108,7 @@ object DesktopDiagnostics {
         val dog = UiWatchdog(
             post = EventQueue::invokeLater,
             now = { System.nanoTime() / 1_000_000 },
-            onSlow = { AppLog.w("ui", "Окно не отвечало $it мс") },
+            onSlow = { DiagnosticEvent.event("performance.ui_stall", mapOf("duration_ms" to it.toString()), snapshot = true); AppLog.w("ui", "Окно не отвечало $it мс") },
             onHang = {
                 markHung(true)
                 recordHang(it)

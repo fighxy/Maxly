@@ -1,5 +1,7 @@
 package app.maxly.ui.chat
 
+import app.maxly.data.diagnostics.DiagnosticEvent
+
 // Лента чата: строки, прокрутка, кнопка «вниз», плавающая дата.
 
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -279,6 +281,40 @@ internal fun ChatFeed(
     selection: Set<String> = emptySet(),
 ) {
     val listState = rememberLazyListState()
+    val screen = remember(model.chatId) { java.util.UUID.randomUUID().toString().take(8) }
+    val diagnosticState by rememberUpdatedState(state)
+    val diagnosticChat = remember(model.chatId) { DiagnosticEvent.id(model.chatId) }
+    DisposableEffect(screen) {
+        DiagnosticEvent.event("chat.open", mapOf("screen" to screen, "chat" to diagnosticChat))
+        onDispose { DiagnosticEvent.event("chat.close", mapOf("screen" to screen, "chat" to diagnosticChat)) }
+    }
+    LaunchedEffect(screen, listState) {
+        var expected = System.nanoTime()
+        while (true) {
+            val now = System.nanoTime()
+            val delayMs = ((now - expected) / 1_000_000).coerceAtLeast(0)
+            val layout = listState.layoutInfo
+            val rows = layout.visibleItemsInfo
+            DiagnosticEvent.event("chat.viewport", mapOf(
+                "screen" to screen, "chat" to diagnosticChat,
+                "rows" to layout.totalItemsCount.toString(), "visible" to rows.size.toString(),
+                "first_index" to listState.firstVisibleItemIndex.toString(),
+                "first_offset" to listState.firstVisibleItemScrollOffset.toString(),
+                "viewport_start" to layout.viewportStartOffset.toString(), "viewport_end" to layout.viewportEndOffset.toString(),
+                "padding_before" to layout.beforeContentPadding.toString(), "padding_after" to layout.afterContentPadding.toString(),
+                "first_frame" to rows.firstOrNull()?.let { "${it.index}:${it.offset}:${it.size}" }.orEmpty(),
+                "last_frame" to rows.lastOrNull()?.let { "${it.index}:${it.offset}:${it.size}" }.orEmpty(),
+                "reverse" to layout.reverseLayout.toString(), "scrolling" to listState.isScrollInProgress.toString(),
+                "loading" to diagnosticState.isLoading.toString(), "loading_older" to diagnosticState.isLoadingOlder.toString(),
+                "has_newer" to diagnosticState.hasNewer.toString(),
+                "heap_used_bytes" to (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()).toString(),
+                "main_delay_ms" to delayMs.toString(),
+            ), snapshot = true)
+            val interval = DiagnosticEvent.sampleIntervalMs()
+            expected = System.nanoTime() + interval * 1_000_000
+            delay(interval)
+        }
+    }
     val selecting = selection.isNotEmpty()
     val density = LocalDensity.current
     var highlighted by remember { mutableStateOf<String?>(null) }
@@ -290,11 +326,13 @@ internal fun ChatFeed(
     val request = state.scroll
     LaunchedEffect(request?.token) {
         val current = request ?: return@LaunchedEffect
+        DiagnosticEvent.event("chat.scroll.request", mapOf("screen" to screen, "chat" to diagnosticChat, "target" to current.target.javaClass.simpleName))
         FeedScroll.perform(listState, items, current.target, with(density) { UNREAD_TOP_GAP.toPx() }) { key ->
             highlighted = key
             delay(HIGHLIGHT_MS)
             if (highlighted == key) highlighted = null
         }
+        DiagnosticEvent.event("chat.scroll.applied", mapOf("screen" to screen, "chat" to diagnosticChat, "first_index" to listState.firstVisibleItemIndex.toString(), "first_offset" to listState.firstVisibleItemScrollOffset.toString()))
         model.consumeScroll(current.token)
     }
     // Что видно: самое новое сообщение, показанное хотя бы на треть, и лента ли у низа.

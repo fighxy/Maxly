@@ -7,45 +7,78 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-/**
- * Журнал приложения в файлах `app.log`, `app.1.log`, …: каждая строка сразу пишется на диск,
- * чтобы журнал пережил падение процесса. Когда текущий файл дорастает до [maxBytes], он
- * становится `app.1.log`, а самый старый удаляется.
- */
+/** Bounded background writer. Reads/export/clear wait for previously accepted entries. */
 class FileLog(
     val dir: File,
     private val maxBytes: Long = 512L * 1024,
     private val files: Int = 3,
     private val now: () -> Long = System::currentTimeMillis,
-) {
+) : AutoCloseable {
     private val lock = Any()
+    @Volatile private var writerThread: Thread? = null
+    private val writer = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
+        Thread(task, "maxly-log").apply { isDaemon = true; writerThread = this }
+    }
+    private val pending = java.util.concurrent.atomic.AtomicInteger()
+    private val dropped = java.util.concurrent.atomic.AtomicLong()
+
+    fun flush() {
+        if (Thread.currentThread() === writerThread) return
+        runCatching { writer.submit {}.get(2, java.util.concurrent.TimeUnit.SECONDS) }
+    }
+
+    override fun close() { flush(); writer.shutdown() }
+
     private val current = File(dir, "app.log")
 
     fun append(level: Char, tag: String, message: String, error: Throwable? = null) {
-        val line = buildString {
-            append(timestamp(now())).append(' ').append(level).append(' ').append(tag).append(": ").append(message)
-            if (error != null) append('\n').append(stackTrace(error).trimEnd())
-            append('\n')
+        if (pending.incrementAndGet() > 512) {
+            pending.decrementAndGet()
+            dropped.incrementAndGet()
+            return
         }
-        synchronized(lock) {
+        val stamp = now()
+        val bounded = if (tag == "diagnostic") message else message.take(16_384)
+        // Capture only bounded stack frames; do not retain the Throwable/user payload in the queue.
+        val trace = error?.let { it.javaClass.name + "\n" + it.stackTrace.take(32).joinToString("\n") { frame -> "at $frame" } }
+        if (writer.isShutdown) { pending.decrementAndGet(); return }
+        try { writer.execute {
             try {
-                dir.mkdirs()
-                if (current.exists() && current.length() + line.length > maxBytes) rotate()
-                current.appendText(line)
+                val lost = dropped.getAndSet(0)
+                val line = buildString {
+                    if (lost > 0) append(timestamp(stamp)).append(" W diagnostics: queue_dropped=").append(lost).append('\n')
+                    if (tag == "diagnostic") append(bounded)
+                    else append(timestamp(stamp)).append(' ').append(level).append(' ').append(tag).append(": ").append(bounded)
+                    if (trace != null) append('\n').append(trace)
+                    append('\n')
+                }
+                synchronized(lock) {
+                    dir.mkdirs()
+                    val bytes = line.toByteArray(Charsets.UTF_8)
+                    if (current.exists() && current.length() + bytes.size > maxBytes) rotate()
+                    current.appendBytes(bytes)
+                }
             } catch (_: Exception) {
-                // Журнал не должен ронять приложение: нет места — строка теряется.
-            }
-        }
+                // Logging must not crash the app when storage is unavailable.
+            } finally { pending.decrementAndGet() }
+        } } catch (_: java.util.concurrent.RejectedExecutionException) { pending.decrementAndGet() }
     }
 
     /** Файлы журнала от старых к новым. */
-    fun parts(): List<File> = synchronized(lock) {
-        ((files - 1) downTo 1).map { File(dir, "app.$it.log") }.plus(current).filter { it.exists() }
+    fun parts(): List<File> {
+        flush()
+        return synchronized(lock) {
+            ((files - 1) downTo 1).map { File(dir, "app.$it.log") }.plus(current).filter { it.exists() }
+        }
     }
 
     /** Весь журнал одним текстом. */
-    fun read(): String = synchronized(lock) {
-        parts().joinToString("") { runCatching { it.readText() }.getOrDefault("") }
+    fun read(): String {
+        flush()
+        return synchronized(lock) {
+            ((files - 1) downTo 1).map { File(dir, "app.$it.log") }.plus(current)
+                .joinToString("") { runCatching { it.readText() }.getOrDefault("") }
+        }
     }
 
     /** Последние [maxChars] символов журнала — для отчёта о сбое. */
@@ -58,11 +91,14 @@ class FileLog(
 
     val isEmpty: Boolean get() = parts().all { it.length() == 0L }
 
-    fun clear() = synchronized(lock) {
-        parts().forEach { it.delete() }
+    fun clear() {
+        writer.submit { synchronized(lock) {
+            ((files - 1) downTo 1).map { File(dir, "app.$it.log") }.plus(current).forEach { it.delete() }
+        } }.get()
     }
 
     private fun rotate() {
+        if (files <= 1) { current.delete(); return }
         File(dir, "app.${files - 1}.log").delete()
         for (index in files - 2 downTo 1) {
             val part = File(dir, "app.$index.log")

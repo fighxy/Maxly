@@ -20,6 +20,7 @@ public actor MediaRepositoryImpl: MediaRepository {
 
     public func preview(for item: MediaItem) async throws(MaxlyError) -> URL {
         if let cached = cached(item) {
+            DiagnosticEvent.event("media.cache", ["hit": "true", "media": DiagnosticEvent.id(item.id)])
             touch(cached)
             return cached
         }
@@ -39,6 +40,7 @@ public actor MediaRepositoryImpl: MediaRepository {
             let task = Task {
                 do {
                     if await self.cached(item) != nil {
+                        DiagnosticEvent.event("media.cache", ["hit": "true", "media": DiagnosticEvent.id(item.id)])
                         continuation.yield(1)
                         continuation.finish()
                         return
@@ -73,11 +75,24 @@ public actor MediaRepositoryImpl: MediaRepository {
     }
 
     private func fetch(_ item: MediaItem, progress: @escaping @Sendable (Double) -> Void) async throws -> URL {
-        _ = try layout.prepared(item.type.storageCategory)
-        let dest = destination(for: item)
-        try await http.download(from: item.url, to: dest, onProgress: progress)
-        await onStored()
-        return dest
+        let operation = String(UUID().uuidString.prefix(8))
+        let start = ProcessInfo.processInfo.systemUptime
+        let fields = ["operation": operation, "media": DiagnosticEvent.id(item.id)]
+        DiagnosticEvent.event("media.download.start", fields)
+        do {
+            _ = try layout.prepared(item.type.storageCategory)
+            let dest = destination(for: item)
+            try await http.download(from: item.url, to: dest, onProgress: progress)
+            await onStored()
+            let bytes = (try? dest.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            DiagnosticEvent.event("media.download.finish", fields.merging(["result": "ok", "bytes": String(bytes),
+                "duration_ms": String(Int((ProcessInfo.processInfo.systemUptime - start) * 1000))]) { _, new in new })
+            return dest
+        } catch {
+            DiagnosticEvent.event("media.download.finish", fields.merging(["result": error is CancellationError ? "cancelled" : "error",
+                "error_type": String(describing: type(of: error)), "duration_ms": String(Int((ProcessInfo.processInfo.systemUptime - start) * 1000))]) { _, new in new })
+            throw error
+        }
     }
 
     private func destination(for item: MediaItem) -> URL {

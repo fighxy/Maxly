@@ -356,31 +356,39 @@ public final class MaxAPIClient: MaxAPI, Sendable {
 
     public func fetchMessages(chatId: String, before: Date?, limit: Int) async -> Result<[MessageRecord], MaxAPIError> {
         await catching {
+            DiagnosticEvent.event("history.request", ["chat": DiagnosticEvent.id(chatId), "direction": "fetchMessages"])
             let page = try await core.loadHistory(chatId: chatId, beforeMs: before?.unixMillis ?? 0, limit: limit)
+            DiagnosticEvent.event("history.page", ["chat": DiagnosticEvent.id(chatId), "direction": "fetchMessages", "received": String(page.count)])
             return page.map(CoreMapping.message)
         }
     }
 
     public func fetchOpenedMessages(chatId: String, limit: Int) async -> Result<[MessageRecord], MaxAPIError> {
         await catching {
+            DiagnosticEvent.event("history.request", ["chat": DiagnosticEvent.id(chatId), "direction": "fetchOpenedMessages"])
             let page = try await core.loadOpenedHistory(chatId: chatId, limit: limit)
+            DiagnosticEvent.event("history.page", ["chat": DiagnosticEvent.id(chatId), "direction": "fetchOpenedMessages", "received": String(page.count)])
             return page.map(CoreMapping.message)
         }
     }
 
     public func fetchOlderMessages(chatId: String, before: Date, limit: Int) async -> Result<[MessageRecord], MaxAPIError> {
         await catching {
+            DiagnosticEvent.event("history.request", ["chat": DiagnosticEvent.id(chatId), "direction": "fetchOlderMessages"])
             let page = try await core.loadOlderHistory(chatId: chatId, beforeMs: before.unixMillis, limit: limit)
+            DiagnosticEvent.event("history.page", ["chat": DiagnosticEvent.id(chatId), "direction": "fetchOlderMessages", "received": String(page.count)])
             return page.map(CoreMapping.message)
         }
     }
 
     public func fetchMessagesAround(chatId: String, messageId: String, at: Date?, forward: Int, backward: Int) async -> Result<[MessageRecord], MaxAPIError> {
         await catching {
+            DiagnosticEvent.event("history.request", ["chat": DiagnosticEvent.id(chatId), "direction": "fetchMessagesAround"])
             let page = try await core.loadHistoryAround(
                 chatId: chatId, messageId: messageId, fromMs: at?.unixMillis ?? 0,
                 forward: forward, backward: backward
             )
+            DiagnosticEvent.event("history.page", ["chat": DiagnosticEvent.id(chatId), "direction": "fetchMessagesAround", "received": String(page.count)])
             return page.map(CoreMapping.message)
         }
     }
@@ -400,7 +408,7 @@ public final class MaxAPIClient: MaxAPI, Sendable {
     }
 
     public func sendMessage(chatId: String, text: String, clientId: String, replyTo: String?) async -> Result<SentMessage, MaxAPIError> {
-        _ = clientId
+        DiagnosticEvent.event("send.stage", ["chat": DiagnosticEvent.id(chatId), "message": DiagnosticEvent.id(clientId), "stage": "send"])
         return await catching {
             let sent: CoreMessage
             if let replyTo, !replyTo.isEmpty {
@@ -408,6 +416,7 @@ public final class MaxAPIClient: MaxAPI, Sendable {
             } else {
                 sent = try await core.sendText(chatId: chatId, text: text)
             }
+            DiagnosticEvent.event("send.stage", ["chat": DiagnosticEvent.id(chatId), "message": DiagnosticEvent.id(clientId), "stage": "acknowledged"])
             return SentMessage(serverId: sent.id, timestamp: Date(unixMillis: sent.timeMs))
         }
     }
@@ -422,6 +431,7 @@ public final class MaxAPIClient: MaxAPI, Sendable {
         }
         return await catching {
             let sent = try await core.sendRichText(chatId: chatId, text: text, replyTo: replyTo ?? "", animoji: animoji, mentions: mentions)
+            DiagnosticEvent.event("send.stage", ["chat": DiagnosticEvent.id(chatId), "message": DiagnosticEvent.id(clientId), "stage": "acknowledged"])
             return SentMessage(serverId: sent.id, timestamp: Date(unixMillis: sent.timeMs))
         }
     }
@@ -437,6 +447,7 @@ public final class MaxAPIClient: MaxAPI, Sendable {
         let elements = MessageMarkup.json(MessageMarkup.elements(formatting, text: text))
         return await catching {
             let sent = try await core.sendFormattedText(chatId: chatId, text: text, elementsJSON: elements, replyTo: replyTo ?? "")
+            DiagnosticEvent.event("send.stage", ["chat": DiagnosticEvent.id(chatId), "message": DiagnosticEvent.id(clientId), "stage": "acknowledged"])
             return SentMessage(serverId: sent.id, timestamp: Date(unixMillis: sent.timeMs))
         }
     }
@@ -671,6 +682,9 @@ public final class MaxAPIClient: MaxAPI, Sendable {
 
     public func sendAttachments(chatId: String, drafts: [AttachmentDraft], caption: String, replyTo: String?,
                                 progress: @escaping @Sendable (Double) -> Void) async -> Result<MessageRecord, MaxAPIError> {
+        let upload = DiagnosticProgress()
+        let reportProgress: @Sendable (Double) -> Void = { value in upload.report(value); progress(value) }
+        DiagnosticEvent.event("send.stage", ["chat": DiagnosticEvent.id(chatId), "stage": "upload_and_send", "attachments": String(drafts.count)])
         let reply = replyTo.flatMap { Int64($0) == nil ? nil : $0 } ?? ""
         if let contact = drafts.first(where: { $0.kind == .contact }) {
             // Карточка контакта — отдельное сообщение: у него нет файла и подписи.
@@ -692,7 +706,7 @@ public final class MaxAPIClient: MaxAPI, Sendable {
             return await catching {
                 CoreMapping.message(try await core.sendRecording(
                     chatId: chatId, path: recording.path, kind: recording.kind.rawValue,
-                    durationMs: recording.durationMs, wave: recording.waveform, replyTo: reply, progress: progress
+                    durationMs: recording.durationMs, wave: recording.waveform, replyTo: reply, progress: reportProgress
                 ))
             }
         }
@@ -701,7 +715,7 @@ public final class MaxAPIClient: MaxAPI, Sendable {
         }
         guard !items.isEmpty, !items.contains(where: { $0.path.isEmpty }) else { return .failure(.invalidResponse) }
         return await catching {
-            CoreMapping.message(try await core.sendMedia(chatId: chatId, items: items, caption: caption, replyTo: reply, progress: progress))
+            CoreMapping.message(try await core.sendMedia(chatId: chatId, items: items, caption: caption, replyTo: reply, progress: reportProgress))
         }
     }
 
@@ -762,10 +776,20 @@ public final class MaxAPIClient: MaxAPI, Sendable {
         }
     }
 
-    private func catching<T>(_ body: () async throws -> T) async -> Result<T, MaxAPIError> {
+    private func catching<T>(operation: String = #function, _ body: () async throws -> T) async -> Result<T, MaxAPIError> {
+        let op = String(UUID().uuidString.prefix(8))
+        let started = ProcessInfo.processInfo.systemUptime
+        let name = String(operation.prefix { $0 != "(" })
+        DiagnosticEvent.event("network.operation.start", ["operation": op, "method": name])
         do {
-            return .success(try await body())
+            let value = try await body()
+            DiagnosticEvent.event("network.operation.finish", ["operation": op, "method": name, "result": "ok",
+                "duration_ms": String(Int((ProcessInfo.processInfo.systemUptime - started) * 1000))])
+            return .success(value)
         } catch {
+            DiagnosticEvent.event("network.operation.finish", ["operation": op, "method": name,
+                "result": error is CancellationError ? "cancelled" : "error", "error_type": String(describing: type(of: error)),
+                "duration_ms": String(Int((ProcessInfo.processInfo.systemUptime - started) * 1000))])
             return .failure(CoreMapping.apiError(error))
         }
     }
