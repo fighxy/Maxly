@@ -42,7 +42,13 @@ final class CallKitController: NSObject, CallSystem {
 
     func reportIncoming(id: UUID, handle: String, name: String, video: Bool) async throws {
         self.video[id] = video
-        try await provider.reportNewIncomingCall(with: id, update: update(handle: handle, name: name, video: video))
+        do {
+            try await provider.reportNewIncomingCall(with: id, update: update(handle: handle, name: name, video: video))
+            DiagnosticEvent.event("notification.post", ["kind": "callkit", "result": "ok"])
+        } catch {
+            DiagnosticEvent.event("notification.post", ["kind": "callkit", "result": "error", "error_code": String((error as NSError).code)])
+            throw error
+        }
     }
 
     func request(_ action: CallSystemAction) async throws {
@@ -132,11 +138,13 @@ final class CallKitController: NSObject, CallSystem {
     }
 
     fileprivate func answered(_ id: UUID) {
+        DiagnosticEvent.event("notification.action", ["action": "answer", "kind": "callkit"])
         CallAudio.configure(video: video[id] ?? false)
         delegate?.systemAnswered(id)
     }
 
     fileprivate func ended(_ id: UUID) {
+        DiagnosticEvent.event("notification.action", ["action": "end", "kind": "callkit"])
         video[id] = nil
         delegate?.systemEnded(id)
     }
@@ -185,10 +193,12 @@ extension CallKitController: CXProviderDelegate {
     }
 
     nonisolated func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
+        DiagnosticEvent.event("call.audio_session", ["active": "true"], snapshot: true)
         MainActor.assumeIsolated { CallAudio.activated(audioSession) }
     }
 
     nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
+        DiagnosticEvent.event("call.audio_session", ["active": "false"], snapshot: true)
         MainActor.assumeIsolated { CallAudio.deactivated(audioSession) }
     }
 }

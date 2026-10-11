@@ -589,6 +589,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         AsyncStream { continuation in
             continuation.yield(CorePhase(raw: client.phaseName()))
             let watch = WatchBox(client.watchState { name in
+                DiagnosticEvent.event("network.state", ["phase": CorePhase(raw: name).rawValue], snapshot: true)
                 continuation.yield(CorePhase(raw: name))
             })
             continuation.onTermination = { _ in watch.cancel() }
@@ -669,6 +670,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         let paced = Self.pacedCalls.contains(name)
         let limitAware = Self.limitAwareCalls.contains(name)
         if paced, let left = await ServerRateLimit.shared.remaining() {
+            DiagnosticEvent.event("network.rate_limit", ["method": name, "remaining_ms": String(Int(left * 1000))])
             Log.debug(.core, "\(name): пауза после too.many.requests, ещё \(Int(left.rounded(.up))) с")
             throw CoreFailure(kind: "SERVER", key: ServerRateLimit.key)
         }
@@ -679,6 +681,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
                     gate.run {
                         if case .failure(let error) = result {
                             if let failure = error as? CoreFailure {
+                                DiagnosticEvent.event("network.failure", ["method": name, "kind": failure.kind])
                                 let level: Log.Level = failure.kind == "CANCELLED" ? .debug : .warning
                                 Log.write(level, .core, "\(name): \(failure.kind)\(failure.key.map { " (\($0))" } ?? "")")
                             } else {

@@ -9,7 +9,7 @@ final class TranscriptDiagnostics {
     private let session = String(UUID().uuidString.prefix(8))
     private var lastSample = -Double.infinity
     private weak var scroll: UIScrollView?
-    var context = "context=pending"
+    var context: [String: String] = [:]
 
     func attach(_ scroll: UIScrollView) {
         self.scroll = scroll
@@ -23,15 +23,26 @@ final class TranscriptDiagnostics {
 
     func record(_ event: String, immediate: Bool = false) {
         let now = ProcessInfo.processInfo.systemUptime
-        guard immediate || now - lastSample >= 1 else { return }
+        guard immediate || now - lastSample >= DiagnosticEvent.sampleInterval else { return }
         lastSample = now
-        var metrics = "scroll=unattached"
+        var fields = context
+        fields["screen"] = session
+        // Targets may contain server IDs: keep the reason and pseudonymize the target.
+        let reason = event.split(separator: ":", maxSplits: 1)
+        fields["reason"] = String(reason[0])
+        if reason.count == 2 { fields["target"] = DiagnosticEvent.id(String(reason[1])) }
+        fields["attached"] = String(scroll != nil)
         if let scroll {
             let inset = scroll.adjustedContentInset
             let maxY = max(-inset.top, scroll.contentSize.height + inset.bottom - scroll.bounds.height)
-            metrics = "offsetY=\(Self.n(scroll.contentOffset.y)) contentH=\(Self.n(scroll.contentSize.height)) viewportH=\(Self.n(scroll.bounds.height)) insetTop=\(Self.n(inset.top)) insetBottom=\(Self.n(inset.bottom)) maxY=\(Self.n(maxY)) beyondEnd=\(Self.n(scroll.contentOffset.y - maxY)) tracking=\(scroll.isTracking) dragging=\(scroll.isDragging) decelerating=\(scroll.isDecelerating)"
+            fields.merge([
+                "offset_y": Self.n(scroll.contentOffset.y), "content_height": Self.n(scroll.contentSize.height),
+                "viewport_height": Self.n(scroll.bounds.height), "inset_top": Self.n(inset.top), "inset_bottom": Self.n(inset.bottom),
+                "max_y": Self.n(maxY), "beyond_end": Self.n(scroll.contentOffset.y - maxY),
+                "tracking": String(scroll.isTracking), "dragging": String(scroll.isDragging), "decelerating": String(scroll.isDecelerating)
+            ]) { _, new in new }
         }
-        Log.info(.ui, "chat-scroll session=\(session) event=\(event) \(context) \(metrics)")
+        DiagnosticEvent.event("chat.viewport", fields, snapshot: true)
     }
 
     static func n(_ value: CGFloat) -> String {

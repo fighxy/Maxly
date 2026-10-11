@@ -29,8 +29,9 @@ class DiagnosticsTest {
         log.append('E', "calls", "Не вышло", IllegalStateException("нет микрофона"))
         val text = log.read()
         assertTrue(text, text.contains(" I calls: Звонок начат\n"))
-        assertTrue(text.contains(" E calls: Не вышло\njava.lang.IllegalStateException: нет микрофона"))
+        assertTrue(text.contains(" E calls: Не вышло\njava.lang.IllegalStateException"))
         assertTrue(text.contains("at app.maxly.data.diagnostics.DiagnosticsTest"))
+        assertFalse(text.contains("нет микрофона"))
         assertFalse(log.isEmpty)
     }
 

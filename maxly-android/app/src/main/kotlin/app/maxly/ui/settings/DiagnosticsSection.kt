@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.maxly.R
 import app.maxly.data.diagnostics.CrashReport
+import app.maxly.data.diagnostics.DiagnosticEvent
 import app.maxly.data.diagnostics.FileLog
 import app.maxly.diagnostics.Diagnostics
 
@@ -54,6 +55,21 @@ fun DiagnosticsSection() {
 
     HorizontalDivider(Modifier.padding(top = 8.dp))
     SectionTitle(stringResource(R.string.diag_title))
+    var marker by remember { mutableStateOf<String?>(null) }
+    ListItem(
+        headlineContent = { Text("Проблема сейчас") },
+        supportingContent = { Text(marker?.let { "Отметка $it добавлена. Сохраните журнал." } ?: "Отметить сбой и последние состояния приложения") },
+        leadingContent = { Icon(Icons.Outlined.BugReport, null) },
+        modifier = Modifier.clickable { marker = DiagnosticEvent.problemNow(); revision++ },
+    )
+    ListItem(
+        headlineContent = { Text("Подробная диагностика на 15 минут") },
+        supportingContent = { Text("После включения повторите проблему и сохраните журнал") },
+        modifier = Modifier.clickable {
+            DiagnosticEvent.enableDetailed()
+            Toast.makeText(context, "Подробная запись включена на 15 минут", Toast.LENGTH_SHORT).show()
+        },
+    )
     ListItem(
         headlineContent = { Text(stringResource(R.string.diag_log_share)) },
         supportingContent = { Text(stringResource(R.string.diag_log_hint)) },

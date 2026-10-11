@@ -110,8 +110,8 @@ class MainActivity : ComponentActivity() {
     private fun handleCallIntent(intent: Intent?) {
         val container = (application as MaxlyApp).container
         when (intent?.action) {
-            AndroidCallSystem.ACTION_ANSWER -> AndroidCalls.answer(container, video = false)
-            AndroidCallSystem.ACTION_OPEN -> container.callCenter.expand()
+            AndroidCallSystem.ACTION_ANSWER -> { app.maxly.data.diagnostics.DiagnosticEvent.event("notification.action", mapOf("action" to "answer")); AndroidCalls.answer(container, video = false) }
+            AndroidCallSystem.ACTION_OPEN -> { app.maxly.data.diagnostics.DiagnosticEvent.event("notification.action", mapOf("action" to "open")); container.callCenter.expand() }
             else -> return
         }
         intent?.action = null

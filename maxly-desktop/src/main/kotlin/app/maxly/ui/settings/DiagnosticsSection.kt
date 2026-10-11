@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.maxly.data.diagnostics.CrashReport
+import app.maxly.data.diagnostics.DiagnosticEvent
 import app.maxly.data.diagnostics.FileLog
 import app.maxly.diagnostics.DesktopDiagnostics
 import app.maxly.platform.AppPaths
@@ -55,6 +56,19 @@ fun DiagnosticsSection() {
 
     HorizontalDivider(Modifier.padding(top = 8.dp))
     SectionTitle("Диагностика")
+    var detailNotice by remember { mutableStateOf(false) }
+    var marker by remember { mutableStateOf<String?>(null) }
+    ListItem(
+        headlineContent = { Text("Проблема сейчас") },
+        supportingContent = { Text(marker?.let { "Отметка $it добавлена. Сохраните журнал." } ?: "Отметить сбой и последние состояния приложения") },
+        leadingContent = { Icon(Icons.Outlined.BugReport, null) },
+        modifier = Modifier.clickable { marker = DiagnosticEvent.problemNow(); revision++ },
+    )
+    ListItem(
+        headlineContent = { Text("Подробная диагностика на 15 минут") },
+        supportingContent = { Text("После включения повторите проблему и сохраните журнал") },
+        modifier = Modifier.clickable { DiagnosticEvent.enableDetailed(); detailNotice = true },
+    )
     ListItem(
         headlineContent = { Text("Открыть папку журнала") },
         supportingContent = { Text(DesktopDiagnostics.log?.dir?.absolutePath.orEmpty()) },
@@ -78,6 +92,15 @@ fun DiagnosticsSection() {
                 saved = null
                 revision++
             },
+        )
+    }
+
+    if (detailNotice) {
+        AlertDialog(
+            onDismissRequest = { detailNotice = false },
+            title = { Text("Подробная запись включена на 15 минут") },
+            text = { Text("Повторите проблему, затем сохраните журнал.") },
+            confirmButton = { TextButton(onClick = { detailNotice = false }) { Text("OK") } },
         )
     }
 

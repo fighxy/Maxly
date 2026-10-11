@@ -274,7 +274,14 @@ struct ChatTranscript: View {
         let visible = reads.rows.values.filter { frame in
             viewport.map { frame.intersects($0.frame) } ?? false
         }.count
-        diagnostics.context = "chat=\(viewModel.chatId) rows=\(viewModel.rows.count) measured=\(reads.rows.count) visible=\(visible) opening=\(isOpening) restoring=\(viewModel.isRestoringHistory) atBottom=\(bottom.atBottom) jumped=\(viewModel.isJumped) position=\(position ?? "nil") lastFrame={\(TranscriptDiagnostics.frame(last))} viewportFrame={\(TranscriptDiagnostics.frame(viewport?.frame))} composerTop=\(TranscriptDiagnostics.n(bottomControlsTop)) keyboardTop=\(keyboardTop.map(TranscriptDiagnostics.n) ?? "nil")"
+        diagnostics.context = [
+            "chat": DiagnosticEvent.id(viewModel.chatId), "rows": String(viewModel.rows.count),
+            "measured": String(reads.rows.count), "visible": String(visible), "opening": String(isOpening),
+            "restoring": String(viewModel.isRestoringHistory), "at_bottom": String(bottom.atBottom),
+            "jumped": String(viewModel.isJumped), "position": position.map(DiagnosticEvent.id) ?? "nil",
+            "last_frame": TranscriptDiagnostics.frame(last), "viewport_frame": TranscriptDiagnostics.frame(viewport?.frame),
+            "composer_top": TranscriptDiagnostics.n(bottomControlsTop), "keyboard_top": keyboardTop.map(TranscriptDiagnostics.n) ?? "nil"
+        ]
         diagnostics.record(event, immediate: immediate)
     }
 

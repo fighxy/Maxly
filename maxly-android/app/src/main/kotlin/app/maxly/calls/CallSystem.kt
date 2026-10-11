@@ -1,5 +1,7 @@
 package app.maxly.calls
 
+import app.maxly.data.diagnostics.DiagnosticEvent
+
 import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
@@ -106,6 +108,8 @@ class AndroidCallSystem(private val context: Context, private val center: CallCe
     }
 
     private fun showIncoming(snapshot: Snapshot) {
+        DiagnosticEvent.event("notification.permission", mapOf("enabled" to notifications.areNotificationsEnabled().toString(),
+            "fullscreen" to (Build.VERSION.SDK_INT < 34 || notifications.canUseFullScreenIntent()).toString()), snapshot = true)
         if (!notifications.areNotificationsEnabled()) {
             CallLog.warning("Входящий: уведомления Maxly выключены — звонок виден только в открытом приложении")
         }
@@ -114,8 +118,10 @@ class AndroidCallSystem(private val context: Context, private val center: CallCe
         }
         try {
             notifications.notify(INCOMING_ID, incoming(snapshot))
+            DiagnosticEvent.event("notification.post", mapOf("kind" to "incoming_call", "result" to "ok"))
             CallLog.info("Входящий: уведомление показано")
         } catch (e: Exception) {
+            DiagnosticEvent.event("notification.post", mapOf("kind" to "incoming_call", "result" to "error", "error_type" to e.javaClass.simpleName))
             CallLog.error("Входящий: уведомление не показано", e)
         }
     }
@@ -191,6 +197,7 @@ class AndroidCallSystem(private val context: Context, private val center: CallCe
 class CallActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val container = (context.applicationContext as MaxlyApp).container
+        DiagnosticEvent.event("notification.action", mapOf("action" to when (intent.action) { AndroidCallSystem.ACTION_DECLINE -> "decline"; else -> "other" }))
         CallLog.info("Кнопка уведомления: ${intent.action?.substringAfterLast('.')}")
         container.scope.launch {
             when (intent.action) {

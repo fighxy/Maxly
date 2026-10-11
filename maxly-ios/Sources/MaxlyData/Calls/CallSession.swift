@@ -37,7 +37,22 @@ public final class CallSession: CallControl {
     }
 
     public private(set) var state = CallState() {
-        didSet { if state != oldValue { onChange?(state) } }
+        didSet {
+            if state.phase != oldValue.phase || state.mediaConnected != oldValue.mediaConnected || state.speakerOn != oldValue.speakerOn || state.muted != oldValue.muted {
+                let phase: String
+                switch state.phase {
+                case .connecting: phase = "connecting"
+                case .ringing: phase = "ringing"
+                case .active: phase = "active"
+                case .reconnecting: phase = "reconnecting"
+                case .ended: phase = "ended"
+                }
+                DiagnosticEvent.event("call.state", ["phase": phase, "media_connected": String(state.mediaConnected),
+                    "speaker": String(state.speakerOn), "muted": String(state.muted), "camera": String(state.cameraOn),
+                    "topology": state.topology.rawValue], snapshot: true)
+            }
+            if state != oldValue { onChange?(state) }
+        }
     }
 
     public var onChange: ((CallState) -> Void)?

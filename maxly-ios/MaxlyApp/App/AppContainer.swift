@@ -141,6 +141,11 @@ final class AppContainer {
         UserDefaults.standard.removeObject(forKey: Self.retiredLocalFiltersKey)
         logs = directory.map { FileLogStore(directory: $0, enabled: enabled) }
         if let logs { Log.sink = logs.sink }
+        DiagnosticEvent.event("app.start", ["platform": "ios", "version": Self.appVersion,
+            "os": ProcessInfo.processInfo.operatingSystemVersionString,
+            "build_sha": Bundle.main.object(forInfoDictionaryKey: "MaxlyBuildSHA") as? String ?? "unknown",
+            "core_revision": Bundle.main.object(forInfoDictionaryKey: "MaxlyCoreRevision") as? String ?? "unknown"], snapshot: true)
+        DiagnosticEvent.event("notification.capability", ["message_push": "not_implemented", "incoming_call": "callkit"], snapshot: true)
         Log.info(.app, "Запуск: \(Self.appVersion), \(ProcessInfo.processInfo.operatingSystemVersionString)")
         // Флаги режима призрака теперь в ядре: старые ключи `UserDefaults` убираются один раз.
         GhostDefaultsMigration.run()

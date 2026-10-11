@@ -30,6 +30,18 @@ struct LogSettingsSection: View {
             )) {
                 Label("Записывать журнал", systemImage: "doc.text.magnifyingglass")
             }
+            Button {
+                let marker = DiagnosticEvent.problemNow()
+                message = "Отметка \(marker) добавлена. Выгрузите журнал для разбора проблемы."
+            } label: {
+                Label("Проблема сейчас", systemImage: "exclamationmark.bubble")
+            }
+            .disabled(!isEnabled || container.logs == nil)
+            Button("Подробная диагностика на 15 минут") {
+                DiagnosticEvent.enableDetailed()
+                message = "Подробная запись включена на 15 минут. Повторите проблему и выгрузите журнал."
+            }
+            .disabled(!isEnabled || container.logs == nil)
             LabeledContent("Размер журнала", value: ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
             Button {
                 Task { await prepareArchive() }
@@ -93,7 +105,7 @@ struct LogSettingsSection: View {
         let info = """
         \(AppContainer.appVersion)
         \(ProcessInfo.processInfo.operatingSystemVersionString)
-        Пользователь: \(container.currentUserId.isEmpty ? "не вошёл" : container.currentUserId)
+        Пользователь: \(container.currentUserId.isEmpty ? "не вошёл" : DiagnosticEvent.id(container.currentUserId))
         Выгружено: \(Date().formatted(.iso8601))
         """
         let result = await Task.detached(priority: .userInitiated) { () -> Result<LogArchive, Error> in
