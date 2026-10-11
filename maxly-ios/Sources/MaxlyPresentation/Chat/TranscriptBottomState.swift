@@ -44,10 +44,17 @@ public struct TranscriptBottomState: Equatable, Sendable {
     /// сбрасывает: новое сообщение или картинка не должны показывать кнопку. Во время
     /// прыжка не сбрасывает и инерция: касание кнопки посреди разгона ленты отменяется
     /// только пальцем (`userTookOver`).
-    public mutating func scrolled(distance: Double, dragging: Bool) {
+    ///
+    /// `leaveAfter` — на сколько палец должен увести ленту от низа, чтобы признак снялся по
+    /// расстоянию. На iOS 18 расстояние у самого низа неточно (отступы под поле ввода и
+    /// клавиатуру), поэтому там порог — высота экрана: у низа кнопка не мигает, а далеко
+    /// вверху признак снимается, даже если метку низа ленивая лента уже выгрузила и она о
+    /// себе молчит. Раньше признак в таком случае залипал: лента читала чат до конца,
+    /// держалась низом и прятала кнопку «вниз», пока человек листал историю.
+    public mutating func scrolled(distance: Double, dragging: Bool, leaveAfter: Double = TranscriptBottomState.leaveDistance) {
         if distance <= Self.reachDistance {
             reachBottom()
-        } else if dragging || placedInHistory, jump == nil, distance > Self.leaveDistance {
+        } else if jump == nil, distance > Self.leaveDistance, placedInHistory || (dragging && distance > leaveAfter) {
             atBottom = false
         }
     }

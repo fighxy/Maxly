@@ -181,4 +181,32 @@ struct TranscriptBottomStateTests {
         state.markerMoved(bottomY: .infinity, viewportHeight: 700, dragging: true)
         #expect(!state.atBottom)
     }
+
+    @Test("iOS 18: палец увёл ленту дальше экрана — признак снимается и без метки низа")
+    func farDragLeavesWithoutMarker() {
+        var state = TranscriptBottomState()
+        // У низа расстояние неточно: меньше экрана палец признак не снимает, кнопка не мигает.
+        state.scrolled(distance: 300, dragging: true, leaveAfter: 657)
+        #expect(state.atBottom)
+        // Метку низа ленивая лента выгрузила и она молчит, но до низа 7000 точек.
+        state.scrolled(distance: 7_000, dragging: true, leaveAfter: 657)
+        #expect(!state.atBottom)
+        #expect(state.showsButton(hasMessages: true))
+        // Без пальца рост содержимого признак не трогает.
+        var grown = TranscriptBottomState()
+        grown.scrolled(distance: 7_000, dragging: false, leaveAfter: 657)
+        #expect(grown.atBottom)
+    }
+
+    @Test("После прыжка «вниз» палец вверх снимает признак; пока прыжок в пути — нет")
+    func farDragAfterJump() {
+        var state = TranscriptBottomState()
+        let id = state.beginJump()
+        state.scrolled(distance: 7_000, dragging: true, leaveAfter: 657)
+        #expect(state.atBottom)
+        let finished = state.finishJump(id)
+        #expect(finished)
+        state.scrolled(distance: 7_000, dragging: true, leaveAfter: 657)
+        #expect(!state.atBottom)
+    }
 }
