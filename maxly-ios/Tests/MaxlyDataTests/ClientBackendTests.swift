@@ -196,6 +196,10 @@ actor FakeMaxCore: MaxCore {
     }
 
     func setRejectError(_ error: CoreFailure?) { rejectError = error }
+
+    var inboundProbe: Result<CoreInboundProbe, CoreFailure> = .success(CoreInboundProbe(shape: "{}", found: 0, calls: []))
+    func setInboundProbe(_ result: Result<CoreInboundProbe, CoreFailure>) { inboundProbe = result }
+    func probeInboundCalls() async throws -> CoreInboundProbe { try inboundProbe.get() }
     func setUserId(_ id: String) { userId = id }
 
     func deleteCallHistory(ids: [String]) async throws {

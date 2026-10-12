@@ -96,24 +96,42 @@ extension MaxIosCore {
     func incomingCalls() -> AsyncStream<CoreIncomingCall> {
         AsyncStream { continuation in
             let watch = WatchBox(client.watchIncomingCalls { call in
-                continuation.yield(CoreIncomingCall(
-                    conversationId: call.conversationId,
-                    callerId: call.callerId,
-                    callerName: call.callerName,
-                    callerAvatarURL: call.callerAvatarUrl,
-                    chatId: call.chatId,
-                    isVideo: call.isVideo,
-                    ws2Url: call.ws2Url,
-                    callsUserId: call.callsUserId,
-                    stunUrls: call.stunUrls,
-                    turnUrls: call.turnUrls,
-                    turnUsername: call.turnUsername,
-                    turnPassword: call.turnPassword,
-                    expiresAtMs: call.expiresAtMs
-                ))
+                continuation.yield(Self.incoming(call))
             })
             continuation.onTermination = { _ in watch.cancel() }
         }
+    }
+
+    func probeInboundCalls() async throws -> CoreInboundProbe {
+        try await call("probeInboundCalls") { done in
+            self.client.probeInboundCalls { probe, kind, key in
+                if let kind {
+                    done(.failure(Self.failed(kind: kind, key: key)))
+                } else if let probe {
+                    done(.success(CoreInboundProbe(shape: probe.shape, found: Int(probe.found), calls: probe.calls.map(Self.incoming))))
+                } else {
+                    done(.failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)))
+                }
+            }
+        }
+    }
+
+    private static func incoming(_ call: IosIncomingCall) -> CoreIncomingCall {
+        CoreIncomingCall(
+            conversationId: call.conversationId,
+            callerId: call.callerId,
+            callerName: call.callerName,
+            callerAvatarURL: call.callerAvatarUrl,
+            chatId: call.chatId,
+            isVideo: call.isVideo,
+            ws2Url: call.ws2Url,
+            callsUserId: call.callsUserId,
+            stunUrls: call.stunUrls,
+            turnUrls: call.turnUrls,
+            turnUsername: call.turnUsername,
+            turnPassword: call.turnPassword,
+            expiresAtMs: call.expiresAtMs
+        )
     }
 
     private static func callLogItem(_ record: IosCallRecord) -> CallLogItem {

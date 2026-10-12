@@ -31,6 +31,7 @@ WebRTC — сборка Google WebRTC M154 от stasel (`https://github.com/stas
 | 167 `VIDEO_CHAT_HANGUP` | `{conversationId, reason: REJECTED, internalParams: ""}` (`peerId` только если задан) | `{error?}` |
 | пуш 165 `NOTIF_CALL_HISTORY` | — | `{action: ADD/REMOVE, callHistoryItems или historyIds, callHistorySync}` |
 | пуш 137 `NOTIF_CALL_START` | — | `{callerId, conversationId, type, vcp}` |
+| 103 `GET_INBOUND_CALLS` (эксперимент) | `{}` | неизвестен; ищутся поля пуша 137 — см. `docs/background.md` |
 
 `internalParams` — JSON-строка SDK звонков (`platform ANDROID`, `sdkVersion 0.2.1.3`, `clientAppKey`, `deviceId`, `protocolVersion 5`, `hexCapability 3c02f`). Ссылка на звонок — `https://max.ru/joincall/<токен>`; на сервер уходит токен.
 

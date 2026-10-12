@@ -13,6 +13,9 @@ public protocol CallService: Sendable {
     func preview(link: String) async throws(MaxlyError) -> CallLinkPreview?
     /// Входящие звонки, пока подписка жива.
     func incomingCalls() -> AsyncStream<IncomingCall>
+    /// **Эксперимент:** звонки, которые звонят этому аккаунту прямо сейчас. Нужны приложению,
+    /// которое было выгружено, когда пришёл пуш о звонке (`docs/background.md`).
+    func ringingCalls() async throws(MaxlyError) -> [IncomingCall]
     /// Отклонить входящий через основной сервер (`VIDEO_CHAT_HANGUP` 167, причина `REJECTED`).
     /// Пустой `peerId` не уходит. Ошибка — сервер не принял отбой.
     func reject(conversationId: String, peerId: String) async throws(MaxlyError)
@@ -22,6 +25,8 @@ public extension CallService {
     func preview(link: String) async throws(MaxlyError) -> CallLinkPreview? { nil }
     /// Источник без отбоя через сервер: входящий отклоняется только в сокете звонка.
     func reject(conversationId: String, peerId: String) async throws(MaxlyError) {}
+    /// Источник не умеет спрашивать: звонков нет.
+    func ringingCalls() async throws(MaxlyError) -> [IncomingCall] { [] }
 }
 
 /// Один звонок: подключение к серверу звонков, звук и видео.

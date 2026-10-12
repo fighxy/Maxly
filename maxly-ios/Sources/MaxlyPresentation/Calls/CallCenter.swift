@@ -125,6 +125,8 @@ public final class CallCenter: CallSystemDelegate {
     /// Звонок закончили через систему: ей не нужно сообщать о конце.
     @ObservationIgnored private var endedViaSystem: Set<UUID> = []
     @ObservationIgnored private var lookedUp: Set<String> = []
+    /// Входящие, которые уже приходили: опрос звонящих (103) не показывает их второй раз.
+    @ObservationIgnored private var seenIncoming: Set<String> = []
 
     public init(
         service: any CallService,
@@ -260,6 +262,7 @@ public final class CallCenter: CallSystemDelegate {
     // MARK: Входящий
 
     func receive(_ incoming: IncomingCall) async {
+        seenIncoming.insert(incoming.conversationId)
         guard call == nil else {
             Log.info(.calls, "Входящий \(incoming.conversationId) во время звонка — не беру")
             return
@@ -288,6 +291,34 @@ public final class CallCenter: CallSystemDelegate {
         }
         if incoming.callerName.isEmpty { resolveCaller(incoming.callerId, for: id) }
         await control.start()
+    }
+
+    /// Что дал опрос звонящих.
+    public enum RingingCheck: Equatable, Sendable {
+        /// Звонящий найден и показан.
+        case shown
+        /// Никто не звонит, или звонок уже на экране.
+        case nobody
+        /// Сервер не ответил или ответил ошибкой.
+        case failed(MaxlyError)
+    }
+
+    /// **Эксперимент:** спросить сервер, кто звонит прямо сейчас, и показать звонок, если он
+    /// ещё не пришёл пушем 137 — например, приложение открыли во время звонка, о котором
+    /// сообщила веб-версия (`docs/background.md`).
+    public func checkRinging() async -> RingingCheck {
+        let found: [IncomingCall]
+        do {
+            found = try await service.ringingCalls()
+        } catch {
+            Log.info(.calls, "Опрос входящих не прошёл: \(error)")
+            return .failed(error)
+        }
+        for incoming in found where call == nil && !seenIncoming.contains(incoming.conversationId) {
+            await receive(incoming)
+            if call?.conversationId == incoming.conversationId { return .shown }
+        }
+        return .nobody
     }
 
     /// Ответить на входящий.

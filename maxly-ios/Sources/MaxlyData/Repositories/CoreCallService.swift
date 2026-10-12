@@ -2,7 +2,7 @@ import Foundation
 import MaxlyDomain
 
 /// Звонки через ядро: начать (78), войти по ссылке (166), создать ссылку (76/84), описание
-/// ссылки (89), отклонить входящий (167) и входящие (пуш 137).
+/// ссылки (89), отклонить входящий (167), входящие (пуш 137) и опрос звонящих (103, эксперимент).
 public struct CoreCallService: CallService {
     private let core: any MaxCore
 
@@ -57,6 +57,20 @@ public struct CoreCallService: CallService {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    /// Форма ответа 103 пишется в журнал без пользовательских данных: по ней дописывается разбор.
+    public func ringingCalls() async throws(MaxlyError) -> [IncomingCall] {
+        let probe = try await run("Опрос входящих") { try await core.probeInboundCalls() }
+        let calls = probe.calls.compactMap(Self.incoming)
+        Log.info(.calls, "Опрос входящих: найдено \(probe.found), можно ответить на \(calls.count); ответ \(probe.shape)")
+        DiagnosticEvent.event("calls.inbound_probe", [
+            "result": "ok",
+            "found": String(probe.found),
+            "usable": String(calls.count),
+            "shape": probe.shape,
+        ], snapshot: true)
+        return calls
     }
 
     static func connection(_ start: CoreCallStart) throws(MaxlyError) -> CallConnection {

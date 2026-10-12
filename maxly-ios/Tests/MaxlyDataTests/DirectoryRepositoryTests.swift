@@ -138,6 +138,20 @@ struct DirectoryRepositoryTests {
         await #expect(throws: MaxlyError.invalidRequest) { try await service.reject(conversationId: "", peerId: "") }
     }
 
+    @Test("Опрос звонящих (103): звонки без адреса ws2 отбрасываются, ошибка сервера доходит")
+    func ringingCalls() async throws {
+        let core = FakeMaxCore()
+        let service = CoreCallService(core: core)
+        #expect(try await service.ringingCalls().isEmpty)
+        await core.setInboundProbe(.success(CoreInboundProbe(shape: "{calls=[{…}]}", found: 2, calls: [
+            CoreIncomingCall(conversationId: "c1", callerId: "5", ws2Url: "wss://sig.test/ws", callsUserId: 1),
+            CoreIncomingCall(conversationId: "", callerId: "6", ws2Url: "wss://sig.test/ws", callsUserId: 1),
+        ])))
+        #expect(try await service.ringingCalls().map(\.conversationId) == ["c1"])
+        await core.setInboundProbe(.failure(CoreFailure(kind: "SERVER", key: "proto.payload")))
+        await #expect(throws: MaxlyError.self) { try await service.ringingCalls() }
+    }
+
     @Test("Звонки из ядра: адрес ws2, свой номер, ICE и срок входящего")
     func callService() throws {
         let incoming = try #require(CoreCallService.incoming(CoreIncomingCall(

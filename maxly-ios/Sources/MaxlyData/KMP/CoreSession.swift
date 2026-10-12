@@ -739,6 +739,9 @@ public protocol MaxCore: Sendable {
     func deleteCallHistory(ids: [String]) async throws
     /// Входящие звонки (`NOTIF_CALL_START` 137) с разобранным `vcp`.
     func incomingCalls() -> AsyncStream<CoreIncomingCall>
+    /// **Эксперимент:** какие звонки сейчас звонят этому аккаунту (`GET_INBOUND_CALLS` 103, пустое
+    /// тело; ни в одном референсе ответа нет). Для приложения, проспавшего пуш 137 (docs/background.md).
+    func probeInboundCalls() async throws -> CoreInboundProbe
     func enablePassword(password: String, hint: String) async throws
     func changePassword(oldPassword: String, newPassword: String) async throws
     func disablePassword(password: String) async throws
@@ -1000,6 +1003,7 @@ public extension MaxCore {
     func callLinkInfo(link: String) async throws -> CoreCallLinkInfo? { throw unsupported }
     func deleteCallHistory(ids: [String]) async throws { throw unsupported }
     func incomingCalls() -> AsyncStream<CoreIncomingCall> { AsyncStream { $0.finish() } }
+    func probeInboundCalls() async throws -> CoreInboundProbe { throw unsupported }
     func enablePassword(password: String, hint: String) async throws { throw unsupported }
     func changePassword(oldPassword: String, newPassword: String) async throws { throw unsupported }
     func disablePassword(password: String) async throws { throw unsupported }
@@ -1139,6 +1143,20 @@ public struct CoreCallLinkInfo: Sendable, Equatable {
 }
 
 /// Входящий звонок из пуша: кто звонит, адрес ws2 и серверы ICE из `vcp`.
+/// Ответ экспериментального `probeInboundCalls`: форма ответа без пользовательских данных (для
+/// журнала), сколько в нём нашлось звонков и те, на которые можно ответить.
+public struct CoreInboundProbe: Sendable, Equatable {
+    public var shape: String
+    public var found: Int
+    public var calls: [CoreIncomingCall]
+
+    public init(shape: String, found: Int, calls: [CoreIncomingCall]) {
+        self.shape = shape
+        self.found = found
+        self.calls = calls
+    }
+}
+
 public struct CoreIncomingCall: Sendable, Equatable {
     public var conversationId: String
     public var callerId: String

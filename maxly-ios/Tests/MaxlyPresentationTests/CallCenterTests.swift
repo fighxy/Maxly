@@ -100,6 +100,9 @@ final class FakeCallService: CallService, @unchecked Sendable {
     }
     var startGate: Gate?
     var linkPreview: CallLinkPreview?
+    /// Ответ опроса звонящих (103).
+    var ringing: [IncomingCall] = []
+    var ringingError: MaxlyError?
 
     init() {
         (stream, continuation) = AsyncStream.makeStream(of: IncomingCall.self)
@@ -139,6 +142,11 @@ final class FakeCallService: CallService, @unchecked Sendable {
     func preview(link: String) async throws(MaxlyError) -> CallLinkPreview? { linkPreview }
 
     func incomingCalls() -> AsyncStream<IncomingCall> { stream }
+
+    func ringingCalls() async throws(MaxlyError) -> [IncomingCall] {
+        if let ringingError { throw ringingError }
+        return ringing
+    }
 
     func reject(conversationId: String, peerId: String) async throws(MaxlyError) {
         lock.withLock { _rejected.append(conversationId) }
@@ -333,6 +341,35 @@ struct CallCenterTests {
         try await Task.sleep(for: .milliseconds(30))
         #expect(idle.call == nil)
         #expect(idleEngine.calls.isEmpty)
+    }
+
+    @Test("Опрос звонящих: идущий звонок показывается через систему")
+    func ringingProbeShowsCall() async throws {
+        let (center, service, engine, system) = makeCenter()
+        service.ringing = [incoming("web-1")]
+        #expect(await center.checkRinging() == .shown)
+        #expect(center.call?.conversationId == "web-1")
+        #expect(center.call?.isRinging == true)
+        #expect(system?.incoming.count == 1)
+        #expect(await eventually { engine.last?.started == 1 })
+        // Звонок уже на экране: второй опрос его не дублирует.
+        #expect(await center.checkRinging() == .nobody)
+        #expect(engine.calls.count == 1)
+    }
+
+    @Test("Опрос звонящих: пришедший пушем звонок второй раз не показывается; ошибка сервера")
+    func ringingProbeSkipsSeen() async throws {
+        let (center, service, engine, _) = makeCenter()
+        service.ring(incoming("old", expiresAt: Date(timeIntervalSinceNow: -5)))
+        try await Task.sleep(for: .milliseconds(30))
+        service.ringing = [incoming("old")]
+        #expect(await center.checkRinging() == .nobody)
+        #expect(center.call == nil)
+        #expect(engine.calls.isEmpty)
+
+        service.ringingError = .server(code: "proto.payload", text: nil)
+        #expect(await center.checkRinging() == .failed(.server(code: "proto.payload", text: nil)))
+        #expect(center.call == nil)
     }
 
     @Test("Отклонить входящий; без системы ответ идёт прямо")

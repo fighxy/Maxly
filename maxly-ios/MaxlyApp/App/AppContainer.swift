@@ -102,6 +102,13 @@ final class AppContainer {
     @ObservationIgnored private var phaseTask: Task<Void, Never>?
     @ObservationIgnored private var noticeTask: Task<Void, Never>?
     @ObservationIgnored private var connectionTask: Task<Void, Never>?
+    /// Последнее состояние соединения и когда оно в последний раз оборвалось.
+    @ObservationIgnored private var connectionState: ConnectionState?
+    @ObservationIgnored private var lastDrop: ContinuousClock.Instant?
+    /// Опрос звонящих после возврата из фона (103, эксперимент; docs/background.md).
+    @ObservationIgnored private var ringingProbe = RingingProbePolicy(disabled: UserDefaults.standard.bool(forKey: AppContainer.ringingProbeOffKey))
+    @ObservationIgnored private var ringingProbeTask: Task<Void, Never>?
+    nonisolated static let ringingProbeOffKey = "inboundCallsProbeDisabled"
     /// Журнал для отладки. `nil`, если каталог журнала не удалось открыть.
     let logs: FileLogStore?
     /// Архив отчётов о сбоях для «О приложении». `nil` без каталога журнала.
@@ -353,6 +360,7 @@ final class AppContainer {
                         }
                         self.callCenter?.activate()
                         self.backgroundKeepAlive.setSignedIn(true)
+                        self.scheduleRingingProbe()
                         // Разрешение на уведомления спрашивается на экране: в фоне диалог не покажется.
                         if self.backgroundKeepAlive.isEnabled {
                             Task { await self.messageNotifier.requestPermissionIfNeeded() }
@@ -374,7 +382,10 @@ final class AppContainer {
                 var previous: ConnectionState?
                 for await state in session.connectionStates() {
                     defer { previous = state }
+                    self.connectionState = state
+                    if previous == .online, state != .online { self.lastDrop = ContinuousClock.now }
                     guard state == .online else { continue }
+                    if previous != .online { self.scheduleRingingProbe() }
                     // Связь вернулась после обрыва (чаще всего приложение проснулось, а iOS успела
                     // закрыть сокет): журнал звонков и лента историй, запрошенные в этот момент, не
                     // загрузились. Первое подключение их грузит само.
@@ -823,6 +834,51 @@ final class AppContainer {
         messageNotifier.setAppActive(active)
         ghostScreenModel?.setAppForeground(active)
         sendInteractive()
+        if active {
+            scheduleRingingProbe()
+        } else {
+            ringingProbe.wentToBackground()
+        }
+    }
+
+    /// Спросить сервер, кто звонит, если положено (`RingingProbePolicy`). Небольшая пауза даёт
+    /// ядру закончить вход после подключения и отсеивает мёртвый сокет после сна: он успевает
+    /// оборваться до запроса.
+    private func scheduleRingingProbe() {
+        guard ringingProbeTask == nil, isRingingProbeDue else { return }
+        ringingProbeTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(1500))
+            await self?.runRingingProbe()
+            self?.ringingProbeTask = nil
+        }
+    }
+
+    private var isRingingProbeDue: Bool {
+        guard case .signedIn = phase, callCenter != nil else { return false }
+        return ringingProbe.shouldProbe(foreground: isAppForeground, online: connectionState == .online, signedIn: true)
+    }
+
+    private func runRingingProbe() async {
+        guard isRingingProbeDue, let center = callCenter else { return }
+        ringingProbe.started()
+        let started = ContinuousClock.now
+        let result = await center.checkRinging()
+        // Обрыв сразу после ответа тоже считается ответом на 103.
+        let elapsed = ContinuousClock.now - started
+        if elapsed < RingingProbePolicy.dropWindow {
+            try? await Task.sleep(for: RingingProbePolicy.dropWindow - elapsed)
+        }
+        let dropped = lastDrop.map { $0 > started } ?? false
+        switch ringingProbe.finished(result, droppedSoon: dropped) {
+        case .done:
+            Log.info(.calls, "Опрос входящих: \(result == .shown ? "звонок показан" : "никто не звонит")")
+        case .retry:
+            Log.info(.calls, "Опрос входящих не ушёл — повтор при следующем подключении")
+        case .disable(let reason):
+            UserDefaults.standard.set(true, forKey: Self.ringingProbeOffKey)
+            Log.warning(.calls, "Опрос входящих выключен навсегда: \(reason)")
+            DiagnosticEvent.event("calls.inbound_probe", ["result": "disabled", "reason": reason], snapshot: true)
+        }
     }
 
     /// Звонок появился или закончился: ядро узнаёт, на экране ли приложение для сервера.
