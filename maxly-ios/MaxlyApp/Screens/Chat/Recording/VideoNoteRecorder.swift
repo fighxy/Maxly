@@ -94,6 +94,21 @@ final class VideoNoteRecorder {
         ticker = nil
         isRecording = false
         capture.cancel()
+        usesFrontCamera = true
+    }
+
+    /// Пишет фронтальная камера (по умолчанию) или основная.
+    private(set) var usesFrontCamera = true
+    @ObservationIgnored private var switching = false
+
+    /// Сменить камеру, не прерывая запись: ролик идёт дальше с другой камеры.
+    func switchCamera() async {
+        guard isRecording, !switching else { return }
+        switching = true
+        defer { switching = false }
+        let front = await capture.switchCamera()
+        usesFrontCamera = front
+        Log.info(.media, "Кружок: камера \(front ? "фронтальная" : "основная")")
     }
 }
 
@@ -164,8 +179,54 @@ final class CaptureController: NSObject, AVCaptureFileOutputRecordingDelegate, @
         }
     }
 
+    /// Сменить камеру на другую сторону посреди записи (`AVCaptureMovieFileOutput` пишет
+    /// дальше в тот же файл). Возвращает, фронтальная ли камера стала. Не вышло — прежняя.
+    func switchCamera() async -> Bool {
+        await withCheckedContinuation { continuation in
+            queue.async { [self] in
+                let current = session.inputs.compactMap { $0 as? AVCaptureDeviceInput }.first { $0.device.hasMediaType(.video) }
+                let wasFront = current?.device.position != .back
+                let target: AVCaptureDevice.Position = wasFront ? .back : .front
+                guard let current,
+                      let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: target),
+                      let input = try? AVCaptureDeviceInput(device: device) else {
+                    continuation.resume(returning: wasFront)
+                    return
+                }
+                session.beginConfiguration()
+                session.removeInput(current)
+                let front: Bool
+                if session.canAddInput(input) {
+                    session.addInput(input)
+                    preferSixtyFrames(device)
+                    front = target == .front
+                } else {
+                    session.addInput(current)
+                    front = wasFront
+                }
+                orient(mirrored: front)
+                session.commitConfiguration()
+                continuation.resume(returning: front)
+            }
+        }
+    }
+
+    /// Поворот кадра и зеркало: фронтальная камера — как в зеркале, основная — как есть.
+    private func orient(mirrored: Bool) {
+        guard let connection = output.connection(with: .video) else { return }
+        if connection.isVideoRotationAngleSupported(90) { connection.videoRotationAngle = 90 }
+        if connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = mirrored
+        }
+    }
+
     private func configure() throws {
-        guard !configured else { return }
+        guard !configured else {
+            // Прошлый кружок мог закончиться на основной камере: новый снова с фронтальной.
+            resetToFront()
+            return
+        }
         session.beginConfiguration()
         defer { session.commitConfiguration() }
         if session.canSetSessionPreset(.vga640x480) {
@@ -186,15 +247,26 @@ final class CaptureController: NSObject, AVCaptureFileOutputRecordingDelegate, @
         guard session.canAddOutput(output) else { throw Failure.noCamera }
         session.addOutput(output)
         output.maxRecordedDuration = CMTime(seconds: VideoNoteRecorder.maximumDuration, preferredTimescale: 600)
-        if let connection = output.connection(with: .video) {
-            if connection.isVideoRotationAngleSupported(90) { connection.videoRotationAngle = 90 }
-            if connection.isVideoMirroringSupported {
-                // Как в зеркале: так видит себя пишущий и так кружок привычно выглядит в мессенджерах.
-                connection.automaticallyAdjustsVideoMirroring = false
-                connection.isVideoMirrored = true
-            }
-        }
+        // Как в зеркале: так видит себя пишущий и так кружок привычно выглядит в мессенджерах.
+        orient(mirrored: true)
         configured = true
+    }
+
+    private func resetToFront() {
+        let current = session.inputs.compactMap { $0 as? AVCaptureDeviceInput }.first { $0.device.hasMediaType(.video) }
+        guard let current, current.device.position == .back,
+              let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front),
+              let input = try? AVCaptureDeviceInput(device: device) else { return }
+        session.beginConfiguration()
+        session.removeInput(current)
+        if session.canAddInput(input) {
+            session.addInput(input)
+            preferSixtyFrames(device)
+        } else {
+            session.addInput(current)
+        }
+        orient(mirrored: true)
+        session.commitConfiguration()
     }
 
     /// 60 кадров в секунду, если камера умеет: самый маленький формат не меньше 480 по короткой

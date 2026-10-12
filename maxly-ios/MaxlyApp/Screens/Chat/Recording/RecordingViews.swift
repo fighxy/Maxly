@@ -192,28 +192,53 @@ struct VideoNoteOverlay: View {
 
     var body: some View {
         ZStack {
+            // Затемнение, круг и кольцо касания не ловят: палец держит кнопку записи под ними.
             Color.black.opacity(0.55)
                 .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
             VStack(spacing: 16) {
-                ZStack {
-                    NoteCameraPreview(session: session.video.session)
-                        .frame(width: diameter, height: diameter)
-                        .clipShape(Circle())
-                    Circle()
-                        .trim(from: 0, to: min(1, session.elapsed / VideoNoteRecorder.maximumDuration))
-                        .stroke(Color.maxlyAccent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                        .frame(width: diameter + 12, height: diameter + 12)
-                        .animation(.linear(duration: 0.1), value: session.elapsed)
+                ZStack(alignment: .bottomTrailing) {
+                    ZStack {
+                        NoteCameraPreview(session: session.video.session)
+                            .frame(width: diameter, height: diameter)
+                            .clipShape(Circle())
+                        Circle()
+                            .trim(from: 0, to: min(1, session.elapsed / VideoNoteRecorder.maximumDuration))
+                            .stroke(Color.maxlyAccent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                            .frame(width: diameter + 12, height: diameter + 12)
+                            .animation(.linear(duration: 0.1), value: session.elapsed)
+                    }
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    flipButton
+                        .offset(x: 18, y: 18)
                 }
                 Text(RecordingBar.clock(session.elapsed))
                     .font(.headline.monospacedDigit())
                     .foregroundStyle(.white)
+                    .allowsHitTesting(false)
             }
             .offset(y: -40)
         }
-        .allowsHitTesting(false)
         .transition(.opacity)
-        .accessibilityHidden(true)
+    }
+
+    /// Сменить камеру: справа внизу от круга. Нажимается вторым пальцем, пока первый держит
+    /// кнопку записи, или после закрепления записи.
+    private var flipButton: some View {
+        Button {
+            Task { await session.video.switchCamera() }
+        } label: {
+            Image(systemName: "arrow.triangle.2.circlepath.camera")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 48, height: 48)
+                .background(.ultraThinMaterial, in: Circle())
+                .environment(\.colorScheme, .dark)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(session.video.usesFrontCamera ? "Переключить на основную камеру" : "Переключить на фронтальную камеру")
     }
 }
