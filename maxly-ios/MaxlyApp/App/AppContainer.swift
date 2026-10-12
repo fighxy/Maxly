@@ -47,6 +47,7 @@ final class AppContainer {
     @ObservationIgnored private let scheduledHub = ScheduledHub()
     private let recentSearches = RecentSearchesStore()
     @ObservationIgnored private var authModel: AuthViewModel?
+    @ObservationIgnored private let appIconBadge = AppIconBadge()
     @ObservationIgnored private var listModel: ChatListViewModel?
     /// Карточки профилей на диске: шапка чата и профиль видны сразу.
     @ObservationIgnored private let profileCache = ChatProfileCache.standard()
@@ -360,10 +361,12 @@ final class AppContainer {
                         }
                         self.callCenter?.activate()
                         self.backgroundKeepAlive.setSignedIn(true)
+                        self.startAppIconBadge()
                         self.scheduleRingingProbe()
                         // Разрешение на уведомления спрашивается на экране: в фоне диалог не покажется.
-                        if self.backgroundKeepAlive.isEnabled {
-                            Task { await self.messageNotifier.requestPermissionIfNeeded() }
+                        Task {
+                            await self.messageNotifier.requestPermissionIfNeeded()
+                            self.appIconBadge.refresh()
                         }
                         // Ядро забывает книгу при выходе: после входа — снова.
                         await self.addressBook?.refresh()
@@ -421,6 +424,14 @@ final class AppContainer {
     func storyArchiveModel() -> StoryArchiveModel? {
         guard let storiesRepository else { return nil }
         return StoryArchiveModel(repository: storiesRepository)
+    }
+
+    private func startAppIconBadge() {
+        guard let list = chatListViewModel() else { return }
+        let calls = callsViewModel()
+        list.activate()
+        calls.activate()
+        appIconBadge.start { list.tabBadge + calls.unseenMissedCount }
     }
 
     func chatListViewModel() -> ChatListViewModel? {
@@ -832,6 +843,7 @@ final class AppContainer {
         isAppForeground = active
         backgroundKeepAlive.setBackground(!active)
         messageNotifier.setAppActive(active)
+        appIconBadge.refresh()
         ghostScreenModel?.setAppForeground(active)
         sendInteractive()
         if active {
@@ -968,6 +980,7 @@ final class AppContainer {
         voicePlayer.stop()
         chatModels.values.forEach { $0.deactivate() }
         chatModels.removeAll()
+        appIconBadge.stop()
         listModel?.deactivate()
         listModel = nil
         contactsModel?.deactivate()
