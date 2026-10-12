@@ -8,7 +8,7 @@ struct PhotoEditor: View {
     let onSave: (AttachmentDraft, PhotoEditHistory) -> Void
     let onClose: () -> Void
 
-    private enum Tool: String, CaseIterable { case crop = "Кадр", rotate = "Поворот", draw = "Рисунок", text = "Текст", filter = "Фильтры" }
+    enum Tool: String, CaseIterable { case crop = "Кадр", rotate = "Поворот", draw = "Рисунок", text = "Текст", filter = "Фильтры" }
     private let colors: [UInt32] = [0xffffff, 0x111111, 0xef5350, 0xffca28, 0x66bb6a, 0x42a5f5]
     @State private var renderer: PhotoRenderer?
     @State private var preview: UIImage?
@@ -44,9 +44,10 @@ struct PhotoEditor: View {
     @State private var textAlignment = PhotoAlignment.left
     @State private var originalShown = false
 
-    init(draft: AttachmentDraft, initialHistory: PhotoEditHistory = PhotoEditHistory(), onSave: @escaping (AttachmentDraft, PhotoEditHistory)->Void, onClose: @escaping ()->Void) {
+    init(draft: AttachmentDraft, initialHistory: PhotoEditHistory = PhotoEditHistory(), initialTool: Tool = .crop, onSave: @escaping (AttachmentDraft, PhotoEditHistory)->Void, onClose: @escaping ()->Void) {
         self.initialHistory = initialHistory; self.draft = draft; self.onSave = onSave; self.onClose = onClose
         _history = State(initialValue: initialHistory)
+        _tool = State(initialValue: initialTool)
     }
 
     private var stagedText: PhotoText? {

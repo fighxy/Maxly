@@ -57,6 +57,8 @@ struct ChatView: View {
     @State private var profileShown = false
     @State private var forwardList: [ChatListItem] = []
     @State private var attachmentsShown = false
+    /// Снимки с кнопки камеры в поле ввода (`CameraCaptureFlow`).
+    @State private var cameraFlowShown = false
     @State private var panelShown = false
     /// Высота последней клавиатуры без нижнего отступа: панель встаёт на её место.
     @State private var keyboardHeight: CGFloat = 300
@@ -416,6 +418,16 @@ struct ChatView: View {
                 openURL(url)
             }
             .sheet(isPresented: $attachmentsShown) { attachmentSheet }
+            .fullScreenCover(isPresented: $cameraFlowShown) {
+                CameraCaptureFlow(
+                    onSend: { drafts, caption in
+                        cameraFlowShown = false
+                        Task { await viewModel.sendAttachments(drafts, caption: caption) }
+                    },
+                    onClose: { cameraFlowShown = false }
+                )
+                .environment(\.privateMode, .visible)
+            }
             .sheet(item: $viewModel.reactionUsers) { model in
                 // Открывается из открытого пузыря — значит, смотреть его хотят.
                 ReactionUsersView(model: model) { viewModel.reactionUsers = nil }
@@ -604,6 +616,12 @@ struct ChatView: View {
                 }
                 recording.onRecorded = { [viewModel] draft in
                     Task { await viewModel.sendAttachments([draft], caption: "") }
+                }
+                // Короткое нажатие камеры — снимок. Без камеры (симулятор) — лист вложений.
+                recording.onCameraTap = {
+                    composerFocused = false
+                    panelShown = false
+                    if ChatCameraPicker.isAvailable { cameraFlowShown = true } else { attachmentsShown = true }
                 }
             }
             .onDisappear {

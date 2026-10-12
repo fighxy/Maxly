@@ -3,8 +3,9 @@ import MaxlyDomain
 import MaxlyPresentation
 import MaxlyUI
 
-/// Поле ввода чата: ошибка и подсказки над ним, правка и ответ, поле со скрепкой,
-/// запись голосового и кружка, отправка. Вынесено из `ChatView`: поле перерисовывается
+/// Поле ввода чата, как в WhatsApp: ошибка и подсказки над ним, правка и ответ, «+» слева,
+/// поле со смайликом, справа камера (нажатие — снимок, удержание — кружок) и микрофон
+/// (удержание — голосовое), с текстом — отправка. Вынесено из `ChatView`: поле перерисовывается
 /// при наборе текста, а лента в это время не трогается.
 struct ChatComposer: View {
     @Bindable var viewModel: ChatViewModel
@@ -144,8 +145,8 @@ struct ChatComposer: View {
                             focus.wrappedValue = false
                             attachmentsShown = true
                         } label: {
-                            Image(systemName: "paperclip")
-                                .font(.system(size: 18, weight: .medium))
+                            Image(systemName: "plus")
+                                .font(.system(size: 20, weight: .medium))
                                 .foregroundStyle(.primary)
                                 .frame(width: 44, height: 44)
                                 .contentShape(Circle())
@@ -174,15 +175,17 @@ struct ChatComposer: View {
                         .maxlyGlassRounded(radius: 22)
                         .maxlyGlassID("field", in: composerGlass)
                     }
-                    ZStack {
+                    ZStack(alignment: .trailing) {
                         if showsRecordButton {
-                            RecordButton(session: recording)
+                            recordButtons
                                 .transition(.opacity)
                         } else {
-                            sendButton.transition(.opacity)
+                            sendButton
+                                .frame(width: 44, height: 44)
+                                .transition(.opacity)
                         }
                     }
-                    .frame(width: 44, height: 44)
+                    .frame(height: 44)
                     .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: showsRecordButton)
                 }
             }
@@ -231,7 +234,27 @@ struct ChatComposer: View {
         .accessibilityLabel(panelShown ? "Клавиатура" : "Эмодзи и стикеры")
     }
 
-    /// Кнопка записи видна, пока поле пустое (и не идёт правка) или пока идёт запись.
+    /// Камера и микрофон. Во время записи другая кнопка прячется, но остаётся на месте: жест
+    /// записи держит вид своей кнопки. Камера при голосовом сворачивается — полоса записи
+    /// получает её место, микрофон остаётся под пальцем.
+    private var recordButtons: some View {
+        let voiceActive = recording.isActive && recording.recordingMode == .voice
+        let videoActive = recording.isActive && recording.recordingMode == .video
+        return HStack(spacing: 8) {
+            RecordButton(session: recording, mode: .video)
+                .opacity(voiceActive ? 0 : 1)
+                .frame(width: voiceActive ? 0 : 44)
+                .allowsHitTesting(!voiceActive)
+                .accessibilityHidden(voiceActive)
+            RecordButton(session: recording, mode: .voice)
+                .opacity(videoActive ? 0 : 1)
+                .allowsHitTesting(!videoActive)
+                .accessibilityHidden(videoActive)
+        }
+        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: voiceActive)
+    }
+
+    /// Кнопки записи видны, пока поле пустое (и не идёт правка) или пока идёт запись.
     private var showsRecordButton: Bool {
         recording.phase != .idle
             || (viewModel.editTarget == nil && viewModel.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

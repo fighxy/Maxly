@@ -1,44 +1,56 @@
 import SwiftUI
 import MaxlyUI
 
-/// Кнопка записи справа от поля ввода: микрофон или камера.
+/// Кнопка записи справа от поля ввода: микрофон (голосовое) или камера (кружок, а короткое
+/// нажатие — снимок).
 ///
 /// Жест висит на этой кнопке всё время записи (SwiftUI обрывает жест, если его вид
 /// пропадает), поэтому во время записи меняется только её вид: крупный круг под пальцем
 /// с пульсом громкости, над ним — подсказка «вверх — закрепить».
 struct RecordButton: View {
     let session: RecordingSession
+    let mode: RecordingSession.Mode
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Палец на кнопке. Сброс без `onEnded` — жест оборвала система.
     @GestureState private var touching = false
 
+    /// Нажатие или запись идут на этой кнопке.
+    private var mine: Bool { session.phase != .idle && session.recordingMode == mode }
+
     var body: some View {
         ZStack {
-            if session.phase == .locked || session.phase == .finishing {
+            if mine, session.phase == .locked || session.phase == .finishing {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Color.maxlyOnAccent)
                     .frame(width: 44, height: 44)
                     .background(Color.maxlyAccent, in: Circle())
+            } else if mode == .voice {
+                // Микрофон — главная кнопка пустого поля, как в WhatsApp: залитый круг.
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(Color.maxlyOnAccent)
+                    .frame(width: 44, height: 44)
+                    .background(Color.maxlyAccent, in: Circle())
+                    .opacity(mine && session.phase == .recording ? 0 : 1)
             } else {
-                Image(systemName: session.mode == .voice ? "mic" : "video")
-                    .font(.system(size: 19, weight: .medium))
+                Image(systemName: "camera")
+                    .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(.primary)
                     .frame(width: 44, height: 44)
-                    .contentTransition(.symbolEffect(.replace))
                     .maxlyGlassCircle(size: 44)
-                    .opacity(session.phase == .recording ? 0 : 1)
+                    .opacity(mine && session.phase == .recording ? 0 : 1)
             }
         }
         .frame(width: 44, height: 44)
         .overlay {
-            if session.phase == .recording {
+            if mine, session.phase == .recording {
                 recordingKnob
                     .allowsHitTesting(false)
             }
         }
         .overlay(alignment: .bottom) {
-            if session.phase == .recording {
+            if mine, session.phase == .recording {
                 lockHint
                     .offset(y: -86 + max(session.dragY, -RecordingSession.lockDistance) * 0.4)
                     .allowsHitTesting(false)
@@ -49,18 +61,19 @@ struct RecordButton: View {
         .gesture(
             DragGesture(minimumDistance: 0, coordinateSpace: .global)
                 .updating($touching) { _, state, _ in state = true }
-                .onChanged { session.pressChanged($0.translation) }
-                .onEnded { _ in session.pressEnded() }
+                .onChanged { session.pressChanged($0.translation, mode: mode) }
+                .onEnded { _ in session.pressEnded(mode: mode) }
         )
         .onChange(of: touching) { _, live in
             // Обычное отпускание уже отработало в `onEnded`; здесь остаётся только обрыв жеста.
-            guard !live else { return }
+            guard !live, session.recordingMode == mode else { return }
             Task { @MainActor in session.pressCancelled() }
         }
         .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: session.phase)
-        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: session.mode)
         .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint(session.phase == .idle ? "Удерживайте для записи, нажмите для смены режима" : "")
+        .accessibilityHint(session.phase != .idle ? "" : mode == .voice
+            ? "Удерживайте, чтобы записать голосовое"
+            : "Нажмите — снимок, удерживайте — видеосообщение")
     }
 
     /// Круг под пальцем: идёт за ним влево и вверх, пульсирует от громкости.
@@ -74,7 +87,7 @@ struct RecordButton: View {
             Circle()
                 .fill(Color.maxlyAccent)
                 .frame(width: 84, height: 84)
-            Image(systemName: session.mode == .voice ? "mic.fill" : "video.fill")
+            Image(systemName: mode == .voice ? "mic.fill" : "video.fill")
                 .font(.system(size: 28, weight: .semibold))
                 .foregroundStyle(Color.maxlyOnAccent)
         }
@@ -94,10 +107,8 @@ struct RecordButton: View {
     }
 
     private var accessibilityLabel: String {
-        switch session.phase {
-        case .locked, .finishing: "Отправить запись"
-        default: session.mode == .voice ? "Голосовое сообщение" : "Видеосообщение"
-        }
+        if mine, session.phase == .locked || session.phase == .finishing { return "Отправить запись" }
+        return mode == .voice ? "Голосовое сообщение" : "Камера"
     }
 }
 

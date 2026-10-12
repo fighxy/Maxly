@@ -4,12 +4,11 @@ import Observation
 import MaxlyDomain
 import UIKit
 
-/// Запись голосового или кружка из поля ввода.
+/// Запись голосового или кружка из поля ввода, как в WhatsApp: у каждой записи своя кнопка.
 ///
-/// Кнопка справа (когда поле пустое) — микрофон или камера. Удержание — запись, отпустить —
-/// отправить. Увести палец влево — отмена, вверх — закрепить запись, тогда её отправляет
-/// нажатие той же кнопки, а корзина слева отменяет. Короткое нажатие переключает микрофон
-/// и камеру. Выбор режима запоминается.
+/// Микрофон: удержание — голосовое. Камера: удержание — кружок, короткое нажатие — снимок
+/// (`onCameraTap`). Отпустить — отправить. Увести палец влево — отмена, вверх — закрепить
+/// запись, тогда её отправляет нажатие той же кнопки, а корзина слева отменяет.
 @MainActor
 @Observable
 final class RecordingSession {
@@ -30,8 +29,9 @@ final class RecordingSession {
         case finishing
     }
 
-    private(set) var mode: Mode
     private(set) var phase: Phase = .idle
+    /// Режим текущего нажатия или записи: другая кнопка на это время прячется.
+    private(set) var recordingMode: Mode = .voice
     /// Сдвиг пальца влево (≤ 0) — насколько близко отмена.
     private(set) var dragX: CGFloat = 0
     /// Сдвиг пальца вверх (≤ 0) — насколько близко закрепление.
@@ -49,15 +49,14 @@ final class RecordingSession {
     /// Полоса записи появилась (режим) или запись кончилась (`nil`): собеседник видит
     /// «записывает аудио» или «записывает видеосообщение».
     @ObservationIgnored var onRecordingChange: ((Mode?) -> Void)?
+    /// Короткое нажатие камеры: снимок.
+    @ObservationIgnored var onCameraTap: (() -> Void)?
 
     static let cancelDistance: CGFloat = 120
     static let lockDistance: CGFloat = 90
-    private static let modeKey = "chat.recordMode"
 
     @ObservationIgnored private var pressTask: Task<Void, Never>?
     @ObservationIgnored private var hintTask: Task<Void, Never>?
-    /// Режим, в котором идёт текущая запись.
-    @ObservationIgnored private var recordingMode: Mode = .voice
     /// Микрофон или камера включены под пальцем, полосы записи ещё нет.
     @ObservationIgnored private var warming = false
     /// Идёт системный запрос доступа: отпущенный палец режим не меняет.
@@ -69,7 +68,6 @@ final class RecordingSession {
     @ObservationIgnored private var lockedInPress = false
 
     init() {
-        mode = Mode(rawValue: UserDefaults.standard.string(forKey: Self.modeKey) ?? "") ?? .voice
         voice.onLimit = { [weak self] in self?.send() }
         video.onLimit = { [weak self] in self?.send() }
     }
@@ -89,15 +87,19 @@ final class RecordingSession {
 
     // MARK: Жест кнопки
 
-    /// Нажатие короче этого — смена режима, дольше — запись. Микрофон или
-    /// камера включаются сразу под пальцем, так что к этому моменту запись уже идёт.
+    /// Голосовое: нажатие короче этого — подсказка, дольше — запись. Микрофон включается
+    /// сразу под пальцем, так что к этому моменту запись уже идёт.
     static let holdDelay: Duration = .milliseconds(150)
+    /// Камера: короче — снимок, дольше — кружок. Камера для кружка включается только после
+    /// этого, чтобы касание ради снимка её не занимало.
+    static let videoHoldDelay: Duration = .milliseconds(280)
 
-    func pressChanged(_ translation: CGSize) {
+    func pressChanged(_ translation: CGSize, mode: Mode) {
         switch phase {
         case .idle:
-            press()
+            press(mode)
         case .recording:
+            guard mode == recordingMode else { return }
             dragX = min(0, translation.width)
             dragY = min(0, translation.height)
             if dragX < -Self.cancelDistance {
@@ -114,20 +116,19 @@ final class RecordingSession {
         }
     }
 
-    func pressEnded() {
+    func pressEnded(mode: Mode) {
+        guard phase == .idle || mode == recordingMode else { return }
         switch phase {
         case .pressing:
             pressTask?.cancel()
             pressTask = nil
             phase = .idle
             if warming {
-                // Короткое касание: включённый под пальцем микрофон или камера не нужны.
+                // Короткое касание: включённый под пальцем микрофон не нужен.
                 warming = false
                 discard(recordingMode)
-                toggleMode()
-            } else if !requestingAccess {
-                toggleMode()
             }
+            if !requestingAccess { tapped(mode) }
         case .recording:
             send()
         case .locked:
@@ -168,15 +169,28 @@ final class RecordingSession {
         dragY = 0
     }
 
-    /// Палец лёг на кнопку: запись включается сразу, полоса записи — через `holdDelay`.
-    private func press() {
-        let current = mode
+    /// Палец лёг на кнопку. Микрофон включается сразу, полоса записи — через `holdDelay`;
+    /// камера для кружка — только через `videoHoldDelay`, раньше отпущенный палец — снимок.
+    private func press(_ current: Mode) {
         attempt &+= 1
         lockedInPress = false
+        recordingMode = current
         phase = .pressing
+        if current == .video {
+            pressTask = Task { [weak self] in
+                try? await Task.sleep(for: Self.videoHoldDelay)
+                guard let self, !Task.isCancelled, self.phase == .pressing else { return }
+                self.beginHold(current)
+            }
+            return
+        }
+        beginHold(current)
+    }
+
+    /// Удержание дошло до записи: доступ, включение рекордера и полоса записи.
+    private func beginHold(_ current: Mode) {
         switch access(current) {
         case .granted:
-            recordingMode = current
             warming = true
             onStart?()
             let attempt = attempt
@@ -184,8 +198,10 @@ final class RecordingSession {
                 guard let self else { return }
                 await self.startRecorder(current, attempt: attempt)
             }
+            // Кружок уже выдержал свою паузу: полоса записи сразу.
+            let delay: Duration = current == .video ? .zero : Self.holdDelay
             pressTask = Task { [weak self] in
-                try? await Task.sleep(for: Self.holdDelay)
+                if delay > .zero { try? await Task.sleep(for: delay) }
                 guard let self, !Task.isCancelled, self.phase == .pressing, self.warming else { return }
                 self.warming = false
                 self.phase = .recording
@@ -204,9 +220,21 @@ final class RecordingSession {
                 self?.requestingAccess = false
             }
         case .denied:
+            phase = .idle
             show(current == .voice
                  ? "Нет доступа к микрофону. Разрешите его в Настройках"
                  : "Нет доступа к камере или микрофону. Разрешите их в Настройках")
+        }
+    }
+
+    /// Короткое касание: у микрофона — подсказка, у камеры — снимок.
+    private func tapped(_ mode: Mode) {
+        switch mode {
+        case .voice:
+            Self.haptic(.soft)
+            show("Удерживайте, чтобы записать голосовое")
+        case .video:
+            onCameraTap?()
         }
     }
 
@@ -296,15 +324,6 @@ final class RecordingSession {
             await previous?.value
             await operation()
         }
-    }
-
-    private func toggleMode() {
-        mode = mode == .voice ? .video : .voice
-        UserDefaults.standard.set(mode.rawValue, forKey: Self.modeKey)
-        Self.haptic(.soft)
-        show(mode == .voice
-             ? "Удерживайте, чтобы записать голосовое. Нажмите — для видеосообщения"
-             : "Удерживайте, чтобы записать видеосообщение. Нажмите — для голосового")
     }
 
     private func show(_ text: String) {
