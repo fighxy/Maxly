@@ -275,7 +275,10 @@ internal fun Composer(
                     Modifier.fillMaxWidth().then(if (screenFlash) Modifier.background(Color.White) else Modifier).padding(vertical = 12.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Box {
+                    val review = voice.state.review
+                    if (voice.state.phase == app.maxly.presentation.chat.RecordingController.Phase.REVIEWING && review != null) {
+                        app.maxly.ui.chat.NoteReviewCircle(review, Modifier.size(220.dp))
+                    } else Box {
                         videoPreview(Modifier.size(220.dp).clip(CircleShape))
                         if (onToggleFlash != null) {
                             Box(
@@ -360,7 +363,17 @@ internal fun Composer(
                 }
                 LaunchedEffect(editing?.id, reply?.id) { if ((editing != null || reply != null) && !showPanel) runCatching { focus.requestFocus() } }
                 if (voice.state.isActive) {
-                    app.maxly.ui.chat.RecordingBar(voice, Modifier.weight(1f))
+                    val review = voice.state.review
+                    if (voice.state.phase == app.maxly.presentation.chat.RecordingController.Phase.REVIEWING && review != null) {
+                        app.maxly.ui.chat.NoteTrimBar(
+                            review,
+                            onTrim = { from, to -> recording?.trim(from, to) },
+                            onDelete = { recording?.cancel() },
+                            modifier = Modifier.weight(1f),
+                        )
+                    } else {
+                        app.maxly.ui.chat.RecordingBar(voice, Modifier.weight(1f), onStop = { recording?.stopForReview() })
+                    }
                 } else Row(
                     Modifier
                         .weight(1f)

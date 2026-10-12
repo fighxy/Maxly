@@ -38,6 +38,15 @@ private class FakeRecorder : ComposerRecorder {
     override suspend fun cancel(mode: RecordingMode) {
         log += "cancel $mode"
     }
+
+    override suspend fun trim(recording: VideoNoteRecording, fromMs: Long, toMs: Long): VideoNoteRecording {
+        log += "trim $fromMs-$toMs"
+        return VideoNoteRecording("/t.mp4", toMs - fromMs, recording.side)
+    }
+
+    override suspend fun discard(recording: VideoNoteRecording) {
+        log += "discard ${recording.path}"
+    }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -182,5 +191,54 @@ class RecordingControllerTest {
         runCurrent()
         assertEquals(1, sent.size)
         assertEquals(RecordingController.Phase.IDLE, controller.state.value.phase)
+    }
+
+    @Test
+    fun lockedNoteGoesToReviewThenTrimmedPartIsSent() = runTest {
+        val (controller, sent) = controller()
+        controller.press(RecordingMode.VIDEO)
+        advanceTimeBy(300)
+        runCurrent()
+        controller.move(0f, -100f)
+        assertEquals(RecordingController.Phase.LOCKED, controller.state.value.phase)
+        controller.release()
+        controller.stopForReview()
+        runCurrent()
+        val review = controller.state.value.review
+        assertEquals(RecordingController.Phase.REVIEWING, controller.state.value.phase)
+        assertNotNull(review)
+        assertTrue(sent.isEmpty())
+        // Кусок не короче секунды: ручки не сходятся ближе.
+        controller.trim(0.5f, 0.5f)
+        val clamped = controller.state.value.review!!
+        assertEquals(1_000L, clamped.toMs - clamped.fromMs)
+        controller.trim(0.2f, 0.8f)
+        controller.release()
+        runCurrent()
+        assertEquals(listOf("start VIDEO", "stop VIDEO", "trim 600-2400", "discard /n.mp4"), recorder.log)
+        assertEquals(1_800L, (sent.single() as RecordedDraft.Note).recording.durationMs)
+        assertEquals(RecordingController.Phase.IDLE, controller.state.value.phase)
+    }
+
+    @Test
+    fun reviewTrashDiscardsAndWholeNoteIsSentAsIs() = runTest {
+        val (controller, sent) = controller()
+        controller.toggleByKey(RecordingMode.VIDEO)
+        runCurrent()
+        controller.stopForReview()
+        runCurrent()
+        controller.cancel()
+        runCurrent()
+        assertEquals("discard /n.mp4", recorder.log.last())
+        assertEquals(RecordingController.Phase.IDLE, controller.state.value.phase)
+        assertTrue(sent.isEmpty())
+
+        controller.toggleByKey(RecordingMode.VIDEO)
+        runCurrent()
+        controller.stopForReview()
+        runCurrent()
+        controller.send()
+        runCurrent()
+        assertEquals("/n.mp4", (sent.single() as RecordedDraft.Note).recording.path)
     }
 }

@@ -43,6 +43,12 @@ interface ComposerRecorder {
     /** Выбросить идущую запись. */
     suspend fun cancel(mode: RecordingMode)
 
+    /** Кусок записанного кружка от [fromMs] до [toMs]; `null` — не вышло. */
+    suspend fun trim(recording: VideoNoteRecording, fromMs: Long, toMs: Long): VideoNoteRecording? = recording
+
+    /** Выбросить записанный кружок с просмотра. */
+    suspend fun discard(recording: VideoNoteRecording) {}
+
     /** Запись упёрлась в предел длины: контроллер её отправляет. */
     var onLimit: (() -> Unit)?
 }
@@ -76,6 +82,21 @@ class RecordingController(
 
         /** Остановка и подготовка файла. */
         FINISHING,
+
+        /** Кружок остановлен кнопкой «стоп»: просмотр, обрезка, отправка или корзина ([State.review]). */
+        REVIEWING,
+    }
+
+    /**
+     * Записанный кружок на просмотре: выбранный кусок [start]..[end] — доли длительности.
+     * Короче [NOTE_MINIMUM_MS] кусок не бывает.
+     */
+    data class NoteReview(val recording: VideoNoteRecording, val start: Float = 0f, val end: Float = 1f) {
+        val minimumSpan: Float
+            get() = if (recording.durationMs <= 0) 1f else minOf(1f, NOTE_MINIMUM_MS.toFloat() / recording.durationMs)
+        val fromMs: Long get() = (start * recording.durationMs).toLong()
+        val toMs: Long get() = (end * recording.durationMs).toLong()
+        val isWhole: Boolean get() = start <= 0.001f && end >= 0.999f
     }
 
     data class State(
@@ -86,9 +107,12 @@ class RecordingController(
         val dragX: Float = 0f,
         val dragY: Float = 0f,
         val hint: String? = null,
+        /** Кружок на просмотре ([Phase.REVIEWING]). */
+        val review: NoteReview? = null,
     ) {
         /** Вместо поля ввода — полоса записи. */
-        val isActive: Boolean get() = phase == Phase.RECORDING || phase == Phase.LOCKED || phase == Phase.FINISHING
+        val isActive: Boolean
+            get() = phase == Phase.RECORDING || phase == Phase.LOCKED || phase == Phase.FINISHING || phase == Phase.REVIEWING
 
         val isVideo: Boolean get() = isActive && recording == RecordingMode.VIDEO
 
@@ -196,7 +220,7 @@ class RecordingController(
                 val number = attempt
                 enqueue { startRecorder(mode, number) }
             }
-            Phase.RECORDING, Phase.LOCKED -> send()
+            Phase.RECORDING, Phase.LOCKED, Phase.REVIEWING -> send()
             else -> Unit
         }
     }
@@ -233,6 +257,7 @@ class RecordingController(
             }
             Phase.RECORDING -> send()
             Phase.LOCKED -> if (lockedInPress) lockedInPress = false else send()
+            Phase.REVIEWING -> send()
             else -> Unit
         }
         _state.update { it.copy(dragX = 0f, dragY = 0f) }
@@ -257,9 +282,56 @@ class RecordingController(
         _state.update { it.copy(dragX = 0f, dragY = 0f) }
     }
 
+    /** Закреплённый кружок — на просмотр: запись останавливается, её можно обрезать, отправить или выбросить. */
+    fun stopForReview() {
+        val state = _state.value
+        if (state.phase != Phase.LOCKED || state.recording != RecordingMode.VIDEO) return
+        _state.update { it.copy(phase = Phase.FINISHING, dragX = 0f, dragY = 0f) }
+        val number = attempt
+        enqueue {
+            val note = (recorder.stop(RecordingMode.VIDEO) as? RecordedDraft.Note)?.recording
+            if (number != attempt || _state.value.phase != Phase.FINISHING) {
+                if (note != null) recorder.discard(note)
+                return@enqueue
+            }
+            if (note == null) {
+                _state.update { it.copy(phase = Phase.IDLE) }
+                show(tooShort(RecordingMode.VIDEO))
+            } else {
+                _state.update { it.copy(phase = Phase.REVIEWING, review = NoteReview(note)) }
+            }
+        }
+    }
+
+    /** Ручки обрезки на просмотре: кусок не короче секунды и в пределах ролика. */
+    fun trim(start: Float, end: Float) {
+        val review = _state.value.review ?: return
+        val span = review.minimumSpan
+        val from = start.coerceIn(0f, 1f - span)
+        val to = end.coerceIn(from + span, 1f)
+        _state.update { it.copy(review = review.copy(start = from, end = to)) }
+    }
+
+    /** Отправить кружок с просмотра: выбранный кусок. */
+    private fun sendReview() {
+        val review = _state.value.review ?: return
+        _state.update { it.copy(phase = Phase.FINISHING) }
+        val number = attempt
+        enqueue {
+            val note = if (review.isWhole) review.recording else recorder.trim(review.recording, review.fromMs, review.toMs)
+            if (!review.isWhole && note != null) recorder.discard(review.recording)
+            if (number == attempt && _state.value.phase == Phase.FINISHING) _state.update { it.copy(phase = Phase.IDLE, review = null) }
+            if (note != null) onRecorded(RecordedDraft.Note(note)) else show("Кружок не обрезался. Попробуйте ещё раз")
+        }
+    }
+
     /** Остановить и отправить. */
     fun send() {
         val phase = _state.value.phase
+        if (phase == Phase.REVIEWING) {
+            sendReview()
+            return
+        }
         if (phase != Phase.RECORDING && phase != Phase.LOCKED) return
         _state.update { it.copy(phase = Phase.FINISHING, dragX = 0f, dragY = 0f) }
         val mode = _state.value.recording
@@ -282,8 +354,9 @@ class RecordingController(
                 discard(state.recording)
             }
             state.phase == Phase.RECORDING || state.phase == Phase.LOCKED -> discard(state.recording)
+            state.phase == Phase.REVIEWING -> state.review?.let { review -> enqueue { recorder.discard(review.recording) } }
         }
-        if (state.phase != Phase.FINISHING) _state.update { it.copy(phase = Phase.IDLE) }
+        if (state.phase != Phase.FINISHING) _state.update { it.copy(phase = Phase.IDLE, review = null) }
         _state.update { it.copy(dragX = 0f, dragY = 0f) }
     }
 
@@ -336,5 +409,8 @@ class RecordingController(
 
         /** Кружок — не длиннее минуты. */
         const val VIDEO_NOTE_LIMIT_MS = 60_000L
+
+        /** Обрезанный кружок — не короче секунды. */
+        const val NOTE_MINIMUM_MS = 1_000L
     }
 }

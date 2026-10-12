@@ -57,4 +57,16 @@ class AndroidComposerRecorder(
         RecordingMode.VOICE -> voice.cancel()
         RecordingMode.VIDEO -> note.cancel()
     }
+
+    /** Кусок кружка с просмотра: копия дорожек без перекодирования рядом с исходником. */
+    override suspend fun trim(recording: app.maxly.domain.VideoNoteRecording, fromMs: Long, toMs: Long): app.maxly.domain.VideoNoteRecording? =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val source = java.io.File(recording.path)
+            val target = java.io.File(source.parentFile, "note-cut-${System.currentTimeMillis()}.mp4")
+            VideoNoteTrimmer.trim(source, fromMs, toMs, target)?.let { app.maxly.domain.VideoNoteRecording(target.absolutePath, it, recording.side) }
+        }
+
+    override suspend fun discard(recording: app.maxly.domain.VideoNoteRecording) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { java.io.File(recording.path).delete() }
+    }
 }

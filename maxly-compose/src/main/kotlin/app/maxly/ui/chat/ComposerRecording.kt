@@ -2,6 +2,7 @@ package app.maxly.ui.chat
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
@@ -17,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Delete
@@ -115,7 +117,8 @@ fun RecordButton(ui: RecordingUi, mode: RecordingMode = RecordingMode.VOICE) {
     val state = ui.state
     val mine = state.owns(mode)
     val recording = mine && state.phase == RecordingController.Phase.RECORDING
-    val locked = mine && (state.phase == RecordingController.Phase.LOCKED || state.phase == RecordingController.Phase.FINISHING)
+    val locked = mine && (state.phase == RecordingController.Phase.LOCKED || state.phase == RecordingController.Phase.FINISHING ||
+        state.phase == RecordingController.Phase.REVIEWING)
     val video = mode == RecordingMode.VIDEO
     val filled = recording || locked || !video
     val level by animateFloatAsState(ui.live?.level ?: 0f, label = "level")
@@ -176,9 +179,12 @@ fun RecordButton(ui: RecordingUi, mode: RecordingMode = RecordingMode.VOICE) {
     }
 }
 
-/** Полоса записи вместо поля ввода: точка, время, «Влево — отмена» или корзина у закреплённой. */
+/**
+ * Полоса записи вместо поля ввода: точка, время, «Влево — отмена» или корзина у закреплённой.
+ * [onStop] — у закреплённого кружка кнопка «стоп»: кружок на просмотр перед отправкой.
+ */
 @Composable
-fun RecordingBar(ui: RecordingUi, modifier: Modifier) {
+fun RecordingBar(ui: RecordingUi, modifier: Modifier, onStop: (() -> Unit)? = null) {
     val state = ui.state
     val live = ui.live ?: RecordingLive()
     val level by animateFloatAsState(live.level, label = "level")
@@ -210,6 +216,18 @@ fun RecordingBar(ui: RecordingUi, modifier: Modifier) {
                 Icon(Icons.Outlined.Delete, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
                 Spacer(Modifier.width(4.dp))
                 Text("Отмена", color = MaterialTheme.colorScheme.error)
+            }
+            if (onStop != null && state.isVideo) {
+                Box(
+                    Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.error)
+                        .clickCursor()
+                        .clickable(onClick = onStop)
+                        .semantics { contentDescription = "Остановить и посмотреть" },
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Filled.Stop, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onError) }
             }
         } else if (state.phase == RecordingController.Phase.RECORDING) {
             val progress = RecordingGesture.cancelProgress(state.dragX)
