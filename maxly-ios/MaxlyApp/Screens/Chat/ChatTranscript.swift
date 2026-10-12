@@ -39,6 +39,8 @@ struct ChatTranscript: View {
     /// Низ ленты виден (пока виден, новые сообщения прокручивают ленту сами), число новых
     /// на кнопке «вниз» и прыжок к последнему сообщению.
     @State private var bottom = TranscriptBottomState()
+    /// Видимость кнопки «вниз» — по геометрии самой прокрутки (`ScrollDownVisibility`).
+    @State private var downButton = ScrollDownVisibility()
     @State private var isOpening = true
     @State private var scroll = TranscriptScrollController()
     @State private var userScrolling = false
@@ -104,7 +106,10 @@ struct ChatTranscript: View {
                     .scrollTargetLayout()
                     .padding(.horizontal, Self.feedInset)
                     .padding(.bottom, 8)
-                    .background { TranscriptScrollObserver(diagnostics: diagnostics).frame(width: 0, height: 0) }
+                    .background { TranscriptScrollObserver(diagnostics: diagnostics) { distance, visible in
+                        var next = downButton
+                        if next.update(distance: distance, visibleHeight: visible) { downButton = next }
+                    }.frame(width: 0, height: 0) }
                     // Новое снизу, удалённое, переставленное — плавно; первая страница и старая
                     // история сверху — сразу, иначе лента дёргается. Правило в `CollectionChange`.
                     .animation(
@@ -197,7 +202,7 @@ struct ChatTranscript: View {
                 .animation(MaxlyMotion.fade, value: viewModel.showsSavedPlaceholder)
                 .overlay(alignment: .bottomTrailing) {
                     Group {
-                        if !isOpening && (bottom.showsButton(hasMessages: !viewModel.messages.isEmpty) || viewModel.isJumped) {
+                        if !isOpening && !viewModel.messages.isEmpty && (downButton.shown || viewModel.isJumped) {
                             ScrollDownButton(unseen: viewModel.unreadBelow) { goDown(proxy) }
                                 // Ровно над правой нижней кнопкой: записью, отправкой или поиском канала.
                                 .padding(.trailing, ChatComposer.trailingInset(canWrite: canWrite))
@@ -205,7 +210,7 @@ struct ChatTranscript: View {
                                 .transition(.maxlyPop(reduceMotion: reduceMotion))
                         }
                     }
-                    .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: bottom.lastEndVisible)
+                    .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: downButton.shown)
                     .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.unreadBelow)
                 }
                 .onChange(of: viewModel.scrollToken) { _, _ in perform(viewModel.scrollTarget, proxy: proxy) }
@@ -296,7 +301,7 @@ struct ChatTranscript: View {
             "composer_top": TranscriptDiagnostics.n(bottomControlsTop), "keyboard_top": keyboardTop.map(TranscriptDiagnostics.n) ?? "nil",
             "header_bottom": headerBottom.map(TranscriptDiagnostics.n) ?? "nil", "content_top": TranscriptDiagnostics.n(contentTop),
             "visible_area": TranscriptDiagnostics.frame(visibleArea), "last_end_visible": String(bottom.lastEndVisible),
-            "unread_below": String(viewModel.unreadBelow)
+            "unread_below": String(viewModel.unreadBelow), "down_button": String(downButton.shown)
         ]
         diagnostics.record(event, immediate: immediate)
     }
@@ -755,18 +760,23 @@ private struct TranscriptInteractionTracking: ViewModifier {
 /// Read-only UIKit geometry observer. It must never fight SwiftUI's scroll command.
 private struct TranscriptScrollObserver: UIViewRepresentable {
     let diagnostics: TranscriptDiagnostics
+    /// Расстояние от видимого низа до конца ленты и высота видимой части, в точках.
+    var onBottomDistance: (Double, Double) -> Void = { _, _ in }
     func makeUIView(context: Context) -> GuardView {
         let view = GuardView()
         view.diagnostics = diagnostics
+        view.onBottomDistance = onBottomDistance
         return view
     }
     func updateUIView(_ view: GuardView, context: Context) {
         view.diagnostics = diagnostics
+        view.onBottomDistance = onBottomDistance
         view.attachIfNeeded()
     }
 
     final class GuardView: UIView {
         weak var diagnostics: TranscriptDiagnostics?
+        var onBottomDistance: (Double, Double) -> Void = { _, _ in }
         private weak var scrollView: UIScrollView?
         private var observations: [NSKeyValueObservation] = []
         private var scheduled = false
@@ -842,7 +852,13 @@ private struct TranscriptScrollObserver: UIViewRepresentable {
         private func sample() {
             // SwiftUI может вернуть свойство при пересборке прокрутки.
             if scrollView?.scrollsToTop == true { scrollView?.scrollsToTop = false }
-            guard scrollView?.window != nil else { return }
+            guard let scrollView, scrollView.window != nil else { return }
+            let inset = scrollView.adjustedContentInset
+            let distance = ScrollDownVisibility.distanceFromBottom(
+                contentHeight: Double(scrollView.contentSize.height), offsetY: Double(scrollView.contentOffset.y),
+                viewportHeight: Double(scrollView.bounds.height),
+                insetTop: Double(inset.top), insetBottom: Double(inset.bottom))
+            onBottomDistance(distance, Double(scrollView.bounds.height - inset.top - inset.bottom))
             diagnostics?.record("scroll-geometry")
 
         }

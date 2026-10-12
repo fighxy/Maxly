@@ -1335,9 +1335,20 @@ public final class ChatViewModel {
     /// Кандидат в отметку: у низа — последнее сообщение живой ленты, иначе самое новое
     /// увиденное. Когда отметка уйдёт, решает `ReadMarkScheduler`.
     private func proposeReadMark() {
-        guard readScreenActive, !markingUnread, chats != nil, let readMarks else { return }
+        guard readScreenActive, !markingUnread, chats != nil, let readMarks else {
+            if !readScreenActive || markingUnread {
+                DiagnosticEvent.event("read-mark", ["stage": "blocked", "chat": DiagnosticEvent.id(chatId),
+                    "screen_active": String(readScreenActive), "marking_unread": String(markingUnread)])
+            }
+            return
+        }
         for message in (readFollowing ? live : messages).reversed() {
             guard let mark = ReadMark(message: message), readFollowing || mark.time <= seenReadMs else { continue }
+            if mark.isNewer(than: readMarks.sent), mark.isNewer(than: readMarks.pending) {
+                DiagnosticEvent.event("read-mark", ["stage": "propose", "chat": DiagnosticEvent.id(chatId),
+                    "message": DiagnosticEvent.id(mark.messageId), "mark": String(mark.time),
+                    "following": String(readFollowing), "seen": String(seenReadMs)])
+            }
             readMarks.propose(mark)
             return
         }

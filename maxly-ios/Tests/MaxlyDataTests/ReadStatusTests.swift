@@ -200,13 +200,16 @@ struct ScreenReadMarkTests {
         #expect(await row(chats)?.unreadCount == 1)
     }
 
-    @Test("Непрочитанных нет — сервер не дёргается")
-    func nothingToRead() async throws {
+    @Test("Счётчик уже нулевой, а сервер отметку не подтверждал — она уходит; подтверждённая — нет")
+    func zeroCounterStillReachesServer() async throws {
         let (chats, api) = try makeRepository()
         try await chats.upsert([chatRecord(unread: 0, sentMs: 100_000)])
+        await api.set(readReplies: [CoreReadMark(unread: 0, mark: 100_000)])
+        try await chats.markRead(chatId: "c1", messageId: "m99", at: 100_000)
+        #expect(await api.readMarks == [100_000])
         try await chats.markRead(chatId: "c1", messageId: "m99", at: 100_000)
         try await chats.markRead(chatId: "unknown", messageId: "m1", at: 100_000)
-        #expect(await api.readMarks.isEmpty)
+        #expect(await api.readMarks == [100_000])
     }
 }
 

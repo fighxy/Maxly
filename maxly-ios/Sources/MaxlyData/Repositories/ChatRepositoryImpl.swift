@@ -369,8 +369,20 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// могут остаться непрочитанные.
     public func markRead(chatId: String, messageId: String, at mark: Int64) async throws(MaxlyError) {
         let lastBefore: String?
+        let known = readMarkBook.known(chatId)
         do {
-            guard let chat = try chat(id: chatId), chat.unreadCount > 0 else { return }
+            guard let chat = try chat(id: chatId) else {
+                DiagnosticEvent.event("read-mark", ["stage": "skip-no-chat", "chat": DiagnosticEvent.id(chatId)])
+                return
+            }
+            // Местный счётчик может быть уже нулевым (его обнулила синхронизация списка или
+            // пуш), а сервер о прочтении ещё не знает: тогда отправитель не увидит отметку.
+            // Не уходит только отметка, которую сервер уже подтвердил.
+            guard chat.unreadCount > 0 || mark > known else {
+                DiagnosticEvent.event("read-mark", ["stage": "skip-acknowledged", "chat": DiagnosticEvent.id(chatId),
+                    "mark": String(mark), "known": String(known)])
+                return
+            }
             lastBefore = chat.lastMessageId
             if mark >= ReadMarks.readTime(lastMessageAt: chat.lastMessageAt, updatedAt: chat.updatedAt) {
                 chat.unreadCount = 0
@@ -382,9 +394,17 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         }
         let started = generation
         let reply: CoreReadMark?
+        DiagnosticEvent.event("read-mark", ["stage": "send", "chat": DiagnosticEvent.id(chatId),
+            "message": DiagnosticEvent.id(messageId), "mark": String(mark), "known": String(known)])
         switch await api.markRead(chatId: chatId, messageId: messageId, at: mark) {
-        case .success(let value): reply = value
-        case .failure(let error): throw error.maxlyError
+        case .success(let value):
+            reply = value
+            DiagnosticEvent.event("read-mark", ["stage": "reply", "chat": DiagnosticEvent.id(chatId), "mark": String(mark),
+                "reply_mark": value.map { String($0.mark) } ?? "nil", "reply_unread": value.map { String($0.unread) } ?? "nil"])
+        case .failure(let error):
+            DiagnosticEvent.event("read-mark", ["stage": "error", "chat": DiagnosticEvent.id(chatId), "mark": String(mark),
+                "error": String(describing: error)])
+            throw error.maxlyError
         }
         guard let reply, started == generation else { return }
         try applyReadReply(chatId: chatId, reply: reply, lastBefore: lastBefore)
