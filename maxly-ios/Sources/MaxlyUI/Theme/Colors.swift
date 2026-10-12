@@ -13,6 +13,9 @@ public extension Color {
     static let maxlyOutgoingSecondary = adaptive(light: 0x48643F, dark: 0xC0D4E5)
     static let maxlyOutgoingAccent = adaptive(light: 0x356B37, dark: 0xC0E1FF)
     static let maxlyOnOutgoingAccent = adaptive(light: 0xFFFFFF, dark: 0x18344D)
+    /// Две галочки «прочитано»: голубые на исходящем пузыре и в списке чатов; одна галочка
+    /// «отправлено» остаётся цвета времени.
+    static let maxlyReadMark = adaptive(light: 0x1E9AE8, dark: 0x7ACBFF)
     /// Синий круг «Избранного» и архива.
     static let maxlySpecialAvatar = Color(red: 0.30, green: 0.62, blue: 0.98)
     static let maxlyOnline = Color(red: 0.20, green: 0.78, blue: 0.35)

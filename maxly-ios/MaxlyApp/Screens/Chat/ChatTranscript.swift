@@ -290,7 +290,10 @@ struct ChatTranscript: View {
             "jumped": String(viewModel.isJumped), "position": visiblePlace.map(DiagnosticEvent.id) ?? "nil",
             "following_latest": String(bottom.followsLatest), "scroll_command": scroll.request.map { String($0.token) } ?? "nil",
             "last_frame": TranscriptDiagnostics.frame(last), "viewport_frame": TranscriptDiagnostics.frame(viewport?.frame),
-            "composer_top": TranscriptDiagnostics.n(bottomControlsTop), "keyboard_top": keyboardTop.map(TranscriptDiagnostics.n) ?? "nil"
+            "composer_top": TranscriptDiagnostics.n(bottomControlsTop), "keyboard_top": keyboardTop.map(TranscriptDiagnostics.n) ?? "nil",
+            "header_bottom": headerBottom.map(TranscriptDiagnostics.n) ?? "nil", "content_top": TranscriptDiagnostics.n(contentTop),
+            "visible_area": TranscriptDiagnostics.frame(visibleArea), "last_end_visible": String(bottom.lastEndVisible),
+            "unread_below": String(viewModel.unreadBelow)
         ]
         diagnostics.record(event, immediate: immediate)
     }
@@ -448,7 +451,8 @@ struct ChatTranscript: View {
         let fits = first.map { $0.minY >= contentTop - 2 } ?? false
         var next = bottom
         next.measuredLastRow(minY: last.map { Double($0.minY) }, maxY: last.map { Double($0.maxY) },
-            viewportMin: Double(area.minY), viewportMax: Double(area.maxY), userScrolling: userScrolling, contentFits: fits)
+            viewportMin: Double(area.minY), viewportMax: Double(area.maxY), userScrolling: userScrolling, contentFits: fits,
+            buttonMin: Double(contentTop))
         if next != bottom { bottom = next }
     }
 

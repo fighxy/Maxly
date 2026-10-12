@@ -97,4 +97,16 @@ struct TranscriptBottomStateTests {
         #expect(!state.showsButton(hasMessages: false))
     }
 
+
+    @Test func shortTranscriptUnderGlassHeaderHidesButton() {
+        // Oct 12, 14:59: one missed call under the header glass, area starting below the banners.
+        var state = TranscriptBottomState()
+        state.received(1)
+        state.measuredLastRow(minY: 200, maxY: 243, viewportMin: 260, viewportMax: 600, userScrolling: false, contentFits: true, buttonMin: 59)
+        #expect(state.lastEndVisible)
+        #expect(!state.showsButton(hasMessages: true))
+        // The end scrolled above the list itself: the button is back.
+        state.measuredLastRow(minY: -100, maxY: 40, viewportMin: 260, viewportMax: 600, userScrolling: true, buttonMin: 59)
+        #expect(state.showsButton(hasMessages: true))
+    }
 }

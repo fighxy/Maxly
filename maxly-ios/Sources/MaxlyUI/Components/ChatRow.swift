@@ -290,7 +290,7 @@ public struct DeliveryMark: View {
                 .foregroundStyle(.secondary)
         case .sent, .read:
             DeliveryChecks(read: state == .read, lineWidth: 1.6)
-                .foregroundStyle(Color.maxlyAccent)
+                .foregroundStyle(.secondary)
         case .failed:
             Image(systemName: "exclamationmark.circle.fill")
                 .font(.caption)

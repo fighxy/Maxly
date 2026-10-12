@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Галочки доставки: тонкие, со скруглёнными концами. Одна — отправлено,
-/// две внахлёст — прочитано. Ширина одна и та же, чтобы время не сдвигалось, когда
-/// вторая галочка появляется.
+/// Галочки доставки: тонкие, со скруглёнными концами. Одна — отправлено, цвета времени
+/// рядом (наследует стиль); две внахлёст — прочитано, голубые (`maxlyReadMark`). Ширина одна
+/// и та же, чтобы время не сдвигалось, когда вторая галочка появляется.
 public struct DeliveryChecks: View {
     private let read: Bool
     private let lineWidth: CGFloat
@@ -31,6 +31,7 @@ public struct DeliveryChecks: View {
             }
         }
         .frame(width: Self.size.width, height: Self.size.height, alignment: .leading)
+        .foregroundStyle(read ? AnyShapeStyle(Color.maxlyReadMark) : AnyShapeStyle(.foreground))
         .accessibilityLabel(read ? "Прочитано" : "Отправлено")
     }
 }

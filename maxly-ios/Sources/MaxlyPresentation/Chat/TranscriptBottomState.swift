@@ -20,7 +20,10 @@ public struct TranscriptBottomState: Equatable, Sendable {
     public mutating func beginReadingHistory() { followsLatest = false; atBottom = false }
     public mutating func userTookOver() { followsLatest = false }
 
-    public mutating func measuredLastRow(minY: Double?, maxY: Double?, viewportMin: Double, viewportMax: Double, userScrolling: Bool, contentFits: Bool = false) {
+    /// `buttonMin` — верх, от которого конец последней строки прячет кнопку «вниз»: край самой
+    /// прокрутки, а не низ шапки. Шапка и плашки над лентой стеклянные, и короткая лента может
+    /// заходить под них; кнопка в коротком чате всё равно не нужна.
+    public mutating func measuredLastRow(minY: Double?, maxY: Double?, viewportMin: Double, viewportMax: Double, userScrolling: Bool, contentFits: Bool = false, buttonMin: Double? = nil) {
         guard let minY, let maxY,
               [minY, maxY, viewportMin, viewportMax].allSatisfy({ $0.isFinite }),
               maxY > minY, viewportMax > viewportMin else {
@@ -31,7 +34,8 @@ public struct TranscriptBottomState: Equatable, Sendable {
         }
         // A short transcript can end above the bottom edge, but the last row must be visible.
         let visible = maxY > viewportMin && minY < viewportMax
-        lastEndVisible = visible && maxY <= viewportMax + 24
+        let top = min(viewportMin, buttonMin ?? viewportMin)
+        lastEndVisible = maxY > top && maxY <= viewportMax + 24
         atBottom = visible && (abs(maxY - viewportMax) <= 24 || (contentFits && maxY <= viewportMax))
         if atBottom { unseen = 0 }
         if userScrolling { followsLatest = atBottom }
