@@ -61,8 +61,14 @@ class AndroidVideoNoteRecorder(private val context: Context, private val lifecyc
     /** Пишет фронтальная камера (по умолчанию) или основная. */
     val front: StateFlow<Boolean> = _front.asStateFlow()
 
+    private val _flash = MutableStateFlow(false)
+
+    /** Вспышка: у основной камеры — фонарик, у фронтальной экран светит белым (экран чата). */
+    val flash: StateFlow<Boolean> = _flash.asStateFlow()
+
     private var provider: ProcessCameraProvider? = null
     private var group: UseCaseGroup? = null
+    private var camera: androidx.camera.core.Camera? = null
     private var recording: Recording? = null
     private var file: File? = null
     private var finished: CompletableDeferred<Boolean>? = null
@@ -86,7 +92,7 @@ class AndroidVideoNoteRecorder(private val context: Context, private val lifecyc
                 .build()
             val front = cameras.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA)
             cameras.unbindAll()
-            cameras.bindToLifecycle(lifecycle, if (front) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA, group)
+            camera = cameras.bindToLifecycle(lifecycle, if (front) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA, group)
             this.group = group
             _front.value = front
             val folder = File(context.cacheDir, "outgoing/notes").apply { mkdirs() }
@@ -133,12 +139,27 @@ class AndroidVideoNoteRecorder(private val context: Context, private val lifecyc
         if (!runCatching { cameras.hasCamera(selector) }.getOrDefault(false)) return
         try {
             cameras.unbindAll()
-            cameras.bindToLifecycle(lifecycle, selector, current)
+            camera = cameras.bindToLifecycle(lifecycle, selector, current)
             _front.value = toFront
         } catch (e: Exception) {
             // Другая камера не открылась: вернуть прежнюю, запись идёт дальше.
-            runCatching { cameras.bindToLifecycle(lifecycle, if (toFront) CameraSelector.DEFAULT_BACK_CAMERA else CameraSelector.DEFAULT_FRONT_CAMERA, current) }
+            camera = runCatching { cameras.bindToLifecycle(lifecycle, if (toFront) CameraSelector.DEFAULT_BACK_CAMERA else CameraSelector.DEFAULT_FRONT_CAMERA, current) }.getOrNull()
         }
+        // Фонарик есть только у основной: у фронтальной светит экран.
+        applyTorch()
+    }
+
+    /** Включить или выключить вспышку во время записи. */
+    fun toggleFlash() {
+        if (recording == null) return
+        _flash.value = !_flash.value
+        applyTorch()
+    }
+
+    private fun applyTorch() {
+        val current = camera ?: return
+        if (!current.cameraInfo.hasFlashUnit()) return
+        runCatching { current.cameraControl.enableTorch(_flash.value && !_front.value) }
     }
 
     /** Остановить и отдать ролик; `null` — короче секунды или не записался. */
@@ -170,7 +191,9 @@ class AndroidVideoNoteRecorder(private val context: Context, private val lifecyc
         recording?.close()
         recording = null
         group = null
+        camera = null
         _front.value = true
+        _flash.value = false
         finished = null
         file = null
         lastDurationMs = 0

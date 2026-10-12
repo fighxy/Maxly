@@ -1,3 +1,4 @@
+import UIKit
 import SwiftUI
 import MaxlyUI
 import MaxlyPresentation
@@ -193,7 +194,8 @@ struct VideoNoteOverlay: View {
     var body: some View {
         ZStack {
             // Затемнение, круг и кольцо касания не ловят: палец держит кнопку записи под ними.
-            Color.black.opacity(0.55)
+            // Вспышка фронтальной камеры: вместо затемнения экран светит белым на полной яркости.
+            (session.video.screenFlash ? Color.white : Color.black.opacity(0.55))
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
@@ -215,14 +217,38 @@ struct VideoNoteOverlay: View {
                     flipButton
                         .offset(x: 18, y: 18)
                 }
+                .overlay(alignment: .bottomLeading) {
+                    flashButton
+                        .offset(x: -18, y: 18)
+                }
                 Text(RecordingBar.clock(session.elapsed))
                     .font(.headline.monospacedDigit())
-                    .foregroundStyle(.white)
+                    .foregroundStyle(session.video.screenFlash ? Color.black : Color.white)
                     .allowsHitTesting(false)
             }
             .offset(y: -40)
         }
         .transition(.opacity)
+        .onChange(of: session.video.screenFlash) { _, on in brightness.set(on) }
+        .onDisappear { brightness.set(false) }
+    }
+
+    @State private var brightness = ScreenBrightness()
+
+    /// Вспышка: фонарик основной камеры или белый экран для фронтальной.
+    private var flashButton: some View {
+        Button {
+            session.video.toggleFlash()
+        } label: {
+            Image(systemName: session.video.flashOn ? "bolt.fill" : "bolt.slash")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(session.video.flashOn ? Color.yellow : Color.white)
+                .frame(width: 48, height: 48)
+                .background(.ultraThinMaterial, in: Circle())
+                .environment(\.colorScheme, .dark)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(session.video.flashOn ? "Выключить вспышку" : "Включить вспышку")
     }
 
     /// Сменить камеру: справа внизу от круга. Нажимается вторым пальцем, пока первый держит
@@ -240,5 +266,26 @@ struct VideoNoteOverlay: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(session.video.usesFrontCamera ? "Переключить на основную камеру" : "Переключить на фронтальную камеру")
+    }
+}
+
+/// Яркость экрана на время вспышки фронтальной камеры: полная, потом прежняя.
+@MainActor
+final class ScreenBrightness {
+    private var saved: CGFloat?
+
+    private var screen: UIScreen? {
+        UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.screen }.first
+    }
+
+    func set(_ bright: Bool) {
+        guard let screen else { return }
+        if bright {
+            if saved == nil { saved = screen.brightness }
+            screen.brightness = 1
+        } else if let saved {
+            screen.brightness = saved
+            self.saved = nil
+        }
     }
 }

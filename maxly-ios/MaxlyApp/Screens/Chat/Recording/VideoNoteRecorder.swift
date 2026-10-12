@@ -68,6 +68,8 @@ final class VideoNoteRecorder {
         ticker?.cancel()
         ticker = nil
         isRecording = false
+        flashOn = false
+        capture.setTorch(false)
         let raw = await capture.stopRecording()
         capture.stopSession()
         guard let raw else {
@@ -95,6 +97,20 @@ final class VideoNoteRecorder {
         isRecording = false
         capture.cancel()
         usesFrontCamera = true
+        flashOn = false
+    }
+
+    /// Вспышка: у основной камеры — фонарик, у фронтальной экран светит белым (`VideoNoteOverlay`).
+    private(set) var flashOn = false
+
+    /// Экран светит вместо вспышки: вспышка включена, а пишет фронтальная камера.
+    var screenFlash: Bool { isRecording && flashOn && usesFrontCamera }
+
+    func toggleFlash() {
+        guard isRecording else { return }
+        flashOn.toggle()
+        capture.setTorch(flashOn && !usesFrontCamera)
+        Log.info(.media, "Кружок: вспышка \(flashOn ? "включена" : "выключена")")
     }
 
     /// Пишет фронтальная камера (по умолчанию) или основная.
@@ -108,6 +124,8 @@ final class VideoNoteRecorder {
         defer { switching = false }
         let front = await capture.switchCamera()
         usesFrontCamera = front
+        // Фонарик есть только у основной: у фронтальной светит экран.
+        capture.setTorch(flashOn && !front)
         Log.info(.media, "Кружок: камера \(front ? "фронтальная" : "основная")")
     }
 }
@@ -207,6 +225,21 @@ final class CaptureController: NSObject, AVCaptureFileOutputRecordingDelegate, @
                 orient(mirrored: front)
                 session.commitConfiguration()
                 continuation.resume(returning: front)
+            }
+        }
+    }
+
+    /// Фонарик основной камеры. У фронтальной его нет — вызов ничего не делает.
+    func setTorch(_ on: Bool) {
+        queue.async { [self] in
+            guard let device = session.inputs.compactMap({ $0 as? AVCaptureDeviceInput }).first(where: { $0.device.hasMediaType(.video) })?.device,
+                  device.hasTorch, device.isTorchModeSupported(on ? .on : .off) else { return }
+            do {
+                try device.lockForConfiguration()
+                device.torchMode = on ? .on : .off
+                device.unlockForConfiguration()
+            } catch {
+                // Фонарик занят или перегрет: запись идёт без него.
             }
         }
     }

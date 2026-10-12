@@ -32,6 +32,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.FlashOff
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Cameraswitch
 import androidx.compose.material.icons.filled.Videocam
@@ -193,6 +195,11 @@ internal fun Composer(
     videoPreview: (@Composable (Modifier) -> Unit)? = null,
     /** Сменить камеру во время записи кружка; `null` — кнопки нет. */
     onFlipCamera: (() -> Unit)? = null,
+    /** Вспышка кружка: включена ли и переключатель; `null` — кнопки нет. */
+    flashOn: Boolean = false,
+    onToggleFlash: (() -> Unit)? = null,
+    /** Вспышка фронтальной камеры: место вокруг круга светит белым. */
+    screenFlash: Boolean = false,
     onMention: (app.maxly.data.ChatMemberRow) -> Unit = {},
     onCommand: (app.maxly.data.BotCommandRow) -> Unit = {},
     /** Кнопка или сочетание форматирования для выделения [start, end) поля. */
@@ -264,9 +271,29 @@ internal fun Composer(
             }
             if (voice.state.isVideo && videoPreview != null) {
                 // Кружок пишется: превью камеры кругом над полем ввода, как на iOS.
-                Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier.fillMaxWidth().then(if (screenFlash) Modifier.background(Color.White) else Modifier).padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
                     Box {
                         videoPreview(Modifier.size(220.dp).clip(CircleShape))
+                        if (onToggleFlash != null) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.BottomStart)
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.55f))
+                                    .clickable(onClick = onToggleFlash),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    if (flashOn) Icons.Filled.FlashOn else Icons.Filled.FlashOff,
+                                    if (flashOn) "Выключить вспышку" else "Включить вспышку",
+                                    tint = if (flashOn) Color(0xFFFFD54F) else Color.White,
+                                )
+                            }
+                        }
                         // Сменить камеру: вторым пальцем, пока первый держит кнопку, или после закрепления.
                         if (onFlipCamera != null) {
                             Box(

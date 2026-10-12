@@ -127,6 +127,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -247,6 +248,24 @@ fun ChatScreen(
     recording.onStart = model.media::stopVoice
     // Пока идёт запись, собеседники видят «записывает аудио» или «записывает видеосообщение».
     LaunchedEffect(recording) { model.watchRecording(recording.state) }
+    // Вспышка кружка у фронтальной камеры: лента и место вокруг круга светят белым, экран на полной яркости.
+    val recordingNow by recording.state.collectAsStateWithLifecycle()
+    val noteFlash by composerRecorder.note.flash.collectAsStateWithLifecycle()
+    val noteFront by composerRecorder.note.front.collectAsStateWithLifecycle()
+    val screenFlash = recordingNow.isVideo && noteFlash && noteFront
+    val flashWindow = (context as? android.app.Activity)?.window
+    androidx.compose.runtime.DisposableEffect(screenFlash, flashWindow) {
+        val window = flashWindow
+        val saved = window?.attributes?.screenBrightness
+        if (screenFlash && window != null) {
+            window.attributes = window.attributes.apply { screenBrightness = android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL }
+        }
+        onDispose {
+            if (screenFlash && window != null && saved != null) {
+                window.attributes = window.attributes.apply { screenBrightness = saved }
+            }
+        }
+    }
     // Уход из чата обрывает запись: ничего не уходит.
     androidx.compose.runtime.DisposableEffect(recording) { onDispose { recording.cancel() } }
     val importScope = rememberCoroutineScope()
@@ -451,7 +470,9 @@ fun ChatScreen(
                     model.participantChatId(message)?.let { onOpenParticipant(it, message.authorName) }
                 },
                 onDisablePrivateMode = onDisablePrivateMode,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
+                modifier = Modifier.weight(1f).fillMaxWidth().then(
+                    if (screenFlash) Modifier.drawWithContent { drawContent(); drawRect(Color.White) } else Modifier,
+                ),
                 selection = selection,
             )
             if (state.botAppId != null) {
@@ -489,6 +510,9 @@ fun ChatScreen(
                         )
                     },
                     onFlipCamera = { composerRecorder.note.switchCamera() },
+                    flashOn = noteFlash,
+                    onToggleFlash = { composerRecorder.note.toggleFlash() },
+                    screenFlash = screenFlash,
                     onMention = model::insertMention,
                     onCommand = model::insertCommand,
                     onToggleFormat = model::toggleFormat,
