@@ -4,13 +4,18 @@ import Testing
 struct RecordingPressStateTests {
     @Test func movementsAfterRecordingCancellationAreStillTheSameTouch() {
         var press = RecordingPressState()
-        #expect(press.begin())
+        let began = press.begin()
+        #expect(began)
         let first = press.generation
-        #expect(!press.begin())
-        #expect(!press.begin())
+        let moved = press.begin()
+        let movedAgain = press.begin()
+        #expect(!moved)
+        #expect(!movedAgain)
         #expect(press.generation == first)
-        #expect(press.end(generation: first))
-        #expect(press.begin())
+        let ended = press.end(generation: first)
+        #expect(ended)
+        let beganAgain = press.begin()
+        #expect(beganAgain)
         #expect(press.generation != first)
     }
 
@@ -18,10 +23,13 @@ struct RecordingPressStateTests {
         var press = RecordingPressState()
         _ = press.begin()
         let old = press.generation
-        #expect(press.end(generation: old))
-        #expect(!press.end(generation: old))
+        let ended = press.end(generation: old)
+        #expect(ended)
+        let endedAgain = press.end(generation: old)
+        #expect(!endedAgain)
         _ = press.begin()
-        #expect(!press.end(generation: old))
+        let staleEnded = press.end(generation: old)
+        #expect(!staleEnded)
         #expect(press.active)
     }
 }
