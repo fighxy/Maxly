@@ -25,6 +25,7 @@ import app.maxly.domain.Sticker
 import app.maxly.presentation.stickers.StickerPanel
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
@@ -326,7 +327,7 @@ internal fun Composer(
                 if (editing == null) {
                     Box {
                         IconButton(onClick = onAttach, modifier = Modifier.size(44.dp)) {
-                            Icon(Icons.Filled.AttachFile, "Прикрепить", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Icon(Icons.Filled.Add, "Прикрепить", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         attachMenu()
                     }
@@ -399,9 +400,21 @@ internal fun Composer(
                 }
                 Spacer(Modifier.width(6.dp))
                 val enabled = state.canSend
-                // Пустое поле — микрофон: удержание пишет голосовое, как в Max.
+                // Пустое поле — камера и микрофон, как в WhatsApp: удержание микрофона — голосовое,
+                // удержание камеры — кружок, нажатие камеры — снимок. Во время записи другая
+                // кнопка прячется: камера при голосовом уходит, микрофон при кружке гаснет на месте.
                 if (recording != null && (voice.state.isActive || (!enabled && state.editing == null && state.uploadProgress == null))) {
-                    app.maxly.ui.chat.RecordButton(voice)
+                    val voiceActive = voice.state.isActive && voice.state.recording == app.maxly.presentation.chat.RecordingMode.VOICE
+                    val videoActive = voice.state.isActive && voice.state.recording == app.maxly.presentation.chat.RecordingMode.VIDEO
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (!voiceActive) {
+                            app.maxly.ui.chat.RecordButton(voice, app.maxly.presentation.chat.RecordingMode.VIDEO)
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Box(Modifier.graphicsLayer { alpha = if (videoActive) 0f else 1f }) {
+                            app.maxly.ui.chat.RecordButton(voice, app.maxly.presentation.chat.RecordingMode.VOICE)
+                        }
+                    }
                 } else Box(
                     Modifier
                         .size(44.dp)

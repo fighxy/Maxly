@@ -239,18 +239,12 @@ fun ChatScreen(
     val composerRecorder = remember {
         app.maxly.media.DesktopComposerRecorder(voiceRecorder, app.maxly.media.DesktopVideoNoteRecorder(recorderScope), recorderScope)
     }
-    // Голосовое или кружок: режим кнопки запоминается на устройстве.
-    val recording = remember {
-        val root = java.util.prefs.Preferences.userRoot()
-        val prefs = root.node("app/maxly/chat")
-        val store = object : app.maxly.data.PreferenceStore {
-            override fun get(key: String): String? = prefs.get(key, null)
-            override fun put(key: String, value: String) = prefs.put(key, value)
-        }
-        app.maxly.presentation.chat.RecordingController(composerRecorder, recorderScope, app.maxly.presentation.chat.RecordingModeSettings(store))
-    }
+    // Голосовое — удержание микрофона, кружок — удержание камеры, как в WhatsApp.
+    val recording = remember { app.maxly.presentation.chat.RecordingController(composerRecorder, recorderScope) }
     recording.onRecorded = model::sendRecorded
     recording.onStart = model.media::stopVoice
+    // Короткое нажатие камеры: снимка с веб-камеры нет, открываются вложения.
+    recording.onCameraTap = { attaching = true }
     // Пока идёт запись, собеседники видят «записывает аудио» или «записывает видеосообщение».
     LaunchedEffect(recording) { model.watchRecording(recording.state) }
     // Уход из чата обрывает запись: ничего не уходит.
@@ -300,6 +294,10 @@ fun ChatScreen(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var actionsFor by remember { mutableStateOf<Message?>(null) }
+    // Сразу открыть полный выбор реакций («+» в капсуле меню).
+    var actionsAllReactions by remember { mutableStateOf(false) }
+    // Меню долгого нажатия поверх ленты, как в WhatsApp: строка и её место на экране.
+    var menuTarget by remember { mutableStateOf<Pair<ChatItem.Bubble, androidx.compose.ui.geometry.Rect>?>(null) }
     var deleting by remember { mutableStateOf<Message?>(null) }
     var forwarding by remember { mutableStateOf<Message?>(null) }
     // Режим выбора: пересылка и удаление выбранных.
@@ -455,6 +453,7 @@ fun ChatScreen(
                 revealed = revealed,
                 onReveal = reveal,
                 onLongPress = { actionsFor = it },
+                onMenu = { item, bounds -> menuTarget = item to bounds },
                 onRetry = { actionsFor = it },
                 quickReaction = quickReaction,
                 onButton = pressButton,
@@ -589,6 +588,37 @@ fun ChatScreen(
                 botApp(request, model::consumeBotApp)
             }
         }
+        menuTarget?.let { (item, bounds) ->
+            val message = item.message
+            val close = { menuTarget = null }
+            BackHandler { close() }
+            val (primary, more) = messageMenuActions(
+                model = model,
+                message = message,
+                copy = { buttonClipboard.setText(AnnotatedString(it)) },
+                onDelete = { deleting = message },
+                onForward = { forwarding = message },
+                onReactionUsers = { reactionUsers = model.reactionUsers(message) },
+                onInfo = { messageInfo = model.messageInfo(message) },
+                onSave = { target -> requestSave(message, target) },
+                onMarkUnread = { model.markUnread(message, onBack) },
+            )
+            MessageMenuOverlay(
+                anchor = bounds,
+                outgoing = item.outgoing,
+                reactions = if (model.canReact(message)) model.quickReactions(message) else null,
+                mine = message.content.reactions.firstOrNull { it.mine }?.emoji,
+                onReact = { emoji -> model.toggleReaction(message, emoji) },
+                onMoreReactions = if (model.canReact(message)) {
+                    { actionsAllReactions = true; actionsFor = message }
+                } else null,
+                primary = primary,
+                more = more,
+                onDismiss = close,
+            ) {
+                BubbleRow(item = item, onLongPress = {}, onReaction = { _, _ -> }, onReplyClick = {}, onRetry = {})
+            }
+        }
     } }
 
     editingPhoto?.let { original ->
@@ -614,13 +644,14 @@ fun ChatScreen(
         MessageActions(
             model = model,
             message = message,
-            onDismiss = { actionsFor = null },
+            onDismiss = { actionsFor = null; actionsAllReactions = false },
             onDelete = { deleting = message },
             onForward = { forwarding = message },
             onReactionUsers = { reactionUsers = model.reactionUsers(message) },
             onInfo = { messageInfo = model.messageInfo(message) },
             onSave = { target -> requestSave(message, target) },
             onMarkUnread = { model.markUnread(message, onBack) },
+            startWithAllReactions = actionsAllReactions,
         )
     }
     reactionUsers?.let { users ->

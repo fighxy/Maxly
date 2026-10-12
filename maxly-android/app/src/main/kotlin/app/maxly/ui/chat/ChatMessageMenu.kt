@@ -177,11 +177,13 @@ internal fun MessageActions(
     onSave: (SaveTarget) -> Unit,
     /** Пометить чат непрочитанным с этого сообщения и закрыть его. */
     onMarkUnread: () -> Unit,
+    /** Сразу сетка всех реакций: «+» в капсуле меню долгого нажатия. */
+    startWithAllReactions: Boolean = false,
 ) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val clipboard = LocalClipboardManager.current
     val catalog = model.state.collectAsStateWithLifecycle().value.reactionCatalog
-    var allReactions by remember { mutableStateOf(false) }
+    var allReactions by remember { mutableStateOf(startWithAllReactions) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
         if (model.canReact(message) && allReactions) {
             ReactionGrid(catalog, message.content.reactions.firstOrNull { it.mine }?.emoji) { emoji ->
@@ -351,6 +353,50 @@ internal fun MessageActions(
         }
         Spacer(Modifier.size(16.dp))
     }
+}
+
+/**
+ * Пункты меню долгого нажатия ([MessageMenuOverlay]), как в WhatsApp и на iOS: главные —
+ * «Ответить», «Изменить», «Переслать», «Копировать», «Сведения», «Удалить»; остальное — под «Ещё…».
+ */
+internal fun messageMenuActions(
+    model: ChatViewModel,
+    message: Message,
+    copy: (String) -> Unit,
+    onDelete: () -> Unit,
+    onForward: () -> Unit,
+    onReactionUsers: () -> Unit,
+    onInfo: () -> Unit,
+    onSave: (SaveTarget) -> Unit,
+    onMarkUnread: () -> Unit,
+): Pair<List<MenuAction>, List<MenuAction>> {
+    val primary = mutableListOf<MenuAction>()
+    val more = mutableListOf<MenuAction>()
+    if (model.canCancelUpload(message)) primary += MenuAction("Отменить отправку", Icons.Filled.Close) { model.cancelUpload(message) }
+    if (message.status == MessageStatus.FAILED) primary += MenuAction("Отправить ещё раз", Icons.Filled.Refresh) { model.retry(message) }
+    if (message.status == MessageStatus.SENT && message.id.toLongOrNull() != null) {
+        primary += MenuAction("Ответить", Icons.AutoMirrored.Filled.Reply) { model.beginReply(message) }
+    }
+    if (model.canEdit(message)) primary += MenuAction("Изменить", Icons.Filled.Edit) { model.beginEdit(message) }
+    if (model.canForward(message)) primary += MenuAction("Переслать", Icons.AutoMirrored.Filled.Forward, onClick = onForward)
+    if (message.displayText.isNotBlank()) primary += MenuAction("Копировать", Icons.Filled.ContentCopy) { copy(message.displayText) }
+    if (model.canShowInfo(message)) primary += MenuAction("Сведения", Icons.Outlined.Info, onClick = onInfo)
+    if (model.canDelete(listOf(message))) primary += MenuAction("Удалить", Icons.Outlined.Delete, destructive = true, onClick = onDelete)
+
+    if (model.canOpenComments(message)) more += MenuAction("Комментарии", Icons.AutoMirrored.Outlined.Comment) { model.openComments(message) }
+    if (model.canPin(message)) {
+        if (model.isPinned(message)) {
+            more += MenuAction("Открепить", Icons.Filled.PushPin) { model.unpin(message) }
+        } else {
+            model.pinChoices().forEach { choice -> more += MenuAction(choice.label, Icons.Filled.PushPin) { model.pin(message, choice) } }
+        }
+    }
+    if (model.media.canSave(message, SaveTarget.GALLERY)) more += MenuAction("Сохранить в галерею", Icons.Outlined.Download) { onSave(SaveTarget.GALLERY) }
+    if (model.media.canSave(message, SaveTarget.DOWNLOADS)) more += MenuAction("Сохранить в «Загрузки»", Icons.Outlined.Folder) { onSave(SaveTarget.DOWNLOADS) }
+    if (model.canMarkUnread(message)) more += MenuAction("Пометить непрочитанным", Icons.Outlined.MarkChatUnread, onClick = onMarkUnread)
+    if (model.canShowReactionUsers(message)) more += MenuAction("Кто отреагировал", Icons.Outlined.Group, onClick = onReactionUsers)
+    if (model.canSelect(message)) more += MenuAction("Выбрать", Icons.Outlined.CheckCircle) { model.startSelection(message) }
+    return primary to more
 }
 
 @Composable

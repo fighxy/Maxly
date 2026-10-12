@@ -241,15 +241,8 @@ fun ChatScreen(
             recorderScope,
         )
     }
-    // Голосовое или кружок: режим кнопки запоминается на устройстве.
-    val recording = remember {
-        val prefs = context.getSharedPreferences("maxly.chat", android.content.Context.MODE_PRIVATE)
-        val store = object : app.maxly.data.PreferenceStore {
-            override fun get(key: String): String? = prefs.getString(key, null)
-            override fun put(key: String, value: String) = prefs.edit().putString(key, value).apply()
-        }
-        app.maxly.presentation.chat.RecordingController(composerRecorder, recorderScope, app.maxly.presentation.chat.RecordingModeSettings(store))
-    }
+    // Голосовое — удержание микрофона, кружок — удержание камеры, нажатие камеры — снимок.
+    val recording = remember { app.maxly.presentation.chat.RecordingController(composerRecorder, recorderScope) }
     recording.onRecorded = model::sendRecorded
     recording.onStart = model.media::stopVoice
     // Пока идёт запись, собеседники видят «записывает аудио» или «записывает видеосообщение».
@@ -262,6 +255,30 @@ fun ChatScreen(
     }
     val pickVisual = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(OutgoingFile.LIMIT), importUris)
     val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments(), importUris)
+    // Кнопка камеры в поле ввода: короткое нажатие — снимок, как на iOS. Кадр ложится во
+    // вложения над полем: оттуда ещё снимок той же кнопкой, правка, подпись и отправка альбомом.
+    var cameraTarget by remember { mutableStateOf<Uri?>(null) }
+    val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        val uri = cameraTarget
+        cameraTarget = null
+        if (saved && uri != null) importUris(listOf(uri))
+    }
+    val shoot: () -> Unit = {
+        val file = java.io.File(context.cacheDir, "outgoing/camera-${System.currentTimeMillis()}.jpg").apply { parentFile?.mkdirs() }
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+        cameraTarget = uri
+        // Нет приложения камеры — выбор из галереи.
+        runCatching { takePhoto.launch(uri) }.onFailure { attaching = true }
+    }
+    // Разрешение CAMERA объявлено в манифесте (кружки), поэтому системная камера без него не откроется.
+    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) shoot() else attaching = true
+    }
+    recording.onCameraTap = {
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted) shoot() else cameraPermission.launch(android.Manifest.permission.CAMERA)
+    }
     // До Android 10 запись в общие папки требует разрешения.
     var pendingSave by remember { mutableStateOf<Pair<Message, SaveTarget>?>(null) }
     val storagePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -311,6 +328,10 @@ fun ChatScreen(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var actionsFor by remember { mutableStateOf<Message?>(null) }
+    // Сразу открыть полный выбор реакций («+» в капсуле меню).
+    var actionsAllReactions by remember { mutableStateOf(false) }
+    // Меню долгого нажатия поверх ленты, как в WhatsApp: строка и её место на экране.
+    var menuTarget by remember { mutableStateOf<Pair<ChatItem.Bubble, androidx.compose.ui.geometry.Rect>?>(null) }
     var deleting by remember { mutableStateOf<Message?>(null) }
     var forwarding by remember { mutableStateOf<Message?>(null) }
     // Режим выбора: пересылка и удаление выбранных.
@@ -422,6 +443,7 @@ fun ChatScreen(
                 revealed = revealed,
                 onReveal = reveal,
                 onLongPress = { actionsFor = it },
+                onMenu = { item, bounds -> menuTarget = item to bounds },
                 onRetry = { actionsFor = it },
                 quickReaction = quickReaction,
                 onButton = pressButton,
@@ -523,6 +545,37 @@ fun ChatScreen(
                 botApp(request, model::consumeBotApp)
             }
         }
+        menuTarget?.let { (item, bounds) ->
+            val message = item.message
+            val close = { menuTarget = null }
+            BackHandler { close() }
+            val (primary, more) = messageMenuActions(
+                model = model,
+                message = message,
+                copy = { buttonClipboard.setText(AnnotatedString(it)) },
+                onDelete = { deleting = message },
+                onForward = { forwarding = message },
+                onReactionUsers = { reactionUsers = model.reactionUsers(message) },
+                onInfo = { messageInfo = model.messageInfo(message) },
+                onSave = { target -> requestSave(message, target) },
+                onMarkUnread = { model.markUnread(message, onBack) },
+            )
+            MessageMenuOverlay(
+                anchor = bounds,
+                outgoing = item.outgoing,
+                reactions = if (model.canReact(message)) model.quickReactions(message) else null,
+                mine = message.content.reactions.firstOrNull { it.mine }?.emoji,
+                onReact = { emoji -> model.toggleReaction(message, emoji) },
+                onMoreReactions = if (model.canReact(message)) {
+                    { actionsAllReactions = true; actionsFor = message }
+                } else null,
+                primary = primary,
+                more = more,
+                onDismiss = close,
+            ) {
+                BubbleRow(item = item, onLongPress = {}, onReaction = { _, _ -> }, onReplyClick = {}, onRetry = {})
+            }
+        }
     } }
 
     editingPhoto?.let { original ->
@@ -573,13 +626,14 @@ fun ChatScreen(
         MessageActions(
             model = model,
             message = message,
-            onDismiss = { actionsFor = null },
+            onDismiss = { actionsFor = null; actionsAllReactions = false },
             onDelete = { deleting = message },
             onForward = { forwarding = message },
             onReactionUsers = { reactionUsers = model.reactionUsers(message) },
             onInfo = { messageInfo = model.messageInfo(message) },
             onSave = { target -> requestSave(message, target) },
             onMarkUnread = { model.markUnread(message, onBack) },
+            startWithAllReactions = actionsAllReactions,
         )
     }
     reactionUsers?.let { users ->

@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** Что пишет кнопка справа от поля ввода. */
+/** Что пишет кнопка справа от поля ввода: микрофон — голосовое, камера — кружок. */
 enum class RecordingMode { VOICE, VIDEO }
 
 /** Готовая запись для отправки. */
@@ -47,35 +47,27 @@ interface ComposerRecorder {
     var onLimit: (() -> Unit)?
 }
 
-/** Режим записи запоминается на устройстве, как на iOS. */
-class RecordingModeSettings(private val store: PreferenceStore) {
-    fun load(): RecordingMode = RecordingMode.entries.firstOrNull { it.name == store.get(KEY) } ?: RecordingMode.VOICE
-
-    fun save(mode: RecordingMode) = store.put(KEY, mode.name)
-
-    private companion object {
-        const val KEY = "chat.recordMode"
-    }
-}
-
 /**
- * Запись голосового или кружка из поля ввода — порт iOS `RecordingSession`.
+ * Запись голосового или кружка из поля ввода — порт iOS `RecordingSession`, как в WhatsApp:
+ * у каждой записи своя кнопка.
  *
- * Кнопка справа (когда поле пустое) — микрофон или камера. Удержание — запись, отпустить —
- * отправить. Увести палец влево — отмена, вверх — закрепить запись, тогда её отправляет
- * нажатие той же кнопки, а корзина отменяет. Короткое нажатие переключает микрофон и камеру.
- * Запись включается сразу под пальцем, полоса записи появляется через [holdDelayMs].
+ * Микрофон: удержание — голосовое, короткое нажатие — подсказка. Камера: удержание — кружок,
+ * короткое нажатие — снимок ([onCameraTap]). Отпустить — отправить. Увести палец влево —
+ * отмена, вверх — закрепить запись, тогда её отправляет нажатие той же кнопки, а корзина
+ * отменяет. Микрофон включается сразу под пальцем, полоса записи появляется через
+ * [holdDelayMs]; камера для кружка — только через [videoHoldDelayMs], чтобы касание ради
+ * снимка её не занимало.
  */
 class RecordingController(
     private val recorder: ComposerRecorder,
     private val scope: CoroutineScope,
-    private val settings: RecordingModeSettings? = null,
     private val holdDelayMs: Long = HOLD_DELAY_MS,
+    private val videoHoldDelayMs: Long = VIDEO_HOLD_DELAY_MS,
 ) {
     enum class Phase {
         IDLE,
 
-        /** Палец на кнопке, полосы записи ещё нет (короткое нажатие — смена режима). */
+        /** Палец на кнопке, полосы записи ещё нет (короткое нажатие — подсказка или снимок). */
         PRESSING,
         RECORDING,
 
@@ -87,9 +79,8 @@ class RecordingController(
     }
 
     data class State(
-        val mode: RecordingMode = RecordingMode.VOICE,
         val phase: Phase = Phase.IDLE,
-        /** Режим идущей записи. */
+        /** Кнопка текущего нажатия или записи: другая на это время прячется. */
         val recording: RecordingMode = RecordingMode.VOICE,
         /** Сдвиг пальца влево и вверх, dp (≤ 0). */
         val dragX: Float = 0f,
@@ -100,9 +91,12 @@ class RecordingController(
         val isActive: Boolean get() = phase == Phase.RECORDING || phase == Phase.LOCKED || phase == Phase.FINISHING
 
         val isVideo: Boolean get() = isActive && recording == RecordingMode.VIDEO
+
+        /** Нажатие или запись идут на кнопке [mode]. */
+        fun owns(mode: RecordingMode): Boolean = phase != Phase.IDLE && recording == mode
     }
 
-    private val _state = MutableStateFlow(State(mode = settings?.load() ?: RecordingMode.VOICE))
+    private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
 
     /** Готовая запись. */
@@ -110,6 +104,9 @@ class RecordingController(
 
     /** Запись началась: остановить воспроизведение голосовых. */
     var onStart: () -> Unit = {}
+
+    /** Короткое нажатие камеры: снимок. */
+    var onCameraTap: () -> Unit = {}
 
     private val queue = Mutex()
     private var pressJob: Job? = null
@@ -123,23 +120,35 @@ class RecordingController(
         recorder.onLimit = { send() }
     }
 
-    /** Палец лёг на кнопку. */
-    fun press() {
-        val current = _state.value
-        if (current.phase != Phase.IDLE) return
-        val mode = current.mode
+    /** Палец лёг на кнопку [mode]. */
+    fun press(mode: RecordingMode = RecordingMode.VOICE) {
+        if (_state.value.phase != Phase.IDLE) return
         attempt += 1
         lockedInPress = false
-        _state.update { it.copy(phase = Phase.PRESSING) }
+        _state.update { it.copy(phase = Phase.PRESSING, recording = mode) }
+        if (mode == RecordingMode.VIDEO) {
+            // Камера включается, только если палец держат: короткое касание — снимок.
+            pressJob = scope.launch {
+                delay(videoHoldDelayMs)
+                if (_state.value.phase == Phase.PRESSING) beginHold(mode)
+            }
+            return
+        }
+        beginHold(mode)
+    }
+
+    /** Удержание дошло до записи: доступ, включение рекордера и полоса записи. */
+    private fun beginHold(mode: RecordingMode) {
         when (recorder.access(mode)) {
             ComposerRecorder.Access.GRANTED -> {
                 warming = true
-                _state.update { it.copy(recording = mode) }
                 onStart()
                 val number = attempt
                 enqueue { startRecorder(mode, number) }
+                // Кружок уже выдержал свою паузу: полоса записи сразу.
+                val wait = if (mode == RecordingMode.VIDEO) 0L else holdDelayMs
                 pressJob = scope.launch {
-                    delay(holdDelayMs)
+                    if (wait > 0) delay(wait)
                     if (_state.value.phase != Phase.PRESSING || !warming) return@launch
                     warming = false
                     _state.update { it.copy(phase = Phase.RECORDING) }
@@ -165,10 +174,9 @@ class RecordingController(
      * Клавиша записи (ПК): запись начинается сразу закреплённой — её отправляет повторное
      * нажатие или кнопка, отменяет Esc или корзина.
      */
-    fun toggleByKey() {
+    fun toggleByKey(mode: RecordingMode = RecordingMode.VOICE) {
         when (_state.value.phase) {
             Phase.IDLE -> {
-                val mode = _state.value.mode
                 when (recorder.access(mode)) {
                     ComposerRecorder.Access.GRANTED -> Unit
                     ComposerRecorder.Access.ASK -> {
@@ -214,15 +222,14 @@ class RecordingController(
             Phase.PRESSING -> {
                 pressJob?.cancel()
                 pressJob = null
+                val mode = _state.value.recording
                 _state.update { it.copy(phase = Phase.IDLE) }
                 if (warming) {
-                    // Короткое касание: включённый под пальцем микрофон или камера не нужны.
+                    // Короткое касание: включённый под пальцем микрофон не нужен.
                     warming = false
-                    discard(_state.value.recording)
-                    toggleMode()
-                } else if (!requesting) {
-                    toggleMode()
+                    discard(mode)
                 }
+                if (!requesting) tapped(mode)
             }
             Phase.RECORDING -> send()
             Phase.LOCKED -> if (lockedInPress) lockedInPress = false else send()
@@ -299,14 +306,9 @@ class RecordingController(
         scope.launch { queue.withLock { operation() } }
     }
 
-    private fun toggleMode() {
-        val next = if (_state.value.mode == RecordingMode.VOICE) RecordingMode.VIDEO else RecordingMode.VOICE
-        _state.update { it.copy(mode = next) }
-        settings?.save(next)
-        show(
-            if (next == RecordingMode.VOICE) "Удерживайте, чтобы записать голосовое. Нажмите — для видеосообщения"
-            else "Удерживайте, чтобы записать видеосообщение. Нажмите — для голосового",
-        )
+    /** Короткое касание: у микрофона — подсказка, у камеры — снимок. */
+    private fun tapped(mode: RecordingMode) {
+        if (mode == RecordingMode.VIDEO) onCameraTap() else show(RecordingGesture.HOLD_HINT)
     }
 
     private fun denied(mode: RecordingMode) =
@@ -326,8 +328,11 @@ class RecordingController(
     }
 
     companion object {
-        /** Нажатие короче — смена режима, дольше — запись. */
+        /** Микрофон: нажатие короче — подсказка, дольше — запись. */
         const val HOLD_DELAY_MS = 150L
+
+        /** Камера: нажатие короче — снимок, дольше — кружок. */
+        const val VIDEO_HOLD_DELAY_MS = 280L
 
         /** Кружок — не длиннее минуты. */
         const val VIDEO_NOTE_LIMIT_MS = 60_000L

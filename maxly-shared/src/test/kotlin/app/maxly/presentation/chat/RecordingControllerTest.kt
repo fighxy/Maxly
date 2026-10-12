@@ -1,6 +1,5 @@
 package app.maxly.presentation.chat
 
-import app.maxly.data.PreferenceStore
 import app.maxly.domain.VideoNoteRecording
 import app.maxly.domain.VoiceRecording
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -41,22 +40,13 @@ private class FakeRecorder : ComposerRecorder {
     }
 }
 
-private class MemoryStore : PreferenceStore {
-    val map = HashMap<String, String>()
-    override fun get(key: String) = map[key]
-    override fun put(key: String, value: String) {
-        map[key] = value
-    }
-}
-
 @OptIn(ExperimentalCoroutinesApi::class)
 class RecordingControllerTest {
     private val recorder = FakeRecorder()
-    private val store = MemoryStore()
 
     private fun TestScope.controller(): Pair<RecordingController, MutableList<RecordedDraft>> {
         val sent = mutableListOf<RecordedDraft>()
-        val controller = RecordingController(recorder, backgroundScope, RecordingModeSettings(store))
+        val controller = RecordingController(recorder, backgroundScope)
         controller.onRecorded = { sent += it }
         return controller to sent
     }
@@ -80,23 +70,45 @@ class RecordingControllerTest {
     }
 
     @Test
-    fun shortTapTogglesModeAndRemembersIt() = runTest {
-        val (controller, _) = controller()
-        controller.press()
+    fun shortMicTapShowsHintAndCameraTapTakesShot() = runTest {
+        val (controller, sent) = controller()
+        var shots = 0
+        controller.onCameraTap = { shots++ }
+        controller.press(RecordingMode.VOICE)
         runCurrent()
         controller.release()
         runCurrent()
-        assertEquals(RecordingMode.VIDEO, controller.state.value.mode)
         assertEquals(listOf("start VOICE", "cancel VOICE"), recorder.log)
-        assertEquals("VIDEO", store.map["chat.recordMode"])
-        assertNotNull(controller.state.value.hint)
-        // Новое нажатие пишет кружок.
-        controller.press()
-        advanceTimeBy(200)
+        assertEquals(RecordingGesture.HOLD_HINT, controller.state.value.hint)
+        assertEquals(0, shots)
+        // Касание камеры её не включает: это снимок.
+        controller.press(RecordingMode.VIDEO)
+        advanceTimeBy(100)
         controller.release()
         runCurrent()
-        assertEquals(listOf("start VOICE", "cancel VOICE", "start VIDEO", "stop VIDEO"), recorder.log)
-        assertEquals(RecordingMode.VIDEO, RecordingController(recorder, backgroundScope, RecordingModeSettings(store)).state.value.mode)
+        assertEquals(1, shots)
+        assertEquals(listOf("start VOICE", "cancel VOICE"), recorder.log)
+        assertTrue(sent.isEmpty())
+    }
+
+    @Test
+    fun holdingCameraRecordsVideoNote() = runTest {
+        val (controller, sent) = controller()
+        var shots = 0
+        controller.onCameraTap = { shots++ }
+        controller.press(RecordingMode.VIDEO)
+        advanceTimeBy(200)
+        runCurrent()
+        assertTrue(recorder.log.isEmpty())
+        advanceTimeBy(120)
+        runCurrent()
+        assertEquals(listOf("start VIDEO"), recorder.log)
+        assertEquals(RecordingController.Phase.RECORDING, controller.state.value.phase)
+        assertTrue(controller.state.value.owns(RecordingMode.VIDEO))
+        controller.release()
+        runCurrent()
+        assertTrue(sent.single() is RecordedDraft.Note)
+        assertEquals(0, shots)
     }
 
     @Test
@@ -136,8 +148,8 @@ class RecordingControllerTest {
         controller.release()
         runCurrent()
         assertEquals(listOf("ask VOICE"), recorder.log)
-        // Отпускание после запроса доступа режим не меняет.
-        assertEquals(RecordingMode.VOICE, controller.state.value.mode)
+        // Отпускание после запроса доступа подсказку не показывает.
+        assertEquals(RecordingController.Phase.IDLE, controller.state.value.phase)
     }
 
     @Test

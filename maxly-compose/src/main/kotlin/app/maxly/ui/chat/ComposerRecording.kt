@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Icon
@@ -49,17 +50,24 @@ import kotlinx.coroutines.flow.StateFlow
 /** Время и громкость идущей записи. */
 data class RecordingLive(val elapsedMs: Long = 0, val level: Float = 0f)
 
-/** Запись из поля ввода для экрана: состояние контроллера, время и жест кнопки. */
+/** Запись из поля ввода для экрана: состояние контроллера, время и жесты кнопок. */
 class RecordingUi(
     val state: RecordingController.State,
     val live: RecordingLive?,
-    val gesture: Modifier,
+    private val gestures: Map<RecordingMode, Modifier>,
     val controller: RecordingController?,
-)
+) {
+    /** Жест кнопки микрофона. */
+    val gesture: Modifier get() = gesture(RecordingMode.VOICE)
+
+    /** Жест кнопки [mode]: микрофона или камеры. */
+    fun gesture(mode: RecordingMode): Modifier = gestures[mode] ?: Modifier
+}
 
 /**
- * Жест кнопки записи: палец вниз — [RecordingController.press], движение — сдвиг в dp,
- * отпускание — [RecordingController.release], обрыв жеста — [RecordingController.interrupt].
+ * Жесты кнопок записи: палец вниз — [RecordingController.press] своего режима, движение — сдвиг
+ * в dp, отпускание — [RecordingController.release], обрыв жеста — [RecordingController.interrupt].
+ * Касание другой кнопки, пока идёт запись этой, ничего не делает.
  */
 @Composable
 fun rememberRecordingUi(controller: RecordingController?, live: StateFlow<RecordingLive?>?): RecordingUi {
@@ -68,12 +76,14 @@ fun rememberRecordingUi(controller: RecordingController?, live: StateFlow<Record
     val empty = remember { MutableStateFlow<RecordingLive?>(null) }
     val current by (live ?: empty).collectAsState()
     val density = LocalDensity.current.density
-    val gesture = Modifier.pointerInput(controller) {
+    fun gestureFor(mode: RecordingMode) = Modifier.pointerInput(controller, mode) {
         val rec = controller ?: return@pointerInput
         awaitEachGesture {
             val down = awaitFirstDown()
             down.consume()
-            rec.press()
+            val now = rec.state.value
+            if (now.phase != RecordingController.Phase.IDLE && now.recording != mode) return@awaitEachGesture
+            rec.press(mode)
             val origin = down.position
             while (true) {
                 val event = awaitPointerEvent()
@@ -92,16 +102,22 @@ fun rememberRecordingUi(controller: RecordingController?, live: StateFlow<Record
             }
         }
     }
-    return RecordingUi(state, current, gesture, controller)
+    val gestures = remember(controller, density) { RecordingMode.entries.associateWith { gestureFor(it) } }
+    return RecordingUi(state, current, gestures, controller)
 }
 
-/** Кнопка справа от пустого поля: микрофон или камера; во время записи — крупный круг под пальцем. */
+/**
+ * Кнопка справа от пустого поля, как в WhatsApp: микрофон (залитый круг; удержание — голосовое)
+ * или камера (нажатие — снимок, удержание — кружок). Во время записи — крупный круг под пальцем.
+ */
 @Composable
-fun RecordButton(ui: RecordingUi) {
+fun RecordButton(ui: RecordingUi, mode: RecordingMode = RecordingMode.VOICE) {
     val state = ui.state
-    val recording = state.phase == RecordingController.Phase.RECORDING
-    val locked = state.phase == RecordingController.Phase.LOCKED || state.phase == RecordingController.Phase.FINISHING
-    val video = (if (state.isActive) state.recording else state.mode) == RecordingMode.VIDEO
+    val mine = state.owns(mode)
+    val recording = mine && state.phase == RecordingController.Phase.RECORDING
+    val locked = mine && (state.phase == RecordingController.Phase.LOCKED || state.phase == RecordingController.Phase.FINISHING)
+    val video = mode == RecordingMode.VIDEO
+    val filled = recording || locked || !video
     val level by animateFloatAsState(ui.live?.level ?: 0f, label = "level")
     Box(contentAlignment = Alignment.Center) {
         if (recording) {
@@ -133,14 +149,14 @@ fun RecordButton(ui: RecordingUi) {
             Modifier
                 .size(if (recording) 72.dp else 44.dp)
                 .clip(CircleShape)
-                .background(if (recording || locked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest)
+                .background(if (filled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest)
                 .clickCursor()
-                .then(ui.gesture)
+                .then(ui.gesture(mode))
                 .semantics {
                     contentDescription = when {
                         locked -> "Отправить запись"
-                        video -> "Видеосообщение: удерживайте, чтобы записать, нажмите — голосовое"
-                        else -> "Голосовое: удерживайте, чтобы записать, нажмите — видеосообщение"
+                        video -> "Камера: нажмите — снимок, удерживайте — видеосообщение"
+                        else -> "Голосовое: удерживайте, чтобы записать"
                     }
                 },
             contentAlignment = Alignment.Center,
@@ -148,12 +164,13 @@ fun RecordButton(ui: RecordingUi) {
             Icon(
                 when {
                     locked -> Icons.AutoMirrored.Filled.Send
-                    video -> Icons.Filled.Videocam
+                    video && recording -> Icons.Filled.Videocam
+                    video -> Icons.Outlined.CameraAlt
                     else -> Icons.Filled.Mic
                 },
                 null,
                 Modifier.size(if (recording) 30.dp else 24.dp),
-                tint = if (recording || locked) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = if (filled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

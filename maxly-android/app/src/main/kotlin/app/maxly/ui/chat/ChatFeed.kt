@@ -140,6 +140,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -272,6 +274,8 @@ internal fun ChatFeed(
     revealed: List<String>,
     onReveal: (String) -> Unit,
     onLongPress: (Message) -> Unit,
+    /** Меню долгого нажатия с местом строки в координатах корня; `null` — [onLongPress]. */
+    onMenu: ((ChatItem.Bubble, androidx.compose.ui.geometry.Rect) -> Unit)? = null,
     onRetry: (Message) -> Unit,
     quickReaction: String?,
     onButton: (Message, InlineButton) -> Unit,
@@ -379,6 +383,8 @@ internal fun ChatFeed(
             model.savePlace(if (key == null || index == 0 && offset < BOTTOM_SLOP) null else ScrollPlace(key, offset))
         }
     }
+    // Место строк для меню долгого нажатия: обычная карта, прокрутка не пересобирает ленту.
+    val rowBounds = remember { HashMap<String, androidx.compose.ui.geometry.Rect>() }
     val awayFromBottom by remember {
         derivedStateOf {
             val info = listState.layoutInfo
@@ -432,9 +438,12 @@ internal fun ChatFeed(
                         onToggle = { model.toggleSelection(item.message) },
                     ) { if (privacy != app.maxly.domain.PrivateModeDisplay.VISIBLE && item.key !in revealed) {
                         PrivateBubble(item, privacy) { onReveal(item.key) }
-                    } else BubbleRow(
+                    } else Box(Modifier.onGloballyPositioned { rowBounds[item.key] = it.boundsInRoot() }) { BubbleRow(
                         item = item,
-                        onLongPress = onLongPress,
+                        onLongPress = { message ->
+                            val bounds = rowBounds[item.key]
+                            if (onMenu != null && bounds != null && !selecting) onMenu(item, bounds) else onLongPress(message)
+                        },
                         onReaction = { message, emoji -> model.toggleReaction(message, emoji) },
                         // Цитата ответа: к оригиналу, «вниз» вернёт сюда.
                         onReplyClick = { id -> model.jumpTo(id, from = item.key) },
@@ -446,7 +455,7 @@ internal fun ChatFeed(
                         onDoubleTap = { message -> quickReaction?.let { model.toggleReaction(message, it) } },
                         onButton = onButton,
                         onAuthor = if (item.isGroupChat && !selecting) onAuthor else null,
-                    ) }
+                    ) } }
                 }
             }
             if (state.isLoadingOlder) {
