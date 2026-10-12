@@ -1580,6 +1580,12 @@ class ChatViewModel(
         }
     }
 
+    fun participantChatId(message: Message): String? {
+        val me = repository.currentUserId?.toLongOrNull() ?: return null
+        val peer = message.authorId.toLongOrNull() ?: return null
+        return (me xor peer).takeIf { peer > 0 && me > 0 && peer != me }?.toString()
+    }
+
     /** Собеседник диалога: id чата диалога — это id пользователей через xor. */
     private fun peerOf(chat: Chat): String? {
         val me = repository.currentUserId?.toLongOrNull() ?: return null

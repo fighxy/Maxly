@@ -392,6 +392,9 @@ fun MainScreen(
                     model,
                     onBack = { nav.popBackStack() },
                     onOpenProfile = { nav.navigate("profile/$chatId?fromChat=true") },
+                    onOpenParticipant = { id, name ->
+                        nav.navigate("profile/$id?title=${android.net.Uri.encode(name)}")
+                    },
                     mediaUserAgent = container.videoSourceUserAgent(),
                     forwardTargets = { chatList.forwardTargets(excluding = chatId) },
                     onDisablePrivateMode = { container.privateMode.setEnabled(false) },

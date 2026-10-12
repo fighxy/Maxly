@@ -74,6 +74,8 @@ public struct MessageBubble: View {
     private let onCast: (([String]) -> Void)?
     /// Нажатие inline-кнопки бота. `nil` — кнопки видны, но не нажимаются.
     private let onButton: ((InlineButton) -> Void)?
+    /// Профиль автора: отдельное действие имени и аватара.
+    private let onAuthor: (() -> Void)?
     /// «Выбрать»: режим выбора нескольких сообщений. `nil` — пункта нет.
     private let onSelect: (() -> Void)?
 
@@ -136,8 +138,10 @@ public struct MessageBubble: View {
         onVote: ((String) -> Void)? = nil,
         onCast: (([String]) -> Void)? = nil,
         onButton: ((InlineButton) -> Void)? = nil,
+        onAuthor: (() -> Void)? = nil,
         onSelect: (() -> Void)? = nil
     ) {
+        self.onAuthor = onAuthor
         self.onSelect = onSelect
         self.message = message
         self.layout = MessageBubbleLayout(message: message, showsAuthorName: showsAuthorName, showsComments: allowsComments)
@@ -387,7 +391,7 @@ public struct MessageBubble: View {
     private func standaloneBody(_ standalone: MessageBubbleLayout.Standalone) -> some View {
         VStack(alignment: isOutgoing ? .trailing : .leading, spacing: 4) {
             if showsAuthorName, !authorTitle.isEmpty {
-                Text(authorTitle)
+                authorAction { Text(authorTitle) }
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(authorColor)
                     .lineLimit(1)
@@ -466,14 +470,25 @@ public struct MessageBubble: View {
     @ViewBuilder
     private var authorMark: some View {
         if showsAuthorAvatar {
-            AvatarView(
+            authorAction { AvatarView(
                 title: authorTitle.isEmpty ? message.authorId : authorTitle,
                 id: message.authorId,
                 url: message.authorAvatarURL,
                 size: Self.avatarSize
-            )
+            ) }
         } else {
             Color.clear.frame(width: Self.avatarSize, height: Self.avatarSize)
+        }
+    }
+
+    @ViewBuilder
+    private func authorAction<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        if let onAuthor {
+            Button(action: onAuthor, label: content)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Профиль: \(authorTitle)")
+        } else {
+            content()
         }
     }
 
@@ -594,7 +609,7 @@ public struct MessageBubble: View {
             VStack(alignment: .leading, spacing: 4) {
                 // Сначала кто прислал в группу, под ним — от кого переслано.
                 if name {
-                    Text(authorTitle)
+                    authorAction { Text(authorTitle) }
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(authorColor)
                         .lineLimit(1)

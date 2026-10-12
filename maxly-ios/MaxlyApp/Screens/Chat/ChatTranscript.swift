@@ -35,6 +35,7 @@ struct ChatTranscript: View {
     var headerBottom: CGFloat? = nil
     /// Верх открытой клавиатуры в глобальных координатах; `nil` — клавиатуры нет.
     var keyboardTop: CGFloat? = nil
+    var onAuthor: (Message) -> Void = { _ in }
     /// Низ ленты виден (пока виден, новые сообщения прокручивают ленту сами), число новых
     /// на кнопке «вниз» и прыжок к последнему сообщению.
     @State private var bottom = TranscriptBottomState()
@@ -64,7 +65,8 @@ struct ChatTranscript: View {
                             TranscriptBubble(
                                 state: state(for: row, width: geo.size.width),
                                 viewModel: viewModel,
-                                reveal: reveal
+                                reveal: reveal,
+                                onAuthor: onAuthor
                             )
                             .equatable()
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
