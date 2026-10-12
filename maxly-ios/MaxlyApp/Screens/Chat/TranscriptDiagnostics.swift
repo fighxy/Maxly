@@ -42,7 +42,7 @@ final class TranscriptDiagnostics {
                 "tracking": String(scroll.isTracking), "dragging": String(scroll.isDragging), "decelerating": String(scroll.isDecelerating)
             ]) { _, new in new }
         }
-        DiagnosticEvent.event("chat.viewport", fields, snapshot: true)
+        DiagnosticEvent.event("chat.viewport", fields, snapshot: scroll != nil && event != "scroll-detached" && event != "disappear")
     }
 
     static func n(_ value: CGFloat) -> String {
