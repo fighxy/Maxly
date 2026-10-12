@@ -94,6 +94,8 @@ struct TranscriptBubble: View, Equatable {
                     reservesAvatar: state.reservesAvatar,
                     group: state.row.group
                 )
+                // У заглушки меню нет: оно показало бы сообщение.
+                .environment(\.messageMenuPresenter, nil)
             }
         }
     }

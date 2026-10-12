@@ -79,6 +79,13 @@ public struct MessageBubble: View {
     /// «Выбрать»: режим выбора нескольких сообщений. `nil` — пункта нет.
     private let onSelect: (() -> Void)?
 
+    /// Копия пузыря в меню долгого нажатия: только сам пузырь, без жестов.
+    private var isMenuPreview = false
+    /// Меню экрана чата как в WhatsApp; `nil` — системное контекстное меню.
+    @Environment(\.messageMenuPresenter) private var menuPresenter
+    /// Место пузыря на экране для меню. Ссылка, а не состояние: прокрутка его меняет каждый
+    /// кадр, и пузырь не должен из-за этого перерисовываться.
+    @State private var menuFrame = MenuFrame()
     /// Сдвиг пузыря при свайпе «ответить».
     @State private var swipe: CGFloat = 0
     /// Палец ведёт по дорожке голосового: горизонтальный жест — перемотка, не ответ.
@@ -190,7 +197,9 @@ public struct MessageBubble: View {
     }
 
     public var body: some View {
-        if let pin = message.content.pin {
+        if isMenuPreview {
+            bubbleContent
+        } else if let pin = message.content.pin {
             ServiceMessageNotice(pin: pin, onOpen: onFocusReply)
                 .background(highlighted ? Color.maxlyAccent.opacity(0.12) : Color.clear)
         } else {
@@ -205,11 +214,8 @@ public struct MessageBubble: View {
                 authorMark
             }
             VStack(alignment: isOutgoing ? .trailing : .leading, spacing: 4) {
-                if let standalone {
-                    standaloneBody(standalone)
-                } else {
-                    bubble
-                }
+                bubbleContent
+                    .modifier(MenuFrameReader(frame: menuFrame, enabled: menuPresenter != nil))
                 if message.status == .failed {
                     Button("Не отправлено. Повторить", action: onRetry)
                         .font(.caption2)
@@ -237,7 +243,7 @@ public struct MessageBubble: View {
         .padding(.top, group.joinsPrevious ? 0 : 4)
         .background(highlighted ? Color.maxlyAccent.opacity(0.12) : Color.clear)
         .animation(MaxlyMotion.fade, value: highlighted)
-        .contextMenu {
+        .messageMenu(enabled: menuPresenter != nil, onOpen: openMenu) {
             if allowsReactions {
                 reactionMenu
             }
@@ -280,6 +286,74 @@ public struct MessageBubble: View {
             }
         }
         .modifier(QuickDoubleTap(action: onDoubleTap))
+    }
+
+    /// Сам пузырь: стикер или эмодзи без подложки либо пузырь с подложкой.
+    @ViewBuilder
+    private var bubbleContent: some View {
+        if let standalone {
+            standaloneBody(standalone)
+        } else {
+            bubble
+        }
+    }
+
+    /// Открыть фото или видео. Палец, открывший меню долгим нажатием, отпускается над тем же
+    /// кадром — просмотр тогда не открывается.
+    private func openMedia(_ id: String) {
+        guard menuPresenter?.request == nil, Date().timeIntervalSince(menuFrame.openedAt) > 0.6 else { return }
+        onOpen(id)
+    }
+
+    // MARK: Меню долгого нажатия
+
+    /// Открыть меню как в WhatsApp: копия пузыря на его месте, реакции и пункты.
+    private func openMenu() {
+        guard let menuPresenter, menuFrame.rect.width > 0 else { return }
+        menuFrame.openedAt = Date()
+        var preview = self
+        preview.isMenuPreview = true
+        menuPresenter.present(MessageMenuRequest(
+            id: message.id,
+            frame: menuFrame.rect,
+            isOutgoing: isOutgoing,
+            reactions: allowsReactions ? quickReactions : nil,
+            mine: message.content.reactions.mine,
+            onReact: onReact,
+            onMoreReactions: allowsReactions ? onMoreReactions : nil,
+            primary: primaryMenuActions,
+            more: moreMenuActions,
+            preview: AnyView(preview)
+        ))
+    }
+
+    /// Главные пункты, порядок как у WhatsApp.
+    private var primaryMenuActions: [MessageMenuAction] {
+        var actions: [MessageMenuAction] = []
+        if allowsReply { actions.append(MessageMenuAction("Ответить", systemImage: "arrowshape.turn.up.left", action: onReply)) }
+        if let onEdit { actions.append(MessageMenuAction("Изменить", systemImage: "pencil", action: onEdit)) }
+        if let onForward, message.status == .sent {
+            actions.append(MessageMenuAction("Переслать", systemImage: "arrowshape.turn.up.right", action: onForward))
+        }
+        if hasText { actions.append(MessageMenuAction("Копировать", systemImage: "doc.on.doc") { copyText() }) }
+        if let onInfo, message.status == .sent { actions.append(MessageMenuAction("Сведения", systemImage: "info.circle", action: onInfo)) }
+        if let onDelete { actions.append(MessageMenuAction("Удалить", systemImage: "trash", destructive: true, action: onDelete)) }
+        return actions
+    }
+
+    /// Остальное — под «Ещё…».
+    private var moreMenuActions: [MessageMenuAction] {
+        var actions: [MessageMenuAction] = []
+        if allowsComments { actions.append(MessageMenuAction("Комментарии", systemImage: "bubble.left.and.bubble.right", action: onComments)) }
+        if let onPin, message.status == .sent { actions.append(MessageMenuAction("Закрепить", systemImage: "pin", action: onPin)) }
+        if let onSaveToPhotos { actions.append(MessageMenuAction("Сохранить в Фото", systemImage: "square.and.arrow.down", action: onSaveToPhotos)) }
+        if let onSaveToFiles { actions.append(MessageMenuAction("Сохранить в Файлы", systemImage: "folder", action: onSaveToFiles)) }
+        if let onMarkUnread { actions.append(MessageMenuAction("Пометить непрочитанным", systemImage: "envelope.badge", action: onMarkUnread)) }
+        if allowsReactions, let onReactionUsers, !message.content.reactions.isEmpty {
+            actions.append(MessageMenuAction("Кто отреагировал", systemImage: "person.2", action: onReactionUsers))
+        }
+        if let onSelect { actions.append(MessageMenuAction("Выбрать", systemImage: "checkmark.circle", action: onSelect)) }
+        return actions
     }
 
     // MARK: Реакции
@@ -643,7 +717,7 @@ public struct MessageBubble: View {
             loadingId: loadingId,
             fillsWidth: hasFill,
             roundPlayer: roundPlayer,
-            onOpen: onOpen,
+            onOpen: openMedia,
             onDoubleTap: onDoubleTap
         )
         .padding(.horizontal, inset)
@@ -1007,5 +1081,39 @@ private struct PollChoices: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Опрос, \(poll.title)")
+    }
+}
+
+/// Место пузыря на экране для меню долгого нажатия.
+final class MenuFrame {
+    var rect: CGRect = .zero
+    /// Когда это меню открылось: отпущенный после долгого нажатия палец ничего не открывает.
+    var openedAt: Date = .distantPast
+}
+
+/// Запоминает место пузыря, только когда меню экрана чата есть.
+private struct MenuFrameReader: ViewModifier {
+    let frame: MenuFrame
+    let enabled: Bool
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame.rect = $0 }
+        } else {
+            content
+        }
+    }
+}
+
+extension View {
+    /// Долгое нажатие: меню как в WhatsApp (`MessageMenuPresenter`) или системное меню.
+    @ViewBuilder
+    func messageMenu<Items: View>(enabled: Bool, onOpen: @escaping () -> Void, @ViewBuilder items: () -> Items) -> some View {
+        if enabled {
+            simultaneousGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in onOpen() })
+                .accessibilityAction(named: Text("Действия"), onOpen)
+        } else {
+            contextMenu { items() }
+        }
     }
 }

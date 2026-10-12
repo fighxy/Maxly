@@ -59,6 +59,8 @@ struct ChatView: View {
     @State private var attachmentsShown = false
     /// Снимки с кнопки камеры в поле ввода (`CameraCaptureFlow`).
     @State private var cameraFlowShown = false
+    /// Меню долгого нажатия на сообщение, как в WhatsApp (`MessageMenuHost`).
+    @State private var messageMenu = MessageMenuPresenter()
     @State private var panelShown = false
     /// Высота последней клавиатуры без нижнего отступа: панель встаёт на её место.
     @State private var keyboardHeight: CGFloat = 300
@@ -119,6 +121,7 @@ struct ChatView: View {
             keyboardTop: keyboardTop,
             onAuthor: openParticipant
         )
+        .environment(\.messageMenuPresenter, messageMenu)
         // Обои за лентой: на весь экран, под шапкой, полем ввода и клавиатурой, не
         // прокручиваются с сообщениями.
         .background {
@@ -591,6 +594,8 @@ struct ChatView: View {
                 }
             }
             .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: recording.isVideo)
+            // Меню сообщения поверх всего экрана чата: лента под ним размыта.
+            .overlay { MessageMenuHost(presenter: messageMenu) }
             .modifier(ChatHistoryLifecycle(model: viewModel, requestsComments: wantsCommentCounts))
     }
 
@@ -630,6 +635,7 @@ struct ChatView: View {
                 viewModel.endReadSession()
                 panelShown = false
                 recording.cancel()
+                messageMenu.dismiss()
                 reveal.hideAll()
             }
             // Режим выключили или сменили вид — открытые пузыри снова закрыты при следующем включении.
