@@ -186,51 +186,70 @@ struct RecordingBar: View {
     }
 }
 
-/// Кружок во время записи: затемнение, живая картинка камеры в круге и кольцо минуты.
+/// Кружок во время записи, как в Telegram: размытый чат, большой круг камеры с кольцом минуты,
+/// а слева внизу над полем ввода — смена камеры и вспышка. Время и «Влево — отмена» показывает
+/// само поле ввода.
 struct VideoNoteOverlay: View {
     let session: RecordingSession
-    private let diameter: CGFloat = 260
+    /// Верх поля ввода в глобальных координатах: кнопки стоят над ним. `0` — неизвестно.
+    var controlsTop: CGFloat = 0
 
     var body: some View {
-        ZStack {
-            // Затемнение, круг и кольцо касания не ловят: палец держит кнопку записи под ними.
-            // Вспышка фронтальной камеры: вместо затемнения экран светит белым на полной яркости.
-            (session.video.screenFlash ? Color.white : Color.black.opacity(0.55))
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-            VStack(spacing: 16) {
-                ZStack(alignment: .bottomTrailing) {
-                    ZStack {
-                        NoteCameraPreview(session: session.video.session)
-                            .frame(width: diameter, height: diameter)
-                            .clipShape(Circle())
-                        Circle()
-                            .trim(from: 0, to: min(1, session.elapsed / VideoNoteRecorder.maximumDuration))
-                            .stroke(Color.maxlyAccent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                            .rotationEffect(.degrees(-90))
-                            .frame(width: diameter + 12, height: diameter + 12)
-                            .animation(.linear(duration: 0.1), value: session.elapsed)
-                    }
+        GeometryReader { geo in
+            let frame = geo.frame(in: .global)
+            let bottomInset = controlsTop > 0 ? max(0, frame.maxY - controlsTop) : 90
+            let free = max(0, geo.size.height - bottomInset)
+            let diameter = max(160, min(geo.size.width - 24, free - 140))
+            ZStack {
+                // Фон, круг и кольцо касания не ловят: палец держит кнопку записи под ними.
+                // Фон — до поля ввода: время, «Влево — отмена» и кнопка записи остаются чёткими.
+                background
+                    .frame(height: free)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .ignoresSafeArea(edges: .top)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
-                    flipButton
-                        .offset(x: 18, y: 18)
-                }
-                .overlay(alignment: .bottomLeading) {
-                    flashButton
-                        .offset(x: -18, y: 18)
-                }
-                Text(RecordingBar.clock(session.elapsed))
-                    .font(.headline.monospacedDigit())
-                    .foregroundStyle(session.video.screenFlash ? Color.black : Color.white)
+                circle(diameter)
+                    .position(x: geo.size.width / 2, y: max(diameter / 2 + 12, free * 0.45))
                     .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                // Нажимаются вторым пальцем, пока первый держит кнопку записи, или после закрепления.
+                HStack(spacing: 14) {
+                    flipButton
+                    flashButton
+                }
+                .padding(.leading, 16)
+                .padding(.bottom, bottomInset + 12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }
-            .offset(y: -40)
         }
         .transition(.opacity)
         .onChange(of: session.video.screenFlash) { _, on in brightness.set(on) }
         .onDisappear { brightness.set(false) }
+    }
+
+    /// Размытый чат; со вспышкой фронтальной камеры — белый экран на полной яркости.
+    @ViewBuilder
+    private var background: some View {
+        if session.video.screenFlash {
+            Color.white
+        } else {
+            Rectangle().fill(.ultraThinMaterial)
+        }
+    }
+
+    private func circle(_ diameter: CGFloat) -> some View {
+        ZStack {
+            NoteCameraPreview(session: session.video.session)
+                .frame(width: diameter, height: diameter)
+                .clipShape(Circle())
+            Circle()
+                .trim(from: 0, to: min(1, session.elapsed / VideoNoteRecorder.maximumDuration))
+                .stroke(Color.maxlyAccent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .frame(width: diameter + 10, height: diameter + 10)
+                .animation(.linear(duration: 0.1), value: session.elapsed)
+        }
     }
 
     @State private var brightness = ScreenBrightness()
@@ -242,27 +261,24 @@ struct VideoNoteOverlay: View {
         } label: {
             Image(systemName: session.video.flashOn ? "bolt.fill" : "bolt.slash")
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(session.video.flashOn ? Color.yellow : Color.white)
+                .foregroundStyle(session.video.flashOn ? Color.orange : Color.primary)
                 .frame(width: 48, height: 48)
-                .background(.ultraThinMaterial, in: Circle())
-                .environment(\.colorScheme, .dark)
+                .background(.regularMaterial, in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(session.video.flashOn ? "Выключить вспышку" : "Включить вспышку")
     }
 
-    /// Сменить камеру: справа внизу от круга. Нажимается вторым пальцем, пока первый держит
-    /// кнопку записи, или после закрепления записи.
+    /// Сменить камеру, не прерывая запись.
     private var flipButton: some View {
         Button {
             Task { await session.video.switchCamera() }
         } label: {
             Image(systemName: "arrow.triangle.2.circlepath.camera")
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.primary)
                 .frame(width: 48, height: 48)
-                .background(.ultraThinMaterial, in: Circle())
-                .environment(\.colorScheme, .dark)
+                .background(.regularMaterial, in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(session.video.usesFrontCamera ? "Переключить на основную камеру" : "Переключить на фронтальную камеру")

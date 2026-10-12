@@ -590,7 +590,7 @@ struct ChatView: View {
             }
             .overlay {
                 if recording.isVideo {
-                    VideoNoteOverlay(session: recording)
+                    VideoNoteOverlay(session: recording, controlsTop: bottomControlsTop)
                 }
             }
             .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: recording.isVideo)
