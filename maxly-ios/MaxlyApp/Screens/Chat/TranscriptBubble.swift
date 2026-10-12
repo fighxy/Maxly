@@ -52,6 +52,7 @@ struct TranscriptBubble: View, Equatable {
     let state: Snapshot
     let viewModel: ChatViewModel
     let reveal: PrivateModeReveal
+    var onAuthor: (Message) -> Void = { _ in }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     nonisolated static func == (lhs: TranscriptBubble, rhs: TranscriptBubble) -> Bool {
@@ -175,6 +176,7 @@ struct TranscriptBubble: View, Equatable {
             onVote: { answerId in Task { await viewModel.vote(message, answerId: answerId) } },
             onCast: { ids in Task { await viewModel.castVotes(message, answerIds: ids) } },
             onButton: { button in press(button) },
+            onAuthor: state.chatType == .group ? { onAuthor(message) } : nil,
             onSelect: state.selectable ? { [reduceMotion] in
                 withAnimation(MaxlyMotion.quick(reduceMotion: reduceMotion)) { viewModel.selection.begin(with: message) }
             } : nil

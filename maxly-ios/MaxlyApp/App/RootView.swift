@@ -336,7 +336,8 @@ struct MainTabView: View {
                 },
                 quickReaction: settings.quickReactionEnabled ? settings.quickReaction : nil,
                 makeBotApp: { container.botAppModel($0) },
-                onCall: { peer, video in container.startCall(peer, video: video) }
+                onCall: { peer, video in container.startCall(peer, video: video) },
+                makeParticipantProfile: { container.profileViewModel(dialog: $0) }
             )
             .id(id)
         }

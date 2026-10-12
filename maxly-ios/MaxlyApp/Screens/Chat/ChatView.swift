@@ -49,6 +49,9 @@ struct ChatView: View {
     var makeBotApp: ((BotAppRequest) -> MiniAppModel)? = nil
     /// Позвонить собеседнику личного чата (из профиля): аудио или видео.
     var onCall: ((CallCenter.Peer, Bool) -> Void)? = nil
+    var makeParticipantProfile: ((DialogDraft) -> ChatProfileViewModel?)? = nil
+    @State private var participant: DialogDraft?
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var profile: ChatProfileViewModel?
     @State private var profileShown = false
@@ -111,7 +114,8 @@ struct ChatView: View {
             wallpaperFrame: wallpaperFrame,
             quickReaction: quickReaction,
             headerBottom: headerBottom,
-            keyboardTop: keyboardTop
+            keyboardTop: keyboardTop,
+            onAuthor: openParticipant
         )
         // Обои за лентой: на весь экран, под шапкой, полем ввода и клавиатурой, не
         // прокручиваются с сообщениями.
@@ -248,11 +252,18 @@ struct ChatView: View {
             // в приватном режиме там всегда общее «Личный чат» / «Групповой чат».
             .navigationTitle(shownTitle)
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarBackButtonHidden(viewModel.selection.isActive)
+            // Явная кнопка ниже: системный back включает также свайп закрытия чата.
+            .navigationBarBackButtonHidden(true)
             .toolbar { headerToolbar }
             // Стеклянная капсула названия над лентой, под статус-баром мягкое размытие.
             .chatHeaderBlur()
             .navigationDestination(isPresented: $profileShown) { profileDestination }
+            .navigationDestination(item: $participant) { dialog in
+                ProfileDestination(make: { makeParticipantProfile?(dialog) }) {
+                    participant = nil
+                    onOpenDialog?(dialog)
+                }
+            }
             // Статус собеседника в шапке: события `presence` ядра, пока чат открыт.
             .task(id: profile == nil) { await profile?.watchPresence() }
             .task {
@@ -298,6 +309,10 @@ struct ChatView: View {
 
     @ToolbarContentBuilder
     private var chatToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button("Назад", systemImage: "chevron.backward") { dismiss() }
+                .labelStyle(.iconOnly)
+        }
         ToolbarItem(placement: .principal) {
             Button(action: openProfile) {
                 // Раз в минуту: «был(а) N минут назад» в шапке не застывает на времени открытия.
@@ -760,6 +775,14 @@ struct ChatView: View {
         case .channel: .channel
         default: .user
         }
+    }
+
+    private func openParticipant(_ message: Message) {
+        guard kind == .group, makeParticipantProfile != nil,
+              let dialog = DialogDraft.with(peerId: message.authorId, me: viewModel.currentUserId,
+                  title: message.authorName, avatarURL: message.authorAvatarURL) else { return }
+        composerFocused = false
+        participant = dialog
     }
 
     private func openProfile() {

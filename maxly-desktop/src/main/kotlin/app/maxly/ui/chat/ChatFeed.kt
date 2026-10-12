@@ -280,6 +280,7 @@ internal fun ChatFeed(
     modifier: Modifier = Modifier,
     /** Выбранные сообщения: непустой набор — режим выбора ([ChatViewModel.selection]). */
     selection: Set<String> = emptySet(),
+    onAuthor: ((Message) -> Unit)? = null,
 ) {
     val listState = rememberLazyListState()
     val screen = remember(model.chatId) { java.util.UUID.randomUUID().toString().take(8) }
@@ -459,6 +460,7 @@ internal fun ChatFeed(
                         onVote = model::vote,
                         onDoubleTap = { message -> quickReaction?.let { model.toggleReaction(message, it) } },
                         onButton = onButton,
+                        onAuthor = if (item.isGroupChat && !selecting) onAuthor else null,
                     ) }
                 }
             }

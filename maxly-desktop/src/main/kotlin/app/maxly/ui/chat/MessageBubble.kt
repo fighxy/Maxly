@@ -156,6 +156,7 @@ fun BubbleRow(
     onComments: ((Message) -> Unit)? = null,
     onVote: (Message, String) -> Unit = { _, _ -> },
     onDoubleTap: (Message) -> Unit = {},
+    onAuthor: ((Message) -> Unit)? = null,
     /** Нажатие inline-кнопки бота. `null` — кнопки видны, но не нажимаются. */
     onButton: ((Message, app.maxly.domain.InlineButton) -> Unit)? = null,
 ) {
@@ -191,7 +192,9 @@ fun BubbleRow(
     ) {
         if (item.isGroupChat) {
             Box(Modifier.width(40.dp)) {
-                item.avatar?.let { Avatar(it, 34.dp) }
+                item.avatar?.let { avatar ->
+                    Box(Modifier.clickable(enabled = onAuthor != null, onClickLabel = "Открыть профиль") { onAuthor?.invoke(message) }) { Avatar(avatar, 34.dp) }
+                }
             }
         }
         val colors = bubbleColors(item.outgoing)
@@ -217,7 +220,7 @@ fun BubbleRow(
             if (roundVideo != null) {
                 Column(horizontalAlignment = if (item.outgoing) Alignment.End else Alignment.Start) {
                     item.authorName?.let {
-                        Text(it, color = AvatarPalette.nameColor(item.authorColor), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp, bottom = 2.dp))
+                        Text(it, color = AvatarPalette.nameColor(item.authorColor), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable(enabled = onAuthor != null, onClickLabel = "Открыть профиль") { onAuthor?.invoke(message) }.padding(start = 8.dp, bottom = 2.dp))
                     }
                     RoundNote(message, roundVideo, onLongPress = { onLongPress(message) }, onDoubleTap = { onDoubleTap(message) })
                     Surface(shape = RoundedCornerShape(10.dp), color = Color.Black.copy(alpha = 0.35f), modifier = Modifier.padding(top = 4.dp)) {
@@ -235,7 +238,7 @@ fun BubbleRow(
                 val lottie = message.content.formatting.firstOrNull { it.kind == TextSpan.Kind.ANIMOJI }?.url
                 Column(horizontalAlignment = if (item.outgoing) Alignment.End else Alignment.Start, modifier = press) {
                     item.authorName?.let {
-                        Text(it, color = AvatarPalette.nameColor(item.authorColor), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp, bottom = 2.dp))
+                        Text(it, color = AvatarPalette.nameColor(item.authorColor), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable(enabled = onAuthor != null, onClickLabel = "Открыть профиль") { onAuthor?.invoke(message) }.padding(start = 8.dp, bottom = 2.dp))
                     }
                     if (bigEmoji.size == 1 && !lottie.isNullOrBlank()) {
                         LottieOrStill(lottie, null, Modifier.size(120.dp), bigEmoji.single())
@@ -274,7 +277,7 @@ fun BubbleRow(
                         contentColor = colors.content,
                         modifier = Modifier.widthIn(max = maxWidth).clip(shape).then(press),
                     ) {
-                        BubbleContent(item, colors, maxWidth, shape, onReaction, onReplyClick, onComments, onLongPress = { onLongPress(message) }, onVote = onVote, onDoubleTap = { onDoubleTap(message) })
+                        BubbleContent(item, colors, maxWidth, shape, onReaction, onReplyClick, onComments, onAuthor = onAuthor, onLongPress = { onLongPress(message) }, onVote = onVote, onDoubleTap = { onDoubleTap(message) })
                     }
                     message.content.keyboard?.let { keyboard ->
                         InlineKeyboardView(keyboard, enabled = onButton != null) { onButton?.invoke(message, it) }
@@ -333,6 +336,7 @@ private fun BubbleContent(
     onLongPress: () -> Unit = {},
     onVote: (Message, String) -> Unit = { _, _ -> },
     onDoubleTap: () -> Unit = {},
+    onAuthor: ((Message) -> Unit)? = null,
 ) {
     val message = item.message
     val content = message.content
@@ -352,7 +356,7 @@ private fun BubbleContent(
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = headerPadding,
+                modifier = Modifier.clickable(enabled = onAuthor != null, onClickLabel = "Открыть профиль") { onAuthor?.invoke(message) }.then(headerPadding),
             )
         }
         content.forward?.let {

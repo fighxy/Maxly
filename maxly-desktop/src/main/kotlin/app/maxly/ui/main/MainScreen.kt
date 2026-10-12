@@ -337,6 +337,8 @@ fun MainScreen(
                             chatTitle = chatTitle,
                             profileFor = profileFor,
                             onOpenProfile = { profileFor = chatId },
+                            onOpenParticipant = { id, _ -> profileFor = id },
+                            onWriteParticipant = { id -> openChat(id) },
                             onCloseProfile = { profileFor = null },
                             onCloseChat = {
                                 chatId = null
@@ -453,6 +455,8 @@ private fun ChatPane(
     chatTitle: String?,
     profileFor: String?,
     onOpenProfile: () -> Unit,
+    onOpenParticipant: (String, String) -> Unit,
+    onWriteParticipant: (String) -> Unit,
     onCloseProfile: () -> Unit,
     onCloseChat: () -> Unit,
     quickReaction: String? = null,
@@ -489,14 +493,14 @@ private fun ChatPane(
                 )
             } else {
             val model = viewModel(key = "profile-$profileFor") {
-                ProfileViewModel(profileFor, chatTitle, container.profiles, container.messages, container.voicePlayer, container.files, account = container.account, contacts = container.contacts)
+                ProfileViewModel(profileFor, chatTitle.takeIf { profileFor == chatId }, container.profiles, container.messages, container.voicePlayer, container.files, account = container.account, contacts = container.contacts)
             }
             ProfileScreen(
                 model,
                 onBack = onCloseProfile,
-                onWrite = null,
+                onWrite = if (profileFor == chatId) null else ({ onWriteParticipant(profileFor) }),
                 mediaUserAgent = container.videoSourceUserAgent(),
-                chatActions = profileChatActions(listed = chatList.isListed(chatId)) { action ->
+                chatActions = if (profileFor != chatId) null else profileChatActions(listed = chatList.isListed(chatId)) { action ->
                     chatAction = chatId to action
                     onCloseProfile()
                 },
@@ -522,6 +526,7 @@ private fun ChatPane(
                 model,
                 onBack = onCloseChat,
                 onOpenProfile = onOpenProfile,
+                onOpenParticipant = onOpenParticipant,
                 mediaUserAgent = container.videoSourceUserAgent(),
                 forwardTargets = { chatList.forwardTargets(excluding = chatId) },
                 onDisablePrivateMode = { container.privateMode.setEnabled(false) },

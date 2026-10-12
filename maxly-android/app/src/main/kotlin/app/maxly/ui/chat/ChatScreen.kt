@@ -167,6 +167,7 @@ fun ChatScreen(
     model: ChatViewModel,
     onBack: () -> Unit,
     onOpenProfile: () -> Unit = {},
+    onOpenParticipant: (String, String) -> Unit = { _, _ -> },
     mediaUserAgent: String = "",
     /** Куда можно переслать сообщение. */
     forwardTargets: () -> List<ChatListItem> = { emptyList() },
@@ -424,6 +425,9 @@ fun ChatScreen(
                 onRetry = { actionsFor = it },
                 quickReaction = quickReaction,
                 onButton = pressButton,
+                onAuthor = { message ->
+                    model.participantChatId(message)?.let { onOpenParticipant(it, message.authorName) }
+                },
                 onDisablePrivateMode = onDisablePrivateMode,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 selection = selection,
