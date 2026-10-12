@@ -71,6 +71,7 @@ struct ChatTranscript: View {
                                 let old = reads.rows[row.id]
                                 reads.rows[row.id] = frame
                                 reads.revision += 1
+                                reads.rowRevisions[row.id] = reads.revision
                                 measuredGeometry()
                                 // Only a size change follows new media; scrolling itself never issues a command.
                                 if old?.height != frame.height, !bottom.atBottom,
@@ -83,6 +84,7 @@ struct ChatTranscript: View {
                             .onDisappear {
                                 reads.rows[row.id] = nil
                                 reads.revision += 1
+                                reads.rowRevisions[row.id] = nil
                                 measuredGeometry()
                                 reportReads()
                             }
@@ -232,7 +234,10 @@ struct ChatTranscript: View {
                     recordScroll("appear", immediate: true)
                     // Просьба прокрутки от прошлого захода к этому открытию не относится. Пришедшая,
                     // пока лента была скрыта (профиль), выполняется сейчас: иначе она держала бы `follow`.
-                    if isOpening { viewModel.consumeScroll() } else { perform(viewModel.scrollTarget, proxy: proxy) }
+                    if isOpening {
+                        viewModel.consumeScroll()
+                        openAtStart(proxy)
+                    } else { perform(viewModel.scrollTarget, proxy: proxy) }
                     // Возврат на экран (из профиля): рамки могли не смениться, а модель забыла
                     // увиденное — сообщаем его заново.
                     reportReads()
@@ -245,8 +250,10 @@ struct ChatTranscript: View {
                 }
                 .onDisappear {
                     recordScroll("disappear", immediate: true)
-                    viewModel.savePlace(visiblePlace, atBottom: bottom.atBottom)
+                    viewModel.savePlace(visiblePlace ?? reads.place?.id, atBottom: bottom.atBottom)
                     scroll.cancel()
+                    openingTargetChosen = false
+                    isOpening = true
                     // Следующий показ сообщит модели всё заново: прежнее увиденное она забыла.
                     reads.reported = nil
                 }
@@ -279,6 +286,7 @@ struct ChatTranscript: View {
             "measured": String(reads.rows.count), "visible": String(visible), "opening": String(isOpening),
             "restoring": String(viewModel.isRestoringHistory), "at_bottom": String(bottom.atBottom),
             "jumped": String(viewModel.isJumped), "position": visiblePlace.map(DiagnosticEvent.id) ?? "nil",
+            "following_latest": String(bottom.followsLatest), "scroll_command": scroll.request.map { String($0.token) } ?? "nil",
             "last_frame": TranscriptDiagnostics.frame(last), "viewport_frame": TranscriptDiagnostics.frame(viewport?.frame),
             "composer_top": TranscriptDiagnostics.n(bottomControlsTop), "keyboard_top": keyboardTop.map(TranscriptDiagnostics.n) ?? "nil"
         ]
@@ -516,7 +524,7 @@ struct ChatTranscript: View {
         }
         recordScroll("scroll-request:\(request.id)", immediate: true)
         apply()
-        var correctedRevision = reads.revision
+        var correctedRevision = reads.rowRevisions[request.id] ?? 0
         var corrections = 0
         var settledSamples = 0
         for _ in 0..<24 {
@@ -535,8 +543,8 @@ struct ChatTranscript: View {
                     reportReads()
                     return
                 }
-                if !reached, reads.revision != correctedRevision, corrections < 2 {
-                    correctedRevision = reads.revision
+                if !reached, let revision = reads.rowRevisions[request.id], revision != correctedRevision, corrections < 2 {
+                    correctedRevision = revision
                     corrections += 1
                     recordScroll("scroll-correction=measured:\(request.id)", immediate: true)
                     apply()
@@ -623,6 +631,7 @@ final class TranscriptReadTracker {
     /// Рамки показанных строк в глобальных координатах, по id сообщения.
     var rows: [String: CGRect] = [:]
     var revision = 0
+    var rowRevisions: [String: Int] = [:]
     var place: (id: String, anchor: Double)?
     var viewport: TranscriptReadViewport?
     /// Последнее, что ушло в модель.
