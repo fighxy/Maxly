@@ -74,6 +74,8 @@ private class FakeControl(val role: CallRole) : CallControl {
 private class FakeService : CallService {
     val incoming = MutableSharedFlow<IncomingCall>()
     var failStart: Exception? = null
+    /** Ошибки по одной на звонок, раньше [failStart]: первый запрос падает, повтор проходит. */
+    val failOnce = ArrayDeque<Exception>()
     var startGate: CompletableDeferred<Unit>? = null
     val started = mutableListOf<Pair<String, Boolean>>()
     val rejected = mutableListOf<Pair<String, String?>>()
@@ -84,6 +86,7 @@ private class FakeService : CallService {
 
     override suspend fun startCall(peerId: String, isVideo: Boolean): CallConnection {
         started += peerId to isVideo
+        failOnce.removeFirstOrNull()?.let { throw it }
         startGate?.await()
         failStart?.let { throw it }
         return CallConnection("conv-$peerId", "wss://x", 1)
@@ -109,9 +112,10 @@ class CallCenterTest {
         FakeControl(role).also { controls += it }
     }
 
-    private fun TestScope.center() = CallCenter(
+    private fun TestScope.center(awaitConnection: suspend () -> Boolean = { false }) = CallCenter(
         service, engine, backgroundScope,
         lookup = { CallPeerInfo(it, "Найден $it") },
+        awaitConnection = awaitConnection,
         endedDisplayMs = 1_000,
         now = { 1_000_000L },
     )
@@ -151,6 +155,27 @@ class CallCenterTest {
         val center = center()
         service.failStart = MaxlyError.NetworkUnavailable
         center.startCall(CallPeerInfo("7", "Анна"), video = false)
+        assertNull(center.state.value.call)
+        assertEquals("Нет соединения с сервером", center.state.value.errorMessage)
+    }
+
+    @Test
+    fun callAfterBackgroundWaitsForConnectionAndRetriesOnce() = runTest {
+        val center = center(awaitConnection = { true })
+        service.failOnce += app.maxly.data.CoreFailure("NETWORK", null)
+        center.startCall(CallPeerInfo("7", "Анна"), video = false)
+        runCurrent()
+        assertEquals(2, service.started.size)
+        assertEquals("conv-7", center.state.value.call!!.conversationId)
+        assertNull(center.state.value.errorMessage)
+    }
+
+    @Test
+    fun noRetryWhenConnectionDoesNotReturn() = runTest {
+        val center = center(awaitConnection = { false })
+        service.failOnce += MaxlyError.NetworkUnavailable
+        center.startCall(CallPeerInfo("7", "Анна"), video = false)
+        assertEquals(1, service.started.size)
         assertNull(center.state.value.call)
         assertEquals("Нет соединения с сервером", center.state.value.errorMessage)
     }

@@ -1,5 +1,6 @@
 package app.maxly
 
+import kotlinx.coroutines.flow.first
 import app.maxly.data.AccountRepository
 import app.maxly.data.AppearanceSettings
 import app.maxly.data.CallRepository
@@ -198,6 +199,11 @@ class AppContainer {
         },
         scope = scope,
         lookup = ::callPeer,
+        awaitConnection = {
+            kotlinx.coroutines.withTimeoutOrNull(15_000) {
+                client.state.first { it is com.maxly.shared.ClientState.Ready }
+            } != null
+        },
     ).also { center ->
         app.maxly.data.calls.CallLog.sink = { level, message -> System.err.println("[calls] $level $message") }
         // Журнал звонков читается заново, когда сервер успел записать звонок.

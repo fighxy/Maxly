@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -557,7 +558,7 @@ fun ReplyQuote(author: String, preview: String, colors: BubbleColors, modifier: 
     }
 }
 
-/** Фото и видео: одно — по пропорциям, несколько — сеткой по два. */
+/** Фото и видео: одно — по пропорциям, несколько — альбомом рядами (`ChatAlbum`). */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modifier = Modifier, shape: Shape, onLongPress: () -> Unit = {}, onDoubleTap: () -> Unit = {}, onOpen: (ChatAttachment) -> Unit) {
@@ -566,12 +567,15 @@ private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modif
         Box(modifier.size(frame.width.dp, frame.height.dp).clip(shape).combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(visuals.first()) }) { VisualCell(visuals.first(), frame.width.dp) }
         return
     }
-    val cell = (maxWidth - 2.dp) / 2
-    Column(modifier.clip(shape), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        visuals.chunked(2).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                row.forEach { Box(Modifier.size(if (row.size == 1) maxWidth else cell, cell).combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(it) }) { VisualCell(it, if (row.size == 1) maxWidth else cell) } }
-            }
+    // Несколько кадров — рядами по пропорциям, как на iOS (`ChatAlbum`).
+    val album = albumLayout(visuals, maxWidth)
+    Box(modifier.size(album.width.dp, album.height.dp).clip(shape)) {
+        album.tiles.forEach { tile ->
+            val item = visuals[tile.index]
+            Box(
+                Modifier.offset(tile.x.dp, tile.y.dp).size(tile.width.dp, tile.height.dp)
+                    .combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(item) },
+            ) { VisualCell(item, tile.width.dp) }
         }
     }
 }
@@ -588,7 +592,21 @@ private fun singleFrame(visual: ChatAttachment, maxWidth: Dp): ChatContentFormat
 
 /** Ширина медиа пузыря ([Visuals]): одно — по пропорциям, несколько — сетка во всю ширину. */
 private fun visualsWidth(visuals: List<ChatAttachment>, maxWidth: Dp): Dp =
-    if (visuals.size == 1) singleFrame(visuals.first(), maxWidth).width.dp else maxWidth
+    if (visuals.size == 1) singleFrame(visuals.first(), maxWidth).width.dp else albumLayout(visuals, maxWidth).width.dp
+
+/** Альбом из нескольких кадров по их пропорциям. */
+private fun albumLayout(visuals: List<ChatAttachment>, maxWidth: Dp): app.maxly.presentation.chat.AlbumLayout =
+    app.maxly.presentation.chat.ChatAlbum.layout(visuals.map(::aspectOf), maxWidth.value.toDouble())
+
+/** Ширина к высоте кадра; без размеров — квадрат. */
+private fun aspectOf(visual: ChatAttachment): Double {
+    val (w, h) = when (visual) {
+        is ChatAttachment.Photo -> visual.photo.width to visual.photo.height
+        is ChatAttachment.Video -> visual.video.width to visual.video.height
+        else -> null to null
+    }
+    return if (w != null && h != null && w > 0 && h > 0) w.toDouble() / h.toDouble() else 1.0
+}
 
 @Composable
 private fun VisualCell(attachment: ChatAttachment, width: Dp) {

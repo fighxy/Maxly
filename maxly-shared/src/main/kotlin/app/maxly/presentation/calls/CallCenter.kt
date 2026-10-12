@@ -74,6 +74,8 @@ class CallCenter(
     private val engine: CallEngine,
     private val scope: CoroutineScope,
     private val lookup: suspend (String) -> CallPeerInfo? = { null },
+    /** Ждёт живого соединения (`true`) или срока (`false`): звонок сразу после возврата из фона. */
+    private val awaitConnection: suspend () -> Boolean = { false },
     private val endedDisplayMs: Long = 1_500,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
@@ -133,7 +135,7 @@ class CallCenter(
             )
         }
         try {
-            val connection = service.startCall(peer.id, video)
+            val connection = requestCall(peer.id, video, id)
             CallLog.info("Сервер начал звонок ${connection.conversationId}, ICE-серверов: ${connection.iceServers.size}")
             val control = engine.makeCall(connection, CallRole.CALLER, isGroup = false, expiresAtMs = null)
             val call = _state.value.call
@@ -428,6 +430,29 @@ class CallCenter(
 
     /** Что можно пережить: исключения и сбои загрузки классов и нативных библиотек. */
     private fun recoverable(error: Throwable) = error is Exception || error is LinkageError
+
+    /**
+     * Начать звонок на сервере. Сразу после возврата из фона сокет бывает мёртв, а ядро ещё не
+     * знает об этом: запрос падает с ошибкой сети. Тогда звонок ждёт живого соединения
+     * ([awaitConnection]) и повторяется один раз, если трубку за это время не положили — как на iOS.
+     */
+    private suspend fun requestCall(peerId: String, video: Boolean, id: String): app.maxly.domain.CallConnection {
+        try {
+            return service.startCall(peerId, video)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (!isNetwork(e)) throw e
+            CallLog.info("Звонок: нет связи, жду переподключения")
+            val stillCalling = { _state.value.call?.let { it.id == id && !it.state.isEnded } == true }
+            if (!stillCalling() || !awaitConnection() || !stillCalling()) throw e
+            CallLog.info("Связь вернулась — повторяю звонок")
+            return service.startCall(peerId, video)
+        }
+    }
+
+    private fun isNetwork(error: Throwable): Boolean =
+        error is app.maxly.domain.MaxlyError.NetworkUnavailable || (error as? app.maxly.data.CoreFailure)?.kind == "NETWORK"
 
     private fun message(error: Throwable): String = CoreErrors.text(error)
 

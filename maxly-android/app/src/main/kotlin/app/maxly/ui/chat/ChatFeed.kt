@@ -388,13 +388,16 @@ internal fun ChatFeed(
     // Плавающая дата: день верхнего видимого сообщения, пока ленту крутят, и чуть после.
     val topDay by remember {
         derivedStateOf {
-            listState.layoutInfo.visibleItemsInfo.asReversed().firstNotNullOfOrNull { info ->
+            val visible = listState.layoutInfo.visibleItemsInfo
+            val day = visible.asReversed().firstNotNullOfOrNull { info ->
                 when (val item = items.getOrNull(info.index)) {
                     is ChatItem.Bubble -> item.day.ifEmpty { null }
                     is ChatItem.Day -> item.label
                     else -> null
                 }
             }
+            // Разделитель этого дня и так на экране — плашка только повторила бы его.
+            day?.takeUnless { label -> visible.any { (items.getOrNull(it.index) as? ChatItem.Day)?.label == label } }
         }
     }
     var showsDay by remember { mutableStateOf(false) }

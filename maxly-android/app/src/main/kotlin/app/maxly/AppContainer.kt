@@ -1,5 +1,6 @@
 package app.maxly
 
+import kotlinx.coroutines.flow.first
 import android.content.Context
 import app.maxly.data.AccountRepository
 import app.maxly.data.AppearanceSettings
@@ -233,6 +234,11 @@ class AppContainer(context: Context) {
         },
         scope = scope,
         lookup = ::callPeer,
+        awaitConnection = {
+            kotlinx.coroutines.withTimeoutOrNull(15_000) {
+                client.state.first { it is com.maxly.shared.ClientState.Ready }
+            } != null
+        },
     ).also { center ->
         app.maxly.calls.AndroidWebRtc.init(context.applicationContext)
         app.maxly.calls.CallPermissions.init(context.applicationContext)
