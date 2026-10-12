@@ -193,7 +193,6 @@ struct VoiceMessageView: View {
                 .foregroundStyle(transcript == .failed ? secondary : (outgoing ? Color.maxlyOutgoingText : Color.primary))
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
             if let time { time }
         }
     }

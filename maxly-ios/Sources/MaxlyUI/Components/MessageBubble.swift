@@ -737,7 +737,8 @@ public struct MessageBubble: View {
                 outgoing: isOutgoing,
                 trailingSpace: layout.metadata == .text ? metaReserve : nil
             )
-            .textSelection(.enabled)
+            // Без системного выделения: долгое нажатие открывает меню сообщения, а системная
+            // плашка «Скопировать / Поделиться» проскакивала поверх него. Копирование — в меню.
             if layout.metadata == .text {
                 meta
             }
