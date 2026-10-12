@@ -22,7 +22,7 @@ struct RecordButton: View {
 
     var body: some View {
         ZStack {
-            if mine, session.phase == .locked || session.phase == .finishing {
+            if mine, session.phase == .locked || session.phase == .finishing || session.phase == .reviewing {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Color.maxlyOnAccent)
@@ -120,7 +120,7 @@ struct RecordButton: View {
     }
 
     private var accessibilityLabel: String {
-        if mine, session.phase == .locked || session.phase == .finishing { return "Отправить запись" }
+        if mine, session.phase == .locked || session.phase == .finishing || session.phase == .reviewing { return "Отправить запись" }
         return mode == .voice ? "Голосовое сообщение" : "Камера"
     }
 }
@@ -133,6 +133,36 @@ struct RecordingBar: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        if session.phase == .reviewing, let review = session.review {
+            reviewBar(review)
+        } else {
+            recordingBar
+        }
+    }
+
+    /// Просмотр кружка: корзина и полоса обрезки; отправляет кнопка справа.
+    private func reviewBar(_ review: VideoNoteReview) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                session.cancel()
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.red)
+                    .frame(width: 36, height: 36)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Удалить кружок")
+            VideoNoteTrimStrip(review: review)
+        }
+        .padding(.leading, 6)
+        .padding(.trailing, 8)
+        .frame(minHeight: 44)
+        .maxlyGlassCapsule()
+    }
+
+    private var recordingBar: some View {
         HStack(spacing: 10) {
             if session.phase == .locked {
                 Button {
@@ -170,6 +200,20 @@ struct RecordingBar: View {
             } else if session.phase == .finishing {
                 ProgressView()
                     .controlSize(.small)
+            } else if session.phase == .locked, session.recordingMode == .video {
+                // «Стоп»: кружок на просмотр — посмотреть, обрезать, потом отправить.
+                Button {
+                    session.stopForReview()
+                } label: {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(Color.red, in: Circle())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Остановить и посмотреть")
             }
         }
         .padding(.leading, session.phase == .locked ? 6 : 16)
@@ -209,18 +253,23 @@ struct VideoNoteOverlay: View {
                     .ignoresSafeArea(edges: .top)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
-                circle(diameter)
-                    .position(x: geo.size.width / 2, y: max(diameter / 2 + 12, free * 0.45))
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-                // Нажимаются вторым пальцем, пока первый держит кнопку записи, или после закрепления.
-                HStack(spacing: 14) {
-                    flipButton
-                    flashButton
+                if let review = session.review, session.phase == .reviewing {
+                    reviewCircle(review, diameter)
+                        .position(x: geo.size.width / 2, y: max(diameter / 2 + 12, free * 0.45))
+                } else {
+                    circle(diameter)
+                        .position(x: geo.size.width / 2, y: max(diameter / 2 + 12, free * 0.45))
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                    // Нажимаются вторым пальцем, пока первый держит кнопку записи, или после закрепления.
+                    HStack(spacing: 14) {
+                        flipButton
+                        flashButton
+                    }
+                    .padding(.leading, 16)
+                    .padding(.bottom, bottomInset + 12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                 }
-                .padding(.leading, 16)
-                .padding(.bottom, bottomInset + 12)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }
         }
         .transition(.opacity)
@@ -236,6 +285,26 @@ struct VideoNoteOverlay: View {
         } else {
             Rectangle().fill(.ultraThinMaterial)
         }
+    }
+
+    /// Записанный кружок по кругу: без звука, касание включает и выключает звук.
+    private func reviewCircle(_ review: VideoNoteReview, _ diameter: CGFloat) -> some View {
+        VideoNotePlayerView(player: review.player)
+            .frame(width: diameter, height: diameter)
+            .clipShape(Circle())
+            .overlay(alignment: .bottom) {
+                Image(systemName: review.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 30, height: 30)
+                    .background(Color.black.opacity(0.5), in: Circle())
+                    .padding(.bottom, 18)
+            }
+            .contentShape(Circle())
+            .onTapGesture { review.toggleMuted() }
+            .accessibilityElement()
+            .accessibilityLabel(review.muted ? "Включить звук кружка" : "Выключить звук кружка")
+            .accessibilityAddTraits(.isButton)
     }
 
     private func circle(_ diameter: CGFloat) -> some View {

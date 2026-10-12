@@ -26,6 +26,8 @@ final class RecordingSession {
         case locked
         /// Остановка и подготовка файла.
         case finishing
+        /// Кружок остановлен кнопкой «стоп»: просмотр, обрезка, отправка или корзина.
+        case reviewing
     }
 
     private(set) var phase: Phase = .idle
@@ -40,6 +42,8 @@ final class RecordingSession {
 
     let voice = VoiceRecorder()
     let video = VideoNoteRecorder()
+    /// Записанный кружок на просмотре (`reviewing`).
+    private(set) var review: VideoNoteReview?
 
     /// Готовая запись для отправки.
     @ObservationIgnored var onRecorded: ((AttachmentDraft) -> Void)?
@@ -74,13 +78,14 @@ final class RecordingSession {
 
     /// Идёт запись (или её остановка): вместо поля ввода — полоса записи.
     var isActive: Bool {
-        phase == .recording || phase == .locked || phase == .finishing
+        phase == .recording || phase == .locked || phase == .finishing || phase == .reviewing
     }
 
     var isVideo: Bool { recordingMode == .video && isActive }
 
     var elapsed: TimeInterval {
-        recordingMode == .voice ? voice.elapsed : video.elapsed
+        if let review { return review.selectedSeconds }
+        return recordingMode == .voice ? voice.elapsed : video.elapsed
     }
 
     var level: Double { recordingMode == .voice ? voice.level : 0 }
@@ -142,6 +147,8 @@ final class RecordingSession {
             } else {
                 send()
             }
+        case .reviewing:
+            send()
         default:
             break
         }
@@ -277,8 +284,58 @@ final class RecordingSession {
         }
     }
 
+    /// Закреплённый кружок — на просмотр: запись останавливается, ролик играет по кругу, его
+    /// можно обрезать, отправить или выбросить.
+    func stopForReview() {
+        guard phase == .locked, recordingMode == .video else { return }
+        phase = .finishing
+        onRecordingChange?(nil)
+        let attempt = attempt
+        enqueue { [weak self] in
+            guard let self else { return }
+            let note = await self.video.stop()
+            guard attempt == self.attempt, self.phase == .finishing else {
+                if let note { try? FileManager.default.removeItem(at: note.url.deletingLastPathComponent()) }
+                return
+            }
+            guard let note else {
+                self.phase = .idle
+                self.show("Запись слишком короткая или не сохранилась. Попробуйте ещё раз")
+                return
+            }
+            let review = VideoNoteReview(note: note)
+            self.review = review
+            self.phase = .reviewing
+            Self.haptic(.light)
+            await review.loadThumbnails()
+        }
+    }
+
+    /// Отправить кружок с просмотра: выбранный кусок.
+    private func sendReview() {
+        guard phase == .reviewing, let review else { return }
+        phase = .finishing
+        let attempt = attempt
+        enqueue { [weak self] in
+            guard let self else { return }
+            let note = await review.result()
+            self.review = nil
+            if attempt == self.attempt, self.phase == .finishing { self.phase = .idle }
+            if let note {
+                Self.haptic(.light)
+                self.onRecorded?(.videoNote(path: note.url.path, durationMs: note.durationMs, side: note.side))
+            } else {
+                self.show("Кружок не обрезался. Попробуйте ещё раз")
+            }
+        }
+    }
+
     /// Остановить и отправить.
     func send() {
+        if phase == .reviewing {
+            sendReview()
+            return
+        }
         guard phase == .recording || phase == .locked else { return }
         phase = .finishing
         onRecordingChange?(nil)
@@ -320,6 +377,10 @@ final class RecordingSession {
         case .recording, .locked:
             discard(recordingMode)
             onRecordingChange?(nil)
+            Self.haptic(.rigid)
+        case .reviewing:
+            review?.discard()
+            review = nil
             Self.haptic(.rigid)
         default:
             break
