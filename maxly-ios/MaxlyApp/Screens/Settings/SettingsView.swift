@@ -142,6 +142,11 @@ struct SettingsView: View {
                 } label: {
                     SettingsRowLabel("Оформление", systemImage: "textformat.size", tint: .purple)
                 }
+                NavigationLink {
+                    AppIconSettingsView()
+                } label: {
+                    SettingsRowLabel("Иконка приложения", systemImage: "app.badge", tint: .blue)
+                }
             }
 
             Section {
