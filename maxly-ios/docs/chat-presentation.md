@@ -143,3 +143,27 @@ Liquid Glass для элементов управления. Изменения 
 7. Повторить в светлой/тёмной теме, с обоями, увеличенным текстом и Reduce Motion.
 
 Тесты проверяют правила и стабильность размеров; визуальная оценка всей композиции выполняется на устройстве.
+
+
+## One scroll owner (October 12 diagnostic follow-up)
+
+`TranscriptScrollController` serializes all explicit commands. The SwiftUI transcript has
+one `scrollTo` call site, targeting a message ID. It no longer combines an ID-position
+binding, an empty bottom sentinel, size-change anchors and UIKit offset writes.
+The UIKit observer only records geometry and disables status-bar scroll-to-top.
+
+A command gets at most two corrections, only when the target has measured geometry
+and the layout revision changed. Two aligned samples confirm completion; after roughly
+1.4 seconds without confirmation it records `scroll-unconfirmed` and leaves the down
+button available. Touch, replacement and disappearance cancel pending work.
+
+`atBottom` is measured from the last message and the effective visible area. Missing
+rows or a large blank gap cannot confirm it. `followsLatest` is independent intent,
+so requesting a jump cannot clear unread state. Opening chooses one cache/history
+anchor; a later refresh cannot select another opening target. Prepends preserve a
+previously measured row alignment when there is no user gesture or explicit request.
+
+Regression cases come from the October 12 log: 50 loaded rows with no measured row,
+a last-row bottom at 492 in a viewport ending at 772, and a tall post extending below
+the viewport. Unit tests validate command cancellation and geometry rules; actual
+lazy layout/keyboard behavior still needs simulator/device verification.

@@ -1,212 +1,78 @@
 import Testing
 @testable import MaxlyPresentation
 
-@Suite("Лента: низ и кнопка «вниз»")
+@Suite("Transcript: measured bottom, not requested bottom")
 struct TranscriptBottomStateTests {
-    @Test("Переход к ответу или непрочитанным отключает удержание низа без жеста")
-    func readingHistory() {
+    @Test func requestDoesNotAcknowledgeUnreadMessages() {
         var state = TranscriptBottomState()
-        let jump = state.beginJump()
-        state.beginReadingHistory()
+        state.received(5)
+        state.beginFollowing()
+        #expect(state.followsLatest)
         #expect(!state.atBottom)
-        #expect(state.jump == nil)
-        let completed = state.finishJump(jump)
-        #expect(!completed)
-        state.received(2)
-        state.markerMoved(bottomY: .infinity, viewportHeight: 700, dragging: false)
-        #expect(state.unseen == 2)
+        #expect(state.unseen == 5)
         #expect(state.showsButton(hasMessages: true))
-        state.beginReadingHistory()
-        #expect(state.unseen == 2)
-        state.markerMoved(bottomY: 700, viewportHeight: 700, dragging: false)
+        state.measuredLastRow(minY: nil, maxY: nil, viewportMin: 101, viewportMax: 772, userScrolling: false)
+        #expect(!state.atBottom)
+        #expect(state.unseen == 5)
+    }
+
+    @Test func loggedEmptyViewportCannotConfirmBottom() {
+        var state = TranscriptBottomState()
+        state.beginFollowing()
+        // Oct 12: 50 loaded rows, UIScrollView at its estimated maximum, no measured row.
+        state.measuredLastRow(minY: nil, maxY: nil, viewportMin: 101, viewportMax: 772, userScrolling: false)
+        #expect(!state.atBottom)
+        // First row reappeared with a 280-point blank gap below it: still not settled.
+        state.measuredLastRow(minY: -312.7, maxY: 492, viewportMin: 101, viewportMax: 772, userScrolling: true)
+        #expect(!state.atBottom)
+        #expect(!state.followsLatest)
+        state.measuredLastRow(minY: -45, maxY: 759.7, viewportMin: 101, viewportMax: 772, userScrolling: true)
+        #expect(state.atBottom)
+        #expect(state.followsLatest)
+    }
+
+    @Test func onlyMeasuredVisibleEndClearsUnreadCount() {
+        var state = TranscriptBottomState()
+        state.received(3)
+        state.beginFollowing()
+        state.measuredLastRow(minY: 1010, maxY: 1690, viewportMin: 101, viewportMax: 766, userScrolling: false)
+        #expect(!state.atBottom && state.unseen == 3)
+        state.measuredLastRow(minY: 200, maxY: 754, viewportMin: 101, viewportMax: 766, userScrolling: false)
         #expect(state.atBottom && state.unseen == 0)
     }
 
-    @Test("Открытие на непрочитанных: прежнее положение у низа не залипает признаком «внизу»")
-    func staleBottomAfterPlacingInHistory() {
+    @Test func fullyVisibleShortTranscriptNeedsNoArtificialGap() {
         var state = TranscriptBottomState()
-        state.beginReadingHistory()
-        // До прокрутки к разделителю лента ещё у низа и успевает о себе сообщить.
-        state.scrolled(distance: 10, dragging: false)
+        state.measuredLastRow(minY: 140, maxY: 200, viewportMin: 101, viewportMax: 766, userScrolling: false, contentFits: true)
         #expect(state.atBottom)
-        // Прокрутка к разделителю дошла: признак снимается и без пальца.
-        state.scrolled(distance: 1_500, dragging: false)
+        state.measuredLastRow(minY: -200, maxY: -100, viewportMin: 101, viewportMax: 766, userScrolling: false, contentFits: true)
         #expect(!state.atBottom)
-        state.scrolled(distance: 10, dragging: false)
-        state.markerMoved(bottomY: .infinity, viewportHeight: 700, dragging: false)
-        #expect(!state.atBottom)
-        // Палец взял ленту — снова обычные правила: рост содержимого признак не снимает.
+    }
+
+    @Test func mediaGrowthRetainsIntentButNotFalsePosition() {
+        var state = TranscriptBottomState()
+        state.beginFollowing()
+        state.measuredLastRow(minY: 200, maxY: 760, viewportMin: 101, viewportMax: 766, userScrolling: false)
+        state.measuredLastRow(minY: 200, maxY: 1200, viewportMin: 101, viewportMax: 766, userScrolling: false)
+        #expect(!state.atBottom && state.followsLatest)
         state.userTookOver()
-        state.scrolled(distance: 10, dragging: false)
-        state.scrolled(distance: 500, dragging: false)
-        state.markerMoved(bottomY: .infinity, viewportHeight: 700, dragging: false)
-        #expect(state.atBottom)
+        #expect(!state.followsLatest)
     }
 
-    @Test("Касание «вниз» после открытия в истории возвращает обычное удержание низа")
-    func jumpEndsPlacedHistory() {
+    @Test func historyPlacementNeverEnablesAutomaticFollowing() {
         var state = TranscriptBottomState()
+        state.beginFollowing()
         state.beginReadingHistory()
-        let id = state.beginJump()
-        _ = state.finishJump(id)
-        state.scrolled(distance: 400, dragging: false)
+        state.measuredLastRow(minY: 200, maxY: 760, viewportMin: 101, viewportMax: 766, userScrolling: false)
         #expect(state.atBottom)
+        #expect(!state.followsLatest)
     }
 
-    @Test("Сначала внизу, кнопки нет; пальцем вверх — кнопка есть, у низа — снова нет")
-    func showAndHide() {
+    @Test func invalidGeometryCannotConfirmBottom() {
         var state = TranscriptBottomState()
-        #expect(state.atBottom)
-        #expect(!state.showsButton(hasMessages: true))
-        state.scrolled(distance: 300, dragging: true)
-        #expect(state.showsButton(hasMessages: true))
-        #expect(!state.showsButton(hasMessages: false))
-        state.scrolled(distance: 10, dragging: false)
-        #expect(!state.showsButton(hasMessages: true))
-    }
-
-    @Test("Рост содержимого без пальца не показывает кнопку; между порогами признак не мигает")
-    func hysteresis() {
-        var state = TranscriptBottomState()
-        state.scrolled(distance: 500, dragging: false)
-        #expect(state.atBottom)
-        state.scrolled(distance: 40, dragging: true)
-        #expect(state.atBottom)
-        state.scrolled(distance: 65, dragging: true)
+        state.measuredLastRow(minY: 0, maxY: .infinity, viewportMin: 0, viewportMax: 700, userScrolling: false)
         #expect(!state.atBottom)
-        state.scrolled(distance: 40, dragging: true)
-        #expect(!state.atBottom)
-        state.scrolled(distance: 24, dragging: true)
-        #expect(state.atBottom)
-    }
-
-    @Test("Новые чужие копятся только вверху и сбрасываются у низа")
-    func unseen() {
-        var state = TranscriptBottomState()
-        state.received(2)
-        #expect(state.unseen == 0)
-        state.scrolled(distance: 300, dragging: true)
-        state.received(2)
-        state.received(1)
-        state.received(0)
-        #expect(state.unseen == 3)
-        state.scrolled(distance: 0, dragging: false)
-        #expect(state.unseen == 0)
-    }
-
-    @Test("Касание «вниз»: кнопка уходит сразу, путь по ленте её не возвращает, затем доводка")
-    func jump() {
-        var state = TranscriptBottomState()
-        state.scrolled(distance: 2_000, dragging: true)
-        state.received(5)
-        let id = state.beginJump()
-        #expect(state.atBottom)
-        #expect(state.unseen == 0)
-        #expect(!state.showsButton(hasMessages: true))
-        // Строки ещё не измерены: лента в пути далеко от низа. Остаток инерции не отменяет прыжок.
-        state.scrolled(distance: 800, dragging: true)
-        #expect(state.atBottom)
-        #expect(state.jump == id)
-        // iOS 17: метка низа за экраном, пока прыжок в пути.
-        state.markerMoved(bottomY: 5_000, viewportHeight: 700)
-        #expect(state.atBottom)
-        // `finishJump` меняет состояние, поэтому вызывается вне `#expect`.
-        let finished = state.finishJump(id)
-        #expect(finished)
-        #expect(state.jump == nil)
-        let again = state.finishJump(id)
-        #expect(!again)
-    }
-
-    @Test("Палец во время прыжка: доводки нет, лента снова может уйти от низа")
-    func takeOver() {
-        var state = TranscriptBottomState()
-        state.scrolled(distance: 2_000, dragging: true)
-        let id = state.beginJump()
-        state.userTookOver()
-        state.scrolled(distance: 900, dragging: true)
-        #expect(!state.atBottom)
-        let finished = state.finishJump(id)
-        #expect(!finished)
-    }
-
-    @Test("Повторное касание заменяет прыжок: доводит только последний")
-    func repeatedTap() {
-        var state = TranscriptBottomState()
-        state.scrolled(distance: 2_000, dragging: true)
-        let first = state.beginJump()
-        let second = state.beginJump()
-        #expect(first != second)
-        let stale = state.finishJump(first)
-        let latest = state.finishJump(second)
-        #expect(!stale)
-        #expect(latest)
-    }
-
-    @Test("iOS 17: метка низа на экране — внизу, ушла — нет; запас больше, пока внизу")
-    func marker() {
-        var state = TranscriptBottomState()
-        state.markerMoved(bottomY: 750, viewportHeight: 700)
-        #expect(state.atBottom)
-        state.markerMoved(bottomY: 780, viewportHeight: 700)
-        #expect(!state.atBottom)
-        state.markerMoved(bottomY: 740, viewportHeight: 700)
-        #expect(!state.atBottom)
-        state.markerMoved(bottomY: 720, viewportHeight: 700)
-        #expect(state.atBottom)
-        state.markerMoved(bottomY: .infinity, viewportHeight: 700)
-        #expect(!state.atBottom)
-    }
-
-    @Test("iOS 18: у самого низа кнопка прячется по метке, даже если расстояние до низа не дошло до порога")
-    func markerHidesAtBottom() {
-        var state = TranscriptBottomState()
-        state.markerMoved(bottomY: 3_000, viewportHeight: 700, dragging: true)
-        #expect(state.showsButton(hasMessages: true))
-        // Расстояние у низа завышено отступом под поле ввода: само по себе признак не включит.
-        state.scrolled(distance: 90, dragging: false)
-        #expect(state.showsButton(hasMessages: true))
-        state.markerMoved(bottomY: 700, viewportHeight: 700, dragging: true)
-        #expect(!state.showsButton(hasMessages: true))
-    }
-
-    @Test("iOS 18: без пальца метка за экраном (картинка выросла, лента не тронута) кнопку не показывает")
-    func markerGrowthWithoutFinger() {
-        var state = TranscriptBottomState()
-        state.markerMoved(bottomY: 1_200, viewportHeight: 700, dragging: false)
-        #expect(state.atBottom)
-        // Ленивая лента убрала метку — тоже не повод без пальца.
-        state.markerMoved(bottomY: .infinity, viewportHeight: 700, dragging: false)
-        #expect(state.atBottom)
-        state.markerMoved(bottomY: .infinity, viewportHeight: 700, dragging: true)
-        #expect(!state.atBottom)
-    }
-
-    @Test("iOS 18: палец увёл ленту дальше экрана — признак снимается и без метки низа")
-    func farDragLeavesWithoutMarker() {
-        var state = TranscriptBottomState()
-        // У низа расстояние неточно: меньше экрана палец признак не снимает, кнопка не мигает.
-        state.scrolled(distance: 300, dragging: true, leaveAfter: 657)
-        #expect(state.atBottom)
-        // Метку низа ленивая лента выгрузила и она молчит, но до низа 7000 точек.
-        state.scrolled(distance: 7_000, dragging: true, leaveAfter: 657)
-        #expect(!state.atBottom)
-        #expect(state.showsButton(hasMessages: true))
-        // Без пальца рост содержимого признак не трогает.
-        var grown = TranscriptBottomState()
-        grown.scrolled(distance: 7_000, dragging: false, leaveAfter: 657)
-        #expect(grown.atBottom)
-    }
-
-    @Test("После прыжка «вниз» палец вверх снимает признак; пока прыжок в пути — нет")
-    func farDragAfterJump() {
-        var state = TranscriptBottomState()
-        let id = state.beginJump()
-        state.scrolled(distance: 7_000, dragging: true, leaveAfter: 657)
-        #expect(state.atBottom)
-        let finished = state.finishJump(id)
-        #expect(finished)
-        state.scrolled(distance: 7_000, dragging: true, leaveAfter: 657)
+        state.measuredLastRow(minY: 0, maxY: 50, viewportMin: 700, viewportMax: 700, userScrolling: false)
         #expect(!state.atBottom)
     }
 }

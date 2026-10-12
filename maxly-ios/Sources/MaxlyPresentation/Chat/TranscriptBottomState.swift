@@ -1,120 +1,38 @@
 import Foundation
 
-/// «Лента внизу», число новых на кнопке «вниз» и прыжок к последнему сообщению.
-///
-/// Кнопка «вниз» раньше иногда не срабатывала. Лента ленивая: строки ниже экрана ещё не
-/// измерены, и анимированный `scrollTo` к низу считал путь по прикидке высот. Пока лента
-/// ехала, строки измерялись, низ отодвигался, и прокрутка вставала выше последнего
-/// сообщения. Признак «внизу» не включался, и кнопка оставалась на месте, будто касание
-/// не дошло. На iOS 17 метка низа на время пути уходила за экран, и признак тут же
-/// сбрасывался обратно.
-///
-/// Теперь касание сразу ставит «внизу» (кнопка уходит, лента держится низом при росте
-/// содержимого) и заводит прыжок. Пока прыжок в пути, уход метки низа признак не
-/// сбрасывает. После анимации лента без анимации доводится до низа уже измеренных строк.
-/// Если пользователь взял ленту пальцем, прыжок отменяется и доводки нет.
+/// Measured position and the intention to follow new messages are separate states.
 public struct TranscriptBottomState: Equatable, Sendable {
-    /// Ближе этого к низу — лента внизу.
-    public static let reachDistance: Double = 24
-    /// Дальше этого пальцем — лента ушла от низа. Между порогами признак не меняется,
-    /// чтобы кнопка не мигала у самого низа.
-    public static let leaveDistance: Double = 64
-
-    public private(set) var atBottom = true
-    /// Чужие сообщения, пришедшие, пока лента прокручена вверх.
+    public private(set) var atBottom = false
+    public private(set) var followsLatest = false
     public private(set) var unseen = 0
-    /// Прыжок кнопкой «вниз», который ещё в пути.
-    public private(set) var jump: Int?
-    private var jumps = 0
-    /// Ленту поставили в историю без пальца (непрочитанные, место прошлого захода, переход к
-    /// сообщению). Пока палец её не взял, признак снимается и без пальца: до прокрутки к цели
-    /// прежнее положение у низа успевает сообщить о себе и включает признак обратно. Без этого
-    /// он залипал — лента держалась низом и при следующей сверке уезжала к последнему сообщению.
-    private var placedInHistory = false
-
     public init() {}
 
-    /// Кнопка видна, когда есть сообщения и лента не внизу.
-    public func showsButton(hasMessages: Bool) -> Bool {
-        hasMessages && !atBottom
-    }
+    public func showsButton(hasMessages: Bool) -> Bool { hasMessages && !atBottom }
 
-    /// iOS 18: лента сдвинулась. `distance` — сколько до низа содержимого, `dragging` —
-    /// двигает палец (или инерция после него). Рост содержимого без пальца признак не
-    /// сбрасывает: новое сообщение или картинка не должны показывать кнопку. Во время
-    /// прыжка не сбрасывает и инерция: касание кнопки посреди разгона ленты отменяется
-    /// только пальцем (`userTookOver`).
-    ///
-    /// `leaveAfter` — на сколько палец должен увести ленту от низа, чтобы признак снялся по
-    /// расстоянию. На iOS 18 расстояние у самого низа неточно (отступы под поле ввода и
-    /// клавиатуру), поэтому там порог — высота экрана: у низа кнопка не мигает, а далеко
-    /// вверху признак снимается, даже если метку низа ленивая лента уже выгрузила и она о
-    /// себе молчит. Раньше признак в таком случае залипал: лента читала чат до конца,
-    /// держалась низом и прятала кнопку «вниз», пока человек листал историю.
-    public mutating func scrolled(distance: Double, dragging: Bool, leaveAfter: Double = TranscriptBottomState.leaveDistance) {
-        if distance <= Self.reachDistance {
-            reachBottom()
-        } else if jump == nil, distance > Self.leaveDistance, placedInHistory || (dragging && distance > leaveAfter) {
-            atBottom = false
-        }
-    }
-
-    /// Где метка низа ленты. `bottomY` — её низ в координатах экрана ленты (`.infinity`,
-    /// если метка не создана: ленивая лента далеко вверху).
-    ///
-    /// Метка не зависит от того, как прокрутка считает отступы под поле ввода и
-    /// клавиатуру: на iOS 18 расстояние до низа из `onScrollGeometryChange` у самого низа
-    /// могло не опускаться до порога, и кнопка «вниз» оставалась над последним пузырём.
-    /// `dragging` — двигает ли ленту палец: на iOS 18 уходит от низа только он (`nil` —
-    /// как на iOS 17, любое движение метки).
-    public mutating func markerMoved(bottomY: Double, viewportHeight: Double, dragging: Bool? = nil) {
-        let slack = atBottom ? Self.leaveDistance : Self.reachDistance
-        let visible = bottomY.isFinite && bottomY >= 0 && bottomY <= viewportHeight + slack
-        if visible {
-            reachBottom()
-        } else if jump == nil, (dragging ?? true) || placedInHistory {
-            atBottom = false
-        }
-    }
-
-    /// Палец взял ленту: прыжок больше не доводится.
-    public mutating func userTookOver() {
-        jump = nil
-        placedInHistory = false
-    }
-
-    /// Ответ, поиск или непрочитанные открывают историю без жеста пальцем.
-    /// Отключаем удержание низа до прокрутки, иначе рост содержимого вернёт к последнему.
-    public mutating func beginReadingHistory() {
-        jump = nil
+    public mutating func beginFollowing() {
+        followsLatest = true
+        // Requesting the bottom must not acknowledge unread messages or hide the button.
         atBottom = false
-        placedInHistory = true
+    }
+    public mutating func beginReadingHistory() { followsLatest = false; atBottom = false }
+    public mutating func userTookOver() { followsLatest = false }
+
+    public mutating func measuredLastRow(minY: Double?, maxY: Double?, viewportMin: Double, viewportMax: Double, userScrolling: Bool, contentFits: Bool = false) {
+        guard let minY, let maxY,
+              [minY, maxY, viewportMin, viewportMax].allSatisfy({ $0.isFinite }),
+              maxY > minY, viewportMax > viewportMin else {
+            atBottom = false
+            if userScrolling { followsLatest = false }
+            return
+        }
+        // A short transcript can end above the bottom edge, but the last row must be visible.
+        let visible = maxY > viewportMin && minY < viewportMax
+        atBottom = visible && (abs(maxY - viewportMax) <= 24 || (contentFits && maxY <= viewportMax))
+        if atBottom { unseen = 0 }
+        if userScrolling { followsLatest = atBottom }
     }
 
-    /// Касание кнопки «вниз». Возвращает id прыжка для `finishJump`.
-    public mutating func beginJump() -> Int {
-        jumps += 1
-        jump = jumps
-        placedInHistory = false
-        reachBottom()
-        return jumps
-    }
-
-    /// Анимация прыжка закончилась. `true` — прыжок всё ещё этот и ленту надо довести до низа.
-    public mutating func finishJump(_ id: Int) -> Bool {
-        guard jump == id else { return false }
-        jump = nil
-        return true
-    }
-
-    /// Пришли чужие сообщения, а лента не внизу: число на кнопке растёт.
     public mutating func received(_ count: Int) {
-        guard count > 0, !atBottom else { return }
-        unseen += count
-    }
-
-    private mutating func reachBottom() {
-        atBottom = true
-        unseen = 0
+        if count > 0 && !atBottom { unseen += count }
     }
 }
