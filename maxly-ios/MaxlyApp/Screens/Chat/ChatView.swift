@@ -732,6 +732,7 @@ struct ChatView: View {
                 viewModel.setScreenActive(onScreen && phase == .active)
                 if phase != .active {
                     messageMenu.dismiss()
+                    recording.cancel()
                     viewModel.flushDraft()
                     // Свернули приложение — открытые сообщения снова закрыты.
                     reveal.hideAll()

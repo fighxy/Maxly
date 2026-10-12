@@ -1,5 +1,6 @@
 import SwiftUI
 import MaxlyUI
+import MaxlyPresentation
 
 /// Кнопка записи справа от поля ввода: микрофон (голосовое) или камера (кружок, а короткое
 /// нажатие — снимок).
@@ -13,6 +14,7 @@ struct RecordButton: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Палец на кнопке. Сброс без `onEnded` — жест оборвала система.
     @GestureState private var touching = false
+    @State private var press = RecordingPressState()
 
     /// Нажатие или запись идут на этой кнопке.
     private var mine: Bool { session.phase != .idle && session.recordingMode == mode }
@@ -61,13 +63,23 @@ struct RecordButton: View {
         .gesture(
             DragGesture(minimumDistance: 0, coordinateSpace: .global)
                 .updating($touching) { _, state, _ in state = true }
-                .onChanged { session.pressChanged($0.translation, mode: mode) }
-                .onEnded { _ in session.pressEnded(mode: mode) }
+                .onChanged { value in
+                    if press.begin() { session.pressBegan(mode: mode) }
+                    session.pressChanged(value.translation, mode: mode)
+                }
+                .onEnded { _ in
+                    guard press.end(generation: press.generation) else { return }
+                    session.pressEnded(mode: mode)
+                }
         )
         .onChange(of: touching) { _, live in
             // Обычное отпускание уже отработало в `onEnded`; здесь остаётся только обрыв жеста.
             guard !live, session.recordingMode == mode else { return }
-            Task { @MainActor in session.pressCancelled() }
+            let generation = press.generation
+            Task { @MainActor in
+                guard !touching, press.end(generation: generation), session.recordingMode == mode else { return }
+                session.pressCancelled()
+            }
         }
         .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: session.phase)
         .accessibilityLabel(accessibilityLabel)

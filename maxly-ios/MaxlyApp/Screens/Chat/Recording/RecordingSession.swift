@@ -19,8 +19,7 @@ final class RecordingSession {
 
     enum Phase: Equatable {
         case idle
-        /// Палец на кнопке, полосы записи ещё нет: микрофон или камера уже включаются
-        /// (короткое нажатие — смена режима).
+        /// Палец на кнопке: ожидание удержания, разрешения или готовности рекордера.
         case pressing
         case recording
         /// Запись закреплена свайпом вверх: палец можно убрать.
@@ -66,6 +65,7 @@ final class RecordingSession {
     @ObservationIgnored private var recorderQueue: Task<Void, Never>?
     /// Запись закреплена этим же нажатием: его отпускание не отправляет её.
     @ObservationIgnored private var lockedInPress = false
+    @ObservationIgnored private var holdTriggered = false
 
     init() {
         voice.onLimit = { [weak self] in self?.send() }
@@ -94,17 +94,20 @@ final class RecordingSession {
     /// этого, чтобы касание ради снимка её не занимало.
     static let videoHoldDelay: Duration = .milliseconds(280)
 
+    func pressBegan(mode: Mode) {
+        guard phase == .idle, !requestingAccess else { return }
+        press(mode)
+    }
+
     func pressChanged(_ translation: CGSize, mode: Mode) {
         switch phase {
-        case .idle:
-            press(mode)
-        case .recording:
+        case .pressing, .recording:
             guard mode == recordingMode else { return }
             dragX = min(0, translation.width)
             dragY = min(0, translation.height)
             if dragX < -Self.cancelDistance {
                 cancel()
-            } else if dragY < -Self.lockDistance {
+            } else if phase == .recording, dragY < -Self.lockDistance {
                 phase = .locked
                 lockedInPress = true
                 dragX = 0
@@ -128,7 +131,7 @@ final class RecordingSession {
                 warming = false
                 discard(recordingMode)
             }
-            if !requestingAccess { tapped(mode) }
+            if !requestingAccess, !holdTriggered { tapped(mode) }
         case .recording:
             send()
         case .locked:
@@ -174,12 +177,15 @@ final class RecordingSession {
     private func press(_ current: Mode) {
         attempt &+= 1
         lockedInPress = false
+        holdTriggered = false
+        hint = nil
         recordingMode = current
         phase = .pressing
         if current == .video {
             pressTask = Task { [weak self] in
                 try? await Task.sleep(for: Self.videoHoldDelay)
                 guard let self, !Task.isCancelled, self.phase == .pressing else { return }
+                self.holdTriggered = true
                 self.beginHold(current)
             }
             return
@@ -198,19 +204,30 @@ final class RecordingSession {
                 guard let self else { return }
                 await self.startRecorder(current, attempt: attempt)
             }
-            // Кружок уже выдержал свою паузу: полоса записи сразу.
+            // Полоса появляется после порога удержания и готовности рекордера.
             let delay: Duration = current == .video ? .zero : Self.holdDelay
+            let startup = recorderQueue
             pressTask = Task { [weak self] in
                 if delay > .zero { try? await Task.sleep(for: delay) }
-                guard let self, !Task.isCancelled, self.phase == .pressing, self.warming else { return }
+                await startup?.value
+                guard let self, !Task.isCancelled, attempt == self.attempt, self.phase == .pressing, self.warming else { return }
                 self.warming = false
-                self.phase = .recording
+                self.holdTriggered = true
+                if self.dragY < -Self.lockDistance {
+                    self.phase = .locked
+                    self.lockedInPress = true
+                    self.dragX = 0
+                    self.dragY = 0
+                } else {
+                    self.phase = .recording
+                }
                 self.onRecordingChange?(current)
                 Self.haptic(.light)
             }
         case .undetermined:
             // Первое касание спрашивает систему; запись не начинается, палец уходит к окну запроса.
             requestingAccess = true
+            holdTriggered = true
             Task { [weak self] in
                 if current == .voice {
                     _ = await VoiceRecorder.requestPermission()
@@ -242,6 +259,7 @@ final class RecordingSession {
 
     /// Включение микрофона или камеры. Не вышло — полоса записи уходит, если это нажатие ещё идёт.
     private func startRecorder(_ current: Mode, attempt: Int) async {
+        guard attempt == self.attempt, phase == .pressing, warming else { return }
         do {
             switch current {
             case .voice: try await voice.start()
@@ -285,6 +303,8 @@ final class RecordingSession {
             if let draft {
                 Self.haptic(.light)
                 self.onRecorded?(draft)
+            } else if attempt == self.attempt {
+                self.show("Запись слишком короткая или не сохранилась. Попробуйте ещё раз")
             }
         }
     }
