@@ -160,8 +160,13 @@ class CoreMessageRepository(
             resolveSenders(id)
             DiagnosticEvent.event("history.page", mapOf("chat" to DiagnosticEvent.id(chatId), "direction" to "older", "received" to page.messages.size.toString()))
             val older = page.messages.filter { it.time < beforeMs }
-            DiagnosticEvent.event("history.boundary", mapOf("chat" to DiagnosticEvent.id(chatId), "direction" to "older", "accepted" to older.size.toString(), "reached_end" to older.isEmpty().toString()))
-            return@operation span(older, reachedOldest = older.isEmpty()) ?: HistorySpan.START
+            // Начало истории — только короткая страница без более старых. Полная страница без них
+            // (сервер отдал не то окно) началом не считается: иначе лента группы навсегда
+            // упиралась бы в верх, хотя старые сообщения есть.
+            val reachedEnd = older.isEmpty() && page.messages.size < PAGE
+            DiagnosticEvent.event("history.boundary", mapOf("chat" to DiagnosticEvent.id(chatId), "direction" to "older", "received" to page.messages.size.toString(), "accepted" to older.size.toString(), "reached_end" to reachedEnd.toString()))
+            if (older.isEmpty()) return@operation if (reachedEnd) HistorySpan.START else null
+            return@operation span(older)
         }
     }
 
@@ -188,8 +193,12 @@ class CoreMessageRepository(
             }
             DiagnosticEvent.event("history.page", mapOf("chat" to DiagnosticEvent.id(chatId), "direction" to "pageAround", "received" to page.messages.size.toString()))
             resolveSenders(id)
-            val older = page.messages.count { it.time < timeMs }
-            return@operation span(page.messages, reachedOldest = older == 0, reachedNewest = reachesNewest(id, page.messages))
+            // Начало истории окно вокруг сообщения не устанавливает: страница вокруг отметки
+            // прочтения без более старых (сервер отдал только часть «вперёд») помечала начало,
+            // и в группах с непрочитанными лента дальше вверх не листалась. Начало узнаёт только
+            // запрос старой страницы, как и у свежей.
+            DiagnosticEvent.event("history.boundary", mapOf("chat" to DiagnosticEvent.id(chatId), "direction" to "around", "older" to page.messages.count { it.time < timeMs }.toString()))
+            return@operation span(page.messages, reachedNewest = reachesNewest(id, page.messages))
         }
     }
 
