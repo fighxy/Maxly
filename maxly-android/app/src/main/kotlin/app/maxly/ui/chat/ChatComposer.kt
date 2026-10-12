@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material.icons.outlined.Cameraswitch
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.InsertDriveFile
@@ -190,6 +191,8 @@ internal fun Composer(
     recordingLive: kotlinx.coroutines.flow.StateFlow<app.maxly.ui.chat.RecordingLive?>? = null,
     /** Превью камеры, пока пишется кружок. */
     videoPreview: (@Composable (Modifier) -> Unit)? = null,
+    /** Сменить камеру во время записи кружка; `null` — кнопки нет. */
+    onFlipCamera: (() -> Unit)? = null,
     onMention: (app.maxly.data.ChatMemberRow) -> Unit = {},
     onCommand: (app.maxly.data.BotCommandRow) -> Unit = {},
     /** Кнопка или сочетание форматирования для выделения [start, end) поля. */
@@ -262,7 +265,21 @@ internal fun Composer(
             if (voice.state.isVideo && videoPreview != null) {
                 // Кружок пишется: превью камеры кругом над полем ввода, как на iOS.
                 Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
-                    videoPreview(Modifier.size(220.dp).clip(CircleShape))
+                    Box {
+                        videoPreview(Modifier.size(220.dp).clip(CircleShape))
+                        // Сменить камеру: вторым пальцем, пока первый держит кнопку, или после закрепления.
+                        if (onFlipCamera != null) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.55f))
+                                    .clickable(onClick = onFlipCamera),
+                                contentAlignment = Alignment.Center,
+                            ) { Icon(Icons.Outlined.Cameraswitch, "Сменить камеру", tint = Color.White) }
+                        }
+                    }
                 }
             }
             voice.state.hint?.let {

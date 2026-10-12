@@ -488,6 +488,7 @@ fun ChatScreen(
                             modifier = modifier,
                         )
                     },
+                    onFlipCamera = { composerRecorder.note.switchCamera() },
                     onMention = model::insertMention,
                     onCommand = model::insertCommand,
                     onToggleFormat = model::toggleFormat,
