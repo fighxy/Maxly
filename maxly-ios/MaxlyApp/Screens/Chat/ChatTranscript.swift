@@ -145,7 +145,7 @@ struct ChatTranscript: View {
                     guard let request = scroll.request else { return }
                     await execute(request, proxy: proxy)
                 }
-                .modifier(FloatingDayOverlay(model: viewModel))
+                .modifier(FloatingDayOverlay(model: viewModel, topVisible: headerVisible))
                 // Клавиатура уходит, когда ленту тянут вниз вслед за пальцем или просто касаются
                 // её: касание не мешает кнопкам пузырей, жест срабатывает вместе с ними.
                 .scrollDismissesKeyboard(.interactively)
@@ -825,6 +825,8 @@ private struct TranscriptScrollObserver: UIViewRepresentable {
 /// разделителями в ленте. Состояние живёт в модификаторе: прокрутка не пересобирает ленту.
 private struct FloatingDayOverlay: ViewModifier {
     let model: ChatViewModel
+    /// Верх ленты на экране («Загрузить предыдущие»): плашка легла бы на кнопку.
+    let topVisible: Bool
     @State private var topRowId: String?
     @State private var scrolling = false
     @State private var shown = false
@@ -842,7 +844,8 @@ private struct FloatingDayOverlay: ViewModifier {
                 }
                 .overlay(alignment: .top) {
                     ZStack {
-                        if shown, let day = model.dayTitle(ofRow: topRowId) {
+                        // У верхней строки свой разделитель даты — плашка его только повторила бы.
+                        if shown, !topVisible, !model.rowShowsDay(topRowId), let day = model.dayTitle(ofRow: topRowId) {
                             FloatingDayPill(title: day)
                                 .transition(.opacity)
                         }

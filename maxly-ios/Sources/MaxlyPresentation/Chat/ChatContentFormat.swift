@@ -393,13 +393,55 @@ public enum ChatContentFormat {
         let space = max(0, gap)
         let ratios = aspects.map(clampedAspect)
         guard !ratios.isEmpty else { return AlbumLayout(width: 0, height: 0, gap: space, tiles: []) }
+        // Большому альбому можно быть выше: иначе он сужается под предел высоты.
+        let limit = max(1, ratios.count >= 7 ? maxHeight * 1.35 : maxHeight)
         let placed: [Placed]
         if ratios.count == 3, ratios[0] < 1.15 {
             placed = portraitTrio(ratios, width: width, gap: space)
+        } else if ratios.count >= 4 {
+            placed = pack(balancedRows(ratios, width: width, gap: space, maxHeight: limit), aspects: ratios, width: width, gap: space)
         } else {
             placed = pack(rowCounts(ratios), aspects: ratios, width: width, gap: space)
         }
-        return finish(placed, width: width, maxHeight: max(1, maxHeight), gap: space)
+        return finish(placed, width: width, maxHeight: limit, gap: space)
+    }
+
+    /// Ряды альбома из четырёх и больше кадров по их пропорциям: перебираются все разбиения
+    /// на ряды по 1–4 кадра, лучшее — с рядами высотой ближе к 0,4 ширины, без рядов ниже
+    /// 0,22 ширины и в пределах `maxHeight`; при равенстве ряд сверху не больше нижнего.
+    /// Шесть широких сканов ложатся по два в ряд, а не по три полосками в 45 точек.
+    static func balancedRows(_ aspects: [Double], width: Double, gap: Double, maxHeight: Double) -> [Int] {
+        let ideal = width * 0.4
+        let lowest = width * 0.22
+        var best: (score: Double, rows: [Int]) = (.infinity, [aspects.count])
+        func score(_ rows: [Int]) -> Double {
+            var cursor = 0
+            var total = gap * Double(rows.count - 1)
+            var result = 0.0
+            for (index, count) in rows.enumerated() {
+                let height = measure(Array(aspects[cursor..<(cursor + count)]), width: width, gap: gap).height
+                cursor += count
+                total += height
+                result += pow((height - ideal) / ideal, 2)
+                if height < lowest { result += 3 }
+                if index > 0, rows[index - 1] > count { result += 0.05 }
+            }
+            if total > maxHeight {
+                let over = (total - maxHeight) / maxHeight
+                result += over * over * 20 + over * 2
+            }
+            return result
+        }
+        func walk(_ rows: [Int], left: Int) {
+            guard left > 0 else {
+                let value = score(rows)
+                if value < best.score { best = (value, rows) }
+                return
+            }
+            for count in 1...min(4, left) { walk(rows + [count], left: left - count) }
+        }
+        walk([], left: aspects.count)
+        return best.rows
     }
 
     private static func sameAuthor(_ lhs: String, _ rhs: String) -> Bool {

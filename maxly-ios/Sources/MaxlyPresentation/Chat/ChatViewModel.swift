@@ -1378,6 +1378,13 @@ public final class ChatViewModel {
         rowIndex[id]
     }
 
+    /// Над строкой стоит свой разделитель даты (первое сообщение дня): плавающая плашка с той же
+    /// датой рядом с ним не нужна.
+    public func rowShowsDay(_ id: String?) -> Bool {
+        guard let id, let index = rowIndex[id], rows.indices.contains(index) else { return false }
+        return rows[index].dayTitle != nil
+    }
+
     /// Дата сообщения строки — плашка над лентой во время прокрутки.
     public func dayTitle(ofRow id: String?, now: Date = Date()) -> String? {
         guard let id, let index = rowIndex[id], rows.indices.contains(index) else { return nil }

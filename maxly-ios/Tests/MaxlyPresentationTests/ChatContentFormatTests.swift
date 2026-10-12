@@ -118,4 +118,20 @@ struct ChatContentFormatTests {
         #expect(stacked.tiles[1].y > stacked.tiles[0].y)
         #expect(stacked.height <= 360.01)
     }
+
+    @Test("Ряды альбома по пропорциям: широкие сканы по два, квадраты как раньше")
+    func balancedAlbumRows() {
+        // Шесть сканов таблиц 2.2:1 — по три в ряд были полоски по 45 точек.
+        #expect(ChatContentFormat.balancedRows(Array(repeating: 2.2, count: 6), width: 300, gap: 2, maxHeight: 360) == [2, 2, 2])
+        let scans = ChatContentFormat.album(aspects: Array(repeating: 2.2, count: 6), maxWidth: 300)
+        #expect(scans.width == 300)
+        #expect(scans.tiles.allSatisfy { $0.height >= 60 })
+        #expect(ChatContentFormat.balancedRows([1, 1, 1, 1], width: 300, gap: 2, maxHeight: 360) == [2, 2])
+        #expect(ChatContentFormat.balancedRows([1, 1, 1, 1, 1], width: 300, gap: 2, maxHeight: 360) == [2, 3])
+        #expect(ChatContentFormat.balancedRows([1, 1, 1, 1, 1, 1], width: 300, gap: 2, maxHeight: 360) == [3, 3])
+        // Десять кадров не сужаются под предел высоты.
+        let ten = ChatContentFormat.album(aspects: Array(repeating: 1.6, count: 10), maxWidth: 300)
+        #expect(ten.width == 300)
+        #expect(ten.tiles.count == 10)
+    }
 }
