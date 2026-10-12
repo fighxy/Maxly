@@ -432,11 +432,20 @@ struct ChatTranscript: View {
         return CGRect(x: 0, y: area.minY, width: 1, height: area.maxY - area.minY)
     }
 
+    /// Верх области прокрутки: рамка ленты плюс её верхний безопасный отступ.
+    private var contentTop: CGFloat {
+        guard let viewport = reads.viewport else { return 0 }
+        return viewport.frame.minY + max(0, viewport.safeTop)
+    }
+
     private func measuredGeometry() {
         guard let area = visibleArea else { return }
         let last = viewModel.rows.last.flatMap { reads.rows[$0.id] }
         let first = viewModel.rows.first.flatMap { reads.rows[$0.id] }
-        let fits = first.map { $0.minY >= area.minY } ?? false
+        // Вся лента помещается: первая строка не ушла выше верха ленты. Верх — край самой
+        // прокрутки, а не низ шапки: короткая лента стоит сразу под шапкой и частью заходит
+        // под её стекло, и прежняя проверка по шапке держала кнопку «вниз» в коротком чате.
+        let fits = first.map { $0.minY >= contentTop - 2 } ?? false
         var next = bottom
         next.measuredLastRow(minY: last.map { Double($0.minY) }, maxY: last.map { Double($0.maxY) },
             viewportMin: Double(area.minY), viewportMax: Double(area.maxY), userScrolling: userScrolling, contentFits: fits)
