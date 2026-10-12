@@ -1,6 +1,7 @@
 import Contacts
 import Foundation
 import Observation
+import UserNotifications
 import MaxlyCallMedia
 import MaxlyData
 import MaxlyDomain
@@ -111,6 +112,12 @@ final class AppContainer {
     let privateMode: PrivateModeSettings
     /// Ограничения нового сеанса: панель после входа и строка в настройках. Выход стирает отметку.
     let accountLimits: AccountLimitsSettings
+    /// Приложение живо в фоне: входящие звонки и уведомления о сообщениях (docs/background.md).
+    let backgroundKeepAlive: BackgroundKeepAlive
+    /// Уведомления о новых сообщениях, пока приложение в фоне.
+    let messageNotifier: LocalMessageNotifier
+    /// Переключатель «Звонки и сообщения в фоне» в настройках.
+    private(set) var keepsAliveInBackground: Bool
 
     static let loggingKey = "maxly.debug.logging"
 
@@ -138,6 +145,10 @@ final class AppContainer {
         appearance = AppearanceSettings(store: UserDefaultsAppearanceStore())
         privateMode = PrivateModeSettings(store: UserDefaultsPrivateModeStore())
         accountLimits = AccountLimitsSettings(store: UserDefaultsAccountLimitsStore())
+        let keepAlive = BackgroundKeepAlive()
+        backgroundKeepAlive = keepAlive
+        keepsAliveInBackground = keepAlive.isEnabled
+        messageNotifier = LocalMessageNotifier { keepAlive.isEnabled }
         UserDefaults.standard.removeObject(forKey: Self.retiredLocalFiltersKey)
         logs = directory.map { FileLogStore(directory: $0, enabled: enabled) }
         if let logs { Log.sink = logs.sink }
@@ -145,13 +156,28 @@ final class AppContainer {
             "os": ProcessInfo.processInfo.operatingSystemVersionString,
             "build_sha": Bundle.main.object(forInfoDictionaryKey: "MaxlyBuildSHA") as? String ?? "unknown",
             "core_revision": Bundle.main.object(forInfoDictionaryKey: "MaxlyCoreRevision") as? String ?? "unknown"], snapshot: true)
-        DiagnosticEvent.event("notification.capability", ["message_push": "not_implemented", "incoming_call": "callkit"], snapshot: true)
+        // Пушей сервера нет: звонок и сообщения приходят по соединению, пока приложение живо в фоне.
+        DiagnosticEvent.event("notification.capability", [
+            "message_push": keepAlive.isEnabled ? "local-background" : "off",
+            "incoming_call": keepAlive.isEnabled ? "callkit-background" : "callkit-foreground",
+        ], snapshot: true)
         Log.info(.app, "Запуск: \(Self.appVersion), \(ProcessInfo.processInfo.operatingSystemVersionString)")
         // Флаги режима призрака теперь в ядре: старые ключи `UserDefaults` убираются один раз.
         GhostDefaultsMigration.run()
         if let crashReport {
             Log.error(.app, "Прошлый запуск завершился сбоем:\n\(crashReport)")
         }
+        // Нажатие на уведомление о сообщении приходит сюда (`LocalMessageNotifier`).
+        UNUserNotificationCenter.current().delegate = messageNotifier
+    }
+
+    /// «Звонки и сообщения в фоне»: держать приложение живым свёрнутым. Включение спрашивает
+    /// разрешение на уведомления, пока приложение на экране.
+    func setKeepsAliveInBackground(_ enabled: Bool) {
+        keepsAliveInBackground = enabled
+        backgroundKeepAlive.isEnabled = enabled
+        Log.info(.app, "Фон: \(enabled ? "включён" : "выключен")")
+        if enabled { Task { await messageNotifier.requestPermissionIfNeeded() } }
     }
 
     /// Отчёт показан: забыть его и запустить приложение как обычно.
@@ -234,6 +260,8 @@ final class AppContainer {
             let coreCalls = CoreCallHistoryRepository(core: core)
             // Пуши журнала звонков (165) — в журнал, он живёт в памяти.
             await sync.attachCallLog(coreCalls)
+            // Новые чужие сообщения из пушей — уведомления, пока приложение в фоне.
+            await sync.attachIncoming(messageNotifier)
             typingReporter = TypingReporter(sender: CoreTypingSender(core: core))
             // Правило имён ядра живёт до перезапуска: задаётся при каждом старте.
             await core.setPreferAddressBookNames(Self.prefersAddressBookNames)
@@ -255,7 +283,10 @@ final class AppContainer {
                 service: CoreCallService(core: core),
                 engine: SessionCallEngine { WebRTCCallMedia() },
                 system: callKit,
-                lookup: { await directory.peer($0) }
+                lookup: { await directory.peer($0) },
+                // Сокет мог умереть, пока приложение спало: звонок ждёт переподключения и
+                // повторяется один раз, а не падает с ошибкой сети.
+                awaitConnection: { await Self.waitOnline(session, timeout: .seconds(15)) }
             )
             // Сервер кладёт звонок в журнал чуть позже конца разговора.
             center.onCallEnded = { [weak self] in
@@ -304,6 +335,7 @@ final class AppContainer {
                     Log.info(.auth, "Фаза входа: \(Self.describe(next))")
                     switch next {
                     case .signedOut, .expired:
+                        self.backgroundKeepAlive.setSignedIn(false)
                         await self.callCenter?.deactivate()
                         self.dropScreenModels()
                         // Сессия закончилась: ограничения прежнего входа больше не действуют.
@@ -320,6 +352,11 @@ final class AppContainer {
                             self.dropScreenModels()
                         }
                         self.callCenter?.activate()
+                        self.backgroundKeepAlive.setSignedIn(true)
+                        // Разрешение на уведомления спрашивается на экране: в фоне диалог не покажется.
+                        if self.backgroundKeepAlive.isEnabled {
+                            Task { await self.messageNotifier.requestPermissionIfNeeded() }
+                        }
                         // Ядро забывает книгу при выходе: после входа — снова.
                         await self.addressBook?.refresh()
                     default:
@@ -782,6 +819,8 @@ final class AppContainer {
     /// приложения Max: иначе сервер решит, что аккаунт ушёл, посреди разговора.
     func setAppActive(_ active: Bool) {
         isAppForeground = active
+        backgroundKeepAlive.setBackground(!active)
+        messageNotifier.setAppActive(active)
         ghostScreenModel?.setAppForeground(active)
         sendInteractive()
     }
@@ -789,7 +828,26 @@ final class AppContainer {
     /// Звонок появился или закончился: ядро узнаёт, на экране ли приложение для сервера.
     private func callBusyChanged(_ busy: Bool) {
         isInCall = busy
+        backgroundKeepAlive.setInCall(busy)
         sendInteractive()
+    }
+
+    /// Ждёт, пока соединение станет `online`, не дольше `timeout`. Первое значение потока
+    /// приходит сразу: если ядро уже переподключилось, ответ без ожидания.
+    nonisolated static func waitOnline(_ status: any ConnectionStatusProvider, timeout: Duration) async -> Bool {
+        await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                for await state in status.connectionStates() where state == .online { return true }
+                return false
+            }
+            group.addTask {
+                try? await Task.sleep(for: timeout)
+                return false
+            }
+            let online = await group.next() ?? false
+            group.cancelAll()
+            return online
+        }
     }
 
     private func sendInteractive() {

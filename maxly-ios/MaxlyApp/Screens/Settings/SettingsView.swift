@@ -73,7 +73,7 @@ struct SettingsView: View {
 
             Section {
                 NavigationLink {
-                    PlaceholderSettingsView(title: "Уведомления и звук", systemImage: "bell.badge")
+                    NotificationsSettingsView(container: container)
                 } label: {
                     SettingsRowLabel("Уведомления и звук", systemImage: "bell.badge.fill", tint: .red)
                 }

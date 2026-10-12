@@ -18,7 +18,9 @@ struct MaxlyApp: App {
                     guard scenePhase == .active else { return }
                     var previous = ProcessInfo.processInfo.systemUptime
                     while !Task.isCancelled {
-                        do { try await Task.sleep(for: .seconds(5)) } catch { return }
+                        // Без допуска: иначе iOS сдвигает таймер на несколько процентов ради экономии, и
+                        // в журнал шли ложные «задержки главного потока» по 200–300 мс.
+                        do { try await Task.sleep(for: .seconds(5), tolerance: .zero) } catch { return }
                         let now = ProcessInfo.processInfo.systemUptime
                         DiagnosticEvent.event("performance.heartbeat", ["main_delay_ms": String(Int(max(0, now - previous - 5) * 1000)),
                             "thermal_state": String(ProcessInfo.processInfo.thermalState.rawValue)], snapshot: true)

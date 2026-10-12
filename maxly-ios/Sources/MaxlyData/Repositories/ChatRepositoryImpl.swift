@@ -656,6 +656,12 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     }
 
     /// Последнее сообщение чата, как его знает строка списка.
+    /// Название, вид и «без звука» чата — для уведомления о новом сообщении. `nil` — чата нет в базе.
+    public func notificationInfo(chatId: String) -> (title: String, type: ChatType, muted: Bool)? {
+        guard let chat = try? chat(id: chatId) else { return nil }
+        return (chat.title, chat.type, chat.isMuted)
+    }
+
     public func lastMessageId(chatId: String) -> String? {
         (try? chat(id: chatId))?.lastMessageId
     }

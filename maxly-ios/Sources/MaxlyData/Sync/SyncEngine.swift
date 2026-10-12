@@ -25,6 +25,8 @@ public actor SyncEngine {
     private var scheduledHub: ScheduledHub?
     /// Журнал звонков: ему уходят события `callLog`.
     private var callLogSink: (any CallLogSink)?
+    /// Новые чужие сообщения: уведомления, пока приложение в фоне.
+    private var incomingSink: (any IncomingMessageSink)?
 
     private var pollTask: Task<Void, Never>?
     private var eventTask: Task<Void, Never>?
@@ -83,6 +85,12 @@ public actor SyncEngine {
     /// Пуши журнала звонков (`callLog`): их применяет журнал звонков.
     public func attachCallLog(_ sink: (any CallLogSink)?) {
         callLogSink = sink
+    }
+
+    /// Новые чужие сообщения из пушей (не из опроса и не повторы): по ним приложение в фоне
+    /// показывает уведомления.
+    public func attachIncoming(_ sink: (any IncomingMessageSink)?) {
+        incomingSink = sink
     }
 
     /// Чаты, история которых сейчас опрашивается.
@@ -228,6 +236,19 @@ public actor SyncEngine {
             if !known {
                 // Чата ещё нет в базе: подтянуть его строку, иначе сообщение не будет видно в списке.
                 try? await chats.refresh(chatId: event.chatId)
+            }
+            if fromOther, inserted.contains(record.id), let sink = incomingSink {
+                let info = await chats.notificationInfo(chatId: event.chatId)
+                await sink.incoming(IncomingMessageNotice(
+                    chatId: event.chatId,
+                    messageId: event.messageId,
+                    chatTitle: info?.title ?? "",
+                    chatType: info?.type ?? .private,
+                    authorName: event.authorName,
+                    text: preview,
+                    media: content.previewMedia,
+                    isMuted: info?.muted ?? false
+                ))
             }
         case .edited:
             guard let record = MessageRecord(event) else { return }

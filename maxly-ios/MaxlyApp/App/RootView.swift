@@ -21,6 +21,11 @@ struct RootView: View {
         .environment(\.chatWallpaper, container.appearance.wallpaper)
         .environment(\.imageURLSizing, CoreImageURLSizing())
         .task { await container.bootstrap() }
+        // Нажатие на уведомление о сообщении (приложение было свёрнуто) открывает чат.
+        .task {
+            let router = self.router
+            container.messageNotifier.onOpenChat = { router.openChat($0) }
+        }
         .task(id: router.chatId) { await container.focus(chatId: router.chatId) }
         .onChange(of: container.phase) { old, phase in
             // Сессия истекла или вошёл другой аккаунт: открытый чат прежнего аккаунта

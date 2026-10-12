@@ -114,6 +114,8 @@ public final class CallCenter: CallSystemDelegate {
     @ObservationIgnored private let engine: any CallEngine
     @ObservationIgnored private weak var system: (any CallSystem)?
     @ObservationIgnored private let lookup: @Sendable (String) async -> Peer?
+    /// Ждёт, пока соединение с сервером снова станет живым (`true`) или выйдет срок (`false`).
+    @ObservationIgnored private let awaitConnection: @Sendable () async -> Bool
     @ObservationIgnored private let endedDisplay: Duration
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var control: (any CallControl)?
@@ -129,6 +131,7 @@ public final class CallCenter: CallSystemDelegate {
         engine: any CallEngine,
         system: (any CallSystem)? = nil,
         lookup: @escaping @Sendable (String) async -> Peer? = { _ in nil },
+        awaitConnection: @escaping @Sendable () async -> Bool = { false },
         endedDisplay: Duration = .milliseconds(1500),
         now: @escaping () -> Date = { Date() }
     ) {
@@ -136,6 +139,7 @@ public final class CallCenter: CallSystemDelegate {
         self.engine = engine
         self.system = system
         self.lookup = lookup
+        self.awaitConnection = awaitConnection
         self.endedDisplay = endedDisplay
         self.now = now
     }
@@ -173,7 +177,7 @@ public final class CallCenter: CallSystemDelegate {
         isExpanded = true
         errorMessage = nil
         do {
-            let connection = try await service.startCall(peerId: peer.id, isVideo: video)
+            let connection = try await requestCall(to: peer, video: video, id: id)
             let control = engine.makeCall(connection: connection, role: .caller, isGroup: false)
             guard call?.id == id, call?.state.isEnded == false else {
                 // Трубку положили, пока сервер отвечал: звонок у собеседника надо отменить.
@@ -188,6 +192,21 @@ public final class CallCenter: CallSystemDelegate {
             await control.start()
         } catch {
             fail(id, error)
+        }
+    }
+
+    /// Запрос звонка у сервера. Вернувшись из фона, приложение ещё не знает, что iOS закрыла
+    /// сокет: запрос уходит в мёртвое соединение и падает с ошибкой сети, пока ядро
+    /// переподключается. Тогда звонок ждёт живого соединения и повторяется один раз — если
+    /// трубку за это время не положили.
+    private func requestCall(to peer: Peer, video: Bool, id: UUID) async throws(MaxlyError) -> CallConnection {
+        do throws(MaxlyError) {
+            return try await service.startCall(peerId: peer.id, isVideo: video)
+        } catch {
+            guard error == .networkUnavailable, call?.id == id, call?.state.isEnded == false else { throw error }
+            guard await awaitConnection(), call?.id == id, call?.state.isEnded == false else { throw error }
+            Log.info(.calls, "Соединение вернулось: звоню ещё раз")
+            return try await service.startCall(peerId: peer.id, isVideo: video)
         }
     }
 

@@ -92,6 +92,12 @@ final class FakeCallService: CallService, @unchecked Sendable {
     private var _started: [(String, Bool)] = []
     private var _joined: [String] = []
     var startError: MaxlyError?
+    /// Ошибки по одной на звонок, раньше `startError`: первый запрос падает, повтор проходит.
+    private var _startErrorsOnce: [MaxlyError] = []
+    var startErrorsOnce: [MaxlyError] {
+        get { lock.withLock { _startErrorsOnce } }
+        set { lock.withLock { _startErrorsOnce = newValue } }
+    }
     var startGate: Gate?
     var linkPreview: CallLinkPreview?
 
@@ -108,7 +114,11 @@ final class FakeCallService: CallService, @unchecked Sendable {
     func ring(_ call: IncomingCall) { continuation.yield(call) }
 
     func startCall(peerId: String, isVideo: Bool) async throws(MaxlyError) -> CallConnection {
-        lock.withLock { _started.append((peerId, isVideo)) }
+        let once: MaxlyError? = lock.withLock {
+            _started.append((peerId, isVideo))
+            return _startErrorsOnce.isEmpty ? nil : _startErrorsOnce.removeFirst()
+        }
+        if let once { throw once }
         if let startGate { await startGate.wait() }
         if let startError { throw startError }
         return CallConnection(conversationId: "out", signalingURL: URL(string: "wss://sig.test/out")!, selfId: 1, isVideo: isVideo)
@@ -184,11 +194,15 @@ struct CallCenterTests {
 
     private func makeCenter(
         system: FakeCallSystem? = FakeCallSystem(),
-        lookup: @escaping @Sendable (String) async -> CallCenter.Peer? = { _ in nil }
+        lookup: @escaping @Sendable (String) async -> CallCenter.Peer? = { _ in nil },
+        awaitConnection: @escaping @Sendable () async -> Bool = { false }
     ) -> (CallCenter, FakeCallService, FakeCallEngine, FakeCallSystem?) {
         let service = FakeCallService()
         let engine = FakeCallEngine()
-        let center = CallCenter(service: service, engine: engine, system: system, lookup: lookup, endedDisplay: .milliseconds(300))
+        let center = CallCenter(
+            service: service, engine: engine, system: system, lookup: lookup,
+            awaitConnection: awaitConnection, endedDisplay: .milliseconds(300)
+        )
         center.activate()
         return (center, service, engine, system)
     }
@@ -240,6 +254,28 @@ struct CallCenterTests {
         #expect(system?.ended.count == 1)
         center.dismissError()
         #expect(center.errorMessage == nil)
+    }
+
+    @Test("После фона сокет мёртв: звонок ждёт переподключения и повторяется один раз")
+    func retryAfterReconnect() async throws {
+        let (center, service, engine, _) = makeCenter(awaitConnection: { true })
+        service.startErrorsOnce = [.networkUnavailable]
+        await center.startCall(to: peer, video: false)
+        #expect(service.started.count == 2)
+        #expect(center.errorMessage == nil)
+        #expect(center.call?.conversationId == "out")
+        #expect(engine.calls.count == 1)
+    }
+
+    @Test("Соединение не вернулось: звонок падает с ошибкой сети без повтора")
+    func noRetryWithoutConnection() async throws {
+        let (center, service, engine, _) = makeCenter(awaitConnection: { false })
+        service.startErrorsOnce = [.networkUnavailable]
+        await center.startCall(to: peer, video: false)
+        #expect(service.started.count == 1)
+        #expect(center.call == nil)
+        #expect(center.errorMessage == MaxlyError.networkUnavailable.userMessage)
+        #expect(engine.calls.isEmpty)
     }
 
     @Test("Трубку положили, пока сервер отвечал: звонок у собеседника отменяется")
