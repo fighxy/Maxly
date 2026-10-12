@@ -639,7 +639,15 @@ struct ChatView: View {
                 reveal.hideAll()
             }
             // Режим выключили или сменили вид — открытые пузыри снова закрыты при следующем включении.
-            .onChange(of: privateMode) { _, _ in reveal.hideAll() }
+            .onChange(of: privateMode) { _, _ in
+                messageMenu.dismiss()
+                reveal.hideAll()
+            }
+            .onChange(of: reveal.revealed) { _, ids in
+                if privateMode.isMasked, let request = messageMenu.request, !ids.contains(request.id) {
+                    messageMenu.dismiss()
+                }
+            }
             // «Я печатаю» уходит, только пока сюда можно писать; панель стикеров — «выбирает стикер».
             .onChange(of: writable, initial: true) { _, value in viewModel.typingAllowed = value }
             .onChange(of: panelShown) { _, shown in
@@ -723,6 +731,8 @@ struct ChatView: View {
                 // невидимое не читается. Вернулись — читается то, что на экране.
                 viewModel.setScreenActive(onScreen && phase == .active)
                 if phase != .active {
+                    messageMenu.dismiss()
+                    recording.cancel()
                     viewModel.flushDraft()
                     // Свернули приложение — открытые сообщения снова закрыты.
                     reveal.hideAll()

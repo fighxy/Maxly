@@ -3,11 +3,14 @@ import Foundation
 /// Measured position and the intention to follow new messages are separate states.
 public struct TranscriptBottomState: Equatable, Sendable {
     public private(set) var atBottom = false
+    /// Visibility of the last message end is enough to hide the navigation button,
+    /// but must not confirm alignment or acknowledge unread messages.
+    public private(set) var lastEndVisible = false
     public private(set) var followsLatest = false
     public private(set) var unseen = 0
     public init() {}
 
-    public func showsButton(hasMessages: Bool) -> Bool { hasMessages && !atBottom }
+    public func showsButton(hasMessages: Bool) -> Bool { hasMessages && !lastEndVisible }
 
     public mutating func beginFollowing() {
         followsLatest = true
@@ -22,11 +25,13 @@ public struct TranscriptBottomState: Equatable, Sendable {
               [minY, maxY, viewportMin, viewportMax].allSatisfy({ $0.isFinite }),
               maxY > minY, viewportMax > viewportMin else {
             atBottom = false
+            lastEndVisible = false
             if userScrolling { followsLatest = false }
             return
         }
         // A short transcript can end above the bottom edge, but the last row must be visible.
         let visible = maxY > viewportMin && minY < viewportMax
+        lastEndVisible = visible && maxY <= viewportMax + 24
         atBottom = visible && (abs(maxY - viewportMax) <= 24 || (contentFits && maxY <= viewportMax))
         if atBottom { unseen = 0 }
         if userScrolling { followsLatest = atBottom }

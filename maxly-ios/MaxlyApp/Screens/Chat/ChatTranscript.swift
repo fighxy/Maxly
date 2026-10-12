@@ -197,7 +197,7 @@ struct ChatTranscript: View {
                 .animation(MaxlyMotion.fade, value: viewModel.showsSavedPlaceholder)
                 .overlay(alignment: .bottomTrailing) {
                     Group {
-                        if bottom.showsButton(hasMessages: !viewModel.messages.isEmpty) || viewModel.isJumped {
+                        if !isOpening && (bottom.showsButton(hasMessages: !viewModel.messages.isEmpty) || viewModel.isJumped) {
                             ScrollDownButton(unseen: viewModel.unreadBelow) { goDown(proxy) }
                                 // Ровно над правой нижней кнопкой: записью, отправкой или поиском канала.
                                 .padding(.trailing, ChatComposer.trailingInset(canWrite: canWrite))
@@ -205,7 +205,7 @@ struct ChatTranscript: View {
                                 .transition(.maxlyPop(reduceMotion: reduceMotion))
                         }
                     }
-                    .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: bottom.atBottom)
+                    .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: bottom.lastEndVisible)
                     .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.unreadBelow)
                 }
                 .onChange(of: viewModel.scrollToken) { _, _ in perform(viewModel.scrollTarget, proxy: proxy) }
