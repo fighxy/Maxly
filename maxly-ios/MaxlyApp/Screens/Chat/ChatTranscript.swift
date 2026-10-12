@@ -209,13 +209,10 @@ struct ChatTranscript: View {
                     .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.unreadBelow)
                 }
                 .onChange(of: viewModel.scrollToken) { _, _ in perform(viewModel.scrollTarget, proxy: proxy) }
-                .onChange(of: bottom.atBottom) { _, _ in
-                    noteBottomIfReached()
-                    reportReads()
-                }
-                // Конец последнего сообщения показался: всё ниже прочитано глазами, даже если
-                // лента не прижата к низу вплотную (короткий чат, поле ввода опущено).
-                .onChange(of: bottom.lastEndVisible) { _, _ in
+                // Лента у низа или показался конец последнего сообщения: всё ниже прочитано глазами,
+                // даже если лента не прижата к низу вплотную (короткий чат, поле ввода опущено).
+                // Одно наблюдение на оба признака: каждое лишнее утяжеляет проверку типов `body`.
+                .onChange(of: bottomSignal) { _, _ in
                     noteBottomIfReached()
                     reportReads()
                 }
@@ -581,6 +578,9 @@ struct ChatTranscript: View {
         noteBottomIfReached()
         reportReads()
     }
+
+    /// Признаки низа ленты, за которыми следит `body`.
+    private var bottomSignal: [Bool] { [bottom.atBottom, bottom.lastEndVisible] }
 
     /// Низ живой ленты на экране — прижата к нему или виден конец последнего сообщения:
     /// непрочитанных ниже нет. Во время команды прокрутки не отмечается, после неё — сразу.
