@@ -103,6 +103,15 @@ class AppContainer(context: Context) {
 
     val appearance = AppearanceSettings(preferenceStore)
 
+    /** «Звонки и сообщения в фоне»: служба связи и уведомления о сообщениях. */
+    val notificationSettings = app.maxly.data.NotificationSettings(preferenceStore)
+
+    /** Новые чужие сообщения из пушей ядра — для уведомлений. */
+    val incomingMessages = app.maxly.data.IncomingMessages(client)
+
+    /** Чат, открытый нажатием на уведомление. */
+    val chatOpenRequests = app.maxly.presentation.notifications.ChatOpenRequests()
+
     /** Телефонная книга устройства: только чтение, по нажатию на экране контактов. */
     val addressBook: app.maxly.data.AddressBook = app.maxly.contacts.AndroidAddressBook(context.applicationContext)
 

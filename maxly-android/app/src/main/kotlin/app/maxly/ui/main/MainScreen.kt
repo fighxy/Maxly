@@ -174,6 +174,13 @@ fun MainScreen(
     fun openChat(id: String, title: String? = null) {
         nav.navigate(if (title == null) "chat/$id" else "chat/$id?title=${Uri.encode(title)}")
     }
+    // Нажали на уведомление о сообщении: открыть его чат.
+    val requestedChat by container.chatOpenRequests.pending.collectAsStateWithLifecycle()
+    LaunchedEffect(requestedChat) {
+        val id = requestedChat ?: return@LaunchedEffect
+        openChat(id)
+        container.chatOpenRequests.consume(id)
+    }
     fun openTab(tab: Tab) {
         nav.navigate(tab.route) {
             popUpTo(nav.graph.findStartDestination().id) { saveState = true }
@@ -313,9 +320,33 @@ fun MainScreen(
                     onFolders = { nav.navigate("folders") },
                     onMyStories = if (accountState.settings.storiesHistory) ({ nav.navigate("my-stories") }) else null,
                     onMessages = { nav.navigate("messages") },
+                    onNotifications = { nav.navigate("notifications") },
                     profileLink = app.maxly.presentation.settings.ProfileLink.link(accountState.settings.inviteLink, account?.link),
                     accountLimits = limits,
                     ghost = ghostModel,
+                )
+            }
+            composable("notifications") {
+                val enabled by container.notificationSettings.enabled.collectAsStateWithLifecycle()
+                // Разрешение могли поменять в настройках Android, пока экран был открыт.
+                val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+                val resumed by lifecycle.currentStateFlow.collectAsStateWithLifecycle()
+                val allowed = remember(resumed) { androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled() }
+                app.maxly.ui.settings.NotificationsScreen(
+                    enabled = enabled,
+                    onEnabledChange = container.notificationSettings::setEnabled,
+                    explanation = "Свёрнутый Maxly остаётся на связи: входящие звонки и уведомления о новых сообщениях приходят, " +
+                        "как при открытом приложении. Сервер Max шлёт пуши только своему приложению, поэтому Maxly держит " +
+                        "соединение сам — это немного расходует батарею. В шторке при этом видно тихое уведомление «Maxly на связи»; " +
+                        "его можно скрыть в настройках Android (канал «Фоновая связь»).",
+                    onBack = { nav.popBackStack() },
+                    blocked = if (allowed) null else "Уведомления Maxly запрещены в настройках Android. Звонки и сообщения в фоне приходят, но не показываются.",
+                    onOpenSystemSettings = {
+                        context.startActivity(
+                            android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName),
+                        )
+                    },
                 )
             }
             composable("messages") {

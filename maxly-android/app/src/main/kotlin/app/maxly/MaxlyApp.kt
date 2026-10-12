@@ -18,5 +18,7 @@ class MaxlyApp : Application() {
         PlatformSession.init(this)
         container = AppContainer(this)
         container.scope.launch { container.session.restoreSession() }
+        // Связь и уведомления о сообщениях, пока приложение свёрнуто.
+        app.maxly.notifications.BackgroundMessaging.start(this, container)
     }
 }

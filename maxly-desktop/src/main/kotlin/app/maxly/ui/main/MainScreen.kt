@@ -121,7 +121,7 @@ enum class Tab(val title: Int, val icon: ImageVector, val selectedIcon: ImageVec
     SETTINGS(R.string.tab_settings, Icons.Outlined.Settings, Icons.Filled.Settings),
 }
 
-private enum class SettingsPage { Home, About, Devices, Appearance, Profile, Privacy, Security, RecoveryEmail, Storage, Folders, Blocked, MiniApp, Messages, Keyboard, MyStories }
+private enum class SettingsPage { Home, About, Devices, Appearance, Profile, Privacy, Security, RecoveryEmail, Storage, Folders, Blocked, MiniApp, Messages, Keyboard, MyStories, Notifications }
 
 /** Окно после входа: рельс вкладок, список чатов и открытый чат рядом. */
 @Composable
@@ -183,6 +183,13 @@ fun MainScreen(
         chatTitle = title
         profileFor = null
         tab = Tab.CHATS
+    }
+    // Нажали на уведомление о сообщении: открыть его чат.
+    val requestedChat by container.chatOpenRequests.pending.collectAsStateWithLifecycle()
+    LaunchedEffect(requestedChat) {
+        val id = requestedChat ?: return@LaunchedEffect
+        openChat(id)
+        container.chatOpenRequests.consume(id)
     }
     BackHandler(enabled = tab == Tab.SETTINGS && settingsPage != SettingsPage.Home) {
         settingsPage = when (settingsPage) {
@@ -605,6 +612,7 @@ private fun SettingsPane(
         SettingsPage.Folders -> "folders"
         SettingsPage.MiniApp -> if (miniKind == MiniApp.Kind.SFERUM.wire) "sferum" else "digital-id"
         SettingsPage.Messages -> "messages"
+        SettingsPage.Notifications -> "notifications"
         SettingsPage.Keyboard -> "keyboard"
         SettingsPage.MyStories -> "my-stories"
     }
@@ -628,6 +636,7 @@ private fun SettingsPane(
                     onFolders = { onOpen(SettingsPage.Folders) },
                     onMyStories = if (paneAccount.settings.storiesHistory) ({ onOpen(SettingsPage.MyStories) }) else null,
                     onMessages = { onOpen(SettingsPage.Messages) },
+                    onNotifications = { onOpen(SettingsPage.Notifications) },
                     onKeyboard = { onOpen(SettingsPage.Keyboard) },
                     profileLink = profileLink,
                     accountLimits = limits,
@@ -652,6 +661,16 @@ private fun SettingsPane(
             loadCatalog = { container.messages.reactionCatalog() },
             onBack = onBack,
         )
+        SettingsPage.Notifications -> {
+            val enabled by container.notificationSettings.enabled.collectAsStateWithLifecycle()
+            app.maxly.ui.settings.NotificationsScreen(
+                enabled = enabled,
+                onEnabledChange = container.notificationSettings::setEnabled,
+                explanation = "Пока окно Maxly свёрнуто или не в фокусе, о новых сообщениях приходят системные " +
+                    "уведомления, кроме чатов без звука. Нажатие на уведомление открывает чат.",
+                onBack = onBack,
+            )
+        }
         SettingsPage.About -> AboutScreen(onBack)
         SettingsPage.Keyboard -> KeyboardScreen(container.keyboard, onBack)
         SettingsPage.Devices -> DevicesScreen(container.sessions, onBack)

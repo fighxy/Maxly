@@ -96,6 +96,7 @@ fun SettingsScreen(
     /** «Мои истории»; `null` — пункта нет (сервер не включил `stories-history`). */
     onMyStories: (() -> Unit)? = null,
     onMessages: () -> Unit = {},
+    onNotifications: () -> Unit = {},
     onKeyboard: () -> Unit = {},
     onDigitalId: () -> Unit = {},
     onSferum: () -> Unit = {},
@@ -137,7 +138,7 @@ fun SettingsScreen(
             SettingsItem(Icons.Outlined.Badge, "Цифровой ID", selected = selected == "digital-id", onClick = onDigitalId)
             SettingsItem(Icons.Outlined.School, "Войти в Сферум", selected = selected == "sferum", onClick = onSferum)
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
-            SettingsItem(Icons.Outlined.Notifications, "Уведомления и звук", subtitle = "Скоро", enabled = false) {}
+            SettingsItem(Icons.Outlined.Notifications, "Уведомления и звук", selected = selected == "notifications", onClick = onNotifications)
             SettingsItem(Icons.Outlined.Key, "Безопасность", selected = selected == "security", onClick = onSecurity)
             SettingsItem(Icons.Outlined.Lock, "Конфиденциальность", selected = selected == "privacy", onClick = onPrivacy)
             SettingsItem(Icons.Outlined.Devices, "Устройства", selected = selected == "devices", onClick = onDevices)

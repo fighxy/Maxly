@@ -102,6 +102,7 @@ private fun MainWindow(container: AppContainer, owner: DesktopOwner, onExit: () 
         RememberPlacement(container, state)
         TrackActivity(container, state)
         RaiseOnIncomingCall(container, state)
+        MessageNotifications(container, state)
         // Ctrl+Q (⌘Q) — выход.
         HotkeyHandler { hotkey ->
             if (hotkey.action == HotkeyAction.QUIT) {
@@ -178,6 +179,27 @@ private fun FrameWindowScope.RaiseOnIncomingCall(container: AppContainer, state:
                 window.requestFocus()
             }
     }
+}
+
+/**
+ * Уведомления о новых сообщениях, пока окно свёрнуто или не в фокусе. Нажатие поднимает окно
+ * и открывает чат.
+ */
+@Composable
+private fun FrameWindowScope.MessageNotifications(container: AppContainer, state: WindowState) {
+    val notifier = remember {
+        app.maxly.platform.DesktopNotifier { chatId ->
+            chatId?.let(container.chatOpenRequests::request)
+            state.isMinimized = false
+            window.toFront()
+            window.requestFocus()
+        }
+    }
+    LaunchedEffect(notifier) { container.window.looking.collect(notifier::setAppActive) }
+    LaunchedEffect(notifier) {
+        container.incomingMessages.notices.collect { notifier.incoming(it, container.notificationSettings.enabled.value) }
+    }
+    DisposableEffect(notifier) { onDispose { notifier.dispose() } }
 }
 
 /** События ввода, после которых пользователь снова считается у окна. */

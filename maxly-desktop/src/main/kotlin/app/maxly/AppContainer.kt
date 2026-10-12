@@ -102,6 +102,15 @@ class AppContainer {
     }
 
     val appearance = AppearanceSettings(preferenceStore)
+
+    /** «Уведомления о сообщениях»: показывать ли их, пока окно свёрнуто или не в фокусе. */
+    val notificationSettings = app.maxly.data.NotificationSettings(preferenceStore)
+
+    /** Новые чужие сообщения из пушей ядра — для уведомлений. */
+    val incomingMessages = app.maxly.data.IncomingMessages(client)
+
+    /** Чат, открытый нажатием на уведомление. */
+    val chatOpenRequests = app.maxly.presentation.notifications.ChatOpenRequests()
     /** Где было окно, когда его закрыли. */
     val windowPlacement = app.maxly.platform.WindowPlacementStore(preferenceStore)
     val keyboard = app.maxly.ui.keys.KeyboardSettings(preferenceStore)

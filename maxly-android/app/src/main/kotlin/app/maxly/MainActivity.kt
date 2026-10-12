@@ -112,6 +112,11 @@ class MainActivity : ComponentActivity() {
         when (intent?.action) {
             AndroidCallSystem.ACTION_ANSWER -> { app.maxly.data.diagnostics.DiagnosticEvent.event("notification.action", mapOf("action" to "answer")); AndroidCalls.answer(container, video = false) }
             AndroidCallSystem.ACTION_OPEN -> { app.maxly.data.diagnostics.DiagnosticEvent.event("notification.action", mapOf("action" to "open")); container.callCenter.expand() }
+            app.maxly.notifications.MessageNotifier.ACTION_OPEN_CHAT -> {
+                val chatId = intent.getStringExtra(app.maxly.notifications.MessageNotifier.EXTRA_CHAT_ID) ?: return
+                app.maxly.data.diagnostics.DiagnosticEvent.event("notification.action", mapOf("action" to "open", "kind" to "message"))
+                container.chatOpenRequests.request(chatId)
+            }
             else -> return
         }
         intent?.action = null

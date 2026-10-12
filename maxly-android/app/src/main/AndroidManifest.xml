@@ -14,6 +14,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -50,6 +51,10 @@
             android:name=".calls.CallForegroundService"
             android:exported="false"
             android:foregroundServiceType="microphone|camera|mediaProjection" />
+        <service
+            android:name=".notifications.KeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="remoteMessaging" />
         <receiver
             android:name=".calls.CallActionReceiver"
             android:exported="false" />
