@@ -471,6 +471,7 @@ fun ChatScreen(
                     onAttach = { attaching = true },
                     onRemoveAttachment = model::removeAttachment,
                     onEditPhoto = { editingPhoto = it },
+                    onCamera = { recording.onCameraTap() },
                     panel = model.stickers,
                     onSticker = model::sendSticker,
                     onAnimoji = model::noteAnimoji,
@@ -595,6 +596,10 @@ fun ChatScreen(
     if (attaching) {
         AttachSheet(
             onDismiss = { attaching = false },
+            onCamera = {
+                attaching = false
+                recording.onCameraTap()
+            },
             onMedia = {
                 attaching = false
                 pickVisual.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))

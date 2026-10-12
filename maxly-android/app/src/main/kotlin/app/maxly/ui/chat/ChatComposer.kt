@@ -32,6 +32,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.InsertDriveFile
@@ -178,6 +179,8 @@ internal fun Composer(
     onAttach: () -> Unit,
     onRemoveAttachment: (OutgoingFile) -> Unit,
     onEditPhoto: (OutgoingFile) -> Unit,
+    /** Ещё снимок камерой: плитка в конце выбранных вложений. */
+    onCamera: (() -> Unit)? = null,
     panel: StickerPanel? = null,
     onSticker: (Sticker) -> Unit = {},
     onAnimoji: (AnimatedEmoji) -> Unit = {},
@@ -237,7 +240,7 @@ internal fun Composer(
                 }
             }
             if (state.attachments.isNotEmpty()) {
-                AttachmentStrip(state.attachments, onRemoveAttachment, onEditPhoto)
+                AttachmentStrip(state.attachments, onRemoveAttachment, onEditPhoto, onCamera.takeIf { state.editing == null })
             }
             if (editing != null || reply != null) {
                 Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -419,9 +422,17 @@ internal fun Composer(
     }
 }
 
-/** Выбранные вложения над полем ввода, у каждого — крестик. */
+/**
+ * Выбранные вложения над полем ввода, у каждого — крестик. [onCamera] — плитка «ещё снимок»
+ * в конце: после снимка кнопка камеры в поле сменяется отправкой, а снимать можно дальше.
+ */
 @Composable
-internal fun AttachmentStrip(items: List<OutgoingFile>, onRemove: (OutgoingFile) -> Unit, onEditPhoto: (OutgoingFile) -> Unit) {
+internal fun AttachmentStrip(
+    items: List<OutgoingFile>,
+    onRemove: (OutgoingFile) -> Unit,
+    onEditPhoto: (OutgoingFile) -> Unit,
+    onCamera: (() -> Unit)? = null,
+) {
     LazyRow(
         Modifier.fillMaxWidth().padding(top = 8.dp),
         contentPadding = PaddingValues(horizontal = 12.dp),
@@ -448,6 +459,14 @@ internal fun AttachmentStrip(items: List<OutgoingFile>, onRemove: (OutgoingFile)
                 }
             }
         }
+        if (onCamera != null && items.size < OutgoingFile.LIMIT) {
+            item(key = "camera") {
+                Box(
+                    Modifier.size(72.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest).clickable(onClick = onCamera),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Outlined.CameraAlt, "Ещё снимок", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+        }
     }
 }
 
@@ -460,9 +479,20 @@ internal fun AttachSheet(
     onFile: () -> Unit,
     onPoll: () -> Unit,
     onSchedule: () -> Unit,
+    /** Снимок камерой; `null` — пункта нет. */
+    onCamera: (() -> Unit)? = null,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         val colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+        if (onCamera != null) {
+            ListItem(
+                headlineContent = { Text("Камера") },
+                supportingContent = { Text("Снимок, потом ещё — и отправить вместе") },
+                leadingContent = { Icon(Icons.Outlined.CameraAlt, null, tint = MaterialTheme.colorScheme.primary) },
+                colors = colors,
+                modifier = Modifier.clickable(onClick = onCamera),
+            )
+        }
         ListItem(
             headlineContent = { Text("Фото или видео") },
             supportingContent = { Text("Из галереи, до ${OutgoingFile.LIMIT} за раз") },
