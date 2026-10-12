@@ -46,6 +46,30 @@ public struct CallConnection: Hashable, Sendable {
     }
 }
 
+/// Звонок, который звонит этому аккаунту, но ответить на него нельзя: сервер сообщил о нём при
+/// входе или на опрос 103, без данных для подключения (`docs/background.md`). Приложение
+/// показывает «Звонит …» и предлагает перезвонить.
+public struct RingingCall: Identifiable, Hashable, Sendable {
+    public var id: String { conversationId }
+    public var conversationId: String
+    public var callerId: String
+    /// Пусто, если звонящего нет в контактах и его профиль не загрузился.
+    public var callerName: String
+    public var callerAvatarURL: URL?
+    /// Чат группового звонка; `nil` у личного.
+    public var chatId: String?
+    public var isVideo: Bool
+
+    public init(conversationId: String, callerId: String, callerName: String, callerAvatarURL: URL? = nil, chatId: String? = nil, isVideo: Bool) {
+        self.conversationId = conversationId
+        self.callerId = callerId
+        self.callerName = callerName
+        self.callerAvatarURL = callerAvatarURL
+        self.chatId = chatId
+        self.isVideo = isVideo
+    }
+}
+
 /// Входящий звонок из пуша сервера.
 public struct IncomingCall: Identifiable, Hashable, Sendable {
     public var id: String { conversationId }

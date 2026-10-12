@@ -2,7 +2,7 @@ import Foundation
 import MaxlyDomain
 
 /// Звонки через ядро: начать (78), войти по ссылке (166), создать ссылку (76/84), описание
-/// ссылки (89), отклонить входящий (167), входящие (пуш 137) и опрос звонящих (103, эксперимент).
+/// ссылки (89), отклонить входящий (167), входящие (пуш 137) и звонящие без данных для ответа (103 и `calls` входа).
 public struct CoreCallService: CallService {
     private let core: any MaxCore
 
@@ -59,18 +59,33 @@ public struct CoreCallService: CallService {
         }
     }
 
-    /// Форма ответа 103 пишется в журнал без пользовательских данных: по ней дописывается разбор.
-    public func ringingCalls() async throws(MaxlyError) -> [IncomingCall] {
-        let probe = try await run("Опрос входящих") { try await core.probeInboundCalls() }
-        let calls = probe.calls.compactMap(Self.incoming)
-        Log.info(.calls, "Опрос входящих: найдено \(probe.found), можно ответить на \(calls.count); ответ \(probe.shape)")
-        DiagnosticEvent.event("calls.inbound_probe", [
-            "result": "ok",
-            "found": String(probe.found),
-            "usable": String(calls.count),
-            "shape": probe.shape,
-        ], snapshot: true)
+    /// Форма ответа 103 пишется в журнал без пользовательских данных.
+    public func ringingCalls() async throws(MaxlyError) -> [RingingCall] {
+        let reply = try await run("Опрос входящих") { try await core.probeInboundCalls() }
+        let calls = reply.calls.compactMap(Self.ringing)
+        Log.info(.calls, "Опрос входящих (103): звонят \(calls.count); ответ \(reply.shape)")
+        DiagnosticEvent.event("calls.inbound_probe", ["result": "ok", "source": "103", "found": String(calls.count), "shape": reply.shape], snapshot: true)
         return calls
+    }
+
+    public func callsAtLogin(maxAge: Duration) async -> [RingingCall] {
+        guard let reply = try? await core.loginInboundCalls(maxAgeMs: Int64(maxAge / .milliseconds(1))) else { return [] }
+        let calls = reply.calls.compactMap(Self.ringing)
+        Log.info(.calls, "Звонки при входе: \(calls.count); calls \(reply.shape)")
+        DiagnosticEvent.event("calls.inbound_probe", ["result": "ok", "source": "login", "found": String(calls.count), "shape": reply.shape], snapshot: true)
+        return calls
+    }
+
+    static func ringing(_ call: CoreInboundCall) -> RingingCall? {
+        guard !call.conversationId.isEmpty, !call.callerId.isEmpty else { return nil }
+        return RingingCall(
+            conversationId: call.conversationId,
+            callerId: call.callerId,
+            callerName: call.callerName,
+            callerAvatarURL: call.callerAvatarURL.isEmpty ? nil : URL(string: call.callerAvatarURL),
+            chatId: call.chatId.isEmpty ? nil : call.chatId,
+            isVideo: call.isVideo
+        )
     }
 
     static func connection(_ start: CoreCallStart) throws(MaxlyError) -> CallConnection {

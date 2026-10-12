@@ -197,9 +197,16 @@ actor FakeMaxCore: MaxCore {
 
     func setRejectError(_ error: CoreFailure?) { rejectError = error }
 
-    var inboundProbe: Result<CoreInboundProbe, CoreFailure> = .success(CoreInboundProbe(shape: "{}", found: 0, calls: []))
-    func setInboundProbe(_ result: Result<CoreInboundProbe, CoreFailure>) { inboundProbe = result }
-    func probeInboundCalls() async throws -> CoreInboundProbe { try inboundProbe.get() }
+    var inboundProbe: Result<CoreInboundCalls, CoreFailure> = .success(CoreInboundCalls(shape: "{}", calls: []))
+    var loginCalls = CoreInboundCalls(shape: "null", calls: [])
+    private(set) var loginCallsAges: [Int64] = []
+    func setInboundProbe(_ result: Result<CoreInboundCalls, CoreFailure>) { inboundProbe = result }
+    func setLoginCalls(_ calls: CoreInboundCalls) { loginCalls = calls }
+    func probeInboundCalls() async throws -> CoreInboundCalls { try inboundProbe.get() }
+    func loginInboundCalls(maxAgeMs: Int64) async throws -> CoreInboundCalls {
+        loginCallsAges.append(maxAgeMs)
+        return loginCalls
+    }
     func setUserId(_ id: String) { userId = id }
 
     func deleteCallHistory(ids: [String]) async throws {

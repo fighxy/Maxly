@@ -138,18 +138,23 @@ struct DirectoryRepositoryTests {
         await #expect(throws: MaxlyError.invalidRequest) { try await service.reject(conversationId: "", peerId: "") }
     }
 
-    @Test("Опрос звонящих (103): звонки без адреса ws2 отбрасываются, ошибка сервера доходит")
+    @Test("Звонящие без данных для ответа: 103 и calls входа, без id отбрасываются, ошибка 103 доходит")
     func ringingCalls() async throws {
         let core = FakeMaxCore()
         let service = CoreCallService(core: core)
         #expect(try await service.ringingCalls().isEmpty)
-        await core.setInboundProbe(.success(CoreInboundProbe(shape: "{calls=[{…}]}", found: 2, calls: [
-            CoreIncomingCall(conversationId: "c1", callerId: "5", ws2Url: "wss://sig.test/ws", callsUserId: 1),
-            CoreIncomingCall(conversationId: "", callerId: "6", ws2Url: "wss://sig.test/ws", callsUserId: 1),
+        await core.setInboundProbe(.success(CoreInboundCalls(shape: "{calls=[{…}]}", calls: [
+            CoreInboundCall(conversationId: "c1", callerId: "5", callerName: "Анна", callerAvatarURL: "https://i.test/a", isVideo: true),
+            CoreInboundCall(conversationId: "", callerId: "6"),
         ])))
-        #expect(try await service.ringingCalls().map(\.conversationId) == ["c1"])
+        let ringing = try await service.ringingCalls()
+        #expect(ringing == [RingingCall(conversationId: "c1", callerId: "5", callerName: "Анна", callerAvatarURL: URL(string: "https://i.test/a"), isVideo: true)])
         await core.setInboundProbe(.failure(CoreFailure(kind: "SERVER", key: "proto.payload")))
         await #expect(throws: MaxlyError.self) { try await service.ringingCalls() }
+
+        await core.setLoginCalls(CoreInboundCalls(shape: "[{…}]", calls: [CoreInboundCall(conversationId: "c2", callerId: "7", chatId: "3")]))
+        #expect(await service.callsAtLogin(maxAge: .seconds(60)).map(\.chatId) == ["3"])
+        #expect(await core.loginCallsAges == [60_000])
     }
 
     @Test("Звонки из ядра: адрес ws2, свой номер, ICE и срок входящего")

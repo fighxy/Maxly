@@ -13,9 +13,11 @@ public protocol CallService: Sendable {
     func preview(link: String) async throws(MaxlyError) -> CallLinkPreview?
     /// Входящие звонки, пока подписка жива.
     func incomingCalls() -> AsyncStream<IncomingCall>
-    /// **Эксперимент:** звонки, которые звонят этому аккаунту прямо сейчас. Нужны приложению,
-    /// которое было выгружено, когда пришёл пуш о звонке (`docs/background.md`).
-    func ringingCalls() async throws(MaxlyError) -> [IncomingCall]
+    /// Звонки, которые звонят этому аккаунту прямо сейчас (`GET_INBOUND_CALLS` 103). Ответить на
+    /// них нельзя, только перезвонить (`docs/background.md`).
+    func ringingCalls() async throws(MaxlyError) -> [RingingCall]
+    /// Звонки, которые звонили при последнем входе, если он был не раньше `maxAge` назад.
+    func callsAtLogin(maxAge: Duration) async -> [RingingCall]
     /// Отклонить входящий через основной сервер (`VIDEO_CHAT_HANGUP` 167, причина `REJECTED`).
     /// Пустой `peerId` не уходит. Ошибка — сервер не принял отбой.
     func reject(conversationId: String, peerId: String) async throws(MaxlyError)
@@ -26,7 +28,8 @@ public extension CallService {
     /// Источник без отбоя через сервер: входящий отклоняется только в сокете звонка.
     func reject(conversationId: String, peerId: String) async throws(MaxlyError) {}
     /// Источник не умеет спрашивать: звонков нет.
-    func ringingCalls() async throws(MaxlyError) -> [IncomingCall] { [] }
+    func ringingCalls() async throws(MaxlyError) -> [RingingCall] { [] }
+    func callsAtLogin(maxAge: Duration) async -> [RingingCall] { [] }
 }
 
 /// Один звонок: подключение к серверу звонков, звук и видео.

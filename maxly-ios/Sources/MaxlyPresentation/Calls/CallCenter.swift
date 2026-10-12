@@ -96,6 +96,9 @@ public final class CallCenter: CallSystemDelegate {
     /// Экран звонка развёрнут; свёрнутый — плашка над приложением.
     public var isExpanded = true
     public private(set) var errorMessage: String?
+    /// Кто-то звонит, но ответить нельзя: сервер сообщил о звонке без данных для подключения
+    /// (`checkRinging`). Приложение показывает плашку «Звонит …» с кнопкой «Перезвонить».
+    public private(set) var ringingNotice: RingingCall?
     /// Имена участников групповых звонков по id пользователя Max.
     public private(set) var names: [String: Peer] = [:]
     /// Звонок закончился: приложение обновляет журнал звонков.
@@ -117,6 +120,9 @@ public final class CallCenter: CallSystemDelegate {
     /// Ждёт, пока соединение с сервером снова станет живым (`true`) или выйдет срок (`false`).
     @ObservationIgnored private let awaitConnection: @Sendable () async -> Bool
     @ObservationIgnored private let endedDisplay: Duration
+    /// Сколько висит плашка «Звонит …»: дольше звонок у звонящего не звонит.
+    @ObservationIgnored private let noticeLifetime: Duration
+    @ObservationIgnored private var noticeExpiry: Task<Void, Never>?
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var control: (any CallControl)?
     @ObservationIgnored private var watch: Task<Void, Never>?
@@ -135,6 +141,7 @@ public final class CallCenter: CallSystemDelegate {
         lookup: @escaping @Sendable (String) async -> Peer? = { _ in nil },
         awaitConnection: @escaping @Sendable () async -> Bool = { false },
         endedDisplay: Duration = .milliseconds(1500),
+        noticeLifetime: Duration = .seconds(60),
         now: @escaping () -> Date = { Date() }
     ) {
         self.service = service
@@ -143,6 +150,7 @@ public final class CallCenter: CallSystemDelegate {
         self.lookup = lookup
         self.awaitConnection = awaitConnection
         self.endedDisplay = endedDisplay
+        self.noticeLifetime = noticeLifetime
         self.now = now
     }
 
@@ -163,6 +171,7 @@ public final class CallCenter: CallSystemDelegate {
     public func deactivate() async {
         watch?.cancel()
         watch = nil
+        clearNotice()
         if call != nil { await hangUp() }
     }
 
@@ -174,6 +183,7 @@ public final class CallCenter: CallSystemDelegate {
             errorMessage = "Сначала закончите текущий звонок"
             return
         }
+        clearNotice()
         let id = UUID()
         call = Call(id: id, conversationId: "", direction: .outgoing, peer: peer, isVideo: video, state: CallState(), answered: true)
         isExpanded = true
@@ -263,6 +273,8 @@ public final class CallCenter: CallSystemDelegate {
 
     func receive(_ incoming: IncomingCall) async {
         seenIncoming.insert(incoming.conversationId)
+        // Пришёл настоящий входящий: плашка «Звонит …» больше не нужна.
+        if ringingNotice?.conversationId == incoming.conversationId || call == nil { clearNotice() }
         guard call == nil else {
             Log.info(.calls, "Входящий \(incoming.conversationId) во время звонка — не беру")
             return
@@ -293,32 +305,88 @@ public final class CallCenter: CallSystemDelegate {
         await control.start()
     }
 
-    /// Что дал опрос звонящих.
-    public enum RingingCheck: Equatable, Sendable {
-        /// Звонящий найден и показан.
-        case shown
-        /// Никто не звонит, или звонок уже на экране.
-        case nobody
-        /// Сервер не ответил или ответил ошибкой.
-        case failed(MaxlyError)
+    /// Что дал поиск звонящих.
+    public struct RingingCheck: Equatable, Sendable {
+        /// Показана плашка «Звонит …».
+        public var shown: Bool
+        /// Опрос 103 был и не прошёл. `nil` — прошёл или его не было.
+        public var probeError: MaxlyError?
+
+        public init(shown: Bool, probeError: MaxlyError? = nil) {
+            self.shown = shown
+            self.probeError = probeError
+        }
     }
 
-    /// **Эксперимент:** спросить сервер, кто звонит прямо сейчас, и показать звонок, если он
-    /// ещё не пришёл пушем 137 — например, приложение открыли во время звонка, о котором
-    /// сообщила веб-версия (`docs/background.md`).
-    public func checkRinging() async -> RingingCheck {
-        let found: [IncomingCall]
+    /// Найти звонок, который звонит, но не пришёл пушем 137 (приложение было выгружено), и
+    /// показать плашку «Звонит …». Источники — `calls` последнего входа (не старше
+    /// `noticeLifetime`) и, если `probe`, опрос 103 (`docs/background.md`). Ответить на такой
+    /// звонок нельзя: у него нет данных для подключения, только перезвонить.
+    public func checkRinging(probe: Bool) async -> RingingCheck {
+        var found = await service.callsAtLogin(maxAge: noticeLifetime)
+        var probeError: MaxlyError?
+        if probe {
+            do {
+                found += try await service.ringingCalls()
+            } catch {
+                Log.info(.calls, "Опрос входящих не прошёл: \(error)")
+                probeError = error
+            }
+        }
+        guard call == nil, ringingNotice == nil,
+              let fresh = found.first(where: { !seenIncoming.contains($0.conversationId) })
+        else { return RingingCheck(shown: false, probeError: probeError) }
+        seenIncoming.insert(fresh.conversationId)
+        showNotice(fresh)
+        return RingingCheck(shown: true, probeError: probeError)
+    }
+
+    /// Перезвонить тому, кто звонит (плашка «Звонит …»): его звонок отклоняется (167), чтобы
+    /// не звонить друг другу одновременно, затем — обычный исходящий.
+    public func callBack() async {
+        guard let notice = ringingNotice else { return }
+        clearNotice()
         do {
-            found = try await service.ringingCalls()
+            try await service.reject(conversationId: notice.conversationId, peerId: "")
         } catch {
-            Log.info(.calls, "Опрос входящих не прошёл: \(error)")
-            return .failed(error)
+            Log.info(.calls, "Отклонить \(notice.conversationId) перед перезвоном не вышло: \(error)")
         }
-        for incoming in found where call == nil && !seenIncoming.contains(incoming.conversationId) {
-            await receive(incoming)
-            if call?.conversationId == incoming.conversationId { return .shown }
+        await startCall(to: Peer(id: notice.callerId, name: notice.callerName, avatarURL: notice.callerAvatarURL), video: notice.isVideo)
+    }
+
+    /// Закрыть плашку «Звонит …»; этот звонок больше не показывается.
+    public func dismissRingingNotice() {
+        clearNotice()
+    }
+
+    private func showNotice(_ notice: RingingCall) {
+        ringingNotice = notice
+        Log.info(.calls, "Звонит \(notice.callerId) (\(notice.conversationId)), ответить нельзя — плашка «Перезвонить»")
+        if notice.callerName.isEmpty { resolveNoticeCaller(notice.callerId) }
+        noticeExpiry?.cancel()
+        let lifetime = noticeLifetime
+        noticeExpiry = Task { [weak self] in
+            try? await Task.sleep(for: lifetime)
+            guard !Task.isCancelled else { return }
+            self?.clearNotice()
         }
-        return .nobody
+    }
+
+    private func clearNotice() {
+        noticeExpiry?.cancel()
+        noticeExpiry = nil
+        ringingNotice = nil
+    }
+
+    private func resolveNoticeCaller(_ callerId: String) {
+        let lookup = self.lookup
+        Task { [weak self] in
+            guard let found = await lookup(callerId) else { return }
+            guard let self, var notice = self.ringingNotice, notice.callerId == callerId else { return }
+            if notice.callerName.isEmpty { notice.callerName = found.name }
+            if notice.callerAvatarURL == nil { notice.callerAvatarURL = found.avatarURL }
+            self.ringingNotice = notice
+        }
     }
 
     /// Ответить на входящий.

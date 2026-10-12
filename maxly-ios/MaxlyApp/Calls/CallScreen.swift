@@ -436,6 +436,46 @@ struct ActiveCallBar: View {
     }
 }
 
+/// Плашка «Звонит …»: звонок звонит, но пуш о нём прошёл, пока приложение было выгружено, и
+/// ответить на него нельзя (`docs/background.md`). «Перезвонить» звонит этому человеку.
+struct RingingNoticeBar: View {
+    @Bindable var center: CallCenter
+
+    var body: some View {
+        if let notice = center.ringingNotice, center.call == nil {
+            HStack(spacing: 10) {
+                Image(systemName: notice.isVideo ? "video.fill" : "phone.arrow.down.left.fill")
+                    .font(.footnote)
+                Text(notice.callerName.isEmpty ? "Вам звонят" : "\(notice.callerName) звонит")
+                    .font(.footnote.weight(.semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Button("Перезвонить") {
+                    Task { await center.callBack() }
+                }
+                .font(.footnote.weight(.semibold))
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.capsule)
+                .controlSize(.small)
+                .tint(.white.opacity(0.25))
+                Button {
+                    center.dismissRingingNotice()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.footnote.weight(.semibold))
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityLabel("Скрыть")
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: 44)
+            .foregroundStyle(.white)
+            .background(Color.orange)
+            .accessibilityElement(children: .contain)
+        }
+    }
+}
+
 /// Звонки поверх приложения: полноэкранный звонок, плашка свёрнутого, ошибки, гудки,
 /// датчик приближения и экран без автоблокировки.
 struct CallHost: ViewModifier {
@@ -446,7 +486,11 @@ struct CallHost: ViewModifier {
         if let center {
             content
                 .safeAreaInset(edge: .top, spacing: 0) {
-                    ActiveCallBar(center: center)
+                    VStack(spacing: 0) {
+                        ActiveCallBar(center: center)
+                        RingingNoticeBar(center: center)
+                    }
+                    .animation(.default, value: center.ringingNotice)
                 }
                 .fullScreenCover(isPresented: Binding(
                     get: { center.call != nil && center.isExpanded },

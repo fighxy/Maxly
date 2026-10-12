@@ -841,7 +841,7 @@ final class AppContainer {
         }
     }
 
-    /// Спросить сервер, кто звонит, если положено (`RingingProbePolicy`). Небольшая пауза даёт
+    /// Найти звонок, который звонит без пуша, если положено (`RingingProbePolicy`). Небольшая пауза даёт
     /// ядру закончить вход после подключения и отсеивает мёртвый сокет после сна: он успевает
     /// оборваться до запроса.
     private func scheduleRingingProbe() {
@@ -855,23 +855,27 @@ final class AppContainer {
 
     private var isRingingProbeDue: Bool {
         guard case .signedIn = phase, callCenter != nil else { return false }
-        return ringingProbe.shouldProbe(foreground: isAppForeground, online: connectionState == .online, signedIn: true)
+        return ringingProbe.shouldCheck(foreground: isAppForeground, online: connectionState == .online, signedIn: true)
     }
 
     private func runRingingProbe() async {
         guard isRingingProbeDue, let center = callCenter else { return }
         ringingProbe.started()
+        let probe = ringingProbe.sendsProbe
         let started = ContinuousClock.now
-        let result = await center.checkRinging()
+        let result = await center.checkRinging(probe: probe)
         // Обрыв сразу после ответа тоже считается ответом на 103.
-        let elapsed = ContinuousClock.now - started
-        if elapsed < RingingProbePolicy.dropWindow {
-            try? await Task.sleep(for: RingingProbePolicy.dropWindow - elapsed)
+        var dropped = false
+        if probe {
+            let elapsed = ContinuousClock.now - started
+            if elapsed < RingingProbePolicy.dropWindow {
+                try? await Task.sleep(for: RingingProbePolicy.dropWindow - elapsed)
+            }
+            dropped = lastDrop.map { $0 > started } ?? false
         }
-        let dropped = lastDrop.map { $0 > started } ?? false
-        switch ringingProbe.finished(result, droppedSoon: dropped) {
+        switch ringingProbe.finished(probed: probe, probeError: result.probeError, droppedSoon: dropped) {
         case .done:
-            Log.info(.calls, "Опрос входящих: \(result == .shown ? "звонок показан" : "никто не звонит")")
+            Log.info(.calls, "Поиск звонящих: \(result.shown ? "плашка «Звонит …» показана" : "никто не звонит")")
         case .retry:
             Log.info(.calls, "Опрос входящих не ушёл — повтор при следующем подключении")
         case .disable(let reason):

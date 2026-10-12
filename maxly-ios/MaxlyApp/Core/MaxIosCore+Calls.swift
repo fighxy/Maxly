@@ -102,18 +102,35 @@ extension MaxIosCore {
         }
     }
 
-    func probeInboundCalls() async throws -> CoreInboundProbe {
+    func probeInboundCalls() async throws -> CoreInboundCalls {
         try await call("probeInboundCalls") { done in
-            self.client.probeInboundCalls { probe, kind, key in
-                if let kind {
-                    done(.failure(Self.failed(kind: kind, key: key)))
-                } else if let probe {
-                    done(.success(CoreInboundProbe(shape: probe.shape, found: Int(probe.found), calls: probe.calls.map(Self.incoming))))
-                } else {
-                    done(.failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)))
-                }
+            self.client.probeInboundCalls { calls, kind, key in
+                done(Self.inbound(calls, kind: kind, key: key))
             }
         }
+    }
+
+    func loginInboundCalls(maxAgeMs: Int64) async throws -> CoreInboundCalls {
+        try await call("loginInboundCalls") { done in
+            self.client.loginInboundCalls(maxAgeMs: maxAgeMs) { calls, kind, key in
+                done(Self.inbound(calls, kind: kind, key: key))
+            }
+        }
+    }
+
+    private static func inbound(_ calls: IosInboundCalls?, kind: String?, key: String?) -> Result<CoreInboundCalls, Error> {
+        if let kind { return .failure(failed(kind: kind, key: key)) }
+        guard let calls else { return .failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)) }
+        return .success(CoreInboundCalls(shape: calls.shape, calls: calls.calls.map { call in
+            CoreInboundCall(
+                conversationId: call.conversationId,
+                callerId: call.callerId,
+                callerName: call.callerName,
+                callerAvatarURL: call.callerAvatarUrl,
+                chatId: call.chatId,
+                isVideo: call.isVideo
+            )
+        }))
     }
 
     private static func incoming(_ call: IosIncomingCall) -> CoreIncomingCall {

@@ -1,55 +1,59 @@
 import Foundation
 import MaxlyDomain
 
-/// Когда спрашивать сервер, кто звонит прямо сейчас (`GET_INBOUND_CALLS` 103, эксперимент;
-/// `docs/background.md`).
+/// Когда искать звонок, который звонит, но не пришёл пушем (`docs/background.md`).
 ///
 /// Пуш о звонке (137) приходит только живому соединению. Если приложение было выгружено, а о
-/// звонке сообщила веб-версия, при открытии приложения звонок ещё идёт, но пуш уже прошёл.
-/// Поэтому после запуска и после каждого возврата из фона приложение один раз спрашивает
-/// сервер. Ответа на 103 нет ни в одном референсе: если сервер ответит ошибкой или оборвёт
-/// соединение сразу после запроса, опрос выключается навсегда.
+/// звонке сообщила веб-версия, при открытии звонок ещё идёт, но пуш уже прошёл. Поэтому после
+/// запуска и после каждого возврата из фона приложение один раз смотрит `calls` ответа на вход
+/// и спрашивает сервер (`GET_INBOUND_CALLS` 103). Тело запроса 103 неизвестно (MAX Android его
+/// не шлёт): если сервер ответит ошибкой или оборвёт соединение сразу после запроса, опрос 103
+/// выключается навсегда, а `calls` входа смотрятся по-прежнему.
 public struct RingingProbePolicy: Sendable, Equatable {
     /// Сколько ждать обрыва после запроса: обрыв в это окно считается ответом на 103.
     public static let dropWindow: Duration = .seconds(5)
 
-    /// Опрос положен: был запуск или возврат из фона, а спросить ещё не успели.
+    /// Поиск положен: был запуск или возврат из фона, а искать ещё не успели.
     public private(set) var isPending = true
-    /// Сервер не понял опрос: больше не спрашиваем.
+    /// Сервер не понял опрос 103: больше его не шлём.
     public private(set) var isDisabled: Bool
 
     public init(disabled: Bool) {
         isDisabled = disabled
     }
 
-    /// Что делать с опросом после ответа.
+    /// Что делать после поиска.
     public enum Verdict: Equatable, Sendable {
-        /// Ответ разобран; следующий опрос — после возврата из фона.
+        /// Готово; следующий поиск — после возврата из фона.
         case done
-        /// Запрос не ушёл (нет связи, отменён): спросить при следующем подключении.
+        /// Опрос 103 не ушёл (нет связи, отменён): искать при следующем подключении.
         case retry
-        /// Сервер не понял опрос: выключить навсегда. `reason` — для журнала.
+        /// Сервер не понял опрос 103: выключить его навсегда. `reason` — для журнала.
         case disable(reason: String)
     }
 
-    /// Приложение ушло в фон: после возврата спросить снова.
+    /// Приложение ушло в фон: после возврата искать снова.
     public mutating func wentToBackground() {
         isPending = true
     }
 
-    /// Можно ли спросить сейчас.
-    public func shouldProbe(foreground: Bool, online: Bool, signedIn: Bool) -> Bool {
-        !isDisabled && isPending && foreground && online && signedIn
+    /// Можно ли искать сейчас.
+    public func shouldCheck(foreground: Bool, online: Bool, signedIn: Bool) -> Bool {
+        isPending && foreground && online && signedIn
     }
 
-    /// Запрос ушёл.
+    /// Слать ли опрос 103 вместе с поиском.
+    public var sendsProbe: Bool { !isDisabled }
+
+    /// Поиск начался.
     public mutating func started() {
         isPending = false
     }
 
-    /// Ответ пришёл. `droppedSoon` — соединение оборвалось в `dropWindow` после запроса.
-    public mutating func finished(_ result: CallCenter.RingingCheck, droppedSoon: Bool) -> Verdict {
-        let verdict = Self.verdict(result, droppedSoon: droppedSoon)
+    /// Поиск закончился. `probeError` — ошибка опроса 103, если он был; `droppedSoon` —
+    /// соединение оборвалось в `dropWindow` после запроса.
+    public mutating func finished(probed: Bool, probeError: MaxlyError?, droppedSoon: Bool) -> Verdict {
+        let verdict = probed ? Self.verdict(probeError, droppedSoon: droppedSoon) : .done
         switch verdict {
         case .done: break
         case .retry: isPending = true
@@ -58,19 +62,19 @@ public struct RingingProbePolicy: Sendable, Equatable {
         return verdict
     }
 
-    private static func verdict(_ result: CallCenter.RingingCheck, droppedSoon: Bool) -> Verdict {
+    private static func verdict(_ error: MaxlyError?, droppedSoon: Bool) -> Verdict {
         if droppedSoon { return .disable(reason: "drop") }
-        switch result {
-        case .shown, .nobody:
+        switch error {
+        case nil:
             return .done
-        case .failed(.networkUnavailable), .failed(.cancelled), .failed(.authExpired):
+        case .networkUnavailable?, .cancelled?, .authExpired?:
             return .retry
         // Пауза сервера после too.many.requests — не ответ на сам опрос.
-        case .failed(.server(let code, _)) where code == MaxlyError.rateLimitCode:
+        case .server(let code, _)? where code == MaxlyError.rateLimitCode:
             return .retry
-        case .failed(.server(let code, _)):
+        case .server(let code, _)?:
             return .disable(reason: "server:\(code)")
-        case .failed(let error):
+        case let error?:
             return .disable(reason: "\(error)")
         }
     }

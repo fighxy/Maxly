@@ -100,9 +100,10 @@ final class FakeCallService: CallService, @unchecked Sendable {
     }
     var startGate: Gate?
     var linkPreview: CallLinkPreview?
-    /// Ответ опроса звонящих (103).
-    var ringing: [IncomingCall] = []
+    /// Ответ опроса звонящих (103) и `calls` входа.
+    var ringing: [RingingCall] = []
     var ringingError: MaxlyError?
+    var loginCalls: [RingingCall] = []
 
     init() {
         (stream, continuation) = AsyncStream.makeStream(of: IncomingCall.self)
@@ -143,10 +144,12 @@ final class FakeCallService: CallService, @unchecked Sendable {
 
     func incomingCalls() -> AsyncStream<IncomingCall> { stream }
 
-    func ringingCalls() async throws(MaxlyError) -> [IncomingCall] {
+    func ringingCalls() async throws(MaxlyError) -> [RingingCall] {
         if let ringingError { throw ringingError }
         return ringing
     }
+
+    func callsAtLogin(maxAge: Duration) async -> [RingingCall] { loginCalls }
 
     func reject(conversationId: String, peerId: String) async throws(MaxlyError) {
         lock.withLock { _rejected.append(conversationId) }
@@ -343,33 +346,57 @@ struct CallCenterTests {
         #expect(idleEngine.calls.isEmpty)
     }
 
-    @Test("Опрос звонящих: идущий звонок показывается через систему")
-    func ringingProbeShowsCall() async throws {
-        let (center, service, engine, system) = makeCenter()
-        service.ringing = [incoming("web-1")]
-        #expect(await center.checkRinging() == .shown)
-        #expect(center.call?.conversationId == "web-1")
-        #expect(center.call?.isRinging == true)
-        #expect(system?.incoming.count == 1)
-        #expect(await eventually { engine.last?.started == 1 })
-        // Звонок уже на экране: второй опрос его не дублирует.
-        #expect(await center.checkRinging() == .nobody)
+    private func ringingCall(_ id: String = "web-1", name: String = "Вера") -> RingingCall {
+        RingingCall(conversationId: id, callerId: "40", callerName: name, isVideo: false)
+    }
+
+    @Test("Звонок из ответа на вход: плашка «Звонит …», перезвон отклоняет его и звонит сам")
+    func ringingNoticeCallBack() async throws {
+        let (center, service, engine, _) = makeCenter()
+        service.loginCalls = [ringingCall()]
+        #expect(await center.checkRinging(probe: false) == CallCenter.RingingCheck(shown: true))
+        #expect(center.ringingNotice?.callerName == "Вера")
+        #expect(center.call == nil)
+        // Тот же звонок второй раз не показывается.
+        center.dismissRingingNotice()
+        #expect(await center.checkRinging(probe: false) == CallCenter.RingingCheck(shown: false))
+
+        service.ringing = [ringingCall("web-2")]
+        #expect(await center.checkRinging(probe: true) == CallCenter.RingingCheck(shown: true))
+        await center.callBack()
+        #expect(center.ringingNotice == nil)
+        #expect(service.rejected == ["web-2"])
+        #expect(service.started.map(\.0) == ["40"])
         #expect(engine.calls.count == 1)
     }
 
-    @Test("Опрос звонящих: пришедший пушем звонок второй раз не показывается; ошибка сервера")
-    func ringingProbeSkipsSeen() async throws {
-        let (center, service, engine, _) = makeCenter()
-        service.ring(incoming("old", expiresAt: Date(timeIntervalSinceNow: -5)))
-        try await Task.sleep(for: .milliseconds(30))
-        service.ringing = [incoming("old")]
-        #expect(await center.checkRinging() == .nobody)
-        #expect(center.call == nil)
-        #expect(engine.calls.isEmpty)
+    @Test("Плашка уходит сама, при настоящем входящем и не показывается во время звонка")
+    func ringingNoticeLifetime() async throws {
+        let service = FakeCallService()
+        let center = CallCenter(service: service, engine: FakeCallEngine(), system: FakeCallSystem(), noticeLifetime: .milliseconds(80))
+        center.activate()
+        service.loginCalls = [ringingCall("a")]
+        _ = await center.checkRinging(probe: false)
+        #expect(center.ringingNotice != nil)
+        #expect(await eventually { center.ringingNotice == nil })
 
+        service.loginCalls = [ringingCall("b")]
+        _ = await center.checkRinging(probe: false)
+        service.ring(incoming("b"))
+        #expect(await eventually { center.call != nil && center.ringingNotice == nil })
+
+        service.loginCalls = [ringingCall("c")]
+        #expect(await center.checkRinging(probe: false) == CallCenter.RingingCheck(shown: false))
+    }
+
+    @Test("Ошибка опроса 103 доходит, звонки входа всё равно показываются")
+    func ringingProbeError() async throws {
+        let (center, service, _, _) = makeCenter()
         service.ringingError = .server(code: "proto.payload", text: nil)
-        #expect(await center.checkRinging() == .failed(.server(code: "proto.payload", text: nil)))
-        #expect(center.call == nil)
+        service.loginCalls = [ringingCall()]
+        let check = await center.checkRinging(probe: true)
+        #expect(check.shown)
+        #expect(check.probeError == .server(code: "proto.payload", text: nil))
     }
 
     @Test("Отклонить входящий; без системы ответ идёт прямо")
