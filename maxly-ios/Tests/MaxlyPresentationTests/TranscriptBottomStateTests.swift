@@ -75,4 +75,26 @@ struct TranscriptBottomStateTests {
         state.measuredLastRow(minY: 0, maxY: 50, viewportMin: 700, viewportMax: 700, userScrolling: false)
         #expect(!state.atBottom)
     }
+    @Test func visibleLastMessageHidesButtonWithoutConfirmingAlignment() {
+        var state = TranscriptBottomState()
+        state.received(3)
+        // The last message ends 60 pt above the composer; older history is offscreen.
+        state.measuredLastRow(minY: 540, maxY: 700, viewportMin: 100, viewportMax: 760, userScrolling: false)
+        #expect(!state.showsButton(hasMessages: true))
+        #expect(!state.atBottom)
+        #expect(state.unseen == 3)
+        // Growing media hides the message end below the composer again.
+        state.measuredLastRow(minY: 540, maxY: 900, viewportMin: 100, viewportMax: 760, userScrolling: false)
+        #expect(state.showsButton(hasMessages: true))
+    }
+
+    @Test func onlyTheEndOfATallMessageNeedsToBeVisible() {
+        var state = TranscriptBottomState()
+        state.measuredLastRow(minY: -600, maxY: 710, viewportMin: 100, viewportMax: 760, userScrolling: false)
+        #expect(!state.showsButton(hasMessages: true))
+        state.measuredLastRow(minY: -600, maxY: 90, viewportMin: 100, viewportMax: 760, userScrolling: false)
+        #expect(state.showsButton(hasMessages: true))
+        #expect(!state.showsButton(hasMessages: false))
+    }
+
 }
