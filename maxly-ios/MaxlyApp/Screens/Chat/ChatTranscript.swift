@@ -209,8 +209,14 @@ struct ChatTranscript: View {
                     .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.unreadBelow)
                 }
                 .onChange(of: viewModel.scrollToken) { _, _ in perform(viewModel.scrollTarget, proxy: proxy) }
-                .onChange(of: bottom.atBottom) { _, atBottom in
-                    if atBottom, !isOpening, scroll.request == nil { viewModel.noteAtBottom() }
+                .onChange(of: bottom.atBottom) { _, _ in
+                    noteBottomIfReached()
+                    reportReads()
+                }
+                // Конец последнего сообщения показался: всё ниже прочитано глазами, даже если
+                // лента не прижата к низу вплотную (короткий чат, поле ввода опущено).
+                .onChange(of: bottom.lastEndVisible) { _, _ in
+                    noteBottomIfReached()
                     reportReads()
                 }
                 // Лента встала на место открытия: с этого момента увиденное читается.
@@ -547,7 +553,7 @@ struct ChatTranscript: View {
             guard !Task.isCancelled, scroll.request?.token == request.token else { return }
             if let row = reads.rows[request.id], let area = visibleArea {
                 measuredGeometry()
-                let reached = request.latest && request.id == viewModel.rows.last?.id && bottom.atBottom || TranscriptScrollController.reached(
+                let reached = request.latest && request.id == viewModel.rows.last?.id && (bottom.atBottom || bottom.lastEndVisible) || TranscriptScrollController.reached(
                     anchor: request.anchor, rowMin: Double(row.minY), rowMax: Double(row.maxY),
                     viewportMin: Double(area.minY), viewportMax: Double(area.maxY))
                 settledSamples = reached ? settledSamples + 1 : 0
@@ -555,6 +561,8 @@ struct ChatTranscript: View {
                     guard scroll.finish(request.token) else { return }
                     isOpening = false
                     recordScroll("scroll-confirmed:\(request.id)", immediate: true)
+                    // Пока шла команда, низ не отмечался: смена `atBottom` пришлась на неё.
+                    noteBottomIfReached()
                     reportReads()
                     return
                 }
@@ -570,7 +578,15 @@ struct ChatTranscript: View {
         isOpening = false
         bottom.beginReadingHistory()
         recordScroll("scroll-unconfirmed:\(request.id)", immediate: true)
+        noteBottomIfReached()
         reportReads()
+    }
+
+    /// Низ живой ленты на экране — прижата к нему или виден конец последнего сообщения:
+    /// непрочитанных ниже нет. Во время команды прокрутки не отмечается, после неё — сразу.
+    private func noteBottomIfReached() {
+        guard !isOpening, scroll.request == nil, bottom.atBottom || bottom.lastEndVisible else { return }
+        viewModel.noteAtBottom()
     }
 
     // MARK: Значения пузыря
