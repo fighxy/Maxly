@@ -539,12 +539,14 @@ public final class ChatListViewModel {
         deletionCandidate = nil
     }
 
-    /// Удалить чат на сервере: `forEveryone` — у всех, иначе только у себя.
-    public func confirmDelete(forEveryone: Bool) async {
-        guard let candidate = deletionCandidate else { return }
+    /// Удалить чат на сервере: `forEveryone` — у всех, иначе только у себя. Экран передаёт
+    /// `chatId` из диалога: SwiftUI закрывает диалог (и сбрасывает кандидата) раньше, чем
+    /// выполнится действие кнопки.
+    public func confirmDelete(chatId: String? = nil, forEveryone: Bool) async {
+        guard let id = chatId ?? deletionCandidate?.id else { return }
         deletionCandidate = nil
         do {
-            try await repository.delete(chatId: candidate.id, forEveryone: forEveryone)
+            try await repository.delete(chatId: id, forEveryone: forEveryone)
         } catch {
             show(error)
         }
@@ -560,9 +562,10 @@ public final class ChatListViewModel {
         clearCandidate = nil
     }
 
-    /// Очистка из профиля: кандидат диалога не нужен.
+    /// Очистка по id: из профиля и из диалога списка (кандидат к этому времени уже сброшен).
     public func confirmClear(chatId: String, forEveryone: Bool) async {
         guard capabilities.contains(.delete) else { return }
+        clearCandidate = nil
         do {
             try await repository.clearHistory(chatId: chatId, forEveryone: forEveryone)
         } catch {

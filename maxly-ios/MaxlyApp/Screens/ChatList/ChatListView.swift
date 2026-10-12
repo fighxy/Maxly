@@ -673,6 +673,7 @@ struct ChatListView: View {
     }
 
     /// «Только у меня» всегда. «У всех» — кроме «Избранного», где собеседника нет.
+    /// Кнопки передают id чата сами: к началу задачи диалог уже закрыт и кандидат сброшен.
     @ViewBuilder
     private func eraseButtons(_ item: ChatListItem, clearing: Bool) -> some View {
         let saved = item.id == Chat.savedMessagesId
@@ -682,15 +683,15 @@ struct ChatListView: View {
                 : (item.type == .private ? "Удалить у меня и у собеседника" : "Удалить у всех")
             Button(everyone, role: .destructive) {
                 Task {
-                    if clearing { await viewModel.confirmClear(forEveryone: true) }
-                    else { await viewModel.confirmDelete(forEveryone: true) }
+                    if clearing { await viewModel.confirmClear(chatId: item.id, forEveryone: true) }
+                    else { await viewModel.confirmDelete(chatId: item.id, forEveryone: true) }
                 }
             }
         }
         Button(clearing ? (saved ? "Очистить" : "Очистить только у меня") : (saved ? "Удалить" : "Удалить только у меня"), role: .destructive) {
             Task {
-                if clearing { await viewModel.confirmClear(forEveryone: false) }
-                else { await viewModel.confirmDelete(forEveryone: false) }
+                if clearing { await viewModel.confirmClear(chatId: item.id, forEveryone: false) }
+                else { await viewModel.confirmDelete(chatId: item.id, forEveryone: false) }
             }
         }
     }

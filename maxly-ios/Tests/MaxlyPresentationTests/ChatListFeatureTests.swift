@@ -505,6 +505,23 @@ struct ChatListLiveTests {
         #expect(plain.deletionCandidate == nil)
     }
 
+    @Test("Кнопка диалога срабатывает, хотя SwiftUI уже закрыл диалог и сбросил кандидата")
+    func eraseAfterDialogDismissed() async {
+        let (model, repository) = makeFeatureList(capabilities: [.delete])
+        repository.emit([chat("a", at: 1, title: "Аня")])
+        #expect(await eventually { model.items.count == 1 })
+        // Так идёт касание кнопки: сначала isPresented = false (cancel…), потом задача действия.
+        model.requestDelete(chatId: "a")
+        model.cancelDelete()
+        await model.confirmDelete(chatId: "a", forEveryone: true)
+        model.requestClear(chatId: "a")
+        model.cancelClear()
+        await model.confirmClear(chatId: "a", forEveryone: true)
+        #expect(await repository.actions == ["delete a true", "clear a true"])
+        #expect(model.deletionCandidate == nil)
+        #expect(model.clearCandidate == nil)
+    }
+
     @Test("Звук и архив только при поддержке")
     func muteAndArchive() async {
         let (model, repository) = makeFeatureList(capabilities: [.mute, .archive])
