@@ -24,6 +24,7 @@ public struct MessageMenuAction: Identifiable {
 /// Долгое нажатие на сообщение: что показать над лентой (`MessageMenuHost`).
 public struct MessageMenuRequest: Identifiable {
     public let id: String
+    public let presentationID = UUID()
     /// Место пузыря на экране (глобальные координаты).
     public let frame: CGRect
     public let isOutgoing: Bool
@@ -52,6 +53,7 @@ public final class MessageMenuPresenter {
     public init() {}
 
     public func present(_ request: MessageMenuRequest) {
+        guard self.request == nil else { return }
         #if canImport(UIKit)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         // Клавиатура уходит: меню занимает экран.
@@ -62,6 +64,11 @@ public final class MessageMenuPresenter {
 
     public func dismiss() {
         request = nil
+    }
+
+    public func dismiss(presentationID: UUID) {
+        guard request?.presentationID == presentationID else { return }
+        dismiss()
     }
 }
 
@@ -88,8 +95,8 @@ public struct MessageMenuHost: View {
 
     public var body: some View {
         if let request = presenter.request {
-            MessageMenuOverlay(request: request) { presenter.dismiss() }
-                .id(request.id)
+            MessageMenuOverlay(request: request) { presenter.dismiss(presentationID: request.presentationID) }
+                .id(request.presentationID)
         }
     }
 }
@@ -103,12 +110,12 @@ struct MessageMenuOverlay: View {
 
     @State private var shown = false
     @State private var expanded = false
+    @State private var closing = false
+    @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 46
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let reactionHeight: CGFloat = 52
-    private static let rowHeight: CGFloat = 46
     private static let menuWidth: CGFloat = 250
-    private static let gap: CGFloat = 8
     private static let margin: CGFloat = 12
 
     var body: some View {
@@ -124,47 +131,44 @@ struct MessageMenuOverlay: View {
                     .onTapGesture { close() }
                     .accessibilityLabel("Закрыть меню")
                     .accessibilityAddTraits(.isButton)
-                if request.reactions != nil {
+                if reactionBarWidth > 0 {
                     reactionBar
-                        .fixedSize()
+                        .frame(width: layout.reactions.width)
                         .scaleEffect(shown ? 1 : 0.6, anchor: request.isOutgoing ? .bottomTrailing : .bottomLeading)
                         .opacity(shown ? 1 : 0)
-                        .position(x: layout.reactionCenterX, y: layout.reactionY + Self.reactionHeight / 2)
+                        .position(x: layout.reactions.midX, y: layout.reactions.midY)
                 }
                 request.preview
-                    .frame(width: request.frame.width, height: layout.previewHeight, alignment: .top)
+                    .frame(width: layout.preview.width, height: layout.preview.height, alignment: .top)
                     .clipped()
                     .allowsHitTesting(false)
+                    .accessibilityHidden(true)
                     .shadow(color: .black.opacity(shown ? 0.25 : 0), radius: 12, y: 4)
                     .position(
-                        x: (shown ? layout.previewX : request.frame.minX - origin.x) + request.frame.width / 2,
-                        y: (shown ? layout.previewY : request.frame.minY - origin.y) + layout.previewHeight / 2
+                        x: (shown ? layout.preview.minX : request.frame.minX - origin.x) + layout.preview.width / 2,
+                        y: (shown ? layout.preview.minY : request.frame.minY - origin.y) + layout.preview.height / 2
                     )
                 actions
-                    .frame(width: Self.menuWidth)
+                    .frame(width: layout.actions.width, height: layout.actions.height)
                     .scaleEffect(shown ? 1 : 0.6, anchor: request.isOutgoing ? .topTrailing : .topLeading)
                     .opacity(shown ? 1 : 0)
-                    .position(x: layout.menuCenterX, y: layout.menuY + layout.menuHeight / 2)
+                    .position(x: layout.actions.midX, y: layout.actions.midY)
             }
         }
         .ignoresSafeArea()
+        .accessibilityAddTraits(.isModal)
+        .accessibilityAction(.escape) { close() }
+        .task(id: closing) {
+            guard closing else { return }
+            do { try await Task.sleep(for: .milliseconds(180)) } catch { return }
+            onDismiss()
+        }
         .onAppear {
             withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(duration: 0.3, bounce: 0.15)) { shown = true }
         }
     }
 
     // MARK: Раскладка
-
-    private struct Layout {
-        var previewX: CGFloat
-        var previewY: CGFloat
-        var previewHeight: CGFloat
-        var reactionY: CGFloat
-        var reactionCenterX: CGFloat
-        var menuY: CGFloat
-        var menuHeight: CGFloat
-        var menuCenterX: CGFloat
-    }
 
     private var items: [MessageMenuAction] {
         expanded ? request.primary + request.more : request.primary
@@ -175,52 +179,38 @@ struct MessageMenuOverlay: View {
     /// Высота списка: строки, отступы списка сверху и снизу и черта над «Ещё…».
     private var menuHeight: CGFloat {
         let rows = CGFloat(items.count + (showsMore ? 1 : 0))
-        return rows * Self.rowHeight + 8 + (showsMore ? 9 : 0)
+        return rows * rowHeight + 8 + (showsMore ? 9 : 0)
     }
 
     /// Пузырь стоит на своём месте, пока ряд реакций сверху и пункты снизу влезают; иначе
     /// сдвигается, а слишком высокий — обрезается сверху вниз.
-    private func placement(in size: CGSize, safe: EdgeInsets, origin: CGPoint) -> Layout {
-        let top = safe.top + Self.margin
-        let bottom = size.height - safe.bottom - Self.margin
-        let reactionSpace = request.reactions == nil ? 0 : Self.reactionHeight + Self.gap
-        let menuH = menuHeight
-        let available = bottom - top - reactionSpace - Self.gap - menuH
-        let previewH = max(60, min(request.frame.height, available))
-        var y = request.frame.minY - origin.y
-        y = max(y, top + reactionSpace)
-        y = min(y, bottom - menuH - Self.gap - previewH)
-        let x = request.frame.minX - origin.x
-        let leading = request.isOutgoing ? x + request.frame.width : x
-        let reactionWidth = reactionBarWidth
-        let reactionX = request.isOutgoing
-            ? min(leading - reactionWidth / 2, size.width - Self.margin - reactionWidth / 2)
-            : max(leading + reactionWidth / 2, Self.margin + reactionWidth / 2)
-        let menuX = request.isOutgoing
-            ? min(leading - Self.menuWidth / 2, size.width - Self.margin - Self.menuWidth / 2)
-            : max(leading + Self.menuWidth / 2, Self.margin + Self.menuWidth / 2)
-        return Layout(
-            previewX: x,
-            previewY: y,
-            previewHeight: previewH,
-            reactionY: y - reactionSpace,
-            reactionCenterX: min(max(reactionX, Self.margin + reactionWidth / 2), size.width - Self.margin - reactionWidth / 2),
-            menuY: y + previewH + Self.gap,
-            menuHeight: menuH,
-            menuCenterX: min(max(menuX, Self.margin + Self.menuWidth / 2), size.width - Self.margin - Self.menuWidth / 2)
-        )
+    private func placement(in size: CGSize, safe: EdgeInsets, origin: CGPoint) -> MessageMenuLayout {
+        MessageMenuLayout(
+            bounds: CGRect(x: safe.leading + Self.margin, y: safe.top + Self.margin,
+                           width: max(0, size.width - safe.leading - safe.trailing - Self.margin * 2),
+                           height: max(0, size.height - safe.top - safe.bottom - Self.margin * 2)),
+            source: request.frame.offsetBy(dx: -origin.x, dy: -origin.y), outgoing: request.isOutgoing,
+            actionHeight: menuHeight, actionWidth: Self.menuWidth,
+            reactionWidth: reactionBarWidth, reactionHeight: reactionBarWidth > 0 ? Self.reactionHeight : 0)
     }
 
     // MARK: Реакции
 
+    private var reactionChoices: [String] {
+        guard let reactions = request.reactions else { return [] }
+        var seen = Set<String>()
+        return (reactions + (request.mine.map { [$0] } ?? [])).filter { seen.insert($0).inserted }
+    }
+
     private var reactionBarWidth: CGFloat {
-        let count = CGFloat(request.reactions?.count ?? 0) + (request.onMoreReactions == nil ? 0 : 1)
-        return count * 44 + 12
+        let count = CGFloat(reactionChoices.count) + (request.onMoreReactions == nil ? 0 : 1)
+        return count > 0 ? count * 44 + 12 : 0
     }
 
     private var reactionBar: some View {
+        ScrollView(.horizontal) {
         HStack(spacing: 0) {
-            ForEach(request.reactions ?? [], id: \.self) { emoji in
+            ForEach(reactionChoices, id: \.self) { emoji in
                 Button {
                     run { request.onReact(emoji) }
                 } label: {
@@ -248,6 +238,9 @@ struct MessageMenuOverlay: View {
             }
         }
         .padding(.horizontal, 6)
+        }
+        .scrollIndicators(.hidden)
+        .disabled(closing)
         .frame(height: Self.reactionHeight)
         .maxlyGlassCapsule(interactive: false)
     }
@@ -255,6 +248,7 @@ struct MessageMenuOverlay: View {
     // MARK: Пункты
 
     private var actions: some View {
+        ScrollView {
         VStack(spacing: 0) {
             ForEach(items) { item in
                 row(item.title, systemImage: item.systemImage, destructive: item.destructive) { run(item.action) }
@@ -267,6 +261,9 @@ struct MessageMenuOverlay: View {
             }
         }
         .padding(.vertical, 4)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .disabled(closing)
         .maxlyGlassRounded(radius: 20)
     }
 
@@ -282,11 +279,11 @@ struct MessageMenuOverlay: View {
             }
             .foregroundStyle(destructive ? Color.red : Color.primary)
             .padding(.horizontal, 16)
-            .frame(height: Self.rowHeight - 8)
+            .frame(minHeight: rowHeight - 8)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .frame(height: Self.rowHeight - 8)
+        .frame(minHeight: rowHeight - 8)
         .padding(.vertical, 4)
     }
 
@@ -294,15 +291,15 @@ struct MessageMenuOverlay: View {
 
     /// Пункт выполняется после закрытия меню: листы и подтверждения открываются уже без него.
     private func run(_ action: @escaping () -> Void) {
+        guard !closing else { return }
+        closing = true
         onDismiss()
         action()
     }
 
     private func close() {
-        withAnimation(reduceMotion ? .easeOut(duration: 0.12) : .easeOut(duration: 0.18)) { shown = false }
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(180))
-            onDismiss()
-        }
+        guard !closing else { return }
+        closing = true
+        withAnimation(.easeOut(duration: reduceMotion ? 0.12 : 0.18)) { shown = false }
     }
 }
