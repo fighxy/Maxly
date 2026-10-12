@@ -2,6 +2,7 @@ import AVFoundation
 import Foundation
 import Observation
 import SwiftUI
+import MaxlyDomain
 import UIKit
 
 /// Просмотр записанного кружка перед отправкой, как в Telegram: кружок играет по кругу (без
