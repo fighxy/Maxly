@@ -2013,6 +2013,7 @@ public final class ChatViewModel {
         switch target {
         case .photos: gallery != nil && !message.content.visuals.isEmpty
         case .files: !Self.saveable(message, to: .files).isEmpty
+        case .share: !Self.saveable(message, to: .share).isEmpty
         }
     }
 
@@ -2040,7 +2041,9 @@ public final class ChatViewModel {
     /// Окно «Сохранить в Файлы» закрыто: `saved` — файлы записаны в выбранную папку.
     public func finishFileExport(saved: Bool) {
         let count = fileExport?.files.count ?? 0
+        let shared = fileExport?.share == true
         fileExport = nil
+        guard !shared else { return }
         if saved { showNotice(count > 1 ? "Сохранено в «Файлы»: \(count)" : "Сохранено в «Файлы»") }
     }
 
@@ -2084,6 +2087,8 @@ public final class ChatViewModel {
             }
         case .files:
             fileExport = FileExport(files: files, fromViewer: fromViewer)
+        case .share:
+            fileExport = FileExport(files: files, fromViewer: fromViewer, share: true)
         }
     }
 

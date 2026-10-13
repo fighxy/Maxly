@@ -1,4 +1,5 @@
 import AVFoundation
+import AVKit
 import SwiftUI
 import UIKit
 import MaxlyDomain
@@ -27,8 +28,10 @@ struct MediaViewer: View {
     /// Итог сохранения («Фото сохранено в «Фото»») — капсула внизу.
     var notice: String?
     var isSaving = false
-    /// Сохранить открытый кадр: id слайда и куда.
+    /// Сохранить открытый кадр или поделиться им: id слайда и куда.
     var onSave: ((String, SaveTarget) -> Void)?
+    /// «Перейти к сообщению»: просмотр закрывается, лента едет к сообщению.
+    var onShowInChat: (() -> Void)?
     let onClose: () -> Void
 
     @State private var selection: String?
@@ -46,6 +49,8 @@ struct MediaViewer: View {
     @State private var hero: Hero?
     /// Экран просмотра в координатах окна (рамки плиток — в них же).
     @State private var screen: CGRect = .zero
+    /// Что сделать, когда просмотр закроется.
+    @State private var afterClose: (() -> Void)?
 
     private enum Phase { case opening, open, closing }
 
@@ -62,6 +67,7 @@ struct MediaViewer: View {
         notice: String? = nil,
         isSaving: Bool = false,
         onSave: ((String, SaveTarget) -> Void)? = nil,
+        onShowInChat: (() -> Void)? = nil,
         onClose: @escaping () -> Void
     ) {
         self.request = request
@@ -69,6 +75,7 @@ struct MediaViewer: View {
         self.notice = notice
         self.isSaving = isSaving
         self.onSave = onSave
+        self.onShowInChat = onShowInChat
         self.onClose = onClose
         _selection = State(initialValue: request.id)
         _hero = State(initialValue: Self.tile(request.id).map { Hero(image: $0.image, source: $0.frame, cornerRadius: $0.cornerRadius) })
@@ -209,7 +216,9 @@ struct MediaViewer: View {
                 active: selection == slide.id && phase == .open,
                 chrome: $chrome,
                 scrubbing: $scrubbing,
-                download: download
+                download: download,
+                // Ролик ушёл в окошко: просмотр закрывается сразу, без полёта.
+                onPictureInPicture: finish
             )
         } else {
             PhotoPage(
@@ -228,7 +237,7 @@ struct MediaViewer: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            CircleButton(systemName: "xmark", label: "Закрыть", action: close)
+            CircleButton(systemName: "xmark", label: "Закрыть") { close() }
             VStack(alignment: .leading, spacing: 1) {
                 if let author = request.author, !author.isEmpty {
                     Text(author)
@@ -250,7 +259,10 @@ struct MediaViewer: View {
                 }
             }
             if let onSave {
-                saveMenu(onSave)
+                shareButton(onSave)
+            }
+            if onSave != nil || onShowInChat != nil {
+                moreMenu
             }
         }
         .padding(.horizontal, 12)
@@ -296,17 +308,16 @@ struct MediaViewer: View {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    /// «Сохранить в Фото» и «Сохранить в Файлы» для открытого кадра.
-    private func saveMenu(_ onSave: @escaping (String, SaveTarget) -> Void) -> some View {
-        Menu {
-            Button("Сохранить в Фото", systemImage: "square.and.arrow.down") { onSave(selection ?? request.id, .photos) }
-            Button("Сохранить в Файлы", systemImage: "folder") { onSave(selection ?? request.id, .files) }
+    /// «Поделиться» открытым кадром: файл качается (если ещё нет) и открывается системное окно.
+    private func shareButton(_ onSave: @escaping (String, SaveTarget) -> Void) -> some View {
+        Button {
+            onSave(selection ?? request.id, .share)
         } label: {
             ZStack {
                 if isSaving {
                     ProgressView().tint(.white)
                 } else {
-                    Image(systemName: "square.and.arrow.down")
+                    Image(systemName: "square.and.arrow.up")
                         .font(.body.weight(.semibold))
                         .foregroundStyle(.white)
                 }
@@ -314,8 +325,32 @@ struct MediaViewer: View {
             .frame(width: 38, height: 38)
             .background(.black.opacity(0.35), in: Circle())
         }
+        .buttonStyle(.plain)
         .disabled(isSaving)
-        .accessibilityLabel("Сохранить")
+        .accessibilityLabel("Поделиться")
+    }
+
+    /// «⋯»: перейти к сообщению, сохранить в «Фото» или «Файлы».
+    private var moreMenu: some View {
+        Menu {
+            if let onShowInChat {
+                Button("Перейти к сообщению", systemImage: "bubble.left.and.text.bubble.right") {
+                    close(then: onShowInChat)
+                }
+            }
+            if let onSave {
+                Button("Сохранить в Фото", systemImage: "square.and.arrow.down") { onSave(selection ?? request.id, .photos) }
+                Button("Сохранить в Файлы", systemImage: "folder") { onSave(selection ?? request.id, .files) }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 38, height: 38)
+                .background(.black.opacity(0.35), in: Circle())
+        }
+        .disabled(isSaving)
+        .accessibilityLabel("Ещё")
     }
 
     @ViewBuilder
@@ -335,9 +370,11 @@ struct MediaViewer: View {
 
     // MARK: Закрытие
 
-    /// Кадр летит обратно в свою плитку, если она на экране; иначе просмотр гаснет.
-    private func close() {
+    /// Кадр летит обратно в свою плитку, если она на экране; иначе просмотр гаснет. [then] —
+    /// что сделать после закрытия (перейти к сообщению).
+    private func close(then: (() -> Void)? = nil) {
         guard phase != .closing else { return }
+        afterClose = then
         let id = selection ?? request.id
         let upright = screen.height >= screen.width && (turns[id] ?? 0) % 4 == 0 && !zoomed
         if upright, let tile = Self.tile(id), MediaHeroGeometry.canReturn(to: tile.frame, screen: screen) {
@@ -363,6 +400,7 @@ struct MediaViewer: View {
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) { onClose() }
+        afterClose?()
     }
 
     /// Смахивание вверх или вниз: кадр идёт за пальцем, отпустили — закрыть или вернуть.
@@ -742,6 +780,7 @@ private struct VideoPage: View {
     @Binding var chrome: MediaViewerChrome
     @Binding var scrubbing: Bool
     let download: (MediaSlide, @escaping @MainActor (Double) -> Void) async -> URL?
+    let onPictureInPicture: () -> Void
 
     @State private var playback = VideoPlayback()
     @State private var taps = SeekTapAccumulator()
@@ -767,7 +806,10 @@ private struct VideoPage: View {
                 player: playback.player,
                 onTap: { chrome.toggle() },
                 onDoubleTap: seek(x:width:),
-                onHold: hold(_:)
+                onHold: hold(_:),
+                onLayer: { layer in
+                    playback.attach(layer) { onPictureInPicture() }
+                }
             )
             status
             if let seekBadge {
@@ -805,7 +847,8 @@ private struct VideoPage: View {
                 playback.pause()
             }
         }
-        .onDisappear { playback.stop() }
+        // В окошке ролик играет дальше: его держит `PictureInPicture`.
+        .onDisappear { if !PictureInPicture.shared.isActive(playback) { playback.stop() } }
         .onChange(of: playback.isPlaying) { _, playing in
             if !playing { chrome.playbackStopped() }
         }
@@ -975,6 +1018,15 @@ private struct VideoControls: View {
                         .frame(width: 28, height: 28)
                 }
                 .accessibilityLabel(playback.muted ? "Включить звук" : "Выключить звук")
+                if AVPictureInPictureController.isPictureInPictureSupported() {
+                    Button {
+                        playback.startPictureInPicture()
+                    } label: {
+                        Image(systemName: "pip.enter")
+                            .frame(width: 28, height: 28)
+                    }
+                    .accessibilityLabel("Картинка в картинке")
+                }
                 Menu {
                     ForEach(PlaybackSpeed.options, id: \.self) { rate in
                         Button {
@@ -1059,11 +1111,14 @@ private struct PlayerSurface: UIViewRepresentable {
     let onTap: () -> Void
     let onDoubleTap: (CGFloat, CGFloat) -> Void
     let onHold: (Bool) -> Void
+    /// Слой ролика готов: из него запускается картинка в картинке.
+    var onLayer: (AVPlayerLayer) -> Void = { _ in }
 
     func makeUIView(context: Context) -> SurfaceView {
         let view = SurfaceView()
         view.playerLayer.player = player
         view.playerLayer.videoGravity = .resizeAspect
+        onLayer(view.playerLayer)
         view.backgroundColor = .clear
         let double = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.doubleTapped(_:)))
         double.numberOfTapsRequired = 2
@@ -1114,6 +1169,62 @@ private struct PlayerSurface: UIViewRepresentable {
     }
 }
 
+/// Картинка в картинке: ролик из просмотра играет в окошке поверх других приложений и экранов.
+///
+/// Окошко открывается кнопкой на полосе ролика или само, когда приложение сворачивают во время
+/// воспроизведения. Просмотр при этом закрывается, а ролик (плеер и его слой) держится здесь,
+/// пока окошко не закроют.
+@MainActor
+private final class PictureInPicture: NSObject {
+    static let shared = PictureInPicture()
+
+    private struct Entry {
+        weak var playback: VideoPlayback?
+        let onStarted: () -> Void
+    }
+
+    private var entries: [ObjectIdentifier: Entry] = [:]
+    /// Ролик, который сейчас в окошке.
+    private var playing: VideoPlayback?
+
+    func register(_ controller: AVPictureInPictureController, playback: VideoPlayback, onStarted: @escaping () -> Void) {
+        entries = entries.filter { $0.value.playback != nil }
+        entries[ObjectIdentifier(controller)] = Entry(playback: playback, onStarted: onStarted)
+        controller.delegate = self
+    }
+
+    func isActive(_ playback: VideoPlayback) -> Bool { playing === playback }
+}
+
+extension PictureInPicture: @preconcurrency AVPictureInPictureControllerDelegate {
+    func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        playing = entries[ObjectIdentifier(controller)]?.playback
+    }
+
+    func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        entries[ObjectIdentifier(controller)]?.onStarted()
+    }
+
+    func pictureInPictureController(_ controller: AVPictureInPictureController, failedToStartPictureInPictureWithError error: any Error) {
+        Log.warning(.media, "Картинка в картинке не открылась: \(error)")
+        playing = nil
+    }
+
+    func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
+        // Окошко закрыли: ролик останавливается и отпускается вместе с плеером.
+        playing?.stop()
+        playing = nil
+        entries[ObjectIdentifier(controller)] = nil
+    }
+
+    func pictureInPictureController(
+        _ controller: AVPictureInPictureController,
+        restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void
+    ) {
+        completionHandler(true)
+    }
+}
+
 /// Состояние одного ролика: время, подгруженная часть, загрузка целиком и ошибки.
 ///
 /// Сначала играет поток. Не открылся (`AVPlayerItem.status == .failed`) — ролик один раз
@@ -1147,6 +1258,25 @@ private final class VideoPlayback {
     @ObservationIgnored private var endObserver: NSObjectProtocol?
     @ObservationIgnored private var started = false
     @ObservationIgnored private var lastScrub: TimeInterval = 0
+    /// Слой ролика (держится и после ухода экрана — в нём играет окошко) и его картинка в картинке.
+    @ObservationIgnored private var layer: AVPlayerLayer?
+    @ObservationIgnored private var pictureInPicture: AVPictureInPictureController?
+
+    /// Слой страницы готов: из него можно уйти в окошко кнопкой или сворачиванием приложения.
+    func attach(_ layer: AVPlayerLayer, onStarted: @escaping () -> Void) {
+        guard self.layer !== layer else { return }
+        self.layer = layer
+        guard AVPictureInPictureController.isPictureInPictureSupported(),
+              let controller = AVPictureInPictureController(playerLayer: layer) else { return }
+        controller.canStartPictureInPictureAutomaticallyFromInline = true
+        PictureInPicture.shared.register(controller, playback: self, onStarted: onStarted)
+        pictureInPicture = controller
+    }
+
+    func startPictureInPicture() {
+        if !isPlaying { play() }
+        pictureInPicture?.startPictureInPicture()
+    }
 
     /// Открыть ролик (один раз) и играть; повторный вызов — продолжить.
     func start(url: URL?, download: @escaping (@escaping @MainActor (Double) -> Void) async -> URL?) {

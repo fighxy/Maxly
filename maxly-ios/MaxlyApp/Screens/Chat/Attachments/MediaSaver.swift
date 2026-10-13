@@ -71,6 +71,20 @@ struct FileExportPicker: UIViewControllerRepresentable {
     }
 }
 
+/// Системное окно «Поделиться» с файлами: отправить в другое приложение, AirDrop, сохранить.
+struct ShareSheet: UIViewControllerRepresentable {
+    let urls: [URL]
+    let onFinish: () -> Void
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: urls, applicationActivities: nil)
+        controller.completionWithItemsHandler = { _, _, _, _ in onFinish() }
+        return controller
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+}
+
 extension View {
     /// Окно «Сохранить в Файлы» для экспорта модели чата. Чат и просмотр фото держат
     /// каждый своё окно (`fromViewer`): под открытым просмотром чат окно показать не может.
@@ -79,10 +93,16 @@ extension View {
             get: { model.fileExport.flatMap { $0.fromViewer == fromViewer ? $0 : nil } },
             set: { if $0 == nil, model.fileExport?.fromViewer == fromViewer { model.finishFileExport(saved: false) } }
         )) { export in
-            FileExportPicker(urls: export.files.map(\.url)) { saved in
-                model.finishFileExport(saved: saved)
+            if export.share {
+                ShareSheet(urls: export.files.map(\.url)) { model.finishFileExport(saved: false) }
+                    .presentationDetents([.medium, .large])
+                    .ignoresSafeArea()
+            } else {
+                FileExportPicker(urls: export.files.map(\.url)) { saved in
+                    model.finishFileExport(saved: saved)
+                }
+                .ignoresSafeArea()
             }
-            .ignoresSafeArea()
         }
     }
 }

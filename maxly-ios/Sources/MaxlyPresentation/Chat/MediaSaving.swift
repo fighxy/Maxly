@@ -8,6 +8,8 @@ import UniformTypeIdentifiers
 public enum SaveTarget: String, Hashable, Sendable {
     case photos
     case files
+    /// Системное окно «Поделиться» с файлом фото или видео.
+    case share
 }
 
 /// Вложение, готовое к сохранению: файл на устройстве с понятным именем.
@@ -41,11 +43,14 @@ public struct FileExport: Identifiable, Hashable, Sendable {
     public var id: String
     public var files: [SavedFile]
     public var fromViewer: Bool
+    /// Окно «Поделиться» вместо «Сохранить в Файлы».
+    public var share: Bool
 
-    public init(id: String = UUID().uuidString, files: [SavedFile], fromViewer: Bool = false) {
+    public init(id: String = UUID().uuidString, files: [SavedFile], fromViewer: Bool = false, share: Bool = false) {
         self.id = id
         self.files = files
         self.fromViewer = fromViewer
+        self.share = share
     }
 }
 

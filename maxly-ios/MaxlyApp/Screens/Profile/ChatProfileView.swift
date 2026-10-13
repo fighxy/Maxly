@@ -14,6 +14,8 @@ struct ChatProfileContext {
     var onToggleMute: (() -> Void)?
     /// Вернуться в чат и подсветить сообщение.
     var onShowMessage: (Message) -> Void
+    /// То же по id: из просмотра фото и видео, открытого из общих медиа.
+    var onShowMessageId: ((String) -> Void)? = nil
     /// Очистить переписку или удалить чат. `true` в первом аргументе — очистка, во втором — у всех.
     var onEraseChat: ((Bool, Bool) -> Void)? = nil
     /// Выйти из группы или отписаться от канала. `nil` — не участник или это не группа и не канал.
@@ -182,7 +184,7 @@ struct ChatProfileView: View {
         .animation(.snappy, value: copied)
         .animation(.snappy, value: viewModel.actionNotice)
         .animation(.snappy, value: context?.chat.notice)
-        .modifier(ProfileChatCovers(chat: context?.chat))
+        .modifier(ProfileChatCovers(chat: context?.chat, onShowMessage: context?.onShowMessageId))
         .mediaViewerCover(item: $avatarViewer) { request in
             MediaViewer(request: request) { avatarViewer = nil }
         }
@@ -906,6 +908,13 @@ struct ChatProfileView: View {
 /// профилем свои окна в это время не показывает.
 private struct ProfileChatCovers: ViewModifier {
     let chat: ChatViewModel?
+    var onShowMessage: ((String) -> Void)?
+
+    /// «Перейти к сообщению» из просмотра: профиль уезжает, лента едет к сообщению.
+    private func showAction(_ request: MediaViewerRequest) -> (() -> Void)? {
+        guard let id = request.messageId, let onShowMessage else { return nil }
+        return { onShowMessage(id) }
+    }
 
     func body(content: Content) -> some View {
         if let chat {
@@ -917,7 +926,8 @@ private struct ProfileChatCovers: ViewModifier {
                         download: { await chat.downloadVideo($0, progress: $1) },
                         notice: chat.notice,
                         isSaving: chat.isSaving,
-                        onSave: { chat.saveViewerSlide($0, to: $1) }
+                        onSave: { chat.saveViewerSlide($0, to: $1) },
+                        onShowInChat: showAction(request)
                     ) { chat.viewer = nil }
                         .fileExportSheet(chat, fromViewer: true)
                 }

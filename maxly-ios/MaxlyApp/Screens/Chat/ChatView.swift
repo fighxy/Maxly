@@ -578,7 +578,8 @@ struct ChatView: View {
                     download: { await viewModel.downloadVideo($0, progress: $1) },
                     notice: viewModel.notice,
                     isSaving: viewModel.isSaving,
-                    onSave: { viewModel.saveViewerSlide($0, to: $1) }
+                    onSave: { viewModel.saveViewerSlide($0, to: $1) },
+                    onShowInChat: showAction(request)
                 ) { viewModel.viewer = nil }
                     .fileExportSheet(viewModel, fromViewer: true)
                     .environment(\.privateMode, .visible)
@@ -891,9 +892,10 @@ struct ChatView: View {
             isMuted: muted,
             mutedNow: mutedNow,
             onToggleMute: listed ? onToggleMute : nil,
-            onShowMessage: { showInChat($0) },
+            onShowMessage: { showInChat($0.id) },
             onEraseChat: listed ? onEraseChat : nil
         )
+        context.onShowMessageId = { showInChat($0) }
         if listed, card.shown.kind == .channel || card.shown.kind == .group {
             context.onLeave = onLeave
         }
@@ -937,12 +939,18 @@ struct ChatView: View {
     }
 
     /// «Показать в чате» из общих медиа: профиль закрывается, сообщение подсвечивается.
-    private func showInChat(_ message: Message) {
+    /// «Перейти к сообщению» из просмотра: лента едет к сообщению и подсвечивает его.
+    private func showAction(_ request: MediaViewerRequest) -> (() -> Void)? {
+        guard let id = request.messageId else { return nil }
+        return { viewModel.focusReply(id) }
+    }
+
+    private func showInChat(_ messageId: String) {
         profileShown = false
         Task {
             // Сначала уезжает профиль, потом лента прокручивается к сообщению.
             try? await Task.sleep(for: .milliseconds(350))
-            viewModel.focusReply(message.id)
+            viewModel.focusReply(messageId)
         }
     }
 
