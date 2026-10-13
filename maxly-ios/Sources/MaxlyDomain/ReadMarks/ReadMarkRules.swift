@@ -60,10 +60,14 @@ public enum ReadVisibility {
         composerTop: Double? = nil,
         keyboardTop: Double? = nil
     ) -> ReadSpan {
+        // Измеренные шапка и поле ввода — настоящие края: безопасный отступ рамки к ним не
+        // прибавляется. Рамка ленты может уже кончаться у шапки и поля ввода, а SwiftUI всё
+        // равно сообщает их высоту как отступ — так край считался дважды (журнал 13.10: рамка
+        // 101…766, отступы 101 и 78, область 202…688), и низ ленты не считался видимым.
         var top = viewport.minY + max(0, safeTop)
         var bottom = viewport.maxY - max(0, safeBottom)
-        if let headerBottom { top = max(top, headerBottom) }
-        if let composerTop, composerTop > 0 { bottom = min(bottom, composerTop) }
+        if let headerBottom { top = max(viewport.minY, headerBottom) }
+        if let composerTop, composerTop > 0 { bottom = min(viewport.maxY, composerTop) }
         if let keyboardTop, keyboardTop > 0 { bottom = min(bottom, keyboardTop) }
         return ReadSpan(minY: top, maxY: max(top, bottom))
     }

@@ -148,6 +148,16 @@ struct ReadVisibilityTests {
         #expect(ReadVisibility.newestSeen([row("a", order: 0, at: 250)], in: closed) == nil)
     }
 
+    @Test("Рамка уже под шапкой и над полем ввода: отступы не режут её второй раз")
+    func insetFrame() {
+        // Журнал 13.10: рамка ленты 101…766, SwiftUI сообщает отступы 101 и 78.
+        let frame = ReadSpan(minY: 101, maxY: 766)
+        let area = ReadVisibility.area(viewport: frame, safeTop: 101, safeBottom: 78, headerBottom: 101, composerTop: 766)
+        #expect(area == ReadSpan(minY: 101, maxY: 766))
+        // Клавиатура выше поля ввода режет низ.
+        #expect(ReadVisibility.area(viewport: frame, safeTop: 101, safeBottom: 78, headerBottom: 101, composerTop: 766, keyboardTop: 500).maxY == 500)
+    }
+
     @Test("Самое новое увиденное: наибольшее место среди строк, видных на 30 %")
     func newest() {
         let area = ReadSpan(minY: 100, maxY: 900)

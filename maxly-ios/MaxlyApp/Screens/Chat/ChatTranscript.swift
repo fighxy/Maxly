@@ -446,6 +446,8 @@ struct ChatTranscript: View {
     /// Верх области прокрутки: рамка ленты плюс её верхний безопасный отступ.
     private var contentTop: CGFloat {
         guard let viewport = reads.viewport else { return 0 }
+        // Измеренная шапка — настоящий край; отступ рамки к ней не прибавляется (`ReadVisibility.area`).
+        if let headerBottom { return max(viewport.frame.minY, headerBottom) }
         return viewport.frame.minY + max(0, viewport.safeTop)
     }
 
