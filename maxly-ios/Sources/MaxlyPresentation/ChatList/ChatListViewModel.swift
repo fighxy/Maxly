@@ -546,9 +546,22 @@ public final class ChatListViewModel {
         }
     }
 
-    /// Папки для подменю «Добавить в папку»: пусто — папок нет или менять их нечем.
-    public func folderChoices(chatId: String) -> [ChatListMenu.FolderChoice] {
-        folderEditor == nil ? [] : ChatListMenu.folderChoices(chatId: chatId, folders: editableFolders)
+    /// Папки для подменю «Добавить в папку»; `nil` — менять их нечем.
+    public func folderChoices(chatId: String) -> [ChatListMenu.FolderChoice]? {
+        folderEditor == nil ? nil : ChatListMenu.folderChoices(chatId: chatId, folders: editableFolders)
+    }
+
+    /// «Создать папку» из подменю: новая папка сразу с этим чатом.
+    public func createFolder(chatId: String, title: String) async {
+        guard let folderEditor else { return }
+        let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        do {
+            try await folderEditor.create(title: name, chatIds: [chatId], filters: [])
+            notice = "Папка «\(name)» создана"
+        } catch {
+            notice = error.userMessage
+        }
     }
 
     /// Чат в папку `folderId` или из неё, если он там уже есть.

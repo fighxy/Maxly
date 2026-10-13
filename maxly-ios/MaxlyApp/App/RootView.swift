@@ -344,7 +344,13 @@ struct MainTabView: View {
                 onCall: { peer, video in container.startCall(peer, video: video) },
                 makeParticipantProfile: { container.profileViewModel(dialog: $0) },
                 opensProfile: router.profileRequest == id,
-                onProfileOpened: { if router.profileRequest == id { router.profileRequest = nil } }
+                onProfileOpened: { if router.profileRequest == id { router.profileRequest = nil } },
+                listActions: ChatProfileListActions(
+                    muteFor: { choice in Task { await container.muteFor(id: id, choice) } },
+                    folders: { container.folderChoices(id: id) },
+                    toggleFolder: { folder in Task { await container.toggleFolder(id: id, folderId: folder) } },
+                    createFolder: { title in Task { await container.createFolder(id: id, title: title) } }
+                )
             )
             .id(id)
         }

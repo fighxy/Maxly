@@ -74,12 +74,12 @@ public enum ChatListMenu {
         public var isDanger: Bool { self == .block || self == .delete }
     }
 
-    /// Пункты меню строки `item`. `folders` — папки пользователя (пусто — пункта нет),
+    /// Пункты меню строки `item`. `folders` — папки пользователя (`nil` — менять их нечем),
     /// `hasStories` — у автора чата есть истории в ленте, `canBlock` — есть чем заблокировать.
     /// «Избранное» не блокируют и не скрывают.
     public static func entries(
         item: ChatListItem,
-        folders: [FolderChoice],
+        folders: [FolderChoice]?,
         capabilities: ChatListCapabilities,
         hasStories: Bool = false,
         canBlock: Bool = false
@@ -87,7 +87,7 @@ public enum ChatListMenu {
         let saved = item.id == Chat.savedMessagesId
         let unread = item.unreadCount > 0 || item.badge == .dot
         var result: [Entry] = []
-        if !folders.isEmpty { result.append(.folders(folders)) }
+        if let folders { result.append(.folders(folders)) }
         if capabilities.contains(.pin) { result.append(.pin(pinned: item.isPinned)) }
         if unread || capabilities.contains(.markUnread) { result.append(.read(unread: unread)) }
         if capabilities.contains(.mute) { result.append(.mute(muted: item.isMuted)) }
@@ -97,6 +97,9 @@ public enum ChatListMenu {
         if capabilities.contains(.delete) { result.append(.delete) }
         return result
     }
+
+    /// Последний пункт подменю папок.
+    public static let createFolder = "Создать папку"
 
     /// Папки для подменю: чат в папке, если он добавлен в неё явно.
     public static func folderChoices(chatId: String, folders: [ServerFolder]) -> [FolderChoice] {

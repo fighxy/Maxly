@@ -1,5 +1,16 @@
 import Foundation
 
+/// Своя роль в группе или канале: владелец или админ.
+public struct ChatOwnRole: Hashable, Sendable {
+    public var isOwner: Bool
+    public var isAdmin: Bool
+
+    public init(isOwner: Bool, isAdmin: Bool) {
+        self.isOwner = isOwner
+        self.isAdmin = isAdmin
+    }
+}
+
 /// Карточка чата для экрана профиля: собеседник, бот, группа или канал.
 public struct ChatProfile: Hashable, Sendable, Codable {
     public enum Kind: String, Hashable, Sendable, Codable {

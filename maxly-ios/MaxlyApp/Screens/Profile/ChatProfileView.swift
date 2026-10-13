@@ -5,6 +5,15 @@ import MaxlyDomain
 import MaxlyPresentation
 import MaxlyUI
 
+/// Звук на срок и папки из профиля: меняются через список чатов, как из меню строки.
+struct ChatProfileListActions {
+    var muteFor: (ChatListMenu.MuteFor) -> Void
+    /// Папки для «Добавить в папку»; `nil` — менять их нечем.
+    var folders: () -> [ChatListMenu.FolderChoice]?
+    var toggleFolder: (String) -> Void
+    var createFolder: (String) -> Void
+}
+
 /// Чат, из которого открыт профиль: его медиа, звук и переход к сообщению.
 struct ChatProfileContext {
     var chat: ChatViewModel
@@ -33,6 +42,10 @@ struct ChatProfileContext {
     var onSchedule: (() -> Void)? = nil
     /// Звонок собеседнику личного чата, `true` — видео. `nil` — звонить некому.
     var onCall: ((Bool) -> Void)? = nil
+    /// Звук на срок и папки. `nil` — чата нет в списке.
+    var list: ChatProfileListActions? = nil
+    /// Куда можно отправить карточку контакта.
+    var shareTargets: () -> [ChatListItem] = { [] }
 
     var muted: Bool { mutedNow?() ?? isMuted }
 }
@@ -70,6 +83,11 @@ struct ChatProfileView: View {
     /// Лист причин жалобы.
     @State private var reporting = false
     @State private var managing = false
+    /// Своя роль в группе или канале: владельцу — «Удалить канал».
+    @State private var role = ChatOwnRole(isOwner: false, isAdmin: false)
+    @State private var creatingFolder = false
+    @State private var sharingContact = false
+    @Environment(\.dismiss) private var dismiss
     @State private var manageModel: ChatManageModel?
     @State private var manageContacts: [ChatAdminPerson] = []
     @Namespace private var tabs
@@ -101,7 +119,7 @@ struct ChatProfileView: View {
             }
         }
         .confirmationDialog(
-            erase == .clear ? "Очистить историю?" : "Удалить чат?",
+            erase == .clear ? "Стереть переписку?" : "Удалить чат?",
             isPresented: eraseShown,
             titleVisibility: .visible
         ) {
@@ -147,6 +165,29 @@ struct ChatProfileView: View {
                 Button(reason.title) { Task { await viewModel.complain(reasonId: reason.id) } }
             }
             Button("Отмена", role: .cancel) {}
+        }
+        .createFolderAlert(for: Binding(
+            get: { creatingFolder ? viewModel.chatId : nil },
+            set: { creatingFolder = $0 != nil }
+        )) { _, title in
+            context?.list?.createFolder(title)
+        }
+        .sheet(isPresented: $sharingContact) {
+            ForwardPickerView(
+                targets: context?.shareTargets() ?? [],
+                onPick: { target in
+                    sharingContact = false
+                    guard let peer = viewModel.shown.peerId, let chat = context?.chat else { return }
+                    let name = viewModel.title
+                    Task { await chat.shareContact(userId: peer, name: name, to: target) }
+                },
+                onCancel: { sharingContact = false },
+                heading: "Поделиться контактом"
+            )
+        }
+        .task(id: viewModel.shown.kind) {
+            guard let chat = context?.chat, viewModel.shown.kind == .group || viewModel.shown.kind == .channel else { return }
+            role = await chat.ownRole()
         }
         .sheet(item: $membersList) { model in
             ChatMembersView(
@@ -316,124 +357,218 @@ struct ChatProfileView: View {
 
     // MARK: Кнопки
 
-    private struct Action: Identifiable {
-        let id: String
-        let title: String
-        let systemImage: String
-        let run: () -> Void
-    }
-
+    /// Плитки и «Ещё» как в Max (`ProfileMenu`). Профиль участника (без чата) — «Чат» и «Ещё».
     @ViewBuilder
     private var actions: some View {
-        let list = actionList
-        let more = moreItems
-        // Плиток не больше пяти: при звонках «Поделиться» уходит в «Ещё».
-        let shareTile = viewModel.shareURL != nil && list.count < 4
-        let shareInMenu = viewModel.shareURL != nil && !shareTile
-        if !list.isEmpty || viewModel.shareURL != nil || !more.isEmpty {
+        let tiles = profileTiles
+        if tiles.count > 1 || !profileEntries.isEmpty {
             HStack(spacing: 8) {
-                ForEach(list) { action in
-                    Button(action: action.run) {
-                        ActionTile(title: action.title, systemImage: action.systemImage)
-                    }
-                    .buttonStyle(ActionTileStyle())
-                }
-                if shareTile, let url = viewModel.shareURL {
-                    ShareLink(item: url) {
-                        ActionTile(title: "Поделиться", systemImage: "square.and.arrow.up")
-                    }
-                    .buttonStyle(ActionTileStyle())
-                }
-                if !more.isEmpty || shareInMenu {
-                    Menu {
-                        if shareInMenu, let url = viewModel.shareURL {
-                            ShareLink(item: url) {
-                                Label("Поделиться", systemImage: "square.and.arrow.up")
-                            }
-                        }
-                        ForEach(more) { item in
-                            Button(item.title, systemImage: item.systemImage, action: item.run)
-                        }
-                    } label: {
-                        ActionTile(title: "Ещё", systemImage: "ellipsis")
-                    }
-                    .buttonStyle(ActionTileStyle())
+                ForEach(tiles, id: \.self) { tile in
+                    tileView(tile)
                 }
             }
             .padding(.horizontal, MaxlyTheme.pad)
         }
     }
 
-    private var actionList: [Action] {
-        var list: [Action] = []
-        if let join = context?.join {
-            list.append(Action(id: "join", title: join.label, systemImage: "plus.circle.fill", run: join.run))
+    /// Чат в списке: иначе группа или канал открыты из поиска и есть «Вступить».
+    private var listed: Bool { context?.join == nil }
+
+    private var profileTiles: [ProfileMenu.Tile] {
+        let kind = viewModel.shown.kind
+        let tiles = ProfileMenu.tiles(
+            kind: kind,
+            listed: listed,
+            calls: context?.onCall != nil,
+            sound: kind != .saved && context?.onToggleMute != nil
+        )
+        return tiles.filter { tile in
+            switch tile {
+            case .chat: (viewModel.canWrite && onWrite != nil) || context != nil
+            case .search: context?.onSearch != nil
+            case .join, .subscribe: context?.join != nil
+            case .more: !profileEntries.isEmpty
+            default: true
+            }
         }
-        if viewModel.canWrite, let onWrite {
-            list.append(Action(id: "write", title: "Написать", systemImage: "bubble.left.fill", run: onWrite))
-        }
-        if let call = context?.onCall {
-            list.append(Action(id: "call", title: "Звонок", systemImage: "phone.fill") { call(false) })
-            list.append(Action(id: "video", title: "Видео", systemImage: "video.fill") { call(true) })
-        }
-        if viewModel.shown.kind != .saved, let toggle = context?.onToggleMute {
-            let muted = context?.muted == true
-            list.append(Action(
-                id: "mute",
-                title: muted ? "Со звуком" : "Без звука",
-                systemImage: muted ? "bell.fill" : "bell.slash.fill",
-                run: toggle
-            ))
-        }
-        if let search = context?.onSearch {
-            list.append(Action(id: "search", title: "Поиск", systemImage: "magnifyingglass", run: search))
-        }
-        // Отписка от канала на виду: плиткой, а не в «Ещё».
-        if context?.onLeave != nil, isChannel {
-            list.append(Action(id: "leave", title: "Отписаться", systemImage: "rectangle.portrait.and.arrow.right") { leaving = true })
-        }
-        return list
     }
 
-    private var moreItems: [Action] {
-        var items: [Action] = []
-        if let poll = context?.onPoll {
-            items.append(Action(id: "poll", title: "Опрос", systemImage: "chart.bar", run: poll))
+    private var profileEntries: [ProfileMenu.Entry] {
+        let kind = viewModel.shown.kind
+        let ring = stories?.ring(of: storyOwner, kind: storyKind)
+        let ownRing = ring != nil && ring?.owner == stories?.own?.owner
+        let tiles = ProfileMenu.tiles(kind: kind, listed: listed, calls: context?.onCall != nil, sound: context?.onToggleMute != nil)
+            .filter { $0 != .search || context?.onSearch != nil }
+        return ProfileMenu.entries(
+            kind: kind,
+            tiles: tiles,
+            listed: listed,
+            hasLink: viewModel.shareURL != nil,
+            folders: context?.list?.folders(),
+            hasStories: ring != nil && !ownRing,
+            canReport: viewModel.complaintTarget != nil,
+            isAdmin: role.isAdmin,
+            isOwner: role.isOwner,
+            blocked: viewModel.canBlock ? viewModel.isBlocked : nil,
+            canErase: context?.onEraseChat != nil
+        ).filter { entry in
+            switch entry {
+            case .shareContact: context != nil && viewModel.shown.peerId != nil
+            case .search: context?.onSearch != nil
+            case .leave: context?.onLeave != nil
+            default: true
+            }
         }
-        if let schedule = context?.onSchedule {
-            items.append(Action(id: "schedule", title: "Отправить позже", systemImage: "clock", run: schedule))
+    }
+
+    @ViewBuilder
+    private func tileView(_ tile: ProfileMenu.Tile) -> some View {
+        switch tile {
+        case .sound:
+            soundTile
+        case .more:
+            moreTile
+        default:
+            Button { run(tile) } label: {
+                ActionTile(title: tileTitle(tile), systemImage: tileIcon(tile))
+            }
+            .buttonStyle(ActionTileStyle())
         }
-        if let url = viewModel.shareURL {
-            items.append(Action(id: "link", title: "Скопировать ссылку", systemImage: "link") {
-                copy(url.absoluteString, message: "Ссылка скопирована")
-            })
+    }
+
+    private func tileTitle(_ tile: ProfileMenu.Tile) -> String {
+        switch tile {
+        case .join, .subscribe: context?.join?.label ?? tile.title
+        default: tile.title
         }
-        if let phone = viewModel.infoRows.first(where: { $0.id == "phone" }) {
-            items.append(Action(id: "phone", title: "Скопировать номер", systemImage: "phone") {
-                copy(phone.value, message: "Номер скопирован")
-            })
+    }
+
+    private func tileIcon(_ tile: ProfileMenu.Tile) -> String {
+        switch tile {
+        case .chat: "bubble.left.fill"
+        case .call: "phone.fill"
+        case .video: "video.fill"
+        case .sound: "bell.fill"
+        case .search: "magnifyingglass"
+        case .join, .subscribe: "plus.circle.fill"
+        case .more: "ellipsis"
         }
-        if viewModel.complaintTarget != nil {
-            items.append(Action(id: "report", title: "Пожаловаться", systemImage: "exclamationmark.bubble") {
+    }
+
+    private func run(_ tile: ProfileMenu.Tile) {
+        switch tile {
+        case .chat: if let onWrite, viewModel.canWrite { onWrite() } else { dismiss() }
+        case .call: context?.onCall?(false)
+        case .video: context?.onCall?(true)
+        case .search: context?.onSearch?()
+        case .join, .subscribe: context?.join?.run()
+        case .sound, .more: break
+        }
+    }
+
+    /// «Звук»: выключенный включается касанием, включённый выключается на срок.
+    @ViewBuilder
+    private var soundTile: some View {
+        let muted = context?.muted == true
+        if muted || context?.list == nil {
+            Button { context?.onToggleMute?() } label: {
+                ActionTile(title: "Звук", systemImage: muted ? "bell.slash.fill" : "bell.fill")
+            }
+            .buttonStyle(ActionTileStyle())
+        } else {
+            Menu {
+                ForEach(ChatListMenu.MuteFor.allCases, id: \.self) { choice in
+                    Button(role: choice.isDanger ? .destructive : nil) {
+                        context?.list?.muteFor(choice)
+                    } label: {
+                        Text(choice.title)
+                    }
+                }
+            } label: {
+                ActionTile(title: "Звук", systemImage: "bell.fill")
+            }
+            .buttonStyle(ActionTileStyle())
+        }
+    }
+
+    private var moreTile: some View {
+        Menu {
+            ForEach(profileEntries, id: \.self) { entry in
+                entryView(entry)
+            }
+            extras
+        } label: {
+            ActionTile(title: "Ещё", systemImage: "ellipsis")
+        }
+        .buttonStyle(ActionTileStyle())
+    }
+
+    @ViewBuilder
+    private func entryView(_ entry: ProfileMenu.Entry) -> some View {
+        switch entry {
+        case .shareContact:
+            Button { sharingContact = true } label: { Label(entry.title, systemImage: "square.and.arrow.up") }
+        case .shareLink:
+            if let url = viewModel.shareURL {
+                ShareLink(item: url) { Label(entry.title, systemImage: "link") }
+            }
+        case .folders(let folders):
+            FolderMenu(
+                folders: folders,
+                onToggle: { context?.list?.toggleFolder($0) },
+                onCreate: { creatingFolder = true }
+            )
+        case .search:
+            Button { context?.onSearch?() } label: { Label(entry.title, systemImage: "magnifyingglass") }
+        case .erase:
+            Button { erase = .clear } label: { Label(entry.title, systemImage: "eraser") }
+        case .hideStories:
+            Button {
+                guard let owner = storyOwner else { return }
+                Task { await stories?.hideOwner(StoryOwner(id: owner, kind: storyKind), name: viewModel.title) }
+            } label: {
+                Label(entry.title, systemImage: "eye.slash")
+            }
+        case .report:
+            Button {
                 Task { if await viewModel.loadComplaintReasons() { reporting = true } }
-            })
-        }
-        if viewModel.canBlock, let blocked = viewModel.isBlocked {
-            items.append(Action(id: "block", title: blocked ? "Разблокировать" : "Заблокировать", systemImage: blocked ? "lock.open" : "hand.raised") {
+            } label: {
+                Label(entry.title, systemImage: "exclamationmark.bubble")
+            }
+        case .block(let blocked):
+            Button(role: blocked ? nil : .destructive) {
                 if blocked { Task { await viewModel.toggleBlocked() } } else { blocking = true }
-            })
+            } label: {
+                Label(entry.title, systemImage: blocked ? "lock.open" : "hand.raised")
+            }
+        case .leave:
+            Button(role: .destructive) { leaving = true } label: {
+                Label(entry.title, systemImage: "rectangle.portrait.and.arrow.right")
+            }
+        case .delete:
+            Button(role: .destructive) { erase = .delete } label: {
+                Label(entry.title, systemImage: "trash")
+            }
         }
-        if viewModel.shown.kind == .group || viewModel.shown.kind == .channel {
-            items.append(Action(id: "manage", title: "Управление", systemImage: "slider.horizontal.3") { openManage() })
+    }
+
+    /// Чего нет в меню Max, но есть у нас: опрос, отложенная отправка, управление группой.
+    @ViewBuilder
+    private var extras: some View {
+        let manage = (viewModel.shown.kind == .group || viewModel.shown.kind == .channel) && chatAdmin != nil && listed
+        if context?.onPoll != nil || context?.onSchedule != nil || manage {
+            Section {
+                if let poll = context?.onPoll {
+                    Button(action: poll) { Label("Опрос", systemImage: "chart.bar") }
+                }
+                if let schedule = context?.onSchedule {
+                    Button(action: schedule) { Label("Отправить позже", systemImage: "clock") }
+                }
+                if manage {
+                    Button { openManage() } label: { Label("Управление", systemImage: "slider.horizontal.3") }
+                }
+            }
         }
-        if context?.onLeave != nil, !isChannel {
-            items.append(Action(id: "leave", title: "Покинуть группу", systemImage: "rectangle.portrait.and.arrow.right") { leaving = true })
-        }
-        if context?.onEraseChat != nil {
-            items.append(Action(id: "clear", title: "Очистить историю", systemImage: "eraser") { erase = .clear })
-            items.append(Action(id: "delete", title: "Удалить чат", systemImage: "trash") { erase = .delete })
-        }
-        return items
     }
 
     private enum EraseAsk: Equatable { case clear, delete }

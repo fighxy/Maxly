@@ -17,7 +17,9 @@ private final class MenuFolders: FolderRepository, @unchecked Sendable {
         return AsyncStream { $0.yield(list) }
     }
     func reload() async throws(MaxlyError) {}
-    func create(title: String, chatIds: [String], filters: [String]) async throws(MaxlyError) {}
+    func create(title: String, chatIds: [String], filters: [String]) async throws(MaxlyError) {
+        calls.append("create \(title) \(chatIds.joined(separator: ","))")
+    }
     func rename(folderId: String, title: String) async throws(MaxlyError) {}
     func setChats(folderId: String, chatIds: [String]) async throws(MaxlyError) {
         calls.append("\(folderId) \(chatIds.joined(separator: ","))")
@@ -68,13 +70,13 @@ struct ChatListMenuTests {
         var value = chat("1", at: 1, unread: 2)
         value.isMuted = true
         value.pinOrder = 0
-        let entries = ChatListMenu.entries(item: item(value), folders: [], capabilities: all, canBlock: true)
+        let entries = ChatListMenu.entries(item: item(value), folders: nil, capabilities: all, canBlock: true)
         #expect(entries.map(\.title) == ["Открепить", "Отметить прочитанным", "Включить уведомления", "Стереть переписку", "Удалить чат"])
     }
 
     @Test("«Избранное» не блокируют и не скрывают")
     func saved() {
-        let entries = ChatListMenu.entries(item: item(chat(Chat.savedMessagesId, at: 1, type: .private)), folders: [], capabilities: all, hasStories: true, canBlock: true)
+        let entries = ChatListMenu.entries(item: item(chat(Chat.savedMessagesId, at: 1, type: .private)), folders: nil, capabilities: all, hasStories: true, canBlock: true)
         #expect(!entries.contains(.block) && !entries.contains(.hideStories))
     }
 
@@ -128,6 +130,9 @@ struct ChatListMenuTests {
         #expect(model.notice == "Чат убран из «Работа»")
         await model.toggleFolder(chatId: "1", folderId: "all")
         #expect(folders.calls == ["w 2,1", "w "])
+        await model.createFolder(chatId: "1", title: " Новые ")
+        #expect(folders.calls.last == "create Новые 1")
+        #expect(model.notice == "Папка «Новые» создана")
     }
 
     @Test("Блокировка собеседника личного чата")

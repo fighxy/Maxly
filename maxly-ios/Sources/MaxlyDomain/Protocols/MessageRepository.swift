@@ -43,6 +43,8 @@ public protocol MessageRepository: Sendable {
     /// Может ли аккаунт удалять чужие сообщения чата (владелец, админ с правом удаления).
     /// `nil` — неизвестно.
     func canDeleteOthers(chatId: String) async -> Bool?
+    /// Своя роль в группе или канале (`chatRights`). `nil` — неизвестно.
+    func ownRole(chatId: String) async -> ChatOwnRole?
     /// Повторная отправка сообщения со статусом `failed`.
     func retry(messageId: String) async throws(MaxlyError)
     /// Поставить реакцию `emoji` или снять её, если она уже своя. Другая своя реакция
@@ -147,6 +149,8 @@ extension MessageRepository {
     public func editTimeoutSeconds() async -> Int? { nil }
 
     public func canDeleteOthers(chatId: String) async -> Bool? { nil }
+
+    public func ownRole(chatId: String) async -> ChatOwnRole? { nil }
 
     public func pin(chatId: String, messageId: String) async throws(MaxlyError) { throw .invalidRequest }
     public func loadPins(chatId: String) async throws(MaxlyError) -> [ChatPin] { throw .invalidRequest }

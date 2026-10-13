@@ -869,6 +869,11 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         return rights.isOwner || rights.canDeleteAnyMessage
     }
 
+    public func ownRole(chatId: String) async -> ChatOwnRole? {
+        guard let rights = await api.chatRights(chatId: chatId) else { return nil }
+        return ChatOwnRole(isOwner: rights.isOwner, isAdmin: rights.isOwner || rights.isAdmin)
+    }
+
     /// Одним `MSG_DELETE` 66. Из ленты уходят только удалённые сервером; отклонённые остаются
     /// и возвращаются (их локальные id).
     public func deleteSelection(messageIds: [String], chatId: String, forEveryone: Bool) async throws(MaxlyError) -> [String] {

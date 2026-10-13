@@ -530,6 +530,23 @@ final class AppContainer {
         await listModel?.toggleMute(chatId: id)
     }
 
+    /// Звук на срок из профиля («На 1 час» … «Навсегда»).
+    func muteFor(id: String, _ choice: ChatListMenu.MuteFor) async {
+        await listModel?.muteFor(chatId: id, choice)
+    }
+
+    func folderChoices(id: String) -> [ChatListMenu.FolderChoice]? {
+        listModel?.folderChoices(chatId: id)
+    }
+
+    func toggleFolder(id: String, folderId: String) async {
+        await listModel?.toggleFolder(chatId: id, folderId: folderId)
+    }
+
+    func createFolder(id: String, title: String) async {
+        await listModel?.createFolder(chatId: id, title: title)
+    }
+
     /// Очистить переписку или удалить чат. `true` — чата больше нет, экран можно закрыть.
     func eraseChat(id: String, clearHistory: Bool, forEveryone: Bool) async -> Bool {
         if clearHistory {

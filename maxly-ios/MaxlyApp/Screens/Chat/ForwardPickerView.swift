@@ -11,6 +11,8 @@ struct ForwardPickerView: View {
     let onPick: (String) -> Void
     var onPickMany: (([String], String?) -> Void)? = nil
     let onCancel: () -> Void
+    /// Заголовок листа («Поделиться контактом» из профиля).
+    var heading = "Переслать"
     @State private var query = ""
     @State private var picked: [String] = []
     @State private var comment = ""
@@ -60,7 +62,7 @@ struct ForwardPickerView: View {
     }
 
     private var title: String {
-        guard allowsMultiple, !picked.isEmpty else { return "Переслать" }
+        guard allowsMultiple, !picked.isEmpty else { return heading }
         return "Выбрано чатов: \(picked.count)"
     }
 

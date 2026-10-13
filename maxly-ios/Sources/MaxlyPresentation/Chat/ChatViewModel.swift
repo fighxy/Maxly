@@ -2263,6 +2263,22 @@ public final class ChatViewModel {
         }
     }
 
+    /// «Поделиться контактом» из профиля: карточка `userId` уходит в чат `targetChatId`.
+    public func shareContact(userId: String, name: String, to targetChatId: String) async {
+        let card = AttachmentDraft(kind: .contact, contactId: userId, contactName: name)
+        do {
+            try await repository.sendAttachments([card], caption: "", chatId: targetChatId, replyTo: nil)
+            showNotice("Контакт отправлен")
+        } catch {
+            show(error)
+        }
+    }
+
+    /// Своя роль в этой группе или канале: владельцу в профиле — «Удалить канал».
+    public func ownRole() async -> ChatOwnRole {
+        await repository.ownRole(chatId: chatId) ?? ChatOwnRole(isOwner: false, isAdmin: false)
+    }
+
     /// Короткое уведомление над полем ввода от экрана («Скопировано»).
     public func announce(_ text: String) {
         showNotice(text)

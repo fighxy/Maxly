@@ -54,6 +54,8 @@ struct ChatView: View {
     /// просьба выполнена.
     var opensProfile = false
     var onProfileOpened: () -> Void = {}
+    /// Звук на срок и папки для профиля (через список чатов).
+    var listActions: ChatProfileListActions? = nil
     @State private var participant: DialogDraft?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
@@ -905,6 +907,8 @@ struct ChatView: View {
             onEraseChat: listed ? onEraseChat : nil
         )
         context.onShowMessageId = { showInChat($0) }
+        context.list = listed ? listActions : nil
+        context.shareTargets = forwardTargets
         if listed, card.shown.kind == .channel || card.shown.kind == .group {
             context.onLeave = onLeave
         }

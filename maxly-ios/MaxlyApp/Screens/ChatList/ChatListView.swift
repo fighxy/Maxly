@@ -22,6 +22,8 @@ struct ChatListView: View {
     @State private var composeShown = false
     /// «Заблокировать» из меню ждёт подтверждения.
     @State private var blockCandidate: ChatListItem?
+    /// «Создать папку» из меню строки: для какого чата.
+    @State private var newFolderChat: String?
     /// Истории: полоса над чатами и кольца на аватарах личных чатов. `nil` в превью.
     @Environment(StoriesViewModel.self) private var stories: StoriesViewModel?
     /// Настройка приватного режима для плавающей кнопки. `nil` в превью без контейнера.
@@ -109,6 +111,9 @@ struct ChatListView: View {
             Button("Отмена", role: .cancel) {}
         } message: { _ in
             Text("Он не сможет писать вам и звонить. Разблокировать можно в настройках конфиденциальности.")
+        }
+        .createFolderAlert(for: $newFolderChat) { chatId, title in
+            Task { await viewModel.createFolder(chatId: chatId, title: title) }
         }
         .overlay(alignment: .top) { noticeBanner }
     }
@@ -458,19 +463,11 @@ struct ChatListView: View {
     private func menuEntry(_ entry: ChatListMenu.Entry, item: ChatListItem, ring: StoryRing?) -> some View {
         switch entry {
         case .folders(let folders):
-            Menu {
-                ForEach(folders) { folder in
-                    Button { Task { await viewModel.toggleFolder(chatId: item.id, folderId: folder.id) } } label: {
-                        if folder.contains {
-                            Label(folder.title, systemImage: "checkmark")
-                        } else {
-                            Text(folder.title)
-                        }
-                    }
-                }
-            } label: {
-                Label(entry.title, systemImage: "folder.badge.plus")
-            }
+            FolderMenu(
+                folders: folders,
+                onToggle: { id in Task { await viewModel.toggleFolder(chatId: item.id, folderId: id) } },
+                onCreate: { newFolderChat = item.id }
+            )
         case .pin(let pinned):
             Button { Task { await viewModel.togglePin(chatId: item.id) } } label: {
                 Label(entry.title, systemImage: pinned ? "pin.slash" : "pin")
