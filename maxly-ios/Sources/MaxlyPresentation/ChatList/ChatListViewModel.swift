@@ -576,6 +576,80 @@ public final class ChatListViewModel {
         }
     }
 
+    // MARK: Меню вкладки папки
+
+    /// Пункты меню вкладки `folderId` (`FolderTabMenu`); пусто — меню нет.
+    public func folderMenu(_ folderId: String) -> [FolderTabMenu.Entry] {
+        guard let members = folderMembers(folderId) else { return [] }
+        let isAll = folderId == ChatFolder.allId
+        return FolderTabMenu.entries(
+            isAll: isAll,
+            editable: folderEditor != nil && (isAll || serverFolder(folderId) != nil),
+            hasUnread: members.contains(where: \.isUnread),
+            allMuted: !members.isEmpty && members.allSatisfy(\.isMuted),
+            hasChats: !members.isEmpty && capabilities.contains(.mute),
+            folderCount: editableFolders.filter { !$0.isAllChats }.count
+        )
+    }
+
+    /// Своя папка с сервера: её название и чаты для «Настроить папку» и «Добавить чаты».
+    public func serverFolder(_ folderId: String) -> ServerFolder? {
+        editableFolders.first { $0.id == folderId && !$0.isAllChats }
+    }
+
+    /// «Прочитать все»: непрочитанные чаты папки — прочитанными, пометки «непрочитано» снимаются.
+    public func readFolder(_ folderId: String) async {
+        guard let members = folderMembers(folderId) else { return }
+        for chat in members where chat.isUnread {
+            if chat.isMarkedUnread { await setMarkedUnread(false, chatId: chat.id) }
+            if chat.unreadCount > 0 { await markRead(chat.id) }
+        }
+    }
+
+    /// «Выкл. уведомления» / «Вкл. уведомления» для всех чатов папки сразу.
+    public func setFolderMuted(_ folderId: String, muted: Bool) async {
+        guard capabilities.contains(.mute), let members = folderMembers(folderId) else { return }
+        var failure: MaxlyError?
+        for chat in members where chat.isMuted != muted {
+            do {
+                try await repository.setMuted(muted, chatId: chat.id)
+            } catch {
+                failure = failure ?? error
+            }
+        }
+        if let failure { notice = failure.userMessage }
+    }
+
+    /// «Настроить папку» и «Добавить чаты»: новое название (если изменилось) и состав папки.
+    public func saveFolder(_ folderId: String, title: String, chatIds: [String]) async {
+        guard let folderEditor, let folder = serverFolder(folderId) else { return }
+        let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            if !name.isEmpty, name != folder.title { try await folderEditor.rename(folderId: folderId, title: name) }
+            if Set(chatIds) != Set(folder.chatIds) { try await folderEditor.setChats(folderId: folderId, chatIds: chatIds) }
+        } catch {
+            notice = error.userMessage
+        }
+    }
+
+    /// «Удалить» папку: чаты остаются во «Все», открытой становится «Все».
+    public func deleteFolder(_ folderId: String) async {
+        guard let folderEditor, let folder = serverFolder(folderId) else { return }
+        if selectedFolderId == folderId { selectFolder(ChatFolder.allId) }
+        do {
+            try await folderEditor.delete(folderId: folderId)
+            notice = "Папка «\(folder.title)» удалена"
+        } catch {
+            notice = error.userMessage
+        }
+    }
+
+    /// Чаты вкладки; `nil` — такой вкладки нет.
+    private func folderMembers(_ folderId: String) -> [Chat]? {
+        guard let folder = folderDefinitions().first(where: { $0.id == folderId }) else { return nil }
+        return chats.filter { folder.contains($0) }
+    }
+
     /// В меню есть «Заблокировать»: есть чем.
     public var canBlock: Bool { profileActions != nil }
 

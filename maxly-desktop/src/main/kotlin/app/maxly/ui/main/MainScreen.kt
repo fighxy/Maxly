@@ -315,6 +315,10 @@ fun MainScreen(
                             onTogglePrivateMode = container.privateMode::toggle,
                             newChat = newChat,
                             onOpenCreated = { id, title -> openChat(id, title) },
+                            onOpenFolders = {
+                                tab = Tab.SETTINGS
+                                settingsPage = SettingsPage.Folders
+                            },
                             // Открытый чат показывает плеер сам — в списке его тогда нет.
                             voice = if (chatId != null) {
                                 null

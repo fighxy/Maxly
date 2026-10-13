@@ -51,3 +51,41 @@ extension View {
         modifier(CreateFolderAlert(chatId: chatId, onCreate: onCreate))
     }
 }
+
+/// Пункты меню вкладки папки (`FolderTabMenu`), как в Telegram: «Удалить» красным, «Изменить
+/// порядок» отдельной секцией внизу.
+struct FolderTabMenuItems: View {
+    let entries: [FolderTabMenu.Entry]
+    let onPick: (FolderTabMenu.Entry) -> Void
+
+    var body: some View {
+        Section {
+            ForEach(entries.filter { !$0.separated }, id: \.self, content: button)
+        }
+        let tail = entries.filter(\.separated)
+        if !tail.isEmpty {
+            Section {
+                ForEach(tail, id: \.self, content: button)
+            }
+        }
+    }
+
+    private func button(_ entry: FolderTabMenu.Entry) -> some View {
+        Button(role: entry.isDanger ? .destructive : nil) {
+            onPick(entry)
+        } label: {
+            Label(entry.title, systemImage: Self.icon(entry))
+        }
+    }
+
+    private static func icon(_ entry: FolderTabMenu.Entry) -> String {
+        switch entry {
+        case .editFolders, .editFolder: "square.and.pencil"
+        case .addChats: "plus"
+        case .readAll: "envelope.open"
+        case .mute(let muted): muted ? "bell" : "bell.slash"
+        case .delete: "trash"
+        case .reorder: "arrow.up.arrow.down"
+        }
+    }
+}

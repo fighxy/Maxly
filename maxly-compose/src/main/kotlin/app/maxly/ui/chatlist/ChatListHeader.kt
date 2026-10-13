@@ -53,6 +53,8 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.SubcomposeLayout
 import app.maxly.ui.components.clickCursor
+import app.maxly.ui.components.onSecondaryClick
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
@@ -271,6 +273,10 @@ fun FolderCapsule(
     selectedColor: Color = MaterialTheme.colorScheme.onSurface,
     /** Лежит в общей карточке с плеером ([app.maxly.ui.chat.TopDock]): без своих отступов и фона. */
     docked: Boolean = false,
+    /** Долгое нажатие на папку (на компьютере — и правая кнопка): её меню. `null` — меню нет. */
+    onLongPress: ((String) -> Unit)? = null,
+    /** Меню папки у её вкладки: рисуется внутри вкладки, чтобы всплыть под ней. */
+    menu: (@Composable (String) -> Unit)? = null,
 ) {
     val scroll = rememberScrollState()
     val bounds = remember { mutableStateMapOf<Int, Pair<Float, Float>>() }
@@ -341,7 +347,15 @@ fun FolderCapsule(
                             .widthIn(min = 48.dp)
                             .clip(CircleShape)
                             .clickCursor()
-                            .clickable { onSelect(folder.id) }
+                            .then(
+                                if (onLongPress != null) {
+                                    Modifier
+                                        .onSecondaryClick { onLongPress(folder.id) }
+                                        .combinedClickable(onLongClick = { onLongPress(folder.id) }) { onSelect(folder.id) }
+                                } else {
+                                    Modifier.clickable { onSelect(folder.id) }
+                                },
+                            )
                             .onPlaced { bounds[index] = it.positionInParent().x to it.size.width.toFloat() }
                             .padding(horizontal = 13.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -358,6 +372,7 @@ fun FolderCapsule(
                             Spacer(Modifier.width(6.dp))
                             Badge(containerColor = MaterialTheme.colorScheme.primary) { Text(badge) }
                         }
+                        menu?.invoke(folder.id)
                     }
                 }
             }

@@ -22,6 +22,12 @@ struct ChatListView: View {
     /// `nil`, когда плеер показывает открытый чат.
     var nowPlaying: VoiceNowPlaying?
     var onOpenVoice: (VoiceNowPlaying.Track) -> Void = { _ in }
+    /// Экран «Папки» для «Настроить папки» и «Изменить порядок» из меню вкладки; `nil` — их нет.
+    var makeFoldersModel: (() -> FoldersModel)?
+    /// Меню вкладки папки: выбор чатов (с названием — «Настроить папку»), удаление, экран папок.
+    @State private var folderEdit: FolderEdit?
+    @State private var folderDelete: ServerFolder?
+    @State private var foldersScreen: FoldersScreenRequest?
     @State private var botApp: BotAppRequest?
     @State private var composeShown = false
     /// «Заблокировать» из меню ждёт подтверждения.
@@ -43,7 +49,7 @@ struct ChatListView: View {
     @State private var scroll = ChatListScroll()
 
     var body: some View {
-        chatList
+        folderSheets(chatList)
         .toolbar { toolbar }
         .onAppear { wireScroll() }
         .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.isSearchActive)
@@ -264,9 +270,86 @@ struct ChatListView: View {
     }
 
     private func folderStrip(glass: Bool) -> some View {
-        FolderStrip(tabs: viewModel.folders, selected: viewModel.selectedFolderId, glass: glass) { id in
+        FolderStrip(
+            tabs: viewModel.folders,
+            selected: viewModel.selectedFolderId,
+            glass: glass,
+            menu: { tab in folderMenu(tab.id) }
+        ) { id in
             viewModel.selectFolder(id)
         }
+    }
+
+    // MARK: Меню вкладки папки
+
+    struct FolderEdit: Identifiable {
+        let id: String
+        /// «Настроить папку» — с названием; «Добавить чаты» — только чаты.
+        let withTitle: Bool
+    }
+
+    struct FoldersScreenRequest: Identifiable {
+        let editing: Bool
+        var id: Bool { editing }
+    }
+
+    private func folderMenu(_ id: String) -> AnyView? {
+        let entries = viewModel.folderMenu(id)
+        guard !entries.isEmpty else { return nil }
+        return AnyView(FolderTabMenuItems(entries: entries) { pickFolder(id, $0) })
+    }
+
+    private func pickFolder(_ id: String, _ entry: FolderTabMenu.Entry) {
+        switch entry {
+        case .editFolders: foldersScreen = FoldersScreenRequest(editing: false)
+        case .reorder: foldersScreen = FoldersScreenRequest(editing: true)
+        case .editFolder: folderEdit = FolderEdit(id: id, withTitle: true)
+        case .addChats: folderEdit = FolderEdit(id: id, withTitle: false)
+        case .readAll: Task { await viewModel.readFolder(id) }
+        case .mute(let muted): Task { await viewModel.setFolderMuted(id, muted: !muted) }
+        case .delete: folderDelete = viewModel.serverFolder(id)
+        }
+    }
+
+    /// Окна из меню вкладки: выбор чатов, экран «Папки», подтверждение удаления.
+    private func folderSheets<Content: View>(_ content: Content) -> some View {
+        content
+            .sheet(item: $folderEdit) { edit in
+                if let folder = viewModel.serverFolder(edit.id) {
+                    ChatPickerSheet(
+                        title: edit.withTitle ? "Папка" : folder.title,
+                        chats: viewModel.chats.filter { !$0.isArchived },
+                        initial: Set(folder.chatIds),
+                        askTitle: edit.withTitle,
+                        initialTitle: folder.title
+                    ) { title, ids in
+                        Task { await viewModel.saveFolder(edit.id, title: edit.withTitle ? title : "", chatIds: ids) }
+                    }
+                }
+            }
+            .sheet(item: $foldersScreen) { request in
+                if let makeFoldersModel {
+                    NavigationStack {
+                        FoldersView(model: makeFoldersModel(), list: viewModel, startsEditing: request.editing)
+                            .toolbar {
+                                ToolbarItem(placement: .cancellationAction) {
+                                    Button("Закрыть") { foldersScreen = nil }
+                                }
+                            }
+                    }
+                }
+            }
+            .confirmationDialog(
+                "Удалить папку «\(folderDelete?.title ?? "")»?",
+                isPresented: Binding(get: { folderDelete != nil }, set: { if !$0 { folderDelete = nil } }),
+                titleVisibility: .visible,
+                presenting: folderDelete
+            ) { folder in
+                Button("Удалить папку", role: .destructive) { Task { await viewModel.deleteFolder(folder.id) } }
+                Button("Отмена", role: .cancel) {}
+            } message: { _ in
+                Text("Чаты останутся в списке «Все».")
+            }
     }
 
     private var isPlaying: Bool { nowPlaying?.track != nil }

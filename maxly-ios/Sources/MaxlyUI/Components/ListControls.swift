@@ -103,6 +103,8 @@ public struct FolderStrip: View {
     private let onSelect: (String) -> Void
     /// Своя стеклянная капсула. Без неё полоса лежит в общей карточке (папки и плеер).
     private let glass: Bool
+    /// Меню вкладки по долгому нажатию; `nil` у вкладки — меню нет.
+    private let menu: ((ChatFolderTab) -> AnyView?)?
     @Namespace private var pill
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -110,10 +112,17 @@ public struct FolderStrip: View {
     public static let height: CGFloat = 40
     private static let inset: CGFloat = 4
 
-    public init(tabs: [ChatFolderTab], selected: String, glass: Bool = true, onSelect: @escaping (String) -> Void) {
+    public init(
+        tabs: [ChatFolderTab],
+        selected: String,
+        glass: Bool = true,
+        menu: ((ChatFolderTab) -> AnyView?)? = nil,
+        onSelect: @escaping (String) -> Void
+    ) {
         self.tabs = tabs
         self.selected = selected
         self.glass = glass
+        self.menu = menu
         self.onSelect = onSelect
     }
 
@@ -163,9 +172,26 @@ public struct FolderStrip: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .modifier(TabContextMenu(items: menu?(tab)))
         .id(tab.id)
         .accessibilityLabel(tab.badge.map { "\(tab.title), \($0) непрочитанных" } ?? tab.title)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+/// Контекстное меню вкладки, когда у неё есть пункты.
+private struct TabContextMenu: ViewModifier {
+    let items: AnyView?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let items {
+            content
+                .contentShape(.contextMenuPreview, Capsule())
+                .contextMenu { items }
+        } else {
+            content
+        }
     }
 }
 

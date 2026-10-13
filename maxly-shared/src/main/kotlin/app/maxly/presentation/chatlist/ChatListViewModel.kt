@@ -561,6 +561,122 @@ class ChatListViewModel(
         }
     }
 
+    // Меню вкладки папки
+
+    /** Пункты меню вкладки [folderId] ([FolderTabMenu]); пусто — меню нет. */
+    fun folderMenu(folderId: String): List<FolderTabMenu.Entry> {
+        val isAll = folderId == ChatFolder.ALL_ID
+        val members = folderMembers(folderId) ?: return emptyList()
+        val server = rawFolders.firstOrNull { it.id == folderId && !it.isAllChats }
+        return FolderTabMenu.entries(
+            isAll = isAll,
+            editable = folderEditor != null && (isAll || server != null),
+            hasUnread = members.any { it.unreadCount > 0 || it.id in markedUnread },
+            allMuted = members.isNotEmpty() && members.all { pendingMutes[it.id] ?: it.isMuted },
+            hasChats = members.isNotEmpty(),
+            folderCount = rawFolders.count { !it.isAllChats },
+        )
+    }
+
+    /** Своя папка с сервера: её название и чаты для «Настроить папку» и «Добавить чаты». */
+    fun serverFolder(folderId: String): app.maxly.domain.ServerFolder? =
+        rawFolders.firstOrNull { it.id == folderId && !it.isAllChats }
+
+    /** «Прочитать все»: непрочитанные чаты папки — прочитанными, пометки «непрочитано» снимаются. */
+    fun readFolder(folderId: String) {
+        val members = folderMembers(folderId) ?: return
+        val marked = members.map { it.id }.filter { it in markedUnread }.toSet()
+        val unread = members.filter { it.unreadCount > 0 }.map { it.id }
+        if (marked.isEmpty() && unread.isEmpty()) return
+        if (marked.isNotEmpty()) {
+            markedUnread = markedUnread - marked
+            local?.markedUnread = markedUnread
+            rebuild()
+        }
+        if (unread.isEmpty()) return
+        viewModelScope.launch {
+            var failure: Throwable? = null
+            for (id in unread) {
+                try {
+                    repository.markAsRead(id)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    failure = failure ?: e
+                }
+            }
+            failure?.let { _messages.value = CoreErrors.map(it).userMessage }
+        }
+    }
+
+    /** «Выкл. уведомления» / «Вкл. уведомления» для всех чатов папки сразу. */
+    fun setFolderMuted(folderId: String, muted: Boolean) {
+        val members = folderMembers(folderId) ?: return
+        val changing = members.filter { (pendingMutes[it.id] ?: it.isMuted) != muted }.map { it.id }
+        if (changing.isEmpty()) return
+        val previous = changing.associateWith { pendingMutes[it] }
+        changing.forEach { pendingMutes[it] = muted }
+        rebuild()
+        viewModelScope.launch {
+            var failure: Throwable? = null
+            for (id in changing) {
+                try {
+                    repository.setMuted(id, muted)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    failure = failure ?: e
+                    val before = previous[id]
+                    if (before == null) pendingMutes.remove(id) else pendingMutes[id] = before
+                }
+            }
+            if (failure != null) {
+                _messages.value = CoreErrors.map(failure).userMessage
+                rebuild()
+            }
+        }
+    }
+
+    /** «Настроить папку» и «Добавить чаты»: новое название (если изменилось) и состав папки. */
+    fun saveFolder(folderId: String, title: String, chatIds: List<String>) {
+        val editor = folderEditor ?: return
+        val folder = serverFolder(folderId) ?: return
+        val name = title.trim()
+        viewModelScope.launch {
+            try {
+                if (name.isNotEmpty() && name != folder.title) editor.rename(folderId, name)
+                if (chatIds.toSet() != folder.chatIds.toSet()) editor.setChats(folderId, chatIds)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                _messages.value = CoreErrors.map(e).userMessage
+            }
+        }
+    }
+
+    /** «Удалить» папку: чаты остаются во «Все», открытой становится «Все». */
+    fun deleteFolder(folderId: String) {
+        val editor = folderEditor ?: return
+        val folder = serverFolder(folderId) ?: return
+        if (_state.value.selectedFolderId == folderId) selectFolder(ChatFolder.ALL_ID)
+        viewModelScope.launch {
+            try {
+                editor.delete(folderId)
+                _messages.value = "Папка «${folder.title}» удалена"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                _messages.value = CoreErrors.map(e).userMessage
+            }
+        }
+    }
+
+    /** Чаты вкладки в порядке списка; `null` — такой вкладки нет. */
+    private fun folderMembers(folderId: String): List<Chat>? {
+        val rule = if (folderId == ChatFolder.ALL_ID) ChatFolder.all else serverFolders.firstOrNull { it.id == folderId } ?: return null
+        return ordered().filter(rule::contains)
+    }
+
     /** «Заблокировать» собеседника личного чата. */
     fun block(chatId: String) {
         val repo = account ?: return

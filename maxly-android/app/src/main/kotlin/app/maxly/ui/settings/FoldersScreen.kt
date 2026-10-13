@@ -357,23 +357,27 @@ private fun TitleDialog(title: String, initial: String, onDismiss: () -> Unit, o
 /** Выбор чатов папки: весь список с галочками и поиском. Для новой папки — ещё и название. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FolderChatPicker(
+fun FolderChatPicker(
     title: String,
     chats: List<ChatListItem>,
     initial: Set<String>,
     askTitle: Boolean,
     onDismiss: () -> Unit,
     onDone: (String, List<String>) -> Unit,
+    /** Название в поле, когда папка уже есть («Настроить папку»). */
+    initialTitle: String = "",
 ) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val selection = remember { mutableStateListOf<String>().apply { addAll(chats.map { it.id }.filter { it in initial }) } }
-    var name by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf(initialTitle) }
     var query by remember { mutableStateOf("") }
     val shown = remember(chats, query) {
         val text = query.trim()
         if (text.isEmpty()) chats else chats.filter { it.title.contains(text, ignoreCase = true) }
     }
     val canSave = !askTitle || name.isNotBlank()
+    // Чаты папки, которых нет в списке (архив, ещё не загружены), при сохранении не теряются.
+    val hidden = remember(chats, initial) { (initial - chats.map { it.id }.toSet()).toList() }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
         Column(Modifier.fillMaxWidth()) {
             androidx.compose.foundation.layout.Row(
@@ -381,7 +385,7 @@ private fun FolderChatPicker(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                TextButton(onClick = { onDone(name.trim(), selection.toList()) }, enabled = canSave) { Text("Готово") }
+                TextButton(onClick = { onDone(name.trim(), selection.toList() + hidden) }, enabled = canSave) { Text("Готово") }
             }
             if (askTitle) {
                 OutlinedTextField(

@@ -1,5 +1,6 @@
 package app.maxly.ui.chatlist
 
+import app.maxly.presentation.chatlist.FolderTabMenu
 import androidx.compose.material.icons.outlined.MarkChatRead
 import androidx.compose.material.icons.outlined.MarkChatUnread
 import androidx.compose.material.icons.outlined.NotificationsActive
@@ -165,6 +166,8 @@ fun ChatListScreen(
     onOpenApp: (ChatListItem) -> Unit = {},
     /** Играющее голосовое: плеер прилипает к папкам, без папок висит под шапкой; `null` — без него. */
     voice: app.maxly.ui.chat.VoiceDockSource? = null,
+    /** Экран «Папки» в настройках: «Настроить папки» и «Изменить порядок» из меню вкладки. */
+    onOpenFolders: (() -> Unit)? = null,
 ) {
     LifecycleResumeEffect(viewModel) {
         viewModel.reloadLocal()
@@ -186,6 +189,20 @@ fun ChatListScreen(
     val showsHeader = !state.isSearchActive && !state.isReorderingPins
     val foldersShown = showsHeader && state.showsFolders
     val voicePlayback = app.maxly.ui.chat.rememberVoicePlayback(voice)
+    // Меню вкладки папки и окна из него: выбор чатов (с названием — «Настроить папку») и удаление.
+    var folderMenuFor by remember { mutableStateOf<String?>(null) }
+    var folderEdit by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    var folderDelete by remember { mutableStateOf<String?>(null) }
+    val pickFolderEntry: (String, FolderTabMenu.Entry) -> Unit = { id, entry ->
+        when (entry) {
+            FolderTabMenu.Entry.EditFolders, FolderTabMenu.Entry.Reorder -> onOpenFolders?.invoke()
+            FolderTabMenu.Entry.EditFolder -> folderEdit = id to true
+            FolderTabMenu.Entry.AddChats -> folderEdit = id to false
+            FolderTabMenu.Entry.ReadAll -> viewModel.readFolder(id)
+            is FolderTabMenu.Entry.Mute -> viewModel.setFolderMuted(id, !entry.muted)
+            FolderTabMenu.Entry.Delete -> folderDelete = id
+        }
+    }
     header.enabled = showsHeader
     if (paged) {
         // Вкладка выбрана нажатием — страница доезжает до неё.
@@ -305,6 +322,14 @@ fun ChatListScreen(
                                     pillColor = MaterialTheme.colorScheme.primaryContainer,
                                     selectedColor = MaterialTheme.colorScheme.onPrimaryContainer,
                                     docked = voice != null && voicePlayback != null,
+                                    onLongPress = { id -> if (viewModel.folderMenu(id).isNotEmpty()) folderMenuFor = id },
+                                    menu = { id ->
+                                        FolderTabMenuPopup(
+                                            entries = if (folderMenuFor == id) viewModel.folderMenu(id) else emptyList(),
+                                            expanded = folderMenuFor == id,
+                                            onDismiss = { folderMenuFor = null },
+                                        ) { entry -> pickFolderEntry(id, entry) }
+                                    },
                                 )
                             }
                             if (voice != null && voicePlayback != null) {
@@ -383,6 +408,30 @@ fun ChatListScreen(
                 }
             }
         }
+        }
+    }
+    folderEdit?.let { (id, withTitle) ->
+        val folder = viewModel.serverFolder(id)
+        if (folder == null) {
+            LaunchedEffect(id) { folderEdit = null }
+        } else {
+            app.maxly.ui.settings.FolderChatPicker(
+                title = if (withTitle) "Папка" else folder.title,
+                chats = remember(id) { viewModel.folderCandidates() },
+                initial = folder.chatIds.toSet(),
+                askTitle = withTitle,
+                initialTitle = folder.title,
+                onDismiss = { folderEdit = null },
+                onDone = { name, ids ->
+                    viewModel.saveFolder(id, if (withTitle) name else "", ids)
+                    folderEdit = null
+                },
+            )
+        }
+    }
+    folderDelete?.let { id ->
+        viewModel.serverFolder(id)?.let { folder ->
+            DeleteFolderDialog(folder.title, onDismiss = { folderDelete = null }) { viewModel.deleteFolder(id) }
         }
     }
     if (newChat != null) {

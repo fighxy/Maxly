@@ -218,6 +218,7 @@ fun MainScreen(
             onTogglePrivateMode = container.privateMode::toggle,
             newChat = newChat,
             onOpenCreated = { id, title -> openChat(id, title) },
+            onOpenFolders = { nav.navigate("folders") },
             voice = app.maxly.ui.chat.VoiceDockSource(container.voicePlayer) { playing ->
                 openMessage = Triple(playing.meta.chatId, playing.messageId, playing.meta.sentAtMs)
                 openChat(playing.meta.chatId)

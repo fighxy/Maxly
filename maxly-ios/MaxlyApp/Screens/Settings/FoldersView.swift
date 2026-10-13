@@ -13,6 +13,9 @@ struct FoldersView: View {
     @State private var picking: ServerFolder?
     @State private var creating = false
     @State private var deleting: ServerFolder?
+    /// Открыт из меню вкладки «Изменить порядок»: сразу в режиме перестановки.
+    var startsEditing = false
+    @State private var editMode: EditMode = .inactive
 
     var body: some View {
         List {
@@ -119,6 +122,8 @@ struct FoldersView: View {
         } message: {
             Text(model.errorMessage ?? "")
         }
+        .environment(\.editMode, $editMode)
+        .onAppear { if startsEditing { editMode = .active } }
     }
 
     private func row(_ folder: ServerFolder) -> some View {
@@ -183,6 +188,8 @@ struct ChatPickerSheet: View {
     let chats: [Chat]
     let initial: Set<String>
     let askTitle: Bool
+    /// Название в поле, когда папка уже есть («Настроить папку»).
+    var initialTitle = ""
     let onDone: (String, [String]) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var selection: Set<String> = []
@@ -237,7 +244,10 @@ struct ChatPickerSheet: View {
                     .disabled(askTitle && name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
-            .onAppear { selection = initial }
+            .onAppear {
+                selection = initial
+                name = initialTitle
+            }
         }
     }
 

@@ -263,7 +263,8 @@ struct MainTabView: View {
                     onOpenMessage: openFound,
                     selfAvatar: selfAvatar, onAddStory: { pickingStory = true },
                     makeBotApp: { container.botAppModel($0) },
-                    nowPlaying: listNowPlaying, onOpenVoice: { openVoice($0) }
+                    nowPlaying: listNowPlaying, onOpenVoice: { openVoice($0) },
+                    makeFoldersModel: { container.foldersModel() }
                 )
                 .safeAreaInset(edge: .top, spacing: 0) { loginHoldBanner }
                     .navigationDestination(for: String.self) { id in
@@ -277,7 +278,8 @@ struct MainTabView: View {
                     onOpenMessage: openFound,
                     selfAvatar: selfAvatar, onAddStory: { pickingStory = true },
                     makeBotApp: { container.botAppModel($0) },
-                    nowPlaying: listNowPlaying, onOpenVoice: { openVoice($0) }
+                    nowPlaying: listNowPlaying, onOpenVoice: { openVoice($0) },
+                    makeFoldersModel: { container.foldersModel() }
                 )
                 .safeAreaInset(edge: .top, spacing: 0) { loginHoldBanner }
             } detail: {
