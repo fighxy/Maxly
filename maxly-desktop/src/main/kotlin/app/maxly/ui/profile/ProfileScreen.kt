@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Phone
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -155,6 +156,13 @@ fun ProfileScreen(
             TopAppBar(
                 title = {},
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад") } },
+                actions = {
+                    // «Изменить» группу или канал, как в Max: карандаш у админа и владельца.
+                    val editable = state.profile.kind == ChatProfile.Kind.GROUP || state.profile.kind == ChatProfile.Kind.CHANNEL
+                    if (onManage != null && editable && state.profile.isAdmin) {
+                        IconButton(onClick = onManage) { Icon(Icons.Outlined.Edit, "Изменить") }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
             )
         },
@@ -213,11 +221,6 @@ fun ProfileScreen(
                             if (index < state.rows.lastIndex) Box(Modifier.padding(start = 16.dp).fillMaxWidth().height(0.5.dp).background(MaterialTheme.colorScheme.outlineVariant))
                         }
                     }
-                }
-            }
-            if (onManage != null && (state.profile.kind == ChatProfile.Kind.GROUP || state.profile.kind == ChatProfile.Kind.CHANNEL)) {
-                item(key = "manage") {
-                    TextButton(onClick = onManage, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Управление") }
                 }
             }
             if (state.commands.isNotEmpty()) {

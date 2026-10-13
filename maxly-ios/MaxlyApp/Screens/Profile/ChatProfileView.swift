@@ -117,6 +117,15 @@ struct ChatProfileView: View {
                     .opacity(titleShown ? 1 : 0)
                     .animation(.easeOut(duration: 0.18), value: titleShown)
             }
+            // «Изменить» группу или канал, как в Max: карандаш у админа и владельца.
+            if canEdit {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { openManage() } label: {
+                        Image(systemName: "pencil")
+                    }
+                    .accessibilityLabel("Изменить")
+                }
+            }
         }
         .confirmationDialog(
             erase == .clear ? "Стереть переписку?" : "Удалить чат?",
@@ -552,20 +561,21 @@ struct ChatProfileView: View {
         }
     }
 
-    /// Чего нет в меню Max, но есть у нас: опрос, отложенная отправка, управление группой.
+    /// Группа или канал, где аккаунт админ или владелец: в панели навигации есть «Изменить».
+    private var canEdit: Bool {
+        (viewModel.shown.kind == .group || viewModel.shown.kind == .channel) && chatAdmin != nil && listed && role.isAdmin
+    }
+
+    /// Чего нет в меню Max, но есть у нас: опрос и отложенная отправка.
     @ViewBuilder
     private var extras: some View {
-        let manage = (viewModel.shown.kind == .group || viewModel.shown.kind == .channel) && chatAdmin != nil && listed
-        if context?.onPoll != nil || context?.onSchedule != nil || manage {
+        if context?.onPoll != nil || context?.onSchedule != nil {
             Section {
                 if let poll = context?.onPoll {
                     Button(action: poll) { Label("Опрос", systemImage: "chart.bar") }
                 }
                 if let schedule = context?.onSchedule {
                     Button(action: schedule) { Label("Отправить позже", systemImage: "clock") }
-                }
-                if manage {
-                    Button { openManage() } label: { Label("Управление", systemImage: "slider.horizontal.3") }
                 }
             }
         }

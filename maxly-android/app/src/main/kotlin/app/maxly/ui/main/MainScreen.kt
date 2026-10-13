@@ -230,7 +230,7 @@ fun MainScreen(
                     self = selfAvatar,
                     onOpen = storiesModel::open,
                     onAdd = addStory,
-                    onArchive = if (accountState.settings.storiesHistory) ({ nav.navigate("my-stories") }) else null,
+                    onArchive = { nav.navigate("my-stories") },
                 )
             },
             storyStack = if (stackItems.isEmpty()) null else ({ StoryStack(stackItems) }),
@@ -324,7 +324,7 @@ fun MainScreen(
                     onSferum = { nav.navigate("mini-app/${MiniApp.Kind.SFERUM.wire}") },
                     onStorage = { nav.navigate("storage") },
                     onFolders = { nav.navigate("folders") },
-                    onMyStories = if (accountState.settings.storiesHistory) ({ nav.navigate("my-stories") }) else null,
+                    onMyStories = { nav.navigate("my-stories") },
                     onMessages = { nav.navigate("messages") },
                     onNotifications = { nav.navigate("notifications") },
                     profileLink = app.maxly.presentation.settings.ProfileLink.link(accountState.settings.inviteLink, account?.link),

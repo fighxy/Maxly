@@ -327,10 +327,10 @@ fun MainScreen(
                                     self = selfAvatar,
                                     onOpen = storiesModel::open,
                                     onAdd = addStory,
-                                    onArchive = if (accountState.settings.storiesHistory) ({
+                                    onArchive = {
                                         tab = Tab.SETTINGS
                                         settingsPage = SettingsPage.MyStories
-                                    }) else null,
+                                    },
                                 )
                             },
                             storyStack = if (stackItems.isEmpty()) null else ({ StoryStack(stackItems) }),
@@ -666,7 +666,7 @@ private fun SettingsPane(
                     onSferum = { onOpenMiniApp(MiniApp.Kind.SFERUM) },
                     onStorage = { onOpen(SettingsPage.Storage) },
                     onFolders = { onOpen(SettingsPage.Folders) },
-                    onMyStories = if (paneAccount.settings.storiesHistory) ({ onOpen(SettingsPage.MyStories) }) else null,
+                    onMyStories = { onOpen(SettingsPage.MyStories) },
                     onMessages = { onOpen(SettingsPage.Messages) },
                     onNotifications = { onOpen(SettingsPage.Notifications) },
                     onKeyboard = { onOpen(SettingsPage.Keyboard) },
