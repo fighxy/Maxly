@@ -241,12 +241,9 @@ struct MainTabView: View {
         container.chatViewModel(id: message.chatId)?.openAt(messageId: message.messageId, at: message.date)
     }
 
-    /// Полоса над списком чатов. Открытый чат показывает свою — здесь её тогда нет.
-    @ViewBuilder
-    private var listVoiceBar: some View {
-        if router.chatId == nil {
-            VoiceMiniBar(model: container.nowPlaying) { openVoice($0) }
-        }
+    /// Плеер в списке чатов. Открытый чат показывает свой — в списке его тогда нет.
+    private var listNowPlaying: VoiceNowPlaying? {
+        router.chatId == nil ? container.nowPlaying : nil
     }
 
     /// Полоса «играет голосовое»: чат открывается на этом сообщении.
@@ -265,10 +262,10 @@ struct MainTabView: View {
                     viewModel: list, selection: $router.chatId, newChat: container.newChatModel(), onOpened: openCreated,
                     onOpenMessage: openFound,
                     selfAvatar: selfAvatar, onAddStory: { pickingStory = true },
-                    makeBotApp: { container.botAppModel($0) }
+                    makeBotApp: { container.botAppModel($0) },
+                    nowPlaying: listNowPlaying, onOpenVoice: { openVoice($0) }
                 )
                 .safeAreaInset(edge: .top, spacing: 0) { loginHoldBanner }
-                .safeAreaInset(edge: .top, spacing: 0) { listVoiceBar }
                     .navigationDestination(for: String.self) { id in
                         chatScreen(id)
                     }
@@ -279,10 +276,10 @@ struct MainTabView: View {
                     viewModel: list, selection: $router.chatId, newChat: container.newChatModel(), onOpened: openCreated,
                     onOpenMessage: openFound,
                     selfAvatar: selfAvatar, onAddStory: { pickingStory = true },
-                    makeBotApp: { container.botAppModel($0) }
+                    makeBotApp: { container.botAppModel($0) },
+                    nowPlaying: listNowPlaying, onOpenVoice: { openVoice($0) }
                 )
                 .safeAreaInset(edge: .top, spacing: 0) { loginHoldBanner }
-                .safeAreaInset(edge: .top, spacing: 0) { listVoiceBar }
             } detail: {
                 if let id = router.chatId {
                     // Свой стек у колонки: из чата открывается профиль.

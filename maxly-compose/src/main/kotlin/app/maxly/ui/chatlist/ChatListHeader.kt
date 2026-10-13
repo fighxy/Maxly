@@ -269,6 +269,8 @@ fun FolderCapsule(
     pageOffset: Float = 0f,
     pillColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
     selectedColor: Color = MaterialTheme.colorScheme.onSurface,
+    /** Лежит в общей карточке с плеером ([app.maxly.ui.chat.TopDock]): без своих отступов и фона. */
+    docked: Boolean = false,
 ) {
     val scroll = rememberScrollState()
     val bounds = remember { mutableStateMapOf<Int, Pair<Float, Float>>() }
@@ -290,10 +292,15 @@ fun FolderCapsule(
     Box(
         modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .then(
+                if (docked) {
+                    Modifier
+                } else {
+                    Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                },
+            )
             .height(40.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            .then(if (docked) Modifier else Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHigh)),
     ) {
         val wheelScope = rememberCoroutineScope()
         Box(

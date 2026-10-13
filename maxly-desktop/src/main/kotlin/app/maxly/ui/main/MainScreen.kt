@@ -315,12 +315,15 @@ fun MainScreen(
                             onTogglePrivateMode = container.privateMode::toggle,
                             newChat = newChat,
                             onOpenCreated = { id, title -> openChat(id, title) },
-                            voiceBar = if (chatId != null) null else ({
-                                app.maxly.ui.chat.VoiceMiniBar(container.voicePlayer, onOpen = { playing ->
+                            // Открытый чат показывает плеер сам — в списке его тогда нет.
+                            voice = if (chatId != null) {
+                                null
+                            } else {
+                                app.maxly.ui.chat.VoiceDockSource(container.voicePlayer) { playing ->
                                     openChat(playing.meta.chatId)
                                     openMessage = Triple(playing.meta.chatId, playing.messageId, playing.meta.sentAtMs)
-                                })
-                            }),
+                                }
+                            },
                             channelSetup = { id, done ->
                                 val setup = viewModel(key = "channel-setup-$id") {
                                     app.maxly.presentation.chatlist.ChannelSetupModel(id, container.chatAdmin, container.messages, container.contacts) { container.messages.currentUserId }

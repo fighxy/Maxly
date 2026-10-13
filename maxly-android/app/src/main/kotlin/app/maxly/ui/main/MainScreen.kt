@@ -218,11 +218,9 @@ fun MainScreen(
             onTogglePrivateMode = container.privateMode::toggle,
             newChat = newChat,
             onOpenCreated = { id, title -> openChat(id, title) },
-            voiceBar = {
-                app.maxly.ui.chat.VoiceMiniBar(container.voicePlayer, onOpen = { playing ->
-                    openMessage = Triple(playing.meta.chatId, playing.messageId, playing.meta.sentAtMs)
-                    openChat(playing.meta.chatId)
-                })
+            voice = app.maxly.ui.chat.VoiceDockSource(container.voicePlayer) { playing ->
+                openMessage = Triple(playing.meta.chatId, playing.messageId, playing.meta.sentAtMs)
+                openChat(playing.meta.chatId)
             },
             channelSetup = { id, done ->
                 val setup = viewModel(key = "channel-setup-$id") {

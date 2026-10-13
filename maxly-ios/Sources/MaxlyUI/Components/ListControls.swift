@@ -101,6 +101,8 @@ public struct FolderStrip: View {
     private let tabs: [ChatFolderTab]
     private let selected: String
     private let onSelect: (String) -> Void
+    /// Своя стеклянная капсула. Без неё полоса лежит в общей карточке (папки и плеер).
+    private let glass: Bool
     @Namespace private var pill
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -108,9 +110,10 @@ public struct FolderStrip: View {
     public static let height: CGFloat = 40
     private static let inset: CGFloat = 4
 
-    public init(tabs: [ChatFolderTab], selected: String, onSelect: @escaping (String) -> Void) {
+    public init(tabs: [ChatFolderTab], selected: String, glass: Bool = true, onSelect: @escaping (String) -> Void) {
         self.tabs = tabs
         self.selected = selected
+        self.glass = glass
         self.onSelect = onSelect
     }
 
@@ -125,13 +128,13 @@ public struct FolderStrip: View {
                 .padding(Self.inset)
             }
             .frame(height: Self.height)
-            .clipShape(Capsule())
+            .clipShape(glass ? AnyShape(Capsule()) : AnyShape(Rectangle()))
             .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: selected)
             .onChange(of: selected, initial: true) { _, id in
                 withAnimation(MaxlyMotion.quick(reduceMotion: reduceMotion)) { proxy.scrollTo(id, anchor: .center) }
             }
         }
-        .maxlyGlassCapsule(interactive: false)
+        .modifier(GlassCapsuleIf(glass))
     }
 
     private func tabButton(_ tab: ChatFolderTab) -> some View {
@@ -163,6 +166,21 @@ public struct FolderStrip: View {
         .id(tab.id)
         .accessibilityLabel(tab.badge.map { "\(tab.title), \($0) непрочитанных" } ?? tab.title)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+/// Стеклянная капсула только когда `on`.
+private struct GlassCapsuleIf: ViewModifier {
+    let on: Bool
+    init(_ on: Bool) { self.on = on }
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if on {
+            content.maxlyGlassCapsule(interactive: false)
+        } else {
+            content
+        }
     }
 }
 

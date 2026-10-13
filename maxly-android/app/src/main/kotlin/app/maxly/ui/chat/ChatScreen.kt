@@ -451,25 +451,42 @@ fun ChatScreen(
         containerColor = Color.Transparent,
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().imePadding()) {
-            voicePlayer?.let { player ->
-                VoiceMiniBar(player, onOpen = { playing ->
-                    if (playing.meta.chatId.isEmpty() || playing.meta.chatId == model.chatId) {
-                        model.jumpTo(playing.messageId, atMs = playing.meta.sentAtMs)
-                    } else {
-                        onOpenVoice(playing)
+            // Карточка под шапкой, как в Telegram: сверху плеер голосового, под ним закреп. Без
+            // закрепа плеер висит один чуть ниже шапки.
+            val voice = remember(voicePlayer, model, onOpenVoice) {
+                voicePlayer?.let { player ->
+                    app.maxly.ui.chat.VoiceDockSource(player) { playing ->
+                        if (playing.meta.chatId.isEmpty() || playing.meta.chatId == model.chatId) {
+                            model.jumpTo(playing.messageId, atMs = playing.meta.sentAtMs)
+                        } else {
+                            onOpenVoice(playing)
+                        }
                     }
-                })
+                }
             }
-            state.pinnedText?.let { pinned ->
-                PinBanner(
-                    title = state.pinnedTitle,
-                    text = pinned,
-                    count = state.pinnedCount,
-                    onOpen = { model.openPinned()?.let(scrollToMessage) },
-                    onUnpin = { model.unpin() },
-                    onUnpinAll = { model.unpinAll() },
-                )
-            }
+            val playback = rememberVoicePlayback(voice)
+            val pinned = state.pinnedText
+            TopDock(
+                top = if (voice != null && playback != null) {
+                    { VoicePlayerRow(playback, voice) }
+                } else {
+                    null
+                },
+                bottom = if (pinned != null) {
+                    {
+                        PinBanner(
+                            title = state.pinnedTitle,
+                            text = pinned,
+                            count = state.pinnedCount,
+                            onOpen = { model.openPinned()?.let(scrollToMessage) },
+                            onUnpin = { model.unpin() },
+                            onUnpinAll = { model.unpinAll() },
+                        )
+                    }
+                } else {
+                    null
+                },
+            )
             ChatFeed(
                 model = model,
                 state = state,

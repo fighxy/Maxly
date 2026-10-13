@@ -1,6 +1,8 @@
 package app.maxly.ui.chat
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
@@ -17,7 +19,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -28,7 +29,6 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import app.maxly.ui.components.AppSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -65,32 +65,36 @@ fun PinBanner(
     onUnpin: () -> Unit,
     onUnpinAll: () -> Unit,
 ) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.clickable(onClick = onOpen).padding(start = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Filled.PushPin, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-            androidx.compose.foundation.layout.Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
-                Text(
-                    title,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Text(
-                    text,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-            if (count > 1) {
-                androidx.compose.material3.TextButton(onClick = onUnpinAll) { Text("Открепить все") }
-            }
-            IconButton(onClick = onUnpin) { Icon(Icons.Filled.Close, "Открепить") }
+    // Секция карточки под шапкой ([TopDock]): своего фона нет. Слева полоска акцента, как в Telegram.
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(start = 14.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        androidx.compose.foundation.layout.Box(
+            Modifier
+                .width(2.5.dp)
+                .height(34.dp)
+                .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.RoundedCornerShape(2.dp)),
+        )
+        Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+            Text(
+                title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
+        if (count > 1) {
+            TextButton(onClick = onUnpinAll) { Text("Открепить все") }
+        }
+        IconButton(onClick = onUnpin) { Icon(Icons.Filled.Close, "Открепить", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 

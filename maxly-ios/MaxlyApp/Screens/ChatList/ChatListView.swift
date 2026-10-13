@@ -18,6 +18,10 @@ struct ChatListView: View {
     var onAddStory: (() -> Void)?
     /// Мини-приложение бота из строки («Открыть»): тот же запуск, что и из чата с ботом.
     var makeBotApp: ((BotAppRequest) -> MiniAppModel)?
+    /// Играющее голосовое: плеер прилипает к папкам, без папок висит под шапкой отдельно.
+    /// `nil`, когда плеер показывает открытый чат.
+    var nowPlaying: VoiceNowPlaying?
+    var onOpenVoice: (VoiceNowPlaying.Track) -> Void = { _ in }
     @State private var botApp: BotAppRequest?
     @State private var composeShown = false
     /// «Заблокировать» из меню ждёт подтверждения.
@@ -46,6 +50,8 @@ struct ChatListView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if viewModel.isEditing { editBar }
         }
+        .safeAreaInset(edge: .top, spacing: 0) { standalonePlayer }
+        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: isPlaying)
         .overlay(alignment: .bottomTrailing) { privateModeButton }
         .navigationTitle(viewModel.navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
@@ -240,12 +246,43 @@ struct ChatListView: View {
     }
 
     private var folderBar: some View {
-        FolderStrip(tabs: viewModel.folders, selected: viewModel.selectedFolderId) { id in
-            viewModel.selectFolder(id)
+        Group {
+            if let nowPlaying, isPlaying {
+                // Плеер — нижняя секция той же стеклянной карточки, что и папки.
+                TopDock {
+                    folderStrip(glass: false)
+                    TopDockDivider()
+                    VoicePlayerRow(model: nowPlaying, onOpen: onOpenVoice)
+                }
+            } else {
+                folderStrip(glass: true)
+            }
         }
         .padding(.horizontal, MaxlyTheme.pad)
         .padding(.top, 2)
         .padding(.bottom, 8)
+    }
+
+    private func folderStrip(glass: Bool) -> some View {
+        FolderStrip(tabs: viewModel.folders, selected: viewModel.selectedFolderId, glass: glass) { id in
+            viewModel.selectFolder(id)
+        }
+    }
+
+    private var isPlaying: Bool { nowPlaying?.track != nil }
+
+    /// Папок нет (или идёт поиск): плеер — отдельная карточка чуть ниже шапки.
+    @ViewBuilder
+    private var standalonePlayer: some View {
+        if let nowPlaying, isPlaying, !showsFolderRow {
+            TopDock {
+                VoicePlayerRow(model: nowPlaying, onOpen: onOpenVoice)
+            }
+            .padding(.horizontal, MaxlyTheme.pad)
+            .padding(.top, 6)
+            .padding(.bottom, 4)
+            .transition(.maxlyBar(edge: .top, reduceMotion: reduceMotion))
+        }
     }
 
     private var header: ChatListHeaderGeometry {

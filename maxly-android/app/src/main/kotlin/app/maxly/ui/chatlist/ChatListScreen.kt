@@ -163,8 +163,8 @@ fun ChatListScreen(
     onLogout: () -> Unit = {},
     /** «Открыть» в строке бота: мини-приложение, не чат. */
     onOpenApp: (ChatListItem) -> Unit = {},
-    /** Полоса «играет голосовое» под шапкой; `null` — без неё. */
-    voiceBar: (@Composable () -> Unit)? = null,
+    /** Играющее голосовое: плеер прилипает к папкам, без папок висит под шапкой; `null` — без него. */
+    voice: app.maxly.ui.chat.VoiceDockSource? = null,
 ) {
     LifecycleResumeEffect(viewModel) {
         viewModel.reloadLocal()
@@ -184,6 +184,8 @@ fun ChatListScreen(
     LaunchedEffect(folderIds) { listStates.retain(folderIds) }
     val header = rememberChatListHeaderState(snapOnIdle = false)
     val showsHeader = !state.isSearchActive && !state.isReorderingPins
+    val foldersShown = showsHeader && state.showsFolders
+    val voicePlayback = app.maxly.ui.chat.rememberVoicePlayback(voice)
     header.enabled = showsHeader
     if (paged) {
         // Вкладка выбрана нажатием — страница доезжает до неё.
@@ -246,7 +248,15 @@ fun ChatListScreen(
                 }
                 // Сервер временно не пускает: список из сохранённого, без сети, а сверху его текст.
                 state.loginNotice?.let { LoginNoticeBanner(it, onRetry = onRetryLogin, onLogout = onLogout) }
-                voiceBar?.invoke()
+                // Без папок (и в поиске) плеер — отдельная карточка под шапкой.
+                app.maxly.ui.chat.TopDock(
+                    top = if (voice != null && voicePlayback != null && !foldersShown) {
+                        { app.maxly.ui.chat.VoicePlayerRow(voicePlayback, voice) }
+                    } else {
+                        null
+                    },
+                    bottom = null,
+                )
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -284,12 +294,24 @@ fun ChatListScreen(
                     search = { SearchCapsule(stringResource(R.string.chats_search), onClick = { viewModel.setSearchActive(true) }) },
                     folders = if (state.showsFolders) {
                         {
-                            FolderCapsule(
-                                state.folders,
-                                selected = if (paged) pagerState.currentPage else selectedPage,
-                                onSelect = viewModel::selectFolder,
-                                pageOffset = if (paged) pagerState.currentPageOffsetFraction else 0f,
-                            )
+                            val folderTabs: @Composable () -> Unit = {
+                                FolderCapsule(
+                                    state.folders,
+                                    selected = if (paged) pagerState.currentPage else selectedPage,
+                                    onSelect = viewModel::selectFolder,
+                                    pageOffset = if (paged) pagerState.currentPageOffsetFraction else 0f,
+                                    docked = voice != null && voicePlayback != null,
+                                )
+                            }
+                            if (voice != null && voicePlayback != null) {
+                                // Плеер — нижняя секция той же карточки, что и папки.
+                                app.maxly.ui.chat.TopDock(
+                                    top = { folderTabs() },
+                                    bottom = { app.maxly.ui.chat.VoicePlayerRow(voicePlayback, voice) },
+                                )
+                            } else {
+                                folderTabs()
+                            }
                         }
                     } else {
                         null

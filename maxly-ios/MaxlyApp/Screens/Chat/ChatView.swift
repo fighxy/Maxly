@@ -61,6 +61,8 @@ struct ChatView: View {
     /// Касание полосы, когда голосовое из другого чата: открыть тот чат на сообщении.
     var onOpenVoice: ((VoiceNowPlaying.Track) -> Void)? = nil
     @State private var participant: DialogDraft?
+    /// Крестик у закрепа: открепить после подтверждения.
+    @State private var unpinAsked = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var profile: ChatProfileViewModel?
@@ -168,23 +170,42 @@ struct ChatView: View {
     }
 
     private var topBanners: some View {
-        VStack(spacing: 0) {
-            if let nowPlaying {
-                VoiceMiniBar(model: nowPlaying) { track in
-                    if track.chatId == viewModel.chatId {
-                        viewModel.focusReply(track.messageId, at: track.date)
-                    } else {
-                        onOpenVoice?(track)
-                    }
-                }
-            }
+        VStack(spacing: 6) {
+            topDock
             if privateMode.isMasked { privateModeBanner }
-            if let pinned = viewModel.bannerPin {
-                pinBanner(id: pinned.id, text: pinned.text, counter: pinned.counter)
-            }
         }
+        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: nowPlaying?.track != nil)
+        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.bannerPin?.id)
         // Низ шапки с плашками: выше него лента закрыта, сообщение там не прочитано.
         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { headerBottom = $0 }
+    }
+
+    /// Карточка под шапкой, как в Telegram: сверху плеер голосового, под ним закреп. Без
+    /// закрепа плеер висит один чуть ниже шапки.
+    @ViewBuilder
+    private var topDock: some View {
+        let playing = nowPlaying?.track != nil
+        let pinned = viewModel.bannerPin
+        if playing || pinned != nil {
+            TopDock {
+                if let nowPlaying, playing {
+                    VoicePlayerRow(model: nowPlaying) { track in
+                        if track.chatId == viewModel.chatId {
+                            viewModel.focusReply(track.messageId, at: track.date)
+                        } else {
+                            onOpenVoice?(track)
+                        }
+                    }
+                }
+                if playing, pinned != nil { TopDockDivider() }
+                if let pinned {
+                    pinBanner(id: pinned.id, text: pinned.text, counter: pinned.counter)
+                }
+            }
+            .padding(.horizontal, MaxlyTheme.pad)
+            .padding(.top, 6)
+            .transition(.maxlyBar(edge: .top, reduceMotion: reduceMotion))
+        }
     }
 
     /// Верх клавиатуры в глобальных координатах. Рамка в уведомлении — в координатах экрана,
@@ -431,6 +452,10 @@ struct ChatView: View {
             .sheet(isPresented: $viewModel.pinListShown) { pinList }
             .confirmationDialog("Закрепить сообщение", isPresented: pinPromptShown, titleVisibility: .visible) {
                 pinPromptButtons
+            }
+            .confirmationDialog("Открепить сообщение?", isPresented: $unpinAsked, titleVisibility: .visible) {
+                Button("Открепить", role: .destructive) { Task { await viewModel.unpin() } }
+                Button("Отмена", role: .cancel) {}
             }
             .sheet(isPresented: $scheduleShown) { scheduleSheet }
             .sheet(item: $viewModel.botAppRequest) { request in
@@ -1049,24 +1074,27 @@ struct ChatView: View {
     }
 
     private func pinBanner(id: String, text: String, counter: String?) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "pin.fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.maxlyAccent)
+        HStack(spacing: 10) {
             Button {
                 viewModel.cyclePin()
             } label: {
-                VStack(alignment: .leading, spacing: 1) {
-                    if let counter {
-                        Text(counter)
-                            .font(.caption2.weight(.semibold))
+                HStack(spacing: 10) {
+                    Capsule()
+                        .fill(Color.maxlyAccent)
+                        .frame(width: 2.5, height: 34)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(counter.map { "Закреплённое сообщение · \($0)" } ?? "Закреплённое сообщение")
+                            .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Color.maxlyAccent)
+                            .lineLimit(1)
+                        Text(text)
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
                     }
-                    Text(text)
-                        .font(.subheadline)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             if viewModel.pinBar.pins.count > 1 {
@@ -1074,17 +1102,28 @@ struct ChatView: View {
                     viewModel.pinListShown = true
                 } label: {
                     Image(systemName: "list.bullet")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 40)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Все закреплённые")
             }
-            Button("Снять") { Task { await viewModel.unpin() } }
-                .font(.caption.weight(.semibold))
+            Button { unpinAsked = true } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 32, height: 40)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Открепить")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial)
-        .accessibilityElement(children: .combine)
+        .padding(.leading, 14)
+        .padding(.trailing, 8)
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("Закреплено: \(text)")
     }
 
