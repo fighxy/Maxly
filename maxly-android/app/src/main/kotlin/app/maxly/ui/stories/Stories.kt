@@ -32,6 +32,24 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.ReportProblem
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.focus.onFocusChanged
+import app.maxly.data.ComplaintChoice
+import app.maxly.presentation.stories.StoryViewerActions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -290,23 +308,21 @@ private fun Tile(title: String, dim: Boolean, onClick: () -> Unit, onLongClick: 
 fun StoryViewer(
     viewer: StoryViewerState,
     userAgent: String,
-    onNext: () -> Unit,
-    onPrevious: () -> Unit,
-    onNextOwner: () -> Unit,
-    onPreviousOwner: () -> Unit,
-    onClose: () -> Unit,
-    onDelete: () -> Unit,
+    actions: StoryViewerActions,
+    busy: Boolean = false,
+    reportReasons: List<ComplaintChoice>? = null,
 ) {
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        BackHandler(onBack = onClose)
-        val next by rememberUpdatedState(onNext)
-        val previous by rememberUpdatedState(onPrevious)
-        val nextOwner by rememberUpdatedState(onNextOwner)
-        val previousOwner by rememberUpdatedState(onPreviousOwner)
-        val close by rememberUpdatedState(onClose)
+    Dialog(onDismissRequest = actions.onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        BackHandler(onBack = actions.onClose)
+        val act by rememberUpdatedState(actions)
         var pressed by remember { mutableStateOf(false) }
         var dragging by remember { mutableStateOf(false) }
+        var paused by remember { mutableStateOf(false) }
+        var muted by remember { mutableStateOf(false) }
+        var typing by remember { mutableStateOf(false) }
+        var menu by remember { mutableStateOf(false) }
         var confirmDelete by remember { mutableStateOf(false) }
+        var reply by remember(viewer.epoch) { mutableStateOf("") }
         var dragX by remember { mutableFloatStateOf(0f) }
         var dragY by remember { mutableFloatStateOf(0f) }
         val story = viewer.story
@@ -316,8 +332,9 @@ fun StoryViewer(
         var videoProgress by remember(viewer.epoch) { mutableFloatStateOf(0f) }
         val timer = remember { Animatable(0f) }
         var timerEpoch by remember { mutableIntStateOf(-1) }
-        val holding = pressed || dragging || confirmDelete || viewer.isDeleting
+        val holding = pressed || dragging || paused || typing || menu || confirmDelete || reportReasons != null || viewer.isDeleting
         val asPhoto = media != null && (!media.isVideo || videoFailed)
+        LaunchedEffect(viewer.epoch) { paused = false }
         LaunchedEffect(viewer.epoch, ready, holding, asPhoto) {
             if (timerEpoch != viewer.epoch) {
                 timer.snapTo(0f)
@@ -326,80 +343,87 @@ fun StoryViewer(
             if (!asPhoto || !ready || holding) return@LaunchedEffect
             val left = ((1f - timer.value) * PHOTO_MS).toInt().coerceAtLeast(1)
             timer.animateTo(1f, tween(left, easing = LinearEasing))
-            next()
+            act.onNext()
         }
         Box(
             Modifier
                 .fillMaxSize()
                 .background(Color.Black)
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onPress = {
-                            pressed = true
-                            tryAwaitRelease()
-                            pressed = false
-                        },
-                        onTap = { point -> if (point.x < size.width * 0.32f) previous() else next() },
-                    )
-                }
-                .pointerInput(Unit) {
-                    detectDragGestures(
-                        onDragStart = { dragging = true },
-                        onDragEnd = {
-                            val down = dragY > 140.dp.toPx()
-                            val side = abs(dragX) > 90.dp.toPx() && abs(dragX) > dragY
-                            when {
-                                down -> close()
-                                side && dragX < 0 -> nextOwner()
-                                side -> previousOwner()
-                            }
-                            dragX = 0f
-                            dragY = 0f
-                            dragging = false
-                        },
-                        onDragCancel = {
-                            dragX = 0f
-                            dragY = 0f
-                            dragging = false
-                        },
-                        onDrag = { change, amount ->
-                            change.consume()
-                            dragX += amount.x
-                            dragY = (dragY + amount.y).coerceAtLeast(0f)
-                        },
-                    )
-                }
-                .graphicsLayer {
-                    translationY = dragY
-                    val shrink = (dragY / 3000f).coerceAtMost(0.15f)
-                    scaleX = 1f - shrink
-                    scaleY = 1f - shrink
-                },
+                .imePadding(),
         ) {
-            when {
-                viewer.isLoading || story == null || media == null -> CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
-                // Заново на каждый запуск: та же картинка снова сообщит о загрузке, и таймер пойдёт.
-                asPhoto -> key(viewer.epoch) {
-                    AsyncImage(
-                        model = if (media.isVideo) media.thumbnailUrl else media.url,
-                        contentDescription = "История",
-                        contentScale = ContentScale.Fit,
-                        onSuccess = { ready = true },
-                        onError = { ready = true },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-                else -> {
-                    media.thumbnailUrl?.let { AsyncImage(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
-                    VideoStory(
-                        url = media.url,
-                        userAgent = userAgent,
-                        epoch = viewer.epoch,
-                        playing = !holding,
-                        onProgress = { videoProgress = it },
-                        onEnded = next,
-                        onFailed = { videoFailed = true },
-                    )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = {
+                                pressed = true
+                                tryAwaitRelease()
+                                pressed = false
+                            },
+                            onTap = { point -> if (point.x < size.width * 0.32f) act.onPrevious() else act.onNext() },
+                        )
+                    }
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = { dragging = true },
+                            onDragEnd = {
+                                val down = dragY > 140.dp.toPx()
+                                val side = abs(dragX) > 90.dp.toPx() && abs(dragX) > dragY
+                                when {
+                                    down -> act.onClose()
+                                    side && dragX < 0 -> act.onNextOwner()
+                                    side -> act.onPreviousOwner()
+                                }
+                                dragX = 0f
+                                dragY = 0f
+                                dragging = false
+                            },
+                            onDragCancel = {
+                                dragX = 0f
+                                dragY = 0f
+                                dragging = false
+                            },
+                            onDrag = { change, amount ->
+                                change.consume()
+                                dragX += amount.x
+                                dragY = (dragY + amount.y).coerceAtLeast(0f)
+                            },
+                        )
+                    }
+                    .graphicsLayer {
+                        translationY = dragY
+                        val shrink = (dragY / 3000f).coerceAtMost(0.15f)
+                        scaleX = 1f - shrink
+                        scaleY = 1f - shrink
+                    },
+            ) {
+                when {
+                    viewer.isLoading || story == null || media == null -> CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
+                    // Заново на каждый запуск: та же картинка снова сообщит о загрузке, и таймер пойдёт.
+                    asPhoto -> key(viewer.epoch) {
+                        AsyncImage(
+                            model = if (media.isVideo) media.thumbnailUrl else media.url,
+                            contentDescription = "История",
+                            contentScale = ContentScale.Fit,
+                            onSuccess = { ready = true },
+                            onError = { ready = true },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                    else -> {
+                        media.thumbnailUrl?.let { AsyncImage(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
+                        VideoStory(
+                            url = media.url,
+                            userAgent = userAgent,
+                            epoch = viewer.epoch,
+                            playing = !holding,
+                            muted = muted,
+                            onProgress = { videoProgress = it },
+                            onEnded = { act.onNext() },
+                            onFailed = { videoFailed = true },
+                        )
+                    }
                 }
             }
             Column(
@@ -432,15 +456,40 @@ fun StoryViewer(
                             Text(StoryText.ago(it.timeMs, System.currentTimeMillis()), color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
                         }
                     }
-                    if (viewer.isOwn && story != null) {
-                        if (viewer.isDeleting) {
-                            CircularProgressIndicator(Modifier.padding(12.dp).size(22.dp), color = Color.White, strokeWidth = 2.dp)
-                        } else {
-                            IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Outlined.Delete, "Удалить историю", tint = Color.White) }
+                    if (busy || viewer.isDeleting) {
+                        CircularProgressIndicator(Modifier.padding(12.dp).size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                    }
+                    IconButton(onClick = { paused = !paused }) {
+                        Icon(if (paused) Icons.Filled.PlayArrow else Icons.Filled.Pause, if (paused) "Смотреть" else "Пауза", tint = Color.White)
+                    }
+                    if (media?.isVideo == true && !videoFailed) {
+                        IconButton(onClick = { muted = !muted }) {
+                            Icon(if (muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp, if (muted) "Включить звук" else "Выключить звук", tint = Color.White)
                         }
                     }
-                    IconButton(onClick = onClose) { Icon(Icons.Filled.Close, "Закрыть", tint = Color.White) }
+                    Box {
+                        IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Ещё", tint = Color.White) }
+                        StoryMenu(menu, viewer, act, onDismiss = { menu = false }, onDelete = { confirmDelete = true })
+                    }
+                    IconButton(onClick = act.onClose) { Icon(Icons.Filled.Close, "Закрыть", tint = Color.White) }
                 }
+            }
+            if (!viewer.isOwn && story != null) {
+                StoryReplyBar(
+                    text = reply,
+                    onText = { reply = it },
+                    canReply = story.canReply,
+                    canLike = story.canLike,
+                    liked = story.isLiked,
+                    busy = busy,
+                    onFocus = { typing = it },
+                    onSend = {
+                        act.onReply(reply)
+                        reply = ""
+                    },
+                    onLike = act.onLike,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
             }
         }
         if (confirmDelete) {
@@ -451,11 +500,138 @@ fun StoryViewer(
                 confirmButton = {
                     TextButton(onClick = {
                         confirmDelete = false
-                        onDelete()
+                        act.onDelete()
                     }) { Text("Удалить", color = MaterialTheme.colorScheme.error) }
                 },
                 dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Отмена") } },
             )
+        }
+        reportReasons?.let { reasons ->
+            AlertDialog(
+                onDismissRequest = act.onCloseReport,
+                title = { Text("Пожаловаться на историю") },
+                text = {
+                    if (reasons.isEmpty()) {
+                        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                    } else {
+                        Column {
+                            reasons.forEach { reason ->
+                                Text(reason.title, modifier = Modifier.fillMaxWidth().clickable { act.onReportReason(reason.id) }.padding(vertical = 12.dp))
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = act.onCloseReport) { Text("Отмена") } },
+            )
+        }
+    }
+}
+
+/** «⋮»: чужая история — профиль, скрыть автора, скачать, пожаловаться; своя — скачать и удалить. */
+@Composable
+private fun StoryMenu(expanded: Boolean, viewer: StoryViewerState, actions: StoryViewerActions, onDismiss: () -> Unit, onDelete: () -> Unit) {
+    val story = viewer.story ?: return
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        if (!viewer.isOwn && story.canOpenProfile) {
+            DropdownMenuItem(text = { Text("Перейти в профиль") }, leadingIcon = { Icon(Icons.Outlined.AccountCircle, null) }, onClick = {
+                onDismiss()
+                actions.onProfile(viewer.ring)
+            })
+        }
+        if (!viewer.isOwn && story.canHideAuthor) {
+            DropdownMenuItem(text = { Text("Скрыть истории автора") }, leadingIcon = { Icon(Icons.Outlined.VisibilityOff, null) }, onClick = {
+                onDismiss()
+                actions.onHideAuthor()
+            })
+        }
+        if (story.canDownload || viewer.isOwn) {
+            DropdownMenuItem(text = { Text("Скачать") }, leadingIcon = { Icon(Icons.Outlined.Download, null) }, onClick = {
+                onDismiss()
+                actions.onDownload()
+            })
+        }
+        if (!viewer.isOwn && story.canReport) {
+            DropdownMenuItem(
+                text = { Text("Пожаловаться", color = MaterialTheme.colorScheme.error) },
+                leadingIcon = { Icon(Icons.Outlined.ReportProblem, null, tint = MaterialTheme.colorScheme.error) },
+                onClick = {
+                    onDismiss()
+                    actions.onReport()
+                },
+            )
+        }
+        if (viewer.isOwn) {
+            DropdownMenuItem(
+                text = { Text("Удалить", color = MaterialTheme.colorScheme.error) },
+                leadingIcon = { Icon(Icons.Outlined.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                onClick = {
+                    onDismiss()
+                    onDelete()
+                },
+            )
+        }
+    }
+}
+
+/** «Ответить» и сердечко внизу. Пока поле в фокусе, история стоит. */
+@Composable
+private fun StoryReplyBar(
+    text: String,
+    onText: (String) -> Unit,
+    canReply: Boolean,
+    canLike: Boolean,
+    liked: Boolean,
+    busy: Boolean,
+    onFocus: (Boolean) -> Unit,
+    onSend: () -> Unit,
+    onLike: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f))))
+            .navigationBarsPadding()
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .pointerInput(Unit) { detectTapGestures { } },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .weight(1f)
+                .height(48.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(24.dp))
+                .padding(horizontal = 16.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            if (canReply) {
+                if (text.isEmpty()) Text("Ответить", color = Color.White.copy(alpha = 0.6f))
+                androidx.compose.foundation.text.BasicTextField(
+                    value = text,
+                    onValueChange = onText,
+                    singleLine = true,
+                    textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 15.sp),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = { if (text.isNotBlank()) onSend() }),
+                    modifier = Modifier.fillMaxWidth().onFocusChanged { onFocus(it.isFocused) },
+                )
+            } else {
+                Text("Автор выключил ответы", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp)
+            }
+        }
+        if (canReply && text.isNotBlank()) {
+            IconButton(onClick = onSend, enabled = !busy) { Icon(Icons.AutoMirrored.Filled.Send, "Отправить", tint = Color.White) }
+        } else if (canLike) {
+            IconButton(onClick = onLike) {
+                Icon(
+                    if (liked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                    if (liked) "Убрать лайк" else "Нравится",
+                    tint = if (liked) Color(0xFFFF3B5C) else Color.White,
+                )
+            }
         }
     }
 }
@@ -468,6 +644,7 @@ private fun VideoStory(
     userAgent: String,
     epoch: Int,
     playing: Boolean,
+    muted: Boolean,
     onProgress: (Float) -> Unit,
     onEnded: () -> Unit,
     onFailed: () -> Unit,
@@ -499,6 +676,7 @@ private fun VideoStory(
         }
     }
     LaunchedEffect(player, playing) { player.playWhenReady = playing }
+    LaunchedEffect(player, muted) { player.volume = if (muted) 0f else 1f }
     LaunchedEffect(player) {
         while (true) {
             val duration = player.duration

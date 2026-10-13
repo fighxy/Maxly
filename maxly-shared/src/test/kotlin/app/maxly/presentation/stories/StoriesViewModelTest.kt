@@ -53,6 +53,26 @@ private class FakeStories : StoriesRepository {
         failure?.let { throw it }
         deleted += storyIds
     }
+    val reactions = mutableListOf<Pair<String, String?>>()
+    var reactAccepted = true
+    val replies = mutableListOf<Pair<String, String>>()
+    val hidden = mutableListOf<String>()
+    val reports = mutableListOf<Pair<String, Int>>()
+    override suspend fun react(story: Story, emoji: String?): Boolean {
+        reactions += story.id to emoji
+        return reactAccepted
+    }
+    override suspend fun reply(story: Story, text: String) {
+        replies += story.id to text
+    }
+    override suspend fun setHidden(owner: StoryOwner, hidden: Boolean) {
+        if (hidden) this.hidden += owner.id
+    }
+    override suspend fun reportReasons() = listOf(app.maxly.data.ComplaintChoice(3, "Спам"))
+    override suspend fun report(story: Story, reasonId: Int): Boolean {
+        reports += story.id to reasonId
+        return true
+    }
 }
 
 class StoriesViewModelTest {
@@ -231,5 +251,47 @@ class StoriesViewModelTest {
         assertEquals(0, StoriesViewModel.resumeIndex(ring("1", 3, 0, 0), 3))
         assertEquals(2, StoriesViewModel.resumeIndex(ring("1", 3, 2, 0), 3))
         assertEquals(0, StoriesViewModel.resumeIndex(ring("1", 3, 3, 0), 3))
+    }
+
+    @Test
+    fun likeReplyReportAndHideAuthor() {
+        repo.feed = listOf(ring("4", 1, 0, 200), ring("3", 1, 0, 100))
+        repo.owners["4"] = OwnerStories(ring("4", 1, 0, 200), listOf(story("4", "41", 1)))
+        repo.owners["3"] = OwnerStories(ring("3", 1, 0, 100), listOf(story("3", "31", 5)))
+        val model = StoriesViewModel(repo)
+        model.open("4")
+        model.toggleLike()
+        assertEquals("❤️", model.state.value.viewer?.story?.reaction)
+        assertEquals(listOf("41" to "❤️"), repo.reactions)
+        // Сервер не принял снятие лайка — лайк возвращается.
+        repo.reactAccepted = false
+        model.toggleLike()
+        assertEquals("❤️", model.state.value.viewer?.story?.reaction)
+        model.reply("Классно!")
+        assertEquals(listOf("41" to "Классно!"), repo.replies)
+        assertEquals("Ответ отправлен", model.state.value.message)
+        model.openReport()
+        assertEquals(listOf(3), model.state.value.reportReasons?.map { it.id })
+        model.report(3)
+        assertNull(model.state.value.reportReasons)
+        assertEquals(listOf("41" to 3), repo.reports)
+        model.hideAuthor()
+        assertEquals(listOf("4"), repo.hidden)
+        assertEquals("3", model.state.value.viewer?.ring?.owner?.id)
+        assertEquals(listOf("3"), model.state.value.rings.map { it.owner.id })
+    }
+
+    @Test
+    fun authorSwitchesOffLikesAndReplies() {
+        repo.feed = listOf(ring("4", 1, 0, 200))
+        repo.owners["4"] = OwnerStories(
+            ring("4", 1, 0, 200),
+            listOf(story("4", "41", 1).copy(settings = app.maxly.domain.StoryFlags.OFF_REACT or app.maxly.domain.StoryFlags.OFF_REPLY)),
+        )
+        val model = StoriesViewModel(repo)
+        model.open("4")
+        model.toggleLike()
+        model.reply("привет")
+        assertTrue(repo.reactions.isEmpty() && repo.replies.isEmpty())
     }
 }

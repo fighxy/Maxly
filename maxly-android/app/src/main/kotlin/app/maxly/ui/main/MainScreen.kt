@@ -516,12 +516,15 @@ fun MainScreen(
         StoryViewer(
             viewer,
             userAgent = container.videoSourceUserAgent(),
-            onNext = storiesModel::next,
-            onPrevious = storiesModel::previous,
-            onNextOwner = storiesModel::nextOwner,
-            onPreviousOwner = storiesModel::previousOwner,
-            onClose = storiesModel::close,
-            onDelete = storiesModel::deleteCurrent,
+            actions = app.maxly.presentation.stories.StoryViewerActions.of(storiesModel) { ring ->
+                // Профиль человека — его диалог (`свой id xor id автора`), группы и канала — сам чат.
+                val me = container.stories.currentUserId?.toLongOrNull()
+                val owner = ring.owner.id.toLongOrNull()
+                val chat = if (ring.owner.type == app.maxly.domain.StoryOwner.Type.USER && me != null && owner != null) (me xor owner).toString() else ring.owner.id
+                nav.navigate("profile/$chat")
+            },
+            busy = stories.busy,
+            reportReasons = stories.reportReasons,
         )
     }
     composingStory?.let { story ->

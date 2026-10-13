@@ -165,8 +165,8 @@ class AppContainer(context: Context) {
 
     val comments: app.maxly.data.CommentsRepository = app.maxly.data.CoreCommentsRepository(client)
 
-    val stories: app.maxly.data.StoriesRepository = app.maxly.data.CoreStoriesRepository(client)
     val mediaSaver: app.maxly.presentation.chat.MediaSaver = app.maxly.media.MediaStoreSaver(context)
+    val stories: app.maxly.data.StoriesRepository = app.maxly.data.CoreStoriesRepository(client, files, mediaSaver)
 
     /** Черновики чатов и ручные пометки «непрочитано»: свои у каждого аккаунта. */
     private val localMarks = object : DraftStore, ChatLocalMarks {

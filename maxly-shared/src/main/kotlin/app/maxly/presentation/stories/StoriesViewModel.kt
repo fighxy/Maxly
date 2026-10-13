@@ -2,6 +2,7 @@ package app.maxly.presentation.stories
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.maxly.data.ComplaintChoice
 import app.maxly.data.CoreErrors
 import app.maxly.data.StoriesRepository
 import app.maxly.domain.ConnectionState
@@ -9,6 +10,7 @@ import app.maxly.domain.MaxlyError
 import app.maxly.domain.OutgoingStory
 import app.maxly.domain.Story
 import app.maxly.domain.StoryAudience
+import app.maxly.domain.StoryFlags
 import app.maxly.domain.StoryOwner
 import app.maxly.domain.StoryRing
 import kotlinx.coroutines.Job
@@ -51,6 +53,10 @@ data class StoriesUiState(
     val publishProgress: Float? = null,
     /** Сообщение для снекбара. */
     val message: String? = null,
+    /** Причины жалобы на открытую историю: `null` — окно жалобы закрыто, пусто — грузятся. */
+    val reportReasons: List<ComplaintChoice>? = null,
+    /** Ответ или скачивание открытой истории в пути. */
+    val busy: Boolean = false,
 ) {
     /** Кольцо владельца [ownerId] — из ленты или открытого профиля; `null`, если историй нет. */
     fun ringOf(ownerId: String?): StoryRing? {
@@ -197,6 +203,12 @@ class StoriesViewModel(
         if (viewer.ownerIndex > 0) showOwner(viewer.ownerIndex - 1) else start(0)
     }
 
+    /** Сразу к автору [index] очереди (соседняя карточка в просмотре на компьютере). */
+    fun openOwnerAt(index: Int) {
+        val viewer = _state.value.viewer ?: return
+        if (index in viewer.queue.indices && index != viewer.ownerIndex) showOwner(index)
+    }
+
     fun close() {
         loading?.cancel()
         _state.value = _state.value.copy(viewer = null)
@@ -228,6 +240,133 @@ class StoriesViewModel(
                 start(viewer.storyIndex.coerceAtMost(left.size - 1))
             }
         }
+    }
+
+    /** Лайк открытой истории сердечком или снять его. Сразу на экране; не принял сервер — откат. */
+    fun toggleLike() {
+        val viewer = _state.value.viewer ?: return
+        val story = viewer.story ?: return
+        if (viewer.isOwn || !story.canLike) return
+        val emoji = if (story.isLiked) null else StoryFlags.HEART
+        replaceStory(story.copy(reaction = emoji))
+        viewModelScope.launch {
+            val ok = try {
+                repository.react(story, emoji)
+            } catch (e: Throwable) {
+                fail(e, "Не удалось поставить лайк")
+                false
+            }
+            if (!ok) replaceStory(story)
+        }
+    }
+
+    /** Ответ на открытую историю: сообщение автору со ссылкой на историю. */
+    fun reply(text: String) {
+        val viewer = _state.value.viewer ?: return
+        val story = viewer.story ?: return
+        if (text.isBlank() || viewer.isOwn || !story.canReply || _state.value.busy) return
+        _state.value = _state.value.copy(busy = true)
+        viewModelScope.launch {
+            try {
+                repository.reply(story, text)
+                _state.value = _state.value.copy(message = "Ответ отправлен")
+            } catch (e: Throwable) {
+                fail(e, "Не удалось отправить ответ")
+            } finally {
+                _state.value = _state.value.copy(busy = false)
+            }
+        }
+    }
+
+    /** «Скрыть истории автора»: его кольцо уходит из ленты, просмотр идёт к следующему автору. */
+    fun hideAuthor() {
+        val viewer = _state.value.viewer ?: return
+        if (viewer.isOwn) return
+        val owner = viewer.ring.owner
+        viewModelScope.launch {
+            try {
+                repository.setHidden(owner, true)
+            } catch (e: Throwable) {
+                fail(e, "Не удалось скрыть истории")
+                return@launch
+            }
+            feed = feed - owner.id
+            peers = peers - owner.id
+            cache.remove(owner.id)
+            val current = _state.value.viewer
+            if (current != null && current.ring.owner.id == owner.id) {
+                val queue = current.queue.filterNot { it.owner.id == owner.id }
+                if (queue.isEmpty()) {
+                    close()
+                } else {
+                    val index = current.ownerIndex.coerceAtMost(queue.size - 1)
+                    _state.value = _state.value.copy(viewer = current.copy(queue = queue, ownerIndex = index))
+                    showOwner(index)
+                }
+            }
+            publish()
+            _state.value = _state.value.copy(message = "Истории ${viewer.ring.name.ifBlank { "автора" }} скрыты")
+        }
+    }
+
+    /** Окно жалобы: причины грузятся с сервера. */
+    fun openReport() {
+        val story = _state.value.viewer?.story ?: return
+        if (!story.canReport) return
+        _state.value = _state.value.copy(reportReasons = emptyList())
+        viewModelScope.launch {
+            val reasons = try {
+                repository.reportReasons()
+            } catch (e: Throwable) {
+                _state.value = _state.value.copy(reportReasons = null)
+                fail(e, "Не удалось загрузить причины жалобы")
+                return@launch
+            }
+            if (_state.value.reportReasons != null) _state.value = _state.value.copy(reportReasons = reasons)
+        }
+    }
+
+    fun closeReport() {
+        _state.value = _state.value.copy(reportReasons = null)
+    }
+
+    /** Пожаловаться на открытую историю по причине [reasonId]. */
+    fun report(reasonId: Int) {
+        val story = _state.value.viewer?.story ?: return
+        _state.value = _state.value.copy(reportReasons = null)
+        viewModelScope.launch {
+            try {
+                val ok = repository.report(story, reasonId)
+                _state.value = _state.value.copy(message = if (ok) "Жалоба отправлена" else "Сервер не принял жалобу")
+            } catch (e: Throwable) {
+                fail(e, "Не удалось отправить жалобу")
+            }
+        }
+    }
+
+    /** «Скачать»: фото или видео открытой истории — в галерею (телефон) или «Загрузки» (компьютер). */
+    fun download() {
+        val story = _state.value.viewer?.story ?: return
+        if (!story.canDownload || _state.value.busy) return
+        _state.value = _state.value.copy(busy = true)
+        viewModelScope.launch {
+            try {
+                val ok = repository.download(story)
+                _state.value = _state.value.copy(message = if (ok) "История сохранена" else "Скачивание недоступно")
+            } catch (e: Throwable) {
+                fail(e, "Не удалось скачать историю")
+            } finally {
+                _state.value = _state.value.copy(busy = false)
+            }
+        }
+    }
+
+    /** Обновлённая история (лайк) — в просмотр и кэш владельца. */
+    private fun replaceStory(story: Story) {
+        val viewer = _state.value.viewer ?: return
+        val stories = viewer.stories.map { if (it.id == story.id) story else it }
+        cache[story.owner.id] = stories
+        _state.value = _state.value.copy(viewer = viewer.copy(stories = stories))
     }
 
     /** Публикует историю. Пока идёт загрузка, [StoriesUiState.publishProgress] не `null`. */

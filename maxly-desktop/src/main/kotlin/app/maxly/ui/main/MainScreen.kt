@@ -421,12 +421,16 @@ fun MainScreen(
             StoryViewer(
                 viewer,
                 userAgent = container.videoSourceUserAgent(),
-                onNext = storiesModel::next,
-                onPrevious = storiesModel::previous,
-                onNextOwner = storiesModel::nextOwner,
-                onPreviousOwner = storiesModel::previousOwner,
-                onClose = storiesModel::close,
-                onDelete = storiesModel::deleteCurrent,
+                actions = app.maxly.presentation.stories.StoryViewerActions.of(storiesModel) { ring ->
+                    // Профиль человека открывается в его диалоге, группы и канала — в самом чате.
+                    val me = container.stories.currentUserId?.toLongOrNull()
+                    val owner = ring.owner.id.toLongOrNull()
+                    val chat = if (ring.owner.type == app.maxly.domain.StoryOwner.Type.USER && me != null && owner != null) (me xor owner).toString() else ring.owner.id
+                    openChat(chat, ring.name)
+                    profileFor = ring.owner.id
+                },
+                busy = stories.busy,
+                reportReasons = stories.reportReasons,
             )
         }
         listBotApp?.let { request ->

@@ -133,8 +133,8 @@ class AppContainer {
     val stickers: StickerRepository = CoreStickerRepository(client)
     val comments = CoreCommentsRepository(client)
 
-    val stories: app.maxly.data.StoriesRepository = app.maxly.data.CoreStoriesRepository(client)
     val mediaSaver = DownloadsSaver()
+    val stories: app.maxly.data.StoriesRepository = app.maxly.data.CoreStoriesRepository(client, files, mediaSaver)
 
     private val localMarks = object : DraftStore, ChatLocalMarks {
         private fun account() = client.store.state.value.me ?: 0L

@@ -1,6 +1,8 @@
 package app.maxly.data
 
+import app.maxly.domain.MaxlyError
 import app.maxly.domain.OutgoingStory
+import app.maxly.domain.StoryFlags
 import app.maxly.domain.Story
 import app.maxly.domain.StoryAudience
 import app.maxly.domain.StoryMedia
@@ -48,9 +50,32 @@ interface StoriesRepository {
      * `null` — первая страница.
      */
     suspend fun ownArchive(marker: Long?): app.maxly.domain.StoryArchive = app.maxly.domain.StoryArchive(emptyList(), null)
+
+    /** Лайк истории [emoji] или снять его (`null`). `false` — сервер не принял. */
+    suspend fun react(story: Story, emoji: String?): Boolean = false
+
+    /** Ответ на историю: сообщение в чат с автором со ссылкой на историю. */
+    suspend fun reply(story: Story, text: String) {}
+
+    /** Скрыть истории автора у себя (или показать снова). */
+    suspend fun setHidden(owner: StoryOwner, hidden: Boolean) {}
+
+    /** Причины жалобы на историю. */
+    suspend fun reportReasons(): List<ComplaintChoice> = emptyList()
+
+    /** Пожаловаться на историю. `false` — сервер не принял. */
+    suspend fun report(story: Story, reasonId: Int): Boolean = false
+
+    /** Сохранить фото или видео истории в галерею (телефон) или «Загрузки» (компьютер). */
+    suspend fun download(story: Story): Boolean = false
 }
 
-class CoreStoriesRepository(private val client: MaxClient) : StoriesRepository {
+class CoreStoriesRepository(
+    private val client: MaxClient,
+    /** Кэш файлов и папка сохранения для «Скачать»; без них скачивание недоступно. */
+    private val files: app.maxly.presentation.chat.MessageFiles? = null,
+    private val saver: app.maxly.presentation.chat.MediaSaver? = null,
+) : StoriesRepository {
     override val currentUserId: String? get() = client.store.state.value.me?.toString()
 
     override val updates: Flow<StoryRing> = client.events.all
@@ -111,6 +136,57 @@ class CoreStoriesRepository(private val client: MaxClient) : StoriesRepository {
         return app.maxly.domain.StoryArchive(page.stories.map(::story), page.marker)
     }
 
+    override suspend fun react(story: Story, emoji: String?): Boolean {
+        val id = story.id.toLongOrNull() ?: return false
+        return MaxCoreGateway.call { client.api.stories.react(coreOwner(story.owner), id, emoji) }
+    }
+
+    override suspend fun reply(story: Story, text: String) {
+        val id = story.id.toLongOrNull() ?: return
+        val owner = coreOwner(story.owner)
+        // С человеком — его диалог (`свой id xor id автора`), у группы и канала — сам чат.
+        val chatId = if (owner.type == CoreOwner.Type.USER) {
+            val me = client.store.state.value.me ?: throw MaxlyError.Rejected("Нет входа в аккаунт")
+            me xor owner.ownerId
+        } else {
+            owner.ownerId
+        }
+        val sent = MaxCoreGateway.call { client.api.messages.sendStoryReply(chatId, text.trim(), owner, id, story.expiresAtMs) }
+        client.store.putSentMessage(chatId, sent)
+    }
+
+    override suspend fun setHidden(owner: StoryOwner, hidden: Boolean) {
+        val core = coreOwner(owner)
+        MaxCoreGateway.call {
+            if (core.type == CoreOwner.Type.USER) client.api.users.setStoriesHidden(core.ownerId, hidden) else client.api.chats.setStoriesHidden(core.ownerId, hidden)
+        }
+    }
+
+    override suspend fun reportReasons(): List<ComplaintChoice> = MaxCoreGateway.readNow {
+        client.api.complaints.reasons()[com.maxly.core.api.ComplaintsApi.STORY].orEmpty().map { ComplaintChoice(it.reasonId, it.reasonTitle) }
+    }
+
+    override suspend fun report(story: Story, reasonId: Int): Boolean {
+        val id = story.id.toLongOrNull() ?: return false
+        val owner = story.owner.id.toLongOrNull() ?: return false
+        return MaxCoreGateway.call { client.api.complaints.send(reasonId, com.maxly.core.api.ComplaintsApi.STORY, listOf(id), owner) }
+    }
+
+    override suspend fun download(story: Story): Boolean {
+        val files = files ?: return false
+        val saver = saver ?: return false
+        val media = story.media ?: return false
+        val ext = if (media.isVideo) "mp4" else "jpg"
+        val path = files.download(media.url, "story-${story.id}", "story-${story.id}.$ext") {}
+        val name = app.maxly.presentation.chat.SaveNaming.name(story.timeMs, 0, if (media.isVideo) "mp4" else app.maxly.presentation.chat.SaveNaming.imageExtension(header(path)))
+        saver.save(path, name, if (media.isVideo) app.maxly.presentation.chat.SavedKind.VIDEO else app.maxly.presentation.chat.SavedKind.IMAGE)
+        return true
+    }
+
+    private fun header(path: String): ByteArray = runCatching {
+        java.io.File(path).inputStream().use { input -> ByteArray(16).let { buf -> buf.copyOf(maxOf(0, input.read(buf))) } }
+    }.getOrDefault(ByteArray(0))
+
     /** Подгружает неизвестных владельцев-людей. Без имён кольца всё равно показываются. */
     private suspend fun resolve(previews: List<StoryPreview>) {
         val known = client.store.state.value.users
@@ -157,8 +233,11 @@ class CoreStoriesRepository(private val client: MaxClient) : StoriesRepository {
                 owner = owner(core.owner),
                 timeMs = core.time,
                 expiresAtMs = core.expiration,
-                audience = if (core.settings == StoryAudience.CONTACTS.code) StoryAudience.CONTACTS else StoryAudience.EVERYONE,
+                audience = if (core.settings and StoryFlags.VISIBLE_FOR_CONTACTS != 0) StoryAudience.CONTACTS else StoryAudience.EVERYONE,
                 media = media?.url?.let { StoryMedia(media.isVideo, it, media.thumbnailUrl, media.width, media.height, media.durationMs) },
+                reaction = core.reaction,
+                settings = core.settings,
+                viewsCount = core.viewsCount,
             )
         }
     }
