@@ -186,9 +186,13 @@ private struct TabContextMenu: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if let items {
+            #if os(iOS)
             content
                 .contentShape(.contextMenuPreview, Capsule())
                 .contextMenu { items }
+            #else
+            content.contextMenu { items }
+            #endif
         } else {
             content
         }
