@@ -85,6 +85,7 @@ private fun Root(container: AppContainer) {
                     throttled = container.session.throttled,
                     folderEditor = container.folders,
                     account = container.account,
+                    hidesAllChats = container.folderDisplay.hidesAllChats,
                 )
             }
             val account by container.account.account.collectAsStateWithLifecycle(initialValue = null)

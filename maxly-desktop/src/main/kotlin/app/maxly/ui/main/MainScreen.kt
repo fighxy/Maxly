@@ -749,7 +749,7 @@ private fun SettingsPane(
         }
         SettingsPage.Storage -> StorageScreen(viewModel { StorageViewModel(container.storage) }, onBack)
         SettingsPage.Folders -> FoldersScreen(
-            viewModel { FoldersViewModel(container.folders) },
+            viewModel { FoldersViewModel(container.folders, container.folderDisplay) },
             count = chatList::folderCount,
             candidates = chatList::folderCandidates,
             onBack = onBack,

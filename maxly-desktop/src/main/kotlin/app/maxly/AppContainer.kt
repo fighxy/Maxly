@@ -125,6 +125,9 @@ class AppContainer {
     /** «Показывать мой онлайн» в своём профиле: только на этом устройстве. */
     val ownPresence = app.maxly.data.OwnPresenceSettings(preferenceStore)
 
+    /** Вкладка «Все» в полосе папок: можно скрыть, только на этом устройстве. */
+    val folderDisplay = app.maxly.data.FolderDisplaySettings(preferenceStore)
+
     /** Свёрнуто ли окно, в фокусе ли и был ли в нём ввод. Пишет Main.kt. */
     val window = app.maxly.platform.WindowActivity()
 

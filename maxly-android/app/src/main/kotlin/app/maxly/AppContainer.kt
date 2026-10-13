@@ -161,6 +161,9 @@ class AppContainer(context: Context) {
     /** «Показывать мой онлайн» в своём профиле: только на этом устройстве. */
     val ownPresence = app.maxly.data.OwnPresenceSettings(preferenceStore)
 
+    /** Вкладка «Все» в полосе папок: можно скрыть, только на этом устройстве. */
+    val folderDisplay = app.maxly.data.FolderDisplaySettings(preferenceStore)
+
     val stickers: StickerRepository = CoreStickerRepository(client)
 
     val comments: app.maxly.data.CommentsRepository = app.maxly.data.CoreCommentsRepository(client)

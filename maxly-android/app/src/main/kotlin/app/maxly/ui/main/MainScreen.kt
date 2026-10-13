@@ -399,7 +399,7 @@ fun MainScreen(
             composable("storage") { StorageScreen(viewModel { StorageViewModel(container.storage) }, onBack = { nav.popBackStack() }) }
             composable("folders") {
                 FoldersScreen(
-                    viewModel { FoldersViewModel(container.folders) },
+                    viewModel { FoldersViewModel(container.folders, container.folderDisplay) },
                     count = chatList::folderCount,
                     candidates = chatList::folderCandidates,
                     onBack = { nav.popBackStack() },

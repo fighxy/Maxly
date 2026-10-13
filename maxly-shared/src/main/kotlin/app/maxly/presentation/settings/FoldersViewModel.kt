@@ -14,7 +14,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** «Папки с чатами»: серверные папки, их чаты, порядок и удаление. «Все» не редактируется. */
-class FoldersViewModel(private val repository: FolderRepository) : ViewModel() {
+class FoldersViewModel(
+    private val repository: FolderRepository,
+    /** Показывать ли вкладку «Все»; `null` — переключателя нет. */
+    private val display: app.maxly.data.FolderDisplaySettings? = null,
+) : ViewModel() {
 
     data class State(
         /** «Все» первой, остальные в порядке сервера; `null`, пока не загружены. */
@@ -51,6 +55,13 @@ class FoldersViewModel(private val repository: FolderRepository) : ViewModel() {
                 }
             }
         }
+    }
+
+    /** Вкладка «Все» скрыта в полосе папок; `null` — переключателя нет. */
+    val hidesAllChats: StateFlow<Boolean>? = display?.hidesAllChats
+
+    fun setShowsAllChats(shown: Boolean) {
+        display?.setHidesAllChats(!shown)
     }
 
     fun dismissError() = _state.update { it.copy(error = null) }

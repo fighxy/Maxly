@@ -279,6 +279,26 @@ struct ChatListFolderTests {
         #expect(await eventually { model.selectedFolderId == ChatFolder.allId })
     }
 
+    @Test("Скрытая «Все»: открывается первая своя папка, без своих папок «Все» остаётся")
+    func hiddenAllChats() async {
+        let (model, repository) = makeFeatureList()
+        let display = InMemoryFolderDisplayStore(hidesAllChats: true)
+        model.folderDisplay = display
+        repository.emit(sample())
+        #expect(await eventually { model.items.count == 5 })
+        #expect(model.folders.map(\.id) == [ChatFolder.allId])
+        #expect(!model.showsFolders)
+        #expect(!model.canHideAllChats)
+        repository.emit(folders: [ChatFolder(id: "work", title: "Работа", filter: .chats(["g", "ch"]))])
+        #expect(await eventually { model.selectedFolderId == "work" })
+        #expect(model.folders.map(\.title) == ["Работа"])
+        #expect(model.showsFolders)
+        #expect(model.items.map(\.id) == ["g", "ch"])
+        model.setShowsAllChats(true)
+        #expect(!display.hidesAllChats)
+        #expect(model.folders.map(\.title) == ["Все", "Работа"])
+    }
+
     @Test("Пустая папка отличается от пустого списка")
     func emptyFolder() async {
         let (model, repository) = makeFeatureList()

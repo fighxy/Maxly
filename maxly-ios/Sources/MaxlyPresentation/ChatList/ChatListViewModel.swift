@@ -249,7 +249,32 @@ public final class ChatListViewModel {
     }
 
     /// Полоса папок видна, когда кроме «Все» есть хотя бы одна папка.
-    public var showsFolders: Bool { folders.count > 1 }
+    /// Со скрытой «Все» видна и одна своя папка: иначе не понять, почему в списке не все чаты.
+    public var showsFolders: Bool {
+        folders.count > 1 || (folders.count == 1 && folders[0].id != ChatFolder.allId)
+    }
+
+    /// Вкладка «Все» скрыта в настройках папок (только на этом устройстве).
+    public private(set) var hidesAllChats = false
+
+    /// Где хранится, скрыта ли «Все». Без хранилища вкладка всегда видна.
+    @ObservationIgnored public var folderDisplay: (any FolderDisplayStore)? {
+        didSet {
+            hidesAllChats = folderDisplay?.hidesAllChats ?? false
+            rebuildFolders()
+        }
+    }
+
+    /// Скрыть «Все» есть смысл, только когда есть другие вкладки.
+    public var canHideAllChats: Bool { folderDefinitions().count > 1 }
+
+    /// Переключатель «Показывать «Все»» на экране папок.
+    public func setShowsAllChats(_ shown: Bool) {
+        guard hidesAllChats == shown else { return }
+        hidesAllChats = !shown
+        folderDisplay?.hidesAllChats = !shown
+        rebuildFolders()
+    }
 
     public var pinnedCount: Int { chats.filter { $0.isPinned && !$0.isArchived }.count }
 
@@ -871,8 +896,14 @@ public final class ChatListViewModel {
         return [ChatFolder.all] + extra
     }
 
-    private func rebuildFolders() {
+    /// Вкладки над списком: без «Все», если она скрыта и есть другие.
+    private func visibleFolderDefinitions() -> [ChatFolder] {
         let definitions = folderDefinitions()
+        return hidesAllChats && definitions.count > 1 ? Array(definitions.dropFirst()) : definitions
+    }
+
+    private func rebuildFolders() {
+        let definitions = visibleFolderDefinitions()
         folders = definitions.map { folder in
             ChatFolderTab(
                 id: folder.id,
@@ -881,7 +912,9 @@ public final class ChatListViewModel {
             )
         }
         if !folders.contains(where: { $0.id == selectedFolderId }) {
-            selectedFolderId = ChatFolder.allId
+            // «Все» скрыта — открывается первая своя папка, и строки берутся из неё.
+            selectedFolderId = folders.first?.id ?? ChatFolder.allId
+            rebuildItems()
         }
     }
 

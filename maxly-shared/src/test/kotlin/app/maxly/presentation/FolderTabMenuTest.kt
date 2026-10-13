@@ -127,6 +127,30 @@ class FolderTabMenuTest {
     }
 
     @Test
+    fun hiddenAllOpensFirstOwnFolder() {
+        val hidden = MutableStateFlow(true)
+        val model = ChatListViewModel(repo, MutableStateFlow(ConnectionState.ONLINE), formatter, now = { now }, local = FakeMarks(), folderEditor = folders, hidesAllChats = hidden)
+        setUp()
+        assertEquals(listOf("f1", "f2"), model.state.value.folders.map { it.id })
+        assertEquals("f1", model.state.value.selectedFolderId)
+        assertEquals(listOf("1", "2"), model.state.value.items.map { it.id })
+        hidden.value = false
+        assertEquals(listOf("all", "f1", "f2"), model.state.value.folders.map { it.id })
+    }
+
+    @Test
+    fun hiddenAllStaysWithoutOwnFoldersAndOneFolderStillShowsStrip() {
+        val model = ChatListViewModel(repo, MutableStateFlow(ConnectionState.ONLINE), formatter, now = { now }, local = FakeMarks(), folderEditor = folders, hidesAllChats = MutableStateFlow(true))
+        repo.chats.value = listOf(chat("1"), chat("3"))
+        assertEquals(listOf("all"), model.state.value.folders.map { it.id })
+        assertEquals(false, model.state.value.showsFolders)
+        repo.folders.value = listOf(all, home)
+        assertEquals(listOf("f2"), model.state.value.folders.map { it.id })
+        assertTrue(model.state.value.showsFolders)
+        assertEquals(listOf("3"), model.state.value.items.map { it.id })
+    }
+
+    @Test
     fun saveRenamesOnlyOnChangeAndDeleteReturnsToAll() {
         setUp()
         vm.saveFolder("f1", " Работа ", listOf("2", "1"))

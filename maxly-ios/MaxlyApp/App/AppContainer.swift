@@ -444,6 +444,7 @@ final class AppContainer {
         model.currentUserId = currentUserId
         model.folderEditor = folderRepository
         model.profileActions = profileActions
+        model.folderDisplay = UserDefaultsFolderDisplayStore()
         listModel = model
         return model
     }

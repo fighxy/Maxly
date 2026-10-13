@@ -91,6 +91,7 @@ fun FoldersScreen(
     onBack: () -> Unit,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
+    val hidesAll = model.hidesAllChats?.collectAsStateWithLifecycle()?.value
     var renaming by remember { mutableStateOf<ServerFolder?>(null) }
     var deleting by remember { mutableStateOf<ServerFolder?>(null) }
     var picking by remember { mutableStateOf<ServerFolder?>(null) }
@@ -130,6 +131,30 @@ fun FoldersScreen(
                         leadingContent = { Icon(Icons.Outlined.Folder, null) },
                         trailingContent = { Text("${count(all)}", color = MaterialTheme.colorScheme.onSurfaceVariant) },
                     )
+                    if (hidesAll != null) {
+                        // Без своих папок скрывать нечего: список и так показывает все чаты.
+                        val canHide = state.editable.isNotEmpty()
+                        ListItem(
+                            headlineContent = { Text("Показывать «Все»") },
+                            supportingContent = {
+                                Text(
+                                    when {
+                                        !canHide -> "Без своих папок вкладка «Все» видна всегда"
+                                        hidesAll -> "Список открывается первой своей папкой"
+                                        else -> "Вкладка со всеми чатами первой над списком"
+                                    },
+                                )
+                            },
+                            trailingContent = {
+                                androidx.compose.material3.Switch(
+                                    checked = !hidesAll || !canHide,
+                                    onCheckedChange = model::setShowsAllChats,
+                                    enabled = canHide,
+                                )
+                            },
+                            modifier = Modifier.clickable(enabled = canHide) { model.setShowsAllChats(hidesAll) },
+                        )
+                    }
                     HorizontalDivider()
                 }
             }

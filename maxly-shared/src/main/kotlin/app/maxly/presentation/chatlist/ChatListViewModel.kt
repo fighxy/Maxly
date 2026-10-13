@@ -88,8 +88,11 @@ data class ChatListUiState(
     /** Открыт режим перестановки закреплённых: список показывает только их, с ручками. */
     val isReorderingPins: Boolean = false,
 ) {
-    /** Полоса папок видна, только если у пользователя есть папки кроме «Все». */
-    val showsFolders: Boolean get() = folders.size > 1
+    /**
+     * Полоса папок видна, только если у пользователя есть папки кроме «Все». Со скрытой «Все»
+     * видна и одна своя папка: иначе не понять, почему в списке не все чаты.
+     */
+    val showsFolders: Boolean get() = folders.size > 1 || folders.singleOrNull()?.let { it.id != ChatFolder.ALL_ID } == true
 }
 
 /** Список чатов: живой поток из репозитория, папки, поиск, закреплённые и соединение. */
@@ -113,6 +116,8 @@ class ChatListViewModel(
     private val folderEditor: app.maxly.data.FolderRepository? = null,
     /** «Заблокировать» из меню строки; без него пункта нет. */
     private val account: app.maxly.data.AccountRepository? = null,
+    /** Вкладка «Все» скрыта в настройках папок ([app.maxly.data.FolderDisplaySettings]). */
+    hidesAllChats: Flow<Boolean> = flowOf(false),
 ) : ViewModel() {
 
     private var serverSearch: Job? = null
@@ -122,6 +127,7 @@ class ChatListViewModel(
     private var hasSnapshot = false
     private var hasRefreshed = false
     private var serverFolders: List<ChatFolder> = emptyList()
+    private var allChatsHidden = false
     /** Папки пользователя как с сервера: их состав меняет «Добавить в папку». */
     private var rawFolders: List<app.maxly.domain.ServerFolder> = emptyList()
     private var typing: Map<String, List<app.maxly.domain.Typist>> = emptyMap()
@@ -171,7 +177,14 @@ class ChatListViewModel(
         viewModelScope.launch {
             repository.folders.collect { list ->
                 rawFolders = list
-                serverFolders = list.map { it.chatFolder }
+                // «Все» — своя вкладка модели, не одна из папок сервера.
+                serverFolders = list.filterNot { it.isAllChats }.map { it.chatFolder }
+                rebuild()
+            }
+        }
+        viewModelScope.launch {
+            hidesAllChats.collect {
+                allChatsHidden = it
                 rebuild()
             }
         }
@@ -749,11 +762,12 @@ class ChatListViewModel(
     private fun rebuild() {
         val current = _state.value
         val sorted = ordered()
-        val definitions = listOf(ChatFolder.all) + serverFolders
+        // «Все» скрыта в настройках — первой открывается первая своя папка. Без своих папок «Все» есть всегда.
+        val definitions = if (allChatsHidden && serverFolders.isNotEmpty()) serverFolders else listOf(ChatFolder.all) + serverFolders
         val tabs = definitions.map { folder ->
             ChatFolderTab(folder.id, folder.title, sorted.count { folder.contains(it) && it.isUnread && !it.isMuted })
         }
-        val selected = if (tabs.any { it.id == current.selectedFolderId }) current.selectedFolderId else ChatFolder.ALL_ID
+        val selected = if (tabs.any { it.id == current.selectedFolderId }) current.selectedFolderId else tabs.first().id
         val folder = definitions.firstOrNull { it.id == selected } ?: ChatFolder.all
         val canReorderPins = selected == ChatFolder.ALL_ID && !current.isSearchActive && pinnedIds(sorted).size > 1
         val query = current.searchQuery.trim().lowercase()

@@ -32,6 +32,7 @@ struct FoldersView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
+                        allChatsToggle
                     }
                 }
                 Section {
@@ -124,6 +125,23 @@ struct FoldersView: View {
         }
         .environment(\.editMode, $editMode)
         .onAppear { if startsEditing { editMode = .active } }
+    }
+
+    /// «Показывать «Все»»: без своих папок скрывать нечего, переключатель неактивен.
+    private var allChatsToggle: some View {
+        let canHide = list.canHideAllChats
+        let shown = !list.hidesAllChats || !canHide
+        return Toggle(isOn: Binding(get: { shown }, set: { list.setShowsAllChats($0) })) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Показывать «Все»")
+                Text(!canHide ? "Без своих папок вкладка «Все» видна всегда"
+                     : shown ? "Вкладка со всеми чатами первой над списком"
+                     : "Список открывается первой своей папкой")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .disabled(!canHide)
     }
 
     private func row(_ folder: ServerFolder) -> some View {
