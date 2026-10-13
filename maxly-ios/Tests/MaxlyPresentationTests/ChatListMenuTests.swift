@@ -122,7 +122,7 @@ struct ChatListMenuTests {
         let folders = MenuFolders()
         let (model, repository) = makeModel(folders: folders, actions: Blocker())
         repository.emit([chat("1", at: 1), chat("2", at: 2)])
-        #expect(await eventually { !model.folderChoices(chatId: "1").isEmpty })
+        #expect(await eventually { !(model.folderChoices(chatId: "1") ?? []).isEmpty })
         #expect(model.folderChoices(chatId: "1") == [ChatListMenu.FolderChoice(id: "w", title: "Работа", contains: false)])
         await model.toggleFolder(chatId: "1", folderId: "w")
         #expect(model.notice == "Чат добавлен в «Работа»")
