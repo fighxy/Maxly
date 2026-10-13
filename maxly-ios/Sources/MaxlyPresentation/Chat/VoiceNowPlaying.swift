@@ -53,7 +53,7 @@ public final class VoiceNowPlaying {
         }
     }
 
-    public static let speeds: [Float] = [1, 1.5, 2]
+    public nonisolated static let speeds: [Float] = [1, 1.5, 2]
 
     public private(set) var track: Track?
     public private(set) var speed: Float = 1
@@ -97,11 +97,11 @@ public final class VoiceNowPlaying {
         applySpeed?(speed)
     }
 
-    public static func next(_ speed: Float) -> Float {
+    public nonisolated static func next(_ speed: Float) -> Float {
         speeds.first { $0 > speed + 0.01 } ?? speeds[0]
     }
 
-    public static func label(_ speed: Float) -> String {
+    public nonisolated static func label(_ speed: Float) -> String {
         speed >= 1.99 ? "2x" : speed >= 1.49 ? "1.5x" : "1x"
     }
 }
