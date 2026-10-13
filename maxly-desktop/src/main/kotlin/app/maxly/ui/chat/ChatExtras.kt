@@ -262,7 +262,7 @@ fun EraseChatDialog(
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (kind == ChatErase.CLEAR) "Очистить историю?" else "Удалить чат «$title»?") },
+        title = { Text(if (kind == ChatErase.CLEAR) "Стереть переписку?" else "Удалить чат «$title»?") },
         text = {
             Text(
                 if (kind == ChatErase.CLEAR) {

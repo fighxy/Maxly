@@ -282,6 +282,16 @@ class StoriesViewModelTest {
     }
 
     @Test
+    fun hideOwnerFromChatMenuDropsRing() {
+        repo.feed = listOf(ring("4", 1, 0, 200), ring("3", 1, 0, 100))
+        val model = StoriesViewModel(repo)
+        model.hideOwner(app.maxly.domain.StoryOwner("4", app.maxly.domain.StoryOwner.Type.USER), "Пётр")
+        assertEquals(listOf("4"), repo.hidden)
+        assertEquals(listOf("3"), model.state.value.rings.map { it.owner.id })
+        assertEquals("Истории Пётр скрыты", model.state.value.message)
+    }
+
+    @Test
     fun authorSwitchesOffLikesAndReplies() {
         repo.feed = listOf(ring("4", 1, 0, 200))
         repo.owners["4"] = OwnerStories(

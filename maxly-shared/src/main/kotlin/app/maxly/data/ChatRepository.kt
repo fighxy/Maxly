@@ -28,6 +28,9 @@ interface ChatRepository : ChatMembersSource {
     /** Выключить уведомления чата насовсем или включить обратно. */
     suspend fun setMuted(chatId: String, muted: Boolean) {}
 
+    /** Уведомления выключены до [untilMs] (мс) или насовсем (`-1`); `0` — включены. */
+    suspend fun setMuteUntil(chatId: String, untilMs: Long) = setMuted(chatId, untilMs != 0L)
+
     /** Прочитать всё в чате: отметка до последнего сообщения. */
     suspend fun markAsRead(chatId: String) {}
 

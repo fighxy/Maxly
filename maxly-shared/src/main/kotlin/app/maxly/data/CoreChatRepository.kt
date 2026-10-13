@@ -111,6 +111,11 @@ class CoreChatRepository(
         MaxCoreGateway.call { client.setChatMuted(id, muted) }
     }
 
+    override suspend fun setMuteUntil(chatId: String, untilMs: Long) {
+        val id = chatId.toLongOrNull() ?: return
+        MaxCoreGateway.call { client.setChatMuteUntil(id, untilMs) }
+    }
+
     override suspend fun searchPublic(query: String): List<ChatSearchResult> {
         val term = query.trim()
         if (term.isEmpty()) return emptyList()

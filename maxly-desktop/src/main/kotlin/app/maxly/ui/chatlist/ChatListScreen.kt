@@ -313,6 +313,10 @@ fun ChatListScreen(
                 ChatRowActions(
                     viewModel::togglePin, viewModel::toggleRead, viewModel::toggleMute, viewModel::deleteChat, viewModel::clearHistory,
                     reorderPins = viewModel::startPinReorder,
+                    folders = viewModel::folderChoices,
+                    toggleFolder = viewModel::toggleFolder,
+                    muteFor = viewModel::muteFor,
+                    block = if (viewModel.canBlock) viewModel::block else null,
                 )
             }
             if (state.isReorderingPins) {
@@ -778,6 +782,12 @@ class ChatRowActions(
     val clearHistory: (String, Boolean) -> Unit = { _, _ -> },
     /** Открыть режим перестановки закреплённых. */
     val reorderPins: () -> Unit = {},
+    /** Папки для «Добавить в папку» с отметкой, где чат уже есть; пусто — пункта нет. */
+    val folders: (String) -> List<app.maxly.presentation.chatlist.ChatListMenu.FolderChoice> = { emptyList() },
+    val toggleFolder: (chatId: String, folderId: String) -> Unit = { _, _ -> },
+    val muteFor: (String, app.maxly.presentation.chatlist.ChatListMenu.MuteFor) -> Unit = { _, _ -> },
+    /** «Заблокировать» собеседника; `null` — пункта нет. */
+    val block: ((String) -> Unit)? = null,
 )
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -880,56 +890,14 @@ fun ChatRow(
                 }
             }
         }
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(
-                text = { Text(stringResource(if (item.isPinned) R.string.chats_unpin else R.string.chats_pin)) },
-                leadingIcon = { Icon(Icons.Filled.PushPin, null) },
-                onClick = {
-                    menu = false
-                    actions.pin(item.id)
-                },
-            )
-            if (canReorderPins) {
-                DropdownMenuItem(
-                    text = { Text("Изменить порядок") },
-                    leadingIcon = { Icon(Icons.Filled.SwapVert, null) },
-                    onClick = {
-                        menu = false
-                        actions.reorderPins()
-                    },
-                )
-            }
-            DropdownMenuItem(
-                text = { Text(if (item.isUnread) "Прочитать" else "Пометить непрочитанным") },
-                leadingIcon = { Icon(if (item.isUnread) Icons.Outlined.MarkChatRead else Icons.Outlined.MarkChatUnread, null) },
-                onClick = {
-                    menu = false
-                    actions.read(item.id)
-                },
-            )
-            DropdownMenuItem(
-                text = { Text(if (item.isMuted) "Включить уведомления" else "Выключить уведомления") },
-                leadingIcon = { Icon(if (item.isMuted) Icons.Outlined.NotificationsActive else Icons.Outlined.NotificationsOff, null) },
-                onClick = {
-                    menu = false
-                    actions.mute(item.id)
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("Очистить историю") },
-                onClick = {
-                    menu = false
-                    erase = app.maxly.ui.chat.ChatErase.CLEAR
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("Удалить чат") },
-                onClick = {
-                    menu = false
-                    erase = app.maxly.ui.chat.ChatErase.DELETE
-                },
-            )
-        }
+        ChatRowMenu(
+            item = item,
+            expanded = menu,
+            onDismiss = { menu = false },
+            actions = actions,
+            canReorderPins = canReorderPins,
+            onErase = { erase = it },
+        )
         erase?.let { kind ->
             val hidden = privacy != app.maxly.domain.PrivateModeDisplay.VISIBLE
             app.maxly.ui.chat.EraseChatDialog(

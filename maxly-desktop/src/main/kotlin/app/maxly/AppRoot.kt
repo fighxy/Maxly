@@ -83,6 +83,8 @@ private fun Root(container: AppContainer) {
                     recents = container.recentSearches,
                     serverDrafts = container.draftSync.serverDrafts,
                     throttled = container.session.throttled,
+                    folderEditor = container.folders,
+                    account = container.account,
                 )
             }
             val account by container.account.account.collectAsStateWithLifecycle(initialValue = null)

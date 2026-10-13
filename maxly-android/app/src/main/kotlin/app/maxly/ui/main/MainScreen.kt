@@ -265,7 +265,7 @@ fun MainScreen(
     Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
         androidx.compose.runtime.CompositionLocalProvider(
             app.maxly.ui.components.LocalPrivateMode provides privateDisplay,
-            LocalStoryRings provides StoryRings(stories, storiesModel::open, storiesModel::loadRing, storiesModel::loadOwner),
+            LocalStoryRings provides StoryRings(stories, storiesModel::open, storiesModel::loadRing, storiesModel::loadOwner, storiesModel::hideOwner),
         ) {
         ChatListDetail(
             split = chatSplit,

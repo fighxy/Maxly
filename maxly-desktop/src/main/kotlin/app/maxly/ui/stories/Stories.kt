@@ -108,6 +108,8 @@ class StoryRings(
     val load: (String?) -> Unit = {},
     /** Спросить кольцо человека, группы или канала. */
     val loadOwner: (String?, app.maxly.domain.StoryOwner.Type) -> Unit = { id, _ -> load(id) },
+    /** «Скрыть истории автора» из меню чата: владелец и имя для сообщения. */
+    val hide: (app.maxly.domain.StoryOwner, String) -> Unit = { _, _ -> },
 ) {
     fun ringOf(ownerId: String?): StoryRing? = state.ringOf(ownerId)
     fun ringFor(ownerId: String?, type: app.maxly.domain.StoryOwner.Type): StoryRing? = state.ringFor(ownerId, type)

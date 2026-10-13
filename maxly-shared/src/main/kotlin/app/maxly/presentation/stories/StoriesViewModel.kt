@@ -282,7 +282,12 @@ class StoriesViewModel(
     fun hideAuthor() {
         val viewer = _state.value.viewer ?: return
         if (viewer.isOwn) return
-        val owner = viewer.ring.owner
+        hideOwner(viewer.ring.owner, viewer.ring.name)
+    }
+
+    /** «Скрыть истории автора» из меню чата: кольцо [owner] уходит из ленты и с аватара. */
+    fun hideOwner(owner: StoryOwner, name: String = "") {
+        if (_state.value.own?.owner?.id == owner.id) return
         viewModelScope.launch {
             try {
                 repository.setHidden(owner, true)
@@ -305,7 +310,7 @@ class StoriesViewModel(
                 }
             }
             publish()
-            _state.value = _state.value.copy(message = "Истории ${viewer.ring.name.ifBlank { "автора" }} скрыты")
+            _state.value = _state.value.copy(message = "Истории ${name.ifBlank { "автора" }} скрыты")
         }
     }
 

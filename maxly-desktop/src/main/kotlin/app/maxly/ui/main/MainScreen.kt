@@ -251,7 +251,7 @@ fun MainScreen(
     }
     CompositionLocalProvider(
         LocalPrivateMode provides privateDisplay,
-        LocalStoryRings provides StoryRings(stories, storiesModel::open, storiesModel::loadRing, storiesModel::loadOwner),
+        LocalStoryRings provides StoryRings(stories, storiesModel::open, storiesModel::loadRing, storiesModel::loadOwner, storiesModel::hideOwner),
         LocalSendKey provides sendKey,
     ) {
         Box(Modifier.fillMaxSize()) {

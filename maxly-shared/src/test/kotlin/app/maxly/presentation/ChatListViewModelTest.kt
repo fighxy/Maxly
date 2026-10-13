@@ -33,7 +33,7 @@ import org.junit.Rule
 import org.junit.Test
 import java.time.ZoneOffset
 
-class FakeChats : ChatRepository {
+open class FakeChats : ChatRepository {
     override val chats = MutableStateFlow<List<Chat>?>(null)
     override val folders = MutableStateFlow<List<ServerFolder>>(emptyList())
     override val typing = MutableStateFlow<Map<String, List<app.maxly.domain.Typist>>>(emptyMap())

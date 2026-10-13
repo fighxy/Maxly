@@ -109,6 +109,10 @@ class ChatListViewModel(
     private val serverDrafts: ServerDrafts = ServerDrafts.NONE,
     /** Временный отказ сервера во входе ([app.maxly.domain.AuthService.throttled]). */
     throttled: Flow<SessionRejection?> = flowOf(null),
+    /** Состав папок для «Добавить в папку»; без него пункта нет. */
+    private val folderEditor: app.maxly.data.FolderRepository? = null,
+    /** «Заблокировать» из меню строки; без него пункта нет. */
+    private val account: app.maxly.data.AccountRepository? = null,
 ) : ViewModel() {
 
     private var serverSearch: Job? = null
@@ -118,6 +122,8 @@ class ChatListViewModel(
     private var hasSnapshot = false
     private var hasRefreshed = false
     private var serverFolders: List<ChatFolder> = emptyList()
+    /** Папки пользователя как с сервера: их состав меняет «Добавить в папку». */
+    private var rawFolders: List<app.maxly.domain.ServerFolder> = emptyList()
     private var typing: Map<String, List<app.maxly.domain.Typist>> = emptyMap()
     private var connection = ConnectionState.CONNECTING
     private var loginNotice: LoginNotice? = null
@@ -164,6 +170,7 @@ class ChatListViewModel(
         }
         viewModelScope.launch {
             repository.folders.collect { list ->
+                rawFolders = list
                 serverFolders = list.map { it.chatFolder }
                 rebuild()
             }
@@ -492,6 +499,68 @@ class ChatListViewModel(
             }
         }
     }
+
+    /** Выключить уведомления чата на срок из меню («На 1 час» … «Навсегда»). */
+    fun muteFor(chatId: String, choice: ChatListMenu.MuteFor) {
+        if (chats.none { it.id == chatId }) return
+        val previous = pendingMutes[chatId]
+        pendingMutes[chatId] = true
+        rebuild()
+        viewModelScope.launch {
+            try {
+                repository.setMuteUntil(chatId, choice.until(now()))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                if (previous == null) pendingMutes.remove(chatId) else pendingMutes[chatId] = previous
+                _messages.value = CoreErrors.map(e).userMessage
+                rebuild()
+            }
+        }
+    }
+
+    /** Папки для подменю «Добавить в папку»: пусто — папок нет или менять их нельзя. */
+    fun folderChoices(chatId: String): List<ChatListMenu.FolderChoice> =
+        if (folderEditor == null) emptyList() else ChatListMenu.folderChoices(chatId, rawFolders)
+
+    /** Чат в папку [folderId] или из неё, если он там уже есть. */
+    fun toggleFolder(chatId: String, folderId: String) {
+        val editor = folderEditor ?: return
+        val folder = rawFolders.firstOrNull { it.id == folderId && !it.isAllChats } ?: return
+        val added = chatId !in folder.chatIds
+        viewModelScope.launch {
+            try {
+                editor.setChats(folderId, ChatListMenu.toggled(folder, chatId))
+                _messages.value = if (added) "Чат добавлен в «${folder.title}»" else "Чат убран из «${folder.title}»"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                _messages.value = CoreErrors.map(e).userMessage
+            }
+        }
+    }
+
+    /** «Заблокировать» собеседника личного чата. */
+    fun block(chatId: String) {
+        val repo = account ?: return
+        val peer = formatterPeer(chatId) ?: return
+        viewModelScope.launch {
+            try {
+                repo.block(peer)
+                _messages.value = "Пользователь заблокирован"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                _messages.value = CoreErrors.map(e).userMessage
+            }
+        }
+    }
+
+    /** В меню есть «Заблокировать»: есть кому. */
+    val canBlock: Boolean get() = account != null
+
+    private fun formatterPeer(chatId: String): String? =
+        chats.firstOrNull { it.id == chatId }?.let { chat -> formatter.item(chat, now(), showDraft = false).peerId }
 
     fun consumeMessage() {
         _messages.value = null

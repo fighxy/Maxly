@@ -130,7 +130,7 @@ private fun Root(container: AppContainer) {
     when (phase) {
         AuthPhase.Restoring -> Launch()
         is AuthPhase.SignedIn -> {
-            val chats = viewModel { ChatListViewModel(container.chats, container.session.connection, local = container.chatMarks, recents = container.recentSearches, serverDrafts = container.draftSync.serverDrafts, throttled = container.session.throttled) }
+            val chats = viewModel { ChatListViewModel(container.chats, container.session.connection, local = container.chatMarks, recents = container.recentSearches, serverDrafts = container.draftSync.serverDrafts, throttled = container.session.throttled, folderEditor = container.folders, account = container.account) }
             val account by container.account.account.collectAsStateWithLifecycle(initialValue = null)
             LaunchedEffect(container) {
                 container.callCenter.activate()
