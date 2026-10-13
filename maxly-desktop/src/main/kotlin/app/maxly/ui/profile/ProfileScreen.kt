@@ -87,23 +87,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.platform.LocalDensity
 import app.maxly.presentation.media.ImageRequests
 
-/**
- * Действия чата, из которого открыт профиль. Раньше они были кнопками «Поиск» и «Ещё» в шапке
- * чата. Профиль закрывается, и действие открывается на экране чата ([app.maxly.ui.chat.ChatAction]).
- */
-class ProfileChatActions(
-    val onSearch: () -> Unit,
-    /** Участники, общие чаты и жалоба. */
-    val onTools: () -> Unit,
-    val onCall: () -> Unit,
-    val onClearHistory: () -> Unit,
-    val onDeleteChat: () -> Unit,
-    /** Выйти из группы или отписаться от канала. `null` — не участник (открыт из поиска). */
-    val onLeave: (() -> Unit)? = null,
-    /** «Подписаться» или «Вступить» у канала или группы вне списка (открыты из поиска). */
-    val onJoin: (() -> Unit)? = null,
-)
-
 /** Профиль: шапка, сведения, команды бота и общие медиа по вкладкам. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -182,30 +165,31 @@ fun ProfileScreen(
         LazyColumn(Modifier.padding(padding).fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 24.dp)) {
             item(key = "header") { Header(state) }
             item(key = "actions") {
-                val share = state.profile.link
-                val canWrite = onWrite != null && state.profile.kind in setOf(ChatProfile.Kind.USER, ChatProfile.Kind.BOT, ChatProfile.Kind.SAVED)
-                val canCall = chatActions != null && state.profile.kind == ChatProfile.Kind.USER
-                if (canWrite || share != null || chatActions != null) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        val join = chatActions?.onJoin?.takeIf { state.profile.link != null }
-                        if (join != null && state.profile.kind == ChatProfile.Kind.CHANNEL) {
-                            ActionButton("Подписаться", { Icon(Icons.Outlined.AddCircle, null) }, Modifier.weight(1f)) { join() }
-                        } else if (join != null && state.profile.kind == ChatProfile.Kind.GROUP) {
-                            ActionButton("Вступить", { Icon(Icons.Outlined.AddCircle, null) }, Modifier.weight(1f)) { join() }
-                        }
-                        if (canWrite) ActionButton("Написать", { Icon(Icons.AutoMirrored.Outlined.Chat, null) }, Modifier.weight(1f)) { onWrite?.invoke() }
-                        if (canCall) ActionButton("Звонок", { Icon(Icons.Outlined.Phone, null) }, Modifier.weight(1f)) { chatActions?.onCall?.invoke() }
-                        if (chatActions != null) ActionButton("Поиск", { Icon(Icons.Outlined.Search, null) }, Modifier.weight(1f)) { chatActions.onSearch() }
-                        if (share != null) ActionButton("Поделиться", { Icon(Icons.Outlined.Share, null) }, Modifier.weight(1f)) {
+                if (chatActions != null) {
+                    ProfileActionRow(
+                        state = state,
+                        actions = chatActions,
+                        onWrite = onWrite,
+                        onBack = onBack,
+                        onShareLink = { link ->
+                            DesktopActions.copy(link)
+                            model.notify("Ссылка скопирована")
+                        },
+                        onBlock = { if (state.blocked == true) model.toggleBlocked() else confirmingBlock = true },
+                        onSendContact = model::shareContact,
+                    )
+                } else {
+                    // Профиль участника: написать ему и поделиться ссылкой.
+                    val share = state.profile.link
+                    val canWrite = onWrite != null && state.profile.kind in setOf(ChatProfile.Kind.USER, ChatProfile.Kind.BOT, ChatProfile.Kind.SAVED)
+                    if (canWrite || share != null) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            if (canWrite) ActionButton("Написать", { Icon(Icons.AutoMirrored.Outlined.Chat, null) }, Modifier.weight(1f)) { onWrite?.invoke() }
+                            if (share != null) ActionButton("Поделиться", { Icon(Icons.Outlined.Share, null) }, Modifier.weight(1f)) {
                             DesktopActions.copy(share)
                             model.notify("Ссылка скопирована")
+                            }
                         }
-                        // Отписка от канала на виду, плиткой; выход из группы — в «Ещё».
-                        val leave = chatActions?.onLeave
-                        if (leave != null && state.profile.kind == ChatProfile.Kind.CHANNEL) {
-                            ActionButton("Отписаться", { Icon(Icons.AutoMirrored.Outlined.ExitToApp, null) }, Modifier.weight(1f)) { leave() }
-                        }
-                        if (chatActions != null) MoreChatActions(chatActions, Modifier.weight(1f), leavesGroup = state.profile.kind == ChatProfile.Kind.GROUP)
                     }
                 }
             }
@@ -268,7 +252,7 @@ fun ProfileScreen(
                     }
                 }
             }
-            state.blocked?.let { blocked ->
+            state.blocked?.takeIf { chatActions == null }?.let { blocked ->
                 item(key = "block") {
                     Card {
                         Text(
@@ -423,27 +407,6 @@ private fun ActionButton(label: String, icon: @Composable () -> Unit, modifier: 
             icon()
             Spacer(Modifier.height(4.dp))
             Text(label, style = MaterialTheme.typography.labelLarge)
-        }
-    }
-}
-
-/** Плитка «Ещё»: участники и жалоба, очистка истории, удаление чата. */
-@Composable
-private fun MoreChatActions(actions: ProfileChatActions, modifier: Modifier, leavesGroup: Boolean = false) {
-    var open by remember { mutableStateOf(false) }
-    Box(modifier) {
-        ActionButton("Ещё", { Icon(Icons.Outlined.MoreVert, null) }, Modifier.fillMaxWidth()) { open = true }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(text = { Text("Участники и жалоба") }, onClick = { open = false; actions.onTools() })
-            val leave = actions.onLeave
-            if (leavesGroup && leave != null) {
-                DropdownMenuItem(text = { Text("Покинуть группу") }, onClick = { open = false; leave() })
-            }
-            DropdownMenuItem(text = { Text("Очистить историю") }, onClick = { open = false; actions.onClearHistory() })
-            DropdownMenuItem(
-                text = { Text("Удалить чат", color = MaterialTheme.colorScheme.error) },
-                onClick = { open = false; actions.onDeleteChat() },
-            )
         }
     }
 }

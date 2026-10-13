@@ -263,6 +263,21 @@ class ProfileViewModel(
         }
     }
 
+    /** «Поделиться контактом»: карточка собеседника уходит в чат [targetChatId]. */
+    fun shareContact(targetChatId: String) {
+        val peer = _state.value.profile.peerId ?: return
+        viewModelScope.launch {
+            try {
+                messages.sendContact(targetChatId, peer)
+                _notice.value = "Контакт отправлен"
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                show(e)
+            }
+        }
+    }
+
     fun consumeNotice() {
         _notice.value = null
     }

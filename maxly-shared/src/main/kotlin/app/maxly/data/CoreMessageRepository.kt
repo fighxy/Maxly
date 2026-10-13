@@ -265,6 +265,10 @@ class CoreMessageRepository(
         MaxCoreGateway.call { client.sendSticker(chatId.toLong(), sticker.id.toLong(), replyTo?.toLongOrNull()) }
     }
 
+    override suspend fun sendContact(chatId: String, userId: String) {
+        MaxCoreGateway.call { client.sendContact(chatId.toLong(), userId.toLong()) }
+    }
+
     override suspend fun forward(chatId: String, messageId: String, targetChatId: String) {
         val outcome = forwardMessages(chatId, listOf(messageId), targetChatId)
         outcome.error?.let { throw CoreErrors.map(it) }

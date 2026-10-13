@@ -315,6 +315,7 @@ fun ChatListScreen(
                     reorderPins = viewModel::startPinReorder,
                     folders = viewModel::folderChoices,
                     toggleFolder = viewModel::toggleFolder,
+                    createFolder = viewModel::createFolder,
                     muteFor = viewModel::muteFor,
                     block = if (viewModel.canBlock) viewModel::block else null,
                 )
@@ -782,9 +783,11 @@ class ChatRowActions(
     val clearHistory: (String, Boolean) -> Unit = { _, _ -> },
     /** Открыть режим перестановки закреплённых. */
     val reorderPins: () -> Unit = {},
-    /** Папки для «Добавить в папку» с отметкой, где чат уже есть; пусто — пункта нет. */
-    val folders: (String) -> List<app.maxly.presentation.chatlist.ChatListMenu.FolderChoice> = { emptyList() },
+    /** Папки для «Добавить в папку» с отметкой, где чат уже есть; `null` — пункта нет. */
+    val folders: (String) -> List<app.maxly.presentation.chatlist.ChatListMenu.FolderChoice>? = { null },
     val toggleFolder: (chatId: String, folderId: String) -> Unit = { _, _ -> },
+    /** «Создать папку» из подменю: новая папка сразу с этим чатом. */
+    val createFolder: (chatId: String, title: String) -> Unit = { _, _ -> },
     val muteFor: (String, app.maxly.presentation.chatlist.ChatListMenu.MuteFor) -> Unit = { _, _ -> },
     /** «Заблокировать» собеседника; `null` — пункта нет. */
     val block: ((String) -> Unit)? = null,

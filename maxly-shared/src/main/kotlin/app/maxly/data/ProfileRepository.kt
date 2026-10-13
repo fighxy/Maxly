@@ -101,6 +101,7 @@ class CoreProfileRepository(private val client: MaxClient) : ProfileRepository {
 
     private fun chatProfile(chat: CoreChat): ChatProfile {
         val options = chat.raw["options"] as? Map<*, *>
+        val rights = com.maxly.core.api.ChatRights.of(chat, client.store.state.value.me)
         return ChatProfile(
             kind = if (chat.type == "CHANNEL") ChatProfile.Kind.CHANNEL else ChatProfile.Kind.GROUP,
             chatId = chat.id.toString(),
@@ -112,6 +113,8 @@ class CoreProfileRepository(private val client: MaxClient) : ProfileRepository {
             isOfficial = options?.get("OFFICIAL") == true,
             isPublic = chat.raw["access"] == "PUBLIC",
             commentsEnabled = options?.get("COMMENTS") as? Boolean,
+            isOwner = rights.isOwner,
+            isAdmin = rights.isOwner || rights.isAdmin,
         )
     }
 

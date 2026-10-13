@@ -467,7 +467,7 @@ fun MainScreen(
                     // Из чата профиль закрывается назад, «Написать» нужна только снаружи.
                     onWrite = if (fromChat) null else ({ openChat(chatId, title) }),
                     mediaUserAgent = container.videoSourceUserAgent(),
-                    chatActions = if (fromChat) profileChatActions(listed = chatList.isListed(chatId)) { action ->
+                    chatActions = if (fromChat) profileChatActions(chatId, chatList, chats.items) { action ->
                         chatAction = chatId to action
                         nav.popBackStack()
                     } else null,
@@ -587,13 +587,33 @@ private fun ChatListDetail(
 
 private const val DetailKey = "detail"
 
-/** Действия профиля, открытого из чата: каждое закрывает профиль и открывается в чате. */
-internal fun profileChatActions(listed: Boolean = true, request: (ChatAction) -> Unit) = ProfileChatActions(
-    onSearch = { request(ChatAction.SEARCH) },
-    onTools = { request(ChatAction.TOOLS) },
-    onCall = { request(ChatAction.CALL) },
-    onClearHistory = { request(ChatAction.CLEAR_HISTORY) },
-    onDeleteChat = { request(ChatAction.DELETE_CHAT) },
-    onLeave = if (listed) ({ request(ChatAction.LEAVE) }) else null,
-    onJoin = if (listed) null else ({ request(ChatAction.JOIN) }),
-)
+/**
+ * Действия профиля, открытого из чата. Поиск, звонки, стирание и удаление закрывают профиль и
+ * открываются в чате; звук и папки меняются на месте через список чатов.
+ */
+internal fun profileChatActions(
+    chatId: String,
+    chatList: ChatListViewModel,
+    /** Строки списка сейчас: звук чата и куда отправить контакт. */
+    items: List<app.maxly.presentation.chatlist.ChatListItem>,
+    request: (ChatAction) -> Unit,
+): ProfileChatActions {
+    val listed = chatList.isListed(chatId)
+    return ProfileChatActions(
+        onSearch = { request(ChatAction.SEARCH) },
+        onTools = { request(ChatAction.TOOLS) },
+        onCall = { request(ChatAction.AUDIO_CALL) },
+        onClearHistory = { request(ChatAction.CLEAR_HISTORY) },
+        onDeleteChat = { request(ChatAction.DELETE_CHAT) },
+        onLeave = if (listed) ({ request(ChatAction.LEAVE) }) else null,
+        onJoin = if (listed) null else ({ request(ChatAction.JOIN) }),
+        onVideoCall = { request(ChatAction.VIDEO_CALL) },
+        muted = if (listed) items.firstOrNull { it.id == chatId }?.isMuted ?: chatList.isMuted(chatId) else null,
+        onMuteFor = { chatList.muteFor(chatId, it) },
+        onUnmute = { chatList.toggleMute(chatId) },
+        folders = if (listed) chatList.folderChoices(chatId) else null,
+        onToggleFolder = { chatList.toggleFolder(chatId, it) },
+        onCreateFolder = { chatList.createFolder(chatId, it) },
+        shareTargets = { items },
+    )
+}

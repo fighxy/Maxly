@@ -21,6 +21,9 @@ data class ChatProfile(
     val commands: List<BotCommand> = emptyList(),
     /** Родные комментарии канала (опция `COMMENTS`); `null` — карточка не сказала. */
     val commentsEnabled: Boolean? = null,
+    /** Своя роль в группе или канале: владелец или админ. */
+    val isOwner: Boolean = false,
+    val isAdmin: Boolean = false,
 ) {
     enum class Kind { USER, BOT, SAVED, GROUP, CHANNEL }
 

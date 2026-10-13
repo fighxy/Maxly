@@ -3,7 +3,6 @@ package app.maxly.ui.chatlist
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.outlined.Block
@@ -55,6 +54,7 @@ fun ChatRowMenu(
 ) {
     var page by remember { mutableStateOf(ChatMenuPage.MAIN) }
     var blocking by remember { mutableStateOf(false) }
+    var creatingFolder by remember { mutableStateOf(false) }
     val stories = app.maxly.ui.stories.LocalStoryRings.current
     val owner = storyOwner(item)
     val ring = owner?.let { stories.ringFor(it.id, it.type) }
@@ -91,17 +91,12 @@ fun ChatRowMenu(
                     }
                 }
             }
-            ChatMenuPage.FOLDERS -> {
-                MenuRow("Назад", Icons.AutoMirrored.Filled.ArrowBack) { page = ChatMenuPage.MAIN }
-                HorizontalDivider()
-                (entries.firstOrNull { it is Entry.Folders } as? Entry.Folders)?.folders.orEmpty().forEach { folder ->
-                    DropdownMenuItem(
-                        text = { Text(folder.title) },
-                        trailingIcon = if (folder.contains) ({ Icon(Icons.Filled.Check, "В папке") }) else null,
-                        onClick = { close(); actions.toggleFolder(item.id, folder.id) },
-                    )
-                }
-            }
+            ChatMenuPage.FOLDERS -> FolderSubmenu(
+                folders = (entries.firstOrNull { it is Entry.Folders } as? Entry.Folders)?.folders.orEmpty(),
+                onBack = { page = ChatMenuPage.MAIN },
+                onToggle = { folderId -> close(); actions.toggleFolder(item.id, folderId) },
+                onCreate = { close(); creatingFolder = true },
+            )
             ChatMenuPage.MUTE -> {
                 MenuRow("Назад", Icons.AutoMirrored.Filled.ArrowBack) { page = ChatMenuPage.MAIN }
                 HorizontalDivider()
@@ -110,6 +105,12 @@ fun ChatRowMenu(
                 }
             }
         }
+    }
+    if (creatingFolder) {
+        CreateFolderDialog(
+            onCreate = { title -> creatingFolder = false; actions.createFolder(item.id, title) },
+            onDismiss = { creatingFolder = false },
+        )
     }
     if (blocking) {
         val hidden = app.maxly.ui.components.LocalPrivateMode.current != app.maxly.domain.PrivateModeDisplay.VISIBLE

@@ -135,6 +135,10 @@ interface MessageRepository {
     suspend fun sendSticker(chatId: String, sticker: app.maxly.domain.Sticker, replyTo: String?): Unit =
         throw MaxlyError.Rejected("Стикеры недоступны")
 
+    /** Карточка пользователя [userId] в чат [chatId] («Поделиться контактом» из профиля). */
+    suspend fun sendContact(chatId: String, userId: String): Unit =
+        throw MaxlyError.Rejected("Отправить контакт нельзя")
+
     /** Повторить не ушедшее сообщение. */
     /** Остановить загрузку вложений своего сообщения [localId]: оно убирается, ничего не уходит. */
     fun cancelUpload(chatId: String, localId: String) = discard(chatId, localId)

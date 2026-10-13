@@ -519,9 +519,30 @@ class ChatListViewModel(
         }
     }
 
-    /** Папки для подменю «Добавить в папку»: пусто — папок нет или менять их нельзя. */
-    fun folderChoices(chatId: String): List<ChatListMenu.FolderChoice> =
-        if (folderEditor == null) emptyList() else ChatListMenu.folderChoices(chatId, rawFolders)
+    /** Папки для подменю «Добавить в папку»; `null` — менять их нечем. */
+    fun folderChoices(chatId: String): List<ChatListMenu.FolderChoice>? =
+        if (folderEditor == null) null else ChatListMenu.folderChoices(chatId, rawFolders)
+
+    /** «Создать папку» из подменю: новая папка сразу с этим чатом. */
+    fun createFolder(chatId: String, title: String) {
+        val editor = folderEditor ?: return
+        val name = title.trim()
+        if (name.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                editor.create(name, listOf(chatId), emptyList())
+                _messages.value = "Папка «$name» создана"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                _messages.value = CoreErrors.map(e).userMessage
+            }
+        }
+    }
+
+    /** Звук чата для профиля: с учётом ещё не подтверждённого переключения; `null` — чата нет в списке. */
+    fun isMuted(chatId: String): Boolean? =
+        pendingMutes[chatId] ?: chats.firstOrNull { it.id == chatId }?.isMuted
 
     /** Чат в папку [folderId] или из неё, если он там уже есть. */
     fun toggleFolder(chatId: String, folderId: String) {

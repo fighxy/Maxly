@@ -37,7 +37,7 @@ import app.maxly.ui.components.privateBlur
 /** Выбор чата для пересылки: поиск по названию и список чатов. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ForwardPicker(targets: List<ChatListItem>, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+fun ForwardPicker(targets: List<ChatListItem>, onPick: (String) -> Unit, onDismiss: () -> Unit, title: String = "Переслать") {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var query by remember { mutableStateOf("") }
     val privacy = app.maxly.ui.components.LocalPrivateMode.current
@@ -47,7 +47,7 @@ fun ForwardPicker(targets: List<ChatListItem>, onPick: (String) -> Unit, onDismi
     }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
         Text(
-            "Переслать",
+            title,
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),

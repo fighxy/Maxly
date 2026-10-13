@@ -405,6 +405,8 @@ fun ChatScreen(
                 model.loadTools()
             }
             ChatAction.CALL -> confirmingCall = true
+            ChatAction.AUDIO_CALL -> model.callPeer()?.let { onStartCall(it, false) }
+            ChatAction.VIDEO_CALL -> model.callPeer()?.let { onStartCall(it, true) }
             ChatAction.CLEAR_HISTORY -> eraseChat = ChatErase.CLEAR
             ChatAction.DELETE_CHAT -> eraseChat = ChatErase.DELETE
             ChatAction.LEAVE -> leaving = true

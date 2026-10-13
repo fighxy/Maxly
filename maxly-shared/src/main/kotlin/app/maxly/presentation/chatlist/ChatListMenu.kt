@@ -30,6 +30,7 @@ object ChatListMenu {
         val title: String
         val isDanger: Boolean get() = false
 
+        /** Подменю папок; в конце — «Создать папку». */
         data class Folders(val folders: List<FolderChoice>) : Entry {
             override val title get() = "Добавить в папку"
         }
@@ -66,19 +67,19 @@ object ChatListMenu {
     }
 
     /**
-     * Пункты меню строки [item]. [folders] — папки пользователя (пусто — пункта нет),
+     * Пункты меню строки [item]. [folders] — папки пользователя (`null` — менять их нечем),
      * [hasStories] — у автора чата есть истории в ленте, [savedMessages] — «Избранное»
      * (его не блокируют и не скрывают), [canReorderPins] — список «Все» без поиска (компьютер).
      */
     fun entries(
         item: ChatListItem,
-        folders: List<FolderChoice>,
+        folders: List<FolderChoice>?,
         hasStories: Boolean = false,
         savedMessages: Boolean = false,
         canReorderPins: Boolean = false,
         canMarkUnread: Boolean = true,
     ): List<Entry> = buildList {
-        if (folders.isNotEmpty()) add(Entry.Folders(folders))
+        if (folders != null) add(Entry.Folders(folders))
         add(Entry.Pin(item.isPinned))
         if (canReorderPins && item.isPinned) add(Entry.ReorderPins)
         if (item.isUnread || canMarkUnread) add(Entry.Read(item.isUnread))
@@ -88,6 +89,9 @@ object ChatListMenu {
         if (item.type == ChatType.PRIVATE && item.peerId != null && !savedMessages) add(Entry.Block)
         add(Entry.Delete)
     }
+
+    /** Последний пункт подменю папок. */
+    const val CREATE_FOLDER = "Создать папку"
 
     /** Папки для подменю: чат в папке, если он добавлен в неё явно. */
     fun folderChoices(chatId: String, folders: List<app.maxly.domain.ServerFolder>): List<FolderChoice> =

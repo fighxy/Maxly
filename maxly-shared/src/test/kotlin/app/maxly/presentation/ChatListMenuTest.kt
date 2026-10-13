@@ -47,21 +47,27 @@ class ChatListMenuTest {
 
     @Test
     fun groupHasNoBlockAndNoFoldersWithoutThem() {
-        val entries = ChatListMenu.entries(item(chat("1", type = ChatType.GROUP, peer = null, unread = 2, pin = 0, muted = true)), emptyList())
+        val entries = ChatListMenu.entries(item(chat("1", type = ChatType.GROUP, peer = null, unread = 2, pin = 0, muted = true)), null)
         assertEquals(listOf("Открепить", "Отметить прочитанным", "Включить уведомления", "Стереть переписку", "Удалить чат"), entries.map { it.title })
         assertTrue((entries[2] as Entry.Mute).choices.isEmpty())
     }
 
     @Test
     fun savedMessagesAreNotBlockedOrHidden() {
-        val entries = ChatListMenu.entries(item(chat(Chat.SAVED_MESSAGES_ID)), emptyList(), hasStories = true, savedMessages = true)
+        val entries = ChatListMenu.entries(item(chat(Chat.SAVED_MESSAGES_ID)), null, hasStories = true, savedMessages = true)
         assertFalse(entries.any { it is Entry.Block || it is Entry.HideStories })
     }
 
     @Test
     fun reorderOnlyForPinnedWhenAllowed() {
-        assertTrue(ChatListMenu.entries(item(chat("1", pin = 0)), emptyList(), canReorderPins = true).contains(Entry.ReorderPins))
-        assertFalse(ChatListMenu.entries(item(chat("1")), emptyList(), canReorderPins = true).contains(Entry.ReorderPins))
+        assertTrue(ChatListMenu.entries(item(chat("1", pin = 0)), null, canReorderPins = true).contains(Entry.ReorderPins))
+        assertFalse(ChatListMenu.entries(item(chat("1")), null, canReorderPins = true).contains(Entry.ReorderPins))
+    }
+
+    @Test
+    fun foldersEntryWithoutFoldersStillCreates() {
+        val entries = ChatListMenu.entries(item(chat("1")), emptyList())
+        assertEquals(Entry.Folders(emptyList()), entries.first())
     }
 
     @Test
@@ -86,7 +92,9 @@ class ChatListMenuTest {
         override val folders = MutableStateFlow<List<ServerFolder>?>(null)
         val calls = mutableListOf<String>()
         override suspend fun reload() = Unit
-        override suspend fun create(title: String, chatIds: List<String>, filters: List<String>) = Unit
+        override suspend fun create(title: String, chatIds: List<String>, filters: List<String>) {
+            calls += "create $title $chatIds"
+        }
         override suspend fun rename(folderId: String, title: String) = Unit
         override suspend fun setChats(folderId: String, chatIds: List<String>) {
             calls += "$folderId $chatIds"
@@ -142,6 +150,9 @@ class ChatListMenuTest {
         assertEquals("Чат убран из «Работа»", vm.messages.value)
         vm.toggleFolder("1", "all")
         assertEquals(2, folders.calls.size)
+        vm.createFolder("1", "  Новые ")
+        assertEquals("create Новые [1]", folders.calls.last())
+        assertEquals("Папка «Новые» создана", vm.messages.value)
     }
 
     @Test
