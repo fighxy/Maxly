@@ -77,6 +77,8 @@ fun main() {
         }
         LaunchedEffect(container) { container.session.restoreSession() }
         MainWindow(container, owner, onExit = ::exitApplication)
+        // Картинка в картинке: ролик из просмотра в маленьком окне поверх всех окон.
+        app.maxly.ui.media.MiniPlayerWindow()
     }
 }
 

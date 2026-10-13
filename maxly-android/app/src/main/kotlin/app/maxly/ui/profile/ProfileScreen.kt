@@ -367,8 +367,9 @@ fun ProfileScreen(
     }
 
     mediaState.viewer?.let { viewer ->
-        MediaViewer(viewer, mediaUserAgent, onPage = model.media::showPage, onClose = model.media::closeViewer)
+        MediaViewer(viewer, mediaUserAgent, onPage = model.media::showPage, onClose = model.media::closeViewer, onShare = model.media::shareViewed)
     }
+    app.maxly.ui.chat.ShareFileEffect(model.media)
 }
 
 private fun start(context: android.content.Context, intent: Intent) {

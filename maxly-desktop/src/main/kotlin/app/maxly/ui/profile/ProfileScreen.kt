@@ -362,7 +362,12 @@ fun ProfileScreen(
     }
 
     mediaState.viewer?.let { viewer ->
-        MediaViewer(viewer, mediaUserAgent, onPage = model.media::showPage, onClose = model.media::closeViewer)
+        MediaViewer(viewer, mediaUserAgent, onPage = model.media::showPage, onClose = model.media::closeViewer, onCopy = model.media::shareViewed)
+    }
+    LaunchedEffect(mediaState.shareFile) {
+        val file = mediaState.shareFile ?: return@LaunchedEffect
+        model.media.consumeShareFile()
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { app.maxly.media.DesktopShare.copy(file) }
     }
 }
 

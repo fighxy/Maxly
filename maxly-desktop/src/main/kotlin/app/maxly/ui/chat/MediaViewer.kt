@@ -126,6 +126,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import app.maxly.presentation.media.ImageRequests
+import androidx.compose.material.icons.automirrored.outlined.Chat
+import androidx.compose.material.icons.filled.PictureInPictureAlt
+import androidx.compose.material.icons.outlined.ContentCopy
+import app.maxly.ui.media.MiniPlayer
 import java.awt.Point
 import java.awt.Toolkit
 import java.awt.image.BufferedImage
@@ -141,6 +145,7 @@ private class VideoKeys(
     val seek: (forward: Boolean) -> Unit,
     val mute: () -> Unit,
     val volume: (up: Boolean) -> Unit,
+    val pictureInPicture: () -> Unit,
 )
 
 /**
@@ -163,20 +168,25 @@ fun MediaViewer(
     /** Сохранить открытое в галерею; `null` — без кнопки. */
     onSave: (() -> Unit)? = null,
     saving: Boolean = false,
+    /** Скопировать открытое фото или видео в буфер обмена файлом. */
+    onCopy: (() -> Unit)? = null,
+    /** «Перейти к сообщению»: просмотр закрывается, лента едет к сообщению. */
+    onShowInChat: (() -> Unit)? = null,
 ) {
     // Просмотр проявляется с лёгким приближением и так же гаснет при закрытии.
     val shown = remember { Animatable(0f) }
     val closeScope = rememberCoroutineScope()
     var closing by remember { mutableStateOf(false) }
-    fun close() {
+    fun close(then: (() -> Unit)? = null) {
         if (closing) return
         closing = true
         closeScope.launch {
             shown.animateTo(0f, tween(150))
             onClose()
+            then?.invoke()
         }
     }
-    Dialog(onDismissRequest = ::close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = { close() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         LaunchedEffect(Unit) { shown.animateTo(1f, tween(180, easing = FastOutSlowInEasing)) }
         val window = LocalMainWindowState.current
         // Прежнее положение окна, пока просмотр развернул его во весь экран.
@@ -241,6 +251,7 @@ fun MediaViewer(
                 HotkeyAction.VIEWER_VOLUME_UP -> true.also { videoKeys?.volume?.invoke(true); chrome = true }
                 HotkeyAction.VIEWER_VOLUME_DOWN -> true.also { videoKeys?.volume?.invoke(false); chrome = true }
                 HotkeyAction.VIEWER_FULLSCREEN -> true.also { setFullscreen(!fullscreen) }
+                HotkeyAction.VIEWER_PIP -> true.also { videoKeys?.pictureInPicture?.invoke() }
                 HotkeyAction.QUIT -> false
                 else -> true
             }
@@ -298,6 +309,8 @@ fun MediaViewer(
                                 if (keys == null) videoPlaying = false
                             }
                         },
+                        // Ролик уходит в маленькое окно поверх всех окон, просмотр закрывается.
+                        onPictureInPicture = { clip -> close(then = { MiniPlayer.show(clip.copy(title = state.authorName)) }) },
                     )
                     else -> Unit
                 }
@@ -311,9 +324,11 @@ fun MediaViewer(
                     onRotate = { if (current != null) turns[current.id] = (turns[current.id] ?: 0) + 1 },
                     fullscreen = fullscreen,
                     onFullscreen = if (window != null) ({ setFullscreen(!fullscreen) }) else null,
-                    onClose = ::close,
+                    onClose = { close() },
                     onSave = onSave,
                     saving = saving,
+                    onCopy = onCopy,
+                    onShowInChat = onShowInChat?.let { show -> { close(then = show) } },
                 )
             }
             if (state.items.size > 1) {
@@ -411,6 +426,8 @@ private fun ViewerHeader(
     onClose: () -> Unit,
     onSave: (() -> Unit)?,
     saving: Boolean,
+    onCopy: (() -> Unit)?,
+    onShowInChat: (() -> Unit)?,
 ) {
     Row(
         Modifier
@@ -437,10 +454,16 @@ private fun ViewerHeader(
                 Icon(if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen, if (fullscreen) "Свернуть (F)" else "Во весь экран (F)", tint = Color.White)
             }
         }
-        if (onSave != null) {
-            if (saving) {
-                CircularProgressIndicator(Modifier.padding(12.dp).size(24.dp), color = Color.White, strokeWidth = 2.dp)
-            } else {
+        if (onShowInChat != null) {
+            IconButton(onClick = onShowInChat) { Icon(Icons.AutoMirrored.Outlined.Chat, "Перейти к сообщению", tint = Color.White) }
+        }
+        if (saving) {
+            CircularProgressIndicator(Modifier.padding(12.dp).size(24.dp), color = Color.White, strokeWidth = 2.dp)
+        } else {
+            if (onCopy != null) {
+                IconButton(onClick = onCopy) { Icon(Icons.Outlined.ContentCopy, "Копировать файл", tint = Color.White) }
+            }
+            if (onSave != null) {
                 IconButton(onClick = onSave) { Icon(Icons.Outlined.Download, "Сохранить в галерею", tint = Color.White) }
             }
         }
@@ -609,6 +632,7 @@ private fun VideoPage(
     onScrubbing: (Boolean) -> Unit,
     onOverControls: (Boolean) -> Unit,
     onBind: (VideoKeys?) -> Unit,
+    onPictureInPicture: (MiniPlayer.Clip) -> Unit,
 ) {
     val player = rememberVideoPlayer()
     val state by player.state.collectAsState()
@@ -637,7 +661,17 @@ private fun VideoPage(
         player.setVolume((now.volume + if (up) 0.1f else -0.1f).coerceIn(0f, 1f))
     }
     DisposableEffect(active, player) {
-        if (active) onBind(VideoKeys(toggle = { player.toggle() }, seek = ::seek, mute = { player.setMuted(!player.state.value.muted) }, volume = ::volume))
+        if (active) {
+            onBind(
+                VideoKeys(
+                    toggle = { player.toggle() },
+                    seek = ::seek,
+                    mute = { player.setMuted(!player.state.value.muted) },
+                    volume = ::volume,
+                    pictureInPicture = { if (url != null) onPictureInPicture(MiniPlayer.Clip(url, userAgent, player.state.value.positionMs, "")) },
+                ),
+            )
+        }
         onDispose { if (active) onBind(null) }
     }
     val retry = {
@@ -710,6 +744,9 @@ private fun VideoPage(
                     scrubFraction = scrubFraction,
                     fullscreen = fullscreen,
                     onFullscreen = onFullscreen,
+                    onPictureInPicture = {
+                        if (url != null) onPictureInPicture(MiniPlayer.Clip(url, userAgent, player.state.value.positionMs, ""))
+                    },
                     onHover = onOverControls,
                     onScrub = { fraction ->
                         if (scrubFraction == null) onScrubbing(true)
@@ -759,6 +796,7 @@ private fun VideoBar(
     scrubFraction: Float?,
     fullscreen: Boolean,
     onFullscreen: () -> Unit,
+    onPictureInPicture: () -> Unit,
     onHover: (Boolean) -> Unit,
     onScrub: (Float) -> Unit,
     onScrubEnd: (Float) -> Unit,
@@ -815,6 +853,9 @@ private fun VideoBar(
                 modifier = Modifier.width(96.dp),
             )
             Spacer(Modifier.width(8.dp))
+            IconButton(onClick = onPictureInPicture) {
+                Icon(Icons.Filled.PictureInPictureAlt, "Картинка в картинке (P)", tint = Color.White)
+            }
             IconButton(onClick = onFullscreen) {
                 Icon(if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen, if (fullscreen) "Свернуть (F)" else "Во весь экран (F)", tint = Color.White)
             }

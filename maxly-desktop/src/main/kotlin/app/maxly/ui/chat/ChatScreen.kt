@@ -638,7 +638,16 @@ fun ChatScreen(
                 { requestViewerSave() }
             } else null,
             saving = viewer.messageId in mediaState.value.saving,
+            onCopy = { model.media.shareViewed() },
+            onShowInChat = { model.jumpTo(viewer.messageId) },
         )
+    }
+    val shareFile = mediaState.value.shareFile
+    LaunchedEffect(shareFile) {
+        val file = shareFile ?: return@LaunchedEffect
+        model.media.consumeShareFile()
+        val copied = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { app.maxly.media.DesktopShare.copy(file) }
+        model.notify(if (copied) "Скопировано: вставьте в нужное место" else "Не удалось скопировать")
     }
     actionsFor?.let { message ->
         MessageActions(

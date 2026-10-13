@@ -1,6 +1,19 @@
 package app.maxly.ui.chat
 
 import android.app.Activity
+import android.app.PictureInPictureParams
+import android.content.pm.PackageManager
+import android.os.Build
+import android.util.Rational
+import androidx.activity.ComponentActivity
+import androidx.compose.material.icons.automirrored.outlined.Chat
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PictureInPictureAlt
+import androidx.compose.material.icons.outlined.Share
+import androidx.core.app.PictureInPictureModeChangedInfo
+import androidx.core.util.Consumer
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
@@ -166,8 +179,23 @@ fun MediaViewer(
     /** Сохранить открытое в галерею; `null` — без кнопки. */
     onSave: (() -> Unit)? = null,
     saving: Boolean = false,
+    /** Поделиться открытым фото или видео (системное окно «Поделиться»). */
+    onShare: (() -> Unit)? = null,
+    /** «Перейти к сообщению»: просмотр закрывается, лента едет к сообщению. */
+    onShowInChat: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
+    val activity = LocalContext.current.findActivity() as? ComponentActivity
+    // Картинка в картинке: в окошке видно только видео, без шапки и кнопок.
+    var inPip by remember { mutableStateOf(activity?.isInPictureInPictureMode == true) }
+    DisposableEffect(activity) {
+        val listener = Consumer<PictureInPictureModeChangedInfo> { inPip = it.isInPictureInPictureMode }
+        activity?.addOnPictureInPictureModeChangedListener(listener)
+        onDispose {
+            activity?.removeOnPictureInPictureModeChangedListener(listener)
+            activity?.let { PictureInPicture.autoEnter(it, null) }
+        }
+    }
     val pager = rememberPagerState(initialPage = state.index) { state.items.size }
     // Открытие и закрытие: доля «открытости» 0…1 и летящий из плитки кадр, если плитка известна.
     val progress = remember { Animatable(0f) }
@@ -181,8 +209,9 @@ fun MediaViewer(
     // анимация после четвёртого поворота идёт дальше по часовой, а не крутится назад.
     val turns = remember { mutableStateMapOf<String, Int>() }
 
-    // Кадр летит обратно в свою плитку, если она на экране; иначе просмотр гаснет.
-    fun close() {
+    // Кадр летит обратно в свою плитку, если она на экране; иначе просмотр гаснет. [then] —
+    // что сделать после закрытия (перейти к сообщению).
+    fun close(then: (() -> Unit)? = null) {
         if (phase == ViewerPhase.CLOSING) return
         val page = pager.currentPage
         val item = state.items.getOrNull(page)
@@ -199,6 +228,7 @@ fun MediaViewer(
                 progress.animateTo(0f, tween(260, easing = FastOutSlowInEasing))
                 MediaTiles.hiddenId = null
                 onClose()
+                then?.invoke()
             }
         } else {
             hero = null
@@ -206,19 +236,20 @@ fun MediaViewer(
                 progress.animateTo(0f, tween(180))
                 MediaTiles.hiddenId = null
                 onClose()
+                then?.invoke()
             }
         }
     }
 
-    Dialog(onDismissRequest = ::close, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        BackHandler(onBack = ::close)
+    Dialog(onDismissRequest = { close() }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        BackHandler { close() }
         LaunchedEffect(pager) { snapshotFlow { pager.currentPage }.collect(onPage) }
         var chrome by remember { mutableStateOf(true) }
         var scrubbing by remember { mutableStateOf(false) }
         LaunchedEffect(pager) { snapshotFlow { pager.currentPage }.collect { chrome = true } }
 
         RotationWhileOpen()
-        ImmersiveWhenHidden(hidden = !chrome || phase != ViewerPhase.OPEN)
+        ImmersiveWhenHidden(hidden = !chrome || phase != ViewerPhase.OPEN || inPip)
 
         // Экран измерен — кадр вылетает из плитки (или просмотр проявляется).
         LaunchedEffect(screen != null) {
@@ -248,6 +279,7 @@ fun MediaViewer(
             },
         )
         val open = phase == ViewerPhase.OPEN
+        val showChrome = open && chrome && !inPip
 
         Box(
             Modifier
@@ -293,28 +325,31 @@ fun MediaViewer(
                         poster = MediaTiles.tile(item.id)?.model ?: item.video.posterUrl,
                         userAgent = userAgent,
                         active = active,
-                        chrome = chrome,
+                        chrome = chrome && !inPip,
                         onChrome = { chrome = it },
                         onScrubbing = { scrubbing = it },
                         dismiss = dismiss,
+                        activity = activity,
                     )
                     else -> Unit
                 }
             }
             val current = state.items.getOrNull(pager.currentPage)
-            AnimatedVisibility(open && chrome && dismissY == 0f, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
+            AnimatedVisibility(showChrome && dismissY == 0f, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
                 ViewerHeader(
                     state = state,
                     page = pager.currentPage,
                     canRotate = current is ChatAttachment.Photo,
                     onRotate = { if (current != null) turns[current.id] = (turns[current.id] ?: 0) + 1 },
-                    onClose = ::close,
+                    onClose = { close() },
                     onSave = onSave,
                     saving = saving,
+                    onShare = onShare,
+                    onShowInChat = onShowInChat?.let { show -> { close(then = show) } },
                 )
             }
             if (state.caption.isNotEmpty() || state.items.size > 1) {
-                AnimatedVisibility(open && chrome && dismissY == 0f, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
+                AnimatedVisibility(showChrome && dismissY == 0f, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
                     ViewerBottom(
                         caption = state.caption,
                         items = state.items,
@@ -485,7 +520,10 @@ private fun ViewerHeader(
     onClose: () -> Unit,
     onSave: (() -> Unit)?,
     saving: Boolean,
+    onShare: (() -> Unit)?,
+    onShowInChat: (() -> Unit)?,
 ) {
+    var menu by remember { mutableStateOf(false) }
     Row(
         Modifier
             .fillMaxWidth()
@@ -509,13 +547,73 @@ private fun ViewerHeader(
         if (canRotate) {
             IconButton(onClick = onRotate) { Icon(Icons.Outlined.Rotate90DegreesCw, "Повернуть", tint = Color.White) }
         }
-        if (onSave != null) {
-            if (saving) {
-                CircularProgressIndicator(Modifier.padding(12.dp).size(24.dp), color = Color.White, strokeWidth = 2.dp)
-            } else {
-                IconButton(onClick = onSave) { Icon(Icons.Outlined.Download, "Сохранить в галерею", tint = Color.White) }
+        if (saving) {
+            CircularProgressIndicator(Modifier.padding(12.dp).size(24.dp), color = Color.White, strokeWidth = 2.dp)
+        } else if (onShare != null) {
+            IconButton(onClick = onShare) { Icon(Icons.Outlined.Share, "Поделиться", tint = Color.White) }
+        }
+        if (onSave != null || onShowInChat != null) {
+            Box {
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Ещё", tint = Color.White) }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    if (onShowInChat != null) {
+                        DropdownMenuItem(
+                            text = { Text("Перейти к сообщению") },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Chat, null) },
+                            onClick = {
+                                menu = false
+                                onShowInChat()
+                            },
+                        )
+                    }
+                    if (onSave != null) {
+                        DropdownMenuItem(
+                            text = { Text("Сохранить в галерею") },
+                            leadingIcon = { Icon(Icons.Outlined.Download, null) },
+                            enabled = !saving,
+                            onClick = {
+                                menu = false
+                                onSave()
+                            },
+                        )
+                    }
+                }
             }
         }
+    }
+}
+
+/**
+ * Картинка в картинке: экран приложения сжимается в окошко, в котором виден только ролик
+ * просмотра. Окошко открывается кнопкой на полосе ролика, а на Android 12+ — и само, когда
+ * приложение сворачивают во время воспроизведения.
+ */
+private object PictureInPicture {
+    fun supported(activity: Activity): Boolean =
+        activity.packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+
+    fun enter(activity: Activity, video: VideoContent) {
+        if (!supported(activity)) return
+        runCatching { activity.enterPictureInPictureMode(params(video, auto = false)) }
+    }
+
+    /** Уходить ли в окошко самому при сворачивании: [video] — да, с его пропорциями; `null` — нет. */
+    fun autoEnter(activity: Activity, video: VideoContent?) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || !supported(activity)) return
+        runCatching { activity.setPictureInPictureParams(video?.let { params(it, auto = true) } ?: PictureInPictureParams.Builder().setAutoEnterEnabled(false).build()) }
+    }
+
+    private fun params(video: VideoContent, auto: Boolean): PictureInPictureParams {
+        val builder = PictureInPictureParams.Builder()
+        val width = video.width ?: 0
+        val height = video.height ?: 0
+        if (width > 0 && height > 0) {
+            // Система принимает пропорции не уже 1:2,39 и не шире 2,39:1.
+            val ratio = (width.toFloat() / height).coerceIn(1 / 2.39f, 2.39f)
+            builder.setAspectRatio(Rational((ratio * 1000).toInt(), 1000))
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) builder.setAutoEnterEnabled(auto).setSeamlessResizeEnabled(true)
+        return builder.build()
     }
 }
 
@@ -690,6 +788,8 @@ private fun VideoPage(
     onChrome: (Boolean) -> Unit,
     onScrubbing: (Boolean) -> Unit,
     dismiss: DismissHandlers,
+    /** Экран приложения: из него ролик уходит в окошко «картинка в картинке». */
+    activity: Activity?,
 ) {
     val context = LocalContext.current
     var playing by remember { mutableStateOf(false) }
@@ -743,6 +843,17 @@ private fun VideoPage(
         }
     }
     LaunchedEffect(player, active) { player?.playWhenReady = active }
+    // Играющий открытый ролик уходит в окошко сам, когда приложение сворачивают (Android 12+).
+    LaunchedEffect(active, wantsPlay, ended) {
+        if (active && activity != null) PictureInPicture.autoEnter(activity, video.takeIf { wantsPlay && !ended })
+    }
+    // Окошко закрыли (приложение ушло в фон): ролик встаёт.
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle, player) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) player?.pause() }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     LaunchedEffect(player, active) {
         val current = player ?: return@LaunchedEffect
         while (active) {
@@ -886,6 +997,12 @@ private fun VideoPage(
         }
         AnimatedVisibility(chrome && player != null, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
             VideoControls(
+                onPictureInPicture = activity?.takeIf { PictureInPicture.supported(it) }?.let { host ->
+                    {
+                        player?.play()
+                        PictureInPicture.enter(host, video)
+                    }
+                },
                 fraction = scrubFraction ?: if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
                 buffered = if (durationMs > 0) bufferedMs.toFloat() / durationMs else 0f,
                 positionMs = scrubFraction?.let { (it * durationMs).toLong() } ?: positionMs,
@@ -979,6 +1096,7 @@ private fun SeekBadge(seek: SeekTapAccumulator.Seek, modifier: Modifier) {
 /** Полоса ролика внизу: перемотка с подгруженной частью, пауза, время, звук и скорость. */
 @Composable
 private fun VideoControls(
+    onPictureInPicture: (() -> Unit)?,
     fraction: Float,
     buffered: Float,
     positionMs: Long,
@@ -1024,6 +1142,9 @@ private fun VideoControls(
                     if (muted) "Включить звук" else "Выключить звук",
                     tint = Color.White,
                 )
+            }
+            if (onPictureInPicture != null) {
+                IconButton(onClick = onPictureInPicture) { Icon(Icons.Filled.PictureInPictureAlt, "Картинка в картинке", tint = Color.White) }
             }
             Box {
                 TextButton(onClick = { onMenu(true) }) {

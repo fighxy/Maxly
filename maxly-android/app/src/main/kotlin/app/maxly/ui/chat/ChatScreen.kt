@@ -650,8 +650,11 @@ fun ChatScreen(
                 { requestViewerSave() }
             } else null,
             saving = viewer.messageId in mediaState.value.saving,
+            onShare = { model.media.shareViewed() },
+            onShowInChat = { model.jumpTo(viewer.messageId) },
         )
     }
+    ShareFileEffect(model.media)
     actionsFor?.let { message ->
         MessageActions(
             model = model,

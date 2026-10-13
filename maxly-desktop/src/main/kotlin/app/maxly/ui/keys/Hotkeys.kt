@@ -54,6 +54,8 @@ enum class HotkeyAction {
     VIEWER_VOLUME_DOWN,
     /** F: просмотр во весь экран. */
     VIEWER_FULLSCREEN,
+    /** P: ролик в маленькое окно поверх всех окон. */
+    VIEWER_PIP,
     /** R: повернуть фото в просмотре. */
     ROTATE,
     /** Ctrl+S: сохранить открытое в просмотре. */
@@ -187,6 +189,7 @@ object KeyChords {
             'l' -> Hotkey(HotkeyAction.VIEWER_SEEK_FORWARD)
             'm' -> Hotkey(HotkeyAction.VIEWER_MUTE)
             'f' -> Hotkey(HotkeyAction.VIEWER_FULLSCREEN)
+            'p' -> Hotkey(HotkeyAction.VIEWER_PIP)
             else -> null
         }
     }

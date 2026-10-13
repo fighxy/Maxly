@@ -80,6 +80,18 @@ class MediaSavingTest {
     }
 
     @Test
+    fun sharesTheItemOpenInTheViewer() {
+        val m = msg(ChatAttachment.Photo(PhotoContent("p1", "https://cdn/p1")), ChatAttachment.Video(VideoContent("v1", null)))
+        media.openVisual(m, m.content.attachments[1])
+        media.shareViewed()
+        assertEquals(listOf("https://cdn/video-v1"), files.urls)
+        assertEquals(ShareFile("/nonexistent/v1/video-v1.mp4", "Maxly 2026-10-01 14.05.33 2.mp4", SavedKind.VIDEO), media.state.value.shareFile)
+        assertTrue(media.state.value.saving.isEmpty())
+        media.consumeShareFile()
+        assertEquals(null, media.state.value.shareFile)
+    }
+
+    @Test
     fun imageExtensionBySignature() {
         assertEquals("png", SaveNaming.imageExtension(byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 13, 10, 26, 10)))
         assertEquals("gif", SaveNaming.imageExtension("GIF89a".toByteArray()))

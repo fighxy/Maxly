@@ -63,6 +63,7 @@ class HotkeysTest {
         assertEquals(Hotkey(HotkeyAction.VIEWER_SEEK_FORWARD), chord(KeyEvent.VK_L, 'l'))
         assertEquals(Hotkey(HotkeyAction.VIEWER_MUTE), russian('ь'))
         assertEquals(Hotkey(HotkeyAction.VIEWER_FULLSCREEN), chord(KeyEvent.VK_F, 'f'))
+        assertEquals(Hotkey(HotkeyAction.VIEWER_PIP), chord(KeyEvent.VK_P, 'p'))
         assertEquals(Hotkey(HotkeyAction.VIEWER_VOLUME_UP), chord(KeyEvent.VK_UP))
         assertEquals(Hotkey(HotkeyAction.VIEWER_VOLUME_DOWN), chord(KeyEvent.VK_DOWN))
     }

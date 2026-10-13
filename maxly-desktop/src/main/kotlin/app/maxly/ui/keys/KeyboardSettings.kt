@@ -108,6 +108,7 @@ object HotkeyCatalog {
                     Entry(listOf("↑", "↓"), "Громкость видео"),
                     Entry(listOf("M"), "Звук видео"),
                     Entry(listOf("F"), "Во весь экран"),
+                    Entry(listOf("P"), "Видео в маленьком окне поверх всех"),
                     Entry(listOf("$command+колесо"), "Увеличить или уменьшить фото"),
                     Entry(listOf("R"), "Повернуть фото"),
                     Entry(listOf("$command+S"), "Сохранить"),

@@ -41,6 +41,9 @@ data class RoundPlayback(val messageId: String, val videoId: String, val url: St
 /** Скачанный файл, который экран должен открыть системным приложением. */
 data class OpenFile(val path: String, val name: String)
 
+/** Скачанное фото или видео, которым делятся из просмотра: файл, имя для получателя и тип. */
+data class ShareFile(val path: String, val name: String, val kind: SavedKind)
+
 data class ChatMediaState(
     /** id сообщения → расшифровка, которая сейчас раскрыта. */
     val transcripts: Map<String, TranscriptUi> = emptyMap(),
@@ -48,6 +51,8 @@ data class ChatMediaState(
     val downloads: Map<String, Float> = emptyMap(),
     val viewer: MediaViewerState? = null,
     val openFile: OpenFile? = null,
+    /** Файл для окна «Поделиться» (Android) или буфера обмена (компьютер). */
+    val shareFile: ShareFile? = null,
     /** Сообщения, вложения которых сейчас сохраняются. */
     val saving: Set<String> = emptySet(),
     val round: RoundPlayback? = null,
@@ -294,6 +299,49 @@ class ChatMedia(
         saveItems(viewer.messageId, viewer.timeMs, listOf(item), SaveTarget.GALLERY, indexBase = viewer.index)
     }
 
+    /** Поделиться фото или видео, открытым в просмотре: файл скачивается и уходит экрану. */
+    fun shareViewed() {
+        val viewer = _state.value.viewer ?: return
+        val item = viewer.items.getOrNull(viewer.index) ?: return
+        val files = files ?: return
+        if (viewer.messageId.toLongOrNull() == null || viewer.messageId in _state.value.saving) return
+        _state.update { it.copy(saving = it.saving + viewer.messageId) }
+        scope.launch {
+            try {
+                val (path, name, kind) = local(viewer.messageId, viewer.timeMs, item, viewer.index, files) ?: return@launch
+                _state.update { it.copy(shareFile = ShareFile(path, name, kind)) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onError(e as? MaxlyError ?: MaxlyError.Rejected("Не удалось поделиться"))
+            } finally {
+                _state.update { it.copy(saving = it.saving - viewer.messageId) }
+            }
+        }
+    }
+
+    fun consumeShareFile() = _state.update { it.copy(shareFile = null) }
+
+    /** Вложение на устройстве (скачанное в кэш), его имя для сохранения и тип. */
+    private suspend fun local(messageId: String, timeMs: Long, attachment: ChatAttachment, index: Int, files: MessageFiles): Triple<String, String, SavedKind>? {
+        val (url, cacheName) = when (attachment) {
+            is ChatAttachment.Photo -> (attachment.photo.url ?: throw MaxlyError.Rejected("Фото недоступно")) to "photo-${attachment.id}"
+            is ChatAttachment.Video -> repository.mediaLink(chatId, messageId, attachment) to "video-${attachment.id}.mp4"
+            is ChatAttachment.File -> (attachment.file.url?.takeIf { it.isNotEmpty() } ?: repository.mediaLink(chatId, messageId, attachment)) to attachment.file.name
+            is ChatAttachment.Voice -> (attachment.voice.url ?: throw MaxlyError.Rejected("Голосовое недоступно")) to "voice-${attachment.id}.m4a"
+            else -> return null
+        }
+        val path = files.download(url, attachment.id, cacheName) {}
+        val (name, kind) = when (attachment) {
+            is ChatAttachment.Photo -> SaveNaming.name(timeMs, index, SaveNaming.imageExtension(header(path))) to SavedKind.IMAGE
+            is ChatAttachment.Video -> SaveNaming.name(timeMs, index, "mp4") to SavedKind.VIDEO
+            is ChatAttachment.Voice -> SaveNaming.name(timeMs, index, "m4a") to SavedKind.OTHER
+            is ChatAttachment.File -> attachment.file.name.ifBlank { SaveNaming.name(timeMs, index, "bin") } to SavedKind.OTHER
+            else -> return null
+        }
+        return Triple(path, name, kind)
+    }
+
     private fun saveItems(messageId: String, timeMs: Long, items: List<ChatAttachment>, target: SaveTarget, indexBase: Int = 0) {
         val saver = saver ?: return
         val files = files ?: return
@@ -302,22 +350,7 @@ class ChatMedia(
         scope.launch {
             try {
                 items.forEachIndexed { position, attachment ->
-                    val index = indexBase + position
-                    val (url, cacheName) = when (attachment) {
-                        is ChatAttachment.Photo -> (attachment.photo.url ?: throw MaxlyError.Rejected("Фото недоступно")) to "photo-${attachment.id}"
-                        is ChatAttachment.Video -> repository.mediaLink(chatId, messageId, attachment) to "video-${attachment.id}.mp4"
-                        is ChatAttachment.File -> (attachment.file.url?.takeIf { it.isNotEmpty() } ?: repository.mediaLink(chatId, messageId, attachment)) to attachment.file.name
-                        is ChatAttachment.Voice -> (attachment.voice.url ?: throw MaxlyError.Rejected("Голосовое недоступно")) to "voice-${attachment.id}.m4a"
-                        else -> return@forEachIndexed
-                    }
-                    val path = files.download(url, attachment.id, cacheName) {}
-                    val (name, kind) = when (attachment) {
-                        is ChatAttachment.Photo -> SaveNaming.name(timeMs, index, SaveNaming.imageExtension(header(path))) to SavedKind.IMAGE
-                        is ChatAttachment.Video -> SaveNaming.name(timeMs, index, "mp4") to SavedKind.VIDEO
-                        is ChatAttachment.Voice -> SaveNaming.name(timeMs, index, "m4a") to SavedKind.OTHER
-                        is ChatAttachment.File -> attachment.file.name.ifBlank { SaveNaming.name(timeMs, index, "bin") } to SavedKind.OTHER
-                        else -> return@forEachIndexed
-                    }
+                    val (path, name, kind) = local(messageId, timeMs, attachment, indexBase + position, files) ?: return@forEachIndexed
                     saver.save(path, name, kind)
                 }
                 onNotice(if (target == SaveTarget.GALLERY) "Сохранено в галерею" else "Сохранено в «Загрузки»")
