@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import MaxlyPresentation
 
@@ -58,5 +59,28 @@ struct MediaViewerRulesTests {
         #expect(MediaTimeText.remaining(position: 20, duration: 62) == "-0:42")
         #expect(MediaTimeText.download(fraction: 0.37) == "37 %")
         #expect(MediaTimeText.download(fraction: 0.25, totalBytes: 50 * 1_048_576) == "12,5 из 50,0 МБ")
+    }
+}
+
+@Suite struct MediaHeroGeometryTests {
+    @Test func fitsWideAndTallFramesIntoScreen() {
+        let screen = CGRect(x: 0, y: 0, width: 400, height: 800)
+        #expect(MediaHeroGeometry.fit(aspect: 2, in: screen) == CGRect(x: 0, y: 300, width: 400, height: 200))
+        #expect(MediaHeroGeometry.fit(aspect: 0.25, in: screen) == CGRect(x: 100, y: 0, width: 200, height: 800))
+    }
+
+    @Test func interpolatesBetweenTileAndScreen() {
+        let tile = CGRect(x: 100, y: 500, width: 100, height: 100)
+        let full = CGRect(x: 0, y: 200, width: 400, height: 400)
+        #expect(MediaHeroGeometry.interpolate(from: tile, to: full, progress: 0) == tile)
+        #expect(MediaHeroGeometry.interpolate(from: tile, to: full, progress: 1) == full)
+        #expect(MediaHeroGeometry.interpolate(from: tile, to: full, progress: 0.5) == CGRect(x: 50, y: 350, width: 250, height: 250))
+    }
+
+    @Test func returnsOnlyIntoVisibleTile() {
+        let screen = CGRect(x: 0, y: 0, width: 400, height: 800)
+        #expect(MediaHeroGeometry.canReturn(to: CGRect(x: 10, y: 100, width: 200, height: 200), screen: screen))
+        #expect(!MediaHeroGeometry.canReturn(to: CGRect(x: 10, y: 750, width: 200, height: 200), screen: screen))
+        #expect(!MediaHeroGeometry.canReturn(to: CGRect(x: 10, y: 900, width: 200, height: 200), screen: screen))
     }
 }

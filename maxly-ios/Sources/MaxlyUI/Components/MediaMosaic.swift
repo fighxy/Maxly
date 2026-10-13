@@ -62,10 +62,13 @@ struct MediaMosaic: View {
         let round = item.video?.isRound == true
         let width = CGFloat(tile.width)
         let height = CGFloat(tile.height)
+        let url = thumbnail(item, width: width, height: height)
+        let decode = Self.decodeSize(width: width, height: height)
+        let registry = MediaSourceRegistry.shared
         // Не `Button`: кнопка ловит касание в начале прокрутки и подсвечивается, а жест
         // касания срабатывает только на короткое нажатие без движения.
         return ZStack {
-            RemoteImage(url: thumbnail(item, width: width, height: height), maxPixel: Self.decodeSize(width: width, height: height)) {
+            RemoteImage(url: url, maxPixel: decode) {
                 placeholder(item)
             }
             .frame(width: width, height: height)
@@ -85,6 +88,15 @@ struct MediaMosaic: View {
         .frame(width: width, height: height)
         .clipShape(mask(round: round, corners: tile.corners))
         .contentShape(mask(round: round, corners: tile.corners))
+        // Где плитка на экране: отсюда вылетает просмотр и сюда возвращается. Кружок играет
+        // в ленте и в просмотр не открывается.
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+            guard !round else { return }
+            registry.update(item.id, .init(frame: frame, url: url, maxPixel: decode, cornerRadius: cornerRadius))
+        }
+        .onDisappear { registry.remove(item.id) }
+        // Плитка открыта в просмотре: на её месте пусто, как в Telegram.
+        .opacity(registry.hiddenId == item.id ? 0 : 1)
         // Подписи поверх маски: у кружка углы квадрата вне круга, и маска их срезала бы.
         .overlay(alignment: round ? .bottomLeading : .topLeading) {
             if let video = item.video, video.durationMs > 0, !(round && roundPlayer != nil) {

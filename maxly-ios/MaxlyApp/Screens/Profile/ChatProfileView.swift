@@ -183,7 +183,7 @@ struct ChatProfileView: View {
         .animation(.snappy, value: viewModel.actionNotice)
         .animation(.snappy, value: context?.chat.notice)
         .modifier(ProfileChatCovers(chat: context?.chat))
-        .fullScreenCover(item: $avatarViewer) { request in
+        .mediaViewerCover(item: $avatarViewer) { request in
             MediaViewer(request: request) { avatarViewer = nil }
         }
     }
@@ -911,7 +911,7 @@ private struct ProfileChatCovers: ViewModifier {
         if let chat {
             @Bindable var model = chat
             content
-                .fullScreenCover(item: $model.viewer) { request in
+                .mediaViewerCover(item: $model.viewer) { request in
                     MediaViewer(
                         request: request,
                         download: { await chat.downloadVideo($0, progress: $1) },
@@ -1116,6 +1116,12 @@ private struct SharedMediaCell: View {
             .overlay {
                 if isLoading { ProgressView().tint(.white) }
             }
+            // Просмотр вылетает из клетки и возвращается в неё, как из плитки в ленте.
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                MediaSourceRegistry.shared.update(item.attachmentId, .init(frame: frame, url: item.thumbnailURL, maxPixel: 360, cornerRadius: 0))
+            }
+            .onDisappear { MediaSourceRegistry.shared.remove(item.attachmentId) }
+            .opacity(MediaSourceRegistry.shared.hiddenId == item.attachmentId ? 0 : 1)
             .contentShape(Rectangle())
             .accessibilityLabel(item.duration == nil ? "Фото" : "Видео, \(item.duration ?? "")")
     }

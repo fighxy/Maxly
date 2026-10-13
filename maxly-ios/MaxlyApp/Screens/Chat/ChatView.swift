@@ -572,7 +572,7 @@ struct ChatView: View {
     /// Полноэкранный просмотр медиа и файлов, видеосообщение и жизненный цикл экрана.
     private var coversLayer: some View {
         sheetsLayer
-            .fullScreenCover(item: unlessProfileShown($viewModel.viewer)) { request in
+            .mediaViewerCover(item: unlessProfileShown($viewModel.viewer)) { request in
                 MediaViewer(
                     request: request,
                     download: { await viewModel.downloadVideo($0, progress: $1) },

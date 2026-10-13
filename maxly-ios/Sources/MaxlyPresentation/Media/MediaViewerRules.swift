@@ -141,3 +141,35 @@ public enum MediaTimeText {
         String(format: "%.1f", value).replacingOccurrences(of: ".", with: ",")
     }
 }
+
+/// Полёт кадра между плиткой в ленте и просмотром: где кадр стоит в просмотре и где он в
+/// промежуточный момент.
+public enum MediaHeroGeometry {
+    /// Кадр с отношением сторон [aspect] (ширина / высота), вписанный в [bounds] по центру.
+    public static func fit(aspect: Double, in bounds: CGRect) -> CGRect {
+        guard aspect > 0, bounds.width > 0, bounds.height > 0 else { return bounds }
+        let width = min(bounds.width, bounds.height * aspect)
+        let height = width / aspect
+        return CGRect(x: bounds.midX - width / 2, y: bounds.midY - height / 2, width: width, height: height)
+    }
+
+    /// Рамка на доле пути [progress] от [from] (0) до [to] (1).
+    public static func interpolate(from: CGRect, to: CGRect, progress: Double) -> CGRect {
+        let t = min(1, max(0, progress))
+        return CGRect(
+            x: from.minX + (to.minX - from.minX) * t,
+            y: from.minY + (to.minY - from.minY) * t,
+            width: from.width + (to.width - from.width) * t,
+            height: from.height + (to.height - from.height) * t
+        )
+    }
+
+    /// Возвращаться в плитку, только если она видна на экране хоть наполовину: иначе кадр
+    /// улетел бы за край, и лучше просто погасить просмотр.
+    public static func canReturn(to source: CGRect, screen: CGRect) -> Bool {
+        guard source.width > 1, source.height > 1 else { return false }
+        let visible = source.intersection(screen)
+        guard !visible.isNull else { return false }
+        return visible.width * visible.height >= source.width * source.height / 2
+    }
+}
