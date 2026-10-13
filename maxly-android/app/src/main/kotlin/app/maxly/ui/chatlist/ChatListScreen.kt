@@ -163,6 +163,8 @@ fun ChatListScreen(
     onLogout: () -> Unit = {},
     /** «Открыть» в строке бота: мини-приложение, не чат. */
     onOpenApp: (ChatListItem) -> Unit = {},
+    /** Полоса «играет голосовое» под шапкой; `null` — без неё. */
+    voiceBar: (@Composable () -> Unit)? = null,
 ) {
     LifecycleResumeEffect(viewModel) {
         viewModel.reloadLocal()
@@ -244,6 +246,7 @@ fun ChatListScreen(
                 }
                 // Сервер временно не пускает: список из сохранённого, без сети, а сверху его текст.
                 state.loginNotice?.let { LoginNoticeBanner(it, onRetry = onRetryLogin, onLogout = onLogout) }
+                voiceBar?.invoke()
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },

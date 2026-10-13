@@ -2574,9 +2574,7 @@ class ChatViewModel(
     override fun onCleared() {
         // Ушли из чата: отложенный черновик уходит на сервер сейчас.
         draftSync?.flush(chatId)
-        // Ушли из чата: его голосовое больше не играет.
-        val playing = media.playback.value
-        if (playing != null && history.any { it.id == playing.messageId }) media.stopVoice()
+        // Голосовое доигрывает и после ухода из чата: им управляет полоса над списком чатов.
     }
 
     private fun show(error: Exception) {

@@ -218,6 +218,12 @@ fun MainScreen(
             onTogglePrivateMode = container.privateMode::toggle,
             newChat = newChat,
             onOpenCreated = { id, title -> openChat(id, title) },
+            voiceBar = {
+                app.maxly.ui.chat.VoiceMiniBar(container.voicePlayer, onOpen = { playing ->
+                    openMessage = Triple(playing.meta.chatId, playing.messageId, playing.meta.sentAtMs)
+                    openChat(playing.meta.chatId)
+                })
+            },
             channelSetup = { id, done ->
                 val setup = viewModel(key = "channel-setup-$id") {
                     app.maxly.presentation.chatlist.ChannelSetupModel(id, container.chatAdmin, container.messages, container.contacts) { container.messages.currentUserId }
@@ -444,6 +450,11 @@ fun MainScreen(
                         container.chatAdmin.blockCommentAuthor(chatId, postId, comment.authorId, comment.id)
                     },
                     onStartCall = { peer, video -> app.maxly.calls.AndroidCalls.start(container, peer, video) },
+                    voicePlayer = container.voicePlayer,
+                    onOpenVoice = { playing ->
+                        openMessage = Triple(playing.meta.chatId, playing.messageId, playing.meta.sentAtMs)
+                        openChat(playing.meta.chatId)
+                    },
                     botApp = { request, onClose ->
                         val app = viewModel(key = "bot-app-${request.botId}-${request.startParam}-${request.title}") {
                             MiniAppViewModel(null, container.account, request.title) {

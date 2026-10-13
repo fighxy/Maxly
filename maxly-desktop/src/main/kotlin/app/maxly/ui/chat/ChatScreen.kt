@@ -191,6 +191,10 @@ fun ChatScreen(
     onBlockComment: suspend (postId: String, comment: Message) -> Unit = { _, _ -> },
     /** Позвонить собеседнику: звонок ведёт центр звонков приложения. */
     onStartCall: (peer: app.maxly.presentation.calls.CallPeerInfo, video: Boolean) -> Unit = { _, _ -> },
+    /** Полоса «играет голосовое»; `null` — без неё. */
+    voicePlayer: app.maxly.presentation.chat.VoicePlayer? = null,
+    /** Касание полосы, когда голосовое из другого чата: открыть тот чат на сообщении. */
+    onOpenVoice: (app.maxly.presentation.chat.VoicePlayback) -> Unit = {},
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val privacy = app.maxly.ui.components.LocalPrivateMode.current
@@ -438,6 +442,15 @@ fun ChatScreen(
         containerColor = Color.Transparent,
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().imePadding()) {
+            voicePlayer?.let { player ->
+                VoiceMiniBar(player, onOpen = { playing ->
+                    if (playing.meta.chatId.isEmpty() || playing.meta.chatId == model.chatId) {
+                        model.jumpTo(playing.messageId, atMs = playing.meta.sentAtMs)
+                    } else {
+                        onOpenVoice(playing)
+                    }
+                })
+            }
             state.pinnedText?.let { pinned ->
                 PinBanner(
                     title = state.pinnedTitle,

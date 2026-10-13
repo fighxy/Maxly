@@ -12,6 +12,7 @@ import app.maxly.platform.DesktopActions
 import app.maxly.presentation.chat.MediaSaver
 import app.maxly.presentation.chat.SavedKind
 import app.maxly.presentation.chat.VoicePlayback
+import app.maxly.presentation.chat.VoiceMeta
 import app.maxly.presentation.chat.VoicePlayer
 import app.maxly.presentation.chat.VoiceWave
 import kotlinx.coroutines.CoroutineScope
@@ -194,13 +195,17 @@ class DesktopVoicePlayer(private val scope: CoroutineScope, private val download
     private var job: Job? = null
     private var process: Process? = null
     private var line: SourceDataLine? = null
+    /** Скорость для всех голосовых: фильтр `atempo` ffmpeg, высота голоса не меняется. */
+    private var speed = 1f
 
-    override fun play(messageId: String, voiceId: String, url: String, durationMs: Long, from: Float?) {
+    override fun play(messageId: String, voiceId: String, url: String, durationMs: Long, from: Float?, meta: VoiceMeta) {
         val current = _playback.value
         val resume = from == null && current?.matches(messageId, voiceId) == true && !current.isPlaying
         val fraction = from ?: if (resume) current.progress else 0f
+        val info = if (meta == VoiceMeta() && current?.matches(messageId, voiceId) == true) current.meta else meta
+        metas[voiceId] = info
         stopPlayback(clear = false)
-        _playback.value = VoicePlayback(messageId, voiceId, isPlaying = false, positionMs = (durationMs * fraction).toLong(), durationMs = durationMs, isBuffering = true)
+        _playback.value = VoicePlayback(messageId, voiceId, isPlaying = false, positionMs = (durationMs * fraction).toLong(), durationMs = durationMs, isBuffering = true, meta = info, speed = speed)
         job = scope.launch(Dispatchers.IO) {
             val file = runCatching { materialize(url, voiceId) }.getOrNull()
             if (file == null) {
@@ -220,14 +225,32 @@ class DesktopVoicePlayer(private val scope: CoroutineScope, private val download
         _playback.value = current.copy(isPlaying = false, isBuffering = false)
     }
 
+    override fun resume() {
+        val current = _playback.value ?: return
+        if (current.isPlaying) return
+        play(current.messageId, current.voiceId, currentUrl(current.voiceId) ?: return, current.durationMs, current.progress, current.meta)
+    }
+
     override fun seek(fraction: Float) {
         val current = _playback.value ?: return
-        play(current.messageId, current.voiceId, currentUrl(current.voiceId) ?: return, current.durationMs, fraction.coerceIn(0f, 1f))
+        play(current.messageId, current.voiceId, currentUrl(current.voiceId) ?: return, current.durationMs, fraction.coerceIn(0f, 1f), current.meta)
+    }
+
+    override fun setSpeed(speed: Float) {
+        this.speed = speed
+        val current = _playback.value ?: return
+        // Играет — декодер перезапускается с того же места уже на новой скорости.
+        if (current.isPlaying) {
+            play(current.messageId, current.voiceId, currentUrl(current.voiceId) ?: return, current.durationMs, current.progress, current.meta)
+        } else {
+            _playback.value = current.copy(speed = speed)
+        }
     }
 
     override fun stop() = stopPlayback(clear = true)
 
     private val urls = mutableMapOf<String, String>()
+    private val metas = mutableMapOf<String, VoiceMeta>()
 
     private fun currentUrl(voiceId: String): String? = urls[voiceId]
 
@@ -241,9 +264,12 @@ class DesktopVoicePlayer(private val scope: CoroutineScope, private val download
 
     private fun pump(messageId: String, voiceId: String, file: File, durationMs: Long, from: Float) {
         val startSec = (durationMs * from.coerceIn(0f, 0.99f) / 1000.0)
+        val rate = speed
+        val meta = metas[voiceId] ?: VoiceMeta()
         val ffmpeg = ProcessBuilder(
             "ffmpeg", "-hide_banner", "-loglevel", "error",
             "-ss", startSec.toString(), "-i", file.absolutePath,
+            "-af", "atempo=$rate",
             "-f", "s16le", "-ac", "1", "-ar", "48000", "-",
         ).redirectError(ProcessBuilder.Redirect.DISCARD).start()
         process = ffmpeg
@@ -252,16 +278,17 @@ class DesktopVoicePlayer(private val scope: CoroutineScope, private val download
         speaker.open(format)
         speaker.start()
         line = speaker
-        val started = System.currentTimeMillis() - (durationMs * from).toLong()
-        _playback.value = VoicePlayback(messageId, voiceId, true, (durationMs * from).toLong(), durationMs)
+        val startMs = (durationMs * from).toLong()
+        val startedAt = System.currentTimeMillis()
+        _playback.value = VoicePlayback(messageId, voiceId, true, startMs, durationMs, meta = meta, speed = rate)
         val buffer = ByteArray(4096)
         val input = ffmpeg.inputStream
         while (true) {
             val read = input.read(buffer)
             if (read < 0) break
             speaker.write(buffer, 0, read)
-            val position = (System.currentTimeMillis() - started).coerceAtMost(durationMs)
-            _playback.value = VoicePlayback(messageId, voiceId, true, position, durationMs)
+            val position = (startMs + ((System.currentTimeMillis() - startedAt) * rate).toLong()).coerceAtMost(durationMs)
+            _playback.value = VoicePlayback(messageId, voiceId, true, position, durationMs, meta = meta, speed = rate)
         }
         speaker.drain()
         val still = _playback.value?.matches(messageId, voiceId) == true && _playback.value?.isPlaying == true

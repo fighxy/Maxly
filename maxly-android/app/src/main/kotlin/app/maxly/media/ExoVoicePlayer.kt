@@ -6,9 +6,11 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import app.maxly.presentation.chat.VoiceMeta
 import app.maxly.presentation.chat.VoicePlayback
 import app.maxly.presentation.chat.VoicePlayer
 import kotlinx.coroutines.CoroutineScope
@@ -37,6 +39,8 @@ class ExoVoicePlayer(
     override val playback: StateFlow<VoicePlayback?> = _playback.asStateFlow()
 
     private var player: ExoPlayer? = null
+    /** Скорость для всех голосовых; ExoPlayer ускоряет без смены высоты голоса (Sonic). */
+    private var speed = 1f
     private var ticker: Job? = null
 
     private fun player(): ExoPlayer = player ?: ExoPlayer.Builder(context)
@@ -74,8 +78,9 @@ class ExoVoicePlayer(
         }
     }
 
-    override fun play(messageId: String, voiceId: String, url: String, durationMs: Long, from: Float?) {
+    override fun play(messageId: String, voiceId: String, url: String, durationMs: Long, from: Float?, meta: VoiceMeta) {
         val exo = player()
+        exo.playbackParameters = PlaybackParameters(speed)
         val current = _playback.value
         if (current != null && current.matches(messageId, voiceId)) {
             from?.let { exo.seekTo((it * duration(exo, current.durationMs)).toLong()) }
@@ -86,7 +91,18 @@ class ExoVoicePlayer(
         exo.prepare()
         if (from != null && durationMs > 0) exo.seekTo((from * durationMs).toLong())
         exo.play()
-        _playback.value = VoicePlayback(messageId, voiceId, isPlaying = false, positionMs = 0, durationMs = durationMs, isBuffering = true)
+        _playback.value = VoicePlayback(messageId, voiceId, isPlaying = false, positionMs = 0, durationMs = durationMs, isBuffering = true, meta = meta, speed = speed)
+    }
+
+    override fun resume() {
+        if (_playback.value == null) return
+        player?.play()
+    }
+
+    override fun setSpeed(speed: Float) {
+        this.speed = speed
+        player?.playbackParameters = PlaybackParameters(speed)
+        _playback.update { it?.copy(speed = speed) }
     }
 
     override fun pause() {

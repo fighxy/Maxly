@@ -315,6 +315,12 @@ fun MainScreen(
                             onTogglePrivateMode = container.privateMode::toggle,
                             newChat = newChat,
                             onOpenCreated = { id, title -> openChat(id, title) },
+                            voiceBar = if (chatId != null) null else ({
+                                app.maxly.ui.chat.VoiceMiniBar(container.voicePlayer, onOpen = { playing ->
+                                    openChat(playing.meta.chatId)
+                                    openMessage = Triple(playing.meta.chatId, playing.messageId, playing.meta.sentAtMs)
+                                })
+                            }),
                             channelSetup = { id, done ->
                                 val setup = viewModel(key = "channel-setup-$id") {
                                     app.maxly.presentation.chatlist.ChannelSetupModel(id, container.chatAdmin, container.messages, container.contacts) { container.messages.currentUserId }
@@ -360,6 +366,10 @@ fun MainScreen(
                             quickReaction = accountState.settings.quickReaction.takeIf { accountState.settings.quickReactionEnabled },
                             openMessage = openMessage?.takeIf { it.first == chatId }?.let { it.second to it.third },
                             onMessageOpened = { openMessage = null },
+                            onOpenVoice = { playing ->
+                                openChat(playing.meta.chatId)
+                                openMessage = Triple(playing.meta.chatId, playing.messageId, playing.meta.sentAtMs)
+                            },
                         )
                     }
                     }
@@ -474,6 +484,8 @@ private fun ChatPane(
     onOpenProfile: () -> Unit,
     onOpenParticipant: (String, String) -> Unit,
     onWriteParticipant: (String) -> Unit,
+    /** Голосовое из другого чата в полосе: открыть тот чат на сообщении. */
+    onOpenVoice: (app.maxly.presentation.chat.VoicePlayback) -> Unit = {},
     onCloseProfile: () -> Unit,
     onCloseChat: () -> Unit,
     quickReaction: String? = null,
@@ -558,6 +570,8 @@ private fun ChatPane(
                     container.chatAdmin.blockCommentAuthor(chatId, postId, comment.authorId, comment.id)
                 },
                 onStartCall = { peer, video -> container.scope.launch { container.callCenter.startCall(peer, video) } },
+                voicePlayer = container.voicePlayer,
+                onOpenVoice = onOpenVoice,
                 botApp = { request, onClose ->
                     val app = viewModel(key = "bot-app-${request.botId}-${request.startParam}-${request.title}") {
                         MiniAppViewModel(null, container.account, request.title) {

@@ -113,7 +113,7 @@ class ChatMedia(
         if (current != null && current.matches(message.id, voice.id) && current.isPlaying) {
             player.pause()
         } else {
-            player.play(message.id, voice.id, url, voice.durationMs)
+            player.play(message.id, voice.id, url, voice.durationMs, meta = meta(message))
         }
     }
 
@@ -125,9 +125,12 @@ class ChatMedia(
             player.seek(fraction)
         } else {
             val url = voice.url ?: return
-            player.play(message.id, voice.id, url, voice.durationMs, from = fraction.coerceIn(0f, 1f))
+            player.play(message.id, voice.id, url, voice.durationMs, from = fraction.coerceIn(0f, 1f), meta = meta(message))
         }
     }
+
+    /** Для полосы «играет голосовое»: чат, автор и время сообщения. */
+    private fun meta(message: Message) = VoiceMeta(chatId = message.chatId.ifEmpty { chatId }, author = message.authorName, sentAtMs = message.timeMs)
 
     fun stopVoice() = player?.stop()
 

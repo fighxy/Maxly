@@ -25,9 +25,20 @@ private class FakePlayer : VoicePlayer {
     override val playback = MutableStateFlow<VoicePlayback?>(null)
     val calls = mutableListOf<String>()
 
-    override fun play(messageId: String, voiceId: String, url: String, durationMs: Long, from: Float?) {
+    var lastMeta: VoiceMeta? = null
+
+    override fun play(messageId: String, voiceId: String, url: String, durationMs: Long, from: Float?, meta: VoiceMeta) {
         calls += "play $messageId ${from ?: "-"}"
-        playback.value = VoicePlayback(messageId, voiceId, isPlaying = true, positionMs = 0, durationMs = durationMs)
+        lastMeta = meta
+        playback.value = VoicePlayback(messageId, voiceId, isPlaying = true, positionMs = 0, durationMs = durationMs, meta = meta)
+    }
+    override fun resume() {
+        calls += "resume"
+        playback.value = playback.value?.copy(isPlaying = true)
+    }
+    override fun setSpeed(speed: Float) {
+        calls += "speed $speed"
+        playback.value = playback.value?.copy(speed = speed)
     }
     override fun pause() {
         calls += "pause"
@@ -76,6 +87,8 @@ class ChatMediaTest {
         media.toggleVoice(m, voice)
         media.toggleVoice(m, voice)
         assertEquals(listOf("play 5 -", "pause", "play 5 -"), player.calls)
+        // Полосе над чатом и списком нужны чат, автор и время сообщения.
+        assertEquals(VoiceMeta(chatId = "10", author = "Анна", sentAtMs = 1), player.lastMeta)
     }
 
     @Test
@@ -180,5 +193,17 @@ class ChatMediaTest {
         media.openFile(m, file)
         assertTrue(media.state.value.downloads.isEmpty())
         assertNull(media.state.value.openFile)
+    }
+}
+
+class VoiceSpeedTest {
+    @Test
+    fun cyclesOneToTwo() {
+        assertEquals(1.5f, VoiceSpeed.next(1f))
+        assertEquals(2f, VoiceSpeed.next(1.5f))
+        assertEquals(1f, VoiceSpeed.next(2f))
+        assertEquals(listOf("1x", "1.5x", "2x"), VoiceSpeed.steps.map(VoiceSpeed::label))
+        assertEquals("Голосовое сообщение", VoicePlayback("1", "v", true, 0, 1000).title)
+        assertEquals("Маша", VoicePlayback("1", "v", true, 0, 1000, meta = VoiceMeta(author = "Маша")).title)
     }
 }
