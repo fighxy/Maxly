@@ -105,9 +105,9 @@ jobs:
       - name: Launch in Simulator
         if: steps.token.outputs.present == 'true'
         # Обычно шаг идёт 3 минуты. Загрузка симулятора, установка и запуск ограничены по времени
-        # (3, 5 и 3 минуты); зависший симулятор скрипт пересоздаёт один раз. Если и это не
+        # (3, 5 и 10 минут); зависший симулятор скрипт пересоздаёт один раз. Если и это не
         # помогло, шаг падает, а сборка и публикация .ipa ниже всё равно выполняются.
-        timeout-minutes: 22
+        timeout-minutes: 30
         env:
           MAXLY_SIM_RUNTIME: "26.2"
         run: bash scripts/smoke-launch.sh build/sim/Build/Products/Debug-iphonesimulator/Maxly.app
