@@ -56,24 +56,34 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Симулятор на раннере иногда зависает при загрузке навсегда. Тогда он удаляется и создаётся
-# новый: до трёх попыток по три минуты, а не весь шаг в ожидании.
+# Симулятор на раннере иногда зависает при загрузке или установке приложения (до 9 минут).
+# Каждая фаза ограничена по времени и отмечается в журнале; зависший симулятор удаляется и
+# создаётся новый, вторая попытка — последняя.
 boot_limit=180
-for attempt in 1 2 3; do
+install_limit=300
+launch_limit=180
+prepared=0
+for attempt in 1 2; do
   udid="$(xcrun simctl create maxly-smoke "$device_type" "$runtime")"
   echo "Симулятор $udid ($device_type, $runtime), попытка $attempt"
-  if run_limited "$boot_limit" boot_sim "$udid"; then
-    break
+  if ! run_limited "$boot_limit" boot_sim "$udid"; then
+    echo "::warning::Симулятор не загрузился за $boot_limit с (попытка $attempt)"
+  else
+    echo "Симулятор загружен"
+    if run_limited "$install_limit" xcrun simctl install "$udid" "$app"; then
+      echo "Maxly установлен"
+      prepared=1
+      break
+    fi
+    echo "::warning::Maxly не установился за $install_limit с (попытка $attempt)"
   fi
-  echo "::warning::Симулятор не загрузился за $boot_limit с (попытка $attempt)"
   cleanup
   udid=""
 done
-if [[ -z "$udid" ]]; then
-  echo "::error::Симулятор не загрузился за 3 попытки"
+if [[ "$prepared" != 1 ]]; then
+  echo "::error::Симулятор не подготовился за 2 попытки (загрузка или установка зависла)"
   exit 1
 fi
-xcrun simctl install "$udid" "$app"
 
 xcrun simctl spawn "$udid" log stream --level debug --style compact \
   --predicate 'subsystem == "app.maxly.ios" OR process == "Maxly"' > "$out/app.log" 2>&1 &
@@ -82,8 +92,8 @@ sleep 2
 
 touch "$out/started"
 # simctl launch печатает «app.maxly.ios: <pid>»; процессы симулятора — процессы хоста.
-pid="$(xcrun simctl launch "$udid" "$bundle" | tee /dev/stderr | awk -F': ' -v b="$bundle" '$1 == b { print $2 }')"
-[[ -n "$pid" ]] || echo "::error::Maxly не запустился"
+pid="$(run_limited "$launch_limit" xcrun simctl launch "$udid" "$bundle" | tee /dev/stderr | awk -F': ' -v b="$bundle" '$1 == b { print $2 }')"
+[[ -n "$pid" ]] || echo "::error::Maxly не запустился (за $launch_limit с)"
 sleep "$wait_seconds"
 
 # Жив, если жив его pid или launchd симулятора ещё держит задание приложения.
