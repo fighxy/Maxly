@@ -163,11 +163,18 @@ public struct MediaViewerRequest: Identifiable, Hashable, Sendable {
     public var slides: [MediaSlide]
     /// Сообщение, из которого открыт просмотр: по нему сохраняется текущий кадр.
     public var messageId: String?
+    /// Шапка просмотра: кто прислал («Вы» — своё) и когда; подпись к фото или видео.
+    public var author: String?
+    public var date: Date?
+    public var caption: String?
 
-    public init(id: String, slides: [MediaSlide], messageId: String? = nil) {
+    public init(id: String, slides: [MediaSlide], messageId: String? = nil, author: String? = nil, date: Date? = nil, caption: String? = nil) {
         self.id = id
         self.slides = slides
         self.messageId = messageId
+        self.author = author
+        self.date = date
+        self.caption = caption
     }
 }
 

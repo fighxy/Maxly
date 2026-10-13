@@ -4,6 +4,8 @@ import MaxlyDomain
 
 @main
 struct MaxlyApp: App {
+    /// Повороты экрана: приложение в портрете, поворачивается только просмотр фото и видео.
+    @UIApplicationDelegateAdaptor(MaxlyAppDelegate.self) private var appDelegate
     @State private var container = AppContainer()
     @Environment(\.scenePhase) private var scenePhase
     @State private var router = AppRouter()

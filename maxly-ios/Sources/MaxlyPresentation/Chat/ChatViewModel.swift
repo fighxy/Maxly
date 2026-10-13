@@ -1661,7 +1661,32 @@ public final class ChatViewModel {
             return
         }
         guard slides.contains(where: { $0.id == startId }) else { return }
-        viewer = MediaViewerRequest(id: startId, slides: slides, messageId: message.id)
+        let caption = message.displayText.trimmingCharacters(in: .whitespacesAndNewlines)
+        viewer = MediaViewerRequest(
+            id: startId, slides: slides, messageId: message.id,
+            author: isOutgoing(message) ? "Вы" : message.authorName,
+            date: message.timestamp,
+            caption: caption.isEmpty ? nil : caption
+        )
+    }
+
+    /// Запасной путь видео с прогрессом: ролик скачивается целиком (доля 0…1 в [progress]) и
+    /// играет с диска. Отмена задачи отменяет и загрузку.
+    public func downloadVideo(_ slide: MediaSlide, progress: @escaping @MainActor (Double) -> Void) async -> URL? {
+        guard let url = slide.playURL, !url.isFileURL, let media else { return slide.playURL }
+        let item = MediaItem(id: "video-\(slide.id)", type: .video, url: url, size: 0)
+        do {
+            for try await value in media.download(item) { progress(value) }
+            return try await media.preview(for: item)
+        } catch is CancellationError {
+            return nil
+        } catch let error as MaxlyError {
+            if error != .cancelled { show(error) }
+            return nil
+        } catch {
+            show(.networkUnavailable)
+            return nil
+        }
     }
 
     /// Запасной путь видео: поток не открылся — ролик скачивается целиком и играет с диска.

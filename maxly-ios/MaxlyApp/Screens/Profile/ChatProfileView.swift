@@ -914,7 +914,7 @@ private struct ProfileChatCovers: ViewModifier {
                 .fullScreenCover(item: $model.viewer) { request in
                     MediaViewer(
                         request: request,
-                        download: { await chat.downloadVideo($0) },
+                        download: { await chat.downloadVideo($0, progress: $1) },
                         notice: chat.notice,
                         isSaving: chat.isSaving,
                         onSave: { chat.saveViewerSlide($0, to: $1) }

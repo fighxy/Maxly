@@ -575,7 +575,7 @@ struct ChatView: View {
             .fullScreenCover(item: unlessProfileShown($viewModel.viewer)) { request in
                 MediaViewer(
                     request: request,
-                    download: { await viewModel.downloadVideo($0) },
+                    download: { await viewModel.downloadVideo($0, progress: $1) },
                     notice: viewModel.notice,
                     isSaving: viewModel.isSaving,
                     onSave: { viewModel.saveViewerSlide($0, to: $1) }
