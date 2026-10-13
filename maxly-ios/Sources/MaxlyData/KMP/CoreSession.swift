@@ -767,6 +767,14 @@ public protocol MaxCore: Sendable {
     func ownStoryArchive(marker: String) async throws -> StoryArchivePage
     /// Пуши колец (`NOTIF_STORIES_UPDATE` 216). Пустое кольцо — историй у владельца не осталось.
     func storyUpdates() -> AsyncStream<StoryRing>
+    /// Лайк истории (`STORIES_REACT` 213); пустой `emoji` снимает лайк. `true` — сервер принял.
+    func reactToStory(owner: StoryOwner, storyId: String, emoji: String) async throws -> Bool
+    /// Ответ на историю: сообщение с вложением `STORY_REPLY` в чат с автором.
+    func replyToStory(owner: StoryOwner, storyId: String, expiresAtMs: Int64, text: String) async throws
+    /// Скрыть истории автора (человек — 34, чат — 61) или показать снова.
+    func setStoriesHidden(owner: StoryOwner, hidden: Bool) async throws
+    /// Жалоба на историю (`COMPLAIN` 161, тип 9, владелец — `parentId`).
+    func reportStory(reasonId: Int, owner: StoryOwner, storyId: String) async throws -> Bool
 
     // MARK: Разметка, выбор, черновики, участники и контакты (CoreMessageTools.swift)
 
@@ -1020,6 +1028,10 @@ public extension MaxCore {
     func deleteStories(ids: [String]) async throws { throw unsupported }
     func ownStoryArchive(marker: String) async throws -> StoryArchivePage { throw unsupported }
     func storyUpdates() -> AsyncStream<StoryRing> { AsyncStream { $0.finish() } }
+    func reactToStory(owner: StoryOwner, storyId: String, emoji: String) async throws -> Bool { throw unsupported }
+    func replyToStory(owner: StoryOwner, storyId: String, expiresAtMs: Int64, text: String) async throws { throw unsupported }
+    func setStoriesHidden(owner: StoryOwner, hidden: Bool) async throws { throw unsupported }
+    func reportStory(reasonId: Int, owner: StoryOwner, storyId: String) async throws -> Bool { throw unsupported }
 }
 
 /// Ответ расшифровки голосового: `status` `1` — готово (`text` пуст, если речи не нашлось),

@@ -48,6 +48,31 @@ private actor FakeStories: StoriesRepository {
         if let failure { throw failure }
         deleted.append(storyIds)
     }
+
+    private(set) var reactions: [String?] = []
+    var reactAccepted = true
+    private(set) var replies: [String] = []
+    private(set) var hidden: [StoryOwner] = []
+    private(set) var reports: [Int] = []
+    func set(reactAccepted: Bool) { self.reactAccepted = reactAccepted }
+
+    func react(_ story: Story, emoji: String?) async throws(MaxlyError) -> Bool {
+        reactions.append(emoji)
+        return reactAccepted
+    }
+
+    func reply(to story: Story, text: String) async throws(MaxlyError) { replies.append(text) }
+
+    func setHidden(_ owner: StoryOwner, hidden: Bool) async throws(MaxlyError) {
+        if hidden { self.hidden.append(owner) }
+    }
+
+    func reportReasons() async throws(MaxlyError) -> [ComplaintReason] { [ComplaintReason(id: 3, title: "Спам")] }
+
+    func report(_ story: Story, reasonId: Int) async throws(MaxlyError) -> Bool {
+        reports.append(reasonId)
+        return true
+    }
 }
 
 private func ring(_ id: String, total: Int, read: Int, at seconds: TimeInterval, name: String? = nil) -> StoryRing {
@@ -313,5 +338,52 @@ struct StoriesViewModelTests {
         #expect(StoryText.ago(now.addingTimeInterval(-25 * 3600), now: now) == "вчера")
         #expect(StoriesViewModel.resumeIndex(ring("1", total: 3, read: 2, at: 0), count: 3) == 2)
         #expect(StoriesViewModel.resumeIndex(ring("1", total: 3, read: 3, at: 0), count: 3) == 0)
+    }
+
+    @Test("Лайк с откатом, ответ, жалоба и «Скрыть истории автора»")
+    func storyActions() async {
+        let repo = FakeStories()
+        await repo.set(feed: [ring("4", total: 1, read: 0, at: 200), ring("3", total: 1, read: 0, at: 100)])
+        await repo.set(owner: "4", OwnerStories(ring: ring("4", total: 1, read: 0, at: 200), stories: [story("4", "41", at: 1)]))
+        await repo.set(owner: "3", OwnerStories(ring: ring("3", total: 1, read: 0, at: 100), stories: [story("3", "31", at: 5)]))
+        let model = StoriesViewModel(repository: repo)
+        await model.refresh()
+        model.open("4")
+        await model.settle()
+        await model.toggleLike()
+        #expect(model.viewer?.story?.reaction == "❤️")
+        await repo.set(reactAccepted: false)
+        await model.toggleLike()
+        #expect(model.viewer?.story?.reaction == "❤️")
+        await model.reply("Классно!")
+        #expect(await repo.replies == ["Классно!"])
+        #expect(model.message == "Ответ отправлен")
+        await model.openReport()
+        #expect(model.reportReasons?.map(\.id) == [3])
+        await model.report(3)
+        #expect(model.reportReasons == nil)
+        #expect(await repo.reports == [3])
+        await model.hideAuthor()
+        await model.settle()
+        #expect(await repo.hidden == [StoryOwner(id: "4")])
+        #expect(model.viewer?.ring.owner.id == "3")
+        #expect(model.rings.map(\.owner.id) == ["3"])
+    }
+
+    @Test("Автор выключил лайки и ответы — ничего не уходит")
+    func switchedOff() async {
+        let repo = FakeStories()
+        await repo.set(feed: [ring("4", total: 1, read: 0, at: 200)])
+        var only = story("4", "41", at: 1)
+        only.settings = StoryFlags.offReact | StoryFlags.offReply
+        await repo.set(owner: "4", OwnerStories(ring: ring("4", total: 1, read: 0, at: 200), stories: [only]))
+        let model = StoriesViewModel(repository: repo)
+        await model.refresh()
+        model.open("4")
+        await model.settle()
+        await model.toggleLike()
+        await model.reply("привет")
+        #expect(await repo.reactions.isEmpty)
+        #expect(await repo.replies.isEmpty)
     }
 }

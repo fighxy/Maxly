@@ -8,9 +8,17 @@ import MaxlyDomain
 final class AppRouter {
     var chatId: String?
     var tab: AppTab = .chats
+    /// Чат, который при открытии сразу показывает профиль («Перейти в профиль» из истории).
+    var profileRequest: String?
 
     /// Переход в чат с других вкладок (контакт, звонок).
     func openChat(_ id: String) {
+        show(chatId: id)
+    }
+
+    /// Чат `id` и сразу его профиль.
+    func openProfile(chatId id: String) {
+        profileRequest = id
         show(chatId: id)
     }
 

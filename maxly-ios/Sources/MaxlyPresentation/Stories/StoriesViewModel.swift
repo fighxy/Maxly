@@ -40,6 +40,10 @@ public final class StoriesViewModel {
     public var message: String?
     /// Свой id: по нему личный чат находит собеседника. Пусто, пока не известен.
     public private(set) var myId = ""
+    /// Причины жалобы на открытую историю: `nil` — окно жалобы закрыто, пусто — грузятся.
+    public private(set) var reportReasons: [ComplaintReason]?
+    /// Ответ на историю в пути.
+    public private(set) var isSending = false
 
     @ObservationIgnored private let repository: any StoriesRepository
     @ObservationIgnored private let now: () -> Date
@@ -197,6 +201,108 @@ public final class StoriesViewModel {
             viewer?.isDeleting = false
             start(min(current.storyIndex, left.count - 1))
         }
+    }
+
+    /// Сразу к автору `index` очереди.
+    public func openOwner(at index: Int) {
+        guard let viewer, viewer.queue.indices.contains(index), index != viewer.ownerIndex else { return }
+        showOwner(index)
+    }
+
+    /// Лайк открытой истории сердечком или снять его. Сразу на экране; не принял сервер — откат.
+    public func toggleLike() async {
+        guard let current = viewer, let story = current.story, !current.isOwn, story.canLike else { return }
+        var liked = story
+        liked.reaction = story.isLiked ? nil : StoryFlags.heart
+        replaceStory(liked)
+        let accepted: Bool
+        do {
+            accepted = try await repository.react(story, emoji: liked.reaction)
+        } catch {
+            fail(error, fallback: "Не удалось поставить лайк")
+            accepted = false
+        }
+        if !accepted { replaceStory(story) }
+    }
+
+    /// Ответ на открытую историю: сообщение автору со ссылкой на историю.
+    public func reply(_ text: String) async {
+        guard let current = viewer, let story = current.story, !current.isOwn, story.canReply, !isSending,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        isSending = true
+        defer { isSending = false }
+        do {
+            try await repository.reply(to: story, text: text)
+            message = "Ответ отправлен"
+        } catch {
+            fail(error, fallback: "Не удалось отправить ответ")
+        }
+    }
+
+    /// «Скрыть истории автора»: кольцо уходит из ленты, просмотр идёт к следующему автору.
+    public func hideAuthor() async {
+        guard let current = viewer, !current.isOwn else { return }
+        let owner = current.ring.owner
+        let name = current.ring.name
+        do {
+            try await repository.setHidden(owner, hidden: true)
+        } catch {
+            fail(error, fallback: "Не удалось скрыть истории")
+            return
+        }
+        feed[owner] = nil
+        peers[owner] = nil
+        cache[owner] = nil
+        if let now = viewer, now.ring.owner == owner {
+            let queue = now.queue.filter { $0.owner != owner }
+            if queue.isEmpty {
+                close()
+            } else {
+                let index = min(now.ownerIndex, queue.count - 1)
+                viewer?.queue = queue
+                viewer?.ownerIndex = index
+                showOwner(index)
+            }
+        }
+        publishState()
+        message = "Истории \(name.isEmpty ? "автора" : name) скрыты"
+    }
+
+    /// Окно жалобы: причины грузятся с сервера.
+    public func openReport() async {
+        guard let story = viewer?.story, story.canReport else { return }
+        reportReasons = []
+        do {
+            let reasons = try await repository.reportReasons()
+            if reportReasons != nil { reportReasons = reasons }
+        } catch {
+            reportReasons = nil
+            fail(error, fallback: "Не удалось загрузить причины жалобы")
+        }
+    }
+
+    public func closeReport() {
+        reportReasons = nil
+    }
+
+    /// Пожаловаться на открытую историю.
+    public func report(_ reasonId: Int) async {
+        guard let story = viewer?.story else { return }
+        reportReasons = nil
+        do {
+            let ok = try await repository.report(story, reasonId: reasonId)
+            message = ok ? "Жалоба отправлена" : "Сервер не принял жалобу"
+        } catch {
+            fail(error, fallback: "Не удалось отправить жалобу")
+        }
+    }
+
+    /// Обновлённая история (лайк) — в просмотр и кэш владельца.
+    private func replaceStory(_ story: Story) {
+        guard let current = viewer else { return }
+        let stories = current.stories.map { $0.id == story.id ? story : $0 }
+        cache[story.owner] = stories
+        viewer?.stories = stories
     }
 
     /// Публикует историю. Пока идёт загрузка, `publishProgress` не `nil`.

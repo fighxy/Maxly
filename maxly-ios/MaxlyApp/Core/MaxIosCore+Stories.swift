@@ -120,6 +120,54 @@ extension MaxIosCore {
         }
     }
 
+    func reactToStory(owner: StoryOwner, storyId: String, emoji: String) async throws -> Bool {
+        try await call("reactToStory") { done in
+            self.client.reactToStory(ownerId: owner.id, type: Int32(owner.kind.rawValue), storyId: storyId, emoji: emoji) { result, kind, key in
+                if let kind {
+                    done(.failure(Self.failed(kind: kind, key: key)))
+                } else {
+                    done(.success(result == "ok"))
+                }
+            }
+        }
+    }
+
+    func replyToStory(owner: StoryOwner, storyId: String, expiresAtMs: Int64, text: String) async throws {
+        let _: Void = try await call("replyToStory") { done in
+            self.client.replyToStory(ownerId: owner.id, type: Int32(owner.kind.rawValue), storyId: storyId, expiresAtMs: expiresAtMs, text: text) { _, kind, key in
+                if let kind {
+                    done(.failure(Self.failed(kind: kind, key: key)))
+                } else {
+                    done(.success(()))
+                }
+            }
+        }
+    }
+
+    func setStoriesHidden(owner: StoryOwner, hidden: Bool) async throws {
+        let _: Void = try await call("setStoriesHidden") { done in
+            self.client.setStoriesHidden(ownerId: owner.id, type: Int32(owner.kind.rawValue), hidden: hidden) { kind, key in
+                if let kind {
+                    done(.failure(Self.failed(kind: kind, key: key)))
+                } else {
+                    done(.success(()))
+                }
+            }
+        }
+    }
+
+    func reportStory(reasonId: Int, owner: StoryOwner, storyId: String) async throws -> Bool {
+        try await call("reportStory") { done in
+            self.client.reportStory(reasonId: Int32(reasonId), ownerId: owner.id, storyId: storyId) { result, kind, key in
+                if let kind {
+                    done(.failure(Self.failed(kind: kind, key: key)))
+                } else {
+                    done(.success(result == "ok"))
+                }
+            }
+        }
+    }
+
     private static func ring(_ preview: IosStoryPreview) -> StoryRing {
         StoryRing(
             owner: StoryOwner(id: preview.ownerId, kind: StoryOwner.Kind(rawValue: Int(preview.ownerType)) ?? .user),
@@ -149,8 +197,12 @@ extension MaxIosCore {
             owner: StoryOwner(id: story.ownerId, kind: StoryOwner.Kind(rawValue: Int(story.ownerType)) ?? .user),
             time: Date(unixMillis: story.timeMs),
             expiresAt: story.expiresAtMs > 0 ? Date(unixMillis: story.expiresAtMs) : nil,
-            audience: story.audience == Int32(StoryAudience.contacts.rawValue) ? .contacts : .everyone,
-            media: media
+            // В `audience` ядро кладёт все биты `settings`: кому видна и что автор выключил.
+            audience: Int(story.audience) & StoryFlags.visibleForContacts != 0 ? .contacts : .everyone,
+            media: media,
+            reaction: story.reaction.isEmpty ? nil : story.reaction,
+            settings: Int(story.audience),
+            viewsCount: Int(story.viewsCount)
         )
     }
 }

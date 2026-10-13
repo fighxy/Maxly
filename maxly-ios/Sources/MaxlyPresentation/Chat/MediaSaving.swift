@@ -200,3 +200,30 @@ enum SaveFormat {
         }
     }
 }
+
+/// «Скачать» в просмотре историй: скачанный файл истории — в файл для «Фото».
+public enum StorySaving {
+    /// Фото перекодируется в JPG или PNG (WebP и HEIC с CDN «Фото» не всегда принимают),
+    /// видео получает имя `.mp4`. Имя — по времени истории, как у сохранённых вложений.
+    public static func savedFile(for story: Story, downloaded: URL) async throws(MaxlyError) -> SavedFile {
+        let folder = SaveFormat.folder(for: "story\(story.id)")
+        let base = SaveNaming.name(for: story.time, index: 0, ext: "")
+        if story.media?.isVideo == true {
+            do {
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            } catch {
+                throw .storageError
+            }
+            let target = folder.appending(path: "\(base).mp4")
+            try? FileManager.default.removeItem(at: target)
+            do {
+                try FileManager.default.copyItem(at: downloaded, to: target)
+            } catch {
+                throw .storageError
+            }
+            return SavedFile(url: target, name: target.lastPathComponent, kind: .video)
+        }
+        let saved = try await SaveFormat.image(at: downloaded, in: folder, baseName: base)
+        return SavedFile(url: saved, name: saved.lastPathComponent, kind: .image)
+    }
+}

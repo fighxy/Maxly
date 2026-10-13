@@ -59,6 +59,30 @@ public struct CoreStoriesRepository: StoriesRepository {
         return StoryArchivePage(stories: page.stories, marker: page.isLast ? "" : page.marker)
     }
 
+    public func react(_ story: Story, emoji: String?) async throws(MaxlyError) -> Bool {
+        try await run("Лайк истории \(story.id)") { try await core.reactToStory(owner: story.owner, storyId: story.id, emoji: emoji ?? "") }
+    }
+
+    public func reply(to story: Story, text: String) async throws(MaxlyError) {
+        let expires = Int64((story.expiresAt?.timeIntervalSince1970 ?? 0) * 1000)
+        try await run("Ответ на историю \(story.id)") {
+            try await core.replyToStory(owner: story.owner, storyId: story.id, expiresAtMs: expires, text: text.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        Log.info(.chats, "Ответ на историю отправлен")
+    }
+
+    public func setHidden(_ owner: StoryOwner, hidden: Bool) async throws(MaxlyError) {
+        try await run("Скрыть истории \(owner.id)") { try await core.setStoriesHidden(owner: owner, hidden: hidden) }
+    }
+
+    public func reportReasons() async throws(MaxlyError) -> [ComplaintReason] {
+        try await run("Причины жалобы на историю") { try await core.complaintReasons(typeId: 9) }
+    }
+
+    public func report(_ story: Story, reasonId: Int) async throws(MaxlyError) -> Bool {
+        try await run("Жалоба на историю \(story.id)") { try await core.reportStory(reasonId: reasonId, owner: story.owner, storyId: story.id) }
+    }
+
     private func run<T: Sendable>(_ what: String, _ body: () async throws -> T) async throws(MaxlyError) -> T {
         do {
             return try await body()

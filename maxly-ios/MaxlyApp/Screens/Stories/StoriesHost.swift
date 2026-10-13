@@ -10,6 +10,8 @@ struct StoriesHost: ViewModifier {
     @Binding var picking: Bool
     /// Что сделать после первой ленты: свой профиль для плитки «Ваша история».
     var afterStart: @MainActor () async -> Void = {}
+    /// «Перейти в профиль» из истории: открыть чат `id` с его профилем.
+    var onProfile: @MainActor (String) -> Void = { _ in }
     @State private var item: PhotosPickerItem?
     @State private var composing: ComposingStory?
     @Environment(\.scenePhase) private var scenePhase
@@ -29,7 +31,18 @@ struct StoriesHost: ViewModifier {
                 if phase == .active { Task { await stories?.refresh() } }
             }
             .fullScreenCover(isPresented: Binding(get: { viewerOpen }, set: { if !$0 { stories?.close() } })) {
-                if let stories { StoryViewerView(stories: stories) }
+                if let stories {
+                    StoryViewerView(stories: stories) { ring in
+                        // Профиль человека — в его диалоге (`свой id ^ id автора`), группы и канала — в чате.
+                        let chatId: String
+                        if ring.owner.kind == .user, let me = Int64(stories.myId), let owner = Int64(ring.owner.id) {
+                            chatId = String(me ^ owner)
+                        } else {
+                            chatId = ring.owner.id
+                        }
+                        onProfile(chatId)
+                    }
+                }
             }
             .fullScreenCover(item: $composing) { composing in
                 StoryComposerView(

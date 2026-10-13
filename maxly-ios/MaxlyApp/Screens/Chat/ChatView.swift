@@ -50,6 +50,10 @@ struct ChatView: View {
     /// Позвонить собеседнику личного чата (из профиля): аудио или видео.
     var onCall: ((CallCenter.Peer, Bool) -> Void)? = nil
     var makeParticipantProfile: ((DialogDraft) -> ChatProfileViewModel?)? = nil
+    /// Открыть профиль, как только он готов («Перейти в профиль» из истории); `onProfileOpened` —
+    /// просьба выполнена.
+    var opensProfile = false
+    var onProfileOpened: () -> Void = {}
     @State private var participant: DialogDraft?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
@@ -271,6 +275,11 @@ struct ChatView: View {
             }
             // Статус собеседника в шапке: события `presence` ядра, пока чат открыт.
             .task(id: profile == nil) { await profile?.watchPresence() }
+            .task(id: opensProfile && profile != nil) {
+                guard opensProfile, profile != nil else { return }
+                openProfile()
+                onProfileOpened()
+            }
             .task {
                 // Шапка: статус и аватар из карточки чата, она же открывается профилем.
                 if profile == nil { profile = makeProfile?() }

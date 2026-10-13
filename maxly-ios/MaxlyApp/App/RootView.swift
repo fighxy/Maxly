@@ -119,7 +119,7 @@ struct MainTabView: View {
         .modifier(StoriesHost(stories: container.storiesViewModel(), picking: $pickingStory, afterStart: {
             let account = container.accountSettingsModel()
             if account.profile == nil { await account.reloadProfile() }
-        }))
+        }, onProfile: { chatId in router.openProfile(chatId: chatId) }))
         // Звонок поверх всего: полный экран или плашка свёрнутого (docs/calls.md).
         .modifier(CallHost(center: container.callCenter, onAnswer: { container.answerCall(video: $0) }))
         // Бейдж «Звонков» нужен и до первого открытия вкладки.
@@ -342,7 +342,9 @@ struct MainTabView: View {
                 quickReaction: settings.quickReactionEnabled ? settings.quickReaction : nil,
                 makeBotApp: { container.botAppModel($0) },
                 onCall: { peer, video in container.startCall(peer, video: video) },
-                makeParticipantProfile: { container.profileViewModel(dialog: $0) }
+                makeParticipantProfile: { container.profileViewModel(dialog: $0) },
+                opensProfile: router.profileRequest == id,
+                onProfileOpened: { if router.profileRequest == id { router.profileRequest = nil } }
             )
             .id(id)
         }

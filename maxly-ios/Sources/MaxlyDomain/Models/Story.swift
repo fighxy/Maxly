@@ -78,15 +78,45 @@ public struct Story: Identifiable, Hashable, Sendable {
     public var expiresAt: Date?
     public var audience: StoryAudience
     public var media: StoryMedia?
+    /// Свой лайк (эмодзи), `nil` — лайка нет.
+    public var reaction: String?
+    /// Биты автора (`StoryFlags`): кому видна и что он выключил у этой истории.
+    public var settings: Int
+    public var viewsCount: Int
 
-    public init(id: String, owner: StoryOwner, time: Date, expiresAt: Date? = nil, audience: StoryAudience = .everyone, media: StoryMedia?) {
+    public init(id: String, owner: StoryOwner, time: Date, expiresAt: Date? = nil, audience: StoryAudience = .everyone, media: StoryMedia?,
+                reaction: String? = nil, settings: Int = 0, viewsCount: Int = 0) {
         self.id = id
         self.owner = owner
         self.time = time
         self.expiresAt = expiresAt
         self.audience = audience
         self.media = media
+        self.reaction = reaction
+        self.settings = settings
+        self.viewsCount = viewsCount
     }
+
+    public var isLiked: Bool { reaction != nil }
+    public var canLike: Bool { settings & StoryFlags.offReact == 0 }
+    public var canReply: Bool { settings & StoryFlags.offReply == 0 }
+    public var canOpenProfile: Bool { settings & StoryFlags.offMenuProfile == 0 }
+    public var canHideAuthor: Bool { settings & StoryFlags.offMenuHideAuthor == 0 }
+    public var canDownload: Bool { settings & StoryFlags.offMenuDownload == 0 }
+    public var canReport: Bool { settings & StoryFlags.offMenuReport == 0 }
+}
+
+/// Биты `settings` истории (как у веб-клиента Max): что автор выключил у этой истории.
+public enum StoryFlags {
+    public static let visibleForContacts = 2
+    public static let offReact = 4
+    public static let offReply = 8
+    public static let offMenuProfile = 16
+    public static let offMenuHideAuthor = 32
+    public static let offMenuDownload = 64
+    public static let offMenuReport = 128
+    /// Лайк кнопки-сердечка.
+    public static let heart = "❤️"
 }
 
 /// Истории владельца: свежее кольцо (`nil` — историй больше нет) и сами истории, от старых к новым.

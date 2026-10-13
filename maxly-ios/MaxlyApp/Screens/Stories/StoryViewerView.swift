@@ -5,11 +5,20 @@ import MaxlyDomain
 import MaxlyPresentation
 import MaxlyUI
 
-/// Просмотр историй на весь экран. Касание слева (треть ширины) — назад, справа — вперёд,
-/// удержание — пауза, свайп вниз — закрыть, вбок — к соседнему владельцу. Фото идёт 5 секунд,
-/// видео — сколько длится.
+/// Просмотр историй на весь экран, как в Max. Касание слева (треть ширины) — назад, справа —
+/// вперёд, удержание — пауза, свайп вниз — закрыть, вбок — к соседнему владельцу. Фото идёт
+/// 5 секунд, видео — сколько длится. В шапке — пауза, звук у видео и «⋯» (профиль, скрыть
+/// истории автора, скачать, пожаловаться; у своей — скачать и удалить), внизу — «Ответить» и
+/// сердечко. Пока пишется ответ или открыта жалоба, история стоит.
 struct StoryViewerView: View {
     let stories: StoriesViewModel
+    /// «Перейти в профиль»: экран открывает профиль автора.
+    var onProfile: (StoryRing) -> Void = { _ in }
+    @State private var paused = false
+    @State private var muted = false
+    @State private var reply = ""
+    @State private var saving = false
+    @FocusState private var replyFocused: Bool
     @State private var photo: UIImage?
     /// История, чья картинка уже загрузилась: с неё идёт таймер.
     @State private var readyEpoch = -1
@@ -31,7 +40,13 @@ struct StoryViewerView: View {
                         .scaleEffect(1 - min(max(0, drag.height) / 3000, 0.15))
                         .contentShape(Rectangle())
                         .gesture(touchGesture(width: geometry.size.width))
+                        .ignoresSafeArea(.keyboard)
                     chrome(viewer)
+                        .ignoresSafeArea(.keyboard)
+                    if !viewer.isOwn, let story = viewer.story {
+                        replyBar(story)
+                            .frame(maxHeight: .infinity, alignment: .bottom)
+                    }
                 }
             }
         }
@@ -45,8 +60,19 @@ struct StoryViewerView: View {
         .task(id: TimerKey(epoch: stories.viewer?.epoch ?? -1, ready: readyEpoch, holding: holding, asPhoto: asPhoto)) {
             await runTimer()
         }
-        .onChange(of: stories.viewer?.epoch) { _, _ in startStory() }
+        .confirmationDialog("Пожаловаться на историю", isPresented: reportShown, titleVisibility: .visible) {
+            ForEach(stories.reportReasons ?? []) { reason in
+                Button(reason.title) { Task { await stories.report(reason.id) } }
+            }
+            Button("Отмена", role: .cancel) { stories.closeReport() }
+        }
+        .onChange(of: stories.viewer?.epoch) { _, _ in
+            paused = false
+            reply = ""
+            startStory()
+        }
         .onChange(of: holding) { _, held in video.setPaused(held) }
+        .onChange(of: muted) { _, value in video.player.isMuted = value }
         .onAppear { startStory() }
         .onDisappear { video.stop() }
     }
@@ -54,7 +80,16 @@ struct StoryViewerView: View {
     // MARK: Содержимое
 
     private var holding: Bool {
-        pressing || confirmDelete || stories.viewer?.isDeleting == true || drag != .zero
+        pressing || paused || replyFocused || saving || confirmDelete || stories.reportReasons != nil
+            || stories.viewer?.isDeleting == true || drag != .zero
+    }
+
+    /// Окно жалобы — когда причины пришли.
+    private var reportShown: Binding<Bool> {
+        Binding(
+            get: { !(stories.reportReasons ?? []).isEmpty },
+            set: { if !$0 { stories.closeReport() } }
+        )
     }
 
     /// Фото, а также видео, которое не открылось: идёт таймер, а не плеер.
@@ -110,15 +145,21 @@ struct StoryViewerView: View {
                     }
                 }
                 Spacer()
-                if viewer.isOwn, viewer.story != nil {
-                    if viewer.isDeleting {
-                        ProgressView().tint(.white).frame(width: 44, height: 44)
-                    } else {
-                        Button { confirmDelete = true } label: {
-                            Image(systemName: "trash").frame(width: 44, height: 44)
-                        }
-                        .accessibilityLabel("Удалить историю")
+                if viewer.isDeleting || saving || stories.isSending {
+                    ProgressView().tint(.white).frame(width: 36, height: 44)
+                }
+                Button { paused.toggle() } label: {
+                    Image(systemName: paused ? "play.fill" : "pause.fill").frame(width: 40, height: 44)
+                }
+                .accessibilityLabel(paused ? "Смотреть" : "Пауза")
+                if viewer.story?.media?.isVideo == true, !video.failed {
+                    Button { muted.toggle() } label: {
+                        Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill").frame(width: 40, height: 44)
                     }
+                    .accessibilityLabel(muted ? "Включить звук" : "Выключить звук")
+                }
+                if let story = viewer.story {
+                    moreMenu(viewer, story)
                 }
                 Button { stories.close() } label: {
                     Image(systemName: "xmark").font(.system(size: 17, weight: .semibold)).frame(width: 44, height: 44)
@@ -135,6 +176,108 @@ struct StoryViewerView: View {
                 .frame(height: 140)
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
+        }
+    }
+
+    /// «⋯»: чужая история — профиль, скрыть автора, скачать, пожаловаться; своя — скачать и удалить.
+    private func moreMenu(_ viewer: StoryViewerState, _ story: Story) -> some View {
+        Menu {
+            if !viewer.isOwn, story.canOpenProfile {
+                Button("Перейти в профиль", systemImage: "person.crop.circle") {
+                    let ring = viewer.ring
+                    stories.close()
+                    onProfile(ring)
+                }
+            }
+            if !viewer.isOwn, story.canHideAuthor {
+                Button("Скрыть истории автора", systemImage: "eye.slash") { Task { await stories.hideAuthor() } }
+            }
+            if viewer.isOwn || story.canDownload {
+                Button("Скачать", systemImage: "arrow.down.to.line") { Task { await download(story) } }
+            }
+            if !viewer.isOwn, story.canReport {
+                Button("Пожаловаться", systemImage: "exclamationmark.bubble", role: .destructive) { Task { await stories.openReport() } }
+            }
+            if viewer.isOwn {
+                Button("Удалить", systemImage: "trash", role: .destructive) { confirmDelete = true }
+            }
+        } label: {
+            Image(systemName: "ellipsis").font(.system(size: 17, weight: .semibold)).frame(width: 40, height: 44)
+        }
+        .accessibilityLabel("Ещё")
+    }
+
+    /// «Ответить» и сердечко внизу; с текстом сердечко сменяется кнопкой отправки.
+    private func replyBar(_ story: Story) -> some View {
+        HStack(spacing: 10) {
+            if story.canReply {
+                TextField("", text: $reply, prompt: Text("Ответить").foregroundStyle(.white.opacity(0.6)))
+                    .focused($replyFocused)
+                    .submitLabel(.send)
+                    .onSubmit(sendReply)
+                    .foregroundStyle(.white)
+                    .tint(.white)
+                    .padding(.horizontal, 16)
+                    .frame(height: 44)
+                    .overlay(Capsule().strokeBorder(.white.opacity(0.4), lineWidth: 1))
+            } else {
+                Text("Автор выключил ответы")
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.5))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if story.canReply, !reply.trimmingCharacters(in: .whitespaces).isEmpty {
+                Button(action: sendReply) {
+                    Image(systemName: "paperplane.fill").font(.system(size: 20)).frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Отправить")
+                .disabled(stories.isSending)
+            } else if story.canLike {
+                Button { Task { await stories.toggleLike() } } label: {
+                    Image(systemName: story.isLiked ? "heart.fill" : "heart")
+                        .font(.system(size: 24))
+                        .foregroundStyle(story.isLiked ? Color(red: 1, green: 0.23, blue: 0.36) : .white)
+                        .frame(width: 44, height: 44)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .accessibilityLabel(story.isLiked ? "Убрать лайк" : "Нравится")
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(alignment: .bottom) {
+            LinearGradient(colors: [.clear, .black.opacity(0.6)], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func sendReply() {
+        let text = reply
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        reply = ""
+        replyFocused = false
+        Task { await stories.reply(text) }
+    }
+
+    /// «Скачать»: файл истории — в «Фото» (фото перекодируется в JPG или PNG).
+    private func download(_ story: Story) async {
+        guard let media = story.media, !saving else { return }
+        saving = true
+        defer { saving = false }
+        do {
+            var request = URLRequest(url: media.url)
+            if !media.url.isFileURL, let agent = MediaHTTP.userAgent { request.setValue(agent, forHTTPHeaderField: "User-Agent") }
+            let (temp, _) = try await URLSession.shared.download(for: request)
+            let file = try await StorySaving.savedFile(for: story, downloaded: temp)
+            try await PhotoLibrarySaver().save([file])
+            stories.message = media.isVideo ? "Видео сохранено в «Фото»" : "Фото сохранено в «Фото»"
+        } catch let error as MaxlyError {
+            stories.message = error.userMessage ?? "Не удалось сохранить историю"
+        } catch {
+            Log.warning(.media, "История не скачалась: \(error)")
+            stories.message = "Не удалось сохранить историю"
         }
     }
 
