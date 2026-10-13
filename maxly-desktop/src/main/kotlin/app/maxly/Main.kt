@@ -116,6 +116,7 @@ private fun MainWindow(container: AppContainer, owner: DesktopOwner, onExit: () 
             CompositionLocalProvider(
                 LocalLifecycleOwner provides owner,
                 LocalViewModelStoreOwner provides owner,
+                app.maxly.platform.LocalMainWindowState provides state,
             ) {
                 AppRoot(container)
             }

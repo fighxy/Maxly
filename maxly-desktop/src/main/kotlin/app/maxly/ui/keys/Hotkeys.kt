@@ -42,8 +42,18 @@ enum class HotkeyAction {
     /** ← / →: соседнее фото, видео или история. */
     VIEWER_PREVIOUS,
     VIEWER_NEXT,
-    /** Пробел: пауза видео или истории, у фото — показать или спрятать шапку. */
+    /** Пробел или K: пауза видео или истории, у фото — показать или спрятать шапку. */
     VIEWER_PAUSE,
+    /** J / L: видео на 10 секунд назад или вперёд. */
+    VIEWER_SEEK_BACK,
+    VIEWER_SEEK_FORWARD,
+    /** M: звук видео. */
+    VIEWER_MUTE,
+    /** ↑ / ↓: громкость видео. */
+    VIEWER_VOLUME_UP,
+    VIEWER_VOLUME_DOWN,
+    /** F: просмотр во весь экран. */
+    VIEWER_FULLSCREEN,
     /** R: повернуть фото в просмотре. */
     ROTATE,
     /** Ctrl+S: сохранить открытое в просмотре. */
@@ -112,11 +122,13 @@ object KeyChords {
             KeyEvent.VK_UP -> when {
                 alt && !ctrl -> HotkeyAction.PREVIOUS_CHAT
                 ctrl && !alt -> HotkeyAction.REPLY_OLDER
+                plain -> HotkeyAction.VIEWER_VOLUME_UP
                 else -> null
             }
             KeyEvent.VK_DOWN -> when {
                 alt && !ctrl -> HotkeyAction.NEXT_CHAT
                 ctrl && !alt -> HotkeyAction.REPLY_NEWER
+                plain -> HotkeyAction.VIEWER_VOLUME_DOWN
                 else -> null
             }
             KeyEvent.VK_PAGE_UP -> when {
@@ -166,8 +178,17 @@ object KeyChords {
                 else -> null
             }
         }
-        if (plain && key == 'r') return Hotkey(HotkeyAction.ROTATE)
-        return null
+        if (!plain) return null
+        // Буквы без модификаторов — только для просмотра: без него они печатаются как обычно.
+        return when (key) {
+            'r' -> Hotkey(HotkeyAction.ROTATE)
+            'j' -> Hotkey(HotkeyAction.VIEWER_SEEK_BACK)
+            'k' -> Hotkey(HotkeyAction.VIEWER_PAUSE)
+            'l' -> Hotkey(HotkeyAction.VIEWER_SEEK_FORWARD)
+            'm' -> Hotkey(HotkeyAction.VIEWER_MUTE)
+            'f' -> Hotkey(HotkeyAction.VIEWER_FULLSCREEN)
+            else -> null
+        }
     }
 
     /** Сочетание из события AWT. */

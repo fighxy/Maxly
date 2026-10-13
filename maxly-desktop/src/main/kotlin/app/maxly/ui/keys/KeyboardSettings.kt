@@ -103,6 +103,12 @@ object HotkeyCatalog {
                 "Просмотр фото и видео",
                 listOf(
                     Entry(listOf("←", "→"), "Предыдущее или следующее"),
+                    Entry(listOf("Пробел", "K"), "Пауза видео"),
+                    Entry(listOf("J", "L"), "Видео на 10 секунд назад или вперёд"),
+                    Entry(listOf("↑", "↓"), "Громкость видео"),
+                    Entry(listOf("M"), "Звук видео"),
+                    Entry(listOf("F"), "Во весь экран"),
+                    Entry(listOf("$command+колесо"), "Увеличить или уменьшить фото"),
                     Entry(listOf("R"), "Повернуть фото"),
                     Entry(listOf("$command+S"), "Сохранить"),
                     Entry(listOf("Esc"), "Закрыть"),

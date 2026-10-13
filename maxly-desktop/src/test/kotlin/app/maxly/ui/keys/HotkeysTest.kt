@@ -58,6 +58,13 @@ class HotkeysTest {
         assertNull(chord(KeyEvent.VK_SPACE, ctrl = true))
         assertEquals(Hotkey(HotkeyAction.ROTATE), chord(KeyEvent.VK_R, 'r'))
         assertEquals(Hotkey(HotkeyAction.ROTATE), russian('к'))
+        assertEquals(Hotkey(HotkeyAction.VIEWER_SEEK_BACK), chord(KeyEvent.VK_J, 'j'))
+        assertEquals(Hotkey(HotkeyAction.VIEWER_PAUSE), chord(KeyEvent.VK_K, 'k'))
+        assertEquals(Hotkey(HotkeyAction.VIEWER_SEEK_FORWARD), chord(KeyEvent.VK_L, 'l'))
+        assertEquals(Hotkey(HotkeyAction.VIEWER_MUTE), russian('ь'))
+        assertEquals(Hotkey(HotkeyAction.VIEWER_FULLSCREEN), chord(KeyEvent.VK_F, 'f'))
+        assertEquals(Hotkey(HotkeyAction.VIEWER_VOLUME_UP), chord(KeyEvent.VK_UP))
+        assertEquals(Hotkey(HotkeyAction.VIEWER_VOLUME_DOWN), chord(KeyEvent.VK_DOWN))
     }
 
     @Test
@@ -84,7 +91,7 @@ class HotkeysTest {
     fun ordinaryTypingIsNotAHotkey() {
         assertNull(chord(KeyEvent.VK_A, 'a'))
         assertNull(russian('ф'))
-        assertNull(chord(KeyEvent.VK_UP))
+        assertNull(chord(KeyEvent.VK_UP, shift = true))
         assertNull(chord(KeyEvent.VK_END))
         assertNull(chord(KeyEvent.VK_LEFT, shift = true))
         assertNull(chord(KeyEvent.VK_F, ctrl = true, alt = true))

@@ -50,6 +50,11 @@ class DesktopVideoPlayer(private val scope: CoroutineScope) {
         val ended: Boolean = false,
         /** Не открылся: нет ffmpeg, файл не скачался или не декодируется. */
         val failed: Boolean = false,
+        /** Ролик качается в кэш: доля 0…1; `null` — не качается. */
+        val downloading: Float? = null,
+        /** Громкость 0…1 и выключен ли звук. */
+        val volume: Float = 1f,
+        val muted: Boolean = false,
     ) {
         val progress: Float get() = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
     }
@@ -62,6 +67,9 @@ class DesktopVideoPlayer(private val scope: CoroutineScope) {
     @Volatile private var wantPlaying = false
     @Volatile private var muted = false
     @Volatile private var loop = false
+    /** Громкость и выключенный звук для [State]; линия звука читает их на каждом куске. */
+    @Volatile private var volume = 1f
+    @Volatile private var silenced = false
     /** Растёт при каждом открытии и сбросе: запоздавший запуск прежнего ролика не стартует. */
     @Volatile private var generation = 0
     private var opening: Job? = null
@@ -76,10 +84,12 @@ class DesktopVideoPlayer(private val scope: CoroutineScope) {
         this.muted = muted
         this.loop = loop
         wantPlaying = autoplay
-        _state.value = State(isBuffering = true, isPlaying = autoplay)
+        _state.value = fresh().copy(isBuffering = true, isPlaying = autoplay)
         opening = scope.launch(Dispatchers.IO) {
             val local = try {
-                DesktopVideo.materialize(source, userAgent)
+                DesktopVideo.materialize(source, userAgent) { fraction ->
+                    if (ticket == generation) _state.update { it.copy(downloading = fraction) }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -87,6 +97,7 @@ class DesktopVideoPlayer(private val scope: CoroutineScope) {
                 return@launch
             }
             if (ticket != generation) return@launch
+            _state.update { it.copy(downloading = null) }
             file = local
             start(local, 0, ticket)
         }
@@ -120,6 +131,26 @@ class DesktopVideoPlayer(private val scope: CoroutineScope) {
         scope.launch(Dispatchers.IO) { start(local, at, ticket) }
     }
 
+    /** Перемотка на [ms] от начала. */
+    fun seekTo(ms: Long) {
+        val duration = _state.value.durationMs
+        if (duration > 0) seek(ms.toFloat() / duration)
+    }
+
+    /** Громкость 0…1; ненулевая заодно включает звук. */
+    fun setVolume(value: Float) {
+        volume = value.coerceIn(0f, 1f)
+        if (volume > 0f) silenced = false
+        _state.update { it.copy(volume = volume, muted = silenced) }
+    }
+
+    fun setMuted(value: Boolean) {
+        silenced = value
+        _state.update { it.copy(muted = value) }
+    }
+
+    private fun fresh() = State(volume = volume, muted = silenced)
+
     /** Останавливает декодеры и звук, забывает ролик. */
     fun release() {
         generation++
@@ -128,7 +159,7 @@ class DesktopVideoPlayer(private val scope: CoroutineScope) {
         session?.stop()
         session = null
         file = null
-        _state.value = State()
+        _state.value = fresh()
     }
 
     @Synchronized
@@ -245,6 +276,8 @@ class DesktopVideoPlayer(private val scope: CoroutineScope) {
             while (!s.stopped) {
                 val read = input.read(buffer)
                 if (read < 0) break
+                val gain = if (silenced) 0f else volume * volume
+                if (gain < 0.999f) scalePcm16(buffer, read, gain)
                 speaker.write(buffer, 0, read)
             }
             if (!s.stopped) speaker.drain()
@@ -304,6 +337,18 @@ class DesktopVideoPlayer(private val scope: CoroutineScope) {
 }
 
 /** Часы воспроизведения: время ролика с паузами. Стоят, пока не запущены. */
+/** Громкость куска PCM 16 бит LE: каждый отсчёт умножается на [gain]. */
+internal fun scalePcm16(buffer: ByteArray, length: Int, gain: Float) {
+    var i = 0
+    while (i + 1 < length) {
+        val sample = ((buffer[i].toInt() and 0xff) or (buffer[i + 1].toInt() shl 8)).toShort()
+        val scaled = (sample * gain).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+        buffer[i] = scaled.toByte()
+        buffer[i + 1] = (scaled shr 8).toByte()
+        i += 2
+    }
+}
+
 internal class PlaybackClock(private var baseMs: Long, private val nanos: () -> Long = System::nanoTime) {
     private var runningSince: Long? = null
 

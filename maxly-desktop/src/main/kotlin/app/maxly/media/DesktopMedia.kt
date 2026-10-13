@@ -393,11 +393,11 @@ class DesktopVoiceRecorder(private val scope: CoroutineScope) {
 
 /** Локальный или удалённый ролик для внешнего проигрывателя. */
 object DesktopVideo {
-    suspend fun materialize(url: String, userAgent: String): File = withContext(Dispatchers.IO) {
+    suspend fun materialize(url: String, userAgent: String, progress: (Float) -> Unit = {}): File = withContext(Dispatchers.IO) {
         if (url.startsWith("file:")) return@withContext File(java.net.URI(url))
         val local = File(url)
         if (local.isFile) return@withContext local
-        FileDownloader({ userAgent }).download(url, "video-${url.hashCode()}", "video.mp4")
+        FileDownloader({ userAgent }).download(url, "video-${url.hashCode()}", "video.mp4", progress)
     }
 
     fun play(file: File) = DesktopActions.openFile(file)

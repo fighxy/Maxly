@@ -166,4 +166,13 @@ class DesktopVideoPlayerTest {
             scope.cancel()
         }
     }
+
+    @Test
+    fun scalesPcmSamples() {
+        // 1000 и −1000 в 16 бит LE.
+        val buffer = byteArrayOf(0xE8.toByte(), 0x03, 0x18, 0xFC.toByte())
+        scalePcm16(buffer, buffer.size, 0.5f)
+        assertEquals(500, ((buffer[0].toInt() and 0xff) or (buffer[1].toInt() shl 8)).toShort().toInt())
+        assertEquals(-500, ((buffer[2].toInt() and 0xff) or (buffer[3].toInt() shl 8)).toShort().toInt())
+    }
 }
