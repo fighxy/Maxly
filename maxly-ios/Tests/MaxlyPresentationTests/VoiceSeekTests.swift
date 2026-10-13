@@ -142,6 +142,21 @@ struct VoiceSeekTests {
         model.stopVoice()
     }
 
+    @Test("Уход из чата (deactivate) голосовое не останавливает")
+    func keepsPlayingAfterLeavingChat() async throws {
+        let player = FakeVoicePlayer()
+        let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository(), voice: player)
+        let message = try voiceMessage()
+        model.toggleVoice(message)
+        #expect(await eventually { model.voicePhase(for: "v1").isPlaying })
+
+        model.deactivate()
+        #expect(player.isPlaying)
+        #expect(model.voicePhase(for: "v1").isPlaying)
+        model.stopVoice()
+        #expect(!player.isPlaying)
+    }
+
     @Test("Доля за пределами 0…1 прижимается к краю")
     func clamps() async throws {
         let player = FakeVoicePlayer()

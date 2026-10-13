@@ -1005,7 +1005,10 @@ final class AppContainer {
             await actions?.reset()
         }
         voicePlayer.stop()
-        chatModels.values.forEach { $0.deactivate() }
+        chatModels.values.forEach {
+            $0.stopVoice()
+            $0.deactivate()
+        }
         chatModels.removeAll()
         appIconBadge.stop()
         listModel?.deactivate()

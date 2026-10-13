@@ -605,7 +605,9 @@ public final class ChatViewModel {
         progressWatch = nil
         failureWatch?.cancel()
         failureWatch = nil
-        stopVoice()
+        // Голосовое не останавливается: выход из чата в список его не прерывает, полоса над
+        // списком продолжает его показывать. Плеер один на приложение, его останавливает выход
+        // из аккаунта.
         fileTask?.cancel()
         fileTask = nil
         mediaTask?.cancel()
