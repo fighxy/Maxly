@@ -418,11 +418,17 @@ private struct ZoomableImage: UIViewRepresentable {
             scroll.zoom(to: CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2, width: size.width, height: size.height), animated: true)
         }
 
+        /// Состояние «загружено» — после текущего обновления экрана: менять его посреди обновления нельзя.
+        private func report(_ loaded: Bool) {
+            let onLoaded = parent.onLoaded
+            DispatchQueue.main.async { onLoaded(loaded) }
+        }
+
         func load(_ url: URL?) {
             task?.cancel()
             original = nil
             imageView?.image = nil
-            parent.onLoaded(false)
+            report(false)
             guard let url else { return }
             if url.isFileURL {
                 show(UIImage(contentsOfFile: url.path))
@@ -441,7 +447,7 @@ private struct ZoomableImage: UIViewRepresentable {
         private func show(_ image: UIImage?) {
             original = image
             imageView?.image = image.map { Self.rotated($0, turns: turns) }
-            parent.onLoaded(image != nil)
+            report(image != nil)
             relayout()
         }
 
@@ -1030,12 +1036,12 @@ private final class VideoPlayback {
             item = AVPlayerItem(url: url)
         }
         itemObservations = [
-            item.observe(\.status, options: [.new]) { [weak self] item, _ in
+            item.observe(\.status, options: [.new]) { @Sendable [weak self] item, _ in
                 let status = item.status
                 let message = item.error.map { "\($0)" } ?? ""
                 Task { @MainActor in self?.itemChanged(status, error: message) }
             },
-            item.observe(\.loadedTimeRanges, options: [.new]) { [weak self] item, _ in
+            item.observe(\.loadedTimeRanges, options: [.new]) { @Sendable [weak self] item, _ in
                 let ranges = item.loadedTimeRanges.map(\.timeRangeValue)
                 Task { @MainActor in self?.buffered(ranges) }
             },
@@ -1043,7 +1049,7 @@ private final class VideoPlayback {
         player.replaceCurrentItem(with: item)
         player.isMuted = muted
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
-        endObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification, object: item, queue: .main) { [weak self] _ in
+        endObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification, object: item, queue: .main) { @Sendable [weak self] _ in
             Task { @MainActor in
                 self?.ended = true
                 self?.isPlaying = false
@@ -1052,11 +1058,11 @@ private final class VideoPlayback {
     }
 
     private func observe() {
-        timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 10), queue: .main) { [weak self] time in
+        timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 10), queue: .main) { @Sendable [weak self] time in
             let seconds = time.seconds
             Task { @MainActor in self?.tick(seconds) }
         }
-        controlObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
+        controlObservation = player.observe(\.timeControlStatus, options: [.new]) { @Sendable [weak self] player, _ in
             let status = player.timeControlStatus
             Task { @MainActor in self?.controlChanged(status) }
         }
