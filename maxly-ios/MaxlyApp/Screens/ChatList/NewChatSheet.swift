@@ -7,9 +7,23 @@ import MaxlyUI
 struct NewChatSheet: View {
     @Bindable var model: NewChatModel
     var onOpened: (NewChatOpened) -> Void = { _ in }
+    /// Куда отправить ссылку нового канала («Отправить в MAX»).
+    var shareTargets: () -> [ChatListItem] = { [] }
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
+        if let setup = model.channelSetup {
+            ChannelSetupView(model: setup, shareTargets: shareTargets) { model.finishChannelSetup() }
+                .onChange(of: model.opened?.id) { _, id in
+                    guard let id, let opened = model.opened, opened.id == id else { return }
+                    onOpened(opened)
+                }
+        } else {
+            menu
+        }
+    }
+
+    private var menu: some View {
         NavigationStack {
             // Ветки прямо в `List`: вынесенный `some View` склеивает строки в одну ячейку.
             List {

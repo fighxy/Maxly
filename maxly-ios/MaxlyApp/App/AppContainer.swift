@@ -625,6 +625,10 @@ final class AppContainer {
         guard let chats else { return nil }
         if let newChat { return newChat }
         let model = NewChatModel(contacts: contacts, chats: chats, currentUserId: currentUserId)
+        model.makeChannelSetup = { [weak self] id, title in
+            guard let self, let admin = self.chatAdmin, let messages = self.messages else { return nil }
+            return ChannelSetupModel(chatId: id, title: title, admin: admin, messages: messages, contacts: self.contacts, currentUserId: self.currentUserId)
+        }
         newChat = model
         return model
     }

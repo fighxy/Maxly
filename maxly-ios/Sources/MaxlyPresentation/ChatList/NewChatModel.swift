@@ -58,6 +58,10 @@ public final class NewChatModel {
     public private(set) var error: String?
     public private(set) var notice: String?
     public private(set) var opened: NewChatOpened?
+    /// Канал создан: перед открытием — настройка, как в Max.
+    public private(set) var channelSetup: ChannelSetupModel?
+    /// Модель настройки канала: её собирает контейнер (нужны админ-репозиторий и сообщения).
+    @ObservationIgnored public var makeChannelSetup: ((String, String) -> ChannelSetupModel?)?
 
     public var query = ""
     public var phone = "" {
@@ -135,6 +139,7 @@ public final class NewChatModel {
         error = nil
         notice = nil
         opened = nil
+        channelSetup = nil
         found = nil
         phone = ""
         title = ""
@@ -273,9 +278,16 @@ public final class NewChatModel {
             return
         }
         guard !busy else { return }
-        launch(failure: "Не удалось создать канал", title: name) {
+        launch(failure: "Не удалось создать канал", title: name, setup: true) {
             try await self.chats.createChannel(title: name)
         }
+    }
+
+    /// Настройка канала закончена: канал открывается.
+    public func finishChannelSetup() {
+        guard let setup = channelSetup else { return }
+        channelSetup = nil
+        opened = NewChatOpened(id: setup.chatId, title: setup.title, draft: nil)
     }
 
     public func joinLink() {
@@ -297,14 +309,18 @@ public final class NewChatModel {
         return "+\(digits)"
     }
 
-    private func launch(failure: String, title: String, _ block: @escaping () async throws -> String?) {
+    private func launch(failure: String, title: String, setup: Bool = false, _ block: @escaping () async throws -> String?) {
         let token = begin()
         Task {
             do {
                 let id = try await block()
                 guard token == generation else { return }
                 if let id, !id.isEmpty {
-                    opened = NewChatOpened(id: id, title: title, draft: nil)
+                    if setup, let model = makeChannelSetup?(id, title) {
+                        channelSetup = model
+                    } else {
+                        opened = NewChatOpened(id: id, title: title, draft: nil)
+                    }
                 } else {
                     error = failure
                 }

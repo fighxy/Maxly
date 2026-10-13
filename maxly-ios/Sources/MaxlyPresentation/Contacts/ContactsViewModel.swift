@@ -323,7 +323,12 @@ public final class ContactsViewModel {
     }
 
     private func row(for contact: Contact, now: Date) -> ContactRow {
-        let presence = live[contact.id] ?? contact.presence
+        Self.row(for: contact, presence: live[contact.id] ?? contact.presence, now: now, formatter: formatter)
+    }
+
+    /// Строка контакта: имя, «был недавно» или «бот», аватар.
+    public static func row(for contact: Contact, presence: Contact.Presence? = nil, now: Date, formatter: ContactsFormatter = ContactsFormatter()) -> ContactRow {
+        let presence = presence ?? contact.presence
         let seen = formatter.status(presence, now: now)
         let status: String
         if presence == .online {

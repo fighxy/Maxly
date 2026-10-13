@@ -70,11 +70,15 @@ struct ChatListView: View {
         }
         .sheet(isPresented: $composeShown, onDismiss: { newChat?.dismiss() }) {
             if let newChat {
-                NewChatSheet(model: newChat) { opened in
-                    newChat.consumeOpened()
-                    composeShown = false
-                    onOpened(opened)
-                }
+                NewChatSheet(
+                    model: newChat,
+                    onOpened: { opened in
+                        newChat.consumeOpened()
+                        composeShown = false
+                        onOpened(opened)
+                    },
+                    shareTargets: { viewModel.items }
+                )
                 .task {
                     newChat.show()
                     newChat.activate()

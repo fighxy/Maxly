@@ -346,6 +346,28 @@ struct ChatTranscript: View {
 
     // MARK: Шапка и низ
 
+    /// Свой канал без постов, как в Max: «Канал готов» и подсказка.
+    private var channelReady: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "megaphone.fill")
+                .font(.system(size: 28))
+                .foregroundStyle(.white)
+                .frame(width: 72, height: 72)
+                .background(Color.maxlyAccent, in: Circle())
+            Text("Канал готов")
+                .font(.headline)
+            Text("Добавляйте посты и приглашайте подписчиков")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 28)
+        .padding(.vertical, 22)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .padding(.horizontal, 32)
+        .padding(.top, 80)
+    }
+
     @ViewBuilder
     private func header(_ proxy: ScrollViewProxy) -> some View {
         if let hint = viewModel.emptyHint {
@@ -360,9 +382,13 @@ struct ChatTranscript: View {
             .padding(.horizontal, 24)
             .padding(.top, 80)
         } else if viewModel.latestLoaded && viewModel.messages.isEmpty && !viewModel.isRestoringHistory && viewModel.historyError == nil && !viewModel.showsSavedPlaceholder {
-            Text("Здесь пока нет сообщений")
-                .foregroundStyle(.secondary)
-                .padding(24)
+            if chatType == .channel && canWrite {
+                channelReady
+            } else {
+                Text("Здесь пока нет сообщений")
+                    .foregroundStyle(.secondary)
+                    .padding(24)
+            }
         } else if !viewModel.messages.isEmpty && viewModel.canLoadOlder {
             // Старое подгружается само, когда верх ленты показался, без кнопки.
             ZStack {
