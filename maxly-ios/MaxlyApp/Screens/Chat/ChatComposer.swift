@@ -241,11 +241,13 @@ struct ChatComposer: View {
         let voiceActive = recording.isActive && recording.recordingMode == .voice
         let videoActive = recording.isActive && recording.recordingMode == .video
         return HStack(spacing: 8) {
-            RecordButton(session: recording, mode: .video)
-                .opacity(voiceActive ? 0 : 1)
-                .frame(width: voiceActive ? 0 : 44)
-                .allowsHitTesting(!voiceActive)
-                .accessibilityHidden(voiceActive)
+            // Камеры во время голосового нет совсем: стеклянный круг рисует контейнер стекла,
+            // и прозрачность с нулевой шириной его не прятали — кнопка торчала поверх полосы
+            // закреплённой записи. Жест голосового висит на микрофоне, ему это не мешает.
+            if !voiceActive {
+                RecordButton(session: recording, mode: .video)
+                    .transition(.opacity)
+            }
             RecordButton(session: recording, mode: .voice)
                 .opacity(videoActive ? 0 : 1)
                 .allowsHitTesting(!videoActive)
