@@ -58,4 +58,19 @@ class MediaViewerRulesTest {
         assertEquals("37 %", MediaTimeText.download(0.37f))
         assertEquals("12,5 из 50,0 МБ", MediaTimeText.download(0.25f, 50L * 1_048_576))
     }
+
+    @Test
+    fun heroFitsInterpolatesAndReturnsOnlyIntoVisibleTiles() {
+        val screen = HeroRect(0f, 0f, 400f, 800f)
+        assertEquals(HeroRect(0f, 300f, 400f, 200f), MediaHeroGeometry.fit(2f, screen))
+        assertEquals(HeroRect(100f, 0f, 200f, 800f), MediaHeroGeometry.fit(0.25f, screen))
+        val tile = HeroRect(100f, 500f, 100f, 100f)
+        val full = HeroRect(0f, 200f, 400f, 400f)
+        assertEquals(tile, MediaHeroGeometry.interpolate(tile, full, 0f))
+        assertEquals(full, MediaHeroGeometry.interpolate(tile, full, 1f))
+        assertEquals(HeroRect(50f, 350f, 250f, 250f), MediaHeroGeometry.interpolate(tile, full, 0.5f))
+        assertTrue(MediaHeroGeometry.canReturn(HeroRect(10f, 100f, 200f, 200f), screen))
+        assertFalse(MediaHeroGeometry.canReturn(HeroRect(10f, 750f, 200f, 200f), screen))
+        assertFalse(MediaHeroGeometry.canReturn(HeroRect(10f, 900f, 200f, 200f), screen))
+    }
 }

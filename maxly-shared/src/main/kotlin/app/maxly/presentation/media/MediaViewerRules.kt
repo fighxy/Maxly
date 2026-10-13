@@ -124,3 +124,43 @@ object MediaTimeText {
 
     private fun megabytes(value: Double): String = "%.1f".format(java.util.Locale.ROOT, value).replace('.', ',')
 }
+
+/** Прямоугольник в пикселях окна: плитка в ленте или кадр в просмотре. */
+data class HeroRect(val left: Float, val top: Float, val width: Float, val height: Float) {
+    val right: Float get() = left + width
+    val bottom: Float get() = top + height
+}
+
+/**
+ * Полёт кадра между плиткой в ленте и просмотром — порт iOS `MediaHeroGeometry`: где кадр стоит
+ * в просмотре и где он в промежуточный момент.
+ */
+object MediaHeroGeometry {
+    /** Кадр с отношением сторон [aspect] (ширина / высота), вписанный в [bounds] по центру. */
+    fun fit(aspect: Float, bounds: HeroRect): HeroRect {
+        if (aspect <= 0f || bounds.width <= 0f || bounds.height <= 0f) return bounds
+        val width = minOf(bounds.width, bounds.height * aspect)
+        val height = width / aspect
+        return HeroRect(bounds.left + (bounds.width - width) / 2, bounds.top + (bounds.height - height) / 2, width, height)
+    }
+
+    /** Рамка на доле пути [progress] от [from] (0) до [to] (1). */
+    fun interpolate(from: HeroRect, to: HeroRect, progress: Float): HeroRect {
+        val t = progress.coerceIn(0f, 1f)
+        return HeroRect(
+            from.left + (to.left - from.left) * t,
+            from.top + (to.top - from.top) * t,
+            from.width + (to.width - from.width) * t,
+            from.height + (to.height - from.height) * t,
+        )
+    }
+
+    /** Возвращаться в плитку, только если она видна хоть наполовину: иначе — просто погаснуть. */
+    fun canReturn(source: HeroRect, screen: HeroRect): Boolean {
+        if (source.width <= 1f || source.height <= 1f) return false
+        val width = minOf(source.right, screen.right) - maxOf(source.left, screen.left)
+        val height = minOf(source.bottom, screen.bottom) - maxOf(source.top, screen.top)
+        if (width <= 0f || height <= 0f) return false
+        return width * height >= source.width * source.height / 2
+    }
+}

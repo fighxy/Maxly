@@ -124,6 +124,26 @@ import coil3.compose.AsyncImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionOnScreen
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import app.maxly.presentation.media.HeroRect
+import app.maxly.presentation.media.MediaHeroGeometry
+import app.maxly.presentation.media.ImageRequests
+import kotlin.math.roundToInt
 
 /** Высота полосы управления ролика: подпись встаёт над ней. */
 private val VideoControlsHeight = 104.dp
@@ -147,53 +167,114 @@ fun MediaViewer(
     onSave: (() -> Unit)? = null,
     saving: Boolean = false,
 ) {
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        BackHandler(onBack = onClose)
-        val pager = rememberPagerState(initialPage = state.index) { state.items.size }
+    val scope = rememberCoroutineScope()
+    val pager = rememberPagerState(initialPage = state.index) { state.items.size }
+    // Открытие и закрытие: доля «открытости» 0…1 и летящий из плитки кадр, если плитка известна.
+    val progress = remember { Animatable(0f) }
+    var phase by remember { mutableStateOf(ViewerPhase.OPENING) }
+    var hero by remember { mutableStateOf(state.items.getOrNull(state.index)?.let(::heroFor)) }
+    var screen by remember { mutableStateOf<HeroRect?>(null) }
+    var dismissY by remember { mutableFloatStateOf(0f) }
+    // Страница, которую сейчас увеличили: пока она на экране, пейджер не перехватывает палец.
+    var zoomedPage by remember { mutableStateOf<Int?>(null) }
+    // Поворот фото четвертями по часовой, свой у каждого фото. Счёт не по модулю 4:
+    // анимация после четвёртого поворота идёт дальше по часовой, а не крутится назад.
+    val turns = remember { mutableStateMapOf<String, Int>() }
+
+    // Кадр летит обратно в свою плитку, если она на экране; иначе просмотр гаснет.
+    fun close() {
+        if (phase == ViewerPhase.CLOSING) return
+        val page = pager.currentPage
+        val item = state.items.getOrNull(page)
+        val tile = item?.let { MediaTiles.tile(it.id) }
+        val bounds = screen
+        val upright = bounds != null && bounds.height >= bounds.width && zoomedPage != page && (item?.let { turns[it.id] } ?: 0) % 4 == 0
+        phase = ViewerPhase.CLOSING
+        if (upright && item != null && tile != null && MediaHeroGeometry.canReturn(tile.bounds, bounds!!)) {
+            hero = Hero(tile.model, tile.bounds, tile.cornerRadius, aspectOf(item))
+            MediaTiles.hiddenId = item.id
+            scope.launch {
+                val fromY = dismissY
+                launch { animate(fromY, 0f, animationSpec = tween(260, easing = FastOutSlowInEasing)) { value, _ -> dismissY = value } }
+                progress.animateTo(0f, tween(260, easing = FastOutSlowInEasing))
+                MediaTiles.hiddenId = null
+                onClose()
+            }
+        } else {
+            hero = null
+            scope.launch {
+                progress.animateTo(0f, tween(180))
+                MediaTiles.hiddenId = null
+                onClose()
+            }
+        }
+    }
+
+    Dialog(onDismissRequest = ::close, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        BackHandler(onBack = ::close)
         LaunchedEffect(pager) { snapshotFlow { pager.currentPage }.collect(onPage) }
         var chrome by remember { mutableStateOf(true) }
-        // Страница, которую сейчас увеличили: пока она на экране, пейджер не перехватывает палец.
-        var zoomedPage by remember { mutableStateOf<Int?>(null) }
         var scrubbing by remember { mutableStateOf(false) }
-        var dismissY by remember { mutableFloatStateOf(0f) }
-        var height by remember { mutableFloatStateOf(1f) }
-        val scope = rememberCoroutineScope()
-        // Поворот фото четвертями по часовой, свой у каждого фото. Счёт не по модулю 4:
-        // анимация после четвёртого поворота идёт дальше по часовой, а не крутится назад.
-        val turns = remember { mutableStateMapOf<String, Int>() }
         LaunchedEffect(pager) { snapshotFlow { pager.currentPage }.collect { chrome = true } }
 
         RotationWhileOpen()
-        ImmersiveWhenHidden(hidden = !chrome)
+        ImmersiveWhenHidden(hidden = !chrome || phase != ViewerPhase.OPEN)
 
+        // Экран измерен — кадр вылетает из плитки (или просмотр проявляется).
+        LaunchedEffect(screen != null) {
+            if (screen == null || phase != ViewerPhase.OPENING) return@LaunchedEffect
+            if (hero != null) MediaTiles.hiddenId = state.items.getOrNull(state.index)?.id
+            progress.animateTo(1f, if (hero != null) spring<Float>(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow) else tween<Float>(200))
+            if (phase == ViewerPhase.OPENING) phase = ViewerPhase.OPEN
+        }
+        // Открытая плитка в ленте пустая: при смахивании видно, куда вернётся кадр.
+        LaunchedEffect(phase, pager.currentPage) {
+            if (phase == ViewerPhase.OPEN) MediaTiles.hiddenId = state.items.getOrNull(pager.currentPage)?.id
+        }
+        DisposableEffect(Unit) { onDispose { MediaTiles.hiddenId = null } }
+
+        val height = screen?.height?.coerceAtLeast(1f) ?: 1f
         val dismiss = DismissHandlers(
-            onDrag = { dismissY = it },
+            onDrag = { if (phase == ViewerPhase.OPEN) dismissY = it },
             onEnd = { velocity ->
-                if (MediaDismissRule.shouldClose(dismissY, velocity, height)) {
-                    onClose()
+                if (phase != ViewerPhase.OPEN) {
+                    Unit
+                } else if (MediaDismissRule.shouldClose(dismissY, velocity, height)) {
+                    close()
                 } else {
                     val from = dismissY
                     scope.launch { animate(from, 0f, animationSpec = spring(dampingRatio = 0.85f)) { value, _ -> dismissY = value } }
                 }
             },
         )
+        val open = phase == ViewerPhase.OPEN
 
         Box(
             Modifier
                 .fillMaxSize()
-                .onSizeChanged { height = it.height.toFloat().coerceAtLeast(1f) }
-                .background(Color.Black.copy(alpha = MediaDismissRule.backgroundAlpha(dismissY, height))),
+                .onGloballyPositioned { coordinates ->
+                    val origin = coordinates.positionOnScreen()
+                    screen = HeroRect(origin.x, origin.y, coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
+                }
+                .background(Color.Black.copy(alpha = MediaDismissRule.backgroundAlpha(dismissY, height) * progress.value)),
         ) {
             HorizontalPager(
                 pager,
-                Modifier.fillMaxSize().graphicsLayer { translationY = dismissY },
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        translationY = dismissY
+                        // Во время полёта виден только летящий кадр; без него просмотр проявляется целиком.
+                        alpha = if (open) 1f else if (hero == null) progress.value else 0f
+                    },
                 key = { state.items[it].id },
-                userScrollEnabled = zoomedPage != pager.currentPage && !scrubbing,
+                userScrollEnabled = open && zoomedPage != pager.currentPage && !scrubbing,
             ) { page ->
-                val active = pager.currentPage == page
+                val active = pager.currentPage == page && open
                 when (val item = state.items[page]) {
                     is ChatAttachment.Photo -> ZoomablePhoto(
                         url = item.photo.url,
+                        placeholder = MediaTiles.tile(item.id)?.model,
                         turns = turns[item.id] ?: 0,
                         active = active,
                         onChrome = { chrome = !chrome },
@@ -209,6 +290,7 @@ fun MediaViewer(
                     is ChatAttachment.Video -> VideoPage(
                         video = item.video,
                         url = state.videoUrls[item.id],
+                        poster = MediaTiles.tile(item.id)?.model ?: item.video.posterUrl,
                         userAgent = userAgent,
                         active = active,
                         chrome = chrome,
@@ -220,21 +302,141 @@ fun MediaViewer(
                 }
             }
             val current = state.items.getOrNull(pager.currentPage)
-            AnimatedVisibility(chrome && dismissY == 0f, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
+            AnimatedVisibility(open && chrome && dismissY == 0f, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
                 ViewerHeader(
                     state = state,
                     page = pager.currentPage,
                     canRotate = current is ChatAttachment.Photo,
                     onRotate = { if (current != null) turns[current.id] = (turns[current.id] ?: 0) + 1 },
-                    onClose = onClose,
+                    onClose = ::close,
                     onSave = onSave,
                     saving = saving,
                 )
             }
-            if (state.caption.isNotEmpty()) {
-                AnimatedVisibility(chrome && dismissY == 0f, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
-                    ViewerCaption(state.caption, bottomInset = if (current is ChatAttachment.Video) VideoControlsHeight else 0.dp)
+            if (state.caption.isNotEmpty() || state.items.size > 1) {
+                AnimatedVisibility(open && chrome && dismissY == 0f, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
+                    ViewerBottom(
+                        caption = state.caption,
+                        items = state.items,
+                        page = pager.currentPage,
+                        bottomInset = if (current is ChatAttachment.Video) VideoControlsHeight else 0.dp,
+                        onSelect = { index -> scope.launch { pager.animateScrollToPage(index) } },
+                    )
                 }
+            }
+            val flying = hero
+            val bounds = screen
+            if (flying != null && bounds != null && !open) {
+                FlyingFrame(flying, bounds, dismissY, progress.value)
+            }
+        }
+    }
+}
+
+private enum class ViewerPhase { OPENING, OPEN, CLOSING }
+
+/** Кадр, летящий между плиткой и просмотром: картинка плитки, где плитка, скругление и пропорции. */
+private class Hero(val model: Any?, val source: HeroRect, val cornerRadius: Float, val aspect: Float)
+
+/** Плитка [item] в ленте, если она известна: из неё вылетит кадр. */
+private fun heroFor(item: ChatAttachment): Hero? {
+    val tile = MediaTiles.tile(item.id) ?: return null
+    return Hero(tile.model, tile.bounds, tile.cornerRadius, aspectOf(item))
+}
+
+/** Ширина к высоте кадра; без размеров — квадрат. */
+private fun aspectOf(item: ChatAttachment): Float {
+    val (w, h) = when (item) {
+        is ChatAttachment.Photo -> item.photo.width to item.photo.height
+        is ChatAttachment.Video -> item.video.width to item.video.height
+        else -> null to null
+    }
+    return if (w != null && h != null && w > 0 && h > 0) w.toFloat() / h.toFloat() else 1f
+}
+
+/** Летящий кадр: на доле [progress] пути от плитки до места в просмотре (сдвинутого смахиванием). */
+@Composable
+private fun FlyingFrame(hero: Hero, screen: HeroRect, dismissY: Float, progress: Float) {
+    val fitted = MediaHeroGeometry.fit(hero.aspect, screen)
+    val full = fitted.copy(top = fitted.top + dismissY)
+    val rect = MediaHeroGeometry.interpolate(hero.source, full, progress)
+    val density = LocalDensity.current
+    AsyncImage(
+        model = hero.model,
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier
+            .offset { IntOffset((rect.left - screen.left).roundToInt(), (rect.top - screen.top).roundToInt()) }
+            .size(with(density) { rect.width.coerceAtLeast(1f).toDp() }, with(density) { rect.height.coerceAtLeast(1f).toDp() })
+            .clip(RoundedCornerShape(CornerSize(hero.cornerRadius * (1f - progress)))),
+    )
+}
+
+/** Подпись и лента миниатюр альбома внизу; у ролика — над его полосой. */
+@Composable
+private fun ViewerBottom(caption: String, items: List<ChatAttachment>, page: Int, bottomInset: androidx.compose.ui.unit.Dp, onSelect: (Int) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))))
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
+            .padding(top = 28.dp, bottom = 12.dp + bottomInset),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        if (caption.isNotEmpty()) {
+            Text(
+                caption,
+                color = Color.White,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = if (expanded) Int.MAX_VALUE else 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(horizontal = 16.dp),
+            )
+        }
+        if (items.size > 1) ThumbnailStrip(items, page, onSelect)
+    }
+}
+
+/** Лента миниатюр альбома: открытая — шире и в рамке, касание открывает другую. */
+@Composable
+private fun ThumbnailStrip(items: List<ChatAttachment>, page: Int, onSelect: (Int) -> Unit) {
+    val list = rememberLazyListState()
+    val density = LocalDensity.current
+    // Открытая миниатюра — посередине ленты.
+    LaunchedEffect(page) {
+        val viewport = list.layoutInfo.viewportSize.width
+        val item = with(density) { 52.dp.roundToPx() }
+        list.animateScrollToItem(page, -((viewport - item) / 2).coerceAtLeast(0))
+    }
+    LazyRow(
+        state = list,
+        modifier = Modifier.fillMaxWidth().height(44.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
+            val selected = index == page
+            val width by animateDpAsState(if (selected) 44.dp else 30.dp, label = "thumb")
+            val url = when (item) {
+                is ChatAttachment.Photo -> item.photo.url
+                is ChatAttachment.Video -> item.video.posterUrl
+                else -> null
+            }
+            Box(
+                Modifier
+                    .padding(horizontal = if (selected) 4.dp else 0.dp)
+                    .size(width, 44.dp)
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(Color.White.copy(alpha = 0.12f))
+                    .then(if (selected) Modifier.border(2.dp, Color.White, RoundedCornerShape(5.dp)) else Modifier)
+                    .alpha(if (selected) 1f else 0.7f)
+                    .clickable { onSelect(index) },
+                contentAlignment = Alignment.Center,
+            ) {
+                AsyncImage(ImageRequests.width(url, 60f, density.density), if (item is ChatAttachment.Video) "Видео" else "Фото", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                if (item is ChatAttachment.Video) Icon(Icons.Filled.PlayArrow, null, tint = Color.White, modifier = Modifier.size(14.dp))
             }
         }
     }
@@ -317,25 +519,6 @@ private fun ViewerHeader(
     }
 }
 
-/** Подпись внизу: три строки, касание раскрывает целиком. */
-@Composable
-private fun ViewerCaption(text: String, bottomInset: androidx.compose.ui.unit.Dp) {
-    var expanded by remember { mutableStateOf(false) }
-    Text(
-        text,
-        color = Color.White,
-        style = MaterialTheme.typography.bodyMedium,
-        maxLines = if (expanded) Int.MAX_VALUE else 3,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))))
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
-            .clickable { expanded = !expanded }
-            .padding(start = 16.dp, end = 16.dp, top = 28.dp, bottom = 12.dp + bottomInset),
-    )
-}
-
 private fun viewerDate(timeMs: Long): String {
     if (timeMs <= 0) return ""
     val formatter = ChatFormatter()
@@ -380,6 +563,8 @@ private suspend fun PointerInputScope.detectVerticalDismiss(enabled: () -> Boole
 @Composable
 private fun ZoomablePhoto(
     url: String?,
+    /** Картинка плитки из ленты: видна, пока грузится оригинал (с ней же прилетел кадр). */
+    placeholder: Any?,
     turns: Int,
     active: Boolean,
     onChrome: () -> Unit,
@@ -453,6 +638,19 @@ private fun ZoomablePhoto(
             .pointerInput(Unit) { detectVerticalDismiss(enabled = { scale <= 1.01f }, dismiss = { handlers }) },
         contentAlignment = Alignment.Center,
     ) {
+        if (!loaded && placeholder != null) {
+            AsyncImage(
+                model = placeholder,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize().graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offset.x
+                    translationY = offset.y
+                },
+            )
+        }
         AsyncImage(
             model = url,
             contentDescription = "Фото",
@@ -470,7 +668,7 @@ private fun ZoomablePhoto(
                 translationY = offset.y
             },
         )
-        if (!loaded && url != null) CircularProgressIndicator(color = Color.White)
+        if (!loaded && url != null && placeholder == null) CircularProgressIndicator(color = Color.White)
     }
 }
 
@@ -484,6 +682,8 @@ private fun ZoomablePhoto(
 private fun VideoPage(
     video: VideoContent,
     url: String?,
+    /** Обложка: картинка плитки из ленты или постер ролика. */
+    poster: Any?,
     userAgent: String,
     active: Boolean,
     chrome: Boolean,
@@ -600,7 +800,7 @@ private fun VideoPage(
     val handlers by rememberUpdatedState(dismiss)
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        if (!firstFrame) AsyncImage(video.posterUrl, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+        if (!firstFrame) AsyncImage(poster, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
         ContentFrame(
             player = player,
             modifier = Modifier.fillMaxSize(),

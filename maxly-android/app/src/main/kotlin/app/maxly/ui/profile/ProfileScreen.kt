@@ -83,6 +83,7 @@ import app.maxly.presentation.profile.ProfileViewModel
 import app.maxly.presentation.profile.SharedMedia
 import app.maxly.ui.chat.FileOpener
 import app.maxly.ui.chat.MediaViewer
+import app.maxly.ui.chat.mediaTile
 import app.maxly.ui.components.Avatar
 import app.maxly.ui.theme.AvatarPalette
 import coil3.compose.AsyncImage
@@ -466,7 +467,10 @@ private fun Card(title: String? = null, content: @Composable () -> Unit) {
 @Composable
 private fun VisualTile(visual: SharedMedia.Visual, modifier: Modifier, onClick: () -> Unit) {
     BoxWithConstraints(modifier.aspectRatio(1f).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onClick)) {
-        AsyncImage(ImageRequests.width(visual.thumbnailUrl, maxWidth.value, LocalDensity.current.density), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        val model = ImageRequests.width(visual.thumbnailUrl, maxWidth.value, LocalDensity.current.density)
+        // Просмотр вылетает из клетки и возвращается в неё, как из плитки в ленте.
+        androidx.compose.runtime.DisposableEffect(visual.attachment.id) { onDispose { app.maxly.ui.chat.MediaTiles.remove(visual.attachment.id) } }
+        AsyncImage(model, null, Modifier.fillMaxSize().then(Modifier.mediaTile(visual.attachment.id, model, 0f)), contentScale = ContentScale.Crop)
         if (visual.attachment is ChatAttachment.Video) {
             Row(
                 Modifier.align(Alignment.BottomStart).padding(4.dp).clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 4.dp, vertical = 1.dp),

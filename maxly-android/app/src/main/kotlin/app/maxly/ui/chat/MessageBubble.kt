@@ -90,6 +90,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -562,9 +563,18 @@ fun ReplyQuote(author: String, preview: String, colors: BubbleColors, modifier: 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modifier = Modifier, shape: Shape, onLongPress: () -> Unit = {}, onDoubleTap: () -> Unit = {}, onOpen: (ChatAttachment) -> Unit) {
+    val density = LocalDensity.current.density
+    // Плитки сообщают просмотру, где они: он вылетает из них и возвращается в них.
+    DisposableEffect(visuals) { onDispose { visuals.forEach { MediaTiles.remove(it.id) } } }
+    val corner = 12f * density
     if (visuals.size == 1) {
-        val frame = singleFrame(visuals.first(), maxWidth)
-        Box(modifier.size(frame.width.dp, frame.height.dp).clip(shape).combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(visuals.first()) }) { VisualCell(visuals.first(), frame.width.dp) }
+        val item = visuals.first()
+        val frame = singleFrame(item, maxWidth)
+        Box(
+            modifier.size(frame.width.dp, frame.height.dp).clip(shape)
+                .mediaTile(item.id, tileModel(item, frame.width.dp, density), corner)
+                .combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(item) },
+        ) { VisualCell(item, frame.width.dp) }
         return
     }
     // Несколько кадров — рядами по пропорциям, как на iOS (`ChatAlbum`).
@@ -574,10 +584,18 @@ private fun Visuals(visuals: List<ChatAttachment>, maxWidth: Dp, modifier: Modif
             val item = visuals[tile.index]
             Box(
                 Modifier.offset(tile.x.dp, tile.y.dp).size(tile.width.dp, tile.height.dp)
+                    .mediaTile(item.id, tileModel(item, tile.width.dp, density), 2f * density)
                     .combinedClickable(onLongClick = onLongPress, onDoubleClick = onDoubleTap) { onOpen(item) },
             ) { VisualCell(item, tile.width.dp) }
         }
     }
+}
+
+/** Модель картинки плитки — та же, что у [PhotoCell] и [VideoCell], чтобы просмотр взял её из кэша. */
+private fun tileModel(attachment: ChatAttachment, width: Dp, density: Float): Any? = when (attachment) {
+    is ChatAttachment.Photo -> ImageRequests.width(attachment.photo.url, width.value, density)
+    is ChatAttachment.Video -> ImageRequests.width(attachment.video.posterUrl, width.value, density)
+    else -> null
 }
 
 /** Одно фото или видео: по пропорциям, не выше 360 dp. */

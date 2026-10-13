@@ -113,6 +113,19 @@ import coil3.request.ImageRequest
 import coil3.size.Size
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
+import app.maxly.presentation.media.ImageRequests
 import java.awt.Point
 import java.awt.Toolkit
 import java.awt.image.BufferedImage
@@ -151,7 +164,20 @@ fun MediaViewer(
     onSave: (() -> Unit)? = null,
     saving: Boolean = false,
 ) {
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    // Просмотр проявляется с лёгким приближением и так же гаснет при закрытии.
+    val shown = remember { Animatable(0f) }
+    val closeScope = rememberCoroutineScope()
+    var closing by remember { mutableStateOf(false) }
+    fun close() {
+        if (closing) return
+        closing = true
+        closeScope.launch {
+            shown.animateTo(0f, tween(150))
+            onClose()
+        }
+    }
+    Dialog(onDismissRequest = ::close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        LaunchedEffect(Unit) { shown.animateTo(1f, tween(180, easing = FastOutSlowInEasing)) }
         val window = LocalMainWindowState.current
         // Прежнее положение окна, пока просмотр развернул его во весь экран.
         var restore by remember { mutableStateOf<WindowPlacement?>(null) }
@@ -167,7 +193,7 @@ fun MediaViewer(
             }
         }
         DisposableEffect(Unit) { onDispose { restore?.let { window?.placement = it } } }
-        BackHandler { if (fullscreen) setFullscreen(false) else onClose() }
+        BackHandler { if (fullscreen) setFullscreen(false) else close() }
 
         val pager = rememberPagerState(initialPage = state.index) { state.items.size }
         LaunchedEffect(pager) { snapshotFlow { pager.currentPage }.collect(onPage) }
@@ -222,6 +248,7 @@ fun MediaViewer(
         Box(
             Modifier
                 .fillMaxSize()
+                .graphicsLayer { alpha = shown.value }
                 .background(Color.Black)
                 .pointerHoverIcon(if (chrome) PointerIcon.Default else HiddenCursor)
                 .pointerInput(Unit) {
@@ -238,7 +265,11 @@ fun MediaViewer(
         ) {
             HorizontalPager(
                 pager,
-                Modifier.fillMaxSize(),
+                Modifier.fillMaxSize().graphicsLayer {
+                    val scale = 0.94f + 0.06f * shown.value
+                    scaleX = scale
+                    scaleY = scale
+                },
                 key = { state.items[it].id },
                 userScrollEnabled = !zoomed && !scrubbing,
             ) { page ->
@@ -280,7 +311,7 @@ fun MediaViewer(
                     onRotate = { if (current != null) turns[current.id] = (turns[current.id] ?: 0) + 1 },
                     fullscreen = fullscreen,
                     onFullscreen = if (window != null) ({ setFullscreen(!fullscreen) }) else null,
-                    onClose = onClose,
+                    onClose = ::close,
                     onSave = onSave,
                     saving = saving,
                 )
@@ -293,21 +324,76 @@ fun MediaViewer(
                     SideArrow(forward = true) { step(true) }
                 }
             }
-            if (state.caption.isNotEmpty()) {
+            if (state.caption.isNotEmpty() || state.items.size > 1) {
                 AnimatedVisibility(chrome, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
-                    Text(
-                        state.caption,
-                        color = Color.White,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 4,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .widthIn(max = 720.dp)
-                            .padding(bottom = if (current is ChatAttachment.Video) 92.dp else 24.dp)
-                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                    )
+                    Column(
+                        Modifier.padding(bottom = if (current is ChatAttachment.Video) 92.dp else 20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        if (state.caption.isNotEmpty()) {
+                            Text(
+                                state.caption,
+                                color = Color.White,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 4,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .widthIn(max = 720.dp)
+                                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                            )
+                        }
+                        if (state.items.size > 1) {
+                            ThumbnailStrip(state.items, pager.currentPage) { index -> scope.launch { pager.animateScrollToPage(index) } }
+                        }
+                    }
                 }
+            }
+        }
+    }
+}
+
+/** Лента миниатюр альбома: открытая — шире и в рамке, щелчок открывает другую. */
+@Composable
+private fun ThumbnailStrip(items: List<ChatAttachment>, page: Int, onSelect: (Int) -> Unit) {
+    val list = rememberLazyListState()
+    val density = LocalDensity.current
+    // Открытая миниатюра — посередине ленты.
+    LaunchedEffect(page) {
+        val viewport = list.layoutInfo.viewportSize.width
+        val item = with(density) { 52.dp.roundToPx() }
+        list.animateScrollToItem(page, -((viewport - item) / 2).coerceAtLeast(0))
+    }
+    LazyRow(
+        state = list,
+        modifier = Modifier.widthIn(max = 720.dp).height(52.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
+            val selected = index == page
+            val width by animateDpAsState(if (selected) 52.dp else 36.dp, label = "thumb")
+            val url = when (item) {
+                is ChatAttachment.Photo -> item.photo.url
+                is ChatAttachment.Video -> item.video.posterUrl
+                else -> null
+            }
+            Box(
+                Modifier
+                    .padding(horizontal = if (selected) 4.dp else 0.dp)
+                    .size(width, 52.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color.White.copy(alpha = 0.12f))
+                    .then(if (selected) Modifier.border(2.dp, Color.White, RoundedCornerShape(6.dp)) else Modifier)
+                    .alpha(if (selected) 1f else 0.6f)
+                    .pointerHoverIcon(PointerIcon.Hand)
+                    .clickable { onSelect(index) },
+                contentAlignment = Alignment.Center,
+            ) {
+                AsyncImage(ImageRequests.width(url, 72f, density.density), if (item is ChatAttachment.Video) "Видео" else "Фото", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                if (item is ChatAttachment.Video) Icon(Icons.Filled.PlayArrow, null, tint = Color.White, modifier = Modifier.size(16.dp))
             }
         }
     }
