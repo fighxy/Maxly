@@ -1,0 +1,65 @@
+import Foundation
+import Testing
+import MaxlyDomain
+@testable import MaxlyPresentation
+
+@Suite("Анимодзи в тексте")
+struct AnimojiTextTests {
+    private let heart = URL(string: "https://lottie/heart.json")!
+    private let fire = URL(string: "https://lottie/fire.json")!
+    private var catalog: [String: URL] { ["❤️": heart, "🔥": fire] }
+
+    @Test("В тексте: ссылка отметки, иначе каталог; без отметки — буква")
+    func inline() {
+        let own = URL(string: "https://lottie/own-fire.json")!
+        let text = "Привет 🔥 и ❤ и 😀"
+        let spans = [
+            TextSpan(kind: .animoji, from: 7, length: 2, url: own.absoluteString, entityId: "1"),
+            TextSpan(kind: .animoji, from: 12, length: 1, entityId: "2"),
+            TextSpan(kind: .strong, from: 0, length: 6),
+        ]
+        #expect(AnimojiText.inline(text: text, spans: spans, catalog: catalog) == [
+            .init(from: 7, length: 2, emoji: "🔥", lottieURL: own),
+            .init(from: 12, length: 1, emoji: "❤", lottieURL: heart),
+        ])
+        #expect(AnimojiText.inline(text: "🔥 огонь", spans: [], catalog: catalog).isEmpty)
+        let broken = [TextSpan(kind: .animoji, from: 40, length: 2, entityId: "1")]
+        #expect(AnimojiText.inline(text: "🔥", spans: broken, catalog: catalog).isEmpty)
+    }
+
+    @Test("Крупные эмодзи: каждое по отметке или каталогу")
+    func bigEmoji() {
+        let own = URL(string: "https://lottie/own-fire.json")!
+        let spans = [TextSpan(kind: .animoji, from: 0, length: 2, url: own.absoluteString, entityId: "1")]
+        #expect(AnimojiText.bigEmoji(text: "🔥 ❤️ 😀", emoji: ["🔥", "❤️", "😀"], spans: spans, catalog: catalog) == [own, heart, nil])
+    }
+
+    @Test("Каталог не различает селектор FE0F")
+    func lookup() {
+        #expect(AnimojiText.lookup(catalog: catalog, emoji: "❤") == heart)
+        #expect(AnimojiText.lookup(catalog: ["❤": heart], emoji: "❤️") == heart)
+        #expect(AnimojiText.lookup(catalog: [:], emoji: "❤️") == nil)
+    }
+}
+
+@Suite("Анимация реакции")
+@MainActor
+struct ReactionBurstTests {
+    @Test("Поставленная реакция играет один раз, отметка «доиграла» её снимает")
+    func burst() async {
+        let fire = URL(string: "https://lottie/fire.json")!
+        let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository())
+        model.loadAnimoji = { ["🔥": fire] }
+        #expect(await eventually { !model.animoji.isEmpty })
+        await model.toggleReaction(messageId: "m1", emoji: "🔥")
+        let burst = model.reactionBurst
+        #expect(burst?.messageId == "m1")
+        #expect(burst?.lottieURL == fire)
+        model.reactionBurstShown((burst?.id ?? 0) + 1)
+        #expect(model.reactionBurst == burst)
+        model.reactionBurstShown(burst?.id ?? 0)
+        #expect(model.reactionBurst == nil)
+        await model.toggleReaction(messageId: "m1", emoji: "😀")
+        #expect(model.reactionBurst == nil)
+    }
+}

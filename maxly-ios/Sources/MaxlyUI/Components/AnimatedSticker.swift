@@ -120,6 +120,8 @@ public struct AnimatedSticker<Placeholder: View>: View {
     private let stillURL: URL?
     private let size: CGFloat
     private let playing: Bool
+    /// `false` — один проход (анимация реакции), иначе по кругу.
+    private let loops: Bool
     private let placeholder: Placeholder
     private let store: LottieStore
     @State private var animation: LottieAnimation?
@@ -130,6 +132,7 @@ public struct AnimatedSticker<Placeholder: View>: View {
         stillURL: URL?,
         size: CGFloat,
         playing: Bool = true,
+        loops: Bool = true,
         store: LottieStore = .shared,
         @ViewBuilder placeholder: () -> Placeholder
     ) {
@@ -137,6 +140,7 @@ public struct AnimatedSticker<Placeholder: View>: View {
         self.stillURL = stillURL
         self.size = size
         self.playing = playing
+        self.loops = loops
         self.store = store
         self.placeholder = placeholder()
         _animation = State(initialValue: lottieURL.flatMap { store.cached($0) })
@@ -148,7 +152,7 @@ public struct AnimatedSticker<Placeholder: View>: View {
                 LottieView(animation: animation)
                     .resizable()
                     .playbackMode(playing && !reduceMotion
-                        ? .playing(.toProgress(1, loopMode: .loop))
+                        ? .playing(.toProgress(1, loopMode: loops ? .loop : .playOnce))
                         : .paused(at: .progress(0)))
                     .transition(.opacity)
             } else if stillURL != nil {

@@ -617,6 +617,14 @@ final class AppContainer {
         )
         model.typingReporter = typingReporter
         model.nowPlaying = nowPlaying
+        if let stickerRepository {
+            // Анимодзи сервера (тот же каталог, что у панели эмодзи): эмодзи → Lottie.
+            model.loadAnimoji = {
+                let list = await stickerRepository.cachedAnimatedEmoji()
+                let fresh = list.isEmpty ? ((try? await stickerRepository.animatedEmoji()) ?? []) : list
+                return Dictionary(fresh.compactMap { item in item.lottieURL.map { (item.emoji, $0) } }, uniquingKeysWith: { first, _ in first })
+            }
+        }
         nowPlaying.applySpeed = { [voicePlayer] speed in voicePlayer.rate = speed }
         model.attachPins(pinHub)
         model.attachScheduled(scheduledHub)

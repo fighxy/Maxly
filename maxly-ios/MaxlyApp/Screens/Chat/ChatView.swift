@@ -134,6 +134,11 @@ struct ChatView: View {
             onAuthor: openParticipant
         )
         .environment(\.messageMenuPresenter, messageMenu)
+        // Анимодзи в сообщениях и анимация только что поставленной реакции.
+        .environment(\.animojiCatalog, viewModel.animoji)
+        .environment(\.reactionBurst, ReactionBurstHost(burst: viewModel.reactionBurst) { [viewModel] id in
+            viewModel.reactionBurstShown(id)
+        })
         // Обои за лентой: на весь экран, под шапкой, полем ввода и клавиатурой, не
         // прокручиваются с сообщениями.
         .background {

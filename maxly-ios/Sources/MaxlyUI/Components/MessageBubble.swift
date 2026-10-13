@@ -93,6 +93,8 @@ public struct MessageBubble: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Обои за лентой: входящий пузырь светлой темы на них белый.
     @Environment(\.chatWallpaper) private var wallpaper
+    /// Анимодзи чата: крупные эмодзи играют и без отметки сервера.
+    @Environment(\.animojiCatalog) private var animojiCatalog
     private static let replyThreshold: CGFloat = 56
 
     private static let radius: CGFloat = 18
@@ -216,6 +218,10 @@ public struct MessageBubble: View {
             VStack(alignment: isOutgoing ? .trailing : .leading, spacing: 4) {
                 bubbleContent
                     .modifier(MenuFrameReader(frame: menuFrame, enabled: menuPresenter != nil))
+                    // Только что поставленная реакция: один проход её анимации над пузырём.
+                    .overlay(alignment: isOutgoing ? .bottomTrailing : .bottomLeading) {
+                        ReactionBurstOverlay(messageId: message.id)
+                    }
                 if message.status == .failed {
                     Button("Не отправлено. Повторить", action: onRetry)
                         .font(.caption2)
@@ -492,12 +498,26 @@ public struct MessageBubble: View {
                             .fill(Color.secondary.opacity(0.12))
                     }
                     .accessibilityLabel("Стикер")
-                case .emoji(let emoji, let lottie):
+                case .emoji(let emoji, _):
                     let font = ChatContentFormat.bigEmojiSize(count: emoji.count)
-                    if let lottie {
-                        AnimatedSticker(lottieURL: lottie, stillURL: nil, size: 120) {
-                            Text(emoji.joined()).font(.system(size: font))
+                    // Каждое эмодзи со своей анимацией играет (по отметке или каталогу), остальные — буквой.
+                    let lotties = AnimojiText.bigEmoji(
+                        text: message.text, emoji: emoji, spans: message.content.formatting ?? [], catalog: animojiCatalog
+                    )
+                    if lotties.contains(where: { $0 != nil }) {
+                        let side: CGFloat = emoji.count == 1 ? 120 : emoji.count == 2 ? 88 : 72
+                        HStack(spacing: 0) {
+                            ForEach(Array(emoji.enumerated()), id: \.offset) { index, item in
+                                if let url = lotties[index] {
+                                    AnimatedSticker(lottieURL: url, stillURL: nil, size: side) {
+                                        Text(item).font(.system(size: font))
+                                    }
+                                } else {
+                                    Text(item).font(.system(size: font))
+                                }
+                            }
                         }
+                        .accessibilityElement(children: .ignore)
                         .accessibilityLabel(emoji.joined())
                     } else {
                         Text(emoji.joined())

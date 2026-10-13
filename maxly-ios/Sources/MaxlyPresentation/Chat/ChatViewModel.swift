@@ -186,6 +186,15 @@ public final class ChatViewModel {
     public let isNewDialog: Bool
     /// Каталог реакций сервера. Пуст, пока не загрузился: меню берёт запасной набор.
     public private(set) var reactionCatalog: [String] = []
+    /// Анимодзи: эмодзи → Lottie (`AnimojiText`).
+    public private(set) var animoji: [String: URL] = [:]
+    /// Только что поставленная реакция: экран один раз играет её анимацию (`reactionBurstShown`).
+    public private(set) var reactionBurst: ReactionBurst?
+    @ObservationIgnored private var burstCounter = 0
+    /// Откуда взять каталог анимодзи (контейнер берёт его у стикеров). Задан — каталог грузится.
+    @ObservationIgnored public var loadAnimoji: (@Sendable () async -> [String: URL])? {
+        didSet { requestAnimoji() }
+    }
     /// Сообщение, для которого открыт полный выбор реакций.
     public var reactionPickerTarget: Message?
     /// Открытый список «Кто отреагировал».
@@ -1051,6 +1060,12 @@ public final class ChatViewModel {
     /// Поставить реакцию или снять свою. Лента меняется сразу, при отказе сервера
     /// возвращается прежнее и показывается ошибка.
     public func toggleReaction(messageId: String, emoji: String) async {
+        let mine = messages.first(where: { $0.id == messageId })?.content.reactions.mine
+        if mine != emoji, let url = AnimojiText.lookup(catalog: animoji, emoji: emoji) {
+            // Поставили (не сняли) — анимация реакции над сообщением.
+            burstCounter += 1
+            reactionBurst = ReactionBurst(messageId: messageId, emoji: emoji, lottieURL: url, id: burstCounter)
+        }
         do {
             try await repository.toggleReaction(messageId: messageId, emoji: emoji)
             if case .rejected(Self.reactionFailure)? = error { error = nil }
@@ -1123,6 +1138,20 @@ public final class ChatViewModel {
             guard let self, !ok else { return }
             self.askedReactions.subtract(ids)
             self.reactionsRetryAt = Date().addingTimeInterval(Self.retryAfterError)
+        }
+    }
+
+    /// Экран доиграл анимацию реакции `id`.
+    public func reactionBurstShown(_ id: Int) {
+        if reactionBurst?.id == id { reactionBurst = nil }
+    }
+
+    private func requestAnimoji() {
+        guard let loadAnimoji, animoji.isEmpty else { return }
+        Task { [weak self] in
+            let catalog = await loadAnimoji()
+            guard let self, !catalog.isEmpty else { return }
+            self.animoji = catalog
         }
     }
 

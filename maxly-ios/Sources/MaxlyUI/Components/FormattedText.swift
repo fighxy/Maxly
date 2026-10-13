@@ -34,12 +34,32 @@ enum FormattedText {
                 result[range].foregroundColor = linkColor
                 result[range].inlinePresentationIntent = merged(result[range].inlinePresentationIntent, .stronglyEmphasized)
             case .quote, .animoji, .unknown:
-                // Анимодзи внутри строки рисуется обычным эмодзи; крупно и с анимацией —
-                // в сообщении из одних эмодзи (`BigEmojiMessage`).
+                // Анимодзи играет поверх своего места (`marked`, `AnimojiOverlay`, iOS 18+).
                 break
             }
         }
         detectLinks(in: &result, text: block.text, color: linkColor, underline: true)
+        return result
+    }
+
+    /// Текст с метками анимодзи (`AnimojiMark`): по ним рендерер оставляет место под Lottie.
+    @available(iOS 18.0, macOS 15.0, *)
+    static func marked(_ attributed: AttributedString, text: String, placed: [AnimojiText.Placed]) -> Text {
+        let total = (text as NSString).length
+        var result = Text("")
+        var cursor = 0
+        func piece(_ from: Int, _ length: Int) -> Text? {
+            guard length > 0, let range = Range(NSRange(location: from, length: length), in: attributed) else { return nil }
+            return Text(AttributedString(attributed[range]))
+        }
+        for item in placed where item.from >= cursor && item.from + item.length <= total {
+            if let before = piece(cursor, item.from - cursor) { result = result + before }
+            if let emoji = piece(item.from, item.length) {
+                result = result + emoji.customAttribute(AnimojiMark(url: item.lottieURL, emoji: item.emoji))
+            }
+            cursor = item.from + item.length
+        }
+        if let rest = piece(cursor, total - cursor) { result = result + rest }
         return result
     }
 
@@ -84,6 +104,7 @@ struct MessageTextView: View {
     let spans: [TextSpan]
     let outgoing: Bool
     let trailingSpace: Text?
+    @Environment(\.animojiCatalog) private var catalog
 
     var body: some View {
         let blocks = ChatTextFormat.blocks(text: text, spans: spans)
@@ -102,11 +123,18 @@ struct MessageTextView: View {
     private func line(_ block: TextBlock, last: Bool) -> some View {
         content(block, last: last)
             .foregroundStyle(outgoing ? Color.maxlyOutgoingText : Color.primary)
+            .modifier(AnimojiOverlay(active: !animoji(block).isEmpty))
+    }
+
+    /// Анимодзи блока: играют на своём месте вместе с текстом.
+    private func animoji(_ block: TextBlock) -> [AnimojiText.Placed] {
+        AnimojiText.inline(text: block.text, spans: block.spans, catalog: catalog)
     }
 
     private func quote(_ block: TextBlock, last: Bool) -> some View {
         // Полоса — в overlay: её высота равна высоте текста цитаты, а не всей доступной.
         content(block, last: last)
+            .modifier(AnimojiOverlay(active: !animoji(block).isEmpty))
             .font(.callout)
             .foregroundStyle(outgoing ? Color.maxlyOutgoingText.opacity(0.92) : Color.primary.opacity(0.9))
             .fixedSize(horizontal: false, vertical: true)
@@ -124,7 +152,12 @@ struct MessageTextView: View {
     }
 
     private func content(_ block: TextBlock, last: Bool) -> Text {
-        let body = Text(FormattedText.attributed(block, outgoing: outgoing))
+        let attributed = FormattedText.attributed(block, outgoing: outgoing)
+        var body = Text(attributed)
+        if #available(iOS 18.0, macOS 15.0, *) {
+            let placed = animoji(block)
+            if !placed.isEmpty { body = FormattedText.marked(attributed, text: block.text, placed: placed) }
+        }
         guard last else { return body }
         guard let trailingSpace else { return body }
         return body + trailingSpace.foregroundStyle(.clear)
