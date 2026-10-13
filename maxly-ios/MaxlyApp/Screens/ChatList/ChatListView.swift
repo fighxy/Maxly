@@ -20,6 +20,8 @@ struct ChatListView: View {
     var makeBotApp: ((BotAppRequest) -> MiniAppModel)?
     @State private var botApp: BotAppRequest?
     @State private var composeShown = false
+    /// «Заблокировать» из меню ждёт подтверждения.
+    @State private var blockCandidate: ChatListItem?
     /// Истории: полоса над чатами и кольца на аватарах личных чатов. `nil` в превью.
     @Environment(StoriesViewModel.self) private var stories: StoriesViewModel?
     /// Настройка приватного режима для плавающей кнопки. `nil` в превью без контейнера.
@@ -96,6 +98,42 @@ struct ChatListView: View {
         ) { item in
             eraseButtons(item, clearing: true)
             Button("Отмена", role: .cancel) { viewModel.cancelClear() }
+        }
+        .confirmationDialog(
+            blockTitle,
+            isPresented: Binding(get: { blockCandidate != nil }, set: { if !$0 { blockCandidate = nil } }),
+            titleVisibility: .visible,
+            presenting: blockCandidate
+        ) { item in
+            Button("Заблокировать", role: .destructive) { Task { await viewModel.block(chatId: item.id) } }
+            Button("Отмена", role: .cancel) {}
+        } message: { _ in
+            Text("Он не сможет писать вам и звонить. Разблокировать можно в настройках конфиденциальности.")
+        }
+        .overlay(alignment: .top) { noticeBanner }
+    }
+
+    private var blockTitle: String {
+        guard let item = blockCandidate, privateMode == .visible else { return "Заблокировать пользователя?" }
+        return "Заблокировать \(item.title)?"
+    }
+
+    /// Итог действия из меню строки («Чат добавлен в «Работа»», ошибка): гаснет сам.
+    @ViewBuilder
+    private var noticeBanner: some View {
+        if let text = viewModel.notice {
+            Text(text)
+                .font(.subheadline)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.regularMaterial, in: Capsule())
+                .padding(.top, 8)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .onTapGesture { viewModel.notice = nil }
+                .task(id: text) {
+                    try? await Task.sleep(for: .seconds(2.5))
+                    if viewModel.notice == text { viewModel.notice = nil }
+                }
         }
     }
 
@@ -397,41 +435,86 @@ struct ChatListView: View {
         }
     }
 
+    /// Меню строки в порядке Max (`ChatListMenu.entries`). «Открыть» и архив остались в
+    /// касании и свайпе.
     @ViewBuilder
     private func menu(_ item: ChatListItem) -> some View {
-        Button { selection = item.id } label: {
-            Label("Открыть", systemImage: "bubble.left")
+        let match = storyMatch(item)
+        let ring = match.flatMap { stories?.ring(of: $0.id, kind: $0.kind) }
+        let isOwnRing = ring != nil && ring?.owner == stories?.own?.owner
+        let entries = ChatListMenu.entries(
+            item: item,
+            folders: viewModel.folderChoices(chatId: item.id),
+            capabilities: viewModel.capabilities,
+            hasStories: ring != nil && !isOwnRing,
+            canBlock: viewModel.canBlock
+        )
+        ForEach(entries, id: \.self) { entry in
+            menuEntry(entry, item: item, ring: ring)
         }
-        if isUnread(item) {
-            Button { Task { await viewModel.toggleRead(chatId: item.id) } } label: {
-                Label("Отметить прочитанным", systemImage: "envelope.open")
+    }
+
+    @ViewBuilder
+    private func menuEntry(_ entry: ChatListMenu.Entry, item: ChatListItem, ring: StoryRing?) -> some View {
+        switch entry {
+        case .folders(let folders):
+            Menu {
+                ForEach(folders) { folder in
+                    Button { Task { await viewModel.toggleFolder(chatId: item.id, folderId: folder.id) } } label: {
+                        if folder.contains {
+                            Label(folder.title, systemImage: "checkmark")
+                        } else {
+                            Text(folder.title)
+                        }
+                    }
+                }
+            } label: {
+                Label(entry.title, systemImage: "folder.badge.plus")
             }
-        } else if viewModel.capabilities.contains(.markUnread) {
-            Button { Task { await viewModel.toggleRead(chatId: item.id) } } label: {
-                Label("Отметить непрочитанным", systemImage: "envelope.badge")
-            }
-        }
-        if viewModel.capabilities.contains(.pin) {
+        case .pin(let pinned):
             Button { Task { await viewModel.togglePin(chatId: item.id) } } label: {
-                Label(item.isPinned ? "Открепить" : "Закрепить", systemImage: item.isPinned ? "pin.slash" : "pin")
+                Label(entry.title, systemImage: pinned ? "pin.slash" : "pin")
             }
-        }
-        if viewModel.capabilities.contains(.mute) {
-            Button { Task { await viewModel.toggleMute(chatId: item.id) } } label: {
-                Label(item.isMuted ? "Включить уведомления" : "Выключить уведомления", systemImage: item.isMuted ? "speaker.wave.2" : "speaker.slash")
+        case .read(let unread):
+            Button { Task { await viewModel.toggleRead(chatId: item.id) } } label: {
+                Label(entry.title, systemImage: unread ? "envelope.open" : "envelope.badge")
             }
-        }
-        if viewModel.capabilities.contains(.archive) {
-            Button { Task { await viewModel.toggleArchive(chatId: item.id) } } label: {
-                Label("В архив", systemImage: "archivebox")
+        case .mute(let muted):
+            if muted {
+                Button { Task { await viewModel.toggleMute(chatId: item.id) } } label: {
+                    Label(entry.title, systemImage: "bell")
+                }
+            } else {
+                Menu {
+                    ForEach(ChatListMenu.MuteFor.allCases, id: \.self) { choice in
+                        Button(role: choice.isDanger ? .destructive : nil) {
+                            Task { await viewModel.muteFor(chatId: item.id, choice) }
+                        } label: {
+                            Text(choice.title)
+                        }
+                    }
+                } label: {
+                    Label(entry.title, systemImage: "bell.slash")
+                }
             }
-        }
-        if viewModel.capabilities.contains(.delete) {
+        case .erase:
             Button { viewModel.requestClear(chatId: item.id) } label: {
-                Label("Очистить историю", systemImage: "eraser")
+                Label(entry.title, systemImage: "eraser")
             }
+        case .hideStories:
+            Button {
+                guard let ring else { return }
+                Task { await stories?.hideOwner(ring.owner, name: ring.name) }
+            } label: {
+                Label(entry.title, systemImage: "eye.slash")
+            }
+        case .block:
+            Button(role: .destructive) { blockCandidate = item } label: {
+                Label(entry.title, systemImage: "hand.raised")
+            }
+        case .delete:
             Button(role: .destructive) { viewModel.requestDelete(chatId: item.id) } label: {
-                Label("Удалить", systemImage: "trash")
+                Label(entry.title, systemImage: "trash")
             }
         }
     }
@@ -669,7 +752,7 @@ struct ChatListView: View {
     }
 
     private var clearTitle: String {
-        "Очистить историю?"
+        "Стереть переписку?"
     }
 
     /// «Только у меня» всегда. «У всех» — кроме «Избранного», где собеседника нет.

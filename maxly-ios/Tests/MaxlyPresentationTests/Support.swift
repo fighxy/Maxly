@@ -230,6 +230,10 @@ actor FakeChatRepository: ChatRepository {
         try await record("\(muted ? "mute" : "unmute") \(chatId)")
     }
 
+    func setMuteUntil(_ untilMs: Int64, chatId: String) async throws(MaxlyError) {
+        try await record("mute-until \(chatId) \(untilMs)")
+    }
+
     func setArchived(_ archived: Bool, chatId: String) async throws(MaxlyError) {
         try await record("\(archived ? "archive" : "unarchive") \(chatId)")
     }

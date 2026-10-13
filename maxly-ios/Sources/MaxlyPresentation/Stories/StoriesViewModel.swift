@@ -242,8 +242,12 @@ public final class StoriesViewModel {
     /// «Скрыть истории автора»: кольцо уходит из ленты, просмотр идёт к следующему автору.
     public func hideAuthor() async {
         guard let current = viewer, !current.isOwn else { return }
-        let owner = current.ring.owner
-        let name = current.ring.name
+        await hideOwner(current.ring.owner, name: current.ring.name)
+    }
+
+    /// «Скрыть истории автора» из меню чата: кольцо `owner` уходит из ленты и с аватара.
+    public func hideOwner(_ owner: StoryOwner, name: String = "") async {
+        if let own, own.owner == owner { return }
         do {
             try await repository.setHidden(owner, hidden: true)
         } catch {

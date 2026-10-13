@@ -157,6 +157,14 @@ public final class ChatListViewModel {
     @ObservationIgnored public var presence: (any PresenceProvider)?
     /// Свой id: собеседник личного чата — `id чата ^ свой id`.
     @ObservationIgnored public var currentUserId = ""
+    /// Состав папок для «Добавить в папку»; без него пункта нет. Задаётся до `activate()`.
+    @ObservationIgnored public var folderEditor: (any FolderRepository)?
+    /// «Заблокировать» из меню строки; без него пункта нет.
+    @ObservationIgnored public var profileActions: (any ProfileActionsRepository)?
+    /// Папки как с сервера: их состав меняет «Добавить в папку».
+    @ObservationIgnored private var editableFolders: [ServerFolder] = []
+    /// Короткое сообщение над списком («Чат добавлен в «Работа»», ошибка): экран гасит его сам.
+    public var notice: String?
     /// Собеседники с известным статусом: `true` — «в сети». Неизвестных не трогаем.
     @ObservationIgnored private var peerOnline: [String: Bool] = [:]
     /// Кого из видимых уже спрашивали и когда (чтобы не спрашивать на каждую перестройку).
@@ -298,6 +306,14 @@ public final class ChatListViewModel {
                 self.rebuildItems()
             }
         })
+        if let folderEditor {
+            let editable = folderEditor.folders()
+            watches.append(Task { [weak self] in
+                for await folders in editable {
+                    self?.editableFolders = folders
+                }
+            })
+        }
         let typingStream = repository.typing()
         watches.append(Task { [weak self] in
             for await typing in typingStream {
@@ -516,6 +532,50 @@ public final class ChatListViewModel {
             try await repository.setMuted(!chat.isMuted, chatId: chatId)
         } catch {
             show(error)
+        }
+    }
+
+    /// Выключить уведомления на срок из меню («На 1 час» … «Навсегда»).
+    public func muteFor(chatId: String, _ choice: ChatListMenu.MuteFor) async {
+        guard capabilities.contains(.mute), chats.contains(where: { $0.id == chatId }) else { return }
+        do {
+            try await repository.setMuteUntil(choice.until(now: now()), chatId: chatId)
+        } catch {
+            show(error)
+            notice = error.userMessage
+        }
+    }
+
+    /// Папки для подменю «Добавить в папку»: пусто — папок нет или менять их нечем.
+    public func folderChoices(chatId: String) -> [ChatListMenu.FolderChoice] {
+        folderEditor == nil ? [] : ChatListMenu.folderChoices(chatId: chatId, folders: editableFolders)
+    }
+
+    /// Чат в папку `folderId` или из неё, если он там уже есть.
+    public func toggleFolder(chatId: String, folderId: String) async {
+        guard let folderEditor, let folder = editableFolders.first(where: { $0.id == folderId && !$0.isAllChats }) else { return }
+        let added = !folder.chatIds.contains(chatId)
+        do {
+            try await folderEditor.setChats(folderId: folderId, chatIds: ChatListMenu.toggled(folder, chatId: chatId))
+            notice = added ? "Чат добавлен в «\(folder.title)»" : "Чат убран из «\(folder.title)»"
+        } catch {
+            notice = error.userMessage
+        }
+    }
+
+    /// В меню есть «Заблокировать»: есть чем.
+    public var canBlock: Bool { profileActions != nil }
+
+    /// «Заблокировать» собеседника личного чата.
+    public func block(chatId: String) async {
+        guard let profileActions,
+              let chat = chats.first(where: { $0.id == chatId }), chat.type == .private,
+              let peer = ChatListMenu.peer(chatId: chatId, myId: currentUserId) else { return }
+        do {
+            try await profileActions.setBlocked(userId: peer, blocked: true)
+            notice = "Пользователь заблокирован"
+        } catch {
+            notice = error.userMessage
         }
     }
 

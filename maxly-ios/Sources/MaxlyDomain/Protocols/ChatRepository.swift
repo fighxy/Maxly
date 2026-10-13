@@ -113,6 +113,8 @@ public protocol ChatRepository: Sendable {
     /// ставит отметку прочтения перед ним, пометку видят и другие устройства.
     func markUnread(chatId: String, from date: Date) async throws(MaxlyError)
     func setMuted(_ muted: Bool, chatId: String) async throws(MaxlyError)
+    /// Выключить уведомления до `untilMs` (мс с 1970), `-1` — насовсем, `0` — включить.
+    func setMuteUntil(_ untilMs: Int64, chatId: String) async throws(MaxlyError)
     func setArchived(_ archived: Bool, chatId: String) async throws(MaxlyError)
     func delete(chatId: String, forEveryone: Bool) async throws(MaxlyError)
     /// Выйти из группы или отписаться от канала: чат и его история уходят с устройства.
@@ -169,6 +171,7 @@ public extension ChatRepository {
     func setMarkedUnread(_ unread: Bool, chatId: String) async throws(MaxlyError) { throw .invalidRequest }
     func markUnread(chatId: String, from date: Date) async throws(MaxlyError) { throw .invalidRequest }
     func setMuted(_ muted: Bool, chatId: String) async throws(MaxlyError) { throw .invalidRequest }
+    func setMuteUntil(_ untilMs: Int64, chatId: String) async throws(MaxlyError) { try await setMuted(untilMs != 0, chatId: chatId) }
     func setArchived(_ archived: Bool, chatId: String) async throws(MaxlyError) { throw .invalidRequest }
     func delete(chatId: String, forEveryone: Bool) async throws(MaxlyError) { throw .invalidRequest }
     func leave(chatId: String) async throws(MaxlyError) { throw .invalidRequest }

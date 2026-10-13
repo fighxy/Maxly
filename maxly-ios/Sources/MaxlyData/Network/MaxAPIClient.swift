@@ -109,6 +109,8 @@ public protocol MaxAPI: Sendable {
     func setPinnedChats(_ chatIds: [String]) async -> Result<[String], MaxAPIError>
     /// Выключить уведомления чата насовсем или включить обратно.
     func setChatMuted(chatId: String, muted: Bool) async -> Result<Void, MaxAPIError>
+    /// Выключить уведомления до `untilMs` (мс), `-1` — насовсем, `0` — включить.
+    func setChatMuteUntil(chatId: String, untilMs: Int64) async -> Result<Void, MaxAPIError>
     /// Звук чата по конфигу ядра, без запроса (перечитать после события `config`, по концу
     /// временного выключения).
     func chatMute(chatId: String) async -> ChatMuteState
@@ -213,6 +215,10 @@ public extension MaxAPI {
         await markRead(chatId: chatId, messageId: messageId).map { _ -> CoreReadMark? in nil }
     }
     func setChatMuted(chatId: String, muted: Bool) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
+    /// Источник без сроков: насовсем или включить.
+    func setChatMuteUntil(chatId: String, untilMs: Int64) async -> Result<Void, MaxAPIError> {
+        await setChatMuted(chatId: chatId, muted: untilMs != 0)
+    }
     func chatMute(chatId: String) async -> ChatMuteState { .unknown }
     /// Источник без серверных папок.
     func folderUpdates() -> AsyncStream<[ChatFolder]> { AsyncStream { $0.yield([]); $0.finish() } }
@@ -590,6 +596,12 @@ public final class MaxAPIClient: MaxAPI, Sendable {
     public func setChatMuted(chatId: String, muted: Bool) async -> Result<Void, MaxAPIError> {
         await catching {
             try await core.setChatMuted(chatId: chatId, muted: muted)
+        }
+    }
+
+    public func setChatMuteUntil(chatId: String, untilMs: Int64) async -> Result<Void, MaxAPIError> {
+        await catching {
+            try await core.setChatMuteUntil(chatId: chatId, untilMs: untilMs)
         }
     }
 

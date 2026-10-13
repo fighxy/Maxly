@@ -836,6 +836,19 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// не принял — строка возвращается как была. Раньше база ждала ответа: кнопка звука в
     /// канале срабатывала с задержкой, а при переподключении — будто не срабатывала вовсе.
     public func setMuted(_ muted: Bool, chatId: String) async throws(MaxlyError) {
+        try await changeMute(muted, chatId: chatId) { [api] in await api.setChatMuted(chatId: chatId, muted: muted) }
+    }
+
+    /// Срок из меню списка («На 1 час» … «Навсегда»): строка меняется так же сразу.
+    public func setMuteUntil(_ untilMs: Int64, chatId: String) async throws(MaxlyError) {
+        try await changeMute(untilMs != 0, chatId: chatId) { [api] in await api.setChatMuteUntil(chatId: chatId, untilMs: untilMs) }
+    }
+
+    private func changeMute(
+        _ muted: Bool,
+        chatId: String,
+        send: @Sendable () async -> Result<Void, MaxAPIError>
+    ) async throws(MaxlyError) {
         let previous: Bool
         muteToggles[chatId] = Date()
         // Ответ сервера тоже отметка: список, запрошенный до него, мог посчитаться по старому конфигу.
@@ -851,7 +864,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             throw .storageError
         }
         notify()
-        if case .failure(let error) = await api.setChatMuted(chatId: chatId, muted: muted) {
+        if case .failure(let error) = await send() {
             Log.warning(.chats, "Уведомления чата не изменены: \(error)")
             // Откат, только если строку за это время не переключили снова.
             if let chat = try? chat(id: chatId), chat.isMuted == muted {

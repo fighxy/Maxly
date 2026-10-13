@@ -440,6 +440,8 @@ final class AppContainer {
         let model = ChatListViewModel(chats: chats, connection: session, recentSearches: recentSearches)
         model.presence = presenceService
         model.currentUserId = currentUserId
+        model.folderEditor = folderRepository
+        model.profileActions = profileActions
         listModel = model
         return model
     }
