@@ -31,6 +31,8 @@ data class MediaViewerState(
     val timeMs: Long,
     /** Прямые адреса видео: id вложения → адрес. */
     val videoUrls: Map<String, String> = emptyMap(),
+    /** Подпись сообщения под фото или видео; пустая — без подписи. */
+    val caption: String = "",
 )
 
 /** Кружок, который играет прямо в ленте. [url] — `null`, пока адрес спрашивается у сервера. */
@@ -202,7 +204,7 @@ class ChatMedia(
         val items = message.content.visuals
         val index = items.indexOfFirst { it.id == attachment.id }.coerceAtLeast(0)
         if (items.isEmpty()) return
-        _state.update { it.copy(viewer = MediaViewerState(message.id, items, index, message.authorName, message.timeMs)) }
+        _state.update { it.copy(viewer = MediaViewerState(message.id, items, index, message.authorName, message.timeMs, caption = message.text.trim())) }
         items.getOrNull(index)?.let(::prepare)
     }
 
