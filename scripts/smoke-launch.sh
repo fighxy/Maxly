@@ -29,16 +29,19 @@ phone = next((names[n] for n in ("iPhone 17", "iPhone 16") if n in names), phone
 print(runtime["identifier"], phone["identifier"])
 ')
 # Команда с пределом времени в секундах: на macOS нет timeout(1). По истечении команда и её
-# дочерние процессы снимаются, код возврата ненулевой.
+# дочерние процессы снимаются, код возврата ненулевой. Таймер не держит вывод: иначе
+# `$(run_limited …)` ждал бы, пока доспит его sleep (прогоны 341 и 342 — лишние 9 минут),
+# и снимается вместе со своим sleep.
 run_limited() {
   local limit=$1
   shift
   "$@" &
   local cmd=$!
-  ( sleep "$limit"; pkill -P "$cmd" 2>/dev/null; kill "$cmd" 2>/dev/null ) &
+  ( sleep "$limit"; pkill -P "$cmd" 2>/dev/null; kill "$cmd" 2>/dev/null ) >/dev/null 2>&1 &
   local timer=$!
   wait "$cmd"
   local status=$?
+  pkill -P "$timer" 2>/dev/null
   kill "$timer" 2>/dev/null
   wait "$timer" 2>/dev/null
   return "$status"
@@ -119,8 +122,7 @@ if [[ "$alive" != 1 ]]; then
 fi
 
 # Собственный журнал Maxly (Application Support/Logs): фазы входа и ядра, соединение, ошибки.
-# Папка журнала ищется прямо в файлах симулятора: simctl get_app_container на занятом симуляторе
-# отвечал до 9 минут (прогон 341).
+# Папка журнала ищется прямо в файлах симулятора, без лишнего вызова simctl.
 logs="$(find "$HOME/Library/Developer/CoreSimulator/Devices/$udid/data/Containers/Data/Application" \
   -path '*/Library/Application Support/Logs/maxly-*.log' 2>/dev/null | head -n 1)"
 logs="${logs%/*}"
