@@ -241,6 +241,20 @@ struct MainTabView: View {
         container.chatViewModel(id: message.chatId)?.openAt(messageId: message.messageId, at: message.date)
     }
 
+    /// Полоса над списком чатов. Открытый чат показывает свою — здесь её тогда нет.
+    @ViewBuilder
+    private var listVoiceBar: some View {
+        if router.chatId == nil {
+            VoiceMiniBar(model: container.nowPlaying) { openVoice($0) }
+        }
+    }
+
+    /// Полоса «играет голосовое»: чат открывается на этом сообщении.
+    private func openVoice(_ track: VoiceNowPlaying.Track) {
+        container.chatViewModel(id: track.chatId)?.openAt(messageId: track.messageId, at: track.date)
+        router.chatId = track.chatId
+    }
+
     @ViewBuilder
     private var chats: some View {
         if sizeClass == .compact {
@@ -254,6 +268,7 @@ struct MainTabView: View {
                     makeBotApp: { container.botAppModel($0) }
                 )
                 .safeAreaInset(edge: .top, spacing: 0) { loginHoldBanner }
+                .safeAreaInset(edge: .top, spacing: 0) { listVoiceBar }
                     .navigationDestination(for: String.self) { id in
                         chatScreen(id)
                     }
@@ -267,6 +282,7 @@ struct MainTabView: View {
                     makeBotApp: { container.botAppModel($0) }
                 )
                 .safeAreaInset(edge: .top, spacing: 0) { loginHoldBanner }
+                .safeAreaInset(edge: .top, spacing: 0) { listVoiceBar }
             } detail: {
                 if let id = router.chatId {
                     // Свой стек у колонки: из чата открывается профиль.
@@ -350,7 +366,9 @@ struct MainTabView: View {
                     folders: { container.folderChoices(id: id) },
                     toggleFolder: { folder in Task { await container.toggleFolder(id: id, folderId: folder) } },
                     createFolder: { title in Task { await container.createFolder(id: id, title: title) } }
-                )
+                ),
+                nowPlaying: container.nowPlaying,
+                onOpenVoice: { track in openVoice(track) }
             )
             .id(id)
         }

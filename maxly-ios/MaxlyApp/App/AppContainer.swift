@@ -41,6 +41,8 @@ final class AppContainer {
     @ObservationIgnored private var storiesRepository: CoreStoriesRepository?
     @ObservationIgnored private var storiesModel: StoriesViewModel?
     @ObservationIgnored private let voicePlayer = SystemVoicePlayer()
+    /// Полоса «играет голосовое» над чатом и списком чатов: одна на приложение.
+    let nowPlaying = VoiceNowPlaying()
     @ObservationIgnored private var sync: SyncEngine?
     /// Пуши закрепов сообщений: в базу не пишутся, их слушает открытый чат.
     @ObservationIgnored private let pinHub = PinHub()
@@ -613,6 +615,8 @@ final class AppContainer {
             chats: chats
         )
         model.typingReporter = typingReporter
+        model.nowPlaying = nowPlaying
+        nowPlaying.applySpeed = { [voicePlayer] speed in voicePlayer.rate = speed }
         model.attachPins(pinHub)
         model.attachScheduled(scheduledHub)
         chatModels[id] = model

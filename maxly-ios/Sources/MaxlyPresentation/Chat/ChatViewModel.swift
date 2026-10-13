@@ -258,6 +258,10 @@ public final class ChatViewModel {
     /// Подписка на черновики, изменённые не из этого поля.
     @ObservationIgnored private var draftWatch: Task<Void, Never>?
     @ObservationIgnored private var activeVoiceId: String?
+    /// Сообщение играющего голосового: для полосы «играет голосовое».
+    @ObservationIgnored private var activeVoiceMessage: Message?
+    /// Полоса над чатом и списком чатов. Задаёт контейнер.
+    @ObservationIgnored public var nowPlaying: VoiceNowPlaying?
     @ObservationIgnored private var voiceTask: Task<Void, Never>?
     @ObservationIgnored private var voiceToggle: Task<Void, Never>?
     /// Куда перейти, когда голосовое начнёт играть: перемотка по дорожке до того, как файл
@@ -1830,6 +1834,7 @@ public final class ChatViewModel {
                 if voice?.resume() == true {
                     voicePhases[clip.id] = .playing(target)
                     trackVoice(clip.id)
+                    reportNowPlaying(claim: true)
                 } else {
                     voicePhases[clip.id] = .failed
                     activeVoiceId = nil
@@ -1854,6 +1859,25 @@ public final class ChatViewModel {
         voice?.stop()
         if let id = activeVoiceId { voicePhases[id] = .idle }
         activeVoiceId = nil
+        nowPlaying?.clear(self)
+    }
+
+    /// Полоса «играет голосовое»: что, чьё, где и сколько. `claim` — этот чат начал голосовое.
+    private func reportNowPlaying(claim: Bool = false) {
+        guard let nowPlaying, let id = activeVoiceId, let message = activeVoiceMessage,
+              let clip = message.content.voices.first, clip.id == id else { return }
+        let phase = voicePhase(for: id)
+        let author = message.authorId == currentUserId ? "Вы" : message.authorName
+        let track = VoiceNowPlaying.Track(
+            chatId: chatId,
+            messageId: message.id,
+            author: author,
+            date: message.timestamp,
+            progress: phase.progress,
+            durationMs: clip.durationMs,
+            isPlaying: phase.isPlaying
+        )
+        if claim { nowPlaying.claim(self, track: track) } else { nowPlaying.update(self, track: track) }
     }
 
     private func playVoice(_ message: Message) async {
@@ -1863,12 +1887,14 @@ public final class ChatViewModel {
             voicePhases[clip.id] = .paused(voice?.progress ?? voicePhase(for: clip.id).progress)
             voiceTask?.cancel()
             voiceTask = nil
+            reportNowPlaying()
             return
         }
         if activeVoiceId == clip.id, case .paused = voicePhase(for: clip.id) {
             if voice?.resume() == true {
                 voicePhases[clip.id] = .playing(voice?.progress ?? 0)
                 trackVoice(clip.id)
+                reportNowPlaying(claim: true)
             } else {
                 voicePhases[clip.id] = .failed
             }
@@ -1876,6 +1902,7 @@ public final class ChatViewModel {
         }
         stopVoicePlayback()
         activeVoiceId = clip.id
+        activeVoiceMessage = message
         if let file = clip.fileURL {
             startPlayback(clip.id, url: file)
             return
@@ -1906,6 +1933,7 @@ public final class ChatViewModel {
         voice?.stop()
         if let id = activeVoiceId { voicePhases[id] = .idle }
         activeVoiceId = nil
+        nowPlaying?.clear(self)
     }
 
     private func startPlayback(_ id: String, url: URL) {
@@ -1923,6 +1951,7 @@ public final class ChatViewModel {
             voicePhases[id] = .playing(0)
         }
         trackVoice(id)
+        reportNowPlaying(claim: true)
     }
 
     private func trackVoice(_ id: String) {
@@ -1944,6 +1973,7 @@ public final class ChatViewModel {
                     seenPlaying = true
                     silentTicks = 0
                     self.voicePhases[id] = .playing(progress)
+                    self.reportNowPlaying()
                 } else if seenPlaying {
                     // Пауза тоже останавливает плеер. Это не конец записи: фазу паузы
                     // оставляет кнопка, а слежение её не затирает.
@@ -1951,6 +1981,7 @@ public final class ChatViewModel {
                     self.voicePhases[id] = .idle
                     self.activeVoiceId = nil
                     self.voice?.stop()
+                    self.nowPlaying?.clear(self)
                     return
                 } else {
                     silentTicks += 1
@@ -2702,5 +2733,29 @@ public struct BotAppRequest: Identifiable, Equatable, Sendable {
         self.chatId = chatId
         self.startParam = startParam
         self.title = title
+    }
+}
+
+// MARK: Полоса «играет голосовое»
+
+extension ChatViewModel: VoiceNowPlayingOwner {
+    public func nowPlayingToggle() {
+        guard let message = activeVoiceMessage else { return }
+        toggleVoice(message)
+    }
+
+    public func nowPlayingStop() {
+        stopVoice()
+    }
+
+    /// Голосовое начал другой чат: плеер уже его, здесь только сброс своего состояния.
+    public func nowPlayingReleased() {
+        voiceToggle?.cancel()
+        voiceToggle = nil
+        voiceTask?.cancel()
+        voiceTask = nil
+        if let id = activeVoiceId { voicePhases[id] = .idle }
+        activeVoiceId = nil
+        activeVoiceMessage = nil
     }
 }

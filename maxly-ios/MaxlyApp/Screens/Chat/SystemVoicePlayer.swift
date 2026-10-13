@@ -13,12 +13,23 @@ final class SystemVoicePlayer: VoicePlaying {
     private var audio: AVAudioPlayer?
     private var player: AVPlayer?
 
+    /// Скорость для этого и следующих голосовых: 1, 1.5 или 2. Высота голоса не меняется:
+    /// `AVAudioPlayer` растягивает время сам, у `AVPlayer` — алгоритм `.timeDomain`.
+    var rate: Float = 1 {
+        didSet {
+            audio?.rate = rate
+            if let player, player.timeControlStatus != .paused { player.rate = rate }
+        }
+    }
+
     func play(url source: URL) -> Bool {
         stop()
         prepareSession()
         let (url, hint) = Self.playable(source)
         do {
             let audio = try AVAudioPlayer(contentsOf: url, fileTypeHint: hint)
+            audio.enableRate = true
+            audio.rate = rate
             if audio.prepareToPlay(), audio.play() {
                 self.audio = audio
                 return true
@@ -28,9 +39,10 @@ final class SystemVoicePlayer: VoicePlaying {
             Log.warning(.media, "Голосовое не открылось (\(hint ?? "без типа")): \(error)")
         }
         let item = AVPlayerItem(url: url)
+        item.audioTimePitchAlgorithm = .timeDomain
         let player = AVPlayer(playerItem: item)
         self.player = player
-        player.play()
+        player.playImmediately(atRate: rate)
         return item.status != .failed && player.status != .failed
     }
 
@@ -42,7 +54,7 @@ final class SystemVoicePlayer: VoicePlaying {
     func resume() -> Bool {
         if let audio { return audio.play() }
         guard let player else { return false }
-        player.play()
+        player.playImmediately(atRate: rate)
         return player.currentItem?.status != .failed
     }
 

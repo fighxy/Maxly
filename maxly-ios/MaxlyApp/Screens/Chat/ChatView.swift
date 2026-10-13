@@ -56,6 +56,10 @@ struct ChatView: View {
     var onProfileOpened: () -> Void = {}
     /// Звук на срок и папки для профиля (через список чатов).
     var listActions: ChatProfileListActions? = nil
+    /// Полоса «играет голосовое»; `nil` — без неё.
+    var nowPlaying: VoiceNowPlaying? = nil
+    /// Касание полосы, когда голосовое из другого чата: открыть тот чат на сообщении.
+    var onOpenVoice: ((VoiceNowPlaying.Track) -> Void)? = nil
     @State private var participant: DialogDraft?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
@@ -165,6 +169,15 @@ struct ChatView: View {
 
     private var topBanners: some View {
         VStack(spacing: 0) {
+            if let nowPlaying {
+                VoiceMiniBar(model: nowPlaying) { track in
+                    if track.chatId == viewModel.chatId {
+                        viewModel.focusReply(track.messageId, at: track.date)
+                    } else {
+                        onOpenVoice?(track)
+                    }
+                }
+            }
             if privateMode.isMasked { privateModeBanner }
             if let pinned = viewModel.bannerPin {
                 pinBanner(id: pinned.id, text: pinned.text, counter: pinned.counter)

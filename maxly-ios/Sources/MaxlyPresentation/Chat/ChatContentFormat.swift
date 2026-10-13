@@ -605,9 +605,17 @@ public protocol VoicePlaying: AnyObject {
     var progress: Double { get }
     var isPlaying: Bool { get }
     var failed: Bool { get }
+    /// Скорость 1…2 для этого и следующих голосовых; высота голоса не меняется.
+    var rate: Float { get set }
 }
 
 extension VoicePlaying {
     /// Плеер без перемотки: голосовое играет с того места, где было.
     public func seek(to fraction: Double) {}
+
+    /// Плеер без ускорения.
+    public var rate: Float {
+        get { 1 }
+        set {}
+    }
 }
