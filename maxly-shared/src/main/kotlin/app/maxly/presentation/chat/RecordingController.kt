@@ -49,6 +49,15 @@ interface ComposerRecorder {
     /** Выбросить записанный кружок с просмотра. */
     suspend fun discard(recording: VideoNoteRecording) {}
 
+    /** Пауза ([paused] = `true`) или продолжение закреплённой записи. `false` — не умеет. */
+    fun setPaused(mode: RecordingMode, paused: Boolean): Boolean = false
+
+    /** Кусок записанного голосового от [fromMs] до [toMs]; `null` — не вышло. */
+    suspend fun trimVoice(recording: VoiceRecording, fromMs: Long, toMs: Long): VoiceRecording? = recording
+
+    /** Выбросить записанное голосовое с просмотра. */
+    suspend fun discardVoice(recording: VoiceRecording) {}
+
     /** Запись упёрлась в предел длины: контроллер её отправляет. */
     var onLimit: (() -> Unit)?
 }
@@ -99,6 +108,16 @@ class RecordingController(
         val isWhole: Boolean get() = start <= 0.001f && end >= 0.999f
     }
 
+    /** Записанное голосовое на просмотре: выбранный кусок [start]..[end] — доли длительности. */
+    data class VoiceReview(val recording: VoiceRecording, val start: Float = 0f, val end: Float = 1f) {
+        val minimumSpan: Float
+            get() = if (recording.durationMs <= 0) 1f else minOf(1f, NOTE_MINIMUM_MS.toFloat() / recording.durationMs)
+        val fromMs: Long get() = (start * recording.durationMs).toLong()
+        val toMs: Long get() = (end * recording.durationMs).toLong()
+        val isWhole: Boolean get() = start <= 0.001f && end >= 0.999f
+        val selectedMs: Long get() = toMs - fromMs
+    }
+
     data class State(
         val phase: Phase = Phase.IDLE,
         /** Кнопка текущего нажатия или записи: другая на это время прячется. */
@@ -109,6 +128,10 @@ class RecordingController(
         val hint: String? = null,
         /** Кружок на просмотре ([Phase.REVIEWING]). */
         val review: NoteReview? = null,
+        /** Голосовое на просмотре ([Phase.REVIEWING]). */
+        val voiceReview: VoiceReview? = null,
+        /** Закреплённая запись на паузе. */
+        val paused: Boolean = false,
     ) {
         /** Вместо поля ввода — полоса записи. */
         val isActive: Boolean
@@ -282,11 +305,63 @@ class RecordingController(
         _state.update { it.copy(dragX = 0f, dragY = 0f) }
     }
 
-    /** Закреплённый кружок — на просмотр: запись останавливается, её можно обрезать, отправить или выбросить. */
+    /** Пауза и продолжение закреплённой записи. */
+    fun togglePause() {
+        val state = _state.value
+        if (state.phase != Phase.LOCKED) return
+        val next = !state.paused
+        if (recorder.setPaused(state.recording, next)) _state.update { it.copy(paused = next) }
+    }
+
+    /** Закреплённое голосовое — на просмотр: прослушать, обрезать, отправить или выбросить. */
+    private fun stopVoiceForReview() {
+        _state.update { it.copy(phase = Phase.FINISHING, dragX = 0f, dragY = 0f, paused = false) }
+        val number = attempt
+        enqueue {
+            val voice = (recorder.stop(RecordingMode.VOICE) as? RecordedDraft.Voice)?.recording
+            if (number != attempt || _state.value.phase != Phase.FINISHING) {
+                if (voice != null) recorder.discardVoice(voice)
+                return@enqueue
+            }
+            if (voice == null) {
+                _state.update { it.copy(phase = Phase.IDLE) }
+                show(tooShort(RecordingMode.VOICE))
+            } else {
+                _state.update { it.copy(phase = Phase.REVIEWING, voiceReview = VoiceReview(voice)) }
+            }
+        }
+    }
+
+    /** Ручки обрезки голосового: кусок не короче секунды. */
+    fun trimVoice(start: Float, end: Float) {
+        val review = _state.value.voiceReview ?: return
+        val span = review.minimumSpan
+        val from = start.coerceIn(0f, 1f - span)
+        val to = end.coerceIn(from + span, 1f)
+        _state.update { it.copy(voiceReview = review.copy(start = from, end = to)) }
+    }
+
+    private fun sendVoiceReview() {
+        val review = _state.value.voiceReview ?: return
+        _state.update { it.copy(phase = Phase.FINISHING) }
+        val number = attempt
+        enqueue {
+            val voice = if (review.isWhole) review.recording else recorder.trimVoice(review.recording, review.fromMs, review.toMs)
+            if (!review.isWhole && voice != null) recorder.discardVoice(review.recording)
+            if (number == attempt && _state.value.phase == Phase.FINISHING) _state.update { it.copy(phase = Phase.IDLE, voiceReview = null) }
+            if (voice != null) onRecorded(RecordedDraft.Voice(voice)) else show("Голосовое не обрезалось. Попробуйте ещё раз")
+        }
+    }
+
+    /** Закреплённая запись — на просмотр: её можно обрезать, отправить или выбросить. */
     fun stopForReview() {
         val state = _state.value
-        if (state.phase != Phase.LOCKED || state.recording != RecordingMode.VIDEO) return
-        _state.update { it.copy(phase = Phase.FINISHING, dragX = 0f, dragY = 0f) }
+        if (state.phase != Phase.LOCKED) return
+        if (state.recording == RecordingMode.VOICE) {
+            stopVoiceForReview()
+            return
+        }
+        _state.update { it.copy(phase = Phase.FINISHING, dragX = 0f, dragY = 0f, paused = false) }
         val number = attempt
         enqueue {
             val note = (recorder.stop(RecordingMode.VIDEO) as? RecordedDraft.Note)?.recording
@@ -329,11 +404,11 @@ class RecordingController(
     fun send() {
         val phase = _state.value.phase
         if (phase == Phase.REVIEWING) {
-            sendReview()
+            if (_state.value.voiceReview != null) sendVoiceReview() else sendReview()
             return
         }
         if (phase != Phase.RECORDING && phase != Phase.LOCKED) return
-        _state.update { it.copy(phase = Phase.FINISHING, dragX = 0f, dragY = 0f) }
+        _state.update { it.copy(phase = Phase.FINISHING, dragX = 0f, dragY = 0f, paused = false) }
         val mode = _state.value.recording
         val number = attempt
         enqueue {
@@ -354,9 +429,12 @@ class RecordingController(
                 discard(state.recording)
             }
             state.phase == Phase.RECORDING || state.phase == Phase.LOCKED -> discard(state.recording)
-            state.phase == Phase.REVIEWING -> state.review?.let { review -> enqueue { recorder.discard(review.recording) } }
+            state.phase == Phase.REVIEWING -> {
+                state.review?.let { review -> enqueue { recorder.discard(review.recording) } }
+                state.voiceReview?.let { review -> enqueue { recorder.discardVoice(review.recording) } }
+            }
         }
-        if (state.phase != Phase.FINISHING) _state.update { it.copy(phase = Phase.IDLE, review = null) }
+        if (state.phase != Phase.FINISHING) _state.update { it.copy(phase = Phase.IDLE, review = null, voiceReview = null, paused = false) }
         _state.update { it.copy(dragX = 0f, dragY = 0f) }
     }
 

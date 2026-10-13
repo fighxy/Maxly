@@ -66,6 +66,39 @@ class AndroidComposerRecorder(
             VideoNoteTrimmer.trim(source, fromMs, toMs, target)?.let { app.maxly.domain.VideoNoteRecording(target.absolutePath, it, recording.side) }
         }
 
+    override fun setPaused(mode: RecordingMode, paused: Boolean): Boolean = when (mode) {
+        RecordingMode.VOICE -> voice.setPaused(paused)
+        RecordingMode.VIDEO -> note.setPaused(paused)
+    }
+
+    /**
+     * Кусок голосового: пакеты Opus (или AAC до Android 10) копируются без перекодирования в
+     * новый файл того же формата; волна — та же часть прежней.
+     */
+    override suspend fun trimVoice(recording: app.maxly.domain.VoiceRecording, fromMs: Long, toMs: Long): app.maxly.domain.VoiceRecording? =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val source = java.io.File(recording.path)
+            val ogg = source.extension.equals("ogg", ignoreCase = true)
+            if (ogg && android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return@withContext null
+            val format = if (ogg) android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_OGG else android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
+            val target = java.io.File(source.parentFile, "voice-cut-${System.currentTimeMillis()}.${source.extension}")
+            val duration = VideoNoteTrimmer.trim(source, fromMs, toMs, target, format) ?: return@withContext null
+            app.maxly.domain.VoiceRecording(target.absolutePath, duration, waveSlice(recording.waveform, fromMs, toMs, recording.durationMs), recording.fileName)
+        }
+
+    override suspend fun discardVoice(recording: app.maxly.domain.VoiceRecording) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { java.io.File(recording.path).delete() }
+    }
+
+    /** Часть волны [fromMs]..[toMs], растянутая обратно на прежнее число столбиков. */
+    private fun waveSlice(wave: List<Int>, fromMs: Long, toMs: Long, durationMs: Long): List<Int> {
+        if (wave.isEmpty() || durationMs <= 0) return wave
+        val first = (wave.size * fromMs / durationMs).toInt().coerceIn(0, wave.size - 1)
+        val last = (wave.size * toMs / durationMs).toInt().coerceIn(first + 1, wave.size)
+        val part = wave.subList(first, last)
+        return List(wave.size) { index -> part[index * part.size / wave.size] }
+    }
+
     override suspend fun discard(recording: app.maxly.domain.VideoNoteRecording) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { java.io.File(recording.path).delete() }
     }

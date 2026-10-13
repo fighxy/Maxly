@@ -30,6 +30,9 @@ class AndroidVoiceRecorder(private val context: Context, private val scope: Coro
     private var recorder: MediaRecorder? = null
     private var file: File? = null
     private var startedAt = 0L
+    /** Сколько длились паузы и когда началась идущая. */
+    private var pausedTotal = 0L
+    private var pausedAt = 0L
     private val peaks = mutableListOf<Float>()
     private var ticker: Job? = null
 
@@ -61,15 +64,18 @@ class AndroidVoiceRecorder(private val context: Context, private val scope: Coro
             recorder = next
             file = target
             startedAt = SystemClock.elapsedRealtime()
+            pausedTotal = 0
+            pausedAt = 0
             peaks.clear()
             _live.value = Live()
             ticker = scope.launch {
                 while (isActive) {
                     delay(100)
                     val current = recorder ?: break
+                    if (pausedAt != 0L) continue
                     val peak = VoiceWave.peak(runCatching { current.maxAmplitude }.getOrDefault(0))
                     peaks += peak
-                    _live.value = Live(SystemClock.elapsedRealtime() - startedAt, VoiceWave.normalized(peak))
+                    _live.value = Live(recordedMs(), VoiceWave.normalized(peak))
                 }
             }
             true
@@ -80,11 +86,34 @@ class AndroidVoiceRecorder(private val context: Context, private val scope: Coro
         }
     }
 
+    /** Записано без пауз, мс. */
+    private fun recordedMs(): Long {
+        val now = if (pausedAt != 0L) pausedAt else SystemClock.elapsedRealtime()
+        return now - startedAt - pausedTotal
+    }
+
+    /** Пауза и продолжение (MediaRecorder умеет с Android 7). `false` — не вышло. */
+    fun setPaused(paused: Boolean): Boolean {
+        val current = recorder ?: return false
+        if (paused == (pausedAt != 0L)) return true
+        return runCatching {
+            if (paused) {
+                current.pause()
+                pausedAt = SystemClock.elapsedRealtime()
+                _live.value = Live(recordedMs(), 0f)
+            } else {
+                current.resume()
+                pausedTotal += SystemClock.elapsedRealtime() - pausedAt
+                pausedAt = 0
+            }
+        }.isSuccess
+    }
+
     /** Остановить и отдать запись; слишком короткая или сломанная — `null`, файл удаляется. */
     fun finish(minimumMs: Long): VoiceRecording? {
         val current = recorder ?: return null
         val target = file
-        val duration = SystemClock.elapsedRealtime() - startedAt
+        val duration = recordedMs()
         val ok = stop(current)
         if (!ok || target == null || duration < minimumMs || !target.exists() || target.length() == 0L) {
             target?.delete()

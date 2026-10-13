@@ -364,15 +364,29 @@ internal fun Composer(
                 LaunchedEffect(editing?.id, reply?.id) { if ((editing != null || reply != null) && !showPanel) runCatching { focus.requestFocus() } }
                 if (voice.state.isActive) {
                     val review = voice.state.review
-                    if (voice.state.phase == app.maxly.presentation.chat.RecordingController.Phase.REVIEWING && review != null) {
+                    val voiceReview = voice.state.voiceReview
+                    val reviewing = voice.state.phase == app.maxly.presentation.chat.RecordingController.Phase.REVIEWING
+                    if (reviewing && review != null) {
                         app.maxly.ui.chat.NoteTrimBar(
                             review,
                             onTrim = { from, to -> recording?.trim(from, to) },
                             onDelete = { recording?.cancel() },
                             modifier = Modifier.weight(1f),
                         )
+                    } else if (reviewing && voiceReview != null) {
+                        app.maxly.ui.chat.VoiceTrimBar(
+                            voiceReview,
+                            onTrim = { from, to -> recording?.trimVoice(from, to) },
+                            onDelete = { recording?.cancel() },
+                            modifier = Modifier.weight(1f),
+                        )
                     } else {
-                        app.maxly.ui.chat.RecordingBar(voice, Modifier.weight(1f), onStop = { recording?.stopForReview() })
+                        app.maxly.ui.chat.RecordingBar(
+                            voice,
+                            Modifier.weight(1f),
+                            onStop = { recording?.stopForReview() },
+                            onPause = { recording?.togglePause() },
+                        )
                     }
                 } else Row(
                     Modifier

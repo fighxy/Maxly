@@ -9,17 +9,17 @@ import java.io.File
 import java.nio.ByteBuffer
 
 /**
- * Кусок кружка без перекодирования: дорожки копируются как есть от ключевого кадра не позже
+ * Кусок кружка или голосового без перекодирования: дорожки копируются как есть от ключевого кадра не позже
  * начала куска до его конца. Начало может уйти на долю секунды раньше выбранного.
  */
 object VideoNoteTrimmer {
     /** Длительность получившегося ролика, мс; `null` — не вышло. */
-    fun trim(source: File, fromMs: Long, toMs: Long, target: File): Long? {
+    fun trim(source: File, fromMs: Long, toMs: Long, target: File, format: Int = MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4): Long? {
         val extractor = MediaExtractor()
         var muxer: MediaMuxer? = null
         return try {
             extractor.setDataSource(source.path)
-            val out = MediaMuxer(target.path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            val out = MediaMuxer(target.path, format)
             muxer = out
             val tracks = HashMap<Int, Int>()
             var bufferSize = 1 shl 20

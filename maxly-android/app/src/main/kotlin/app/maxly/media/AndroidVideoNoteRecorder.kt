@@ -149,6 +149,12 @@ class AndroidVideoNoteRecorder(private val context: Context, private val lifecyc
         applyTorch()
     }
 
+    /** Пауза и продолжение записи (CameraX): длительность паузы в ролик не попадает. */
+    fun setPaused(paused: Boolean): Boolean {
+        val current = recording ?: return false
+        return runCatching { if (paused) current.pause() else current.resume() }.isSuccess
+    }
+
     /** Включить или выключить вспышку во время записи. */
     fun toggleFlash() {
         if (recording == null) return

@@ -47,6 +47,20 @@ private class FakeRecorder : ComposerRecorder {
     override suspend fun discard(recording: VideoNoteRecording) {
         log += "discard ${recording.path}"
     }
+
+    override fun setPaused(mode: RecordingMode, paused: Boolean): Boolean {
+        log += "${if (paused) "pause" else "resume"} $mode"
+        return true
+    }
+
+    override suspend fun trimVoice(recording: VoiceRecording, fromMs: Long, toMs: Long): VoiceRecording {
+        log += "trimVoice $fromMs-$toMs"
+        return VoiceRecording("/c.ogg", toMs - fromMs, recording.waveform)
+    }
+
+    override suspend fun discardVoice(recording: VoiceRecording) {
+        log += "discardVoice ${recording.path}"
+    }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -240,5 +254,26 @@ class RecordingControllerTest {
         controller.send()
         runCurrent()
         assertEquals("/n.mp4", (sent.single() as RecordedDraft.Note).recording.path)
+    }
+
+    @Test
+    fun lockedVoicePausesThenGoesToReviewAndTrimmedPartIsSent() = runTest {
+        val (controller, sent) = controller()
+        controller.toggleByKey(RecordingMode.VOICE)
+        runCurrent()
+        controller.togglePause()
+        assertTrue(controller.state.value.paused)
+        controller.togglePause()
+        assertTrue(!controller.state.value.paused)
+        controller.stopForReview()
+        runCurrent()
+        assertEquals(RecordingController.Phase.REVIEWING, controller.state.value.phase)
+        assertNotNull(controller.state.value.voiceReview)
+        controller.trimVoice(0.25f, 0.75f)
+        controller.release()
+        runCurrent()
+        assertEquals(listOf("start VOICE", "pause VOICE", "resume VOICE", "stop VOICE", "trimVoice 500-1500", "discardVoice /v.ogg"), recorder.log)
+        assertEquals(1_000L, (sent.single() as RecordedDraft.Voice).recording.durationMs)
+        assertEquals(RecordingController.Phase.IDLE, controller.state.value.phase)
     }
 }

@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.CameraAlt
@@ -184,7 +185,7 @@ fun RecordButton(ui: RecordingUi, mode: RecordingMode = RecordingMode.VOICE) {
  * [onStop] — у закреплённого кружка кнопка «стоп»: кружок на просмотр перед отправкой.
  */
 @Composable
-fun RecordingBar(ui: RecordingUi, modifier: Modifier, onStop: (() -> Unit)? = null) {
+fun RecordingBar(ui: RecordingUi, modifier: Modifier, onStop: (() -> Unit)? = null, onPause: (() -> Unit)? = null) {
     val state = ui.state
     val live = ui.live ?: RecordingLive()
     val level by animateFloatAsState(live.level, label = "level")
@@ -202,7 +203,7 @@ fun RecordingBar(ui: RecordingUi, modifier: Modifier, onStop: (() -> Unit)? = nu
                 .size(10.dp)
                 .graphicsLayer { scaleX = 1f + level * 0.6f; scaleY = scaleX }
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.error),
+                .background(if (state.paused) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error),
         )
         Spacer(Modifier.width(8.dp))
         Text(
@@ -217,7 +218,29 @@ fun RecordingBar(ui: RecordingUi, modifier: Modifier, onStop: (() -> Unit)? = nu
                 Spacer(Modifier.width(4.dp))
                 Text("Отмена", color = MaterialTheme.colorScheme.error)
             }
-            if (onStop != null && state.isVideo) {
+            if (onPause != null) {
+                Box(
+                    Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .clickCursor()
+                        .clickable(onClick = onPause)
+                        .semantics { contentDescription = if (state.paused) "Продолжить запись" else "Пауза" },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        when {
+                            !state.paused -> Icons.Filled.Pause
+                            state.recording == RecordingMode.VIDEO -> Icons.Filled.Videocam
+                            else -> Icons.Filled.Mic
+                        },
+                        null,
+                        Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+            if (onStop != null) {
                 Box(
                     Modifier
                         .size(32.dp)
