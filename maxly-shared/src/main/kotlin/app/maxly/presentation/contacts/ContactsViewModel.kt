@@ -159,30 +159,33 @@ class ContactsViewModel(
         _state.update { it.copy(sections = sections, searchResults = results, count = sorted.size, content = content) }
     }
 
-    private fun row(contact: Contact, nowMs: Long): ContactRow {
-        val name = contact.displayName
-        // О присутствии ничего не известно: строки нет.
-        val seen = presence.status(contact.isOnline, contact.lastSeenMs, nowMs, contact.presence)?.replaceFirstChar { it.uppercase() }.orEmpty()
-        val status = when {
-            contact.isOnline -> seen
-            contact.isServiceAccount -> "Служебный аккаунт"
-            contact.isBot -> "Бот"
-            else -> seen
-        }
-        return ContactRow(
-            id = contact.id,
-            title = name,
-            status = status,
-            isOnline = contact.isOnline,
-            avatar = ChatAvatar(
-                contact.avatarUrl?.let { ChatAvatar.Kind.Photo(it, ChatAvatar.initials(name)) } ?: ChatAvatar.Kind.Initials(ChatAvatar.initials(name)),
-                ChatAvatar.colorIndex(contact.id),
-            ),
-            isOfficial = contact.isOfficial,
-        )
-    }
+    private fun row(contact: Contact, nowMs: Long): ContactRow = rowOf(contact, nowMs, presence)
 
     companion object {
+        /** Строка контакта: имя, «был недавно» или «бот», аватар. */
+        fun rowOf(contact: Contact, nowMs: Long, presence: PresenceText = PresenceText()): ContactRow {
+            val name = contact.displayName
+            // О присутствии ничего не известно: строки нет.
+            val seen = presence.status(contact.isOnline, contact.lastSeenMs, nowMs, contact.presence)?.replaceFirstChar { it.uppercase() }.orEmpty()
+            val status = when {
+                contact.isOnline -> seen
+                contact.isServiceAccount -> "Служебный аккаунт"
+                contact.isBot -> "Бот"
+                else -> seen
+            }
+            return ContactRow(
+                id = contact.id,
+                title = name,
+                status = status,
+                isOnline = contact.isOnline,
+                avatar = ChatAvatar(
+                    contact.avatarUrl?.let { ChatAvatar.Kind.Photo(it, ChatAvatar.initials(name)) } ?: ChatAvatar.Kind.Initials(ChatAvatar.initials(name)),
+                    ChatAvatar.colorIndex(contact.id),
+                ),
+                isOfficial = contact.isOfficial,
+            )
+        }
+
         val CYRILLIC = "АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЭЮЯ".map { it.toString() }
         val LATIN = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".map { it.toString() }
         const val OTHER = "#"

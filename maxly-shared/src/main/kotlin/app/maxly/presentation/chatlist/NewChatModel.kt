@@ -39,6 +39,8 @@ data class NewChatUiState(
     val error: String? = null,
     val notice: String? = null,
     val opened: OpenedChat? = null,
+    /** Канал создан: перед открытием — настройка, как в Max ([ChannelSetupModel]). */
+    val channelSetup: OpenedChat? = null,
 )
 
 /**
@@ -209,7 +211,12 @@ class NewChatModel(
             return
         }
         if (_state.value.busy) return
-        launchCreate("Не удалось создать канал", name) { chats.createChannel(name) }
+        launchCreate("Не удалось создать канал", name, setup = true) { chats.createChannel(name) }
+    }
+
+    /** Настройка канала закончена: канал открывается. */
+    fun finishChannelSetup() {
+        _state.update { it.copy(opened = it.channelSetup, channelSetup = null) }
     }
 
     /** Войти по ссылке приглашения. Чат открывается, если сервер его вернул. */
@@ -223,7 +230,7 @@ class NewChatModel(
         launchCreate("Не удалось открыть ссылку", link) { chats.joinByLink(link) }
     }
 
-    private fun launchCreate(failure: String, title: String, block: suspend () -> String?) {
+    private fun launchCreate(failure: String, title: String, setup: Boolean = false, block: suspend () -> String?) {
         viewModelScope.launch {
             _state.update { it.copy(busy = true, error = null) }
             try {
@@ -231,7 +238,8 @@ class NewChatModel(
                 if (id.isNullOrBlank()) {
                     _state.update { it.copy(busy = false, error = failure) }
                 } else {
-                    _state.update { it.copy(busy = false, opened = OpenedChat(id, title)) }
+                    val chat = OpenedChat(id, title)
+                    _state.update { if (setup) it.copy(busy = false, channelSetup = chat) else it.copy(busy = false, opened = chat) }
                 }
             } catch (e: CancellationException) {
                 throw e

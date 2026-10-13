@@ -315,6 +315,12 @@ fun MainScreen(
                             onTogglePrivateMode = container.privateMode::toggle,
                             newChat = newChat,
                             onOpenCreated = { id, title -> openChat(id, title) },
+                            channelSetup = { id, done ->
+                                val setup = viewModel(key = "channel-setup-$id") {
+                                    app.maxly.presentation.chatlist.ChannelSetupModel(id, container.chatAdmin, container.messages, container.contacts) { container.messages.currentUserId }
+                                }
+                                app.maxly.ui.chatlist.ChannelSetupSheet(setup, chats.items.filter { it.id != id }, onDone = done)
+                            },
                             storiesHeader = {
                                 StoriesStrip(
                                     stories,

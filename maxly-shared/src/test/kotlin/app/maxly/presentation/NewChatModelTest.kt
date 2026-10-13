@@ -162,13 +162,79 @@ class NewChatModelTest {
         model.setTitle("Новости")
         model.createChannel()
         assertEquals(listOf("Новости"), chats.channels)
+        // Сначала настройка канала, как в Max, потом канал открывается.
+        assertEquals("91", model.state.value.channelSetup?.id)
+        assertNull(model.state.value.opened)
+        model.finishChannelSetup()
         assertEquals("91", model.state.value.opened?.id)
+        assertNull(model.state.value.channelSetup)
 
         chats.channelId = null
         model.setTitle("Пусто")
         model.createChannel()
         assertEquals("Не удалось создать канал", model.state.value.error)
-        assertEquals("91", model.state.value.opened?.id)
+        assertNull(model.state.value.channelSetup)
+    }
+
+    private class Admin(base: app.maxly.data.ChatAdminRepository) : app.maxly.data.ChatAdminRepository by base {
+        val added = mutableListOf<List<String>>()
+        var link = "https://max.ru/join/abc"
+        override suspend fun snapshot(chatId: String) = app.maxly.data.ChatAdminSnapshot(
+            title = "Новости", description = "", link = link, ownerId = "1", commentsEnabled = null,
+            onlyOwnerCanChangeIconTitle = false, allCanPinMessage = false, onlyAdminCanAddMember = false,
+            onlyAdminCanCall = false, membersCanSeePrivateLink = false,
+        )
+        override suspend fun addMembers(chatId: String, userIds: List<String>) {
+            added += userIds
+        }
+        override suspend fun revokeInviteLink(chatId: String): String {
+            link = "https://max.ru/join/new"
+            return link
+        }
+    }
+
+    private class Sender(base: app.maxly.data.MessageRepository) : app.maxly.data.MessageRepository by base {
+        val sent = mutableListOf<Pair<String, String>>()
+        override suspend fun send(chatId: String, text: String, replyTo: String?) {
+            sent += chatId to text
+        }
+    }
+
+    private inline fun <reified T> unused(): T =
+        java.lang.reflect.Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, _ -> error("не нужно: ${method.name}") } as T
+
+    @Test
+    fun channelSetupLikeMax() {
+        contacts.contacts.value = listOf(Contact("1", "Я"), Contact("6", "Маша"), Contact("7", "Бот", isBot = true), Contact("8", "Андрей"))
+        val admin = Admin(unused())
+        val sender = Sender(unused())
+        val setup = app.maxly.presentation.chatlist.ChannelSetupModel("91", admin, sender, contacts) { "1" }
+        val state = { setup.state.value }
+        assertEquals("max.ru/join/abc", state().shortLink)
+        assertEquals(listOf("Андрей", "Маша"), state().people.map { it.displayName })
+
+        setup.askPublic()
+        assertEquals(app.maxly.presentation.chatlist.ChannelPublicNotice.PUBLIC, state().publicNotice)
+        setup.dismissPublic()
+
+        setup.sendLink("5")
+        assertEquals(listOf("5" to "https://max.ru/join/abc"), sender.sent)
+        assertEquals("Ссылка отправлена", state().notice)
+        setup.revokeLink()
+        assertEquals("max.ru/join/new", state().shortLink)
+
+        setup.next()
+        assertEquals(app.maxly.presentation.chatlist.ChannelSetupStep.SUBSCRIBERS, state().step)
+        setup.setQuery("маш")
+        assertEquals(listOf("Маша"), state().shown.map { it.displayName })
+        setup.addSubscribers()
+        assertTrue(admin.added.isEmpty())
+        setup.toggle("6")
+        setup.toggle("8")
+        setup.toggle("8")
+        setup.addSubscribers()
+        assertEquals(listOf(listOf("6")), admin.added)
+        assertTrue(state().done)
     }
 
     @Test

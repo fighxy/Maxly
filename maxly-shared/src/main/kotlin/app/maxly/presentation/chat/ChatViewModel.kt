@@ -128,6 +128,8 @@ data class ChatUiState(
     val scroll: ScrollRequest? = null,
     /** Пустой загруженный чат: подсказка вместо ленты. */
     val emptyHint: String? = null,
+    /** Свой канал без постов (только служебные): вместо подсказки карточка «Канал готов», как в Max. */
+    val channelReady: Boolean = false,
     val quickReactions: List<String> = ReactionPalette.FALLBACK,
     val reactionCatalog: List<String> = emptyList(),
     /** Чужих сообщений ниже экрана: число на кнопке «вниз». */
@@ -1897,8 +1899,10 @@ class ChatViewModel(
         // Скрытое приветствие «Избранного» не считается: без других сообщений видна подсказка.
         val failure = latestFailure
         val empty = (latestLoaded || failure != null) && result.isEmpty()
+        val ready = latestLoaded && failure == null && header?.chat?.type == ChatType.CHANNEL &&
+            _state.value.canWrite && result.none { it is ChatItem.Bubble }
         val hint = when {
-            !empty -> null
+            !empty || ready -> null
             failure != null -> failure
             chatId == Chat.SAVED_MESSAGES_ID -> "Пересылайте сюда сообщения, сохраняйте заметки и файлы — их видите только вы."
             else -> "Здесь пока нет сообщений"
@@ -1909,6 +1913,7 @@ class ChatViewModel(
             it.copy(
                 items = result,
                 emptyHint = hint,
+                channelReady = ready,
                 isLoading = !latestLoaded && history.isEmpty(),
                 pinnedMessageId = pinned?.first,
                 pinnedText = pinned?.second,

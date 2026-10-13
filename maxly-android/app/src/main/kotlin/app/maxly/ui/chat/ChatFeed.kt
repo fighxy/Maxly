@@ -64,6 +64,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -258,6 +259,25 @@ internal fun EmptyHint(text: String, modifier: Modifier) {
     }
 }
 
+/** Свой канал без постов, как в Max: аватар, «Канал готов» и подсказка. */
+@Composable
+internal fun ChannelReady(header: app.maxly.presentation.chat.ChatHeaderUi?, modifier: Modifier) {
+    Surface(modifier.padding(32.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f)) {
+        Column(Modifier.padding(horizontal = 28.dp, vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            header?.let { app.maxly.ui.components.Avatar(it.avatar, 72.dp) }
+            Spacer(Modifier.height(12.dp))
+            Text("Канал готов", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Добавляйте посты и приглашайте подписчиков",
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 /**
  * Лента чата: перевёрнутый список (новые снизу). Куда встать — решает модель
  * ([ChatUiState.scroll]): к свежим, к «Непрочитанным» у верха экрана, к сообщению посередине с
@@ -418,6 +438,7 @@ internal fun ChatFeed(
         when {
             state.isLoading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
             state.emptyHint != null -> EmptyHint(state.emptyHint!!, Modifier.align(Alignment.Center))
+            state.channelReady -> ChannelReady(state.header, Modifier.align(Alignment.Center))
         }
         LazyColumn(
             state = listState,

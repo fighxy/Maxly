@@ -150,6 +150,8 @@ fun ChatListScreen(
     onTogglePrivateMode: () -> Unit = {},
     newChat: NewChatModel? = null,
     onOpenCreated: (id: String, title: String) -> Unit = { _, _ -> },
+    /** Настройка только что созданного канала; `onDone` открывает канал. `null` — канал открывается сразу. */
+    channelSetup: (@Composable (chatId: String, onDone: () -> Unit) -> Unit)? = null,
     /** Полоса историй над поиском; `null` — без неё. */
     storiesHeader: (@Composable () -> Unit)? = null,
     /** Аватары историй у заголовка, пока полоса спрятана; `null` — историй нет. */
@@ -365,7 +367,16 @@ fun ChatListScreen(
             onOpenCreated(opened.id, opened.title)
             newChat.consumeOpened()
         }
-        if (compose.visible) NewChatSheet(compose, newChat)
+        val created = compose.channelSetup
+        if (created != null) {
+            if (channelSetup != null) {
+                channelSetup(created.id, newChat::finishChannelSetup)
+            } else {
+                LaunchedEffect(created) { newChat.finishChannelSetup() }
+            }
+        } else if (compose.visible) {
+            NewChatSheet(compose, newChat)
+        }
     }
 }
 
