@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import MaxlyDomain
 
 /// iOS owns the persisted selection. Read it again on foreground entry rather
 /// than keeping a second preference that could disagree after a failed change.
@@ -66,18 +67,30 @@ struct AppIconSettingsView: View {
         }
     }
 
+    /// Вызов с обработчиком, а не `async`-вариант: тот на iOS 17–18 из `Task` иногда молча не
+    /// меняет иконку. Ответ системы ждём через продолжение, состояние экрана — на главном потоке.
     private func change(to icon: Icon) {
         guard !changing, UIApplication.shared.supportsAlternateIcons,
               UIApplication.shared.alternateIconName != icon.alternateName else { return }
         changing = true
+        let name = icon.alternateName
         Task { @MainActor in
-            defer { changing = false }
-            do {
-                try await UIApplication.shared.setAlternateIconName(icon.alternateName)
-            } catch {
-                errorMessage = error.localizedDescription
+            let error: (any Error)? = await withCheckedContinuation { continuation in
+                UIApplication.shared.setAlternateIconName(name) { error in
+                    continuation.resume(returning: error)
+                }
             }
+            changing = false
             selectedName = UIApplication.shared.alternateIconName
+            if let error {
+                Log.warning(.app, "Иконка не сменилась (\(name ?? "основная")): \(error)")
+                errorMessage = error.localizedDescription
+            } else if selectedName != name {
+                Log.warning(.app, "Иконка не сменилась (\(name ?? "основная")): система ответила без ошибки")
+                errorMessage = "Система не применила иконку. Если приложение переподписано, проверьте, что при подписи сохранился набор иконок."
+            } else {
+                Log.info(.app, "Иконка сменилась: \(name ?? "основная")")
+            }
         }
     }
 }
