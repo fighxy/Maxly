@@ -28,13 +28,51 @@ names = {d["name"]: d for d in phones}
 phone = next((names[n] for n in ("iPhone 17", "iPhone 16") if n in names), phones[-1])
 print(runtime["identifier"], phone["identifier"])
 ')
-udid="$(xcrun simctl create maxly-smoke "$device_type" "$runtime")"
-echo "Симулятор $udid ($device_type, $runtime)"
-cleanup() { xcrun simctl shutdown "$udid" >/dev/null 2>&1; xcrun simctl delete "$udid" >/dev/null 2>&1; }
+# Команда с пределом времени в секундах: на macOS нет timeout(1). По истечении команда и её
+# дочерние процессы снимаются, код возврата ненулевой.
+run_limited() {
+  local limit=$1
+  shift
+  "$@" &
+  local cmd=$!
+  ( sleep "$limit"; pkill -P "$cmd" 2>/dev/null; kill "$cmd" 2>/dev/null ) &
+  local timer=$!
+  wait "$cmd"
+  local status=$?
+  kill "$timer" 2>/dev/null
+  wait "$timer" 2>/dev/null
+  return "$status"
+}
+
+boot_sim() {
+  xcrun simctl boot "$1" && xcrun simctl bootstatus "$1" -b >/dev/null
+}
+
+udid=""
+cleanup() {
+  [[ -n "$udid" ]] || return 0
+  run_limited 60 xcrun simctl shutdown "$udid" >/dev/null 2>&1
+  run_limited 60 xcrun simctl delete "$udid" >/dev/null 2>&1
+}
 trap cleanup EXIT
 
-xcrun simctl boot "$udid"
-xcrun simctl bootstatus "$udid" -b >/dev/null
+# Симулятор на раннере иногда зависает при загрузке навсегда. Тогда он удаляется и создаётся
+# новый: до трёх попыток по три минуты, а не весь шаг в ожидании.
+boot_limit=180
+for attempt in 1 2 3; do
+  udid="$(xcrun simctl create maxly-smoke "$device_type" "$runtime")"
+  echo "Симулятор $udid ($device_type, $runtime), попытка $attempt"
+  if run_limited "$boot_limit" boot_sim "$udid"; then
+    break
+  fi
+  echo "::warning::Симулятор не загрузился за $boot_limit с (попытка $attempt)"
+  cleanup
+  udid=""
+done
+if [[ -z "$udid" ]]; then
+  echo "::error::Симулятор не загрузился за 3 попытки"
+  exit 1
+fi
 xcrun simctl install "$udid" "$app"
 
 xcrun simctl spawn "$udid" log stream --level debug --style compact \
