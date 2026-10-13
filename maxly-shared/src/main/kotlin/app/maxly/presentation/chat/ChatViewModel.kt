@@ -629,6 +629,12 @@ class ChatViewModel(
      */
     fun onVisible(newestKey: String?, atBottom: Boolean) {
         following = atBottom && jumpTime == null
+        // У низа живой ленты возвраты к цитатам не нужны: иначе кнопка «вниз» висела у самого
+        // низа, пока не нажмут (как на iOS — `noteAtBottom`).
+        if (following && returnStack.isNotEmpty()) {
+            returnStack.clear()
+            publishReturn()
+        }
         val seen = newestKey?.let { key -> visible.firstOrNull { it.id == key }?.timeMs }
         if (seen != null && seen > seenMs) seenMs = seen
         if (following) visible.lastOrNull()?.timeMs?.let { if (it > seenMs) seenMs = it }
