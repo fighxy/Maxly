@@ -44,6 +44,8 @@ final class RecordingSession {
     let video = VideoNoteRecorder()
     /// Записанный кружок на просмотре (`reviewing`).
     private(set) var review: VideoNoteReview?
+    /// Записанное голосовое на просмотре (`reviewing`).
+    private(set) var voiceReview: VoiceReview?
 
     /// Готовая запись для отправки.
     @ObservationIgnored var onRecorded: ((AttachmentDraft) -> Void)?
@@ -85,6 +87,7 @@ final class RecordingSession {
 
     var elapsed: TimeInterval {
         if let review { return review.selectedSeconds }
+        if let voiceReview { return voiceReview.selectedSeconds }
         return recordingMode == .voice ? voice.elapsed : video.elapsed
     }
 
@@ -286,8 +289,68 @@ final class RecordingSession {
 
     /// Закреплённый кружок — на просмотр: запись останавливается, ролик играет по кругу, его
     /// можно обрезать, отправить или выбросить.
+    /// Закреплённая запись на паузе.
+    var isPaused: Bool { recordingMode == .voice ? voice.isPaused : video.isPaused }
+
+    /// Пауза и продолжение закреплённой записи.
+    func togglePause() {
+        guard phase == .locked else { return }
+        if recordingMode == .voice {
+            voice.setPaused(!voice.isPaused)
+        } else {
+            video.setPaused(!video.isPaused)
+        }
+        Self.haptic(.light)
+    }
+
+    /// Закреплённое голосовое — на просмотр: прослушать, обрезать, отправить или выбросить.
+    private func stopVoiceForReview() {
+        phase = .finishing
+        onRecordingChange?(nil)
+        let attempt = attempt
+        enqueue { [weak self] in
+            guard let self else { return }
+            let recording = await self.voice.stop()
+            guard attempt == self.attempt, self.phase == .finishing else {
+                if let recording { try? FileManager.default.removeItem(at: recording.url.deletingLastPathComponent()) }
+                return
+            }
+            guard let recording else {
+                self.phase = .idle
+                self.show("Запись слишком короткая или не сохранилась. Попробуйте ещё раз")
+                return
+            }
+            self.voiceReview = VoiceReview(recording: recording)
+            self.phase = .reviewing
+            Self.haptic(.light)
+        }
+    }
+
+    /// Отправить голосовое с просмотра: выбранный кусок.
+    private func sendVoiceReview() {
+        guard phase == .reviewing, let voiceReview else { return }
+        phase = .finishing
+        let attempt = attempt
+        enqueue { [weak self] in
+            guard let self else { return }
+            let recording = voiceReview.result()
+            self.voiceReview = nil
+            if attempt == self.attempt, self.phase == .finishing { self.phase = .idle }
+            if let recording {
+                Self.haptic(.light)
+                self.onRecorded?(.voice(path: recording.url.path, durationMs: recording.durationMs, waveform: recording.waveform))
+            } else {
+                self.show("Голосовое не обрезалось. Попробуйте ещё раз")
+            }
+        }
+    }
+
     func stopForReview() {
-        guard phase == .locked, recordingMode == .video else { return }
+        guard phase == .locked else { return }
+        if recordingMode == .voice {
+            stopVoiceForReview()
+            return
+        }
         phase = .finishing
         onRecordingChange?(nil)
         let attempt = attempt
@@ -333,7 +396,7 @@ final class RecordingSession {
     /// Остановить и отправить.
     func send() {
         if phase == .reviewing {
-            sendReview()
+            if voiceReview != nil { sendVoiceReview() } else { sendReview() }
             return
         }
         guard phase == .recording || phase == .locked else { return }
@@ -381,6 +444,8 @@ final class RecordingSession {
         case .reviewing:
             review?.discard()
             review = nil
+            voiceReview?.discard()
+            voiceReview = nil
             Self.haptic(.rigid)
         default:
             break

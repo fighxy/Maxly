@@ -135,9 +135,33 @@ struct RecordingBar: View {
     var body: some View {
         if session.phase == .reviewing, let review = session.review {
             reviewBar(review)
+        } else if session.phase == .reviewing, let voiceReview = session.voiceReview {
+            voiceReviewBar(voiceReview)
         } else {
             recordingBar
         }
+    }
+
+    /// Просмотр голосового: корзина, воспроизведение и волна с ручками обрезки.
+    private func voiceReviewBar(_ review: VoiceReview) -> some View {
+        HStack(spacing: 6) {
+            Button {
+                session.cancel()
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.red)
+                    .frame(width: 36, height: 36)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Удалить голосовое")
+            VoiceReviewStrip(review: review)
+        }
+        .padding(.leading, 6)
+        .padding(.trailing, 12)
+        .frame(minHeight: 44)
+        .maxlyGlassCapsule()
     }
 
     /// Просмотр кружка: корзина и полоса обрезки; отправляет кнопка справа.
@@ -178,9 +202,9 @@ struct RecordingBar: View {
                 .accessibilityLabel("Удалить запись")
             }
             Circle()
-                .fill(Color.red)
+                .fill(session.isPaused ? Color.secondary : Color.red)
                 .frame(width: 10, height: 10)
-                .opacity(!reduceMotion && blink ? 0.25 : 1)
+                .opacity(session.isPaused ? 1 : (!reduceMotion && blink ? 0.25 : 1))
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: blink)
                 .onAppear { blink = true }
             Text(Self.clock(session.elapsed))
@@ -200,8 +224,20 @@ struct RecordingBar: View {
             } else if session.phase == .finishing {
                 ProgressView()
                     .controlSize(.small)
-            } else if session.phase == .locked, session.recordingMode == .video {
-                // «Стоп»: кружок на просмотр — посмотреть, обрезать, потом отправить.
+            } else if session.phase == .locked {
+                // Пауза и продолжение записи.
+                Button {
+                    session.togglePause()
+                } label: {
+                    Image(systemName: session.isPaused ? (session.recordingMode == .voice ? "mic.fill" : "video.fill") : "pause.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.primary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(session.isPaused ? "Продолжить запись" : "Пауза")
+                // «Стоп»: запись на просмотр — прослушать или посмотреть, обрезать, потом отправить.
                 Button {
                     session.stopForReview()
                 } label: {

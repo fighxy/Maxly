@@ -20,7 +20,10 @@ struct VideoNoteRecording: Sendable {
 @Observable
 final class VideoNoteRecorder {
     private(set) var isRecording = false
+    /// Запись на паузе: камера и превью идут, в файл ничего не пишется.
+    private(set) var isPaused = false
     private(set) var elapsed: TimeInterval = 0
+    @ObservationIgnored private var accumulated: TimeInterval = 0
 
     nonisolated static let maximumDuration: TimeInterval = 60
     static let minimumDuration: TimeInterval = 1
@@ -51,15 +54,32 @@ final class VideoNoteRecorder {
             throw error
         }
         startedAt = .now
+        accumulated = 0
+        isPaused = false
         Log.info(.media, "Запись кружка началась")
         ticker = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(100))
                 guard let self, self.isRecording else { return }
-                self.elapsed = Date.now.timeIntervalSince(self.startedAt)
+                guard !self.isPaused else { continue }
+                self.elapsed = self.accumulated + Date.now.timeIntervalSince(self.startedAt)
                 if self.elapsed >= Self.maximumDuration { self.onLimit?() }
             }
         }
+    }
+
+    /// Пауза и продолжение записи кружка.
+    func setPaused(_ value: Bool) {
+        guard isRecording, isPaused != value else { return }
+        if value {
+            accumulated += Date.now.timeIntervalSince(startedAt)
+            elapsed = accumulated
+        } else {
+            startedAt = .now
+        }
+        isPaused = value
+        capture.setPaused(value)
+        Log.info(.media, "Кружок: \(value ? "пауза" : "продолжение")")
     }
 
     /// Остановить и получить квадратный ролик. `nil` — слишком коротко или не вышло.
@@ -68,6 +88,7 @@ final class VideoNoteRecorder {
         ticker?.cancel()
         ticker = nil
         isRecording = false
+        isPaused = false
         flashOn = false
         capture.setTorch(false)
         let raw = await capture.stopRecording()
@@ -95,6 +116,7 @@ final class VideoNoteRecorder {
         ticker?.cancel()
         ticker = nil
         isRecording = false
+        isPaused = false
         capture.cancel()
         usesFrontCamera = true
         flashOn = false
@@ -130,32 +152,50 @@ final class VideoNoteRecorder {
     }
 }
 
-/// Сессия камеры на своей очереди: `startRunning` блокирует поток, а делегат записи
-/// вызывается не на главном.
-final class CaptureController: NSObject, AVCaptureFileOutputRecordingDelegate, @unchecked Sendable {
+/// Сессия камеры на своей очереди: `startRunning` блокирует поток, кадры и звук приходят
+/// не на главном.
+///
+/// Ролик пишет `AVAssetWriter` из кадров и звука самой сессии, а не `AVCaptureMovieFileOutput`:
+/// тот обрывает запись при смене входа, и после смены камеры кружок не сохранялся (журнал
+/// 13.10: «Кружок не записался»). Так же делается пауза: пока она идёт, отсчёты не пишутся,
+/// а после неё время сдвигается на длину паузы.
+final class CaptureController: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate,
+    AVCaptureAudioDataOutputSampleBufferDelegate, @unchecked Sendable {
     enum Failure: Error {
         case noCamera
+        case noWriter
     }
 
     let session = AVCaptureSession()
-    private let output = AVCaptureMovieFileOutput()
+    private let videoOutput = AVCaptureVideoDataOutput()
+    private let audioOutput = AVCaptureAudioDataOutput()
     private let queue = DispatchQueue(label: "maxly.note.capture")
-    // Меняется только на `queue`.
+    // Всё ниже меняется только на `queue`.
     private var configured = false
-    private var finished: CheckedContinuation<URL?, Never>?
-    private var autoFinished: URL?
-    private var discardNext = false
+    private var writer: AVAssetWriter?
+    private var videoInput: AVAssetWriterInput?
+    private var audioInput: AVAssetWriterInput?
+    private var target: URL?
+    private var sessionStarted = false
+    private var recording = false
+    private var paused = false
+    /// Время первого отсчёта, пропущенного паузой, и общий сдвиг времени после пауз.
+    private var pausedAt: CMTime?
+    private var offset = CMTime.zero
+    private var resumeNeedsOffset = false
+
+    /// Сторона кадра ролика до обрезки в квадрат: портрет 480×640.
+    private static let width = 480
+    private static let height = 640
 
     func start() async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             queue.async { [self] in
                 do {
                     try configure()
+                    let url = FileManager.default.temporaryDirectory.appendingPathComponent("note-\(UUID().uuidString).mp4")
+                    try makeWriter(url)
                     if !session.isRunning { session.startRunning() }
-                    autoFinished = nil
-                    discardNext = false
-                    let url = FileManager.default.temporaryDirectory.appendingPathComponent("note-\(UUID().uuidString).mov")
-                    output.startRecording(to: url, recordingDelegate: self)
                     continuation.resume()
                 } catch {
                     continuation.resume(throwing: error)
@@ -164,17 +204,76 @@ final class CaptureController: NSObject, AVCaptureFileOutputRecordingDelegate, @
         }
     }
 
+    private func makeWriter(_ url: URL) throws {
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+        let video = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: Self.width,
+            AVVideoHeightKey: Self.height,
+            AVVideoScalingModeKey: AVVideoScalingModeResizeAspectFill,
+            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 1_600_000],
+        ])
+        video.expectsMediaDataInRealTime = true
+        let audio = AVAssetWriterInput(mediaType: .audio, outputSettings: [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVNumberOfChannelsKey: 1,
+            AVSampleRateKey: 44_100,
+            AVEncoderBitRateKey: 64_000,
+        ])
+        audio.expectsMediaDataInRealTime = true
+        guard writer.canAdd(video) else { throw Failure.noWriter }
+        writer.add(video)
+        if writer.canAdd(audio) { writer.add(audio) }
+        guard writer.startWriting() else { throw writer.error ?? Failure.noWriter }
+        self.writer = writer
+        videoInput = video
+        audioInput = writer.inputs.contains(audio) ? audio : nil
+        target = url
+        sessionStarted = false
+        paused = false
+        pausedAt = nil
+        offset = .zero
+        resumeNeedsOffset = false
+        recording = true
+    }
+
+    /// Пауза записи: камера и превью идут, в файл ничего не пишется.
+    func setPaused(_ value: Bool) {
+        queue.async { [self] in
+            guard recording, paused != value else { return }
+            paused = value
+            if !value { resumeNeedsOffset = pausedAt != nil }
+        }
+    }
+
+    /// Дописать файл и отдать его. `nil` — ни одного кадра или запись не вышла.
     func stopRecording() async -> URL? {
         await withCheckedContinuation { continuation in
             queue.async { [self] in
-                guard output.isRecording else {
-                    // Минута кончилась раньше: файл уже готов.
-                    continuation.resume(returning: autoFinished)
-                    autoFinished = nil
+                guard recording, let writer else {
+                    continuation.resume(returning: nil)
                     return
                 }
-                finished = continuation
-                output.stopRecording()
+                recording = false
+                let url = target
+                guard sessionStarted, writer.status == .writing else {
+                    writer.cancelWriting()
+                    reset()
+                    if let url { try? FileManager.default.removeItem(at: url) }
+                    continuation.resume(returning: nil)
+                    return
+                }
+                videoInput?.markAsFinished()
+                audioInput?.markAsFinished()
+                nonisolated(unsafe) let finishing = writer
+                writer.finishWriting { [self] in
+                    let ok = finishing.status == .completed
+                    queue.async { [self] in
+                        reset()
+                        if !ok, let url { try? FileManager.default.removeItem(at: url) }
+                        continuation.resume(returning: ok ? url : nil)
+                    }
+                }
             }
         }
     }
@@ -187,18 +286,79 @@ final class CaptureController: NSObject, AVCaptureFileOutputRecordingDelegate, @
 
     func cancel() {
         queue.async { [self] in
-            if output.isRecording {
-                discardNext = true
-                output.stopRecording()
+            if recording {
+                recording = false
+                writer?.cancelWriting()
+                if let target { try? FileManager.default.removeItem(at: target) }
             }
-            if let autoFinished { try? FileManager.default.removeItem(at: autoFinished) }
-            autoFinished = nil
+            reset()
             if session.isRunning { session.stopRunning() }
         }
     }
 
-    /// Сменить камеру на другую сторону посреди записи (`AVCaptureMovieFileOutput` пишет
-    /// дальше в тот же файл). Возвращает, фронтальная ли камера стала. Не вышло — прежняя.
+    private func reset() {
+        writer = nil
+        videoInput = nil
+        audioInput = nil
+        target = nil
+        sessionStarted = false
+        paused = false
+        pausedAt = nil
+        offset = .zero
+        resumeNeedsOffset = false
+    }
+
+    // MARK: Отсчёты
+
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard recording, let writer, writer.status == .writing else { return }
+        let video = output === videoOutput
+        let time = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        if paused {
+            if pausedAt == nil { pausedAt = time }
+            return
+        }
+        if resumeNeedsOffset, let pausedAt {
+            offset = CMTimeAdd(offset, CMTimeSubtract(time, pausedAt))
+            self.pausedAt = nil
+            resumeNeedsOffset = false
+        }
+        if !sessionStarted {
+            // Файл начинается с кадра: звук до первого кадра не пишется.
+            guard video else { return }
+            writer.startSession(atSourceTime: time)
+            sessionStarted = true
+        }
+        let buffer = offset == .zero ? sampleBuffer : Self.shifted(sampleBuffer, by: offset) ?? sampleBuffer
+        if video {
+            if let videoInput, videoInput.isReadyForMoreMediaData { videoInput.append(buffer) }
+        } else if let audioInput, audioInput.isReadyForMoreMediaData {
+            audioInput.append(buffer)
+        }
+    }
+
+    /// Копия отсчёта со временем раньше на [offset] — длину пауз.
+    private static func shifted(_ buffer: CMSampleBuffer, by offset: CMTime) -> CMSampleBuffer? {
+        var count: CMItemCount = 0
+        CMSampleBufferGetSampleTimingInfoArray(buffer, entryCount: 0, arrayToFill: nil, entriesNeededOut: &count)
+        guard count > 0 else { return nil }
+        var timing = [CMSampleTimingInfo](repeating: CMSampleTimingInfo(), count: count)
+        CMSampleBufferGetSampleTimingInfoArray(buffer, entryCount: count, arrayToFill: &timing, entriesNeededOut: &count)
+        for index in timing.indices {
+            timing[index].presentationTimeStamp = CMTimeSubtract(timing[index].presentationTimeStamp, offset)
+            if timing[index].decodeTimeStamp.isValid {
+                timing[index].decodeTimeStamp = CMTimeSubtract(timing[index].decodeTimeStamp, offset)
+            }
+        }
+        var copy: CMSampleBuffer?
+        CMSampleBufferCreateCopyWithNewTiming(allocator: kCFAllocatorDefault, sampleBuffer: buffer, sampleTimingEntryCount: count, sampleTimingArray: &timing, sampleBufferOut: &copy)
+        return copy
+    }
+
+    // MARK: Камера
+
+    /// Сменить камеру на другую сторону посреди записи: кадры идут дальше в тот же файл.
+    /// Возвращает, фронтальная ли камера стала. Не вышло — прежняя.
     func switchCamera() async -> Bool {
         await withCheckedContinuation { continuation in
             queue.async { [self] in
@@ -216,7 +376,6 @@ final class CaptureController: NSObject, AVCaptureFileOutputRecordingDelegate, @
                 let front: Bool
                 if session.canAddInput(input) {
                     session.addInput(input)
-                    preferSixtyFrames(device)
                     front = target == .front
                 } else {
                     session.addInput(current)
@@ -246,7 +405,7 @@ final class CaptureController: NSObject, AVCaptureFileOutputRecordingDelegate, @
 
     /// Поворот кадра и зеркало: фронтальная камера — как в зеркале, основная — как есть.
     private func orient(mirrored: Bool) {
-        guard let connection = output.connection(with: .video) else { return }
+        guard let connection = videoOutput.connection(with: .video) else { return }
         if connection.isVideoRotationAngleSupported(90) { connection.videoRotationAngle = 90 }
         if connection.isVideoMirroringSupported {
             connection.automaticallyAdjustsVideoMirroring = false
@@ -272,14 +431,17 @@ final class CaptureController: NSObject, AVCaptureFileOutputRecordingDelegate, @
         let video = try AVCaptureDeviceInput(device: camera)
         guard session.canAddInput(video) else { throw Failure.noCamera }
         session.addInput(video)
-        preferSixtyFrames(camera)
         if let microphone = AVCaptureDevice.default(for: .audio),
            let audio = try? AVCaptureDeviceInput(device: microphone), session.canAddInput(audio) {
             session.addInput(audio)
         }
-        guard session.canAddOutput(output) else { throw Failure.noCamera }
-        session.addOutput(output)
-        output.maxRecordedDuration = CMTime(seconds: VideoNoteRecorder.maximumDuration, preferredTimescale: 600)
+        videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange]
+        videoOutput.alwaysDiscardsLateVideoFrames = true
+        videoOutput.setSampleBufferDelegate(self, queue: queue)
+        guard session.canAddOutput(videoOutput) else { throw Failure.noCamera }
+        session.addOutput(videoOutput)
+        audioOutput.setSampleBufferDelegate(self, queue: queue)
+        if session.canAddOutput(audioOutput) { session.addOutput(audioOutput) }
         // Как в зеркале: так видит себя пишущий и так кружок привычно выглядит в мессенджерах.
         orient(mirrored: true)
         configured = true
@@ -294,57 +456,11 @@ final class CaptureController: NSObject, AVCaptureFileOutputRecordingDelegate, @
         session.removeInput(current)
         if session.canAddInput(input) {
             session.addInput(input)
-            preferSixtyFrames(device)
         } else {
             session.addInput(current)
         }
         orient(mirrored: true)
         session.commitConfiguration()
-    }
-
-    /// 60 кадров в секунду, если камера умеет: самый маленький формат не меньше 480 по короткой
-    /// стороне с 60 fps (сессия тогда переходит в `inputPriority`). Иначе остаётся пресет.
-    private func preferSixtyFrames(_ camera: AVCaptureDevice) {
-        func area(_ format: AVCaptureDevice.Format) -> Int32 {
-            let size = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
-            return size.width * size.height
-        }
-        let candidates = camera.formats.filter { format in
-            let size = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
-            return min(size.width, size.height) >= Int32(VideoNoteExporter.side)
-                && format.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= 60 }
-        }
-        guard let format = candidates.min(by: { area($0) < area($1) }) else { return }
-        do {
-            try camera.lockForConfiguration()
-            camera.activeFormat = format
-            camera.activeVideoMinFrameDuration = CMTime(value: 1, timescale: 60)
-            camera.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: 60)
-            camera.unlockForConfiguration()
-        } catch {
-            // Не вышло — пишем с частотой пресета.
-        }
-    }
-
-    func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo url: URL, from connections: [AVCaptureConnection], error: Error?) {
-        let finishedKey = (error as NSError?)?.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool
-        let success = error == nil || finishedKey == true
-        queue.async { [self] in
-            if discardNext {
-                discardNext = false
-                try? FileManager.default.removeItem(at: url)
-                finished?.resume(returning: nil)
-                finished = nil
-                return
-            }
-            let result = success ? url : nil
-            if let finished {
-                finished.resume(returning: result)
-                self.finished = nil
-            } else {
-                autoFinished = result
-            }
-        }
     }
 }
 

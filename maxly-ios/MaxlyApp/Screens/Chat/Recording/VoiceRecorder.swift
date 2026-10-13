@@ -10,6 +10,31 @@ struct VoiceRecording: Sendable {
     let durationMs: Int64
     /// 80 столбиков 0…120, как отправляет Komet.
     let waveform: [Int]
+    /// Пакеты Opus по 20 мс и пики громкости кусков записи: по ним голосовое обрезается без
+    /// перекодирования (`trimmed`).
+    var packets: [Data] = []
+    var peaks: [Float] = []
+
+    /// Кусок голосового от [fromMs] до [toMs]: те же пакеты Opus в новом файле Ogg.
+    func trimmed(fromMs: Int64, toMs: Int64) throws -> VoiceRecording {
+        guard !packets.isEmpty else { return self }
+        let first = max(0, min(packets.count - 1, Int(fromMs / VoiceEncoder.packetMs)))
+        let last = max(first + 1, min(packets.count, Int((toMs + VoiceEncoder.packetMs - 1) / VoiceEncoder.packetMs)))
+        var writer = OggOpusWriter()
+        for packet in packets[first..<last] { writer.append(packet: packet) }
+        let url = try VoiceEncoder.target()
+        try writer.finish().write(to: url)
+        let lower = peaks.isEmpty ? 0 : peaks.count * first / packets.count
+        let upper = peaks.isEmpty ? 0 : max(lower + 1, min(peaks.count, peaks.count * last / packets.count))
+        let slice = peaks.isEmpty ? [] : Array(peaks[lower..<upper])
+        return VoiceRecording(
+            url: url,
+            durationMs: Int64(last - first) * VoiceEncoder.packetMs,
+            waveform: slice.isEmpty ? waveform : VoiceEncoder.wave(slice),
+            packets: Array(packets[first..<last]),
+            peaks: slice
+        )
+    }
 }
 
 /// Запись голосового: микрофон, счётчик времени и живой уровень громкости.
@@ -21,6 +46,8 @@ struct VoiceRecording: Sendable {
 @Observable
 final class VoiceRecorder {
     private(set) var isRecording = false
+    /// Запись на паузе: микрофон включён, в файл ничего не идёт.
+    private(set) var isPaused = false
     /// Секунды записи.
     private(set) var elapsed: TimeInterval = 0
     /// Текущая громкость 0…1 для пульсации кнопки.
@@ -35,6 +62,8 @@ final class VoiceRecorder {
     @ObservationIgnored private var encoder: VoiceEncoder?
     @ObservationIgnored private var ticker: Task<Void, Never>?
     @ObservationIgnored private var startedAt = Date()
+    /// Записанное до последней паузы.
+    @ObservationIgnored private var accumulated: TimeInterval = 0
     /// Вызывается, когда запись упёрлась в предел длительности.
     @ObservationIgnored var onLimit: (() -> Void)?
 
@@ -77,6 +106,8 @@ final class VoiceRecorder {
         }
         self.encoder = encoder
         startedAt = .now
+        accumulated = 0
+        isPaused = false
         elapsed = 0
         level = 0
         isRecording = true
@@ -85,11 +116,27 @@ final class VoiceRecorder {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
                 guard let self, self.isRecording else { return }
-                self.elapsed = Date.now.timeIntervalSince(self.startedAt)
+                guard !self.isPaused else { continue }
+                self.elapsed = self.accumulated + Date.now.timeIntervalSince(self.startedAt)
                 self.level = Double(encoder.currentLevel)
                 if self.elapsed >= Self.maximumDuration { self.onLimit?() }
             }
         }
+    }
+
+    /// Пауза и продолжение записи: на паузе звук с микрофона не пишется.
+    func setPaused(_ value: Bool) {
+        guard isRecording, isPaused != value, let encoder else { return }
+        if value {
+            accumulated += Date.now.timeIntervalSince(startedAt)
+            elapsed = accumulated
+            level = 0
+        } else {
+            startedAt = .now
+        }
+        isPaused = value
+        encoder.paused = value
+        Log.info(.media, "Голосовое: \(value ? "пауза" : "продолжение")")
     }
 
     /// Остановить и получить файл. `nil` — запись слишком короткая или не вышла.
@@ -125,6 +172,7 @@ final class VoiceRecorder {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         isRecording = false
+        isPaused = false
         level = 0
         encoder = nil
     }
@@ -156,9 +204,29 @@ final class VoiceEncoder: @unchecked Sendable {
     private var frames: Int64 = 0
     private var peaks: [Float] = []
     private var discarded = false
-    // Уровень для экрана читается с главного потока.
+    private var packets: [Data] = []
+    // Уровень для экрана читается с главного потока; пауза ставится с главного.
     private let levelLock = NSLock()
     private var level: Float = 0
+    private var isPaused = false
+
+    /// Длина пакета Opus: 960 отсчётов при 48 кГц.
+    static let packetMs: Int64 = 20
+
+    /// Пауза: звук с микрофона отбрасывается, пока она идёт.
+    var paused: Bool {
+        get {
+            levelLock.lock()
+            defer { levelLock.unlock() }
+            return isPaused
+        }
+        set {
+            levelLock.lock()
+            isPaused = newValue
+            if newValue { level = 0 }
+            levelLock.unlock()
+        }
+    }
 
     init(inputFormat: AVAudioFormat) throws {
         guard let pcm = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 1, interleaved: false) else {
@@ -194,6 +262,7 @@ final class VoiceEncoder: @unchecked Sendable {
 
     /// Блок записи: буфер переиспользуется, поэтому он сразу пересчитывается в свой 48 кГц.
     private func consume(_ buffer: AVAudioPCMBuffer) {
+        if paused { return }
         let ratio = 48_000 / buffer.format.sampleRate
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 256
         guard buffer.frameLength > 0, let converted = AVAudioPCMBuffer(pcmFormat: pcmFormat, frameCapacity: capacity) else { return }
@@ -242,7 +311,9 @@ final class VoiceEncoder: @unchecked Sendable {
                     let url = try Self.target()
                     try data.write(to: url)
                     let durationMs = frames * 1000 / 48_000
-                    continuation.resume(returning: VoiceRecording(url: url, durationMs: durationMs, waveform: Self.wave(peaks)))
+                    continuation.resume(returning: VoiceRecording(
+                        url: url, durationMs: durationMs, waveform: Self.wave(peaks), packets: packets, peaks: peaks
+                    ))
                 } catch {
                     continuation.resume(returning: nil)
                 }
@@ -276,6 +347,7 @@ final class VoiceEncoder: @unchecked Sendable {
                     let item = descriptions[index]
                     let packet = Data(bytes: output.data.advanced(by: Int(item.mStartOffset)), count: Int(item.mDataByteSize))
                     writer.append(packet: packet)
+                    packets.append(packet)
                 }
             }
             let produced = output.packetCount
@@ -311,7 +383,7 @@ final class VoiceEncoder: @unchecked Sendable {
         }
     }
 
-    private static func target() throws -> URL {
+    static func target() throws -> URL {
         let caches = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         let folder = caches.appendingPathComponent("Outgoing", isDirectory: true).appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
