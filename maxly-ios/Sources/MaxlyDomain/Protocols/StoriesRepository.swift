@@ -19,20 +19,26 @@ public protocol StoriesRepository: Sendable {
     /// Страница архива своих историй, 30 штук. Пустой `marker` — первая страница, дальше —
     /// `marker` прошлого ответа.
     func archive(marker: String) async throws(MaxlyError) -> StoryArchivePage
+    /// Лайк истории `emoji` или снять его (`nil`). `false` — сервер не принял.
+    func react(_ story: Story, emoji: String?) async throws(MaxlyError) -> Bool
+    /// Ответ на историю: сообщение в чат с автором со ссылкой на историю.
+    func reply(to story: Story, text: String) async throws(MaxlyError)
+    /// Скрыть истории автора у себя (или показать снова).
+    func setHidden(_ owner: StoryOwner, hidden: Bool) async throws(MaxlyError)
+    /// Причины жалобы на историю.
+    func reportReasons() async throws(MaxlyError) -> [ComplaintReason]
+    /// Пожаловаться на историю. `false` — сервер не принял.
+    func report(_ story: Story, reasonId: Int) async throws(MaxlyError) -> Bool
 }
 
 public extension StoriesRepository {
     /// Источник без архива: «Мои истории» показывают ошибку.
     func archive(marker: String) async throws(MaxlyError) -> StoryArchivePage { throw .invalidRequest }
 
-    /// Лайк истории `emoji` или снять его (`nil`). `false` — сервер не принял.
+    /// Источник без лайков, ответов, скрытия и жалоб: действие показывает ошибку.
     func react(_ story: Story, emoji: String?) async throws(MaxlyError) -> Bool { throw .invalidRequest }
-    /// Ответ на историю: сообщение в чат с автором со ссылкой на историю.
     func reply(to story: Story, text: String) async throws(MaxlyError) { throw .invalidRequest }
-    /// Скрыть истории автора у себя (или показать снова).
     func setHidden(_ owner: StoryOwner, hidden: Bool) async throws(MaxlyError) { throw .invalidRequest }
-    /// Причины жалобы на историю.
     func reportReasons() async throws(MaxlyError) -> [ComplaintReason] { throw .invalidRequest }
-    /// Пожаловаться на историю. `false` — сервер не принял.
     func report(_ story: Story, reasonId: Int) async throws(MaxlyError) -> Bool { throw .invalidRequest }
 }
