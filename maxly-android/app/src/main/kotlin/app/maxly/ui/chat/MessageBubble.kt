@@ -251,13 +251,24 @@ fun BubbleRow(
                 message.content.forward == null && item.comments == null
         }
         if (bigEmoji != null) {
-            val lottie = message.content.formatting.firstOrNull { it.kind == TextSpan.Kind.ANIMOJI }?.url
+            val catalog = LocalAnimoji.current
+            val lotties = remember(bigEmoji, message.content.formatting, catalog) {
+                app.maxly.presentation.chat.AnimojiText.bigEmoji(message.text, bigEmoji, message.content.formatting, catalog)
+            }
             Column(horizontalAlignment = if (item.outgoing) Alignment.End else Alignment.Start, modifier = press) {
                 item.authorName?.let {
                     Text(it, color = AvatarPalette.nameColor(item.authorColor), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable(enabled = onAuthor != null, onClickLabel = "Открыть профиль") { onAuthor?.invoke(message) }.padding(start = 8.dp, bottom = 2.dp))
                 }
-                if (bigEmoji.size == 1 && !lottie.isNullOrBlank()) {
-                    LottieOrStill(lottie, null, Modifier.size(120.dp), bigEmoji.single())
+                if (lotties.any { it != null }) {
+                    // Каждое эмодзи со своей анимацией играет, остальные — буквой того же размера.
+                    val side = when (bigEmoji.size) { 1 -> 120.dp; 2 -> 88.dp; else -> 72.dp }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        bigEmoji.forEachIndexed { index, emoji ->
+                            val glyph: @Composable () -> Unit = { Text(emoji, fontSize = ChatContentFormat.bigEmojiSize(bigEmoji.size).sp) }
+                            val url = lotties.getOrNull(index)
+                            if (url != null) LottieOrStill(url, null, Modifier.size(side), emoji, fallback = glyph) else glyph()
+                        }
+                    }
                 } else {
                     Text(bigEmoji.joinToString(""), fontSize = ChatContentFormat.bigEmojiSize(bigEmoji.size).sp, modifier = Modifier.padding(horizontal = 2.dp))
                 }
@@ -303,6 +314,8 @@ fun BubbleRow(
             }
         }
     }
+    // Только что поставленная реакция: один проход её анимации над пузырём.
+    ReactionBurstOverlay(message.id, Modifier.align(if (item.outgoing) Alignment.BottomEnd else Alignment.BottomStart))
     }
 }
 
@@ -505,9 +518,14 @@ private fun CommentsFooter(count: Int, colors: BubbleColors, onClick: () -> Unit
 private fun TextWithTime(item: ChatItem.Bubble, text: String, colors: BubbleColors) {
     val message = item.message
     val linkColor = if (item.outgoing) colors.content else MaterialTheme.colorScheme.primary
-    val annotated = remember(text, message.content.formatting, linkColor) {
-        MessageText.annotated(text, if (text == message.text.trim()) message.content.formatting else emptyList(), linkColor, colors.accent)
+    val catalog = LocalAnimoji.current
+    val spans = if (text == message.text.trim()) message.content.formatting else emptyList()
+    // Анимодзи в тексте играют на своём месте вместе с текстом.
+    val animoji = remember(text, spans, catalog) { app.maxly.presentation.chat.AnimojiText.inline(text, spans, catalog) }
+    val annotated = remember(text, spans, linkColor, animoji) {
+        MessageText.annotated(text, spans, linkColor, colors.accent, animoji)
     }
+    val inline = remember(animoji) { animojiInlineContent(animoji) }
     val reserve = timeLabel(item)
     Box(Modifier.padding(start = 12.dp, end = 10.dp, top = 6.dp, bottom = 6.dp)) {
         Text(
@@ -518,6 +536,7 @@ private fun TextWithTime(item: ChatItem.Bubble, text: String, colors: BubbleColo
             },
             style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 21.sp),
             color = colors.content,
+            inlineContent = inline,
         )
         TimeRow(item, colors.secondary, Modifier.align(Alignment.BottomEnd))
     }

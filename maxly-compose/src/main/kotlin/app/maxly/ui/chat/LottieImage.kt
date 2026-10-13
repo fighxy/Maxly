@@ -22,26 +22,38 @@ import okhttp3.Request
 
 /**
  * Lottie по адресу, иначе неподвижная картинка. JSON качается один раз и кэшируется.
- * Анимодзи внутри обычного текста сюда не попадают: играет только отдельное сообщение.
+ * [iterations] — сколько раз проиграть (по умолчанию без конца); [fallback] виден, пока
+ * анимация не загрузилась (эмодзи буквой).
  */
 @Composable
-fun LottieOrStill(lottieUrl: String?, stillUrl: String?, modifier: Modifier = Modifier, description: String) {
+fun LottieOrStill(
+    lottieUrl: String?,
+    stillUrl: String?,
+    modifier: Modifier = Modifier,
+    description: String,
+    iterations: Int = Compottie.IterateForever,
+    fallback: (@Composable () -> Unit)? = null,
+) {
     val json = lottieUrl?.takeIf { it.isNotBlank() }?.let { rememberLottieJson(it) }
-    Box(modifier) {
+    Box(modifier, contentAlignment = androidx.compose.ui.Alignment.Center) {
         if (!stillUrl.isNullOrBlank()) {
             AsyncImage(stillUrl, description, Modifier.matchParentSize(), contentScale = ContentScale.Fit)
         }
-        if (json != null) LottieJson(json, description, Modifier.matchParentSize())
+        if (json != null) {
+            LottieJson(json, description, Modifier.matchParentSize(), iterations)
+        } else if (stillUrl.isNullOrBlank()) {
+            fallback?.invoke()
+        }
     }
 }
 
 /** Отдельный вызов: `remember` появляется вместе с JSON и больше не меняет число слотов. */
 @Composable
-private fun LottieJson(json: String, description: String, modifier: Modifier) {
+private fun LottieJson(json: String, description: String, modifier: Modifier, iterations: Int) {
     val composition by rememberLottieComposition(LottieCompositionSpec.JsonString(json))
     val painter = rememberLottiePainter(
         composition = composition,
-        iterations = Compottie.IterateForever,
+        iterations = iterations,
     )
     if (composition == null) return
     Lottie(

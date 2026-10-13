@@ -17,8 +17,16 @@ import app.maxly.domain.TextSpan
 object MessageText {
     private val urlPattern = Regex("""(?i)\b((?:https?://|www\.)[^\s<>"]+[^\s<>".,;:!?)\]}'])""")
 
-    fun annotated(text: String, spans: List<TextSpan>, linkColor: Color, mentionColor: Color): AnnotatedString = buildAnnotatedString {
+    fun annotated(
+        text: String,
+        spans: List<TextSpan>,
+        linkColor: Color,
+        mentionColor: Color,
+        /** Анимодзи текста: на их месте играет Lottie ([app.maxly.ui.chat.animojiInlineContent]). */
+        animoji: List<app.maxly.presentation.chat.AnimojiText.Placed> = emptyList(),
+    ): AnnotatedString = buildAnnotatedString {
         append(text)
+        markAnimoji(this, animoji)
         val linkStyle = TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))
         val covered = mutableListOf<IntRange>()
         for (span in spans) {
@@ -39,7 +47,7 @@ object MessageText {
                     addLink(LinkAnnotation.Url(normalized(url), linkStyle), start, end)
                     covered += start until end
                 }
-                // Анимодзи рисуется отдельно; разметка другого клиента не рисуется, но хранится.
+                // Анимодзи отмечены выше ([animoji]); разметка другого клиента не рисуется, но хранится.
                 TextSpan.Kind.ANIMOJI, TextSpan.Kind.UNKNOWN -> Unit
             }
         }

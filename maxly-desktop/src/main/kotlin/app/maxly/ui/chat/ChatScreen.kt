@@ -478,24 +478,30 @@ fun ChatScreen(
                     null
                 },
             )
-            ChatFeed(
-                model = model,
-                state = state,
-                privacy = privacy,
-                revealed = revealed,
-                onReveal = reveal,
-                onLongPress = { actionsFor = it },
-                onMenu = { item, bounds -> menuTarget = item to bounds },
-                onRetry = { actionsFor = it },
-                quickReaction = quickReaction,
-                onButton = pressButton,
-                onAuthor = { message ->
-                    model.participantChatId(message)?.let { onOpenParticipant(it, message.authorName) }
-                },
-                onDisablePrivateMode = onDisablePrivateMode,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                selection = selection,
-            )
+            // Анимодзи в сообщениях и анимация только что поставленной реакции.
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalAnimoji provides state.animoji,
+                LocalReactionBurst provides ReactionBurstHost(state.reactionBurst, model::reactionBurstShown),
+            ) {
+                ChatFeed(
+                    model = model,
+                    state = state,
+                    privacy = privacy,
+                    revealed = revealed,
+                    onReveal = reveal,
+                    onLongPress = { actionsFor = it },
+                    onMenu = { item, bounds -> menuTarget = item to bounds },
+                    onRetry = { actionsFor = it },
+                    quickReaction = quickReaction,
+                    onButton = pressButton,
+                    onAuthor = { message ->
+                        model.participantChatId(message)?.let { onOpenParticipant(it, message.authorName) }
+                    },
+                    onDisablePrivateMode = onDisablePrivateMode,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    selection = selection,
+                )
+            }
             if (state.botAppId != null) {
                 FilledTonalButton(
                     onClick = model::openBotApp,

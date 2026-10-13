@@ -487,26 +487,32 @@ fun ChatScreen(
                     null
                 },
             )
-            ChatFeed(
-                model = model,
-                state = state,
-                privacy = privacy,
-                revealed = revealed,
-                onReveal = reveal,
-                onLongPress = { actionsFor = it },
-                onMenu = { item, bounds -> menuTarget = item to bounds },
-                onRetry = { actionsFor = it },
-                quickReaction = quickReaction,
-                onButton = pressButton,
-                onAuthor = { message ->
-                    model.participantChatId(message)?.let { onOpenParticipant(it, message.authorName) }
-                },
-                onDisablePrivateMode = onDisablePrivateMode,
-                modifier = Modifier.weight(1f).fillMaxWidth().then(
-                    if (screenFlash) Modifier.drawWithContent { drawContent(); drawRect(Color.White) } else Modifier,
-                ),
-                selection = selection,
-            )
+            // Анимодзи в сообщениях и анимация только что поставленной реакции.
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalAnimoji provides state.animoji,
+                LocalReactionBurst provides ReactionBurstHost(state.reactionBurst, model::reactionBurstShown),
+            ) {
+                ChatFeed(
+                    model = model,
+                    state = state,
+                    privacy = privacy,
+                    revealed = revealed,
+                    onReveal = reveal,
+                    onLongPress = { actionsFor = it },
+                    onMenu = { item, bounds -> menuTarget = item to bounds },
+                    onRetry = { actionsFor = it },
+                    quickReaction = quickReaction,
+                    onButton = pressButton,
+                    onAuthor = { message ->
+                        model.participantChatId(message)?.let { onOpenParticipant(it, message.authorName) }
+                    },
+                    onDisablePrivateMode = onDisablePrivateMode,
+                    modifier = Modifier.weight(1f).fillMaxWidth().then(
+                        if (screenFlash) Modifier.drawWithContent { drawContent(); drawRect(Color.White) } else Modifier,
+                    ),
+                    selection = selection,
+                )
+            }
             if (state.botAppId != null) {
                 FilledTonalButton(
                     onClick = model::openBotApp,

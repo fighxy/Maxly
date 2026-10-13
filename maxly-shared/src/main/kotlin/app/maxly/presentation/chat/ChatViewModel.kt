@@ -132,6 +132,10 @@ data class ChatUiState(
     val channelReady: Boolean = false,
     val quickReactions: List<String> = ReactionPalette.FALLBACK,
     val reactionCatalog: List<String> = emptyList(),
+    /** Анимодзи: эмодзи → Lottie ([AnimojiText]). */
+    val animoji: Map<String, String> = emptyMap(),
+    /** Только что поставленная реакция: экран один раз играет её анимацию ([ChatViewModel.reactionBurstShown]). */
+    val reactionBurst: ReactionBurst? = null,
     /** Чужих сообщений ниже экрана: число на кнопке «вниз». */
     val unreadBelow: Int = 0,
     /** Выбранные вложения: уйдут одним сообщением с текстом поля как подписью. */
@@ -409,6 +413,16 @@ class ChatViewModel(
         viewModelScope.launch {
             val catalog = repository.reactionCatalog()
             if (catalog.isNotEmpty()) _state.update { it.copy(reactionCatalog = catalog, quickReactions = ReactionPalette.quick(catalog)) }
+        }
+        viewModelScope.launch {
+            val animoji = try {
+                repository.animatedEmoji()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                emptyMap()
+            }
+            if (animoji.isNotEmpty()) _state.update { it.copy(animoji = animoji) }
         }
         loadLatest()
     }
@@ -1509,6 +1523,12 @@ class ChatViewModel(
     fun toggleReaction(message: Message, emoji: String) {
         if (!canReact(message)) return
         val mine = message.content.reactions.firstOrNull { it.mine }?.emoji
+        if (mine != emoji) {
+            // Поставили (не сняли) — анимация реакции над сообщением, если она есть.
+            AnimojiText.lookup(_state.value.animoji, emoji)?.let { url ->
+                _state.update { it.copy(reactionBurst = ReactionBurst(message.id, emoji, url, ++burstCounter)) }
+            }
+        }
         viewModelScope.launch {
             try {
                 repository.react(chatId, message.id, if (mine == emoji) null else emoji)
@@ -1519,6 +1539,13 @@ class ChatViewModel(
             }
         }
     }
+
+    /** Экран доиграл анимацию реакции [id]. */
+    fun reactionBurstShown(id: Long) {
+        _state.update { if (it.reactionBurst?.id == id) it.copy(reactionBurst = null) else it }
+    }
+
+    private var burstCounter = 0L
 
     fun consumeMessage() {
         _messages.value = null

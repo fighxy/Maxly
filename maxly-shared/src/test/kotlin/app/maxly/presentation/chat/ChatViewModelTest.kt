@@ -147,6 +147,8 @@ class FakeMessages : MessageRepository {
         send(chatId, text, replyTo)
     }
     override suspend fun reactionCatalog() = catalog
+    var animoji: Map<String, String> = emptyMap()
+    override suspend fun animatedEmoji() = animoji
 
     val media = mutableListOf<Triple<List<app.maxly.domain.OutgoingFile>, String, String?>>()
     var mediaGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
@@ -658,6 +660,25 @@ class ChatViewModelTest {
         assertEquals(listOf("4" to null, "4" to "🔥"), repo.reactions)
         assertEquals(listOf("👍", "❤️"), model.state.value.quickReactions)
         assertFalse(model.canReact(msg("local-2", status = MessageStatus.SENDING)))
+    }
+
+    @Test
+    fun addingReactionPlaysItsAnimationOnce() {
+        repo.animoji = mapOf("🔥" to "https://lottie/fire.json", "❤️" to "https://lottie/heart.json")
+        val model = vm()
+        val message = msg("4", content = MessageContent(reactions = listOf(MessageReaction("🔥", 1, mine = true))))
+        model.toggleReaction(message, "🔥")
+        assertEquals(null, model.state.value.reactionBurst)
+        model.toggleReaction(message, "❤")
+        val burst = model.state.value.reactionBurst
+        assertEquals("4", burst?.messageId)
+        assertEquals("https://lottie/heart.json", burst?.lottieUrl)
+        model.reactionBurstShown(burst!!.id + 1)
+        assertEquals(burst, model.state.value.reactionBurst)
+        model.reactionBurstShown(burst.id)
+        assertEquals(null, model.state.value.reactionBurst)
+        model.toggleReaction(message, "👍")
+        assertEquals(null, model.state.value.reactionBurst)
     }
 
     @Test
