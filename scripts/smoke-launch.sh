@@ -102,7 +102,7 @@ sleep "$wait_seconds"
 alive=0
 if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
   alive=1
-elif xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -q "UIKitApplication:$bundle"; then
+elif run_limited 60 xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -q "UIKitApplication:$bundle"; then
   alive=1
 fi
 kill "$log_pid" >/dev/null 2>&1
@@ -111,18 +111,26 @@ if [[ "$alive" != 1 ]]; then
   # Причина завершения (runningboardd, SpringBoard, launchd): сбой, watchdog, jetsam или выход.
   echo "::group::Завершение процесса (pid ${pid:-?})"
   ps -p "${pid:-0}" -o pid,stat,etime,command 2>/dev/null || echo "(процесса $pid нет)"
-  xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -i maxly || echo "(в launchctl list нет задания Maxly)"
-  xcrun simctl spawn "$udid" log show --last 3m --style compact --predicate \
+  run_limited 60 xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -i maxly || echo "(в launchctl list нет задания Maxly)"
+  run_limited 120 xcrun simctl spawn "$udid" log show --last 3m --style compact --predicate \
     '(process == "runningboardd" OR process == "SpringBoard" OR process == "launchd" OR process == "ReportCrash") AND (eventMessage CONTAINS[c] "maxly" OR eventMessage CONTAINS[c] "'"${pid:-maxly}"'")' \
     2>/dev/null | grep -Ei "termin|exit|kill|crash|watchdog|jetsam|signal|reason|invalidat" | tail -n 80
   echo "::endgroup::"
 fi
 
 # Собственный журнал Maxly (Application Support/Logs): фазы входа и ядра, соединение, ошибки.
-container="$(xcrun simctl get_app_container "$udid" "$bundle" data 2>/dev/null)"
+# Папка журнала ищется прямо в файлах симулятора: simctl get_app_container на занятом симуляторе
+# отвечал до 9 минут (прогон 341).
+logs="$(find "$HOME/Library/Developer/CoreSimulator/Devices/$udid/data/Containers/Data/Application" \
+  -path '*/Library/Application Support/Logs/maxly-*.log' 2>/dev/null | head -n 1)"
+logs="${logs%/*}"
 echo "::group::Журнал Maxly"
-cat "$container/Library/Application Support/Logs/"maxly-*.log 2>/dev/null || echo "(файла журнала нет)"
-cat "$container/Library/Application Support/Logs/"*.txt 2>/dev/null
+if [[ -n "$logs" ]]; then
+  cat "$logs/"maxly-*.log 2>/dev/null
+  cat "$logs/"*.txt 2>/dev/null
+else
+  echo "(файла журнала нет)"
+fi
 echo "::endgroup::"
 
 echo "::group::Системный журнал процесса (записи Maxly и ошибки)"
