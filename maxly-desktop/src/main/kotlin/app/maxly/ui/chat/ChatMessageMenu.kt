@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import app.maxly.presentation.chat.SaveTarget
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Download
 import app.maxly.presentation.chat.ReactionPalette
 import androidx.compose.material.icons.outlined.Group
@@ -170,6 +171,8 @@ internal fun MessageActions(
     /** «Сведения»: время, правка, пересылка, «Кем прочитано». */
     onInfo: () -> Unit,
     onSave: (SaveTarget) -> Unit,
+    /** «Сохранить как…»: выбрать папку и сохранить туда. */
+    onSaveAs: (SaveTarget) -> Unit,
     /** Пометить чат непрочитанным с этого сообщения и закрыть его. */
     onMarkUnread: () -> Unit,
     /** Сразу сетка всех реакций: «+» в капсуле меню долгого нажатия. */
@@ -280,7 +283,7 @@ internal fun MessageActions(
         }
         if (model.media.canSave(message, SaveTarget.GALLERY)) {
             ListItem(
-                headlineContent = { Text("Сохранить в галерею") },
+                headlineContent = { Text("Сохранить в «Загрузки»") },
                 leadingContent = { Icon(Icons.Outlined.Download, null) },
                 colors = colors,
                 modifier = Modifier.clickable { onDismiss(); onSave(SaveTarget.GALLERY) },
@@ -292,6 +295,14 @@ internal fun MessageActions(
                 leadingContent = { Icon(Icons.Outlined.Folder, null) },
                 colors = colors,
                 modifier = Modifier.clickable { onDismiss(); onSave(SaveTarget.DOWNLOADS) },
+            )
+        }
+        saveAsTarget(model, message)?.let { target ->
+            ListItem(
+                headlineContent = { Text("Сохранить как…") },
+                leadingContent = { Icon(Icons.Outlined.FolderOpen, null) },
+                colors = colors,
+                modifier = Modifier.clickable { onDismiss(); onSaveAs(target) },
             )
         }
         if (model.canForward(message)) {
@@ -362,6 +373,8 @@ internal fun messageMenuActions(
     onReactionUsers: () -> Unit,
     onInfo: () -> Unit,
     onSave: (SaveTarget) -> Unit,
+    /** «Сохранить как…»: выбрать папку и сохранить туда. */
+    onSaveAs: (SaveTarget) -> Unit,
     onMarkUnread: () -> Unit,
 ): Pair<List<MenuAction>, List<MenuAction>> {
     val primary = mutableListOf<MenuAction>()
@@ -385,8 +398,9 @@ internal fun messageMenuActions(
             model.pinChoices().forEach { choice -> more += MenuAction(choice.label, Icons.Filled.PushPin) { model.pin(message, choice) } }
         }
     }
-    if (model.media.canSave(message, SaveTarget.GALLERY)) more += MenuAction("Сохранить в галерею", Icons.Outlined.Download) { onSave(SaveTarget.GALLERY) }
+    if (model.media.canSave(message, SaveTarget.GALLERY)) more += MenuAction("Сохранить в «Загрузки»", Icons.Outlined.Download) { onSave(SaveTarget.GALLERY) }
     if (model.media.canSave(message, SaveTarget.DOWNLOADS)) more += MenuAction("Сохранить в «Загрузки»", Icons.Outlined.Folder) { onSave(SaveTarget.DOWNLOADS) }
+    saveAsTarget(model, message)?.let { target -> more += MenuAction("Сохранить как…", Icons.Outlined.FolderOpen) { onSaveAs(target) } }
     if (model.canMarkUnread(message)) more += MenuAction("Пометить непрочитанным", Icons.Outlined.MarkChatUnread, onClick = onMarkUnread)
     if (model.canShowReactionUsers(message)) more += MenuAction("Кто отреагировал", Icons.Outlined.Group, onClick = onReactionUsers)
     if (model.canSelect(message)) more += MenuAction("Выбрать", Icons.Outlined.CheckCircle) { model.startSelection(message) }
@@ -436,3 +450,7 @@ internal fun DeleteDialog(model: ChatViewModel, messages: List<Message>, onDelet
         dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
     )
 }
+
+/** Что сохраняет «Сохранить как…»: фото и видео, иначе файлы и голосовые; null — сохранять нечего. */
+private fun saveAsTarget(model: ChatViewModel, message: Message): SaveTarget? =
+    listOf(SaveTarget.GALLERY, SaveTarget.DOWNLOADS).firstOrNull { model.media.canSave(message, it) }

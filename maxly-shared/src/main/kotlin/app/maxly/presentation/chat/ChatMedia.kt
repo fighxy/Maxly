@@ -288,18 +288,21 @@ class ChatMedia(
     fun canSave(message: Message, target: SaveTarget): Boolean =
         saver != null && files != null && message.id.toLongOrNull() != null && SaveNaming.attachments(message, target).isNotEmpty()
 
-    /** Скачать вложения сообщения и положить их в галерею или «Загрузки». */
-    fun save(message: Message, target: SaveTarget) {
+    /**
+     * Скачать вложения сообщения и положить их в общую папку (галерея или «Загрузки», как решит
+     * платформа) или в выбранную [directory] (компьютер: «Сохранить как…»).
+     */
+    fun save(message: Message, target: SaveTarget, directory: String? = null) {
         if (!canSave(message, target)) return
-        saveItems(message.id, message.timeMs, SaveNaming.attachments(message, target), target)
+        saveItems(message.id, message.timeMs, SaveNaming.attachments(message, target), directory)
     }
 
-    /** Сохранить в галерею фото или видео, открытое в просмотре. */
-    fun saveViewed() {
+    /** Сохранить фото или видео, открытое в просмотре. */
+    fun saveViewed(directory: String? = null) {
         val viewer = _state.value.viewer ?: return
         val item = viewer.items.getOrNull(viewer.index) ?: return
         if (saver == null || files == null || viewer.messageId.toLongOrNull() == null) return
-        saveItems(viewer.messageId, viewer.timeMs, listOf(item), SaveTarget.GALLERY, indexBase = viewer.index)
+        saveItems(viewer.messageId, viewer.timeMs, listOf(item), directory, indexBase = viewer.index)
     }
 
     /** Поделиться фото или видео, открытым в просмотре: файл скачивается и уходит экрану. */
@@ -345,18 +348,25 @@ class ChatMedia(
         return Triple(path, name, kind)
     }
 
-    private fun saveItems(messageId: String, timeMs: Long, items: List<ChatAttachment>, target: SaveTarget, indexBase: Int = 0) {
+    private fun saveItems(messageId: String, timeMs: Long, items: List<ChatAttachment>, directory: String?, indexBase: Int = 0) {
         val saver = saver ?: return
         val files = files ?: return
         if (messageId in _state.value.saving || items.isEmpty()) return
         _state.update { it.copy(saving = it.saving + messageId) }
         scope.launch {
             try {
+                val places = mutableSetOf<String>()
                 items.forEachIndexed { position, attachment ->
                     val (path, name, kind) = local(messageId, timeMs, attachment, indexBase + position, files) ?: return@forEachIndexed
-                    saver.save(path, name, kind)
+                    saver.save(path, name, kind, directory)
+                    places += saver.place(kind)
                 }
-                onNotice(if (target == SaveTarget.GALLERY) "Сохранено в галерею" else "Сохранено в «Загрузки»")
+                onNotice(
+                    when {
+                        directory != null -> "Сохранено в папку «${java.io.File(directory).name.ifEmpty { directory }}»"
+                        else -> places.singleOrNull()?.let { "Сохранено в $it" } ?: "Сохранено"
+                    },
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

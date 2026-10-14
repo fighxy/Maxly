@@ -30,3 +30,15 @@ fun rememberDesktopFilePicker(
     )
     return launcher::launch
 }
+
+/** Системный выбор папки. Возвращает действие, которое открывает диалог. */
+@Composable
+fun rememberDesktopFolderPicker(title: String, onFolder: (File) -> Unit): () -> Unit {
+    val launcher = rememberFilePickerLauncher(
+        type = FilePickerFileType.Folder,
+        selectionMode = FilePickerSelectionMode.Single,
+        settings = FilePickerSettings(title = title),
+        onResult = { picked -> picked.firstOrNull()?.file?.takeIf { it.isDirectory }?.let(onFolder) },
+    )
+    return launcher::launch
+}

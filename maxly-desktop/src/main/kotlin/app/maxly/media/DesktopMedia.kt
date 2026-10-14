@@ -10,6 +10,7 @@ import app.maxly.domain.VoiceRecording
 import app.maxly.platform.AppPaths
 import app.maxly.platform.DesktopActions
 import app.maxly.presentation.chat.MediaSaver
+import app.maxly.presentation.chat.SaveNaming
 import app.maxly.presentation.chat.SavedKind
 import app.maxly.presentation.chat.VoicePlayback
 import app.maxly.presentation.chat.VoiceMeta
@@ -132,23 +133,32 @@ class FileDownloader(private val userAgent: () -> String, root: File = File(AppP
     }
 }
 
-/** «Сохранить» кладёт копию в «Загрузки» пользователя. */
+/**
+ * «Сохранить» кладёт копию в «Загрузки» пользователя, «Сохранить как…» — в выбранную папку. Фото в
+ * WebP сохраняются в JPEG (HEIC Skia не читает — он остаётся как есть).
+ */
 class DownloadsSaver : MediaSaver {
-    override suspend fun save(path: String, name: String, kind: SavedKind) {
+    override fun place(kind: SavedKind) = "«Загрузки»"
+
+    override suspend fun save(path: String, name: String, kind: SavedKind, directory: String?) {
         withContext(Dispatchers.IO) {
             val source = File(path)
-            val safe = name.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "Maxly" }
-            var target = File(AppPaths.downloads, safe)
-            var index = 2
-            while (target.exists()) {
-                val dot = safe.lastIndexOf('.')
-                val next = if (dot > 0) safe.substring(0, dot) + " $index" + safe.substring(dot) else "$safe $index"
-                target = File(AppPaths.downloads, next)
-                index += 1
-            }
-            source.copyTo(target, overwrite = false)
+            val dir = directory?.let(::File)?.takeIf { it.isDirectory } ?: AppPaths.downloads
+            val jpeg = if (kind == SavedKind.IMAGE && SaveNaming.needsTranscode(name)) toJpeg(source) else null
+            val saved = SaveNaming.safe(if (jpeg != null) SaveNaming.withExtension(name, "jpg") else name)
+            val target = File(dir, SaveNaming.freeName(saved) { File(dir, it).exists() })
+            if (jpeg != null) target.writeBytes(jpeg) else source.copyTo(target, overwrite = false)
         }
     }
+
+    /** Картинка в JPEG (прозрачное — на белом); null — если Skia её не прочитала. */
+    private fun toJpeg(source: File): ByteArray? = runCatching {
+        val image = org.jetbrains.skia.Image.makeFromEncoded(source.readBytes())
+        val surface = org.jetbrains.skia.Surface.makeRasterN32Premul(image.width, image.height)
+        surface.canvas.clear(org.jetbrains.skia.Color.WHITE)
+        surface.canvas.drawImage(image, 0f, 0f)
+        surface.makeImageSnapshot().encodeToData(org.jetbrains.skia.EncodedImageFormat.JPEG, 95)?.bytes
+    }.getOrNull()
 }
 
 /** Выбранные файлы копируются в кэш: ядро читает вложение по обычному пути. */

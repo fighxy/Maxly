@@ -286,7 +286,7 @@ internal fun MessageActions(
         }
         if (model.media.canSave(message, SaveTarget.GALLERY)) {
             ListItem(
-                headlineContent = { Text("Сохранить в галерею") },
+                headlineContent = { Text("Сохранить в «Загрузки»") },
                 leadingContent = { Icon(Icons.Outlined.Download, null) },
                 colors = colors,
                 modifier = Modifier.clickable { onDismiss(); onSave(SaveTarget.GALLERY) },
@@ -391,7 +391,7 @@ internal fun messageMenuActions(
             model.pinChoices().forEach { choice -> more += MenuAction(choice.label, Icons.Filled.PushPin) { model.pin(message, choice) } }
         }
     }
-    if (model.media.canSave(message, SaveTarget.GALLERY)) more += MenuAction("Сохранить в галерею", Icons.Outlined.Download) { onSave(SaveTarget.GALLERY) }
+    if (model.media.canSave(message, SaveTarget.GALLERY)) more += MenuAction("Сохранить в «Загрузки»", Icons.Outlined.Download) { onSave(SaveTarget.GALLERY) }
     if (model.media.canSave(message, SaveTarget.DOWNLOADS)) more += MenuAction("Сохранить в «Загрузки»", Icons.Outlined.Folder) { onSave(SaveTarget.DOWNLOADS) }
     if (model.canMarkUnread(message)) more += MenuAction("Пометить непрочитанным", Icons.Outlined.MarkChatUnread, onClick = onMarkUnread)
     if (model.canShowReactionUsers(message)) more += MenuAction("Кто отреагировал", Icons.Outlined.Group, onClick = onReactionUsers)

@@ -176,7 +176,7 @@ fun MediaViewer(
     userAgent: String,
     onPage: (Int) -> Unit,
     onClose: () -> Unit,
-    /** Сохранить открытое в галерею; `null` — без кнопки. */
+    /** Сохранить открытое в «Загрузки»; `null` — без кнопки. */
     onSave: (() -> Unit)? = null,
     saving: Boolean = false,
     /** Поделиться открытым фото или видео (системное окно «Поделиться»). */
@@ -568,7 +568,7 @@ private fun ViewerHeader(
                     }
                     if (onSave != null) {
                         DropdownMenuItem(
-                            text = { Text("Сохранить в галерею") },
+                            text = { Text("Сохранить в «Загрузки»") },
                             leadingIcon = { Icon(Icons.Outlined.Download, null) },
                             enabled = !saving,
                             onClick = {

@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Rotate90DegreesCw
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -165,8 +166,10 @@ fun MediaViewer(
     userAgent: String,
     onPage: (Int) -> Unit,
     onClose: () -> Unit,
-    /** Сохранить открытое в галерею; `null` — без кнопки. */
+    /** Сохранить открытое в «Загрузки»; `null` — без кнопки. */
     onSave: (() -> Unit)? = null,
+    /** «Сохранить как…»: выбор папки; `null` — без кнопки. */
+    onSaveAs: (() -> Unit)? = null,
     saving: Boolean = false,
     /** Скопировать открытое фото или видео в буфер обмена файлом. */
     onCopy: (() -> Unit)? = null,
@@ -326,6 +329,7 @@ fun MediaViewer(
                     onFullscreen = if (window != null) ({ setFullscreen(!fullscreen) }) else null,
                     onClose = { close() },
                     onSave = onSave,
+                    onSaveAs = onSaveAs,
                     saving = saving,
                     onCopy = onCopy,
                     onShowInChat = onShowInChat?.let { show -> { close(then = show) } },
@@ -425,6 +429,7 @@ private fun ViewerHeader(
     onFullscreen: (() -> Unit)?,
     onClose: () -> Unit,
     onSave: (() -> Unit)?,
+    onSaveAs: (() -> Unit)?,
     saving: Boolean,
     onCopy: (() -> Unit)?,
     onShowInChat: (() -> Unit)?,
@@ -463,8 +468,11 @@ private fun ViewerHeader(
             if (onCopy != null) {
                 IconButton(onClick = onCopy) { Icon(Icons.Outlined.ContentCopy, "Копировать файл", tint = Color.White) }
             }
+            if (onSaveAs != null) {
+                IconButton(onClick = onSaveAs) { Icon(Icons.Outlined.FolderOpen, "Сохранить как…", tint = Color.White) }
+            }
             if (onSave != null) {
-                IconButton(onClick = onSave) { Icon(Icons.Outlined.Download, "Сохранить в галерею", tint = Color.White) }
+                IconButton(onClick = onSave) { Icon(Icons.Outlined.Download, "Сохранить в «Загрузки»", tint = Color.White) }
             }
         }
     }

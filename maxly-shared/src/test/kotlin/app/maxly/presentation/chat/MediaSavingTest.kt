@@ -21,10 +21,12 @@ class MediaSavingTest {
 
     private class Saver : MediaSaver {
         val saved = mutableListOf<Pair<String, SavedKind>>()
+        val directories = mutableListOf<String?>()
         var failure: Exception? = null
-        override suspend fun save(path: String, name: String, kind: SavedKind) {
+        override suspend fun save(path: String, name: String, kind: SavedKind, directory: String?) {
             failure?.let { throw it }
             saved += name to kind
+            directories += directory
         }
     }
 
@@ -68,6 +70,39 @@ class MediaSavingTest {
         media.save(m, SaveTarget.DOWNLOADS)
         assertEquals(listOf("отчёт.pdf" to SavedKind.OTHER), saver.saved)
         assertEquals(listOf("Сохранено в «Загрузки»"), notices)
+    }
+
+    @Test
+    fun savesIntoAChosenFolder() {
+        val m = msg(ChatAttachment.Photo(PhotoContent("p1", "https://cdn/p1")))
+        media.save(m, SaveTarget.GALLERY, directory = "/home/me/Pictures")
+        assertEquals(listOf<String?>("/home/me/Pictures"), saver.directories)
+        assertEquals(listOf("Сохранено в папку «Pictures»"), notices)
+    }
+
+    @Test
+    fun noticeNamesThePlaceOfThePlatform() {
+        val downloads = object : MediaSaver {
+            override suspend fun save(path: String, name: String, kind: SavedKind, directory: String?) = Unit
+            override fun place(kind: SavedKind) = "«Загрузки»"
+        }
+        val desktop = ChatMedia("10", repo, TestScope(UnconfinedTestDispatcher()), null, files, downloads, onNotice = { notices += it }) { errors += it }
+        desktop.save(msg(ChatAttachment.Photo(PhotoContent("p1", "https://cdn/p1"))), SaveTarget.GALLERY)
+        assertEquals(listOf("Сохранено в «Загрузки»"), notices)
+    }
+
+    @Test
+    fun webpAndHeicAreTranscodedUnderAFreeName() {
+        assertTrue(SaveNaming.needsTranscode("Maxly 2026-10-01 14.05.33.webp"))
+        assertTrue(SaveNaming.needsTranscode("a.HEIC"))
+        assertFalse(SaveNaming.needsTranscode("a.jpg"))
+        assertFalse(SaveNaming.needsTranscode("webp"))
+        assertEquals("Maxly 1.jpg", SaveNaming.withExtension("Maxly 1.webp", "jpg"))
+        assertEquals("photo.png", SaveNaming.withExtension("photo", "png"))
+        val taken = setOf("a.jpg", "a 2.jpg")
+        assertEquals("a 3.jpg", SaveNaming.freeName("a.jpg") { it in taken })
+        assertEquals("b.jpg", SaveNaming.freeName("b.jpg") { it in taken })
+        assertEquals("a_b_.pdf", SaveNaming.safe("a/b?.pdf"))
     }
 
     @Test

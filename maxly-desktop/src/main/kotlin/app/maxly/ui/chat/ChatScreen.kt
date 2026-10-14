@@ -270,6 +270,20 @@ fun ChatScreen(
     val importPicked: (Boolean) -> Unit = { images -> if (images) importImages() else importAny() }
     val requestViewerSave: () -> Unit = { model.media.saveViewed() }
     val requestSave: (Message, SaveTarget) -> Unit = { message, target -> model.media.save(message, target) }
+    // «Сохранить как…»: что сохранить, ждёт выбора папки.
+    var saveInto by remember { mutableStateOf<((String) -> Unit)?>(null) }
+    val pickFolder = app.maxly.platform.rememberDesktopFolderPicker("Куда сохранить") { folder ->
+        saveInto?.invoke(folder.absolutePath)
+        saveInto = null
+    }
+    val requestSaveAs: (Message, SaveTarget) -> Unit = { message, target ->
+        saveInto = { folder -> model.media.save(message, target, folder) }
+        pickFolder()
+    }
+    val requestViewerSaveAs: () -> Unit = {
+        saveInto = { folder -> model.media.saveViewed(folder) }
+        pickFolder()
+    }
     val openFile = mediaState.value.openFile
     LaunchedEffect(openFile) {
         val file = openFile ?: return@LaunchedEffect
@@ -639,6 +653,7 @@ fun ChatScreen(
                 onReactionUsers = { reactionUsers = model.reactionUsers(message) },
                 onInfo = { messageInfo = model.messageInfo(message) },
                 onSave = { target -> requestSave(message, target) },
+                onSaveAs = { target -> requestSaveAs(message, target) },
                 onMarkUnread = { model.markUnread(message, onBack) },
             )
             MessageMenuOverlay(
@@ -675,6 +690,9 @@ fun ChatScreen(
             onSave = if (model.media.canSave(Message(viewer.messageId, model.chatId, "", "", viewer.timeMs, content = app.maxly.domain.MessageContent(attachments = viewer.items)), SaveTarget.GALLERY)) {
                 { requestViewerSave() }
             } else null,
+            onSaveAs = if (model.media.canSave(Message(viewer.messageId, model.chatId, "", "", viewer.timeMs, content = app.maxly.domain.MessageContent(attachments = viewer.items)), SaveTarget.GALLERY)) {
+                { requestViewerSaveAs() }
+            } else null,
             saving = viewer.messageId in mediaState.value.saving,
             onCopy = { model.media.shareViewed() },
             onShowInChat = { model.jumpTo(viewer.messageId) },
@@ -697,6 +715,7 @@ fun ChatScreen(
             onReactionUsers = { reactionUsers = model.reactionUsers(message) },
             onInfo = { messageInfo = model.messageInfo(message) },
             onSave = { target -> requestSave(message, target) },
+            onSaveAs = { target -> requestSaveAs(message, target) },
             onMarkUnread = { model.markUnread(message, onBack) },
             startWithAllReactions = actionsAllReactions,
         )
