@@ -2,8 +2,10 @@ import Foundation
 import Observation
 import MaxlyDomain
 
-/// «Мои истории»: архив своих историй страницами по 30 (`STORIES_HISTORY_GET_BY_OWNER_ID` 219).
-/// Первая страница — без курсора, следующие — с курсором прошлого ответа; пустой курсор — конец.
+/// «Мои истории»: свои истории страницами. Если у аккаунта есть архив (`stories-history`), это
+/// архив (`STORIES_HISTORY_GET_BY_OWNER_ID` 219), иначе — текущие истории одной страницей
+/// (ядро выбирает само: без флага сервер не знает 219 и рвёт соединение). Первая страница — без
+/// курсора, следующие — с курсором прошлого ответа; пустой курсор — конец.
 @MainActor
 @Observable
 public final class StoryArchiveModel {
@@ -17,7 +19,7 @@ public final class StoryArchiveModel {
     }
 
     public static let emptyTitle = "Место для воспоминаний"
-    public static let emptyText = "Здесь будут ваши истории, даже когда они исчезнут из ленты."
+    public static let emptyText = "Опубликуйте историю — она появится здесь."
 
     public private(set) var state: State = .loading
     /// Истории от новых к старым, без повторов.

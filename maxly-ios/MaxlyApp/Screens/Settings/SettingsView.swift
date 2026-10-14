@@ -115,8 +115,8 @@ struct SettingsView: View {
                 SettingsButtonRow(title: "Избранное", systemImage: "bookmark.fill", tint: .orange) {
                     onOpenChat(Chat.savedMessagesId)
                 }
-                // Архив своих историй. Веб прячет его за флагом `stories-history`; нашему клиенту
-                // флаг может не прийти, хотя архив есть, поэтому пункт виден всегда.
+                // Свои истории. С флагом `stories-history` — архив, без него ядро показывает
+                // текущие истории (запрос архива сервер без флага не знает), поэтому пункт виден всегда.
                 if let archive = container.storyArchiveModel() {
                     NavigationLink {
                         StoryArchiveView(model: archive)
