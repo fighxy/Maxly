@@ -67,6 +67,23 @@ struct SyncNetworkTests {
         #expect(await api.historyFetches == 1)
         await sync.networkLost()
     }
+
+    @Test("Смена сетевого пути сверяет список сразу, но только онлайн")
+    func pathChangeRefreshesList() async throws {
+        let api = FakeMaxAPI()
+        let (messages, outbox) = try await makeMessageStack(api: api)
+        let chats = ChatRepositoryImpl.make(stack: try SwiftDataStack(inMemory: true), api: api)
+        let sync = SyncEngine(outbox: outbox, chats: chats, messages: messages, pollInterval: .seconds(3600))
+        await sync.networkPathChanged()
+        #expect(await api.chatFetches == 0)
+        await sync.networkBecameAvailable()
+        #expect(await eventually { await api.chatFetches >= 1 })
+        try await Task.sleep(for: .milliseconds(100))
+        let before = await api.chatFetches
+        await sync.networkPathChanged()
+        #expect(await api.chatFetches == before + 1)
+        await sync.networkLost()
+    }
 }
 
 @Suite("Синхронизация: пуши")

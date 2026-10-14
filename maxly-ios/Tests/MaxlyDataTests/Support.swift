@@ -28,7 +28,10 @@ actor FakeMaxAPI: MaxAPI {
 
     func setFetchGate(_ gate: Gate?) { fetchGate = gate }
 
+    private(set) var chatFetches = 0
+
     func fetchChats() async -> Result<[ChatRecord], MaxAPIError> {
+        chatFetches += 1
         if let fetchGate { await fetchGate.wait() }
         return .success(chats)
     }
@@ -38,6 +41,7 @@ actor FakeMaxAPI: MaxAPI {
     func setChatListComplete(_ complete: Bool) { chatListComplete = complete }
 
     func fetchChatList() async -> Result<ChatListPage, MaxAPIError> {
+        chatFetches += 1
         if let fetchGate { await fetchGate.wait() }
         return .success(ChatListPage(records: chats, complete: chatListComplete))
     }

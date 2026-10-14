@@ -1,5 +1,6 @@
 import Contacts
 import Foundation
+import Network
 import Observation
 import UserNotifications
 import MaxlyCallMedia
@@ -44,6 +45,8 @@ final class AppContainer {
     /// Полоса «играет голосовое» над чатом и списком чатов: одна на приложение.
     let nowPlaying = VoiceNowPlaying()
     @ObservationIgnored private var sync: SyncEngine?
+    /// Смена сетевого пути: сверка списка чатов, не дожидаясь сторожевого таймера ядра.
+    @ObservationIgnored private var pathMonitor: NWPathMonitor?
     /// Пуши закрепов сообщений: в базу не пишутся, их слушает открытый чат.
     @ObservationIgnored private let pinHub = PinHub()
     @ObservationIgnored private let scheduledHub = ScheduledHub()
@@ -340,6 +343,7 @@ final class AppContainer {
             self.commentsRepository = CoreCommentsRepository(core: core)
             self.storiesRepository = CoreStoriesRepository(core: core)
             self.sync = sync
+            watchNetworkPath()
             boot = .ready
             phaseTask = Task {
                 for await next in session.phases() {
@@ -969,6 +973,27 @@ final class AppContainer {
         Task { await core.setAppActive(interactive) }
     }
 
+    private func watchNetworkPath() {
+        guard pathMonitor == nil else { return }
+        let monitor = NWPathMonitor()
+        let last = PathSnapshot()
+        monitor.pathUpdateHandler = { @Sendable [weak self] path in
+            let current = [NWInterface.InterfaceType.wifi, .cellular, .wiredEthernet, .other]
+                .filter { path.usesInterfaceType($0) }.map { "\($0)" }.joined(separator: ",")
+                + (path.status == .satisfied ? "+" : "-")
+            // Обработчик идёт на одной последовательной очереди: снимок меняет только он.
+            let old = last.value
+            last.value = current
+            guard old != nil, old != current, path.status == .satisfied else { return }
+            Task { @MainActor [weak self] in
+                guard let self, case .signedIn = self.phase else { return }
+                await self.sync?.networkPathChanged()
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "network.path"))
+        pathMonitor = monitor
+    }
+
     func appBecameActive() async {
         await sync?.appBecameActive()
         // Разрешение на контакты могли выдать или забрать в настройках.
@@ -1043,4 +1068,9 @@ final class AppContainer {
         foldersScreenModel?.deactivate()
         foldersScreenModel = nil
     }
+}
+
+/// Последний сетевой путь для `NWPathMonitor`; пишется только с очереди монитора.
+private final class PathSnapshot: @unchecked Sendable {
+    var value: String?
 }

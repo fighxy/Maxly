@@ -104,6 +104,13 @@ public actor SyncEngine {
         await pollOnce()
     }
 
+    /// Сменился сетевой путь (Wi‑Fi ↔ сотовая): старое соединение могло умереть молча. Сразу
+    /// сверить список: запрос по мёртвому сокету падает, ядро закрывает его и входит заново.
+    public func networkPathChanged() async {
+        guard isOnline, pollTask != nil else { return }
+        await pollOnce(history: false)
+    }
+
     /// Сеть появилась: отправить очередь, сверить список и открытый чат и включить редкий опрос списка.
     public func networkBecameAvailable() async {
         Log.info(.sync, "Сеть есть: отправка очереди и опрос")
