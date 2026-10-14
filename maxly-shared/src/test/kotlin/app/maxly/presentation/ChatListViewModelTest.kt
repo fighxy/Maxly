@@ -1,4 +1,8 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package app.maxly.presentation
+
+import kotlinx.coroutines.flow.emitAll
 
 import app.maxly.MainDispatcherRule
 import app.maxly.data.ChatRepository
@@ -625,6 +629,38 @@ class ChatListViewModelTest {
     private fun listWith(store: RecentSearchStore) = ChatListViewModel(
         repo, connection, ChatListFormatter(ZoneOffset.UTC), now = { now }, local = marks, recents = store,
     )
+
+    @Test
+    fun hangingRefreshIsReleasedByTimeout() {
+        val hanging = object : ChatRepository by FakeChats() {
+            override suspend fun refresh() = kotlinx.coroutines.awaitCancellation()
+        }
+        val vm = ChatListViewModel(hanging, connection, ChatListFormatter(ZoneOffset.UTC), now = { now }, local = marks, refreshTimeoutMs = 1_000)
+        vm.refresh()
+        assertTrue(vm.state.value.isRefreshing)
+        main.dispatcher.scheduler.advanceTimeBy(1_001)
+        main.dispatcher.scheduler.runCurrent()
+        assertFalse(vm.state.value.isRefreshing)
+    }
+
+    @Test
+    fun chatListSurvivesAFailingSource() {
+        val chats = MutableStateFlow<List<Chat>?>(listOf(chat("1")))
+        var attempts = 0
+        val flaky = object : ChatRepository by FakeChats() {
+            override val chats = kotlinx.coroutines.flow.flow {
+                if (attempts++ == 0) throw IllegalStateException("сбой")
+                emitAll(chats)
+            }
+        }
+        val vm = ChatListViewModel(flaky, connection, ChatListFormatter(ZoneOffset.UTC), now = { now }, local = marks)
+        assertEquals(ChatListContent.Loading, vm.state.value.content)
+        main.dispatcher.scheduler.advanceTimeBy(ChatListViewModel.CHATS_RETRY_DELAY_MS + 1)
+        main.dispatcher.scheduler.runCurrent()
+        assertTrue(vm.state.value.content !is ChatListContent.Loading)
+        chats.value = listOf(chat("1"), chat("2"))
+        assertTrue(vm.state.value.content !is ChatListContent.Loading)
+    }
 }
 
 private class FakeRecents(start: List<String> = emptyList()) : RecentSearchStore {

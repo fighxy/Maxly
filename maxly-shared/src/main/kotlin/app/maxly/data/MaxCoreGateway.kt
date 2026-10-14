@@ -1,5 +1,6 @@
 package app.maxly.data
 
+import app.maxly.data.diagnostics.AppLog
 import app.maxly.data.diagnostics.DiagnosticEvent
 
 import app.maxly.domain.SessionRejection
@@ -29,7 +30,14 @@ class MaxCoreGateway(private val client: MaxClient) : CoreGateway {
     override fun rejection(): SessionRejection? =
         (client.state.value as? ClientState.TokenRejected)?.let(::rejectionOf) ?: lastRejection
 
+    @Volatile private var lastPhase: CorePhase? = null
+
     private fun remember(state: ClientState) {
+        val phase = phaseOf(state)
+        if (phase != lastPhase) {
+            AppLog.i("core", "ClientState: ${lastPhase?.name?.lowercase() ?: "-"} -> ${phase.name.lowercase()}")
+            lastPhase = phase
+        }
         DiagnosticEvent.event("network.state", mapOf("phase" to phaseOf(state).name.lowercase()), snapshot = true)
         if (state is ClientState.TokenRejected) lastRejection = rejectionOf(state)
     }

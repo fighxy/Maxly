@@ -5,6 +5,8 @@ import com.maxly.core.api.AccountConfig
 import com.maxly.core.events.MaxEvent
 import com.maxly.core.state.MaxState
 import com.maxly.shared.MaxClient
+import app.maxly.data.diagnostics.AppLog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -14,6 +16,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.transformLatest
 import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
@@ -85,6 +88,7 @@ class ChatMutes {
             mutes: ChatMutes,
             clock: () -> Long,
             pushes: Flow<Unit> = emptyFlow(),
+            mapping: (MaxState, AccountConfig?, Long, ChatMutes) -> List<Chat> = ChatMapping::chats,
         ): Flow<List<Chat>?> = combine(states, configs, loaded, pushes.onStart { emit(Unit) }) { state, config, ready, _ -> Triple(state, config, ready) }
             .transformLatest { (state, config, ready) ->
                 if (!ready && state.chats.isEmpty()) {
@@ -93,11 +97,30 @@ class ChatMutes {
                 }
                 while (true) {
                     val now = clock()
-                    emit(ChatMapping.chats(state, config, now, mutes))
-                    val next = mutes.nextExpiry(state.chats.keys, config, now) ?: break
+                    // Сбой сборки одного снимка не завершает список: остаётся прошлый, ждём следующий.
+                    val (list, next) = try {
+                        mapping(state, config, now, mutes) to mutes.nextExpiry(state.chats.keys, config, now)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        AppLog.nonFatal("список чатов: сборка снимка", e)
+                        break
+                    }
+                    emit(list)
+                    next ?: break
                     delay((next - now).coerceAtLeast(0) + 1)
                 }
             }
+            // Сбой источника (стор, конфиг) перезапускает поток, а не гасит список.
+            .retryWhen { cause, _ ->
+                if (cause is CancellationException) return@retryWhen false
+                AppLog.nonFatal("список чатов: поток", cause)
+                delay(RETRY_DELAY_MS)
+                true
+            }
             .distinctUntilChanged()
+
+        /** Пауза перед перезапуском потока списка после сбоя. */
+        const val RETRY_DELAY_MS = 1_000L
     }
 }

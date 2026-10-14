@@ -220,4 +220,40 @@ class ChatMutesTest {
         assertEquals(listOf<List<Chat>?>(null), seen)
         job.cancel()
     }
+
+    @Test
+    fun listSurvivesAThrowingMapping() = runTest {
+        val states = MutableStateFlow(state(10))
+        var broken = true
+        val seen = mutableListOf<List<Chat>?>()
+        val job = launch {
+            ChatMutes.chatList(states, MutableStateFlow(config()), MutableStateFlow(true), ChatMutes(), { 0L },
+                mapping = { s, c, n, m -> if (broken) error("сбой сборки") else ChatMapping.chats(s, c, n, m) },
+            ).collect { seen += it }
+        }
+        runCurrent()
+        assertTrue(seen.isEmpty())
+        broken = false
+        states.value = state(10, 20)
+        runCurrent()
+        assertEquals(2, seen.last()!!.size)
+        job.cancel()
+    }
+
+    @Test
+    fun listRestartsAfterAFailingSource() = runTest {
+        var attempts = 0
+        val states = kotlinx.coroutines.flow.flow {
+            if (attempts++ == 0) throw IllegalStateException("сбой источника")
+            emit(state(10))
+        }
+        val seen = mutableListOf<List<Chat>?>()
+        val job = launch {
+            ChatMutes.chatList(states, MutableStateFlow(config()), MutableStateFlow(true), ChatMutes(), { 0L }).collect { seen += it }
+        }
+        advanceTimeBy(ChatMutes.RETRY_DELAY_MS + 1)
+        runCurrent()
+        assertEquals(1, seen.last()!!.size)
+        job.cancel()
+    }
 }

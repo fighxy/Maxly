@@ -128,6 +128,20 @@ object AppLog {
     @Volatile
     var echo: (level: Char, tag: String, message: String, error: Throwable?) -> Unit = { _, _, _, _ -> }
 
+    /**
+     * Перехваченная ошибка, после которой приложение живёт дальше. Платформа подменяет обработчик
+     * (десктоп — `DesktopDiagnostics.nonFatal`), по умолчанию строка в журнал.
+     */
+    @Volatile
+    var nonFatalHook: (where: String, error: Throwable) -> Unit = { where, error -> e("nonfatal", "Ошибка ($where)", error) }
+
+    fun nonFatal(where: String, error: Throwable) {
+        try {
+            nonFatalHook(where, error)
+        } catch (_: Exception) {
+        }
+    }
+
     fun i(tag: String, message: String) = write('I', tag, message, null)
 
     fun w(tag: String, message: String, error: Throwable? = null) = write('W', tag, message, error)

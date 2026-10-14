@@ -53,6 +53,7 @@ object DesktopDiagnostics {
         val reports = CrashReports(File(home, "crashes"))
         this.log = log
         this.reports = reports
+        AppLog.nonFatalHook = ::nonFatal
         val console = System.err
         AppLog.echo = { level, tag, message, error ->
             console.println("$level $tag: $message")

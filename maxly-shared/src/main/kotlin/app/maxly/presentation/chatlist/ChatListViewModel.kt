@@ -19,6 +19,10 @@ import app.maxly.domain.ChatType
 import app.maxly.domain.FoundMessage
 import app.maxly.presentation.common.ListOrder
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.retryWhen
+import app.maxly.data.diagnostics.AppLog
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -119,6 +123,8 @@ class ChatListViewModel(
     private val account: app.maxly.data.AccountRepository? = null,
     /** Вкладка «Все» скрыта в настройках папок ([app.maxly.data.FolderDisplaySettings]). */
     hidesAllChats: Flow<Boolean> = flowOf(false),
+    /** Предел обновления: после него «Обновление» снимается, даже если ответа нет. */
+    private val refreshTimeoutMs: Long = REFRESH_TIMEOUT_MS,
 ) : ViewModel() {
 
     private var serverSearch: Job? = null
@@ -155,16 +161,18 @@ class ChatListViewModel(
 
     init {
         viewModelScope.launch {
-            repository.chats.collect { next ->
-                if (next != null) {
-                    hasSnapshot = true
-                    chats = next
-                    pendingPins.entries.removeAll { (id, order) -> next.firstOrNull { it.id == id }?.let { (it.pinOrder == null) == (order == null) } ?: true }
-                    pendingMutes.entries.removeAll { (id, muted) -> next.firstOrNull { it.id == id }?.let { it.isMuted == muted } ?: true }
-                    if (pendingPinOrder != null && (pinOrderAccepted || pinnedIds(next) == pendingPinOrder)) {
-                        pendingPinOrder = null
-                        pinOrderAccepted = false
-                    }
+            repository.chats.retryWhen { cause, _ ->
+                if (cause is CancellationException) return@retryWhen false
+                AppLog.nonFatal("список чатов: источник", cause)
+                delay(CHATS_RETRY_DELAY_MS)
+                true
+            }.collect { next ->
+                try {
+                    accept(next)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    AppLog.nonFatal("список чатов: снимок", e)
                 }
                 rebuild()
             }
@@ -222,17 +230,39 @@ class ChatListViewModel(
         if (_state.value.isRefreshing) return
         _state.value = _state.value.copy(isRefreshing = true)
         viewModelScope.launch {
-            refreshError = try {
-                repository.refresh()
-                null
-            } catch (e: Throwable) {
-                CoreErrors.map(e).takeIf { it != MaxlyError.Cancelled }
+            try {
+                refreshError = try {
+                    withTimeout(refreshTimeoutMs) { repository.refresh() }
+                    null
+                } catch (e: TimeoutCancellationException) {
+                    AppLog.w(TAG, "обновление списка: предел $refreshTimeoutMs мс")
+                    CoreErrors.map(app.maxly.data.RefreshTimeoutException(refreshTimeoutMs))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    CoreErrors.map(e).takeIf { it != MaxlyError.Cancelled }
+                }
+                hasRefreshed = true
+            } finally {
+                _state.value = _state.value.copy(isRefreshing = false)
+                rebuild()
             }
-            hasRefreshed = true
-            _state.value = _state.value.copy(isRefreshing = false)
-            rebuild()
         }
     }
+
+    private fun accept(next: List<Chat>?) {
+        if (next != null) {
+            hasSnapshot = true
+            chats = next
+            pendingPins.entries.removeAll { (id, order) -> next.firstOrNull { it.id == id }?.let { (it.pinOrder == null) == (order == null) } ?: true }
+            pendingMutes.entries.removeAll { (id, muted) -> next.firstOrNull { it.id == id }?.let { it.isMuted == muted } ?: true }
+            if (pendingPinOrder != null && (pinOrderAccepted || pinnedIds(next) == pendingPinOrder)) {
+                pendingPinOrder = null
+                pinOrderAccepted = false
+            }
+        }
+    }
+
 
     fun selectFolder(id: String) {
         if (id == _state.value.selectedFolderId) return
@@ -858,7 +888,18 @@ class ChatListViewModel(
         return next
     }
 
+    /** Сбой сборки не гасит сборщик: экран остаётся с прошлым состоянием. */
     private fun rebuild() {
+        try {
+            rebuildUnsafe()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AppLog.nonFatal("список чатов: сборка экрана", e)
+        }
+    }
+
+    private fun rebuildUnsafe() {
         val current = _state.value
         val sorted = ordered()
         // «Все» скрыта в настройках — первой открывается первая своя папка. Без своих папок «Все» есть всегда.
@@ -926,6 +967,11 @@ class ChatListViewModel(
     companion object {
         /** Сколько чатов можно закрепить. Сервер может отказать и раньше. */
         const val DEFAULT_PIN_LIMIT = 10
+        /** Предел одного обновления списка. */
+        const val REFRESH_TIMEOUT_MS = 30_000L
+        /** Пауза перед повторной подпиской на список после сбоя источника. */
+        const val CHATS_RETRY_DELAY_MS = 1_000L
+        private const val TAG = "chatlist"
         const val SEARCH_DELAY_MS = 300L
         /** Короче запрос сервер не ищет. */
         const val SERVER_SEARCH_MIN_LENGTH = 2

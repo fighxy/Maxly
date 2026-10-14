@@ -27,14 +27,15 @@ import kotlinx.coroutines.sync.withLock
 class CoreChatRepository(
     private val client: MaxClient,
     private val clock: () -> Long = System::currentTimeMillis,
+    refreshTimeoutMs: Long = RefreshGate.DEFAULT_TIMEOUT_MS,
 ) : ChatRepository {
 
     /** Снимок уже пришёл: до него список показывает загрузку, а не «Нет чатов». */
     private val loaded = MutableStateFlow(false)
-    private val refreshLock = Mutex()
+    private val refreshGate = RefreshGate("список чатов", refreshTimeoutMs, clock)
     /** Закрепление и перестановка по очереди: каждый запрос строится от списка, принятого сервером. */
     private val pinLock = Mutex()
-    private var usersRequested = mutableSetOf<Long>()
+    private val usersRequested = UserRequests()
     private val mutes = ChatMutes.of(client)
 
     override val chats: Flow<List<Chat>?> =
@@ -62,8 +63,7 @@ class CoreChatRepository(
     }.distinctUntilChanged()
 
     override suspend fun refresh() {
-        if (refreshLock.isLocked) return
-        refreshLock.withLock {
+        refreshGate.run {
             MaxCoreGateway.read {
                 if (client.store.state.value.chats.isEmpty()) client.loadAllChats() else client.loadChats()
             }
@@ -81,12 +81,9 @@ class CoreChatRepository(
                 ChatMapping.dialogPeer(chat, state.me)?.let(::add)
                 chat.lastMessage?.sender?.let(::add)
             }
-        }.filter { it !in state.users && it !in usersRequested }
+        }.filter { it !in state.users }
         if (wanted.isEmpty()) return
-        usersRequested.addAll(wanted)
-        for (chunk in wanted.chunked(100)) {
-            runCatching { MaxCoreGateway.call { client.loadUsers(chunk) } }
-        }
+        usersRequested.load(wanted) { chunk -> MaxCoreGateway.call { client.loadUsers(chunk) } }
     }
 
     override suspend fun setPinned(chatId: String, pinned: Boolean) {
@@ -294,7 +291,7 @@ class CoreChatRepository(
 
     override fun clear() {
         loaded.value = false
-        usersRequested = mutableSetOf()
+        usersRequested.clear()
         mutes.clear()
     }
 
