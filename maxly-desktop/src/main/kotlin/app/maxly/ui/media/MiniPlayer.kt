@@ -102,7 +102,7 @@ private fun MiniPlayerContent(clip: MiniPlayer.Clip) {
         VideoFrame(state, Modifier.fillMaxSize())
         when {
             state.failed -> Text("Видео не воспроизводится", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
-            state.isBuffering && state.frame == null -> CircularProgressIndicator(color = Color.White)
+            state.isBuffering && (state.frame == null || state.isPlaying) -> CircularProgressIndicator(color = Color.White)
         }
         AnimatedVisibility(hovered || !state.isPlaying, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
             Row(

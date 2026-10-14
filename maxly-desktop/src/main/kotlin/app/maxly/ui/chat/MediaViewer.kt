@@ -722,7 +722,8 @@ private fun VideoPage(
                 player.release()
                 stopped = true
             }
-            url == null || (state.isBuffering && state.frame == null) -> CircularProgressIndicator(color = Color.White)
+            // Нет кадра или ролик догнал загрузку и ждёт её.
+            url == null || (state.isBuffering && (state.frame == null || state.isPlaying)) -> CircularProgressIndicator(color = Color.White)
             !state.isPlaying && !state.isBuffering -> Icon(
                 if (state.ended) Icons.Filled.Replay else Icons.Filled.PlayArrow,
                 null,
@@ -823,8 +824,8 @@ private fun VideoBar(
     ) {
         Scrubber(
             fraction = scrubFraction ?: state.progress,
-            // Ролик играет из скачанного файла: подгружен целиком.
-            buffered = if (state.downloading == null && state.durationMs > 0) 1f else 0f,
+            // Сколько ролика уже скачано: играет, пока качается.
+            buffered = if (state.durationMs > 0) state.buffered else 0f,
             enabled = state.durationMs > 0,
             onScrub = onScrub,
             onScrubEnd = onScrubEnd,

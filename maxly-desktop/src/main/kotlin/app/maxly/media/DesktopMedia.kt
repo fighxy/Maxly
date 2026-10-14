@@ -93,6 +93,9 @@ class FileDownloader(private val userAgent: () -> String, root: File = File(AppP
 
     fun cached(fileId: String, name: String): File? = target(fileId, name).takeIf { it.isFile && it.length() > 0 }
 
+    /** Где лежит (или будет лежать) файл в кэше. */
+    fun location(fileId: String, name: String): File = target(fileId, name)
+
     suspend fun download(url: String, fileId: String, name: String, progress: (Float) -> Unit = {}): File = DiagnosticEvent.operation("media.download", mapOf("media" to DiagnosticEvent.id(fileId))) { withContext(Dispatchers.IO) {
         cached(fileId, name)?.let {
             DiagnosticEvent.event("media.cache", mapOf("hit" to "true", "bytes" to it.length().toString()))
@@ -428,14 +431,28 @@ class DesktopVoiceRecorder(private val scope: CoroutineScope) {
     }
 }
 
-/** Локальный или удалённый ролик для внешнего проигрывателя. */
+/** Локальный или удалённый ролик: файл для проигрывателя, загрузка в кэш с просмотром на ходу. */
 object DesktopVideo {
     suspend fun materialize(url: String, userAgent: String, progress: (Float) -> Unit = {}): File = withContext(Dispatchers.IO) {
-        if (url.startsWith("file:")) return@withContext File(java.net.URI(url))
-        val local = File(url)
-        if (local.isFile) return@withContext local
-        FileDownloader({ userAgent }).download(url, "video-${url.hashCode()}", "video.mp4", progress)
+        local(url, userAgent)?.let { return@withContext it }
+        FileDownloader({ userAgent }).download(url, cacheId(url), CACHE_NAME, progress)
     }
+
+    /** Ролик уже на диске: локальный путь или скачанный в кэш. */
+    fun local(url: String, userAgent: String): File? {
+        if (url.startsWith("file:")) return File(java.net.URI(url))
+        val local = File(url)
+        if (local.isFile) return local
+        if (!url.startsWith("http://") && !url.startsWith("https://")) return local
+        return FileDownloader({ userAgent }).cached(cacheId(url), CACHE_NAME)
+    }
+
+    /** Загрузка удалённого ролика в тот же кэш, что у [materialize], которую можно смотреть на ходу. */
+    internal fun stream(url: String, userAgent: String): StreamingDownload =
+        StreamingDownload(HttpUpstream(url, userAgent), FileDownloader({ userAgent }).location(cacheId(url), CACHE_NAME))
+
+    private fun cacheId(url: String) = "video-${url.hashCode()}"
+    private const val CACHE_NAME = "video.mp4"
 
     fun play(file: File) = DesktopActions.openFile(file)
 }
