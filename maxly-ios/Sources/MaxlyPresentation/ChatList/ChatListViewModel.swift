@@ -678,6 +678,85 @@ public final class ChatListViewModel {
     /// В меню есть «Заблокировать»: есть чем.
     public var canBlock: Bool { profileActions != nil }
 
+    // Боты: «Остановить» — бот в чёрном списке.
+
+    /// Собеседники-боты в чёрном списке (id пользователей); пополняется, когда открывают меню бота.
+    public private(set) var stoppedBots: Set<String> = []
+
+    /// Собеседник личного чата.
+    private func peer(of chatId: String) -> String? {
+        guard chats.first(where: { $0.id == chatId })?.type == .private else { return nil }
+        return ChatListMenu.peer(chatId: chatId, myId: currentUserId)
+    }
+
+    /// Бот чата остановлен.
+    public func isBotStopped(chatId: String) -> Bool {
+        peer(of: chatId).map { stoppedBots.contains($0) } ?? false
+    }
+
+    /// Открыли меню чата: для бота узнать, остановлен ли он (чёрный список спрашивается раз за сеанс).
+    public func prepareMenu(chatId: String) async {
+        guard let profileActions, chats.first(where: { $0.id == chatId })?.isBot == true,
+              let peer = peer(of: chatId) else { return }
+        if let blocked = try? await profileActions.isBlocked(userId: peer) {
+            if blocked { stoppedBots.insert(peer) } else { stoppedBots.remove(peer) }
+        }
+    }
+
+    /// «Остановить»: бот в чёрный список, писать он больше не может.
+    public func stopBot(chatId: String) async {
+        guard let profileActions, let peer = peer(of: chatId) else { return }
+        do {
+            try await profileActions.setBlocked(userId: peer, blocked: true)
+            stoppedBots.insert(peer)
+            notice = "Бот остановлен"
+        } catch {
+            notice = error.userMessage
+        }
+    }
+
+    /// «Перезапустить»: бот из чёрного списка и сразу «Начать».
+    public func restartBot(chatId: String) async {
+        guard let profileActions, let peer = peer(of: chatId) else { return }
+        do {
+            try await profileActions.setBlocked(userId: peer, blocked: false)
+            stoppedBots.remove(peer)
+            try await profileActions.startBot(chatId: chatId)
+            notice = "Бот запущен"
+        } catch {
+            notice = error.userMessage
+        }
+    }
+
+    /// «Удалить и остановить»: бот в чёрный список, чат удаляется у себя.
+    public func deleteAndStopBot(chatId: String) async {
+        guard let profileActions, let peer = peer(of: chatId) else { return }
+        do {
+            try await profileActions.setBlocked(userId: peer, blocked: true)
+            stoppedBots.insert(peer)
+            try await repository.delete(chatId: chatId, forEveryone: false)
+        } catch {
+            notice = error.userMessage
+        }
+    }
+
+    /// Причины жалобы на бота (как на пользователя).
+    public func botReportReasons(chatId: String) async -> [ComplaintReason] {
+        guard let profileActions, let peer = peer(of: chatId) else { return [] }
+        return (try? await profileActions.complaintReasons(for: .user(peer))) ?? []
+    }
+
+    /// Пожаловаться на бота чата по причине `reasonId`.
+    public func reportBot(chatId: String, reasonId: Int) async {
+        guard let profileActions, let peer = peer(of: chatId) else { return }
+        do {
+            let ok = try await profileActions.complain(about: .user(peer), reasonId: reasonId)
+            notice = ok ? "Жалоба отправлена" : "Сервер не принял жалобу"
+        } catch {
+            notice = error.userMessage
+        }
+    }
+
     /// «Заблокировать» собеседника личного чата.
     public func block(chatId: String) async {
         guard let profileActions,

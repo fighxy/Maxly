@@ -27,8 +27,8 @@ class ChatListMenuTest {
     private val now = 1_790_683_200_000L
     private val formatter = ChatListFormatter(ZoneOffset.UTC)
 
-    private fun chat(id: String, type: ChatType = ChatType.PRIVATE, peer: String? = "7$id", unread: Int = 0, pin: Int? = null, muted: Boolean = false) =
-        Chat(id = id, title = "Чат $id", type = type, lastMessageId = "1", unreadCount = unread, updatedAtMs = now, preview = "текст", pinOrder = pin, isMuted = muted, peerId = peer)
+    private fun chat(id: String, type: ChatType = ChatType.PRIVATE, peer: String? = "7$id", unread: Int = 0, pin: Int? = null, muted: Boolean = false, bot: Boolean = false) =
+        Chat(id = id, title = "Чат $id", type = type, lastMessageId = "1", unreadCount = unread, updatedAtMs = now, preview = "текст", pinOrder = pin, isMuted = muted, peerId = peer, isBot = bot)
 
     private fun item(chat: Chat) = formatter.item(chat, now)
 
@@ -43,6 +43,21 @@ class ChatListMenuTest {
             entries.map { it.title },
         )
         assertEquals(listOf(false, false, false, false, false, false, true, true), entries.map { it.isDanger })
+    }
+
+    @Test
+    fun botHasReportStopAndDeleteAndStop() {
+        val folders = ChatListMenu.folderChoices("1", listOf(all, work))
+        val entries = ChatListMenu.entries(item(chat("1", bot = true)), folders, hasStories = true)
+        assertEquals(
+            listOf("Добавить в папку", "Закрепить", "Отметить непрочитанным", "Отключить уведомления", "Стереть переписку", "Скрыть истории автора", "Пожаловаться", "Остановить", "Удалить и остановить"),
+            entries.map { it.title },
+        )
+        assertEquals(listOf(true, true, true), entries.takeLast(3).map { it.isDanger })
+        val stopped = ChatListMenu.entries(item(chat("1", bot = true)), null, botStopped = true)
+        assertEquals(listOf("Пожаловаться", "Перезапустить", "Удалить чат"), stopped.takeLast(3).map { it.title })
+        assertFalse((stopped[stopped.size - 2] as Entry.StopBot).isDanger)
+        assertFalse(stopped.any { it is Entry.Block })
     }
 
     @Test
@@ -103,12 +118,18 @@ class ChatListMenuTest {
         override suspend fun reorder(order: List<String>) = Unit
     }
 
-    /** Только «Заблокировать»: остальное меню не трогает. */
+    /** Чёрный список: «Заблокировать» и боты, остальное меню не трогает. */
     private class Blocker(base: AccountRepository) : AccountRepository by base {
         val blocked = mutableListOf<String>()
+        val unblocked = mutableListOf<String>()
+        var list = listOf<app.maxly.domain.BlockedUser>()
         override suspend fun block(userId: String) {
             blocked += userId
         }
+        override suspend fun unblock(userId: String) {
+            unblocked += userId
+        }
+        override suspend fun blockedUsers() = list
     }
 
     private fun unused(): AccountRepository =
@@ -116,8 +137,20 @@ class ChatListMenuTest {
 
     private val repo = object : FakeChats() {
         val untils = mutableListOf<Pair<String, Long>>()
+        val calls = mutableListOf<String>()
         override suspend fun setMuteUntil(chatId: String, untilMs: Long) {
             untils += chatId to untilMs
+        }
+        override suspend fun startBot(chatId: String) {
+            calls += "start $chatId"
+        }
+        override suspend fun deleteChat(chatId: String, forEveryone: Boolean) {
+            calls += "delete $chatId $forEveryone"
+        }
+        override suspend fun complaintReasons() = mapOf(6 to listOf(app.maxly.data.ComplaintChoice(3, "Спам")), 2 to listOf(app.maxly.data.ComplaintChoice(9, "Канал")))
+        override suspend fun complain(reasonId: Int, typeId: Int, ids: List<String>, parentId: String?): Boolean {
+            calls += "complain $reasonId $typeId $ids"
+            return true
         }
     }
     private val folders = Folders()
@@ -163,5 +196,30 @@ class ChatListMenuTest {
         vm.block("2")
         assertEquals(listOf("42"), account.blocked)
         assertEquals("Пользователь заблокирован", vm.messages.value)
+    }
+
+    @Test
+    fun botStopRestartDeleteAndReport() {
+        repo.chats.value = listOf(chat("1", peer = "42", bot = true), chat("2", peer = "43"))
+        account.list = listOf(app.maxly.domain.BlockedUser("50", "Другой", null, null))
+        vm.prepareMenu("2")
+        assertEquals(emptySet<String>(), vm.stoppedBots.value)
+        vm.prepareMenu("1")
+        assertEquals(setOf("50"), vm.stoppedBots.value)
+        assertFalse(vm.isBotStopped("1"))
+        vm.stopBot("1")
+        assertEquals(listOf("42"), account.blocked)
+        assertTrue(vm.isBotStopped("1"))
+        assertEquals("Бот остановлен", vm.messages.value)
+        vm.restartBot("1")
+        assertEquals(listOf("42"), account.unblocked)
+        assertFalse(vm.isBotStopped("1"))
+        assertEquals("Бот запущен", vm.messages.value)
+        vm.deleteAndStopBot("1")
+        assertEquals(listOf("42", "42"), account.blocked)
+        assertEquals(listOf(app.maxly.data.ComplaintChoice(3, "Спам")), kotlinx.coroutines.runBlocking { vm.botReportReasons() })
+        vm.reportBot("1", 3)
+        assertEquals(listOf("start 1", "delete 1 false", "complain 3 6 [42]"), repo.calls)
+        assertEquals("Жалоба отправлена", vm.messages.value)
     }
 }

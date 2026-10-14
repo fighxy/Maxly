@@ -70,6 +70,9 @@ interface ChatRepository : ChatMembersSource {
     /** Общие чаты с человеком (`CHAT_SEARCH_COMMON_PARTICIPANTS` 198). */
     suspend fun commonChats(userId: String): List<SharedChat> = emptyList()
 
+    /** Запустить (перезапустить) бота личного чата [chatId]: «Начать», сообщение `CONTROL botStarted`. */
+    suspend fun startBot(chatId: String): Unit = throw app.maxly.domain.MaxlyError.Rejected("Запустить бота нельзя")
+
     /** Справочник жалоб. Ключ — `typeId`. Подтверждены канал `2` и пользователь `6`. */
     suspend fun complaintReasons(): Map<Int, List<ComplaintChoice>> = emptyMap()
 

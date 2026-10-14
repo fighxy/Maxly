@@ -188,6 +188,14 @@ extension MaxIosCore {
         }
     }
 
+    func startBot(chatId: String) async throws {
+        let _: Void = try await call("startBot") { done in
+            self.client.startBot(chatId: chatId) { _, kind, key in
+                if let kind { done(.failure(Self.failed(kind: kind, key: key))) } else { done(.success(())) }
+            }
+        }
+    }
+
     func commonChats(userId: String) async throws -> [CommonChat] {
         try await call("commonChats") { done in
             self.client.commonChats(userId: userId) { chats, kind, key in

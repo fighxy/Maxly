@@ -70,6 +70,8 @@ public protocol ProfileActionsRepository: Sendable {
     /// В чёрном списке ли пользователь. Список спрашивается один раз за сеанс.
     func isBlocked(userId: String) async throws(MaxlyError) -> Bool
     func setBlocked(userId: String, blocked: Bool) async throws(MaxlyError)
+    /// Запустить (перезапустить) бота личного чата: «Начать».
+    func startBot(chatId: String) async throws(MaxlyError)
     /// Страница участников с ролями (`CHAT_MEMBERS` 59). Первая — с `ChatMembersRules.firstMarker`.
     func membersPage(chatId: String, marker: Int64) async throws(MaxlyError) -> ChatMembersPage
     /// Поиск участников на сервере по имени.
@@ -79,6 +81,8 @@ public protocol ProfileActionsRepository: Sendable {
 }
 
 public extension ProfileActionsRepository {
+    func startBot(chatId: String) async throws(MaxlyError) { throw .invalidRequest }
+
     /// Источник без страниц: весь список одной страницей, без ролей.
     func membersPage(chatId: String, marker: Int64) async throws(MaxlyError) -> ChatMembersPage {
         guard marker == ChatMembersRules.firstMarker else { return ChatMembersPage(members: [], marker: nil) }

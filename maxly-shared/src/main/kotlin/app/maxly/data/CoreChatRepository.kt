@@ -241,6 +241,12 @@ class CoreChatRepository(
         client.store.removeChat(id)
     }
 
+    override suspend fun startBot(chatId: String) {
+        val id = chatId.toLongOrNull() ?: return
+        val sent = MaxCoreGateway.call { client.api.messages.sendBotStart(id) }
+        client.store.putSentMessage(id, sent)
+    }
+
     override suspend fun clearHistory(chatId: String, forEveryone: Boolean) {
         val id = chatId.toLongOrNull() ?: return
         val stored = client.store.state.value.chats[id]

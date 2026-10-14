@@ -368,6 +368,14 @@ fun ChatListScreen(
                     createFolder = viewModel::createFolder,
                     muteFor = viewModel::muteFor,
                     block = if (viewModel.canBlock) viewModel::block else null,
+                    bots = if (viewModel.canBlock) {
+                        BotActions(
+                            viewModel.stoppedBots, viewModel::prepareMenu, viewModel::stopBot, viewModel::restartBot,
+                            viewModel::deleteAndStopBot, viewModel::botReportReasons, viewModel::reportBot,
+                        )
+                    } else {
+                        null
+                    },
                 )
             }
             if (state.isReorderingPins) {
@@ -874,6 +882,21 @@ class ChatRowActions(
     val muteFor: (String, app.maxly.presentation.chatlist.ChatListMenu.MuteFor) -> Unit = { _, _ -> },
     /** «Заблокировать» собеседника; `null` — пункта нет. */
     val block: ((String) -> Unit)? = null,
+    /** Пункты чата с ботом («Пожаловаться», «Остановить»…); `null` — их нет. */
+    val bots: BotActions? = null,
+)
+
+/** Чат с ботом: остановить (чёрный список), перезапустить, удалить и остановить, пожаловаться. */
+class BotActions(
+    /** Собеседники-боты в чёрном списке. */
+    val stopped: kotlinx.coroutines.flow.StateFlow<Set<String>>,
+    /** Меню открылось: узнать, остановлен ли бот. */
+    val prepare: (String) -> Unit,
+    val stop: (String) -> Unit,
+    val restart: (String) -> Unit,
+    val deleteAndStop: (String) -> Unit,
+    val reasons: suspend () -> List<app.maxly.data.ComplaintChoice>,
+    val report: (chatId: String, reasonId: Int) -> Unit,
 )
 
 @OptIn(ExperimentalFoundationApi::class)

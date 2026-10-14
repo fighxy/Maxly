@@ -9,6 +9,14 @@ import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.DeleteForever
+import androidx.compose.material.icons.outlined.DoNotDisturbOn
+import androidx.compose.material.icons.outlined.PlayCircle
+import androidx.compose.material.icons.outlined.Report
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.outlined.MarkChatRead
 import androidx.compose.material.icons.outlined.MarkChatUnread
 import androidx.compose.material.icons.outlined.NotificationsActive
@@ -24,6 +32,7 @@ import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,7 +50,9 @@ private enum class ChatMenuPage { MAIN, FOLDERS, MUTE }
 /**
  * Меню строки списка чатов в порядке Max ([ChatListMenu.entries]). «Добавить в папку» и
  * «Отключить уведомления» открывают подменю на месте основного, «Назад» возвращает к нему.
- * Стирание и удаление спрашивает [onErase], блокировку подтверждает своё окно.
+ * Стирание и удаление спрашивает [onErase], блокировку подтверждает своё окно. У бота —
+ * «Пожаловаться» (выбор причины), «Остановить» и «Удалить и остановить» (с подтверждением),
+ * у остановленного — «Перезапустить».
  */
 @Composable
 fun ChatRowMenu(
@@ -54,6 +65,13 @@ fun ChatRowMenu(
 ) {
     var page by remember { mutableStateOf(ChatMenuPage.MAIN) }
     var blocking by remember { mutableStateOf(false) }
+    var reporting by remember { mutableStateOf(false) }
+    var stopping by remember { mutableStateOf(false) }
+    var deletingBot by remember { mutableStateOf(false) }
+    val bots = actions.bots
+    val stoppedBots = bots?.stopped?.collectAsState()?.value.orEmpty()
+    val botStopped = item.peerId != null && item.peerId in stoppedBots
+    androidx.compose.runtime.LaunchedEffect(expanded) { if (expanded) bots?.prepare?.invoke(item.id) }
     var creatingFolder by remember { mutableStateOf(false) }
     val stories = app.maxly.ui.stories.LocalStoryRings.current
     val owner = storyOwner(item)
@@ -71,7 +89,9 @@ fun ChatRowMenu(
                 hasStories = ring != null && stories.state.own?.owner?.id != ring.owner.id,
                 savedMessages = saved,
                 canReorderPins = canReorderPins,
-            ).filterNot { it is Entry.Block && actions.block == null }
+                botStopped = botStopped,
+            ).filterNot { (it is Entry.Block && actions.block == null) || (bots == null && (it is Entry.Report || it is Entry.StopBot)) }
+                .map { if (bots == null && it is Entry.DeleteAndStop) Entry.Delete else it }
         } else {
             emptyList()
         }
@@ -88,6 +108,9 @@ fun ChatRowMenu(
                         Entry.HideStories -> { close(); if (owner != null) stories.hide(owner, ring?.name.orEmpty()) }
                         Entry.Block -> { close(); blocking = true }
                         Entry.Delete -> { close(); onErase(app.maxly.ui.chat.ChatErase.DELETE) }
+                        Entry.Report -> { close(); reporting = true }
+                        is Entry.StopBot -> { close(); if (entry.stopped) bots?.restart?.invoke(item.id) else stopping = true }
+                        Entry.DeleteAndStop -> { close(); deletingBot = true }
                     }
                 }
             }
@@ -110,6 +133,16 @@ fun ChatRowMenu(
         CreateFolderDialog(
             onCreate = { title -> creatingFolder = false; actions.createFolder(item.id, title) },
             onDismiss = { creatingFolder = false },
+        )
+    }
+    if (bots != null) {
+        BotDialogs(
+            item = item,
+            bots = bots,
+            reporting = reporting,
+            stopping = stopping,
+            deleting = deletingBot,
+            onDone = { reporting = false; stopping = false; deletingBot = false },
         )
     }
     if (blocking) {
@@ -145,6 +178,66 @@ private fun icon(entry: Entry): ImageVector = when (entry) {
     Entry.HideStories -> Icons.Outlined.VisibilityOff
     Entry.Block -> Icons.Outlined.Block
     Entry.Delete -> Icons.Outlined.Delete
+    Entry.Report -> Icons.Outlined.Report
+    is Entry.StopBot -> if (entry.stopped) Icons.Outlined.PlayCircle else Icons.Outlined.DoNotDisturbOn
+    Entry.DeleteAndStop -> Icons.Outlined.DeleteForever
+}
+
+/** Окна бота: причина жалобы, «Остановить?», «Удалить и остановить?». */
+@Composable
+private fun BotDialogs(item: ChatListItem, bots: BotActions, reporting: Boolean, stopping: Boolean, deleting: Boolean, onDone: () -> Unit) {
+    val hidden = app.maxly.ui.components.LocalPrivateMode.current != app.maxly.domain.PrivateModeDisplay.VISIBLE
+    val name = if (hidden) "бота" else "«${item.title}»"
+    if (reporting) {
+        var reasons by remember { mutableStateOf<List<app.maxly.data.ComplaintChoice>?>(null) }
+        androidx.compose.runtime.LaunchedEffect(Unit) { reasons = bots.reasons() }
+        AlertDialog(
+            onDismissRequest = onDone,
+            title = { Text("Пожаловаться на $name") },
+            text = {
+                val list = reasons
+                when {
+                    list == null -> Text("Загружаем причины…")
+                    list.isEmpty() -> Text("Не удалось загрузить причины жалобы.")
+                    else -> androidx.compose.foundation.layout.Column {
+                        list.forEach { reason ->
+                            Text(
+                                reason.title.ifBlank { "Причина ${reason.id}" },
+                                modifier = androidx.compose.ui.Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onDone(); bots.report(item.id, reason.id) }
+                                    .padding(vertical = 10.dp),
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = onDone) { Text("Отмена") } },
+        )
+    }
+    if (stopping) {
+        AlertDialog(
+            onDismissRequest = onDone,
+            title = { Text("Остановить $name?") },
+            text = { Text("Бот больше не сможет писать вам. Перезапустить его можно в меню чата.") },
+            confirmButton = {
+                TextButton(onClick = { onDone(); bots.stop(item.id) }) { Text("Остановить", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = onDone) { Text("Отмена") } },
+        )
+    }
+    if (deleting) {
+        AlertDialog(
+            onDismissRequest = onDone,
+            title = { Text("Удалить чат и остановить $name?") },
+            text = { Text("Переписка удалится у вас, бот больше не сможет писать вам.") },
+            confirmButton = {
+                TextButton(onClick = { onDone(); bots.deleteAndStop(item.id) }) { Text("Удалить", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = onDone) { Text("Отмена") } },
+        )
+    }
 }
 
 @Composable

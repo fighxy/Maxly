@@ -32,6 +32,10 @@ struct ChatListView: View {
     @State private var composeShown = false
     /// «Заблокировать» из меню ждёт подтверждения.
     @State private var blockCandidate: ChatListItem?
+    /// Бот: «Остановить» и «Удалить и остановить» ждут подтверждения, жалоба — выбора причины.
+    @State private var botStopCandidate: ChatListItem?
+    @State private var botDeleteCandidate: ChatListItem?
+    @State private var botReport: BotReport?
     /// «Создать папку» из меню строки: для какого чата.
     @State private var newFolderChat: String?
     /// Истории: полоса над чатами и кольца на аватарах личных чатов. `nil` в превью.
@@ -128,10 +132,51 @@ struct ChatListView: View {
         } message: { _ in
             Text("Он не сможет писать вам и звонить. Разблокировать можно в настройках конфиденциальности.")
         }
+        .confirmationDialog(
+            botTitle(botStopCandidate, "Остановить"),
+            isPresented: Binding(get: { botStopCandidate != nil }, set: { if !$0 { botStopCandidate = nil } }),
+            titleVisibility: .visible,
+            presenting: botStopCandidate
+        ) { item in
+            Button("Остановить", role: .destructive) { Task { await viewModel.stopBot(chatId: item.id) } }
+            Button("Отмена", role: .cancel) {}
+        } message: { _ in
+            Text("Бот больше не сможет писать вам. Перезапустить его можно в меню чата.")
+        }
+        .confirmationDialog(
+            botTitle(botDeleteCandidate, "Удалить чат и остановить"),
+            isPresented: Binding(get: { botDeleteCandidate != nil }, set: { if !$0 { botDeleteCandidate = nil } }),
+            titleVisibility: .visible,
+            presenting: botDeleteCandidate
+        ) { item in
+            Button("Удалить и остановить", role: .destructive) { Task { await viewModel.deleteAndStopBot(chatId: item.id) } }
+            Button("Отмена", role: .cancel) {}
+        } message: { _ in
+            Text("Переписка удалится у вас, бот больше не сможет писать вам.")
+        }
+        .confirmationDialog(
+            botTitle(botReport?.item, "Пожаловаться на"),
+            isPresented: Binding(get: { botReport?.reasons.isEmpty == false }, set: { if !$0 { botReport = nil } }),
+            titleVisibility: .visible,
+            presenting: botReport
+        ) { report in
+            ForEach(report.reasons) { reason in
+                Button(reason.title.isEmpty ? "Причина \(reason.id)" : reason.title) {
+                    Task { await viewModel.reportBot(chatId: report.item.id, reasonId: reason.id) }
+                }
+            }
+            Button("Отмена", role: .cancel) {}
+        }
         .createFolderAlert(for: $newFolderChat) { chatId, title in
             Task { await viewModel.createFolder(chatId: chatId, title: title) }
         }
         .overlay(alignment: .top) { noticeBanner }
+    }
+
+    /// «Остановить бота?» / «Остановить «Имя»?»; в приватном режиме без имени.
+    private func botTitle(_ item: ChatListItem?, _ verb: String) -> String {
+        guard let item, privateMode == .visible else { return "\(verb) бота?" }
+        return verb == "Пожаловаться на" ? "\(verb) «\(item.title)»" : "\(verb) «\(item.title)»?"
     }
 
     private var blockTitle: String {
@@ -514,6 +559,8 @@ struct ChatListView: View {
             .swipeActions(edge: .trailing, allowsFullSwipe: false) { trailingActions(item) }
             .contextMenu { menu(item) }
             .onAppear { Task { await viewModel.itemAppeared(item.id) } }
+            // Остановлен ли бот (чёрный список спрашивается раз за сеанс): меню знает до открытия.
+            .task(id: item.id) { if ChatListMenu.isBot(item) { await viewModel.prepareMenu(chatId: item.id) } }
     }
 
     // MARK: Действия строки
@@ -576,7 +623,8 @@ struct ChatListView: View {
             folders: viewModel.folderChoices(chatId: item.id),
             capabilities: viewModel.capabilities,
             hasStories: ring != nil && !isOwnRing,
-            canBlock: viewModel.canBlock
+            canBlock: viewModel.canBlock,
+            botStopped: viewModel.isBotStopped(chatId: item.id)
         )
         ForEach(entries, id: \.self) { entry in
             menuEntry(entry, item: item, ring: ring)
@@ -632,6 +680,29 @@ struct ChatListView: View {
         case .block:
             Button(role: .destructive) { blockCandidate = item } label: {
                 Label(entry.title, systemImage: "hand.raised")
+            }
+        case .report:
+            Button(role: .destructive) {
+                Task {
+                    let reasons = await viewModel.botReportReasons(chatId: item.id)
+                    if reasons.isEmpty { viewModel.notice = "Не удалось загрузить причины жалобы" } else { botReport = BotReport(item: item, reasons: reasons) }
+                }
+            } label: {
+                Label(entry.title, systemImage: "exclamationmark.circle")
+            }
+        case .stopBot(let stopped):
+            if stopped {
+                Button { Task { await viewModel.restartBot(chatId: item.id) } } label: {
+                    Label(entry.title, systemImage: "play.circle")
+                }
+            } else {
+                Button(role: .destructive) { botStopCandidate = item } label: {
+                    Label(entry.title, systemImage: "minus.circle")
+                }
+            }
+        case .deleteAndStop:
+            Button(role: .destructive) { botDeleteCandidate = item } label: {
+                Label(entry.title, systemImage: "trash")
             }
         case .delete:
             Button(role: .destructive) { viewModel.requestDelete(chatId: item.id) } label: {
@@ -1176,4 +1247,11 @@ private struct ComposeSheet: View {
         }
         .presentationDetents([.medium, .large])
     }
+}
+
+/// Жалоба на бота из меню строки: чат и причины сервера.
+private struct BotReport: Identifiable {
+    let item: ChatListItem
+    let reasons: [ComplaintReason]
+    var id: String { item.id }
 }

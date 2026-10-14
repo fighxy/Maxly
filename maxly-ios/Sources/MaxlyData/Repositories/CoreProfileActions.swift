@@ -85,6 +85,10 @@ public actor CoreProfileActions: ProfileActionsRepository {
         if flag { blocked?.insert(userId) } else { blocked?.remove(userId) }
     }
 
+    public func startBot(chatId: String) async throws(MaxlyError) {
+        try await run { try await core.startBot(chatId: chatId) }
+    }
+
     /// Выход или смена аккаунта: чёрный список прежнего не должен пережить его.
     public func reset() {
         blocked = nil

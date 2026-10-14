@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** Что список хранит на устройстве: ручные пометки «непрочитано» и черновики. */
@@ -708,6 +709,104 @@ class ChatListViewModel(
 
     /** В меню есть «Заблокировать»: есть кому. */
     val canBlock: Boolean get() = account != null
+
+    // Боты: «Остановить» — бот в чёрном списке; список грузится, когда впервые открыли меню бота.
+
+    private val _stoppedBots = MutableStateFlow<Set<String>>(emptySet())
+    /** Собеседники-боты в чёрном списке (id пользователей). */
+    val stoppedBots: StateFlow<Set<String>> = _stoppedBots.asStateFlow()
+    private var stoppedLoaded = false
+
+    /** Открыли меню чата [chatId]: для бота узнать, остановлен ли он (один раз за жизнь модели). */
+    fun prepareMenu(chatId: String) {
+        val repo = account ?: return
+        if (stoppedLoaded || chats.firstOrNull { it.id == chatId }?.isBot != true) return
+        stoppedLoaded = true
+        viewModelScope.launch {
+            try {
+                val ids = repo.blockedUsers().map { it.id }.toSet()
+                _stoppedBots.update { it + ids }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                stoppedLoaded = false
+            }
+        }
+    }
+
+    /** Бот чата [chatId] остановлен. */
+    fun isBotStopped(chatId: String): Boolean = formatterPeer(chatId)?.let { it in _stoppedBots.value } ?: false
+
+    /** «Остановить»: бот в чёрный список, писать он больше не может. */
+    fun stopBot(chatId: String) {
+        val repo = account ?: return
+        val peer = formatterPeer(chatId) ?: return
+        viewModelScope.launch {
+            try {
+                repo.block(peer)
+                _stoppedBots.update { it + peer }
+                _messages.value = "Бот остановлен"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                _messages.value = CoreErrors.map(e).userMessage
+            }
+        }
+    }
+
+    /** «Перезапустить»: бот из чёрного списка и сразу «Начать». */
+    fun restartBot(chatId: String) {
+        val repo = account ?: return
+        val peer = formatterPeer(chatId) ?: return
+        viewModelScope.launch {
+            try {
+                repo.unblock(peer)
+                _stoppedBots.update { it - peer }
+                repository.startBot(chatId)
+                _messages.value = "Бот запущен"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                _messages.value = CoreErrors.map(e).userMessage
+            }
+        }
+    }
+
+    /** «Удалить и остановить»: бот в чёрный список, чат удаляется у себя. */
+    fun deleteAndStopBot(chatId: String) {
+        val repo = account ?: return
+        val peer = formatterPeer(chatId) ?: return
+        viewModelScope.launch {
+            try {
+                repo.block(peer)
+                _stoppedBots.update { it + peer }
+                repository.deleteChat(chatId, forEveryone = false)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                _messages.value = CoreErrors.map(e).userMessage
+            }
+        }
+    }
+
+    /** Причины жалобы на бота (как на пользователя, тип `6`). */
+    suspend fun botReportReasons(): List<app.maxly.data.ComplaintChoice> =
+        runCatching { repository.complaintReasons()[app.maxly.data.LockPayloads.COMPLAINT_USER].orEmpty() }.getOrDefault(emptyList())
+
+    /** Пожаловаться на бота чата [chatId] по причине [reasonId]. */
+    fun reportBot(chatId: String, reasonId: Int) {
+        val peer = formatterPeer(chatId) ?: return
+        viewModelScope.launch {
+            try {
+                val ok = repository.complain(reasonId, app.maxly.data.LockPayloads.COMPLAINT_USER, listOf(peer))
+                _messages.value = if (ok) "Жалоба отправлена" else "Сервер не принял жалобу"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                _messages.value = CoreErrors.map(e).userMessage
+            }
+        }
+    }
 
     private fun formatterPeer(chatId: String): String? =
         chats.firstOrNull { it.id == chatId }?.let { chat -> formatter.item(chat, now(), showDraft = false).peerId }

@@ -4,7 +4,9 @@ import MaxlyDomain
 /// Меню строки списка чатов — как в Max, один порядок на всех платформах: «Добавить в папку ›»,
 /// «Закрепить», «Отметить непрочитанным», «Отключить уведомления ›» (на час, 4 часа, день,
 /// навсегда), «Стереть переписку», «Скрыть истории автора», «Заблокировать», «Удалить чат».
-/// Экран рисует `entries` по порядку, красным — `isDanger`.
+/// У бота вместо двух последних — «Пожаловаться», «Остановить» (бот в чёрном списке) и «Удалить и
+/// остановить»; у остановленного — «Перезапустить» и «Удалить чат». Экран рисует `entries` по
+/// порядку, красным — `isDanger`.
 public enum ChatListMenu {
     /// На сколько выключить уведомления.
     public enum MuteFor: CaseIterable, Hashable, Sendable {
@@ -55,6 +57,12 @@ public enum ChatListMenu {
         case erase
         case hideStories
         case block
+        /// Жалоба на бота: причину спрашивает экран.
+        case report
+        /// Остановить бота (в чёрный список) или запустить заново.
+        case stopBot(stopped: Bool)
+        /// Удалить чат с ботом у себя и остановить бота.
+        case deleteAndStop
         /// Что именно удаляется (у себя, у всех), спрашивает окно подтверждения.
         case delete
 
@@ -67,22 +75,32 @@ public enum ChatListMenu {
             case .erase: "Стереть переписку"
             case .hideStories: "Скрыть истории автора"
             case .block: "Заблокировать"
+            case .report: "Пожаловаться"
+            case .stopBot(let stopped): stopped ? "Перезапустить" : "Остановить"
+            case .deleteAndStop: "Удалить и остановить"
             case .delete: "Удалить чат"
             }
         }
 
-        public var isDanger: Bool { self == .block || self == .delete }
+        public var isDanger: Bool {
+            switch self {
+            case .block, .delete, .report, .deleteAndStop, .stopBot(stopped: false): true
+            default: false
+            }
+        }
     }
 
     /// Пункты меню строки `item`. `folders` — папки пользователя (`nil` — менять их нечем),
-    /// `hasStories` — у автора чата есть истории в ленте, `canBlock` — есть чем заблокировать.
+    /// `hasStories` — у автора чата есть истории в ленте, `canBlock` — есть чем заблокировать
+    /// (и остановить бота), `botStopped` — бот этого чата в чёрном списке.
     /// «Избранное» не блокируют и не скрывают.
     public static func entries(
         item: ChatListItem,
         folders: [FolderChoice]?,
         capabilities: ChatListCapabilities,
         hasStories: Bool = false,
-        canBlock: Bool = false
+        canBlock: Bool = false,
+        botStopped: Bool = false
     ) -> [Entry] {
         let saved = item.id == Chat.savedMessagesId
         let unread = item.unreadCount > 0 || item.badge == .dot
@@ -93,9 +111,20 @@ public enum ChatListMenu {
         if capabilities.contains(.mute) { result.append(.mute(muted: item.isMuted)) }
         if capabilities.contains(.delete) { result.append(.erase) }
         if hasStories && !saved { result.append(.hideStories) }
+        if canBlock && isBot(item) {
+            result.append(.report)
+            result.append(.stopBot(stopped: botStopped))
+            if capabilities.contains(.delete) { result.append(botStopped ? .delete : .deleteAndStop) }
+            return result
+        }
         if canBlock && item.type == .private && !saved { result.append(.block) }
         if capabilities.contains(.delete) { result.append(.delete) }
         return result
+    }
+
+    /// Личный чат с ботом: у него свои пункты («Остановить», «Пожаловаться»).
+    public static func isBot(_ item: ChatListItem) -> Bool {
+        item.type == .private && item.isBot && item.id != Chat.savedMessagesId
     }
 
     /// Последний пункт подменю папок.

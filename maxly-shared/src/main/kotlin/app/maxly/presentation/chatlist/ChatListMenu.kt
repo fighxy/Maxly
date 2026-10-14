@@ -6,7 +6,9 @@ import app.maxly.domain.ChatType
  * Меню строки списка чатов — как в Max, один порядок на всех платформах:
  * «Добавить в папку ›», «Закрепить», «Отметить непрочитанным», «Отключить уведомления ›»
  * (на час, 4 часа, день, навсегда), «Стереть переписку», «Скрыть истории автора»,
- * «Заблокировать», «Удалить чат». Экран рисует [entries] по порядку, красным — [Entry.isDanger].
+ * «Заблокировать», «Удалить чат». У бота вместо двух последних — «Пожаловаться», «Остановить»
+ * (бот в чёрном списке, писать он не может) и «Удалить и остановить»; остановленного —
+ * «Перезапустить» и «Удалить чат». Экран рисует [entries] по порядку, красным — [Entry.isDanger].
  */
 object ChatListMenu {
     /** На сколько выключить уведомления. */
@@ -59,6 +61,21 @@ object ChatListMenu {
             override val title get() = "Заблокировать"
             override val isDanger get() = true
         }
+        /** Жалоба на бота: причину спрашивает экран. */
+        data object Report : Entry {
+            override val title get() = "Пожаловаться"
+            override val isDanger get() = true
+        }
+        /** Остановить бота (в чёрный список) или запустить заново (из списка и «Начать»). */
+        data class StopBot(val stopped: Boolean) : Entry {
+            override val title get() = if (stopped) "Перезапустить" else "Остановить"
+            override val isDanger get() = !stopped
+        }
+        /** Удалить чат с ботом у себя и остановить бота. */
+        data object DeleteAndStop : Entry {
+            override val title get() = "Удалить и остановить"
+            override val isDanger get() = true
+        }
         /** Что именно удаляется (у себя, у всех, выход из группы), спрашивает окно подтверждения. */
         data object Delete : Entry {
             override val title get() = "Удалить чат"
@@ -69,7 +86,8 @@ object ChatListMenu {
     /**
      * Пункты меню строки [item]. [folders] — папки пользователя (`null` — менять их нечем),
      * [hasStories] — у автора чата есть истории в ленте, [savedMessages] — «Избранное»
-     * (его не блокируют и не скрывают), [canReorderPins] — список «Все» без поиска (компьютер).
+     * (его не блокируют и не скрывают), [canReorderPins] — список «Все» без поиска (компьютер),
+     * [botStopped] — бот этого чата в чёрном списке.
      */
     fun entries(
         item: ChatListItem,
@@ -78,6 +96,7 @@ object ChatListMenu {
         savedMessages: Boolean = false,
         canReorderPins: Boolean = false,
         canMarkUnread: Boolean = true,
+        botStopped: Boolean = false,
     ): List<Entry> = buildList {
         if (folders != null) add(Entry.Folders(folders))
         add(Entry.Pin(item.isPinned))
@@ -86,9 +105,19 @@ object ChatListMenu {
         add(Entry.Mute(item.isMuted))
         add(Entry.Erase)
         if (hasStories && !savedMessages) add(Entry.HideStories)
+        if (isBot(item, savedMessages)) {
+            add(Entry.Report)
+            add(Entry.StopBot(botStopped))
+            add(if (botStopped) Entry.Delete else Entry.DeleteAndStop)
+            return@buildList
+        }
         if (item.type == ChatType.PRIVATE && item.peerId != null && !savedMessages) add(Entry.Block)
         add(Entry.Delete)
     }
+
+    /** Личный чат с ботом: у него свои пункты («Остановить», «Пожаловаться»). */
+    fun isBot(item: ChatListItem, savedMessages: Boolean = false): Boolean =
+        item.type == ChatType.PRIVATE && item.isBot && item.peerId != null && !savedMessages
 
     /** Последний пункт подменю папок. */
     const val CREATE_FOLDER = "Создать папку"

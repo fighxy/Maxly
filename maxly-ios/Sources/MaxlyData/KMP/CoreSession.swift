@@ -654,6 +654,8 @@ public protocol MaxCore: Sendable {
     func loadBlockedUsers() async throws -> [BlockedUser]
     func unblockUser(_ userId: String) async throws
     func blockUser(_ userId: String) async throws
+    /// Запустить бота личного чата: «Начать», сообщение `CONTROL botStarted`.
+    func startBot(chatId: String) async throws
     /// Общие чаты с пользователем (`CHAT_SEARCH_COMMON_PARTICIPANTS` 198).
     func commonChats(userId: String) async throws -> [CommonChat]
     /// Причины жалобы для типа (`COMPLAIN_REASONS_GET` 162): `2` — канал, `6` — человек.
@@ -952,6 +954,7 @@ public extension MaxCore {
     func loadBlockedUsers() async throws -> [BlockedUser] { throw unsupported }
     func unblockUser(_ userId: String) async throws { throw unsupported }
     func blockUser(_ userId: String) async throws { throw unsupported }
+    func startBot(chatId: String) async throws { throw unsupported }
     func commonChats(userId: String) async throws -> [CommonChat] { throw unsupported }
     func complaintReasons(typeId: Int) async throws -> [ComplaintReason] { throw unsupported }
     func sendComplaint(reasonId: Int, typeId: Int, ids: [String]) async throws -> Bool { throw unsupported }

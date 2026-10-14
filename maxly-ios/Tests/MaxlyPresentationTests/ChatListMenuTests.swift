@@ -30,14 +30,25 @@ private final class MenuFolders: FolderRepository, @unchecked Sendable {
 
 private actor Blocker: ProfileActionsRepository {
     private(set) var blocked: [String] = []
+    private(set) var calls: [String] = []
+    var blackList: Set<String> = []
     func members(chatId: String) async throws(MaxlyError) -> [ProfileMember] { [] }
     func commonChats(userId: String) async throws(MaxlyError) -> [CommonChat] { [] }
-    func complaintReasons(for target: ComplaintTarget) async throws(MaxlyError) -> [ComplaintReason] { [] }
-    func complain(about target: ComplaintTarget, reasonId: Int) async throws(MaxlyError) -> Bool { false }
-    func isBlocked(userId: String) async throws(MaxlyError) -> Bool { false }
-    func setBlocked(userId: String, blocked: Bool) async throws(MaxlyError) {
-        if blocked { self.blocked.append(userId) }
+    func complaintReasons(for target: ComplaintTarget) async throws(MaxlyError) -> [ComplaintReason] {
+        target.typeId == 6 ? [ComplaintReason(id: 3, title: "Спам")] : []
     }
+    func complain(about target: ComplaintTarget, reasonId: Int) async throws(MaxlyError) -> Bool {
+        calls.append("complain \(reasonId) \(target.typeId) \(target.ids.joined(separator: ","))")
+        return true
+    }
+    func isBlocked(userId: String) async throws(MaxlyError) -> Bool { blackList.contains(userId) }
+    func setBlocked(userId: String, blocked: Bool) async throws(MaxlyError) {
+        if blocked { self.blocked.append(userId) } else { calls.append("unblock \(userId)") }
+    }
+    func startBot(chatId: String) async throws(MaxlyError) {
+        calls.append("start \(chatId)")
+    }
+    func setBlackList(_ ids: Set<String>) { blackList = ids }
     func membersPage(chatId: String, marker: Int64) async throws(MaxlyError) -> ChatMembersPage {
         throw .invalidRequest
     }
@@ -63,6 +74,19 @@ struct ChatListMenuTests {
             "Стереть переписку", "Скрыть истории автора", "Заблокировать", "Удалить чат",
         ])
         #expect(entries.map(\.isDanger) == [false, false, false, false, false, false, true, true])
+    }
+
+    @Test("Бот: пожаловаться, остановить, удалить и остановить; остановленный — перезапустить")
+    func bot() {
+        var value = chat("1", at: 1, type: .private)
+        value.isBot = true
+        let entries = ChatListMenu.entries(item: item(value), folders: nil, capabilities: all, canBlock: true)
+        #expect(Array(entries.suffix(4).map(\.title)) == ["Стереть переписку", "Пожаловаться", "Остановить", "Удалить и остановить"])
+        #expect(Array(entries.suffix(3).map(\.isDanger)) == [true, true, true])
+        #expect(!entries.contains(.block))
+        let stopped = ChatListMenu.entries(item: item(value), folders: nil, capabilities: all, canBlock: true, botStopped: true)
+        #expect(Array(stopped.suffix(3)) == [.report, .stopBot(stopped: true), .delete])
+        #expect(!ChatListMenu.Entry.stopBot(stopped: true).isDanger)
     }
 
     @Test("У группы нет блокировки, без папок нет подменю")
@@ -146,5 +170,32 @@ struct ChatListMenuTests {
         await model.block(chatId: "g")
         #expect(await actions.blocked == ["42"])
         #expect(model.notice == "Пользователь заблокирован")
+    }
+
+    @Test("Бот: остановить, перезапустить, удалить и остановить, пожаловаться")
+    func botActions() async {
+        let actions = Blocker()
+        await actions.setBlackList(["42"])
+        let (model, repository) = makeModel(folders: MenuFolders(), actions: actions)
+        let dialog = String(42 ^ 7)
+        var bot = chat(dialog, at: 1, type: .private)
+        bot.isBot = true
+        repository.emit([bot])
+        #expect(await eventually { model.items.count == 1 })
+        await model.prepareMenu(chatId: dialog)
+        #expect(model.isBotStopped(chatId: dialog))
+        await model.restartBot(chatId: dialog)
+        #expect(!model.isBotStopped(chatId: dialog))
+        #expect(model.notice == "Бот запущен")
+        await model.stopBot(chatId: dialog)
+        #expect(model.isBotStopped(chatId: dialog))
+        #expect(model.notice == "Бот остановлен")
+        await model.deleteAndStopBot(chatId: dialog)
+        #expect(await actions.blocked == ["42", "42"])
+        #expect(await repository.actions.contains("delete \(dialog) false"))
+        #expect(await model.botReportReasons(chatId: dialog) == [ComplaintReason(id: 3, title: "Спам")])
+        await model.reportBot(chatId: dialog, reasonId: 3)
+        #expect(await actions.calls == ["unblock 42", "start \(dialog)", "complain 3 6 42"])
+        #expect(model.notice == "Жалоба отправлена")
     }
 }
