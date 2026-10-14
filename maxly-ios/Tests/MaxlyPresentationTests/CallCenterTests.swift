@@ -16,6 +16,7 @@ final class FakeCallControl: CallControl {
     var started = 0
     var accepted: [Bool] = []
     var hungUp = 0
+    var closed: [CallEndReason] = []
     var muted: [Bool] = []
     var camera: [Bool] = []
     var cameraSwitches = 0
@@ -41,6 +42,10 @@ final class FakeCallControl: CallControl {
         if !state.isEnded {
             state.phase = .ended(role == .callee && accepted.isEmpty ? .rejected : .hungUp)
         }
+    }
+    func close(reason: CallEndReason) async {
+        closed.append(reason)
+        if !state.isEnded { state.phase = .ended(reason) }
     }
     func setMuted(_ muted: Bool) async {
         self.muted.append(muted)
@@ -105,9 +110,16 @@ final class FakeCallService: CallService, @unchecked Sendable {
     var ringingError: MaxlyError?
     var loginCalls: [RingingCall] = []
 
+    private let updates: AsyncStream<CallUpdate>
+    private let updatesContinuation: AsyncStream<CallUpdate>.Continuation
+
     init() {
         (stream, continuation) = AsyncStream.makeStream(of: IncomingCall.self)
+        (updates, updatesContinuation) = AsyncStream.makeStream(of: CallUpdate.self)
     }
+
+    func push(_ update: CallUpdate) { updatesContinuation.yield(update) }
+    func callUpdates() -> AsyncStream<CallUpdate> { updates }
 
     private var _rejected: [String] = []
     var rejectError: MaxlyError?
@@ -416,6 +428,49 @@ struct CallCenterTests {
         #expect(await eventually { plain.call != nil })
         await plain.answer()
         #expect(plainEngine.last?.accepted == [false])
+    }
+
+    @Test("Ответили на другом устройстве: входящий перестаёт звонить без отбоя, система узнаёт причину")
+    func acceptedElsewhere() async throws {
+        let (center, service, engine, system) = makeCenter()
+        service.ring(incoming())
+        #expect(await eventually { center.call != nil })
+        let id = try #require(center.call?.id)
+        service.push(CallUpdate(kind: .acceptedElsewhere, conversationId: "in-1"))
+        #expect(await eventually { center.call?.state.phase == .ended(.answeredElsewhere) })
+        #expect(engine.last?.closed == [.answeredElsewhere])
+        #expect(engine.last?.hungUp == 0)
+        #expect(service.rejected.isEmpty)
+        #expect(system?.ended.map(\.0) == [id])
+        #expect(system?.ended.first?.1 == .answeredElsewhere)
+        #expect(await eventually { center.call == nil })
+    }
+
+    @Test("Сервер закончил звонок: экран закрывается, CallKit узнаёт об отбое собеседника")
+    func endedByServer() async throws {
+        let (center, service, engine, system) = makeCenter()
+        service.ring(incoming())
+        #expect(await eventually { center.call != nil })
+        await center.answer()
+        engine.last?.move(to: .active)
+        service.push(CallUpdate(kind: .ended, conversationId: "in-1"))
+        #expect(await eventually { center.call?.state.phase == .ended(.remoteHungUp) })
+        #expect(engine.last?.closed == [.remoteHungUp])
+        #expect(system?.ended.first?.1 == .remoteHungUp)
+        #expect(await eventually { center.call == nil })
+    }
+
+    @Test("Чужой звонок и свой ответ: изменения сервера звонок не трогают")
+    func unrelatedUpdates() async throws {
+        let (center, service, engine, _) = makeCenter(system: nil)
+        service.ring(incoming())
+        #expect(await eventually { center.call != nil })
+        await center.receive(CallUpdate(kind: .ended, conversationId: "other"))
+        #expect(center.call?.isRinging == true)
+        await center.answer()
+        await center.receive(CallUpdate(kind: .acceptedElsewhere, conversationId: "in-1"))
+        #expect(center.call?.state.isEnded == false)
+        #expect(engine.last?.closed.isEmpty == true)
     }
 
     @Test("Сервер не принял отклонение: звонок всё равно закрыт сокетом звонка")

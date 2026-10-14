@@ -129,6 +129,7 @@ final class CallKitController: NSObject, CallSystem {
         case .noAnswer, .missed: .unanswered
         case .rejected: .declinedElsewhere
         case .connectionLost, .failed: .failed
+        case .answeredElsewhere: .answeredElsewhere
         }
     }
 

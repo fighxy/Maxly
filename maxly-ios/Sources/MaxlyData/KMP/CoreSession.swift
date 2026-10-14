@@ -741,6 +741,8 @@ public protocol MaxCore: Sendable {
     func deleteCallHistory(ids: [String]) async throws
     /// Входящие звонки (`NOTIF_CALL_START` 137) с разобранным `vcp`.
     func incomingCalls() -> AsyncStream<CoreIncomingCall>
+    /// Изменения звонков (`NOTIF_CALL_ACCEPTED` 120, `NOTIF_CALL_END` 121).
+    func callUpdates() -> AsyncStream<CoreCallUpdate>
     /// Какие звонки сейчас звонят этому аккаунту (`GET_INBOUND_CALLS` 103, пустое тело). Без `vcp`:
     /// ответить нельзя, только перезвонить (docs/background.md).
     func probeInboundCalls() async throws -> CoreInboundCalls
@@ -1016,6 +1018,7 @@ public extension MaxCore {
     func callLinkInfo(link: String) async throws -> CoreCallLinkInfo? { throw unsupported }
     func deleteCallHistory(ids: [String]) async throws { throw unsupported }
     func incomingCalls() -> AsyncStream<CoreIncomingCall> { AsyncStream { $0.finish() } }
+    func callUpdates() -> AsyncStream<CoreCallUpdate> { AsyncStream { $0.finish() } }
     func probeInboundCalls() async throws -> CoreInboundCalls { throw unsupported }
     func loginInboundCalls(maxAgeMs: Int64) async throws -> CoreInboundCalls { throw unsupported }
     func enablePassword(password: String, hint: String) async throws { throw unsupported }
@@ -1189,6 +1192,17 @@ public struct CoreInboundCall: Sendable, Equatable {
         self.callerAvatarURL = callerAvatarURL
         self.chatId = chatId
         self.isVideo = isVideo
+    }
+}
+
+/// Изменение звонка от ядра: `kind` — `acceptedElsewhere` или `ended`.
+public struct CoreCallUpdate: Sendable, Equatable {
+    public var kind: String
+    public var conversationId: String
+
+    public init(kind: String, conversationId: String) {
+        self.kind = kind
+        self.conversationId = conversationId
     }
 }
 

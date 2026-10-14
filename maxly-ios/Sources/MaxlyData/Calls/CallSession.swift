@@ -190,6 +190,11 @@ public final class CallSession: CallControl {
         }
     }
 
+    public func close(reason: CallEndReason) async {
+        guard !ended else { return }
+        end(reason)
+    }
+
     public func setMuted(_ muted: Bool) async {
         guard !ended else { return }
         applyMuted(muted)

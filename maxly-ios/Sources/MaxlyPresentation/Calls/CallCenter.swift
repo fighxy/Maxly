@@ -126,6 +126,7 @@ public final class CallCenter: CallSystemDelegate {
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var control: (any CallControl)?
     @ObservationIgnored private var watch: Task<Void, Never>?
+    @ObservationIgnored private var updatesWatch: Task<Void, Never>?
     @ObservationIgnored private var dismissal: Task<Void, Never>?
     @ObservationIgnored private var answerWithVideo = false
     /// Звонок закончили через систему: ей не нужно сообщать о конце.
@@ -165,12 +166,21 @@ public final class CallCenter: CallSystemDelegate {
                 await self.receive(incoming)
             }
         }
+        let updates = service.callUpdates()
+        updatesWatch = Task { [weak self] in
+            for await update in updates {
+                guard let self else { return }
+                await self.receive(update)
+            }
+        }
     }
 
     /// Выход из аккаунта: входящие больше не слушаются, идущий звонок кладётся.
     public func deactivate() async {
         watch?.cancel()
         watch = nil
+        updatesWatch?.cancel()
+        updatesWatch = nil
         clearNotice()
         if call != nil { await hangUp() }
     }
@@ -303,6 +313,33 @@ public final class CallCenter: CallSystemDelegate {
         }
         if incoming.callerName.isEmpty { resolveCaller(incoming.callerId, for: id) }
         await control.start()
+    }
+
+    /// Сервер сообщил об изменении звонка. Ответили на другом устройстве — входящий здесь
+    /// перестаёт звонить; звонок закончен — экран закрывается. Собеседнику отбой не уходит.
+    func receive(_ update: CallUpdate) async {
+        if ringingNotice?.conversationId == update.conversationId { clearNotice() }
+        guard let call, !update.conversationId.isEmpty, call.conversationId == update.conversationId,
+              !call.state.isEnded
+        else { return }
+        switch update.kind {
+        case .acceptedElsewhere:
+            // Ответили здесь же: это наш ответ, звонок остаётся.
+            guard call.isRinging else { return }
+            Log.info(.calls, "Входящий \(update.conversationId) приняли на другом устройстве")
+            await close(call.id, reason: .answeredElsewhere)
+        case .ended:
+            Log.info(.calls, "Сервер закончил звонок \(update.conversationId)")
+            await close(call.id, reason: .remoteHungUp)
+        }
+    }
+
+    private func close(_ id: UUID, reason: CallEndReason) async {
+        if let control { await control.close(reason: reason) }
+        guard var state = call?.state, call?.id == id, !state.isEnded else { return }
+        state.phase = .ended(reason)
+        control = nil
+        update(id, state)
     }
 
     /// Что дал поиск звонящих.
@@ -688,6 +725,7 @@ public enum CallStatusText {
         case .rejected: "Вы отклонили звонок"
         case .missed: "Пропущенный звонок"
         case .connectionLost: "Связь прервалась"
+        case .answeredElsewhere: "Ответили на другом устройстве"
         case .failed(let message): message.isEmpty ? "Не удалось позвонить" : message
         }
     }

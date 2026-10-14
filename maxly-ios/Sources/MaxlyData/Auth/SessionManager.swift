@@ -371,7 +371,8 @@ public actor SessionManager: AuthService, ConnectionStatusProvider {
         if phase == .expired || phase == .signedOut { return }
         guard isAuthorized || phase == .restoring else { return }
         let rejection = await core.loginRejection()
-        if rejection?.tokenCleared == false {
+        // Сервер сам завершил сессию: токен больше не годен, какой бы флаг ни пришёл.
+        if rejection?.tokenCleared == false, !LoginNotices.endsSession(rejection) {
             setConnection(.offline)
             if phase == .restoring {
                 await showCache(userId: rememberedUserId, epoch: logouts)
@@ -534,17 +535,34 @@ private enum LoginNotices {
         return LoginNotice(title: copy.title, message: copy.message, place: .chatList)
     }
 
+    /// Причины, после которых вход точно нужен заново: сессия недействительна или сервер её закрыл.
+    static func endsSession(_ rejection: CoreLoginRejection?) -> Bool {
+        guard let reason = rejection?.reason else { return false }
+        return reason == "session_invalid" || reason == "logged_out"
+    }
+
     static func loginForm(_ rejection: CoreLoginRejection?) -> LoginNotice {
-        let blocked = rejection?.reason == "blocked"
+        let fallback = fallbackLoginText(rejection?.reason)
         let copy = LoginNotice.composed(
             serverTitle: rejection?.title,
             localizedMessage: rejection?.localizedMessage,
             detail: rejection?.detail,
-            fallbackTitle: blocked ? "Аккаунт заблокирован" : "Сессия завершена",
-            fallbackBody: blocked
-                ? "Сервер не пускает в этот аккаунт. Войти можно будет, когда блокировку снимут"
-                : "Сервер больше не принимает этот вход. Войдите снова по номеру телефона"
+            fallbackTitle: fallback.title,
+            fallbackBody: fallback.body
         )
         return LoginNotice(title: copy.title, message: copy.message, place: .loginForm)
+    }
+
+    private static func fallbackLoginText(_ reason: String?) -> (title: String, body: String) {
+        switch reason {
+        case "blocked":
+            ("Аккаунт заблокирован", "Сервер не пускает в этот аккаунт. Войти можно будет, когда блокировку снимут")
+        case "session_invalid":
+            ("Сессия недействительна", "Сервер больше не принимает эту сессию. Войдите снова по номеру телефона")
+        case "logged_out":
+            ("Вы вышли из аккаунта", "Сессию завершили на другом устройстве. Войдите снова по номеру телефона")
+        default:
+            ("Сессия завершена", "Сервер больше не принимает этот вход. Войдите снова по номеру телефона")
+        }
     }
 }

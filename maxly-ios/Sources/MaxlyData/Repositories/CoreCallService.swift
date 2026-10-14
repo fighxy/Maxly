@@ -59,6 +59,27 @@ public struct CoreCallService: CallService {
         }
     }
 
+    public func callUpdates() -> AsyncStream<CallUpdate> {
+        let source = core.callUpdates()
+        return AsyncStream { continuation in
+            let task = Task {
+                for await update in source {
+                    if let mapped = Self.update(update) {
+                        Log.info(.calls, "Звонок \(update.conversationId): \(update.kind)")
+                        continuation.yield(mapped)
+                    }
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    static func update(_ update: CoreCallUpdate) -> CallUpdate? {
+        guard !update.conversationId.isEmpty, let kind = CallUpdate.Kind(rawValue: update.kind) else { return nil }
+        return CallUpdate(kind: kind, conversationId: update.conversationId)
+    }
+
     /// Форма ответа 103 пишется в журнал без пользовательских данных.
     public func ringingCalls() async throws(MaxlyError) -> [RingingCall] {
         let reply = try await run("Опрос входящих") { try await core.probeInboundCalls() }

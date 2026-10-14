@@ -365,6 +365,7 @@ struct Ws2FixturePlayer {
         case .rejected: return "Rejected"
         case .missed: return "Missed"
         case .connectionLost: return "ConnectionLost"
+        case .answeredElsewhere: return "AnsweredElsewhere"
         case .failed: return "Failed"
         }
     }

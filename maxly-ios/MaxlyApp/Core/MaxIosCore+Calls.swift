@@ -102,6 +102,15 @@ extension MaxIosCore {
         }
     }
 
+    func callUpdates() -> AsyncStream<CoreCallUpdate> {
+        AsyncStream { continuation in
+            let watch = WatchBox(client.watchCallUpdates { update in
+                continuation.yield(CoreCallUpdate(kind: update.kind, conversationId: update.conversationId))
+            })
+            continuation.onTermination = { _ in watch.cancel() }
+        }
+    }
+
     func probeInboundCalls() async throws -> CoreInboundCalls {
         try await call("probeInboundCalls") { done in
             self.client.probeInboundCalls { calls, kind, key in

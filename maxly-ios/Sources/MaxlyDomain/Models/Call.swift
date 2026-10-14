@@ -167,6 +167,8 @@ public enum CallEndReason: Hashable, Sendable {
     case missed
     /// Связь с сервером звонков не восстановилась.
     case connectionLost
+    /// На входящий ответили на другом устройстве этого аккаунта.
+    case answeredElsewhere
     /// Звонок не начался: сервер отказал или нет доступа к микрофону.
     case failed(String)
 }
@@ -277,4 +279,23 @@ public struct CallState: Hashable, Sendable {
 
     /// Остальные участники, без себя.
     public var others: [CallParticipant] { participants.filter { !$0.isSelf } }
+}
+
+/// Сервер сообщил, что звонок изменился на его стороне (пуши 120 и 121).
+public struct CallUpdate: Hashable, Sendable {
+    public enum Kind: String, Hashable, Sendable {
+        /// На звонок ответили на другом устройстве этого аккаунта: здесь он больше не звонит.
+        case acceptedElsewhere
+        /// Звонок закончили или отменили.
+        case ended
+    }
+
+    public var kind: Kind
+    /// Тот же id, что у входящего (`IncomingCall.conversationId`).
+    public var conversationId: String
+
+    public init(kind: Kind, conversationId: String) {
+        self.kind = kind
+        self.conversationId = conversationId
+    }
 }

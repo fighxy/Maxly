@@ -157,6 +157,16 @@ struct DirectoryRepositoryTests {
         #expect(await core.loginCallsAges == [60_000])
     }
 
+    @Test("Изменения звонков из ядра: известные виды, пустой id и чужой вид отброшены")
+    func callUpdates() {
+        #expect(CoreCallService.update(CoreCallUpdate(kind: "acceptedElsewhere", conversationId: "c"))
+            == CallUpdate(kind: .acceptedElsewhere, conversationId: "c"))
+        #expect(CoreCallService.update(CoreCallUpdate(kind: "ended", conversationId: "c"))
+            == CallUpdate(kind: .ended, conversationId: "c"))
+        #expect(CoreCallService.update(CoreCallUpdate(kind: "ended", conversationId: "")) == nil)
+        #expect(CoreCallService.update(CoreCallUpdate(kind: "paused", conversationId: "c")) == nil)
+    }
+
     @Test("Звонки из ядра: адрес ws2, свой номер, ICE и срок входящего")
     func callService() throws {
         let incoming = try #require(CoreCallService.incoming(CoreIncomingCall(

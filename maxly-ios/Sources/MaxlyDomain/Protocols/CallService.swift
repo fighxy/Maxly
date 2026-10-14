@@ -13,6 +13,8 @@ public protocol CallService: Sendable {
     func preview(link: String) async throws(MaxlyError) -> CallLinkPreview?
     /// Входящие звонки, пока подписка жива.
     func incomingCalls() -> AsyncStream<IncomingCall>
+    /// Изменения звонков на сервере: ответили на другом устройстве, звонок закончен.
+    func callUpdates() -> AsyncStream<CallUpdate>
     /// Звонки, которые звонят этому аккаунту прямо сейчас (`GET_INBOUND_CALLS` 103). Ответить на
     /// них нельзя, только перезвонить (`docs/background.md`).
     func ringingCalls() async throws(MaxlyError) -> [RingingCall]
@@ -25,6 +27,8 @@ public protocol CallService: Sendable {
 
 public extension CallService {
     func preview(link: String) async throws(MaxlyError) -> CallLinkPreview? { nil }
+    /// Источник без пушей о звонках: изменений нет.
+    func callUpdates() -> AsyncStream<CallUpdate> { AsyncStream { $0.finish() } }
     /// Источник без отбоя через сервер: входящий отклоняется только в сокете звонка.
     func reject(conversationId: String, peerId: String) async throws(MaxlyError) {}
     /// Источник не умеет спрашивать: звонков нет.
@@ -45,6 +49,8 @@ public protocol CallControl: AnyObject {
     func accept(video: Bool) async
     /// Положить трубку; у входящего до ответа — отклонить.
     func hangUp() async
+    /// Закрыть звонок без отбоя собеседнику: сервер уже сообщил, что звонок здесь не нужен.
+    func close(reason: CallEndReason) async
     func setMuted(_ muted: Bool) async
     func setCamera(_ on: Bool) async
     func switchCamera() async
@@ -54,6 +60,11 @@ public protocol CallControl: AnyObject {
     func setRecording(_ on: Bool) async
     /// Позвать в идущий звонок пользователей Max.
     func invite(userIds: [String]) async throws(MaxlyError)
+}
+
+public extension CallControl {
+    /// Звонок без тихого закрытия кладёт трубку.
+    func close(reason: CallEndReason) async { await hangUp() }
 }
 
 /// Делает звонки: сигнальный сокет и WebRTC.

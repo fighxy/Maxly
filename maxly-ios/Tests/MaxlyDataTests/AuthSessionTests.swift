@@ -253,6 +253,38 @@ struct SessionCoreTests {
         }
     }
 
+    @Test("Сессия недействительна или закрыта сервером: выход на экран входа с русским текстом", arguments: [
+        ("session_invalid", "Сессия недействительна", "Сервер больше не принимает эту сессию. Войдите снова по номеру телефона"),
+        ("logged_out", "Вы вышли из аккаунта", "Сессию завершили на другом устройстве. Войдите снова по номеру телефона"),
+    ])
+    func sessionEndedByServer(reason: String, title: String, message: String) async throws {
+        try await withSession { parts in
+            await parts.core.setUser("1")
+            await parts.api.setChats([makeChat(id: "keep")])
+            await parts.session.restoreSession()
+            await parts.core.setLoginRejection(CoreLoginRejection(reason: reason, tokenCleared: true))
+            await parts.session.observe(.tokenRejected)
+            #expect(await parts.session.currentPhase == .expired)
+            #expect(await snapshot(parts.chats).isEmpty)
+            let notice = await parts.session.currentLoginNotice
+            #expect(notice?.place == .loginForm)
+            #expect(notice?.title == title)
+            #expect(notice?.message == message)
+        }
+    }
+
+    @Test("Конец сессии сервером выводит из аккаунта, даже если токен не сброшен")
+    func loggedOutEvenWithToken() async throws {
+        try await withSession { parts in
+            await parts.core.setUser("1")
+            await parts.session.restoreSession()
+            await parts.core.setLoginRejection(CoreLoginRejection(reason: "logged_out", tokenCleared: false))
+            await parts.session.observe(.tokenRejected)
+            #expect(await parts.session.currentPhase == .expired)
+            #expect(await parts.session.currentLoginNotice?.place == .loginForm)
+        }
+    }
+
     @Test("Без заголовка сервера у блокировки запасные строки")
     func blockedFallback() async throws {
         try await withSession { parts in
