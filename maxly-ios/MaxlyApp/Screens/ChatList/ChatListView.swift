@@ -53,6 +53,15 @@ struct ChatListView: View {
     @State private var scroll = ChatListScroll()
 
     var body: some View {
+        // Части отдельно: одно выражение со всеми окнами компилятор не успевал проверить.
+        dialogs(screen)
+            .createFolderAlert(for: $newFolderChat) { chatId, title in
+                Task { await viewModel.createFolder(chatId: chatId, title: title) }
+            }
+            .overlay(alignment: .top) { noticeBanner }
+    }
+
+    private var screen: some View {
         folderSheets(chatList)
         .toolbar { toolbar }
         .onAppear { wireScroll() }
@@ -121,6 +130,11 @@ struct ChatListView: View {
             eraseButtons(item, clearing: true)
             Button("Отмена", role: .cancel) { viewModel.cancelClear() }
         }
+    }
+
+    /// Подтверждения блокировки и действий с ботом из меню строки.
+    private func dialogs(_ content: some View) -> some View {
+        content
         .confirmationDialog(
             blockTitle,
             isPresented: Binding(get: { blockCandidate != nil }, set: { if !$0 { blockCandidate = nil } }),
@@ -167,10 +181,6 @@ struct ChatListView: View {
             }
             Button("Отмена", role: .cancel) {}
         }
-        .createFolderAlert(for: $newFolderChat) { chatId, title in
-            Task { await viewModel.createFolder(chatId: chatId, title: title) }
-        }
-        .overlay(alignment: .top) { noticeBanner }
     }
 
     /// «Остановить бота?» / «Остановить «Имя»?»; в приватном режиме без имени.
