@@ -5,6 +5,8 @@ import MaxlyPresentation
 /// Плашки реакций: эмодзи и число, своя — цветом акцента. Нажатие ставит реакцию или
 /// снимает свою. Обычно они внутри пузыря, под текстом; у фото без подписи — под ним.
 struct ReactionChips: View {
+    /// Сообщение плашек: по нему значок узнаёт только что поставленную реакцию (`ReactionGlyph`).
+    var messageId = ""
     let reactions: [MessageReaction]
     /// Ряды прижаты к краю пузыря: у исходящих — к правому.
     var trailing = false
@@ -38,8 +40,7 @@ struct ReactionChips: View {
             onToggle(reaction.emoji)
         } label: {
             HStack(spacing: 4) {
-                Text(reaction.emoji)
-                    .font(.system(size: 15))
+                ReactionGlyph(messageId: messageId, emoji: reaction.emoji)
                 Text(ReactionPalette.countText(reaction.count))
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .contentTransition(.numericText(value: Double(reaction.count)))

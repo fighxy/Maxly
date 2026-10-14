@@ -7,19 +7,58 @@ private struct AnimojiCatalogKey: EnvironmentKey {
     static let defaultValue: [String: URL] = [:]
 }
 
-/// Только что поставленная реакция и отметка «доиграла».
-public struct ReactionBurstHost: Sendable {
-    public var burst: ReactionBurst?
-    public var onShown: @MainActor @Sendable (Int) -> Void
+/// Только что поставленная реакция на экране чата (`ChatViewModel.reactionBurst`): её значок в
+/// плашке (`ReactionGlyph`) играет анимацию на месте и сообщает, где он в ленте; эффект вокруг
+/// рисует `ReactionEffectLayer` поверх ленты, чтобы пузырь его не обрезал. Когда доиграли оба
+/// (или вышел срок `limit`), `onShown`.
+@MainActor
+@Observable
+public final class ReactionBurstHost {
+    /// Пространство координат ленты: в нём значок сообщает своё место.
+    public nonisolated static let space = "maxly.reactionBurst"
+    public nonisolated static let limit: Duration = .seconds(4)
 
-    public init(burst: ReactionBurst?, onShown: @escaping @MainActor @Sendable (Int) -> Void) {
-        self.burst = burst
-        self.onShown = onShown
+    public private(set) var burst: ReactionBurst?
+    /// Где значок, в координатах `space`.
+    var anchor: CGRect?
+    private(set) var bodyDone = true
+    private(set) var effectDone = true
+    @ObservationIgnored public var onShown: @MainActor (Int) -> Void = { _ in }
+
+    public init() {}
+
+    public func update(_ next: ReactionBurst?) {
+        guard next?.id != burst?.id else { return }
+        burst = next
+        anchor = nil
+        bodyDone = next?.lottieURL == nil
+        effectDone = next?.effectURL == nil
+    }
+
+    func bodyFinished(_ id: Int) {
+        guard burst?.id == id else { return }
+        bodyDone = true
+        finishIfDone(id)
+    }
+
+    func effectFinished(_ id: Int) {
+        guard burst?.id == id else { return }
+        effectDone = true
+        finishIfDone(id)
+    }
+
+    /// Анимация не загрузилась или значок не на экране — всё равно заканчиваем.
+    public func expire(_ id: Int) {
+        if burst?.id == id { onShown(id) }
+    }
+
+    private func finishIfDone(_ id: Int) {
+        if bodyDone, effectDone { onShown(id) }
     }
 }
 
 private struct ReactionBurstKey: EnvironmentKey {
-    static let defaultValue = ReactionBurstHost(burst: nil, onShown: { _ in })
+    static let defaultValue: ReactionBurstHost? = nil
 }
 
 public extension EnvironmentValues {
@@ -28,29 +67,67 @@ public extension EnvironmentValues {
         set { self[AnimojiCatalogKey.self] = newValue }
     }
 
-    var reactionBurst: ReactionBurstHost {
+    var reactionBurst: ReactionBurstHost? {
         get { self[ReactionBurstKey.self] }
         set { self[ReactionBurstKey.self] = newValue }
     }
 }
 
-/// Анимация реакции, которую пользователь только что поставил на сообщение `messageId`: один
-/// проход Lottie над пузырём, затем `ReactionBurstHost.onShown`.
-struct ReactionBurstOverlay: View {
+/// Значок реакции `emoji` в плашке под сообщением `messageId`: эмодзи буквой. Только что
+/// поставленная реакция один раз играет на месте свою анимацию (размер плашки не меняется) и
+/// сообщает, где она в ленте, — для эффекта вокруг (`ReactionEffectLayer`). Так же, как в Komet.
+struct ReactionGlyph: View {
     let messageId: String
+    let emoji: String
+    var size: CGFloat = 18
     @Environment(\.reactionBurst) private var host
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        if let burst = host.burst, burst.messageId == messageId, !reduceMotion {
-            AnimatedSticker(lottieURL: burst.lottieURL, stillURL: nil, size: 120, loops: false) { Color.clear }
+        if let host, let burst = host.burst, burst.matches(messageId: messageId, emoji: emoji), !reduceMotion {
+            let playing = burst.lottieURL != nil && !host.bodyDone
+            letter
+                .opacity(playing ? 0 : 1)
+                .overlay {
+                    if playing, let url = burst.lottieURL {
+                        AnimatedSticker(lottieURL: url, stillURL: nil, size: size, loops: false, onFinished: {
+                            host.bodyFinished(burst.id)
+                        }) { letter }
+                    }
+                }
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(ReactionBurstHost.space)) } action: { host.anchor = $0 }
                 .id(burst.id)
+        } else {
+            letter
+        }
+    }
+
+    private var letter: some View {
+        Text(emoji).font(.system(size: 15))
+    }
+}
+
+/// Эффект только что поставленной реакции (`lottiePlayUrl`) поверх ленты, по центру её значка:
+/// крупный, не обрезается пузырём и едет вместе с лентой. Касаний не перехватывает.
+public struct ReactionEffectLayer: View {
+    let host: ReactionBurstHost
+    var size: CGFloat = 72
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    public init(host: ReactionBurstHost, size: CGFloat = 72) {
+        self.host = host
+        self.size = size
+    }
+
+    public var body: some View {
+        if let burst = host.burst, let url = burst.effectURL, !host.effectDone, let anchor = host.anchor, !reduceMotion {
+            AnimatedSticker(lottieURL: url, stillURL: nil, size: size, loops: false, onFinished: {
+                host.effectFinished(burst.id)
+            }) { Color.clear }
+                .id(burst.id)
+                .position(x: anchor.midX, y: anchor.midY)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
-                .task(id: burst.id) {
-                    try? await Task.sleep(for: .seconds(2.2))
-                    host.onShown(burst.id)
-                }
         }
     }
 }

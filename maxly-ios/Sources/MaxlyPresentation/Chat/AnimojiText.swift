@@ -58,25 +58,58 @@ public enum AnimojiText {
     public static func lookup(catalog: [String: URL], emoji: String) -> URL? {
         guard !catalog.isEmpty else { return nil }
         if let hit = catalog[emoji] { return hit }
-        let bare = emoji.replacingOccurrences(of: variation, with: "")
+        let bare = bare(emoji)
         if let hit = catalog[bare] { return hit }
-        return catalog.first { $0.key.replacingOccurrences(of: variation, with: "") == bare }?.value
+        return catalog.first { Self.bare($0.key) == bare }?.value
+    }
+
+    /// Эмодзи без селектора вида `FE0F`.
+    public static func bare(_ emoji: String) -> String {
+        emoji.replacingOccurrences(of: variation, with: "")
     }
 
     private static let variation = "\u{FE0F}"
 }
 
-/// Реакция, которую пользователь только что поставил: экран один раз проигрывает её анимацию.
+/// Анимодзи каталога для чата: эмодзи → Lottie самого эмодзи и эмодзи → эффект реакции.
+public struct AnimojiAssets: Sendable, Equatable {
+    public var animoji: [String: URL]
+    public var effects: [String: URL]
+
+    public init(animoji: [String: URL] = [:], effects: [String: URL] = [:]) {
+        self.animoji = animoji
+        self.effects = effects
+    }
+
+    /// Из каталога сервера; при повторах эмодзи берётся первый.
+    public init(_ list: [AnimatedEmoji]) {
+        self.init(
+            animoji: Dictionary(list.compactMap { item in item.lottieURL.map { (item.emoji, $0) } }, uniquingKeysWith: { first, _ in first }),
+            effects: Dictionary(list.compactMap { item in item.effectURL.map { (item.emoji, $0) } }, uniquingKeysWith: { first, _ in first })
+        )
+    }
+}
+
+/// Реакция, которую пользователь только что поставил. Её значок в плашке под сообщением один раз
+/// играет анимацию `lottieURL` на месте, а вокруг — эффект `effectURL` (`lottiePlayUrl`
+/// анимодзи), крупнее значка; потом значок снова обычный. Так же, как в Komet.
 public struct ReactionBurst: Equatable, Sendable {
     public let messageId: String
     public let emoji: String
-    public let lottieURL: URL
+    public let lottieURL: URL?
+    public let effectURL: URL?
     public let id: Int
 
-    public init(messageId: String, emoji: String, lottieURL: URL, id: Int) {
+    public init(messageId: String, emoji: String, lottieURL: URL?, effectURL: URL?, id: Int) {
         self.messageId = messageId
         self.emoji = emoji
         self.lottieURL = lottieURL
+        self.effectURL = effectURL
         self.id = id
+    }
+
+    /// Это та плашка: то же сообщение и то же эмодзи (без учёта `FE0F`).
+    public func matches(messageId: String, emoji: String) -> Bool {
+        self.messageId == messageId && AnimojiText.bare(self.emoji) == AnimojiText.bare(emoji)
     }
 }

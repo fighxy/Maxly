@@ -149,6 +149,8 @@ class FakeMessages : MessageRepository {
     override suspend fun reactionCatalog() = catalog
     var animoji: Map<String, String> = emptyMap()
     override suspend fun animatedEmoji() = animoji
+    var effects: Map<String, String> = emptyMap()
+    override suspend fun reactionEffects() = effects
 
     val media = mutableListOf<Triple<List<app.maxly.domain.OutgoingFile>, String, String?>>()
     var mediaGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
@@ -665,6 +667,7 @@ class ChatViewModelTest {
     @Test
     fun addingReactionPlaysItsAnimationOnce() {
         repo.animoji = mapOf("🔥" to "https://lottie/fire.json", "❤️" to "https://lottie/heart.json")
+        repo.effects = mapOf("❤️" to "https://lottie/heart-play.json", "😂" to "https://lottie/laugh-play.json")
         val model = vm()
         val message = msg("4", content = MessageContent(reactions = listOf(MessageReaction("🔥", 1, mine = true))))
         model.toggleReaction(message, "🔥")
@@ -673,12 +676,20 @@ class ChatViewModelTest {
         val burst = model.state.value.reactionBurst
         assertEquals("4", burst?.messageId)
         assertEquals("https://lottie/heart.json", burst?.lottieUrl)
-        model.reactionBurstShown(burst!!.id + 1)
+        assertEquals("https://lottie/heart-play.json", burst?.effectUrl)
+        assertTrue(burst!!.matches("4", "❤️"))
+        assertTrue(burst.matches("4", "❤"))
+        assertFalse(burst.matches("5", "❤"))
+        assertFalse(burst.matches("4", "🔥"))
+        model.reactionBurstShown(burst.id + 1)
         assertEquals(burst, model.state.value.reactionBurst)
         model.reactionBurstShown(burst.id)
         assertEquals(null, model.state.value.reactionBurst)
         model.toggleReaction(message, "👍")
         assertEquals(null, model.state.value.reactionBurst)
+        // Только эффект, без анимации самого значка, — тоже играет.
+        model.toggleReaction(message, "😂")
+        assertEquals(ReactionBurst("4", "😂", null, "https://lottie/laugh-play.json", model.state.value.reactionBurst!!.id), model.state.value.reactionBurst)
     }
 
     @Test

@@ -122,6 +122,8 @@ public struct AnimatedSticker<Placeholder: View>: View {
     private let playing: Bool
     /// `false` — один проход (анимация реакции), иначе по кругу.
     private let loops: Bool
+    /// Один проход доигран (только при `loops == false`).
+    private let onFinished: (@MainActor @Sendable () -> Void)?
     private let placeholder: Placeholder
     private let store: LottieStore
     @State private var animation: LottieAnimation?
@@ -134,8 +136,10 @@ public struct AnimatedSticker<Placeholder: View>: View {
         playing: Bool = true,
         loops: Bool = true,
         store: LottieStore = .shared,
+        onFinished: (@MainActor @Sendable () -> Void)? = nil,
         @ViewBuilder placeholder: () -> Placeholder
     ) {
+        self.onFinished = onFinished
         self.lottieURL = lottieURL
         self.stillURL = stillURL
         self.size = size
@@ -154,6 +158,10 @@ public struct AnimatedSticker<Placeholder: View>: View {
                     .playbackMode(playing && !reduceMotion
                         ? .playing(.toProgress(1, loopMode: loops ? .loop : .playOnce))
                         : .paused(at: .progress(0)))
+                    .animationDidFinish { _ in
+                        guard !loops, let onFinished else { return }
+                        Task { @MainActor in onFinished() }
+                    }
                     .transition(.opacity)
             } else if stillURL != nil {
                 RemoteImage(url: stillURL, maxPixel: Int(size * 3)) { placeholder }

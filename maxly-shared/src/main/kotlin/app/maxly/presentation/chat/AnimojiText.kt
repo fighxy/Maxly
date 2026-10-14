@@ -45,13 +45,24 @@ object AnimojiText {
     fun lookup(catalog: Map<String, String>, emoji: String): String? {
         if (catalog.isEmpty()) return null
         catalog[emoji]?.let { return it }
-        val bare = emoji.replace(VARIATION, "")
+        val bare = bare(emoji)
         catalog[bare]?.let { return it }
-        return catalog.entries.firstOrNull { it.key.replace(VARIATION, "") == bare }?.value
+        return catalog.entries.firstOrNull { bare(it.key) == bare }?.value
     }
+
+    /** Эмодзи без селектора вида `FE0F`. */
+    fun bare(emoji: String): String = emoji.replace(VARIATION, "")
 
     private const val VARIATION = "️"
 }
 
-/** Реакция, которую пользователь только что поставил: экран один раз проигрывает её анимацию. */
-data class ReactionBurst(val messageId: String, val emoji: String, val lottieUrl: String, val id: Long)
+/**
+ * Реакция, которую пользователь только что поставил. Её значок в плашке под сообщением один раз
+ * проигрывает анимацию [lottieUrl] на месте, а вокруг — эффект [effectUrl] (`lottiePlayUrl`
+ * анимодзи), крупнее значка; потом значок снова обычный. Так же, как в Komet.
+ */
+data class ReactionBurst(val messageId: String, val emoji: String, val lottieUrl: String?, val effectUrl: String?, val id: Long) {
+    /** Это та плашка: то же сообщение и то же эмодзи (без учёта `FE0F`). */
+    fun matches(messageId: String, emoji: String): Boolean =
+        this.messageId == messageId && AnimojiText.bare(this.emoji) == AnimojiText.bare(emoji)
+}

@@ -492,29 +492,35 @@ fun ChatScreen(
                     null
                 },
             )
-            // Анимодзи в сообщениях и анимация только что поставленной реакции.
+            // Анимодзи в сообщениях и анимация только что поставленной реакции: значок играет в
+            // плашке, эффект вокруг — слоем поверх ленты.
+            val reactionBurst = rememberReactionBurst(state.reactionBurst, model::reactionBurstShown)
+            PrefetchReactionAnimations(state.quickReactions, state.animoji, state.reactionEffects)
             androidx.compose.runtime.CompositionLocalProvider(
                 LocalAnimoji provides state.animoji,
-                LocalReactionBurst provides ReactionBurstHost(state.reactionBurst, model::reactionBurstShown),
+                LocalReactionBurst provides reactionBurst,
             ) {
-                ChatFeed(
-                    model = model,
-                    state = state,
-                    privacy = privacy,
-                    revealed = revealed,
-                    onReveal = reveal,
-                    onLongPress = { actionsFor = it },
-                    onMenu = { item, bounds -> menuTarget = item to bounds },
-                    onRetry = { actionsFor = it },
-                    quickReaction = quickReaction,
-                    onButton = pressButton,
-                    onAuthor = { message ->
-                        model.participantChatId(message)?.let { onOpenParticipant(it, message.authorName) }
-                    },
-                    onDisablePrivateMode = onDisablePrivateMode,
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    selection = selection,
-                )
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    ChatFeed(
+                        model = model,
+                        state = state,
+                        privacy = privacy,
+                        revealed = revealed,
+                        onReveal = reveal,
+                        onLongPress = { actionsFor = it },
+                        onMenu = { item, bounds -> menuTarget = item to bounds },
+                        onRetry = { actionsFor = it },
+                        quickReaction = quickReaction,
+                        onButton = pressButton,
+                        onAuthor = { message ->
+                            model.participantChatId(message)?.let { onOpenParticipant(it, message.authorName) }
+                        },
+                        onDisablePrivateMode = onDisablePrivateMode,
+                        modifier = Modifier.fillMaxSize(),
+                        selection = selection,
+                    )
+                    ReactionEffectLayer(reactionBurst)
+                }
             }
             if (state.botAppId != null) {
                 FilledTonalButton(

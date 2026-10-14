@@ -236,7 +236,7 @@ fun BubbleRow(
                 Surface(shape = RoundedCornerShape(10.dp), color = Color.Black.copy(alpha = 0.35f), modifier = Modifier.padding(top = 4.dp)) {
                     TimeRow(item, Color.White, Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                 }
-                Reactions(message.content.reactions, colors, item.outgoing) { onReaction(message, it) }
+                Reactions(message.id, message.content.reactions, colors, item.outgoing) { onReaction(message, it) }
                 val count = item.comments
                 if (count != null && onComments != null) {
                     Surface(shape = RoundedCornerShape(14.dp), color = colors.container, contentColor = colors.content, modifier = Modifier.padding(top = 4.dp).widthIn(max = 220.dp)) {
@@ -275,7 +275,7 @@ fun BubbleRow(
                 Surface(shape = RoundedCornerShape(10.dp), color = Color.Black.copy(alpha = 0.35f), modifier = Modifier.padding(top = 4.dp)) {
                     TimeRow(item, Color.White, Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                 }
-                Reactions(message.content.reactions, colors, item.outgoing) { onReaction(message, it) }
+                Reactions(message.id, message.content.reactions, colors, item.outgoing) { onReaction(message, it) }
             }
             return@Row
         }
@@ -290,7 +290,7 @@ fun BubbleRow(
                 Surface(shape = RoundedCornerShape(10.dp), color = Color.Black.copy(alpha = 0.35f)) {
                     TimeRow(item, Color.White, Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                 }
-                Reactions(message.content.reactions, colors, item.outgoing) { onReaction(message, it) }
+                Reactions(message.id, message.content.reactions, colors, item.outgoing) { onReaction(message, it) }
                 val count = item.comments
                 if (count != null && onComments != null) {
                     Surface(shape = RoundedCornerShape(14.dp), color = colors.container, contentColor = colors.content, modifier = Modifier.padding(top = 4.dp).widthIn(max = 220.dp)) {
@@ -315,7 +315,6 @@ fun BubbleRow(
         }
     }
     // Только что поставленная реакция: один проход её анимации над пузырём.
-    ReactionBurstOverlay(message.id, Modifier.align(if (item.outgoing) Alignment.BottomEnd else Alignment.BottomStart))
     }
 }
 
@@ -433,7 +432,7 @@ private fun BubbleContent(
             TimeRow(item, colors.secondary, Modifier.align(Alignment.End).padding(start = 12.dp, end = 10.dp, bottom = 6.dp, top = 2.dp))
         }
         content.linkPreview?.let { LinkPreviewCard(it, colors) }
-        Reactions(content.reactions, colors, item.outgoing, Modifier.padding(start = 8.dp, end = 8.dp, bottom = 6.dp)) { onReaction(message, it) }
+        Reactions(message.id, content.reactions, colors, item.outgoing, Modifier.padding(start = 8.dp, end = 8.dp, bottom = 6.dp)) { onReaction(message, it) }
         val count = item.comments
         if (count != null && onComments != null) CommentsFooter(count, colors) { onComments(message) }
     }
@@ -939,7 +938,7 @@ private fun AttachmentRow(icon: @Composable () -> Unit, title: String, subtitle:
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Reactions(reactions: List<MessageReaction>, colors: BubbleColors, outgoing: Boolean, modifier: Modifier = Modifier, onTap: (String) -> Unit) {
+private fun Reactions(messageId: String, reactions: List<MessageReaction>, colors: BubbleColors, outgoing: Boolean, modifier: Modifier = Modifier, onTap: (String) -> Unit) {
     if (reactions.isEmpty()) return
     FlowRow(modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         reactions.forEach { reaction ->
@@ -957,7 +956,7 @@ private fun Reactions(reactions: List<MessageReaction>, colors: BubbleColors, ou
                 Modifier.clip(RoundedCornerShape(14.dp)).background(background).clickable { onTap(reaction.emoji) }.padding(horizontal = 8.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(reaction.emoji, fontSize = 15.sp)
+                ReactionGlyph(messageId, reaction.emoji)
                 Spacer(Modifier.width(4.dp))
                 Text(ChatListFormatter.compactCount(reaction.count), color = foreground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             }

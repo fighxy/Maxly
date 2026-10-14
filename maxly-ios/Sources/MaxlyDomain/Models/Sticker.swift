@@ -88,12 +88,15 @@ public struct AnimatedEmoji: Identifiable, Hashable, Sendable, Codable {
     public var emoji: String
     public var iconURL: URL?
     public var lottieURL: URL?
+    /// Эффект вокруг только что поставленной реакции (`lottiePlayUrl`).
+    public var effectURL: URL?
 
-    public init(id: String, emoji: String, iconURL: URL? = nil, lottieURL: URL? = nil) {
+    public init(id: String, emoji: String, iconURL: URL? = nil, lottieURL: URL? = nil, effectURL: URL? = nil) {
         self.id = id
         self.emoji = emoji
         self.iconURL = iconURL
         self.lottieURL = lottieURL
+        self.effectURL = effectURL
     }
 }
 

@@ -91,7 +91,10 @@ extension MaxIosCore {
                     done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success(list.map {
-                        AnimatedEmoji(id: $0.id, emoji: $0.emoji, iconURL: Self.webURL($0.iconUrl), lottieURL: Self.webURL($0.lottieUrl))
+                        AnimatedEmoji(
+                            id: $0.id, emoji: $0.emoji, iconURL: Self.webURL($0.iconUrl),
+                            lottieURL: Self.webURL($0.lottieUrl), effectURL: Self.webURL($0.lottiePlayUrl)
+                        )
                     }))
                 }
             }

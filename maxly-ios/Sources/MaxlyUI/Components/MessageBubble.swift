@@ -218,10 +218,6 @@ public struct MessageBubble: View {
             VStack(alignment: isOutgoing ? .trailing : .leading, spacing: 4) {
                 bubbleContent
                     .modifier(MenuFrameReader(frame: menuFrame, enabled: menuPresenter != nil))
-                    // Только что поставленная реакция: один проход её анимации над пузырём.
-                    .overlay(alignment: isOutgoing ? .bottomTrailing : .bottomLeading) {
-                        ReactionBurstOverlay(messageId: message.id)
-                    }
                 if message.status == .failed {
                     Button("Не отправлено. Повторить", action: onRetry)
                         .font(.caption2)
@@ -229,6 +225,7 @@ public struct MessageBubble: View {
                 }
                 if !reactionsInside {
                     ReactionChips(
+                        messageId: message.id,
                         reactions: message.content.reactions,
                         trailing: isOutgoing,
                         interactive: allowsReactions,
@@ -786,6 +783,7 @@ public struct MessageBubble: View {
     private var reactionsRow: some View {
         HStack(alignment: .bottom, spacing: 8) {
             ReactionChips(
+                messageId: message.id,
                 reactions: message.content.reactions,
                 interactive: allowsReactions,
                 onOutgoing: isOutgoing,

@@ -61,6 +61,8 @@ struct ChatView: View {
     /// Касание полосы, когда голосовое из другого чата: открыть тот чат на сообщении.
     var onOpenVoice: ((VoiceNowPlaying.Track) -> Void)? = nil
     @State private var participant: DialogDraft?
+    /// Только что поставленная реакция: анимация значка и эффект вокруг (`ReactionBurstHost`).
+    @State private var reactionBurst = ReactionBurstHost()
     /// Крестик у закрепа: открепить после подтверждения.
     @State private var unpinAsked = false
     @Environment(\.dismiss) private var dismiss
@@ -133,12 +135,32 @@ struct ChatView: View {
             keyboardTop: keyboardTop,
             onAuthor: openParticipant
         )
+        // Только что поставленная реакция: значок играет в плашке и сообщает своё место в этом
+        // пространстве, эффект вокруг — слоем поверх ленты.
+        .coordinateSpace(.named(ReactionBurstHost.space))
+        .overlay { ReactionEffectLayer(host: reactionBurst) }
         .environment(\.messageMenuPresenter, messageMenu)
-        // Анимодзи в сообщениях и анимация только что поставленной реакции.
+        // Анимодзи в сообщениях.
         .environment(\.animojiCatalog, viewModel.animoji)
-        .environment(\.reactionBurst, ReactionBurstHost(burst: viewModel.reactionBurst) { [viewModel] id in
-            viewModel.reactionBurstShown(id)
-        })
+        .environment(\.reactionBurst, reactionBurst)
+        .task(id: viewModel.reactionBurst?.id) {
+            reactionBurst.onShown = { [viewModel] id in viewModel.reactionBurstShown(id) }
+            reactionBurst.update(viewModel.reactionBurst)
+            guard let id = viewModel.reactionBurst?.id else { return }
+            try? await Task.sleep(for: ReactionBurstHost.limit)
+            guard !Task.isCancelled else { return }
+            reactionBurst.expire(id)
+        }
+        // Анимации и эффекты быстрых реакций качаются заранее: по нажатию играют сразу.
+        .task(id: viewModel.animoji.count + viewModel.reactionEffects.count) {
+            let quick = ReactionPalette.quick(catalog: viewModel.reactionCatalog, mine: nil)
+            let urls = quick.flatMap { emoji in
+                [AnimojiText.lookup(catalog: viewModel.animoji, emoji: emoji), AnimojiText.lookup(catalog: viewModel.reactionEffects, emoji: emoji)].compactMap { $0 }
+            }
+            for url in urls where LottieStore.shared.cached(url) == nil {
+                _ = await LottieStore.shared.animation(for: url)
+            }
+        }
         // Обои за лентой: на весь экран, под шапкой, полем ввода и клавиатурой, не
         // прокручиваются с сообщениями.
         .background {

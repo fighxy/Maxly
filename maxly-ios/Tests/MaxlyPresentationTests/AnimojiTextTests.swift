@@ -48,18 +48,39 @@ struct ReactionBurstTests {
     @Test("Поставленная реакция играет один раз, отметка «доиграла» её снимает")
     func burst() async {
         let fire = URL(string: "https://lottie/fire.json")!
+        let firePlay = URL(string: "https://lottie/fire-play.json")!
+        let laughPlay = URL(string: "https://lottie/laugh-play.json")!
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository())
-        model.loadAnimoji = { ["🔥": fire] }
+        model.loadAnimoji = { AnimojiAssets(animoji: ["🔥": fire], effects: ["🔥": firePlay, "😂": laughPlay]) }
         #expect(await eventually { !model.animoji.isEmpty })
         await model.toggleReaction(messageId: "m1", emoji: "🔥")
         let burst = model.reactionBurst
         #expect(burst?.messageId == "m1")
         #expect(burst?.lottieURL == fire)
+        #expect(burst?.effectURL == firePlay)
+        #expect(burst?.matches(messageId: "m1", emoji: "🔥") == true)
+        #expect(burst?.matches(messageId: "m2", emoji: "🔥") == false)
         model.reactionBurstShown((burst?.id ?? 0) + 1)
         #expect(model.reactionBurst == burst)
         model.reactionBurstShown(burst?.id ?? 0)
         #expect(model.reactionBurst == nil)
         await model.toggleReaction(messageId: "m1", emoji: "😀")
         #expect(model.reactionBurst == nil)
+        // Только эффект, без анимации самого значка, — тоже играет.
+        await model.toggleReaction(messageId: "m1", emoji: "😂")
+        #expect(model.reactionBurst?.lottieURL == nil)
+        #expect(model.reactionBurst?.effectURL == laughPlay)
+    }
+
+    @Test("Каталог: эмодзи и эффекты по своим адресам, без пустых")
+    func assets() {
+        let list = [
+            AnimatedEmoji(id: "1", emoji: "❤️", lottieURL: URL(string: "https://l/1"), effectURL: URL(string: "https://p/1")),
+            AnimatedEmoji(id: "2", emoji: "👍", lottieURL: URL(string: "https://l/2")),
+            AnimatedEmoji(id: "3", emoji: "❤️", lottieURL: URL(string: "https://l/3")),
+        ]
+        let assets = AnimojiAssets(list)
+        #expect(assets.animoji == ["❤️": URL(string: "https://l/1")!, "👍": URL(string: "https://l/2")!])
+        #expect(assets.effects == ["❤️": URL(string: "https://p/1")!])
     }
 }

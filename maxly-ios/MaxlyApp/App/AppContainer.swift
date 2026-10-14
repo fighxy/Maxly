@@ -618,11 +618,13 @@ final class AppContainer {
         model.typingReporter = typingReporter
         model.nowPlaying = nowPlaying
         if let stickerRepository {
-            // Анимодзи сервера (тот же каталог, что у панели эмодзи): эмодзи → Lottie.
+            // Анимодзи сервера (тот же каталог, что у панели эмодзи): эмодзи → Lottie и эффект реакции.
             model.loadAnimoji = {
-                let list = await stickerRepository.cachedAnimatedEmoji()
-                let fresh = list.isEmpty ? ((try? await stickerRepository.animatedEmoji()) ?? []) : list
-                return Dictionary(fresh.compactMap { item in item.lottieURL.map { (item.emoji, $0) } }, uniquingKeysWith: { first, _ in first })
+                let cached = await stickerRepository.cachedAnimatedEmoji()
+                // В кэше прежней версии нет эффектов: тогда каталог берётся заново.
+                let stale = cached.isEmpty || !cached.contains { $0.effectURL != nil }
+                let list = stale ? ((try? await stickerRepository.animatedEmoji()) ?? cached) : cached
+                return AnimojiAssets(list)
             }
         }
         nowPlaying.applySpeed = { [voicePlayer] speed in voicePlayer.rate = speed }

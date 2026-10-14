@@ -747,6 +747,11 @@ class CoreMessageRepository(
             .mapNotNull { item -> item.lottieUrl?.takeIf { item.emoji.isNotEmpty() && it.isNotBlank() }?.let { item.emoji to it } }
             .toMap()
 
+    override suspend fun reactionEffects(): Map<String, String> =
+        runCatching { MaxCoreGateway.call { client.reactionCatalog() } }.getOrDefault(emptyList())
+            .mapNotNull { item -> item.lottiePlayUrl?.takeIf { item.emoji.isNotEmpty() && it.isNotBlank() }?.let { item.emoji to it } }
+            .toMap()
+
     override suspend fun transcribe(chatId: String, messageId: String, voiceId: String): String? {
         val result = MaxCoreGateway.call { client.transcribe(chatId.toLong(), messageId.toLong(), voiceId.toLong()) }
         return when (result.status) {

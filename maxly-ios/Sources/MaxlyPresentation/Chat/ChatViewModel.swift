@@ -188,11 +188,13 @@ public final class ChatViewModel {
     public private(set) var reactionCatalog: [String] = []
     /// Анимодзи: эмодзи → Lottie (`AnimojiText`).
     public private(set) var animoji: [String: URL] = [:]
+    /// Эффекты реакций: эмодзи → Lottie вокруг значка только что поставленной реакции.
+    public private(set) var reactionEffects: [String: URL] = [:]
     /// Только что поставленная реакция: экран один раз играет её анимацию (`reactionBurstShown`).
     public private(set) var reactionBurst: ReactionBurst?
     @ObservationIgnored private var burstCounter = 0
     /// Откуда взять каталог анимодзи (контейнер берёт его у стикеров). Задан — каталог грузится.
-    @ObservationIgnored public var loadAnimoji: (@Sendable () async -> [String: URL])? {
+    @ObservationIgnored public var loadAnimoji: (@Sendable () async -> AnimojiAssets)? {
         didSet { requestAnimoji() }
     }
     /// Сообщение, для которого открыт полный выбор реакций.
@@ -1061,10 +1063,14 @@ public final class ChatViewModel {
     /// возвращается прежнее и показывается ошибка.
     public func toggleReaction(messageId: String, emoji: String) async {
         let mine = messages.first(where: { $0.id == messageId })?.content.reactions.mine
-        if mine != emoji, let url = AnimojiText.lookup(catalog: animoji, emoji: emoji) {
-            // Поставили (не сняли) — анимация реакции над сообщением.
-            burstCounter += 1
-            reactionBurst = ReactionBurst(messageId: messageId, emoji: emoji, lottieURL: url, id: burstCounter)
+        if mine != emoji {
+            // Поставили (не сняли) — значок реакции в плашке играет свою анимацию и эффект вокруг.
+            let body = AnimojiText.lookup(catalog: animoji, emoji: emoji)
+            let effect = AnimojiText.lookup(catalog: reactionEffects, emoji: emoji)
+            if body != nil || effect != nil {
+                burstCounter += 1
+                reactionBurst = ReactionBurst(messageId: messageId, emoji: emoji, lottieURL: body, effectURL: effect, id: burstCounter)
+            }
         }
         do {
             try await repository.toggleReaction(messageId: messageId, emoji: emoji)
@@ -1149,9 +1155,10 @@ public final class ChatViewModel {
     private func requestAnimoji() {
         guard let loadAnimoji, animoji.isEmpty else { return }
         Task { [weak self] in
-            let catalog = await loadAnimoji()
-            guard let self, !catalog.isEmpty else { return }
-            self.animoji = catalog
+            let assets = await loadAnimoji()
+            guard let self, !assets.animoji.isEmpty || !assets.effects.isEmpty else { return }
+            self.animoji = assets.animoji
+            self.reactionEffects = assets.effects
         }
     }
 

@@ -194,6 +194,9 @@ interface MessageRepository {
     /** Анимодзи сервера: эмодзи → ссылка на Lottie. Пусто — анимаций нет. */
     suspend fun animatedEmoji(): Map<String, String> = emptyMap()
 
+    /** Эффекты реакций (`lottiePlayUrl` анимодзи): эмодзи → Lottie вокруг только что поставленной реакции. */
+    suspend fun reactionEffects(): Map<String, String> = emptyMap()
+
     /**
      * Расшифровка голосового [voiceId] сообщения [messageId]. `null` — сервер ещё расшифровывает,
      * готовый текст придёт в [transcriptions].

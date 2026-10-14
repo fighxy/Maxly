@@ -134,6 +134,8 @@ data class ChatUiState(
     val reactionCatalog: List<String> = emptyList(),
     /** Анимодзи: эмодзи → Lottie ([AnimojiText]). */
     val animoji: Map<String, String> = emptyMap(),
+    /** Эффекты реакций: эмодзи → Lottie вокруг значка только что поставленной реакции. */
+    val reactionEffects: Map<String, String> = emptyMap(),
     /** Только что поставленная реакция: экран один раз играет её анимацию ([ChatViewModel.reactionBurstShown]). */
     val reactionBurst: ReactionBurst? = null,
     /** Чужих сообщений ниже экрана: число на кнопке «вниз». */
@@ -423,6 +425,14 @@ class ChatViewModel(
                 emptyMap()
             }
             if (animoji.isNotEmpty()) _state.update { it.copy(animoji = animoji) }
+            val effects = try {
+                repository.reactionEffects()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                emptyMap()
+            }
+            if (effects.isNotEmpty()) _state.update { it.copy(reactionEffects = effects) }
         }
         loadLatest()
     }
@@ -1524,9 +1534,11 @@ class ChatViewModel(
         if (!canReact(message)) return
         val mine = message.content.reactions.firstOrNull { it.mine }?.emoji
         if (mine != emoji) {
-            // Поставили (не сняли) — анимация реакции над сообщением, если она есть.
-            AnimojiText.lookup(_state.value.animoji, emoji)?.let { url ->
-                _state.update { it.copy(reactionBurst = ReactionBurst(message.id, emoji, url, ++burstCounter)) }
+            // Поставили (не сняли) — значок реакции в плашке играет свою анимацию и эффект вокруг.
+            val body = AnimojiText.lookup(_state.value.animoji, emoji)
+            val effect = AnimojiText.lookup(_state.value.reactionEffects, emoji)
+            if (body != null || effect != null) {
+                _state.update { it.copy(reactionBurst = ReactionBurst(message.id, emoji, body, effect, ++burstCounter)) }
             }
         }
         viewModelScope.launch {
