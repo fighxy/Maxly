@@ -2,7 +2,10 @@ package app.maxly.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Typography
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import app.maxly.domain.AppFont
+import app.maxly.domain.FontWeightScale
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -74,11 +77,39 @@ object AvatarPalette {
     fun nameColor(index: Int): Color = pair(index).second
 }
 
+/** Шрифты из `res/font`: переменная гарнитура с осью толщины на каждое начертание. */
+@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
+private val fontSource = FontSource { file, weight, axis ->
+    val res = when (file) {
+        "inter" -> app.maxly.R.font.inter
+        "onest" -> app.maxly.R.font.onest
+        "golos_text" -> app.maxly.R.font.golos_text
+        "manrope" -> app.maxly.R.font.manrope
+        "nunito" -> app.maxly.R.font.nunito
+        else -> app.maxly.R.font.jetbrains_mono
+    }
+    androidx.compose.ui.text.font.Font(
+        res,
+        weight,
+        androidx.compose.ui.text.font.FontStyle.Normal,
+        variationSettings = androidx.compose.ui.text.font.FontVariation.Settings(androidx.compose.ui.text.font.FontVariation.weight(axis)),
+    )
+}
+
+/** Тема приложения: цвета, шрифт [font] с толщиной [fontWeight] у всего интерфейса. */
 @Composable
-fun MaxlyTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+fun MaxlyTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    font: AppFont = AppFont.SYSTEM,
+    fontWeight: Int = FontWeightScale.DEFAULT,
+    content: @Composable () -> Unit,
+) {
+    val family = remember(font, fontWeight) { appFontFamily(font, fontWeight, fontSource) }
+    val mono = remember(fontWeight) { monoFontFamily(fontWeight, fontSource) }
     MaterialTheme(
         colorScheme = if (darkTheme) DarkColors else LightColors,
-        typography = Typography(),
-        content = content,
-    )
+        typography = remember(family, font, fontWeight) { appTypography(family, font, fontWeight) },
+    ) {
+        CompositionLocalProvider(LocalMonoFamily provides mono, LocalFontSource provides fontSource, content = content)
+    }
 }

@@ -405,7 +405,7 @@ internal fun Composer(
                                 field = it
                                 if (it.text != state.draft) onDraft(it.text, it.selection.max)
                             },
-                            visualTransformation = remember(state.formatting, linkColor) { FormattingTransformation(state.formatting, linkColor) },
+                            visualTransformation = app.maxly.ui.theme.LocalMonoFamily.current.let { mono -> remember(state.formatting, linkColor, mono) { FormattingTransformation(state.formatting, linkColor, mono) } },
                             textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp),
                             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),

@@ -521,8 +521,9 @@ private fun TextWithTime(item: ChatItem.Bubble, text: String, colors: BubbleColo
     val spans = if (text == message.text.trim()) message.content.formatting else emptyList()
     // Анимодзи в тексте играют на своём месте вместе с текстом.
     val animoji = remember(text, spans, catalog) { app.maxly.presentation.chat.AnimojiText.inline(text, spans, catalog) }
-    val annotated = remember(text, spans, linkColor, animoji) {
-        MessageText.annotated(text, spans, linkColor, colors.accent, animoji)
+    val mono = app.maxly.ui.theme.LocalMonoFamily.current
+    val annotated = remember(text, spans, linkColor, animoji, mono) {
+        MessageText.annotated(text, spans, linkColor, colors.accent, animoji, mono)
     }
     val inline = remember(animoji) { animojiInlineContent(animoji) }
     val reserve = timeLabel(item)

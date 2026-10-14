@@ -66,7 +66,12 @@ import app.maxly.presentation.chat.FormatDraft
  * те же), меняется только вид. Отрезки за концом текста (поле уже короче, модель ещё не
  * успела) обрезаются.
  */
-data class FormattingTransformation(val spans: List<TextSpan>, val linkColor: Color) : VisualTransformation {
+data class FormattingTransformation(
+    val spans: List<TextSpan>,
+    val linkColor: Color,
+    /** Моноширинный для кода: шрифт приложения ([app.maxly.ui.theme.LocalMonoFamily]). */
+    val mono: FontFamily = FontFamily.Monospace,
+) : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         if (spans.isEmpty()) return TransformedText(text, OffsetMapping.Identity)
         val length = text.length
@@ -101,7 +106,7 @@ data class FormattingTransformation(val spans: List<TextSpan>, val linkColor: Co
                 else -> null
             },
             fontStyle = if (TextSpan.Kind.EMPHASIZED in kinds || TextSpan.Kind.QUOTE in kinds) FontStyle.Italic else null,
-            fontFamily = if (TextSpan.Kind.MONOSPACED in kinds) FontFamily.Monospace else null,
+            fontFamily = if (TextSpan.Kind.MONOSPACED in kinds) mono else null,
             fontSize = if (TextSpan.Kind.HEADING in kinds) 18.sp else androidx.compose.ui.unit.TextUnit.Unspecified,
             color = if (TextSpan.Kind.LINK in kinds) linkColor else Color.Unspecified,
             textDecoration = if (decorations.isEmpty()) null else TextDecoration.combine(decorations),

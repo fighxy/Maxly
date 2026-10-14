@@ -55,7 +55,7 @@ internal fun AppRoot(container: AppContainer) {
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
-    MaxlyTheme(darkTheme = dark) {
+    MaxlyTheme(darkTheme = dark, font = prefs.font, fontWeight = prefs.fontWeight) {
         val density = LocalDensity.current
         CompositionLocalProvider(
             LocalDensity provides Density(density.density, density.fontScale * prefs.textSize.scale),

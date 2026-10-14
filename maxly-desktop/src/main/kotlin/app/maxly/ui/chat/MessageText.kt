@@ -24,6 +24,8 @@ object MessageText {
         mentionColor: Color,
         /** Анимодзи текста: на их месте играет Lottie ([app.maxly.ui.chat.animojiInlineContent]). */
         animoji: List<app.maxly.presentation.chat.AnimojiText.Placed> = emptyList(),
+        /** Моноширинный для кода: шрифт приложения ([app.maxly.ui.theme.LocalMonoFamily]). */
+        mono: FontFamily = FontFamily.Monospace,
     ): AnnotatedString = buildAnnotatedString {
         append(text)
         markAnimoji(this, animoji)
@@ -38,7 +40,7 @@ object MessageText {
                 TextSpan.Kind.EMPHASIZED -> addStyle(SpanStyle(fontStyle = FontStyle.Italic), start, end)
                 TextSpan.Kind.UNDERLINE -> addStyle(SpanStyle(textDecoration = TextDecoration.Underline), start, end)
                 TextSpan.Kind.STRIKETHROUGH -> addStyle(SpanStyle(textDecoration = TextDecoration.LineThrough), start, end)
-                TextSpan.Kind.MONOSPACED -> addStyle(SpanStyle(fontFamily = FontFamily.Monospace), start, end)
+                TextSpan.Kind.MONOSPACED -> addStyle(SpanStyle(fontFamily = mono), start, end)
                 TextSpan.Kind.HEADING -> addStyle(SpanStyle(fontWeight = FontWeight.Bold, fontSize = 18.sp), start, end)
                 TextSpan.Kind.QUOTE -> addStyle(SpanStyle(fontStyle = FontStyle.Italic, color = mentionColor.copy(alpha = 0.9f)), start, end)
                 TextSpan.Kind.MENTION -> addStyle(SpanStyle(color = mentionColor, fontWeight = FontWeight.Medium), start, end)

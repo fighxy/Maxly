@@ -84,7 +84,7 @@ class MainActivity : ComponentActivity() {
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
                 onDispose {}
             }
-            MaxlyTheme(darkTheme = dark) {
+            MaxlyTheme(darkTheme = dark, font = prefs.font, fontWeight = prefs.fontWeight) {
                 val density = LocalDensity.current
                 CompositionLocalProvider(
                     LocalDensity provides Density(density.density, density.fontScale * prefs.textSize.scale),

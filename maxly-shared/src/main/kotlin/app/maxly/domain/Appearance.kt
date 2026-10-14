@@ -40,8 +40,63 @@ enum class ChatWallpaper(val title: String) {
 
 enum class WallpaperImage { AUTUMN, AUTUMN_DARK, AUTUMN_NIGHT }
 
+/**
+ * Шрифт всего интерфейса. Кроме системного — свободные (OFL) шрифты с кириллицей и плавной
+ * толщиной, они лежат в приложении: [file] — имя файла без `.ttf`, [minWeight]…[maxWeight] —
+ * диапазон оси толщины `wght` этого файла.
+ */
+enum class AppFont(val title: String, val file: String?, val minWeight: Int, val maxWeight: Int) {
+    SYSTEM("Системный", null, 100, 900),
+    INTER("Inter", "inter", 100, 900),
+    ONEST("Onest", "onest", 100, 900),
+    GOLOS("Golos Text", "golos_text", 400, 900),
+    MANROPE("Manrope", "manrope", 200, 800),
+    NUNITO("Nunito", "nunito", 200, 1000),
+}
+
+/**
+ * Толщина текста: ползунок задаёт толщину обычного текста [base] (по умолчанию 400), остальные
+ * начертания сдвигаются на столько же — полужирный остаётся заметно жирнее обычного. У системного
+ * шрифта толщина ступенчатая (сотнями), у встроенных — любая в пределах оси файла.
+ */
+object FontWeightScale {
+    const val MIN = 300
+    const val MAX = 600
+    const val DEFAULT = 400
+
+    /** Блоки кода: моноширинный JetBrains Mono, ось 100…800. */
+    const val MONO_FILE = "jetbrains_mono"
+
+    fun clamp(base: Int): Int = base.coerceIn(MIN, MAX)
+
+    /** Толщина для начертания [requested] (400 обычный, 600 полужирный…) при ползунке [base]. */
+    fun axis(font: AppFont, requested: Int, base: Int): Int {
+        val shifted = requested + clamp(base) - DEFAULT
+        val value = if (font.file == null) Math.round(shifted / 100f) * 100 else shifted
+        return value.coerceIn(font.minWeight, font.maxWeight)
+    }
+
+    /** Подпись под ползунком: «Обычный · 400». */
+    fun caption(base: Int): String {
+        val value = clamp(base)
+        val name = when {
+            value < 350 -> "Светлый"
+            value < 450 -> "Обычный"
+            value < 550 -> "Средний"
+            else -> "Полужирный"
+        }
+        return "$name\u00A0· $value"
+    }
+}
+
 data class AppearancePreferences(
     val textSize: TextSizeStep = TextSizeStep.STANDARD,
     val theme: ThemeMode = ThemeMode.SYSTEM,
     val wallpaper: ChatWallpaper = ChatWallpaper.PLAIN,
-)
+    val font: AppFont = AppFont.SYSTEM,
+    /** Толщина обычного текста, [FontWeightScale.MIN]…[FontWeightScale.MAX]. */
+    val fontWeight: Int = FontWeightScale.DEFAULT,
+) {
+    /** Строка «Шрифт ›» в «Оформлении»: «Inter, 17 пт». */
+    val fontSummary: String get() = "${font.title}, ${textSize.bodyPointSize}\u00A0пт"
+}
