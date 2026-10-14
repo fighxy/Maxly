@@ -38,6 +38,10 @@ data class SessionRejection(
         BLOCKED,
         /** `login.flood`: слишком много входов, ограничение временное. */
         FLOOD,
+        /** `session.invalid.state`: сессия на сервере больше не действует. */
+        SESSION_INVALID,
+        /** Сервер сам завершил сессию (пуш `LOGOUT`), например с другого устройства. */
+        LOGGED_OUT,
     }
 }
 

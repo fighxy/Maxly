@@ -35,6 +35,9 @@ interface CallService {
     /** Что за звонок за ссылкой; `null`, если ссылка не ведёт в звонок. */
     suspend fun preview(link: String): CallLinkPreview? = null
 
+    /** Пуши о звонках: принят на другом устройстве или завершён. */
+    fun callUpdates(): Flow<CallUpdate> = emptyFlow()
+
     /** Входящие звонки, пока подписка жива. */
     fun incomingCalls(): Flow<IncomingCall> = emptyFlow()
 
@@ -43,6 +46,25 @@ interface CallService {
      * `null` — отбой принят. По умолчанию ничего не шлёт.
      */
     suspend fun reject(conversationId: String, peerId: String?): String? = null
+}
+
+/** Пуш о звонке [conversationId] с сервера. */
+data class CallUpdate(val conversationId: String, val kind: Kind) {
+    enum class Kind {
+        /** Звонок приняли на другом устройстве этого аккаунта. */
+        ACCEPTED_ELSEWHERE,
+        /** Звонок завершён или отменён на сервере. */
+        ENDED,
+    }
+
+    companion object {
+        /** Событие ядра в [CallUpdate]; остальные события — `null`. */
+        fun of(event: MaxEvent): CallUpdate? = when (event) {
+            is MaxEvent.CallAcceptedElsewhere -> CallUpdate(event.conversationId, Kind.ACCEPTED_ELSEWHERE)
+            is MaxEvent.CallEnded -> CallUpdate(event.conversationId, Kind.ENDED)
+            else -> null
+        }
+    }
 }
 
 /** Звонки через ядро: 78 начать, 166 войти по ссылке, 76/84 ссылка, 89 описание ссылки, 167 отклонить, пуш 137. */
@@ -73,6 +95,8 @@ class CoreCallService(private val client: MaxClient) : CallService {
             CallLinkPreview(CallLink.url(it.token), it.callName?.takeIf(String::isNotEmpty), it.participantsCount, it.isVideo)
         }
     }
+
+    override fun callUpdates(): Flow<CallUpdate> = client.callUpdates.mapNotNull(CallUpdate::of)
 
     /** Входящие с читаемым `vcp`. Незнакомый звонящий ждёт свой профиль до 3 с, чтобы было имя. */
     override fun incomingCalls(): Flow<IncomingCall> = client.events.all

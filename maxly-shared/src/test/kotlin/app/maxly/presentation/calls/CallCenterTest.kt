@@ -3,6 +3,8 @@ package app.maxly.presentation.calls
 import app.maxly.data.calls.CallControl
 import app.maxly.data.calls.CallEngine
 import app.maxly.data.calls.CallService
+import app.maxly.data.calls.CallUpdate
+import com.maxly.core.events.MaxEvent
 import app.maxly.domain.CallConnection
 import app.maxly.domain.CallEndReason
 import app.maxly.domain.CallLinkPreview
@@ -48,6 +50,12 @@ private class FakeControl(val role: CallRole) : CallControl {
     override suspend fun hangUp() {
         hungUp++
         val reason = if (role == CallRole.CALLEE && accepted == null) CallEndReason.Rejected else CallEndReason.HungUp
+        state.value = state.value.copy(phase = CallPhase.Ended(reason))
+    }
+
+    var closed: CallEndReason? = null
+    override suspend fun close(reason: CallEndReason) {
+        closed = reason
         state.value = state.value.copy(phase = CallPhase.Ended(reason))
     }
 
@@ -99,6 +107,9 @@ private class FakeService : CallService {
     override suspend fun preview(link: String) = CallLinkPreview("https://max.ru/joincall/abc", "Планёрка", 3)
 
     override fun incomingCalls(): Flow<IncomingCall> = incoming
+
+    val updates = MutableSharedFlow<CallUpdate>()
+    override fun callUpdates(): Flow<CallUpdate> = updates
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -305,5 +316,63 @@ class CallCenterTest {
         runCurrent()
         assertNull(center.state.value.call)
         assertEquals("Не удалось позвонить", center.state.value.errorMessage)
+    }
+
+    private suspend fun TestScope.ringing(center: CallCenter, conversation: String) {
+        center.activate()
+        runCurrent()
+        service.incoming.emit(IncomingCall(conversation, "9", "Иван", isVideo = false, connection = CallConnection(conversation, "wss://x", 1)))
+        runCurrent()
+        assertTrue(center.state.value.call!!.isRinging)
+    }
+
+    @Test
+    fun incomingClosesWhenAcceptedElsewhere() = runTest {
+        val center = center()
+        var ended = 0
+        center.onCallEnded = { ended++ }
+        ringing(center, "c1")
+        service.updates.emit(CallUpdate("other", CallUpdate.Kind.ACCEPTED_ELSEWHERE))
+        runCurrent()
+        assertTrue(center.state.value.call!!.isRinging)
+        service.updates.emit(CallUpdate("c1", CallUpdate.Kind.ACCEPTED_ELSEWHERE))
+        runCurrent()
+        assertNull(center.state.value.call)
+        assertEquals(1, ended)
+        // Отбой серверу не уходит: звонок идёт на другом устройстве.
+        assertEquals(0, controls.single().hungUp)
+        assertEquals(CallEndReason.AnsweredElsewhere, controls.single().closed)
+        assertTrue(service.rejected.isEmpty())
+    }
+
+    @Test
+    fun incomingClosesWhenEnded() = runTest {
+        val center = center()
+        ringing(center, "c2")
+        service.updates.emit(CallUpdate("c2", CallUpdate.Kind.ENDED))
+        runCurrent()
+        assertNull(center.state.value.call)
+        assertEquals(0, controls.single().hungUp)
+        assertEquals(CallEndReason.Missed, controls.single().closed)
+    }
+
+    @Test
+    fun answeredCallClosesOnlyWhenEnded() = runTest {
+        val center = center()
+        ringing(center, "c3")
+        center.answer()
+        runCurrent()
+        service.updates.emit(CallUpdate("c3", CallUpdate.Kind.ACCEPTED_ELSEWHERE))
+        runCurrent()
+        assertFalse(center.state.value.call!!.state.isEnded)
+        service.updates.emit(CallUpdate("c3", CallUpdate.Kind.ENDED))
+        runCurrent()
+        assertNull(center.state.value.call)
+    }
+
+    @Test
+    fun coreEventsMapToUpdates() {
+        assertEquals(CallUpdate("a", CallUpdate.Kind.ACCEPTED_ELSEWHERE), CallUpdate.of(MaxEvent.CallAcceptedElsewhere("a", 120, null)))
+        assertEquals(CallUpdate("b", CallUpdate.Kind.ENDED), CallUpdate.of(MaxEvent.CallEnded("b", 121, null)))
     }
 }

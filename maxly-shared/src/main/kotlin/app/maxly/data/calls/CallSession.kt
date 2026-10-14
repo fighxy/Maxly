@@ -42,6 +42,12 @@ interface CallControl {
     /** Положить трубку; у входящего до ответа — отклонить. */
     suspend fun hangUp()
 
+    /**
+     * Закончить звонок только у себя, ничего не посылая серверу звонков: его уже приняли на другом
+     * устройстве или завершили на сервере. По умолчанию — [hangUp].
+     */
+    suspend fun close(reason: CallEndReason) = hangUp()
+
     suspend fun setMuted(muted: Boolean)
 
     suspend fun setCamera(on: Boolean)
@@ -211,6 +217,8 @@ class CallSession(
         }
         if (gotConnection) setUpMedia() else scheduleWake(signaling)
     }
+
+    override suspend fun close(reason: CallEndReason) = end(reason)
 
     override suspend fun hangUp() {
         if (ended) return

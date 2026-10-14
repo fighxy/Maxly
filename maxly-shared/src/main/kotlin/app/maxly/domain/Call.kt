@@ -85,6 +85,9 @@ sealed interface CallEndReason {
     /** Входящий сбросил звонящий, пока он звонил. */
     data object Missed : CallEndReason
 
+    /** Входящий приняли на другом устройстве этого аккаунта. */
+    data object AnsweredElsewhere : CallEndReason
+
     /** Связь с сервером звонков не восстановилась. */
     data object ConnectionLost : CallEndReason
 

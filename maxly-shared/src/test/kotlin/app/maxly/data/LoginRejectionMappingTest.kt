@@ -49,4 +49,16 @@ class LoginRejectionMappingTest {
         assertEquals(SessionRejection.Reason.TOKEN, legacy.reason)
         assertTrue(legacy.tokenCleared)
     }
+
+    @Test
+    fun sessionEndReasonsClearTheToken() {
+        val invalid = MaxCoreGateway.rejectionOf(rejected(mapOf("error" to "session.invalid.state")))
+        assertEquals(SessionRejection.Reason.SESSION_INVALID, invalid.reason)
+        assertTrue(invalid.tokenCleared)
+
+        val packet = TransportPacket(PacketHeader(PROTOCOL_VERSION, CmdType.REQUEST.value, 0, Opcode.LOGOUT.value.toShort(), 0, false), emptyMap<String, Any?>())
+        val out = MaxCoreGateway.rejectionOf(ClientState.TokenRejected(InvalidTokenException.loggedOut(packet)))
+        assertEquals(SessionRejection.Reason.LOGGED_OUT, out.reason)
+        assertTrue(out.tokenCleared)
+    }
 }

@@ -5,6 +5,7 @@ import app.maxly.data.calls.CallControl
 import app.maxly.data.calls.CallEngine
 import app.maxly.data.calls.CallLog
 import app.maxly.data.calls.CallService
+import app.maxly.data.calls.CallUpdate
 import app.maxly.domain.CallEndReason
 import app.maxly.domain.CallPhase
 import app.maxly.domain.CallRole
@@ -88,12 +89,26 @@ class CallCenter(
     private var control: CallControl? = null
     private var controlWatch: Job? = null
     private var watch: Job? = null
+    private var updatesWatch: Job? = null
     private var dismissal: Job? = null
     private val lookedUp = HashSet<String>()
 
     /** Слушать входящие звонки. */
     fun activate() {
         if (watch != null) return
+        updatesWatch = scope.launch {
+            while (true) {
+                try {
+                    service.callUpdates().collect { onUpdate(it) }
+                    break
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    CallLog.error("Пуши звонков оборвались, слушаю заново", e)
+                    delay(1_000)
+                }
+            }
+        }
         watch = scope.launch {
             // Сбой в потоке входящих не должен ни ронять приложение, ни глушить следующие звонки.
             while (true) {
@@ -114,6 +129,8 @@ class CallCenter(
     suspend fun deactivate() {
         watch?.cancel()
         watch = null
+        updatesWatch?.cancel()
+        updatesWatch = null
         if (_state.value.call != null) hangUp()
     }
 
@@ -259,6 +276,27 @@ class CallCenter(
             if (!recoverable(e)) throw e
             fail(id, e, text = "Не удалось принять звонок")
         }
+    }
+
+    /**
+     * Пуш о звонке: если это текущий звонок, экран закрывается. Принятый на другом устройстве
+     * входящий и завершённый на сервере звонок кончаются только здесь, без отбоя серверу звонков.
+     */
+    internal suspend fun onUpdate(update: CallUpdate) {
+        val call = _state.value.call ?: return
+        if (update.conversationId.isEmpty() || call.conversationId != update.conversationId || call.state.isEnded) return
+        // Принят на другом устройстве: важно только пока здесь звонит, разговор тут не трогаем.
+        if (update.kind == CallUpdate.Kind.ACCEPTED_ELSEWHERE && call.answered) return
+        val reason = when (update.kind) {
+            CallUpdate.Kind.ACCEPTED_ELSEWHERE -> CallEndReason.AnsweredElsewhere
+            CallUpdate.Kind.ENDED -> if (call.answered) CallEndReason.RemoteHungUp else CallEndReason.Missed
+        }
+        CallLog.info("Пуш звонка ${update.conversationId}: ${update.kind}")
+        val control = control
+        control?.close(reason)
+        val now = _state.value.call
+        if (now?.id == call.id && !now.state.isEnded) update(call.id, now.state.copy(phase = CallPhase.Ended(reason)))
+        dismiss(call.id)
     }
 
     /** Ответить на входящий. */
@@ -520,6 +558,7 @@ object CallStatusText {
         CallEndReason.NoAnswer -> "Нет ответа"
         CallEndReason.Rejected -> "Вы отклонили звонок"
         CallEndReason.Missed -> "Пропущенный звонок"
+        CallEndReason.AnsweredElsewhere -> "Принят на другом устройстве"
         CallEndReason.ConnectionLost -> "Связь прервалась"
         is CallEndReason.Failed -> reason.message.ifEmpty { "Не удалось позвонить" }
     }

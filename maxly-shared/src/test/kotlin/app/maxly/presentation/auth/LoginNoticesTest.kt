@@ -5,6 +5,7 @@ import app.maxly.domain.SessionRejection.Reason
 import app.maxly.presentation.auth.LoginNotice.Placement
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LoginNoticesTest {
@@ -76,5 +77,16 @@ class LoginNoticesTest {
         // Ядро решает, стирать ли токен; экран смотрит на это, а не на код.
         assertEquals(Placement.CHAT_LIST_BANNER, LoginNotices.of(SessionRejection(Reason.TOKEN, tokenCleared = false)).placement)
         assertEquals(Placement.LOGIN_FORM, LoginNotices.of(SessionRejection(Reason.FLOOD, tokenCleared = true)).placement)
+    }
+
+    @Test
+    fun sessionEndsLeadToTheLoginForm() {
+        val invalid = LoginNotices.of(SessionRejection(Reason.SESSION_INVALID))
+        assertEquals("Сессия недействительна", invalid.title)
+        assertEquals(Placement.LOGIN_FORM, invalid.placement)
+        val out = LoginNotices.of(SessionRejection(Reason.LOGGED_OUT))
+        assertEquals("Вы вышли из аккаунта", out.title)
+        assertEquals(Placement.LOGIN_FORM, out.placement)
+        assertTrue(out.message!!.contains("другого устройства"))
     }
 }

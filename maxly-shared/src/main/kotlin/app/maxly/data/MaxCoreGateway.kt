@@ -68,6 +68,8 @@ class MaxCoreGateway(private val client: MaxClient) : CoreGateway {
                 LoginRejection.TOKEN -> SessionRejection.Reason.TOKEN
                 LoginRejection.BLOCKED -> SessionRejection.Reason.BLOCKED
                 LoginRejection.FLOOD -> SessionRejection.Reason.FLOOD
+                LoginRejection.SESSION_INVALID -> SessionRejection.Reason.SESSION_INVALID
+                LoginRejection.LOGGED_OUT -> SessionRejection.Reason.LOGGED_OUT
             },
             tokenCleared = state.tokenCleared,
             title = state.title,
