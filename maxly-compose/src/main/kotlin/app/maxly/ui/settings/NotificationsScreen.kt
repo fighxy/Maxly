@@ -2,6 +2,7 @@ package app.maxly.ui.settings
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -35,6 +36,8 @@ fun NotificationsScreen(
     onBack: (() -> Unit)?,
     blocked: String? = null,
     onOpenSystemSettings: (() -> Unit)? = null,
+    /** Пункты платформы под основным переключателем (десктоп: трей и звук). */
+    extra: @Composable ColumnScope.() -> Unit = {},
 ) {
     Scaffold(
         topBar = {
@@ -68,6 +71,7 @@ fun NotificationsScreen(
                     TextButton(onClick = onOpenSystemSettings, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Открыть настройки") }
                 }
             }
+            extra()
         }
     }
 }

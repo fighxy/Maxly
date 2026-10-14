@@ -4,7 +4,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -23,6 +27,9 @@ import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import app.maxly.data.diagnostics.AppLog
 import app.maxly.diagnostics.DesktopDiagnostics
 import app.maxly.platform.AppPaths
+import app.maxly.platform.DesktopNotifier
+import app.maxly.platform.DesktopTray
+import app.maxly.platform.TrayText
 import app.maxly.platform.DesktopOwner
 import app.maxly.platform.WindowBounds
 import app.maxly.platform.WindowPlacement
@@ -91,20 +98,48 @@ private fun MainWindow(container: AppContainer, owner: DesktopOwner, onExit: () 
         position = if (start.x != null && start.y != null) WindowPosition(start.x.dp, start.y.dp) else WindowPosition(Alignment.Center),
         size = DpSize(start.width.dp, start.height.dp),
     )
+    // Спрятано ли окно в трей: композиция окна при этом жива, значок и уведомления работают.
+    var visible by remember { mutableStateOf(true) }
+    val closeToTray by container.traySettings.closeToTray.collectAsState()
+    var tray by remember { mutableStateOf<DesktopTray?>(null) }
     Window(
-        onCloseRequest = onExit,
+        // Закрытие прячет окно в трей (настройка, по умолчанию да); без трея — выход, как раньше.
+        onCloseRequest = { if (closeToTray && tray?.supported == true) visible = false else onExit() },
+        visible = visible,
         title = "Maxly",
         icon = painterResource(R.drawable.app_icon),
         state = state,
     ) {
+        val show = remember(window) {
+            {
+                visible = true
+                state.isMinimized = false
+                window.toFront()
+                window.requestFocus()
+            }
+        }
+        val created = remember(window) {
+            DesktopTray(
+                onToggle = { if (visible && !state.isMinimized) visible = false else show() },
+                onOpen = { chatId ->
+                    chatId?.let(container.chatOpenRequests::request)
+                    show()
+                },
+                onMuteChange = container.traySettings::setMuted,
+                onExit = onExit,
+            )
+        }
+        LaunchedEffect(created) { tray = created }
+        DisposableEffect(created) { onDispose { created.dispose() } }
+        TrayState(container, created)
         LaunchedEffect(Unit) {
             window.minimumSize = Dimension(WindowPlacement.MIN_WIDTH, WindowPlacement.MIN_HEIGHT)
             AppLog.i("ui", "Окно открыто: ${window.renderApi}, ${state.size}, ${state.placement}")
         }
         RememberPlacement(container, state)
-        TrackActivity(container, state)
-        RaiseOnIncomingCall(container, state)
-        MessageNotifications(container, state)
+        TrackActivity(container, state, hidden = { !visible })
+        RaiseOnIncomingCall(container, show)
+        MessageNotifications(container, created)
         // Ctrl+Q (⌘Q) — выход.
         HotkeyHandler { hotkey ->
             if (hotkey.action == HotkeyAction.QUIT) {
@@ -152,10 +187,11 @@ private fun RememberPlacement(container: AppContainer, state: WindowState) {
  * и опрос своего статуса (свёрнутое окно — фон). Без ввода минуту пользователь считается отошедшим.
  */
 @Composable
-private fun FrameWindowScope.TrackActivity(container: AppContainer, state: WindowState) {
+private fun FrameWindowScope.TrackActivity(container: AppContainer, state: WindowState, hidden: () -> Boolean) {
     val windowInfo = LocalWindowInfo.current
     LaunchedEffect(container) {
-        snapshotFlow { state.isMinimized }.collect { container.window.setMinimized(it) }
+        // Спрятанное в трей окно — тот же фон, что и свёрнутое.
+        snapshotFlow { state.isMinimized || hidden() }.collect { container.window.setMinimized(it) }
     }
     LaunchedEffect(container) {
         snapshotFlow { windowInfo.isWindowFocused }.collect { container.window.setFocused(it) }
@@ -168,41 +204,40 @@ private fun FrameWindowScope.TrackActivity(container: AppContainer, state: Windo
     }
 }
 
-/** Входящий звонок поднимает окно поверх остальных, даже свёрнутое. */
+/** Входящий звонок поднимает окно поверх остальных, даже свёрнутое или спрятанное в трей. */
 @Composable
-private fun FrameWindowScope.RaiseOnIncomingCall(container: AppContainer, state: WindowState) {
+private fun RaiseOnIncomingCall(container: AppContainer, show: () -> Unit) {
     LaunchedEffect(container) {
         container.callCenter.state
             .map { it.call?.isRinging == true }
             .distinctUntilChanged()
             .collect { ringing ->
                 if (!ringing) return@collect
-                state.isMinimized = false
-                window.toFront()
-                window.requestFocus()
+                show()
             }
     }
 }
 
+/** Непрочитанные и «Без звука» — на значок в трее. */
+@Composable
+private fun TrayState(container: AppContainer, tray: DesktopTray) {
+    LaunchedEffect(tray) { container.traySettings.muted.collect(tray::setMuted) }
+    LaunchedEffect(tray) {
+        container.chats.chats.map { TrayText.unread(it.orEmpty()) }.distinctUntilChanged().collect(tray::setUnread)
+    }
+}
+
 /**
- * Уведомления о новых сообщениях, пока окно свёрнуто или не в фокусе. Нажатие поднимает окно
- * и открывает чат.
+ * Уведомления о новых сообщениях, пока окно свёрнуто, спрятано или не в фокусе. Нажатие поднимает
+ * окно и открывает чат.
  */
 @Composable
-private fun FrameWindowScope.MessageNotifications(container: AppContainer, state: WindowState) {
-    val notifier = remember {
-        app.maxly.platform.DesktopNotifier { chatId ->
-            chatId?.let(container.chatOpenRequests::request)
-            state.isMinimized = false
-            window.toFront()
-            window.requestFocus()
-        }
-    }
+private fun MessageNotifications(container: AppContainer, tray: DesktopTray) {
+    val notifier = remember(tray) { DesktopNotifier(tray) { container.traySettings.muted.value } }
     LaunchedEffect(notifier) { container.window.looking.collect(notifier::setAppActive) }
     LaunchedEffect(notifier) {
         container.incomingMessages.notices.collect { notifier.incoming(it, container.notificationSettings.enabled.value) }
     }
-    DisposableEffect(notifier) { onDispose { notifier.dispose() } }
 }
 
 /** События ввода, после которых пользователь снова считается у окна. */

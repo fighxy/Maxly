@@ -31,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -719,10 +720,24 @@ private fun SettingsPane(
             app.maxly.ui.settings.NotificationsScreen(
                 enabled = enabled,
                 onEnabledChange = container.notificationSettings::setEnabled,
-                explanation = "Пока окно Maxly свёрнуто или не в фокусе, о новых сообщениях приходят системные " +
-                    "уведомления, кроме чатов без звука. Нажатие на уведомление открывает чат.",
+                explanation = "Пока окно Maxly свёрнуто, спрятано в трей или не в фокусе, о новых сообщениях приходят " +
+                    "системные уведомления, кроме чатов без звука. Нажатие на уведомление открывает чат.",
                 onBack = onBack,
-            )
+            ) {
+                val closeToTray by container.traySettings.closeToTray.collectAsStateWithLifecycle()
+                val muted by container.traySettings.muted.collectAsStateWithLifecycle()
+                androidx.compose.material3.ListItem(
+                    headlineContent = { Text("Звук уведомлений") },
+                    trailingContent = { androidx.compose.material3.Switch(checked = !muted, onCheckedChange = { container.traySettings.setMuted(!it) }) },
+                    modifier = Modifier.clickable { container.traySettings.setMuted(!muted) },
+                )
+                androidx.compose.material3.ListItem(
+                    headlineContent = { Text("Сворачивать в трей при закрытии") },
+                    supportingContent = { Text("Окно прячется к значку Maxly, приложение продолжает работать. Выйти — «Выход» в меню значка или Ctrl+Q") },
+                    trailingContent = { androidx.compose.material3.Switch(checked = closeToTray, onCheckedChange = container.traySettings::setCloseToTray) },
+                    modifier = Modifier.clickable { container.traySettings.setCloseToTray(!closeToTray) },
+                )
+            }
         }
         SettingsPage.About -> AboutScreen(onBack)
         SettingsPage.Keyboard -> KeyboardScreen(container.keyboard, onBack)

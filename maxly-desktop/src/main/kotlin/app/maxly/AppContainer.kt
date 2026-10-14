@@ -106,6 +106,9 @@ class AppContainer {
     /** «Уведомления о сообщениях»: показывать ли их, пока окно свёрнуто или не в фокусе. */
     val notificationSettings = app.maxly.data.NotificationSettings(preferenceStore)
 
+    /** Значок в трее: закрытие окна в трей и «Без звука». */
+    val traySettings = app.maxly.platform.DesktopTraySettings(preferenceStore)
+
     /** Новые чужие сообщения из пушей ядра — для уведомлений. */
     val incomingMessages = app.maxly.data.IncomingMessages(client)
 
