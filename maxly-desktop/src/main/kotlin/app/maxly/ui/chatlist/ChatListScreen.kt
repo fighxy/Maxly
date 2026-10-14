@@ -13,6 +13,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
@@ -53,6 +54,8 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.CloudOff
@@ -931,7 +934,8 @@ fun ChatRow(
                 .onSecondaryClick { menu = true }
                 .combinedClickable(onClick = onClick, onLongClick = { menu = true })
                 .semantics { contentDescription = item.accessibilityLabel }
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .heightIn(min = 78.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Кольцо историй собеседника: касание аватара открывает его истории. Заглушки
@@ -945,14 +949,23 @@ fun ChatRow(
             val ownerId = if (item.type == app.maxly.domain.ChatType.PRIVATE) item.peerId else item.id
             val ring = if (privacy == app.maxly.domain.PrivateModeDisplay.PLACEHOLDER) null else stories.ringFor(ownerId, ownerType)
             app.maxly.ui.stories.StoryRingAvatar(
-                item.avatar, ring, 56.dp, online = item.isOnline, modifier = Modifier.privateBlur(privacy, 8.dp),
+                item.avatar, ring, 60.dp, online = item.isOnline, modifier = Modifier.privateBlur(privacy, 8.dp),
                 onRingClick = ownerId?.let { owner -> { stories.open(owner) } },
             )
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // Название с отметками занимает всё свободное место, время прижато к правому краю.
                     Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        val typeIcon = when (item.type) {
+                            app.maxly.domain.ChatType.CHANNEL -> Icons.Filled.Campaign
+                            app.maxly.domain.ChatType.GROUP -> Icons.Filled.Group
+                            else -> null
+                        }
+                        typeIcon?.let {
+                            Icon(it, null, Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.width(4.dp))
+                        }
                         Text(
                             item.title,
                             style = MaterialTheme.typography.titleMedium,
@@ -964,6 +977,19 @@ fun ChatRow(
                         if (item.isVerified) {
                             Spacer(Modifier.width(4.dp))
                             Icon(Icons.Filled.Verified, stringResource(R.string.chats_verified), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                        }
+                        if (item.isBot) {
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "бот",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                modifier = Modifier
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp),
+                            )
                         }
                         if (item.isMuted) {
                             Spacer(Modifier.width(4.dp))
@@ -977,8 +1003,9 @@ fun ChatRow(
                     }
                     Text(item.time, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
-                Spacer(Modifier.height(3.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.height(2.dp))
+                // Вторая и третья строки: в группах автор и текст, в остальных чатах текст в две строки.
+                Row(verticalAlignment = Alignment.Top) {
                     Preview(item, Modifier.weight(1f).privateBlur(privacy, 7.dp))
                     if (item.openApp) {
                         Spacer(Modifier.width(8.dp))
@@ -997,7 +1024,7 @@ fun ChatRow(
                         )
                     }
                     Spacer(Modifier.width(8.dp))
-                    Trailing(item)
+                    Box(Modifier.padding(top = 2.dp)) { Trailing(item) }
                 }
             }
         }
@@ -1027,46 +1054,68 @@ fun ChatRow(
     }
 }
 
+/**
+ * Вторая и третья строки, как в iOS-версии: в группе автор отдельной строкой и текст в одну,
+ * без автора — текст в две; черновик и «печатает» тоже до двух строк, пустой чат — одна.
+ */
 @Composable
 private fun Preview(item: ChatListItem, modifier: Modifier) {
     val variant = MaterialTheme.colorScheme.onSurfaceVariant
     val accent = MaterialTheme.colorScheme.primary
     val error = MaterialTheme.colorScheme.error
-    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+    val style = MaterialTheme.typography.bodyMedium
+    when (item.previewStyle) {
+        ChatListItem.PreviewStyle.DRAFT -> {
+            val draftLabel = stringResource(R.string.chats_draft)
+            val text = buildAnnotatedString {
+                withStyle(SpanStyle(color = error)) { append(draftLabel); append(' ') }
+                append(item.preview)
+            }
+            Text(text, modifier, style = style, color = variant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        ChatListItem.PreviewStyle.TYPING ->
+            Text(item.preview, modifier, style = style, color = accent, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        ChatListItem.PreviewStyle.EMPTY ->
+            Text(item.preview, modifier, style = style, color = MaterialTheme.colorScheme.outline, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        ChatListItem.PreviewStyle.MESSAGE -> Column(modifier, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            val sender = item.sender
+            if (sender != null) {
+                Text(sender, style = style, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            MessagePreview(item, lines = if (sender != null) 1 else 2)
+        }
+    }
+}
+
+/** Текст последнего сообщения: миниатюра вложения и стрелка пересылки перед ним. */
+@Composable
+private fun MessagePreview(item: ChatListItem, lines: Int) {
+    val variant = MaterialTheme.colorScheme.onSurfaceVariant
+    val accent = MaterialTheme.colorScheme.primary
+    Row(verticalAlignment = Alignment.Top) {
         item.thumbnailUrl?.let {
             AsyncImage(
                 model = ImageRequests.width(it, 20f, LocalDensity.current.density),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(20.dp).clip(RoundedCornerShape(4.dp)),
+                modifier = Modifier.padding(top = 1.dp).size(18.dp).clip(RoundedCornerShape(3.dp)),
             )
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(5.dp))
         }
         if (item.isForwarded) {
-            Icon(Icons.AutoMirrored.Filled.Forward, null, Modifier.size(15.dp), tint = variant)
+            Icon(Icons.AutoMirrored.Filled.Forward, null, Modifier.padding(top = 2.dp).size(15.dp), tint = variant)
             Spacer(Modifier.width(3.dp))
         }
-        val draftLabel = stringResource(R.string.chats_draft)
         val text = buildAnnotatedString {
-            when (item.previewStyle) {
-                ChatListItem.PreviewStyle.DRAFT -> {
-                    withStyle(SpanStyle(color = error)) { append(draftLabel); append(' ') }
-                    append(item.preview)
-                }
-                ChatListItem.PreviewStyle.TYPING -> withStyle(SpanStyle(color = accent)) { append(item.preview) }
-                else -> {
-                    item.sender?.let { withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface)) { append(it); append(": ") } }
-                    // Подпись вложения без текста — акцентом, как в популярных мессенджерах.
-                    val media = item.media
-                    if (media != null && item.preview == app.maxly.presentation.chatlist.ChatListFormatter.mediaLabel(media)) {
-                        withStyle(SpanStyle(color = accent)) { append(item.preview) }
-                    } else {
-                        append(item.preview)
-                    }
-                }
+            // Подпись вложения без текста — акцентом, как в популярных мессенджерах.
+            val media = item.media
+            if (media != null && item.preview == app.maxly.presentation.chatlist.ChatListFormatter.mediaLabel(media)) {
+                withStyle(SpanStyle(color = accent)) { append(item.preview) }
+            } else {
+                append(item.preview)
             }
         }
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = variant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = variant, maxLines = lines, overflow = TextOverflow.Ellipsis)
     }
 }
 
