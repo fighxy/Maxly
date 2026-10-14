@@ -162,7 +162,8 @@ public final class ChatListViewModel {
     /// «Заблокировать» из меню строки; без него пункта нет.
     @ObservationIgnored public var profileActions: (any ProfileActionsRepository)?
     /// Папки как с сервера: их состав меняет «Добавить в папку».
-    @ObservationIgnored private var editableFolders: [ServerFolder] = []
+    /// Наблюдается: от него зависят пункты меню вкладок и строк, их нужно перестроить, когда папки пришли.
+    private var editableFolders: [ServerFolder] = []
     /// Короткое сообщение над списком («Чат добавлен в «Работа»», ошибка): экран гасит его сам.
     public var notice: String?
     /// Собеседники с известным статусом: `true` — «в сети». Неизвестных не трогаем.

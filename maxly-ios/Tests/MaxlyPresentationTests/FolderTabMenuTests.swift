@@ -3,13 +3,15 @@ import Testing
 
 @Suite("Меню вкладки папки")
 struct FolderTabMenuTests {
-    @Test("«Все»: настроить папки, порядок — только при двух своих папках")
+    @Test("«Все»: настроить папки, прочитать все при непрочитанных, порядок — только при двух своих папках")
     func allTab() {
         #expect(FolderTabMenu.entries(isAll: true, editable: true, hasUnread: true, allMuted: false, hasChats: true, folderCount: 2)
-            == [.editFolders, .reorder])
+            == [.editFolders, .readAll, .reorder])
         #expect(FolderTabMenu.entries(isAll: true, editable: true, hasUnread: false, allMuted: false, hasChats: true, folderCount: 1)
             == [.editFolders])
         #expect(FolderTabMenu.entries(isAll: true, editable: false, hasUnread: true, allMuted: false, hasChats: true, folderCount: 3)
+            == [.readAll])
+        #expect(FolderTabMenu.entries(isAll: true, editable: false, hasUnread: false, allMuted: false, hasChats: true, folderCount: 3)
             .isEmpty)
     }
 

@@ -21,16 +21,17 @@ class FolderTabMenuTest {
     @get:Rule val main = MainDispatcherRule()
 
     @Test
-    fun allTabEditsFoldersAndReordersOnlyWithTwoOwnFolders() {
+    fun allTabEditsFoldersReadsAllAndReordersOnlyWithTwoOwnFolders() {
         assertEquals(
-            listOf(Entry.EditFolders, Entry.Reorder),
+            listOf(Entry.EditFolders, Entry.ReadAll, Entry.Reorder),
             FolderTabMenu.entries(isAll = true, editable = true, hasUnread = true, allMuted = false, hasChats = true, folderCount = 2),
         )
         assertEquals(
             listOf(Entry.EditFolders),
             FolderTabMenu.entries(isAll = true, editable = true, hasUnread = false, allMuted = false, hasChats = true, folderCount = 1),
         )
-        assertEquals(emptyList<Entry>(), FolderTabMenu.entries(isAll = true, editable = false, hasUnread = true, allMuted = false, hasChats = true, folderCount = 3))
+        assertEquals(listOf(Entry.ReadAll), FolderTabMenu.entries(isAll = true, editable = false, hasUnread = true, allMuted = false, hasChats = true, folderCount = 3))
+        assertEquals(emptyList<Entry>(), FolderTabMenu.entries(isAll = true, editable = false, hasUnread = false, allMuted = false, hasChats = true, folderCount = 3))
     }
 
     @Test
@@ -100,7 +101,7 @@ class FolderTabMenuTest {
     @Test
     fun menuForFolderAndAll() {
         setUp()
-        assertEquals(listOf(Entry.EditFolders, Entry.Reorder), vm.folderMenu("all"))
+        assertEquals(listOf(Entry.EditFolders, Entry.ReadAll, Entry.Reorder), vm.folderMenu("all"))
         assertEquals(
             listOf(Entry.EditFolder, Entry.AddChats, Entry.ReadAll, Entry.Mute(false), Entry.Delete, Entry.Reorder),
             vm.folderMenu("f1"),

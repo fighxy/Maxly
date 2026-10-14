@@ -2,7 +2,7 @@ package app.maxly.presentation.chatlist
 
 /**
  * Меню папки над списком чатов (долгое нажатие на вкладку, на компьютере — правая кнопка), как
- * в Telegram. «Все»: «Настроить папки», «Изменить порядок». Своя папка: «Настроить папку»,
+ * в Telegram. «Все»: «Настроить папки», «Прочитать все» (есть непрочитанные), «Изменить порядок». Своя папка: «Настроить папку»,
  * «Добавить чаты», «Прочитать все» (есть непрочитанные), «Выкл. уведомления» / «Вкл.
  * уведомления», «Удалить», «Изменить порядок». Порядок — только когда своих папок больше одной.
  */
@@ -54,7 +54,13 @@ object FolderTabMenu {
         folderCount: Int,
     ): List<Entry> {
         val reorder = if (folderCount > 1) listOf(Entry.Reorder) else emptyList()
-        if (isAll) return if (editable) listOf(Entry.EditFolders) + reorder else emptyList()
+        if (isAll) {
+            return buildList {
+                if (editable) add(Entry.EditFolders)
+                if (hasUnread) add(Entry.ReadAll)
+                if (editable) addAll(reorder)
+            }
+        }
         return buildList {
             if (editable) {
                 add(Entry.EditFolder)

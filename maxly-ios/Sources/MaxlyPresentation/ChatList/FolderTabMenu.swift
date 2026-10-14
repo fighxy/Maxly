@@ -1,7 +1,7 @@
 import Foundation
 
 /// Меню папки над списком чатов (долгое нажатие на вкладку), как в Telegram. «Все»: «Настроить
-/// папки», «Изменить порядок». Своя папка: «Настроить папку», «Добавить чаты», «Прочитать все»
+/// папки», «Прочитать все» (есть непрочитанные), «Изменить порядок». Своя папка: «Настроить папку», «Добавить чаты», «Прочитать все»
 /// (есть непрочитанные), «Выкл. уведомления» / «Вкл. уведомления», «Удалить», «Изменить
 /// порядок». Порядок — только когда своих папок больше одной. Тот же состав, что у Android и ПК.
 public enum FolderTabMenu {
@@ -46,7 +46,9 @@ public enum FolderTabMenu {
         folderCount: Int
     ) -> [Entry] {
         let reorder: [Entry] = folderCount > 1 ? [.reorder] : []
-        if isAll { return editable ? [.editFolders] + reorder : [] }
+        if isAll {
+            return (editable ? [.editFolders] : []) + (hasUnread ? [.readAll] : []) + (editable ? reorder : [])
+        }
         var entries: [Entry] = []
         if editable { entries += [.editFolder, .addChats] }
         if hasUnread { entries.append(.readAll) }
