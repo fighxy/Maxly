@@ -2,7 +2,7 @@ import Foundation
 import Observation
 import MaxlyDomain
 
-/// Размер текста, тема приложения и обои чата. Корень приложения следит за ними и применяет их ко всем
+/// Размер текста, шрифт, тема приложения и обои чата. Корень приложения следит за ними и применяет их ко всем
 /// экранам, экран «Оформление» меняет их.
 @MainActor
 @Observable
@@ -10,6 +10,8 @@ public final class AppearanceSettings {
     public private(set) var textSize: TextSizeStep
     public private(set) var theme: ThemeMode
     public private(set) var wallpaper: ChatWallpaper
+    public private(set) var font: AppFont
+    public private(set) var fontWeight: Int
 
     @ObservationIgnored private let store: any AppearanceStore
 
@@ -19,6 +21,8 @@ public final class AppearanceSettings {
         textSize = saved.textSize
         theme = saved.theme
         wallpaper = saved.wallpaper
+        font = saved.font
+        fontWeight = saved.fontWeight
     }
 
     public var isStandardTextSize: Bool { textSize == .standard }
@@ -48,7 +52,33 @@ public final class AppearanceSettings {
         Log.info(.ui, "Обои чата: \(choice.rawValue)")
     }
 
+    public func setFont(_ choice: AppFont) {
+        guard choice != font else { return }
+        font = choice
+        save()
+        Log.info(.ui, "Шрифт: \(choice.rawValue)")
+    }
+
+    /// Толщина обычного текста; за пределами `FontWeightScale.min…max` прижимается к краю.
+    public func setFontWeight(_ weight: Int) {
+        let value = FontWeightScale.clamp(weight)
+        guard value != fontWeight else { return }
+        fontWeight = value
+        save()
+    }
+
+    public func resetFontWeight() {
+        setFontWeight(FontWeightScale.standard)
+    }
+
+    /// Строка «Шрифт ›»: «Inter, 17 пт».
+    public var fontSummary: String { preferences.fontSummary }
+
+    private var preferences: AppearancePreferences {
+        AppearancePreferences(textSize: textSize, theme: theme, wallpaper: wallpaper, font: font, fontWeight: fontWeight)
+    }
+
     private func save() {
-        store.save(AppearancePreferences(textSize: textSize, theme: theme, wallpaper: wallpaper))
+        store.save(preferences)
     }
 }

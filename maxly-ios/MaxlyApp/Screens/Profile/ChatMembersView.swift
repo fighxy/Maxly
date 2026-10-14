@@ -29,7 +29,7 @@ struct ChatMembersView: View {
                         Task { await model.loadMore() }
                     } label: {
                         Label(error, systemImage: "arrow.clockwise")
-                            .font(.footnote)
+                            .font(.app(.footnote))
                     }
                     .listRowSeparator(.hidden)
                 }
@@ -62,7 +62,7 @@ struct ChatMembersView: View {
                 AvatarView(title: member.name, id: member.id, url: member.avatarURL, size: 40, isOnline: model.isOnline(member))
                 VStack(alignment: .leading, spacing: 2) {
                     PrivateText(member.name, placeholder: "Участник")
-                        .font(.body)
+                        .font(.app(.body))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     // Раз в минуту: «был(а) N минут назад» не застывает.
@@ -70,7 +70,7 @@ struct ChatMembersView: View {
                         let status = model.status(of: member, at: context.date)
                         if !status.isEmpty {
                             Text(status)
-                                .font(.caption)
+                                .font(.app(.caption))
                                 .foregroundStyle(model.isOnline(member) ? AnyShapeStyle(Color.maxlyAccent) : AnyShapeStyle(.secondary))
                                 .lineLimit(1)
                         }
@@ -79,7 +79,7 @@ struct ChatMembersView: View {
                 Spacer(minLength: 8)
                 if let badge = member.badge {
                     Text(badge)
-                        .font(.caption)
+                        .font(.app(.caption))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }

@@ -22,13 +22,13 @@ struct CallBubble: View {
                 .background(iconBackground, in: Circle())
             VStack(alignment: .leading, spacing: 2) {
                 Text(CallBubbleText.title(call, outgoing: outgoing))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline, .semibold))
                     .foregroundStyle(titleColor)
                     .lineLimit(1)
                 HStack(spacing: 8) {
                     if let duration = CallBubbleText.duration(call) {
                         Text(duration)
-                            .font(.caption.monospacedDigit())
+                            .font(.app(.caption).monospacedDigit())
                             .foregroundStyle(secondary)
                             .lineLimit(1)
                     }

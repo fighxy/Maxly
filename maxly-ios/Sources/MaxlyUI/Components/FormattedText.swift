@@ -5,7 +5,7 @@ import MaxlyPresentation
 /// `AttributedString` для блока текста пузыря: форматирование сервера и ссылки,
 /// найденные в тексте.
 enum FormattedText {
-    static func attributed(_ block: TextBlock, outgoing: Bool) -> AttributedString {
+    static func attributed(_ block: TextBlock, outgoing: Bool, style: Font.TextStyle = .body) -> AttributedString {
         var result = AttributedString(block.text)
         let linkColor: Color = outgoing ? .maxlyOutgoingAccent : .maxlyAccent
         for span in block.spans {
@@ -23,7 +23,7 @@ enum FormattedText {
             case .underline:
                 result[range].underlineStyle = .single
             case .heading:
-                result[range].font = .headline
+                result[range].font = .app(.headline)
             case .link:
                 let target = span.url.flatMap(URL.init(string:)) ?? URL(string: substring(block.text, span.from, span.length))
                 if let target, target.scheme != nil { result[range].link = target }
@@ -39,7 +39,24 @@ enum FormattedText {
             }
         }
         detectLinks(in: &result, text: block.text, color: linkColor, underline: true)
+        applyTypography(&result, style: style)
         return result
+    }
+
+    /// Встроенный шрифт («Оформление → Шрифт») не умеет системные `.bold()`, курсив и `.monospaced()`:
+    /// жирное, курсив и код получают свой шрифт явно, остальное наследует шрифт текста.
+    static func applyTypography(_ result: inout AttributedString, style: Font.TextStyle, typography: Typography = .shared) {
+        guard typography.isCustom else { return }
+        let styled: InlinePresentationIntent = [.stronglyEmphasized, .emphasized, .code]
+        let runs: [(InlinePresentationIntent, Range<AttributedString.Index>)] = result.runs[\.inlinePresentationIntent]
+            .compactMap { intent, range in intent.map { ($0, range) } }
+        for (intent, range) in runs where !intent.isDisjoint(with: styled) {
+            let weight: Font.Weight? = intent.contains(.stronglyEmphasized) ? .bold : nil
+            result[range].font = intent.contains(.code)
+                ? typography.mono(style, weight: weight)
+                : typography.style(style, weight: weight, italic: intent.contains(.emphasized))
+            result[range].inlinePresentationIntent = intent.subtracting(styled)
+        }
     }
 
     /// Текст с метками анимодзи (`AnimojiMark`): по ним рендерер оставляет место под Lottie.
@@ -121,7 +138,8 @@ struct MessageTextView: View {
     }
 
     private func line(_ block: TextBlock, last: Bool) -> some View {
-        content(block, last: last)
+        content(block, last: last, style: .body)
+            .font(.app(.body))
             .foregroundStyle(outgoing ? Color.maxlyOutgoingText : Color.primary)
             .modifier(AnimojiOverlay(active: !animoji(block).isEmpty))
     }
@@ -133,9 +151,9 @@ struct MessageTextView: View {
 
     private func quote(_ block: TextBlock, last: Bool) -> some View {
         // Полоса — в overlay: её высота равна высоте текста цитаты, а не всей доступной.
-        content(block, last: last)
+        content(block, last: last, style: .callout)
             .modifier(AnimojiOverlay(active: !animoji(block).isEmpty))
-            .font(.callout)
+            .font(.app(.callout))
             .foregroundStyle(outgoing ? Color.maxlyOutgoingText.opacity(0.92) : Color.primary.opacity(0.9))
             .fixedSize(horizontal: false, vertical: true)
             .padding(.vertical, 5)
@@ -151,8 +169,8 @@ struct MessageTextView: View {
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
-    private func content(_ block: TextBlock, last: Bool) -> Text {
-        let attributed = FormattedText.attributed(block, outgoing: outgoing)
+    private func content(_ block: TextBlock, last: Bool, style: Font.TextStyle) -> Text {
+        let attributed = FormattedText.attributed(block, outgoing: outgoing, style: style)
         var body = Text(attributed)
         if #available(iOS 18.0, macOS 15.0, *) {
             let placed = animoji(block)

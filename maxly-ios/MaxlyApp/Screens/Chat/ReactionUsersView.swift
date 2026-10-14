@@ -45,7 +45,7 @@ struct ReactionUsersView: View {
     private func tab(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.subheadline.weight(.medium))
+                .font(.app(.subheadline, .medium))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .foregroundStyle(selected ? Color.white : Color.primary)
@@ -68,7 +68,7 @@ struct ReactionUsersView: View {
         case .failed(let message):
             VStack(spacing: 12) {
                 Text(message)
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.secondary)
                 Button("Повторить") { Task { await model.load() } }
                     .buttonStyle(.bordered)
@@ -78,7 +78,7 @@ struct ReactionUsersView: View {
         case .loaded:
             if let empty = model.emptyText {
                 Text(empty)
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
                     .listRowBackground(Color.clear)
@@ -90,7 +90,7 @@ struct ReactionUsersView: View {
                         .lineLimit(1)
                     Spacer(minLength: 8)
                     Text(user.emoji)
-                        .font(.title3)
+                        .font(.app(.title3))
                 }
                 .accessibilityElement(children: .combine)
             }

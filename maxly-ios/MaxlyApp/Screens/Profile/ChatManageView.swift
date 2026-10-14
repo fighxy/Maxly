@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 import MaxlyDomain
 import MaxlyPresentation
+import MaxlyUI
 
 /// Управление группой или каналом.
 struct ChatManageView: View {
@@ -49,7 +50,7 @@ struct ChatManageView: View {
                     ForEach(model.members) { person in
                         VStack(alignment: .leading) {
                             Text(person.name)
-                            Text(role(person)).font(.caption).foregroundStyle(.secondary)
+                            Text(role(person)).font(.app(.caption)).foregroundStyle(.secondary)
                         }
                         .swipeActions {
                             if person.role != .owner {

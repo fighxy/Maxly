@@ -78,7 +78,7 @@ struct MessageInfoView: View {
             Section(MessageInfoViewModel.readersTitle) {
                 VStack(spacing: 12) {
                     Text(message)
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .foregroundStyle(.secondary)
                     Button("Повторить") { Task { await model.load() } }
                         .buttonStyle(.bordered)
@@ -90,7 +90,7 @@ struct MessageInfoView: View {
             Section(MessageInfoViewModel.readersTitle) {
                 if list.isEmpty {
                     Text(MessageInfoViewModel.emptyReaders)
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
                         .listRowBackground(Color.clear)
@@ -115,7 +115,7 @@ struct MessageInfoView: View {
                     .lineLimit(1)
                 if let detail = model.readerDetail(reader) {
                     Text(detail)
-                        .font(.caption)
+                        .font(.app(.caption))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -123,7 +123,7 @@ struct MessageInfoView: View {
             Spacer(minLength: 8)
             if let reaction = reader.reaction {
                 Text(reaction)
-                    .font(.title3)
+                    .font(.app(.title3))
             }
         }
         .contentShape(Rectangle())

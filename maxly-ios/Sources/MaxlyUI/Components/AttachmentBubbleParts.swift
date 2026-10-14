@@ -49,12 +49,12 @@ struct ContactCardRow: View {
                 .clipShape(Circle())
             VStack(alignment: .leading, spacing: 2) {
                 Text(contact.name.isEmpty ? "Контакт" : contact.name)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline, .semibold))
                     .lineLimit(1)
                     .foregroundStyle(outgoing ? Color.maxlyOutgoingText : Color.primary)
                 if !contact.phone.isEmpty {
                     Text(contact.phone)
-                        .font(.caption)
+                        .font(.app(.caption))
                         .foregroundStyle(outgoing ? Color.maxlyOutgoingSecondary : Color.secondary)
                 }
             }

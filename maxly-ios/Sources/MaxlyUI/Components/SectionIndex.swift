@@ -64,7 +64,7 @@ public struct SectionIndexStrip: View {
             VStack(spacing: 0) {
                 ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
                     Text(entry.label)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.app(size: 11, .semibold))
                         .foregroundStyle(.tint)
                         .frame(width: 20, height: Self.rowHeight)
                 }

@@ -208,7 +208,7 @@ struct RecordingBar: View {
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: blink)
                 .onAppear { blink = true }
             Text(Self.clock(session.elapsed))
-                .font(.body.monospacedDigit())
+                .font(.app(.body).monospacedDigit())
                 .foregroundStyle(.primary)
             Spacer(minLength: 8)
             if session.phase == .recording {
@@ -216,7 +216,7 @@ struct RecordingBar: View {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 13, weight: .semibold))
                     Text("Влево — отмена")
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                 }
                 .foregroundStyle(.secondary)
                 .offset(x: session.dragX * 0.5)

@@ -355,9 +355,9 @@ struct ChatTranscript: View {
                 .frame(width: 72, height: 72)
                 .background(Color.maxlyAccent, in: Circle())
             Text("Канал готов")
-                .font(.headline)
+                .font(.app(.headline))
             Text("Добавляйте посты и приглашайте подписчиков")
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
@@ -375,7 +375,7 @@ struct ChatTranscript: View {
                 MaxlyMark(size: 56)
                     .foregroundStyle(.tertiary)
                 Text(hint)
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -399,7 +399,7 @@ struct ChatTranscript: View {
             .overlay {
                 if !viewModel.isLoadingOlder {
                     Button("Загрузить предыдущие сообщения") { Task { await loadOlderFromTop() } }
-                        .font(.caption)
+                        .font(.app(.caption))
                 }
             }
             .onGeometryChange(for: Bool.self) { geometry in
@@ -729,7 +729,7 @@ private struct ScrollDownButton: View {
                 .overlay(alignment: .top) {
                     if unseen > 0 {
                         Text(unseen > 99 ? "99+" : "\(unseen)")
-                            .font(.caption2.weight(.bold).monospacedDigit())
+                            .font(.app(.caption2, .bold).monospacedDigit())
                             .foregroundStyle(Color.maxlyOnAccent)
                             .padding(.horizontal, 5)
                             .frame(minWidth: 20, minHeight: 20)
@@ -754,9 +754,9 @@ private struct SavedMessagesPlaceholder: View {
                 .frame(width: 64, height: 64)
                 .background(Color.maxlyAccent, in: Circle())
             Text("Это избранное")
-                .font(.headline)
+                .font(.app(.headline))
             Text("Сохраняйте сообщения, медиа и файлы — доступ будет только у вас")
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
@@ -947,7 +947,7 @@ private struct FloatingDayPill: View {
 
     var body: some View {
         Text(title)
-            .font(.footnote.weight(.semibold))
+            .font(.app(.footnote, .semibold))
             .foregroundStyle(.primary)
             .padding(.horizontal, 12)
             .padding(.vertical, 5)

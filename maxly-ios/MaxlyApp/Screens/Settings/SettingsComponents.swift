@@ -27,7 +27,7 @@ struct SettingsRowLabel: View {
                     Text(title)
                     if let subtitle {
                         Text(subtitle)
-                            .font(.footnote)
+                            .font(.app(.footnote))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -72,7 +72,7 @@ struct SettingsButtonRow: View {
 struct SoonBadge: View {
     var body: some View {
         Text("Скоро")
-            .font(.caption.weight(.semibold))
+            .font(.app(.caption, .semibold))
             .foregroundStyle(.secondary)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
@@ -158,11 +158,11 @@ struct LinkQRSheet: View {
                         .accessibilityLabel("QR-код ссылки")
                 }
                 Text(caption)
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 Text(link.absoluteString)
-                    .font(.body.monospaced())
+                    .font(.appMono(.body))
                     .textSelection(.enabled)
                     .multilineTextAlignment(.center)
                 VStack(spacing: 12) {

@@ -1,4 +1,5 @@
 import SwiftUI
+import MaxlyUI
 
 /// Логотип Maxly в двух видах.
 ///
@@ -65,7 +66,7 @@ struct MaxlySplash: View {
                         .tint(.white)
                     if let caption {
                         Text(caption)
-                            .font(.footnote)
+                            .font(.app(.footnote))
                             .foregroundStyle(.white.opacity(0.7))
                     }
                 }

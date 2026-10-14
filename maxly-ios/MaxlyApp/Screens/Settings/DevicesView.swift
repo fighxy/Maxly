@@ -3,6 +3,7 @@ import AVFoundation
 import UIKit
 import MaxlyDomain
 import MaxlyPresentation
+import MaxlyUI
 
 /// «Устройства»: сеансы аккаунта, завершение остальных и вход на новом устройстве по QR-коду.
 struct DevicesView: View {
@@ -20,9 +21,9 @@ struct DevicesView: View {
                         .font(.system(size: 44, weight: .regular))
                         .foregroundStyle(.tint)
                     Text("Устройства с MAX")
-                        .font(.title3.weight(.semibold))
+                        .font(.app(.title3, .semibold))
                     Text("Войдите на новых устройствах и управляйте сеансами")
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
@@ -160,20 +161,20 @@ private struct SessionRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: symbol)
-                .font(.title3)
+                .font(.app(.title3))
                 .foregroundStyle(.tint)
                 .frame(width: 32)
             VStack(alignment: .leading, spacing: 2) {
                 Text(session.title)
-                    .font(.body.weight(.medium))
+                    .font(.app(.body, .medium))
                 if !session.info.isEmpty, session.info != session.title {
                     Text(session.info)
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .foregroundStyle(.secondary)
                 }
                 if let details {
                     Text(details)
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -220,7 +221,7 @@ struct QRScannerSheet: View {
                 }
                 .overlay(alignment: .bottom) {
                     Text("Наведите камеру на QR-код входа")
-                        .font(.callout.weight(.medium))
+                        .font(.app(.callout, .medium))
                         .foregroundStyle(.white)
                         .padding(.bottom, 48)
                 }

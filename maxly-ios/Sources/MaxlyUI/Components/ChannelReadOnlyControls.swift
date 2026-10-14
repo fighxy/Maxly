@@ -22,7 +22,7 @@ public struct ChannelReadOnlyControls: View {
         ZStack {
             Button(action: onToggleMute) {
                 Label(isMuted ? "Включить звук" : "Выключить звук", systemImage: isMuted ? "bell" : "bell.slash")
-                    .font(.subheadline.weight(.medium))
+                    .font(.app(.subheadline, .medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                     .padding(.horizontal, 16)

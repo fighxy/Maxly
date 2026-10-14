@@ -42,7 +42,7 @@ struct ReactionChips: View {
             HStack(spacing: 4) {
                 ReactionGlyph(messageId: messageId, emoji: reaction.emoji)
                 Text(ReactionPalette.countText(reaction.count))
-                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .font(.app(.caption, .semibold).monospacedDigit())
                     .contentTransition(.numericText(value: Double(reaction.count)))
             }
             .padding(.horizontal, 9)

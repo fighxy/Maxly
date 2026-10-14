@@ -65,12 +65,12 @@ struct NewChatSheet: View {
                         VStack(alignment: .leading, spacing: 4) {
                             PrivateText(person.title, placeholder: PrivateModeMask.contactTitle)
                             Text(person.phone)
-                                .font(.subheadline)
+                                .font(.app(.subheadline))
                                 .foregroundStyle(.secondary)
                         }
                         TextField("Имя в контактах", text: $model.contactName)
                         Text("Можно оставить пустым")
-                            .font(.footnote)
+                            .font(.app(.footnote))
                             .foregroundStyle(.secondary)
                         Button("Написать") { model.writeFound() }
                             .disabled(model.busy)
@@ -86,7 +86,7 @@ struct NewChatSheet: View {
                     titleField
                     queryField
                     Text("Участников можно не выбирать.")
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .foregroundStyle(.secondary)
                         .listRowSeparator(.hidden)
                     if model.shownPeople.isEmpty {
@@ -144,7 +144,7 @@ struct NewChatSheet: View {
                 Text(title)
                     .foregroundStyle(.primary)
                 Text(subtitle)
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.secondary)
             }
         }
@@ -172,7 +172,7 @@ struct NewChatSheet: View {
                     PrivateText(person.displayName, placeholder: PrivateModeMask.contactTitle)
                     if let phone = person.phone, !phone.isEmpty {
                         Text(phone)
-                            .font(.subheadline)
+                            .font(.app(.subheadline))
                             .foregroundStyle(.secondary)
                     }
                 }

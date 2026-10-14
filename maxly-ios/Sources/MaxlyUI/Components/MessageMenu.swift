@@ -274,7 +274,7 @@ struct MessageMenuOverlay: View {
                     .font(.system(size: 18, weight: .regular))
                     .frame(width: 24)
                 Text(title)
-                    .font(.body)
+                    .font(.app(.body))
                 Spacer(minLength: 0)
             }
             .foregroundStyle(destructive ? Color.red : Color.primary)

@@ -53,7 +53,7 @@ struct CallScreen: View {
                     Spacer(minLength: 12)
                     if let notice = call.state.notice {
                         Text(notice)
-                            .font(.footnote)
+                            .font(.app(.footnote))
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
                             .background(.ultraThinMaterial, in: Capsule())
@@ -104,14 +104,14 @@ struct CallScreen: View {
                 center.minimize()
             } label: {
                 Image(systemName: "chevron.down")
-                    .font(.title3.weight(.semibold))
+                    .font(.app(.title3, .semibold))
                     .frame(width: 44, height: 44)
             }
             .accessibilityLabel("Свернуть звонок")
             Spacer()
             if call.state.recording {
                 Label("Запись", systemImage: "record.circle")
-                    .font(.footnote.weight(.semibold))
+                    .font(.app(.footnote, .semibold))
                     .foregroundStyle(.red)
             }
             Spacer()
@@ -155,7 +155,7 @@ struct CallScreen: View {
             }
         } label: {
             Image(systemName: "ellipsis.circle")
-                .font(.title3)
+                .font(.app(.title3))
                 .frame(width: 44, height: 44)
         }
         .accessibilityLabel("Ещё")
@@ -173,17 +173,17 @@ struct CallScreen: View {
                     .padding(.bottom, 8)
             }
             Text(call.peer.name.isEmpty ? "Звонок" : call.peer.name)
-                .font(mainVideo(call) == nil ? .title.weight(.semibold) : .title3.weight(.semibold))
+                .font(.app(mainVideo(call) == nil ? .title : .title3, .semibold))
                 .lineLimit(1)
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 Text(CallStatusText.status(of: call, now: context.date))
-                    .font(.callout)
+                    .font(.app(.callout))
                     .monospacedDigit()
                     .foregroundStyle(.white.opacity(0.75))
             }
             if let other = call.state.others.first, !other.audioOn, call.state.phase == .active {
                 Label("Микрофон собеседника выключен", systemImage: "mic.slash.fill")
-                    .font(.footnote)
+                    .font(.app(.footnote))
                     .foregroundStyle(.white.opacity(0.75))
             }
         }
@@ -280,10 +280,10 @@ private struct ParticipantsGrid: View {
         ScrollView {
             VStack(spacing: 6) {
                 Text(call.peer.name)
-                    .font(.headline)
+                    .font(.app(.headline))
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Text(CallStatusText.status(of: call, now: context.date))
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .monospacedDigit()
                         .foregroundStyle(.white.opacity(0.7))
                 }
@@ -312,13 +312,13 @@ private struct ParticipantsGrid: View {
             }
             HStack(spacing: 4) {
                 if !participant.audioOn {
-                    Image(systemName: "mic.slash.fill").font(.caption2)
+                    Image(systemName: "mic.slash.fill").font(.app(.caption2))
                 }
                 if participant.handRaised {
-                    Image(systemName: "hand.raised.fill").font(.caption2)
+                    Image(systemName: "hand.raised.fill").font(.app(.caption2))
                 }
                 Text(name)
-                    .font(.caption.weight(.medium))
+                    .font(.app(.caption, .medium))
                     .lineLimit(1)
             }
             .padding(.horizontal, 8)
@@ -346,12 +346,12 @@ private struct CallToggle: View {
         Button(action: action) {
             VStack(spacing: 6) {
                 Image(systemName: systemImage)
-                    .font(.title3)
+                    .font(.app(.title3))
                     .frame(width: 60, height: 60)
                     .foregroundStyle(isOn ? Color.black : Color.white)
                     .background(isOn ? AnyShapeStyle(Color.white) : AnyShapeStyle(.ultraThinMaterial), in: Circle())
                 Text(title)
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(.white.opacity(0.85))
             }
         }
@@ -372,12 +372,12 @@ private struct CallRoundButton: View {
         Button(action: action) {
             VStack(spacing: 8) {
                 Image(systemName: systemImage)
-                    .font(.title2.weight(.semibold))
+                    .font(.app(.title2, .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 72, height: 72)
                     .background(fill, in: Circle())
                 Text(title)
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(.white.opacity(0.85))
             }
         }
@@ -394,10 +394,10 @@ struct ActiveCallBar: View {
         if let call = center.call, !center.isExpanded {
             HStack(spacing: 10) {
                 Image(systemName: call.isVideo || call.state.cameraOn ? "video.fill" : "phone.fill")
-                    .font(.footnote)
+                    .font(.app(.footnote))
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Text(barText(call, now: context.date))
-                        .font(.footnote.weight(.semibold))
+                        .font(.app(.footnote, .semibold))
                         .monospacedDigit()
                         .lineLimit(1)
                 }
@@ -445,15 +445,15 @@ struct RingingNoticeBar: View {
         if let notice = center.ringingNotice, center.call == nil {
             HStack(spacing: 10) {
                 Image(systemName: notice.isVideo ? "video.fill" : "phone.arrow.down.left.fill")
-                    .font(.footnote)
+                    .font(.app(.footnote))
                 Text(notice.callerName.isEmpty ? "Вам звонят" : "\(notice.callerName) звонит")
-                    .font(.footnote.weight(.semibold))
+                    .font(.app(.footnote, .semibold))
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 Button("Перезвонить") {
                     Task { await center.callBack() }
                 }
-                .font(.footnote.weight(.semibold))
+                .font(.app(.footnote, .semibold))
                 .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.capsule)
                 .controlSize(.small)
@@ -462,7 +462,7 @@ struct RingingNoticeBar: View {
                     center.dismissRingingNotice()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.footnote.weight(.semibold))
+                        .font(.app(.footnote, .semibold))
                         .frame(width: 32, height: 32)
                 }
                 .accessibilityLabel("Скрыть")

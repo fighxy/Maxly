@@ -68,7 +68,7 @@ struct AuthRegistrationStep: View {
         let label = VStack(spacing: 10) {
             avatar
             Text(photo == nil ? "Добавить фото" : "Изменить фото")
-                .font(.body)
+                .font(.app(.body))
                 .foregroundStyle(.tint)
         }
         return PhotosPicker(selection: $photoItem, matching: .images) {

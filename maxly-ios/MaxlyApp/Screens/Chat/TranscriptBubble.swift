@@ -107,7 +107,7 @@ struct TranscriptBubble: View, Equatable {
         let message = message
         return HStack(spacing: 8) {
             Image(systemName: state.isSelected ? "checkmark.circle.fill" : "circle")
-                .font(.title3)
+                .font(.app(.title3))
                 .foregroundStyle(state.isSelected ? Color.maxlyAccent : Color.secondary)
                 .opacity(state.selectable ? 1 : 0)
                 .accessibilityHidden(true)

@@ -22,13 +22,13 @@ struct AuthPhoneStep: View {
             )
             if let notice = viewModel.loginNoticeText {
                 Text(notice)
-                    .font(.footnote)
+                    .font(.app(.footnote))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.top, 12)
             } else if viewModel.sessionExpired {
                 Text("Сессия завершена. Войдите снова по номеру телефона.")
-                    .font(.footnote)
+                    .font(.app(.footnote))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.top, 12)
@@ -79,17 +79,17 @@ struct AuthPhoneStep: View {
             HStack(spacing: 10) {
                 if let country = viewModel.country {
                     Text(verbatim: country.flag)
-                        .font(.title2)
+                        .font(.app(.title2))
                         .accessibilityHidden(true)
                 }
                 Text(viewModel.countryTitle)
                     .foregroundStyle(viewModel.country == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tint))
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.forward")
-                    .font(.footnote.weight(.semibold))
+                    .font(.app(.footnote, .semibold))
                     .foregroundStyle(.tertiary)
             }
-            .font(.body)
+            .font(.app(.body))
             .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
             .contentShape(Rectangle())
         }
@@ -108,14 +108,14 @@ struct AuthPhoneStep: View {
                     .focused($focus, equals: .countryCode)
                     .accessibilityLabel("Код страны")
             }
-            .font(.body.monospacedDigit())
+            .font(.app(.body).monospacedDigit())
             .frame(width: 58, alignment: .leading)
 
             Divider()
                 .frame(height: 30)
 
             TextField("", text: $viewModel.nationalNumber, prompt: Text(verbatim: viewModel.phonePlaceholder))
-                .font(.body.monospacedDigit())
+                .font(.app(.body).monospacedDigit())
                 .keyboardType(.phonePad)
                 .textContentType(.telephoneNumber)
                 .focused($focus, equals: .number)
@@ -142,7 +142,7 @@ struct CountryPickerView: View {
                 } label: {
                     HStack(spacing: 12) {
                         Text(verbatim: country.flag)
-                            .font(.title2)
+                            .font(.app(.title2))
                             .accessibilityHidden(true)
                         Text(country.name)
                             .foregroundStyle(.primary)

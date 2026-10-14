@@ -28,7 +28,7 @@ struct FoldersView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(all.title.isEmpty ? "Все" : all.title)
                                 Text("Все чаты, кроме архива")
-                                    .font(.footnote)
+                                    .font(.app(.footnote))
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -137,7 +137,7 @@ struct FoldersView: View {
                 Text(!canHide ? "Без своих папок вкладка «Все» видна всегда"
                      : shown ? "Вкладка со всеми чатами первой над списком"
                      : "Список открывается первой своей папкой")
-                    .font(.footnote)
+                    .font(.app(.footnote))
                     .foregroundStyle(.secondary)
             }
         }
@@ -152,7 +152,7 @@ struct FoldersView: View {
                 Text(folder.title)
                 if !folder.filters.isEmpty {
                     Text(filterSummary(folder))
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -235,7 +235,7 @@ struct ChatPickerSheet: View {
                                 Spacer()
                                 Image(systemName: selection.contains(chat.id) ? "checkmark.circle.fill" : "circle")
                                     .foregroundStyle(selection.contains(chat.id) ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
-                                    .font(.title3)
+                                    .font(.app(.title3))
                             }
                         }
                         .accessibilityAddTraits(selection.contains(chat.id) ? .isSelected : [])

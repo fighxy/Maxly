@@ -373,7 +373,7 @@ struct ChatView: View {
     private var selectionToolbar: some ToolbarContent {
         ToolbarItem(placement: .principal) {
             Text(viewModel.selection.title(in: viewModel.messages))
-                .font(.headline)
+                .font(.app(.headline))
                 .monospacedDigit()
                 .contentTransition(.numericText())
         }
@@ -590,7 +590,7 @@ struct ChatView: View {
                             Text(item.text).lineLimit(2)
                             if let date = item.date {
                                 Text(date.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.caption)
+                                    .font(.app(.caption))
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -1111,11 +1111,11 @@ struct ChatView: View {
                         .frame(width: 2.5, height: 34)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(counter.map { "Закреплённое сообщение · \($0)" } ?? "Закреплённое сообщение")
-                            .font(.subheadline.weight(.semibold))
+                            .font(.app(.subheadline, .semibold))
                             .foregroundStyle(Color.maxlyAccent)
                             .lineLimit(1)
                         Text(text)
-                            .font(.subheadline)
+                            .font(.app(.subheadline))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                     }
@@ -1162,7 +1162,7 @@ struct ChatView: View {
                         withAnimation(MaxlyMotion.quick(reduceMotion: reduceMotion)) { settings.setEnabled(false) }
                     } label: {
                         Label("Отключить приватный режим", systemImage: "eye.slash")
-                            .font(.subheadline.weight(.semibold))
+                            .font(.app(.subheadline, .semibold))
                             .foregroundStyle(.primary)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
@@ -1173,7 +1173,7 @@ struct ChatView: View {
                 }
                 if !viewModel.messages.isEmpty {
                     Text(PrivateModeMask.revealHint)
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 12)

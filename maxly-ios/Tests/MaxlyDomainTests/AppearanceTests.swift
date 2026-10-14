@@ -74,3 +74,33 @@ struct ChatWallpaperTests {
         #expect(ChatWallpaper.plain.thumbnailName(dark: false) == nil)
     }
 }
+
+@Suite("Шрифт интерфейса")
+struct AppFontTests {
+    @Test("Ползунок сдвигает все начертания, ось файла ограничивает, системный — сотнями")
+    func axis() {
+        #expect(FontWeightScale.axis(.inter, requested: 400, base: 400) == 400)
+        #expect(FontWeightScale.axis(.inter, requested: 600, base: 470) == 670)
+        #expect(FontWeightScale.axis(.inter, requested: 400, base: 330) == 330)
+        // У Golos Text ось с 400: светлее не бывает.
+        #expect(FontWeightScale.axis(.golos, requested: 400, base: 300) == 400)
+        #expect(FontWeightScale.axis(.manrope, requested: 900, base: 600) == 800)
+        #expect(FontWeightScale.axis(.system, requested: 400, base: 470) == 500)
+        #expect(FontWeightScale.axis(.system, requested: 600, base: 430) == 600)
+        // За краем ползунка — край.
+        #expect(FontWeightScale.axis(.inter, requested: 400, base: 900) == 600)
+    }
+
+    @Test("Подпись толщины и строка «Шрифт ›»")
+    func captions() {
+        #expect(FontWeightScale.caption(400) == "Обычный\u{00A0}· 400")
+        #expect(FontWeightScale.caption(300) == "Светлый\u{00A0}· 300")
+        #expect(FontWeightScale.caption(520) == "Средний\u{00A0}· 520")
+        #expect(FontWeightScale.caption(700) == "Полужирный\u{00A0}· 600")
+        let prefs = AppearancePreferences(textSize: .xLarge, font: .golos, fontWeight: 1000)
+        #expect(prefs.fontWeight == FontWeightScale.max)
+        #expect(prefs.fontSummary == "Golos Text, 19\u{00A0}пт")
+        #expect(AppearancePreferences.standard.fontSummary == "Системный, 17\u{00A0}пт")
+        #expect(AppFont.allCases.filter { $0.file == nil } == [.system])
+    }
+}

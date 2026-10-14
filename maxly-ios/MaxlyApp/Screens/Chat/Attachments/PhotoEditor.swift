@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 import MaxlyDomain
 import MaxlyPresentation
+import MaxlyUI
 
 struct PhotoEditor: View {
     let draft: AttachmentDraft
@@ -77,7 +78,7 @@ struct PhotoEditor: View {
             HStack {
                 Button("Отмена", action: requestClose).disabled(busy)
                 Spacer()
-                Text("Редактор фото").font(.headline)
+                Text("Редактор фото").font(.app(.headline))
                 Spacer()
                 Button("Готово", action: finish).disabled(!canEdit)
             }.padding()
@@ -106,7 +107,7 @@ struct PhotoEditor: View {
             }
             VStack(spacing: 8) {
                 if let failure {
-                    Text(failure).font(.footnote).foregroundStyle(.red)
+                    Text(failure).font(.app(.footnote)).foregroundStyle(.red)
                     Button("Закрыть сообщение") { self.failure = nil }
                 }
                 ScrollView { VStack(spacing: 8) { controls } }.frame(maxHeight: min(260, available.size.height * 0.36))
@@ -123,8 +124,8 @@ struct PhotoEditor: View {
                                 resetPending(); tool = item; points = []
                             } label: {
                                 VStack(spacing: 5) {
-                                    Image(systemName: icon(item)).font(.title3)
-                                    Text(item.rawValue).font(.caption)
+                                    Image(systemName: icon(item)).font(.app(.title3))
+                                    Text(item.rawValue).font(.app(.caption))
                                 }.frame(minWidth: 54, minHeight: 48)
                             }
                                 .buttonStyle(.plain).foregroundStyle(tool == item ? Color.accentColor : Color.secondary)
@@ -232,7 +233,7 @@ struct PhotoEditor: View {
     @ViewBuilder private var controls: some View {
         switch tool {
         case .crop:
-            Text("Перетащите края или середину рамки").font(.caption)
+            Text("Перетащите края или середину рамки").font(.app(.caption))
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack {
                     Button("Весь кадр") { crop = .full }
@@ -250,7 +251,7 @@ struct PhotoEditor: View {
                 Button("↷ 90°") { angle = 0; history.add(.rotate(clockwise: true)); crop = .full }
                 Button("Отразить") { history.add(.flip) }
             }.buttonStyle(.bordered).disabled(!canEdit)
-            Text("Горизонт: \(Int(angle))°").font(.caption)
+            Text("Горизонт: \(Int(angle))°").font(.app(.caption))
             Slider(value: $angle,in: -45...45).disabled(busy)
             Button("Применить") { history.add(.straighten(angle)); angle = 0 }.disabled(!canEdit || angle == 0)
         case .draw, .text:
@@ -266,7 +267,7 @@ struct PhotoEditor: View {
                     Button("Новый текст") { if let stagedText { history.add(.replaceText(stagedText)) }; selectedText = nil; text = "" }
                     if let selectedText { Button("Удалить") { history.add(.removeText(selectedText.id)); self.selectedText = nil; text = "" } }
                 }.disabled(busy)
-                Text("Выберите надпись и перетащите её по фото").font(.caption)
+                Text("Выберите надпись и перетащите её по фото").font(.app(.caption))
             } else {
                 choices(PhotoBrush.allCases,selected: shape == nil ? brushTool : nil,title: { $0.rawValue }) { brushTool = $0; shape = nil }
                 choices(PhotoShape.allCases,selected: shape,title: { $0.rawValue }) { shape = $0 }
@@ -305,7 +306,7 @@ struct PhotoEditor: View {
             }.disabled(busy)
             } else if filterMode == 1 {
                 choices(PhotoTune.allCases,selected: tune,title: { $0.rawValue }) { tune = $0 }
-                Text("\(tune.rawValue): \(Int(adjustments[tune]*100))").font(.caption)
+                Text("\(tune.rawValue): \(Int(adjustments[tune]*100))").font(.app(.caption))
                 Slider(value: Binding(get: { adjustments[tune] },set: { adjustments[tune] = $0 }),in: (tune.positive ? 0 : -1)...1).disabled(busy)
             } else {
                 choices([0,1,2,3],selected: curveChannel,title: { ["Все","Красный","Зелёный","Синий"][$0] }) { curveChannel = $0 }

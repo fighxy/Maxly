@@ -3,71 +3,29 @@ import MaxlyDomain
 import MaxlyPresentation
 import MaxlyUI
 
-/// «Оформление»: предпросмотр, размер текста, тема и обои чата.
-///
-/// Пока палец на ползунке, размер меняется только в предпросмотре. Всё приложение
-/// перестраивается, когда палец отпущен, иначе список под пальцем прыгал бы.
+/// «Оформление»: предпросмотр, шрифт (свой экран: шрифт, толщина, размер текста), тема и обои чата.
 struct AppearanceView: View {
     let settings: AppearanceSettings
-
-    /// Положение ползунка: номер шага `TextSizeStep`.
-    @State private var position: Double
-    @State private var isDragging = false
-
-    init(settings: AppearanceSettings) {
-        self.settings = settings
-        _position = State(initialValue: Double(settings.textSize.index))
-    }
-
-    /// Шаг под ползунком: его показывает предпросмотр, в том числе во время движения.
-    private var shown: TextSizeStep { TextSizeStep(index: Int(position.rounded())) }
 
     var body: some View {
         List {
             Section {
                 AppearancePreview(wallpaper: settings.wallpaper)
-                    .dynamicTypeSize(shown.dynamicTypeSize)
                     .animation(MaxlyMotion.fade, value: settings.wallpaper)
                     .listRowBackground(Color.maxlyBackground)
             } header: {
                 Text("Предпросмотр")
             }
             Section {
-                Slider(value: $position, in: 0...Double(TextSizeStep.maxIndex), step: 1) {
-                    Text("Размер текста")
-                } minimumValueLabel: {
-                    Text(verbatim: "А")
-                        .font(.system(size: 14))
-                        .accessibilityHidden(true)
-                } maximumValueLabel: {
-                    Text(verbatim: "А")
-                        .font(.system(size: 24))
-                        .accessibilityHidden(true)
-                } onEditingChanged: { editing in
-                    isDragging = editing
-                    if !editing { settings.setTextSize(shown) }
-                }
-                .accessibilityValue(shown.caption)
-                HStack(spacing: 6) {
-                    Text(shown.caption)
-                        .monospacedDigit()
-                    if shown == .standard {
-                        Text("по умолчанию")
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 8)
-                    Button("Сбросить") {
-                        position = Double(TextSizeStep.standard.index)
-                        settings.resetTextSize()
-                    }
-                    // Иначе кнопкой становится вся строка списка.
-                    .buttonStyle(.borderless)
-                    .disabled(shown == .standard)
+                NavigationLink {
+                    FontView(settings: settings)
+                } label: {
+                    LabeledContent("Шрифт", value: settings.fontSummary)
                 }
             } header: {
-                Text("Размер текста")
+                Text("Текст")
             } footer: {
-                Text("Меняет текст в списке чатов, сообщениях, контактах, звонках и настройках. По умолчанию 17 пт, стандартный размер iOS.")
+                Text("Шрифт, толщина и размер текста во всём приложении.")
             }
             Section {
                 Picker("Тема", selection: Binding(
@@ -108,10 +66,164 @@ struct AppearanceView: View {
         }
         .navigationTitle("Оформление")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// «Шрифт»: образец, шрифт всего интерфейса (название каждого — им самим), толщина плавным ползунком
+/// и размер текста.
+///
+/// Шрифт и толщина меняются сразу. Размер, пока палец на ползунке, меняется только в образце: всё
+/// приложение перестраивается, когда палец отпущен, иначе список под пальцем прыгал бы.
+struct FontView: View {
+    let settings: AppearanceSettings
+
+    /// Положение ползунка размера: номер шага `TextSizeStep`.
+    @State private var position: Double
+    @State private var isDragging = false
+    @State private var weight: Double
+
+    init(settings: AppearanceSettings) {
+        self.settings = settings
+        _position = State(initialValue: Double(settings.textSize.index))
+        _weight = State(initialValue: Double(settings.fontWeight))
+    }
+
+    /// Шаг под ползунком: его показывает образец, в том числе во время движения.
+    private var shown: TextSizeStep { TextSizeStep(index: Int(position.rounded())) }
+
+    var body: some View {
+        List {
+            Section {
+                AppearancePreview(wallpaper: settings.wallpaper)
+                    .dynamicTypeSize(shown.dynamicTypeSize)
+                    .listRowBackground(Color.maxlyBackground)
+            } header: {
+                Text("Предпросмотр")
+            }
+            Section {
+                ForEach(AppFont.allCases, id: \.self) { font in
+                    FontOption(font: font, isSelected: settings.font == font) {
+                        settings.setFont(font)
+                    }
+                }
+            } header: {
+                Text("Шрифт")
+            }
+            Section {
+                Slider(
+                    value: $weight,
+                    in: Double(FontWeightScale.min)...Double(FontWeightScale.max),
+                    step: 10
+                ) {
+                    Text("Толщина")
+                } minimumValueLabel: {
+                    Text(verbatim: "А")
+                        .font(.system(size: 18, weight: .light))
+                        .accessibilityHidden(true)
+                } maximumValueLabel: {
+                    Text(verbatim: "А")
+                        .font(.system(size: 18, weight: .bold))
+                        .accessibilityHidden(true)
+                }
+                .accessibilityValue(FontWeightScale.caption(Int(weight)))
+                HStack(spacing: 6) {
+                    Text(FontWeightScale.caption(Int(weight)))
+                        .monospacedDigit()
+                    Spacer(minLength: 8)
+                    Button("Сбросить") {
+                        weight = Double(FontWeightScale.standard)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(Int(weight) == FontWeightScale.standard)
+                }
+            } header: {
+                Text("Толщина")
+            } footer: {
+                Text(settings.font == .system
+                    ? "Обычный и полужирный текст меняются вместе. У системного шрифта толщина меняется ступенями."
+                    : "Обычный и полужирный текст меняются вместе, плавно.")
+            }
+            Section {
+                Slider(value: $position, in: 0...Double(TextSizeStep.maxIndex), step: 1) {
+                    Text("Размер текста")
+                } minimumValueLabel: {
+                    Text(verbatim: "А")
+                        .font(.system(size: 14))
+                        .accessibilityHidden(true)
+                } maximumValueLabel: {
+                    Text(verbatim: "А")
+                        .font(.system(size: 24))
+                        .accessibilityHidden(true)
+                } onEditingChanged: { editing in
+                    isDragging = editing
+                    if !editing { settings.setTextSize(shown) }
+                }
+                .accessibilityValue(shown.caption)
+                HStack(spacing: 6) {
+                    Text(shown.caption)
+                        .monospacedDigit()
+                    if shown == .standard {
+                        Text("по умолчанию")
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                    Button("Сбросить") {
+                        position = Double(TextSizeStep.standard.index)
+                        settings.resetTextSize()
+                    }
+                    // Иначе кнопкой становится вся строка списка.
+                    .buttonStyle(.borderless)
+                    .disabled(shown == .standard)
+                }
+            } header: {
+                Text("Размер текста")
+            } footer: {
+                Text("По умолчанию 17 пт, стандартный размер iOS.")
+            }
+        }
+        .navigationTitle("Шрифт")
+        .navigationBarTitleDisplayMode(.inline)
+        .sensoryFeedback(.selection, trigger: settings.font)
         // Шаг сменился не пальцем (VoiceOver, клавиатура): применить сразу.
         .onChange(of: position) {
             if !isDragging { settings.setTextSize(shown) }
         }
+        // Толщина — сразу, и пальцем тоже: образец и экран показывают её на ходу.
+        .onChange(of: weight) {
+            settings.setFontWeight(Int(weight.rounded()))
+        }
+    }
+}
+
+/// Строка шрифта: название и образец этим шрифтом, галочка у выбранного.
+private struct FontOption: View {
+    let font: AppFont
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(font.title)
+                        .font(Typography.shared.style(.body, font: font))
+                    Text("Съешь же ещё этих мягких булок")
+                        .font(Typography.shared.style(.footnote, font: font))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.maxlyAccent)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(font.title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -205,7 +317,7 @@ private struct WallpaperOption: View {
                         }
                     }
                 Text(wallpaper.title)
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(isSelected ? .primary : .secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)

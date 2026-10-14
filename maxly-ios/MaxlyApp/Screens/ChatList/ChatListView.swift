@@ -189,7 +189,7 @@ struct ChatListView: View {
     private var noticeBanner: some View {
         if let text = viewModel.notice {
             Text(text)
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(.regularMaterial, in: Capsule())
@@ -486,7 +486,7 @@ struct ChatListView: View {
                     viewModel.dismissError()
                 } label: {
                     Label(message, systemImage: "exclamationmark.circle")
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .foregroundStyle(.red)
                 }
                 .listRowSeparator(.hidden)
@@ -724,7 +724,7 @@ struct ChatListView: View {
                     .selectionDisabled()
             } else {
                 HStack {
-                    Text("Недавние").font(.subheadline.weight(.semibold))
+                    Text("Недавние").font(.app(.subheadline, .semibold))
                     Spacer()
                     Button("Очистить") { Task { await viewModel.clearRecent() } }
                         .buttonStyle(.plain)
@@ -782,7 +782,7 @@ struct ChatListView: View {
 
     private func searchHeading(_ title: String) -> some View {
         Text(title)
-            .font(.subheadline.weight(.semibold))
+            .font(.app(.subheadline, .semibold))
             .foregroundStyle(.secondary)
             .accessibilityAddTraits(.isHeader)
             .listRowSeparator(.hidden)
@@ -812,7 +812,7 @@ struct ChatListView: View {
                     if viewModel.connection != .online || viewModel.isCatchingUp {
                         ProgressView().controlSize(.small)
                     }
-                    Text(viewModel.navigationTitle).font(.headline)
+                    Text(viewModel.navigationTitle).font(.app(.headline))
                 }
                 .foregroundStyle(.primary)
                 .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: showsStoryStack)
@@ -847,7 +847,7 @@ struct ChatListView: View {
             Spacer()
             if viewModel.capabilities.contains(.reorderPins), viewModel.pinnedCount > 1 {
                 Text("Перетащите закреплённые, чтобы поменять порядок")
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.trailing)
             }
@@ -1159,10 +1159,10 @@ private struct GlobalResultRow: View {
             AvatarView(title: result.title, id: result.id, url: result.avatarURL, size: MaxlyTheme.smallAvatar)
             VStack(alignment: .leading, spacing: 2) {
                 PrivateText(result.title, placeholder: PrivateModeMask.searchResultTitle)
-                    .font(.body.weight(.semibold))
+                    .font(.app(.body, .semibold))
                     .lineLimit(1)
                 if let subtitle = result.subtitle, !privateMode.isMasked {
-                    Text(subtitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                    Text(subtitle).font(.app(.subheadline)).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
         }
@@ -1178,17 +1178,17 @@ private struct FoundMessageRow: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 PrivateText(message.chatTitle, placeholder: PrivateModeMask.searchResultTitle)
-                    .font(.body.weight(.semibold))
+                    .font(.app(.body, .semibold))
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if !message.time.isEmpty {
                     Text(message.time)
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .foregroundStyle(.secondary)
                 }
             }
             PrivateText(message.snippet, placeholder: PrivateModeMask.archivePreview)
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
         }

@@ -68,7 +68,7 @@ struct StoriesStrip: View {
         VStack(spacing: 4) {
             avatar()
             Text(title)
-                .font(.caption)
+                .font(.app(.caption))
                 .lineLimit(1)
                 .frame(height: labelHeight)
                 .foregroundStyle(dim ? Color.secondary : Color.primary)

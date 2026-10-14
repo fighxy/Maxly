@@ -54,7 +54,7 @@ struct ChatComposer: View {
         VStack(alignment: .leading, spacing: 6) {
             if let message = viewModel.errorMessage {
                 Text(message)
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(.red)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
@@ -63,7 +63,7 @@ struct ChatComposer: View {
             }
             if let hint = recording.hint {
                 Text(hint)
-                    .font(.footnote)
+                    .font(.app(.footnote))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -87,7 +87,7 @@ struct ChatComposer: View {
             }
             if let notice = viewModel.notice {
                 Label(notice, systemImage: "checkmark.circle.fill")
-                    .font(.footnote.weight(.medium))
+                    .font(.app(.footnote, .medium))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .maxlyGlassCapsule()
@@ -102,7 +102,7 @@ struct ChatComposer: View {
             if let onOpenApp {
                 Button(action: onOpenApp) {
                     Label("Открыть приложение", systemImage: "square.grid.2x2.fill")
-                        .font(.body.weight(.semibold))
+                        .font(.app(.body, .semibold))
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .contentShape(Capsule())
                 }
@@ -200,7 +200,7 @@ struct ChatComposer: View {
             HStack(spacing: 8) {
                 ForEach(titles, id: \.self) { title in
                     Button(title) { onPick(title) }
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .maxlyGlassCapsule()
@@ -286,7 +286,7 @@ struct ChatComposer: View {
             Button(action: join.action) {
                 ZStack {
                     Text(join.label)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.app(.subheadline, .semibold))
                         .opacity(join.busy ? 0 : 1)
                     if join.busy { ProgressView().controlSize(.small) }
                 }
@@ -305,7 +305,7 @@ struct ChatComposer: View {
 
         } else {
             Text("Писать в этот чат нельзя")
-                .font(.footnote)
+                .font(.app(.footnote))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, minHeight: 44)
@@ -321,10 +321,10 @@ struct ChatComposer: View {
                 .foregroundStyle(Color.maxlyAccent)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Редактирование")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline, .semibold))
                     .foregroundStyle(Color.maxlyAccent)
                 Text(privateMode.isMasked ? PrivateModeMask.messageText(outgoing: true) : message.text)
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .lineLimit(1)
                     .foregroundStyle(.secondary)
             }
@@ -339,7 +339,7 @@ struct ChatComposer: View {
                 viewModel.cancelEdit()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.caption.weight(.bold))
+                    .font(.app(.caption, .bold))
                     .frame(width: 28, height: 28)
             }
             .buttonStyle(.plain)
@@ -365,11 +365,11 @@ struct ChatComposer: View {
                 .foregroundStyle(Color.maxlyAccent)
             VStack(alignment: .leading, spacing: 1) {
                 Text(privateMode.isMasked ? "Ответ" : replyTitle(message))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline, .semibold))
                     .foregroundStyle(Color.maxlyAccent)
                     .lineLimit(1)
                 Text(privateMode.isMasked ? PrivateModeMask.messageText(outgoing: viewModel.isOutgoing(message)) : message.replySnippet)
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .lineLimit(1)
                     .foregroundStyle(.secondary)
             }
@@ -384,7 +384,7 @@ struct ChatComposer: View {
                 viewModel.cancelReply()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.caption.weight(.bold))
+                    .font(.app(.caption, .bold))
                     .frame(width: 28, height: 28)
             }
             .buttonStyle(.plain)

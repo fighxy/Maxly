@@ -100,7 +100,7 @@ private struct ArchiveTile: View {
                     }
                     Text(story.time.formatted(.dateTime.day().month(.abbreviated)))
                 }
-                .font(.caption2.weight(.semibold))
+                .font(.app(.caption2, .semibold))
                 .foregroundStyle(.white)
                 .shadow(radius: 2)
                 .padding(6)
@@ -151,7 +151,7 @@ private struct ArchivedStoryView: View {
             }
             Button(action: onClose) {
                 Image(systemName: "xmark")
-                    .font(.headline)
+                    .font(.app(.headline))
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
             }

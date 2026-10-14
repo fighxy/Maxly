@@ -7,6 +7,12 @@ struct RootView: View {
     @Bindable var container: AppContainer
     @Bindable var router: AppRouter
 
+    /// Шрифт, толщина и размер текста одной строкой: меняется — экраны получают новый шрифт.
+    private var typographyKey: String {
+        let appearance = container.appearance
+        return "\(appearance.font.rawValue)-\(appearance.fontWeight)-\(appearance.textSize.rawValue)"
+    }
+
     var body: some View {
         Group {
             if let report = container.crashReport {
@@ -15,8 +21,14 @@ struct RootView: View {
                 content
             }
         }
-        // Размер текста, тема и обои чата из «Оформления» — на всё приложение, включая экран сбоя.
+        // Размер текста, шрифт, тема и обои чата из «Оформления» — на всё приложение, включая экран сбоя.
+        .font(.app(.body))
         .dynamicTypeSize(container.appearance.textSize.dynamicTypeSize)
+        .onChange(of: typographyKey) {
+            let appearance = container.appearance
+            Typography.shared.apply(font: appearance.font, weight: appearance.fontWeight, textSize: appearance.textSize)
+            NavigationBarFonts.apply()
+        }
         .background(InterfaceStyleOverride(theme: container.appearance.theme))
         .environment(\.chatWallpaper, container.appearance.wallpaper)
         .environment(\.imageURLSizing, CoreImageURLSizing())
@@ -378,10 +390,10 @@ struct MainTabView: View {
         if let notice = container.loginNotice, notice.place == .chatList {
             VStack(alignment: .leading, spacing: 8) {
                 Text(notice.title)
-                    .font(.headline)
+                    .font(.app(.headline))
                 if let message = notice.message, !message.isEmpty {
                     Text(message)
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .foregroundStyle(.secondary)
                 }
                 HStack(spacing: 12) {

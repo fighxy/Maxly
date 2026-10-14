@@ -145,7 +145,7 @@ struct CommentsView: View {
         case .failed(let message):
             VStack(spacing: 12) {
                 Text(message)
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 Button("Повторить") { Task { await model.reload() } }
@@ -164,7 +164,7 @@ struct CommentsView: View {
             }
             if let empty = model.emptyText {
                 Text(empty)
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 32)
@@ -236,7 +236,7 @@ struct CommentsView: View {
         VStack(alignment: .leading, spacing: 6) {
             if let message = model.errorMessage {
                 Text(message)
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(.red)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)

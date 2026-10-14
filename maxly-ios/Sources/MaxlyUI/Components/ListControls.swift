@@ -153,7 +153,7 @@ public struct FolderStrip: View {
         } label: {
             HStack(spacing: 6) {
                 Text(tab.title)
-                    .font(.callout.weight(isSelected ? .semibold : .regular))
+                    .font(.app(.callout, isSelected ? .semibold : .regular))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 if let badge = tab.badge {

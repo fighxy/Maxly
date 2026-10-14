@@ -38,6 +38,22 @@ struct AppearanceStoreTests {
         #expect(UserDefaultsAppearanceStore(defaults: defaults).load() == AppearancePreferences(textSize: .small, theme: .dark))
     }
 
+    @Test("Шрифт сохраняется именем, толщина числом; незнакомый шрифт — системный")
+    @MainActor
+    func font() throws {
+        let suite = "maxly.tests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = UserDefaultsAppearanceStore(defaults: defaults)
+        store.save(AppearancePreferences(font: .manrope, fontWeight: 470))
+        #expect(defaults.string(forKey: UserDefaultsAppearanceStore.fontKey) == "manrope")
+        #expect(defaults.integer(forKey: UserDefaultsAppearanceStore.fontWeightKey) == 470)
+        #expect(UserDefaultsAppearanceStore(defaults: defaults).load() == AppearancePreferences(font: .manrope, fontWeight: 470))
+        defaults.set("comic", forKey: UserDefaultsAppearanceStore.fontKey)
+        defaults.set(2000, forKey: UserDefaultsAppearanceStore.fontWeightKey)
+        #expect(UserDefaultsAppearanceStore(defaults: defaults).load() == AppearancePreferences(font: .system, fontWeight: FontWeightScale.max))
+    }
+
     @Test("Незнакомые значения читаются как значения по умолчанию")
     @MainActor
     func unknownValues() throws {

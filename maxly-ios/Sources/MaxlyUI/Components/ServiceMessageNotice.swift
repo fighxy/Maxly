@@ -27,7 +27,7 @@ struct ServiceMessageNotice: View {
 
     private var label: some View {
         Text(target == nil ? "Закрепление снято" : (pin.preview.isEmpty ? "Сообщение закреплено" : "Закреплено: \(pin.preview)"))
-            .font(.footnote)
+            .font(.app(.footnote))
             .foregroundStyle(.primary)
             .multilineTextAlignment(.center)
             .lineLimit(3)

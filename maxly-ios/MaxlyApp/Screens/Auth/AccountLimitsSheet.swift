@@ -28,12 +28,12 @@ struct AccountLimitsSheet: View {
                         .padding(.top, 28)
                         .accessibilityHidden(true)
                     Text(content.title)
-                        .font(.title2.bold())
+                        .font(.app(.title2, .bold))
                         .multilineTextAlignment(.center)
                         .padding(.top, 14)
                         .accessibilityAddTraits(.isHeader)
                     Text(content.message)
-                        .font(.body)
+                        .font(.app(.body))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
@@ -54,7 +54,7 @@ struct AccountLimitsSheet: View {
                 dismiss()
             } label: {
                 Text("Понятно")
-                    .font(.headline)
+                    .font(.app(.headline))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 6)
             }
@@ -72,14 +72,14 @@ struct AccountLimitsSheet: View {
     private func limit(_ item: AccountLimitsContent.Item) -> some View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: Self.symbol(item.icon))
-                .font(.title3)
+                .font(.app(.title3))
                 .foregroundStyle(.tint)
                 .frame(width: 28)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
-                Text(item.title).font(.subheadline.weight(.semibold))
+                Text(item.title).font(.app(.subheadline, .semibold))
                 Text(item.detail)
-                    .font(.footnote)
+                    .font(.app(.footnote))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

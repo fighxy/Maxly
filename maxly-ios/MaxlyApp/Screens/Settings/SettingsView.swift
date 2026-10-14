@@ -237,14 +237,14 @@ struct SettingsView: View {
             .accessibilityLabel(account.hasPhoto ? "Открыть фото профиля" : "Добавить фото профиля")
 
             Text(account.profile?.displayName ?? " ")
-                .font(.title2.weight(.semibold))
+                .font(.app(.title2, .semibold))
                 .multilineTextAlignment(.center)
                 .redacted(reason: account.profile == nil ? .placeholder : [])
 
             if !account.headerPhone.isEmpty {
                 HStack(spacing: 6) {
                     Text(account.headerPhone)
-                        .font(.body.monospacedDigit())
+                        .font(.app(.body).monospacedDigit())
                         .foregroundStyle(.secondary)
                         .contentTransition(.numericText())
                         .privacySensitive()

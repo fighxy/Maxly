@@ -30,9 +30,12 @@ let package = Package(
             exclude: ["Storage/README.md"]
         ),
         // Компоненты рисуют готовые строки из ViewModel (например, `ChatListItem`).
+        // Шрифты интерфейса (переменные, OFL — docs/fonts): Inter, Onest, Golos Text, Manrope, Nunito,
+        // JetBrains Mono для кода.
         .target(
             name: "MaxlyUI",
-            dependencies: ["MaxlyDomain", "MaxlyPresentation", .product(name: "Lottie", package: "lottie-spm")]
+            dependencies: ["MaxlyDomain", "MaxlyPresentation", .product(name: "Lottie", package: "lottie-spm")],
+            resources: [.process("Resources/Fonts")]
         ),
         // ViewModel экранов: чистый Swift поверх протоколов домена, без SwiftUI и ядра.
         // Так логика экранов проходит `swift test` без Xcode-таргета приложения.

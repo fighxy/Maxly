@@ -136,11 +136,11 @@ struct StoryViewerView: View {
                 ChatAvatarView(avatar: StoryText.avatar(viewer.ring), size: 36)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(StoryText.title(viewer.ring, own: viewer.isOwn))
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.app(size: 15, .semibold))
                         .lineLimit(1)
                     if let story = viewer.story {
                         Text(StoryText.ago(story.time, now: Date()))
-                            .font(.system(size: 12))
+                            .font(.app(size: 12))
                             .opacity(0.75)
                     }
                 }
@@ -222,7 +222,7 @@ struct StoryViewerView: View {
                     .overlay(Capsule().strokeBorder(.white.opacity(0.4), lineWidth: 1))
             } else {
                 Text("Автор выключил ответы")
-                    .font(.footnote)
+                    .font(.app(.footnote))
                     .foregroundStyle(.white.opacity(0.5))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }

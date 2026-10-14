@@ -21,7 +21,7 @@ struct ChatSearchSheet: View {
                             .lineLimit(3)
                         if let date = hit.date {
                             Text(date, format: .dateTime.day().month().hour().minute())
-                                .font(.caption)
+                                .font(.app(.caption))
                                 .foregroundStyle(.secondary)
                         }
                     }

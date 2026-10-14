@@ -2,6 +2,7 @@ import Charts
 import SwiftUI
 import MaxlyDomain
 import MaxlyPresentation
+import MaxlyUI
 
 /// «Данные и память» по образцу экранов использования памяти в популярных мессенджерах: кольцо занятого места, список
 /// категорий с отметками и «Очистить», срок хранения медиа и предел кэша. Внизу размер
@@ -133,10 +134,10 @@ struct DataStorageView: View {
                 VStack(spacing: 2) {
                     if let usage = model.usage {
                         Text(StorageSettingsModel.format(usage.cache))
-                            .font(.title2.weight(.semibold))
+                            .font(.app(.title2, .semibold))
                             .contentTransition(.numericText())
                         Text("кэш")
-                            .font(.subheadline)
+                            .font(.app(.subheadline))
                             .foregroundStyle(.secondary)
                     } else {
                         ProgressView()
@@ -149,12 +150,12 @@ struct DataStorageView: View {
             VStack(spacing: 4) {
                 if let summary = model.summary {
                     Text(summary)
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .multilineTextAlignment(.center)
                 }
                 if let free = model.freeSpace {
                     Text(free)
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -182,7 +183,7 @@ struct DataStorageView: View {
                     Text(category.title)
                         .foregroundStyle(.primary)
                     Text(StorageSettingsModel.percent(model.share(category) * 100))
-                        .font(.caption)
+                        .font(.app(.caption))
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)

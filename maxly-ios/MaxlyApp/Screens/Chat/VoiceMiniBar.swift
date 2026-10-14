@@ -28,12 +28,12 @@ struct VoicePlayerRow: View {
                 Button { onOpen(track) } label: {
                     VStack(spacing: 1) {
                         Text(track.title)
-                            .font(.subheadline.weight(.medium))
+                            .font(.app(.subheadline, .medium))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                             .truncationMode(.middle)
                         Text("Голосовое сообщение · \(track.timeText)")
-                            .font(.caption)
+                            .font(.app(.caption))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .monospacedDigit()
@@ -44,7 +44,7 @@ struct VoicePlayerRow: View {
                 .buttonStyle(.plain)
                 Button { model.cycleSpeed() } label: {
                     Text(VoiceNowPlaying.label(model.speed).uppercased())
-                        .font(.caption2.weight(.bold))
+                        .font(.app(.caption2, .bold))
                         .monospacedDigit()
                         .foregroundStyle(model.speed > 1 ? Color.maxlyAccent : Color.secondary)
                         .padding(.horizontal, 5)

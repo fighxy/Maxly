@@ -42,11 +42,11 @@ struct VoiceMessageView: View {
                     bars
                     HStack(spacing: 6) {
                         Text(ChatContentFormat.voiceClock(durationMs: voice.durationMs, phase: scrub.map { VoicePhase.paused($0) } ?? phase))
-                            .font(.caption.monospacedDigit())
+                            .font(.app(.caption).monospacedDigit())
                             .foregroundStyle(secondary)
                         if case .failed = phase {
                             Text("Не удалось воспроизвести")
-                                .font(.caption2)
+                                .font(.app(.caption2))
                                 .foregroundStyle(outgoing ? Color.maxlyOutgoingText.opacity(0.85) : Color.red)
                                 .lineLimit(1)
                         }
@@ -173,7 +173,7 @@ struct VoiceMessageView: View {
                 .foregroundStyle(accent)
         case .collapsed:
             Text(verbatim: "→Т")
-                .font(.system(size: 15, weight: .medium))
+                .font(.app(size: 15, .medium))
                 .foregroundStyle(accent)
         }
     }
@@ -188,8 +188,8 @@ struct VoiceMessageView: View {
 
     private var transcriptBody: some View {
         ZStack(alignment: .bottomTrailing) {
-            (transcriptText + Text(verbatim: time == nil ? "" : "\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}").font(.caption2))
-                .font(.body)
+            (transcriptText + Text(verbatim: time == nil ? "" : "\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}").font(.app(.caption2)))
+                .font(.app(.body))
                 .foregroundStyle(transcript == .failed ? secondary : (outgoing ? Color.maxlyOutgoingText : Color.primary))
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)

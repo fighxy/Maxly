@@ -220,7 +220,7 @@ public struct MessageBubble: View {
                     .modifier(MenuFrameReader(frame: menuFrame, enabled: menuPresenter != nil))
                 if message.status == .failed {
                     Button("Не отправлено. Повторить", action: onRetry)
-                        .font(.caption2)
+                        .font(.app(.caption2))
                         .foregroundStyle(.red)
                 }
                 if !reactionsInside {
@@ -439,7 +439,7 @@ public struct MessageBubble: View {
                     Image(systemName: "bubble.left.and.bubble.right.fill")
                         .font(.system(size: 14, weight: .semibold))
                     Text(ChatContentFormat.comments(count))
-                        .font(.subheadline.weight(.medium))
+                        .font(.app(.subheadline, .medium))
                         .contentTransition(.numericText())
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.right")
@@ -469,7 +469,7 @@ public struct MessageBubble: View {
         VStack(alignment: isOutgoing ? .trailing : .leading, spacing: 4) {
             if showsAuthorName, !authorTitle.isEmpty {
                 authorAction { Text(authorTitle) }
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline, .semibold))
                     .foregroundStyle(authorColor)
                     .lineLimit(1)
                     .padding(.horizontal, 10)
@@ -537,7 +537,7 @@ public struct MessageBubble: View {
     private var chipMeta: some View {
         HStack(spacing: 3) {
             Text(ChatContentFormat.time(message.timestamp))
-                .font(.caption2.monospacedDigit())
+                .font(.app(.caption2).monospacedDigit())
                 .lineLimit(1)
             if isOutgoing {
                 statusIcon
@@ -701,7 +701,7 @@ public struct MessageBubble: View {
                 // Сначала кто прислал в группу, под ним — от кого переслано.
                 if name {
                     authorAction { Text(authorTitle) }
-                        .font(.subheadline.weight(.semibold))
+                        .font(.app(.subheadline, .semibold))
                         .foregroundStyle(authorColor)
                         .lineLimit(1)
                 }
@@ -814,18 +814,18 @@ public struct MessageBubble: View {
         // Под галочки — видимые знаки (их прячет прозрачный цвет), а не пробелы: пробелы в конце
         // строки «висят» за её краем и не занимают места, и последнее слово заезжало под время.
         if isOutgoing { reserve = reserve + Text(verbatim: "\u{2007}000").monospacedDigit() }
-        return reserve.font(.caption2)
+        return reserve.font(.app(.caption2))
     }
 
     private var meta: some View {
         HStack(spacing: 3) {
             if isEdited {
                 Text("изм.")
-                    .font(.caption2)
+                    .font(.app(.caption2))
                     .lineLimit(1)
             }
             Text(ChatContentFormat.time(message.timestamp))
-                .font(.caption2.monospacedDigit())
+                .font(.app(.caption2).monospacedDigit())
                 .lineLimit(1)
             if isOutgoing {
                 statusIcon
@@ -884,12 +884,12 @@ public struct MessageBubble: View {
                 .frame(width: 44, height: 44)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(file.name)
-                        .font(.subheadline.weight(.medium))
+                        .font(.app(.subheadline, .medium))
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                         .foregroundStyle(textColor)
                     Text(ChatContentFormat.fileSize(file.size))
-                        .font(.caption)
+                        .font(.app(.caption))
                         .foregroundStyle(metaColor)
                 }
                 Spacer(minLength: 0)
@@ -912,10 +912,10 @@ public struct MessageBubble: View {
     private func forwardLabel(_ forward: MessageForward) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Переслано от")
-                .font(.caption)
+                .font(.app(.caption))
                 .foregroundStyle(isOutgoing ? Color.maxlyOutgoingAccent : Color.maxlyAccent)
             Text(forward.authorName)
-                .font(.subheadline.weight(.semibold))
+                .font(.app(.subheadline, .semibold))
                 .foregroundStyle(isOutgoing ? Color.maxlyOutgoingAccent : Color.maxlyAccent)
                 .lineLimit(1)
         }
@@ -931,11 +931,11 @@ public struct MessageBubble: View {
             // Полоса — в overlay, чтобы её высота бралась из текста, а не растягивала цитату.
             VStack(alignment: .leading, spacing: 1) {
                 Text(reply.authorName)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline, .semibold))
                     .foregroundStyle(quoteTint)
                     .lineLimit(1)
                 Text(reply.preview)
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .lineLimit(1)
                     .foregroundStyle(textColor.opacity(0.85))
             }
@@ -1026,7 +1026,7 @@ public struct DaySeparator: View {
 
     public var body: some View {
         Text(title)
-            .font(.footnote.weight(.semibold))
+            .font(.app(.footnote, .semibold))
             .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 5)
@@ -1061,7 +1061,7 @@ private struct PollChoices: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(poll.title)
-                .font(.subheadline.weight(.semibold))
+                .font(.app(.subheadline, .semibold))
                 .foregroundStyle(outgoing ? Color.maxlyOutgoingText : Color.primary)
             ForEach(poll.answers, id: \.id) { answer in
                 Button {
@@ -1073,12 +1073,12 @@ private struct PollChoices: View {
                 } label: {
                     HStack {
                         Text(answer.text)
-                            .font(.subheadline)
+                            .font(.app(.subheadline))
                             .foregroundStyle(outgoing ? Color.maxlyOutgoingText : Color.primary)
                             .multilineTextAlignment(.leading)
                         Spacer(minLength: 8)
                         Text("\(answer.votes)")
-                            .font(.caption.monospacedDigit())
+                            .font(.app(.caption).monospacedDigit())
                             .foregroundStyle(outgoing ? Color.maxlyOutgoingSecondary : Color.secondary)
                     }
                     .padding(.horizontal, 10)
@@ -1090,11 +1090,11 @@ private struct PollChoices: View {
             }
             if poll.multiple, onCast != nil {
                 Button("Голосовать") { onCast?(Array(picked)) }
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline, .semibold))
                     .disabled(picked.isEmpty)
             }
             Text(poll.total == 1 ? "1 голос" : "\(poll.total) голосов")
-                .font(.caption)
+                .font(.app(.caption))
                 .foregroundStyle(outgoing ? Color.maxlyOutgoingSecondary : Color.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

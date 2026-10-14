@@ -18,7 +18,7 @@ struct ChatHeaderTitle: View {
         VStack(spacing: 1) {
             HStack(spacing: 4) {
                 PrivateText(title, placeholder: maskedTitle)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.app(size: 17, .semibold))
                     .lineLimit(1)
                 if isVerified {
                     Image(systemName: "checkmark.seal.fill")
@@ -52,12 +52,12 @@ struct ChatHeaderTitle: View {
             Color.clear.accessibilityHidden(true)
         case .plain(let text):
             Text(text)
-                .font(.system(size: 13))
+                .font(.app(size: 13))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         case .accent(let text):
             Text(text)
-                .font(.system(size: 13))
+                .font(.app(size: 13))
                 .foregroundStyle(Color.maxlyAccent)
                 .lineLimit(1)
         case .typing(let text):

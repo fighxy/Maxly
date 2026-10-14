@@ -82,12 +82,12 @@ struct StickerPanel: View {
                     ProgressView()
                 } else if let failure = model.failure {
                     Text(failure)
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .foregroundStyle(.secondary)
                     Button("Повторить") { model.retry() }
                 } else {
                     Text("Стикеров пока нет")
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -184,7 +184,7 @@ struct StickerPanel: View {
 
     private func header(_ title: String) -> some View {
         Text(title.uppercased())
-            .font(.system(size: 12, weight: .semibold))
+            .font(.app(size: 12, .semibold))
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 6)
@@ -233,7 +233,7 @@ struct StickerPanel: View {
             withAnimation(reduceMotion ? nil : .snappy(duration: 0.22)) { model.mode = mode }
         } label: {
             Text(title)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.app(size: 14, .semibold))
                 .foregroundStyle(selected ? Color.primary : Color.secondary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 6)

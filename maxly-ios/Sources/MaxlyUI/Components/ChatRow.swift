@@ -99,25 +99,25 @@ public struct ChatRow: View {
         HStack(spacing: 4) {
             if item.type == .channel {
                 Image(systemName: "megaphone.fill")
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(.secondary)
             } else if item.type == .group {
                 Image(systemName: "person.2.fill")
-                    .font(.caption2)
+                    .font(.app(.caption2))
                     .foregroundStyle(.secondary)
             }
             Text(item.title)
-                .font(.body.weight(.semibold))
+                .font(.app(.body, .semibold))
                 .lineLimit(1)
                 .privateModeBlur(privateMode)
             if item.isVerified {
                 Image(systemName: "checkmark.seal.fill")
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(Color.maxlyAccent)
             }
             if item.isBot {
                 Text("бот")
-                    .font(.caption2.weight(.semibold))
+                    .font(.app(.caption2, .semibold))
                     .foregroundStyle(Color.maxlyAccent)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
@@ -125,14 +125,14 @@ public struct ChatRow: View {
             }
             if item.isMuted {
                 Image(systemName: "speaker.slash.fill")
-                    .font(.caption2)
+                    .font(.app(.caption2))
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 6)
             DeliveryMark(state: item.delivery)
                 .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: item.delivery)
             Text(item.time)
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
                 .lineLimit(1)
@@ -154,23 +154,23 @@ public struct ChatRow: View {
                     Text("Черновик: ").foregroundStyle(.red)
                     Text(item.preview).foregroundStyle(.secondary).privateModeBlur(privateMode)
                 }
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .lineLimit(1)
             } else {
                 (Text("Черновик: ").foregroundColor(.red) + Text(item.preview).foregroundColor(.secondary))
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .lineLimit(2)
             }
         case .empty:
             Text(item.preview)
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
         case .message:
             VStack(alignment: .leading, spacing: 1) {
                 if let sender = item.sender {
                     Text(sender)
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .privateModeBlur(privateMode)
@@ -186,7 +186,7 @@ public struct ChatRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             if item.isForwarded {
                 Image(systemName: "arrowshape.turn.up.right.fill")
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("Переслано")
             }
@@ -200,7 +200,7 @@ public struct ChatRow: View {
                 .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 3 }
             }
             Text(item.preview)
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .foregroundStyle(.secondary)
                 .lineLimit(lines)
                 .privateModeBlur(privateMode)
@@ -228,7 +228,7 @@ public struct ChatRow: View {
                 .transition(.maxlyPop(reduceMotion: reduceMotion))
             } else if item.showsPin {
                 Image(systemName: "pin.fill")
-                    .font(.footnote)
+                    .font(.app(.footnote))
                     .rotationEffect(.degrees(45))
                     .foregroundStyle(.tertiary)
                     .transition(.maxlyPop(reduceMotion: reduceMotion))
@@ -256,7 +256,7 @@ public struct UnreadBadge: View {
         Group {
             if let text {
                 Text(text)
-                    .font(.footnote.weight(.semibold))
+                    .font(.app(.footnote, .semibold))
                     .monospacedDigit()
                     .foregroundStyle(Color.maxlyOnAccent)
                     .padding(.horizontal, 6)
@@ -286,14 +286,14 @@ public struct DeliveryMark: View {
         switch state {
         case .sending:
             Image(systemName: "clock")
-                .font(.caption2)
+                .font(.app(.caption2))
                 .foregroundStyle(.secondary)
         case .sent, .read:
             DeliveryChecks(read: state == .read, lineWidth: 1.6)
                 .foregroundStyle(.secondary)
         case .failed:
             Image(systemName: "exclamationmark.circle.fill")
-                .font(.caption)
+                .font(.app(.caption))
                 .foregroundStyle(.red)
         case nil:
             EmptyView()
@@ -330,7 +330,7 @@ struct TypingText: View {
                 }
             }
             Text(text)
-                .font(.subheadline)
+                .font(.app(.subheadline))
         }
         .foregroundStyle(Color.maxlyAccent)
     }
@@ -356,16 +356,16 @@ public struct ArchiveRow: View {
             ChatAvatarView(avatar: ChatAvatar(kind: .archive, colorIndex: 0), size: min(avatarSize, 76))
             VStack(alignment: .leading, spacing: 2) {
                 Text("Архив чатов")
-                    .font(.body.weight(.semibold))
+                    .font(.app(.body, .semibold))
                     .lineLimit(1)
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(summary.title)
-                            .font(.subheadline)
+                            .font(.app(.subheadline))
                             .lineLimit(1)
                             .privateModeBlur(privateMode)
                         Text(summary.preview)
-                            .font(.subheadline)
+                            .font(.app(.subheadline))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .privateModeBlur(privateMode)
@@ -438,7 +438,7 @@ private struct OpenAppCapsule: View {
     var body: some View {
         Button(action: action) {
             Text("Открыть")
-                .font(.subheadline.weight(.semibold))
+                .font(.app(.subheadline, .semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .padding(.horizontal, 12)

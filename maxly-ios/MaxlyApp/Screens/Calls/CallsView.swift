@@ -124,7 +124,7 @@ struct CallsView: View {
                                 onCall(row, row.isVideo)
                             } label: {
                                 Image(systemName: row.isVideo ? "video" : "phone")
-                                    .font(.title3)
+                                    .font(.app(.title3))
                                     .foregroundStyle(Color.maxlyAccent)
                                     .frame(width: 44, height: 44)
                             }
@@ -161,11 +161,11 @@ struct CallsView: View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: systemImage)
-                    .font(.title3)
+                    .font(.app(.title3))
                     .frame(width: MaxlyTheme.smallAvatar)
                     .accessibilityHidden(true)
                 Text(title)
-                    .font(.body)
+                    .font(.app(.body))
                 Spacer(minLength: 0)
             }
             .foregroundStyle(Color.maxlyAccent)
@@ -262,22 +262,22 @@ struct CallRowView: View {
             avatar
             VStack(alignment: .leading, spacing: 2) {
                 PrivateText(row.title, placeholder: PrivateModeMask.callTitle(isGroup: row.isGroup))
-                    .font(.body)
+                    .font(.app(.body))
                     .foregroundStyle(row.isMissed ? AnyShapeStyle(Color.red) : AnyShapeStyle(.primary))
                     .lineLimit(1)
                 HStack(spacing: 4) {
                     Image(systemName: row.directionSymbol)
-                        .font(.caption)
+                        .font(.app(.caption))
                         .accessibilityHidden(true)
                     Text(row.status)
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .lineLimit(1)
                 }
                 .foregroundStyle(row.isMissed ? AnyShapeStyle(Color.red) : AnyShapeStyle(.secondary))
             }
             Spacer(minLength: 8)
             Text(row.dateText)
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
         }

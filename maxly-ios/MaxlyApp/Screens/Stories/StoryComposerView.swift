@@ -2,6 +2,7 @@ import AVKit
 import SwiftUI
 import UIKit
 import MaxlyDomain
+import MaxlyUI
 
 /// Новая история: предпросмотр выбранного файла, кому показать и «Опубликовать». История живёт сутки.
 struct StoryComposerView: View {
@@ -22,7 +23,7 @@ struct StoryComposerView: View {
                         Image(systemName: "xmark").font(.system(size: 17, weight: .semibold)).frame(width: 44, height: 44)
                     }
                     .accessibilityLabel("Отмена")
-                    Text("Новая история").font(.headline)
+                    Text("Новая история").font(.app(.headline))
                     Spacer()
                 }
                 .foregroundStyle(.white)
@@ -30,7 +31,7 @@ struct StoryComposerView: View {
                 Spacer()
                 VStack(spacing: 12) {
                     Text("Кто увидит")
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .foregroundStyle(.white.opacity(0.8))
                     Picker("Кто увидит", selection: $audience) {
                         Text("Все").tag(StoryAudience.everyone)
@@ -42,7 +43,7 @@ struct StoryComposerView: View {
                         onPublish(audience)
                     } label: {
                         Text("Опубликовать на сутки")
-                            .font(.headline)
+                            .font(.app(.headline))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 6)
                     }

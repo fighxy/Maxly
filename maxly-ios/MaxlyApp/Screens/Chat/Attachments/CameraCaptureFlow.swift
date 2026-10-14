@@ -131,7 +131,7 @@ struct CameraCaptureFlow: View {
         .overlay(alignment: .bottom) {
             if let notice {
                 Text(notice)
-                    .font(.footnote.weight(.medium))
+                    .font(.app(.footnote, .medium))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .background(.black.opacity(0.6), in: Capsule())

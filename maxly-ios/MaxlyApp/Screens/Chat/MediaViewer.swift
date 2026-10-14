@@ -241,12 +241,12 @@ struct MediaViewer: View {
             VStack(alignment: .leading, spacing: 1) {
                 if let author = request.author, !author.isEmpty {
                     Text(author)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.app(.subheadline, .semibold))
                         .lineLimit(1)
                 }
                 if let subtitle {
                     Text(subtitle)
-                        .font(.caption)
+                        .font(.app(.caption))
                         .foregroundStyle(.white.opacity(0.7))
                         .lineLimit(1)
                 }
@@ -318,7 +318,7 @@ struct MediaViewer: View {
                     ProgressView().tint(.white)
                 } else {
                     Image(systemName: "square.and.arrow.up")
-                        .font(.body.weight(.semibold))
+                        .font(.app(.body, .semibold))
                         .foregroundStyle(.white)
                 }
             }
@@ -344,7 +344,7 @@ struct MediaViewer: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.body.weight(.semibold))
+                .font(.app(.body, .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 38, height: 38)
                 .background(.black.opacity(0.35), in: Circle())
@@ -357,7 +357,7 @@ struct MediaViewer: View {
     private var noticeView: some View {
         if let notice {
             Text(notice)
-                .font(.subheadline.weight(.medium))
+                .font(.app(.subheadline, .medium))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
@@ -524,7 +524,7 @@ private struct CircleButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.body.weight(.semibold))
+                .font(.app(.body, .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 38, height: 38)
                 .background(.black.opacity(0.35), in: Circle())
@@ -542,7 +542,7 @@ private struct CaptionView: View {
 
     var body: some View {
         Text(text)
-            .font(.subheadline)
+            .font(.app(.subheadline))
             .foregroundStyle(.white)
             .lineLimit(expanded ? nil : 3)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -821,7 +821,7 @@ private struct VideoPage: View {
             }
             if holding {
                 Text("\(PlaybackSpeed.label(PlaybackSpeed.hold)) ▸▸")
-                    .font(.footnote.weight(.semibold))
+                    .font(.app(.footnote, .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -881,7 +881,7 @@ private struct VideoPage: View {
                         playback.cancelDownload()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.title3.weight(.semibold))
+                            .font(.app(.title3, .semibold))
                             .foregroundStyle(.white)
                             .frame(width: 56, height: 56)
                     }
@@ -889,7 +889,7 @@ private struct VideoPage: View {
                 }
                 .frame(width: 60, height: 60)
                 Text(MediaTimeText.download(fraction: fraction))
-                    .font(.footnote.monospacedDigit())
+                    .font(.app(.footnote).monospacedDigit())
                     .foregroundStyle(.white.opacity(0.85))
             }
             .padding(16)
@@ -897,7 +897,7 @@ private struct VideoPage: View {
         } else if playback.failed {
             VStack(spacing: 12) {
                 Text("Видео не воспроизводится")
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.white.opacity(0.85))
                 Button("Повторить") { playback.retry() }
                     .buttonStyle(.borderedProminent)
@@ -965,7 +965,7 @@ private struct SeekBadge: View {
             Image(systemName: seek.forward ? "goforward" : "gobackward")
                 .font(.system(size: 26, weight: .semibold))
             Text("\(seek.total) с")
-                .font(.footnote.weight(.semibold).monospacedDigit())
+                .font(.app(.footnote, .semibold).monospacedDigit())
         }
         .foregroundStyle(.white)
         .frame(width: 84, height: 84)
@@ -1008,7 +1008,7 @@ private struct VideoControls: View {
                 }
                 .accessibilityLabel(playback.isPlaying ? "Пауза" : "Смотреть")
                 Text("\(MediaTimeText.clock(displayed)) / \(MediaTimeText.clock(playback.duration))")
-                    .font(.footnote.monospacedDigit())
+                    .font(.app(.footnote).monospacedDigit())
                     .foregroundStyle(.white.opacity(0.85))
                 Spacer(minLength: 8)
                 Button {
@@ -1042,13 +1042,13 @@ private struct VideoControls: View {
                     }
                 } label: {
                     Text(PlaybackSpeed.label(playback.rate))
-                        .font(.footnote.weight(.semibold).monospacedDigit())
+                        .font(.app(.footnote, .semibold).monospacedDigit())
                         .frame(minWidth: 36, minHeight: 28)
                 }
                 .simultaneousGesture(TapGesture().onEnded { menuOpen = true })
                 .accessibilityLabel("Скорость")
             }
-            .font(.body.weight(.semibold))
+            .font(.app(.body, .semibold))
             .foregroundStyle(.white)
             .buttonStyle(.plain)
         }

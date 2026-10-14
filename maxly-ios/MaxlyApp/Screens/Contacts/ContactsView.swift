@@ -253,12 +253,12 @@ struct ContactRowView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     PrivateText(row.title, placeholder: PrivateModeMask.contactTitle)
-                        .font(.body)
+                        .font(.app(.body))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     if row.isOfficial, !privateMode.isMasked {
                         Image(systemName: "checkmark.seal.fill")
-                            .font(.caption)
+                            .font(.app(.caption))
                             .foregroundStyle(Color.maxlyAccent)
                             .accessibilityLabel("Официальный аккаунт")
                     }
@@ -266,7 +266,7 @@ struct ContactRowView: View {
                 // Неизвестный статус — без строки, а не «был(а) недавно».
                 if !row.status.isEmpty {
                     Text(row.status)
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .foregroundStyle(row.isOnline ? AnyShapeStyle(Color.maxlyAccent) : AnyShapeStyle(.secondary))
                         .lineLimit(1)
                 }

@@ -13,7 +13,7 @@ struct AuthCodeStep: View {
             AuthWordmark()
             AuthHeader(title: "Введите код", subtitle: prompt)
             Button("Изменить номер") { viewModel.backToPhone() }
-                .font(.body)
+                .font(.app(.body))
                 .padding(.top, 8)
             OneTimeCodeField(code: $viewModel.code, length: viewModel.codeCellCount, isFocused: $isCodeFocused)
                 .disabled(viewModel.isBusy)
@@ -63,7 +63,7 @@ struct AuthCodeStep: View {
             Button(viewModel.resendTitle(at: context.date)) {
                 Task { await viewModel.resendCode() }
             }
-            .font(.subheadline)
+            .font(.app(.subheadline))
             .monospacedDigit()
             .foregroundStyle(available ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
             .disabled(!available)
@@ -116,7 +116,7 @@ struct OneTimeCodeField: View {
             .overlay {
                 if index < digits.count {
                     Text(String(digits[index]))
-                        .font(.title2.weight(.semibold).monospacedDigit())
+                        .font(.app(.title2, .semibold).monospacedDigit())
                         .transition(.scale.combined(with: .opacity))
                 }
             }

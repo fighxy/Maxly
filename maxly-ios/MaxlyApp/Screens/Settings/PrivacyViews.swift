@@ -96,7 +96,7 @@ struct PrivacyPartHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Конфиденциальность")
-                .font(.title3.weight(.semibold))
+                .font(.app(.title3, .semibold))
                 .foregroundStyle(Color.primary)
                 .textCase(nil)
             Text("Дополнительно")
@@ -118,7 +118,7 @@ struct OwnPresenceLine: View {
                         .fill(model.isOwnPresenceOnline ? Color.green : Color.secondary)
                         .frame(width: 7, height: 7)
                     Text(text)
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .foregroundStyle(model.isOwnPresenceOnline ? Color.maxlyAccent : Color.secondary)
                         .contentTransition(.opacity)
                 }

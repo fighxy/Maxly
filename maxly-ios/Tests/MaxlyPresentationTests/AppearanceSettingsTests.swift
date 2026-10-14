@@ -62,4 +62,26 @@ struct AppearanceSettingsTests {
         settings.setWallpaper(.plain)
         #expect(store.saved.wallpaper == .plain)
     }
+
+    @Test("Шрифт и толщина сохраняются вместе с остальным, толщина прижимается к краям")
+    func font() {
+        let store = InMemoryAppearanceStore(AppearancePreferences(textSize: .small, theme: .dark))
+        let settings = AppearanceSettings(store: store)
+        #expect(settings.font == .system)
+        #expect(settings.fontWeight == FontWeightScale.standard)
+        settings.setFont(.onest)
+        settings.setFontWeight(450)
+        #expect(store.saved == AppearancePreferences(textSize: .small, theme: .dark, font: .onest, fontWeight: 450))
+        #expect(settings.fontSummary == "Onest, 15\u{00A0}пт")
+        settings.setFontWeight(9000)
+        #expect(settings.fontWeight == FontWeightScale.max)
+        let count = store.saveCount
+        settings.setFont(.onest)
+        settings.setFontWeight(700)
+        #expect(store.saveCount == count)
+        settings.resetFontWeight()
+        settings.resetTextSize()
+        #expect(store.saved == AppearancePreferences(textSize: .large, theme: .dark, font: .onest))
+        #expect(AppearanceSettings(store: store).font == .onest)
+    }
 }

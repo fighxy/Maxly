@@ -1,4 +1,5 @@
 import SwiftUI
+import MaxlyUI
 
 /// Прошлый запуск завершился сбоем: отчёт, выгрузка журнала и продолжение.
 ///
@@ -18,9 +19,9 @@ struct CrashReportView: View {
                         MaxlyMark(size: 44)
                             .foregroundStyle(.secondary)
                         Text("Прошлый запуск завершился сбоем")
-                            .font(.title3.bold())
+                            .font(.app(.title3, .bold))
                         Text("Выгрузите журнал и пришлите его разработчику: в нём есть место, где приложение упало. Потом можно попробовать запустить Maxly снова.")
-                            .font(.subheadline)
+                            .font(.app(.subheadline))
                             .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 6)
@@ -28,7 +29,7 @@ struct CrashReportView: View {
                 LogSettingsSection(container: container)
                 Section("Отчёт") {
                     Text(report)
-                        .font(.caption.monospaced())
+                        .font(.appMono(.caption))
                         .textSelection(.enabled)
                         .lineLimit(40)
                 }

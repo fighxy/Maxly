@@ -26,13 +26,13 @@ struct ForwardPickerView: View {
                     HStack(spacing: 12) {
                         ChatAvatarView(avatar: item.avatar, size: 44)
                         PrivateText(item.title, placeholder: PrivateModeMask.chatTitle(for: item))
-                            .font(.body)
+                            .font(.app(.body))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                         Spacer(minLength: 0)
                         if allowsMultiple {
                             Image(systemName: picked.contains(item.id) ? "checkmark.circle.fill" : "circle")
-                                .font(.title3)
+                                .font(.app(.title3))
                                 .foregroundStyle(picked.contains(item.id) ? Color.maxlyAccent : Color.secondary)
                         }
                     }

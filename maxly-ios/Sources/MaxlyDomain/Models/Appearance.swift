@@ -111,17 +111,114 @@ public enum ChatWallpaper: String, CaseIterable, Sendable {
     public var hasImage: Bool { self != .plain }
 }
 
+/// Шрифт интерфейса. Встроенные — переменные (ось толщины `wght`) из `MaxlyUI/Resources/Fonts`,
+/// [minWeight]…[maxWeight] — пределы этой оси.
+public enum AppFont: String, CaseIterable, Sendable {
+    case system
+    case inter
+    case onest
+    case golos
+    case manrope
+    case nunito
+
+    public var title: String {
+        switch self {
+        case .system: "Системный"
+        case .inter: "Inter"
+        case .onest: "Onest"
+        case .golos: "Golos Text"
+        case .manrope: "Manrope"
+        case .nunito: "Nunito"
+        }
+    }
+
+    /// Имя файла без `.ttf`; у системного — `nil`.
+    public var file: String? {
+        switch self {
+        case .system: nil
+        case .inter: "inter"
+        case .onest: "onest"
+        case .golos: "golos_text"
+        case .manrope: "manrope"
+        case .nunito: "nunito"
+        }
+    }
+
+    public var minWeight: Int {
+        switch self {
+        case .golos: 400
+        case .manrope, .nunito: 200
+        default: 100
+        }
+    }
+
+    public var maxWeight: Int {
+        switch self {
+        case .manrope: 800
+        case .nunito: 1000
+        default: 900
+        }
+    }
+}
+
+/// Толщина текста: ползунок задаёт толщину обычного текста (по умолчанию 400), остальные начертания
+/// сдвигаются на столько же — полужирный остаётся заметно жирнее обычного. У системного шрифта толщина
+/// ступенчатая (сотнями), у встроенных — любая в пределах оси файла.
+public enum FontWeightScale {
+    public static let min = 300
+    public static let max = 600
+    public static let standard = 400
+    /// Блоки кода: моноширинный JetBrains Mono, ось 100…800.
+    public static let monoFile = "jetbrains_mono"
+    public static let monoRange = 100...800
+
+    public static func clamp(_ base: Int) -> Int { Swift.min(Swift.max(base, min), max) }
+
+    /// Толщина для начертания `requested` (400 обычный, 600 полужирный…) при ползунке `base`.
+    public static func axis(_ font: AppFont, requested: Int, base: Int) -> Int {
+        let shifted = requested + clamp(base) - standard
+        let value = font.file == nil ? Int((Double(shifted) / 100).rounded()) * 100 : shifted
+        return Swift.min(Swift.max(value, font.minWeight), font.maxWeight)
+    }
+
+    /// Подпись под ползунком: «Обычный · 400».
+    public static func caption(_ base: Int) -> String {
+        let value = clamp(base)
+        let name = switch value {
+        case ..<350: "Светлый"
+        case ..<450: "Обычный"
+        case ..<550: "Средний"
+        default: "Полужирный"
+        }
+        return "\(name)\u{00A0}· \(value)"
+    }
+}
+
 /// Настройки оформления на устройстве, общие для всех аккаунтов.
 public struct AppearancePreferences: Equatable, Sendable {
     public var textSize: TextSizeStep
     public var theme: ThemeMode
     public var wallpaper: ChatWallpaper
+    public var font: AppFont
+    /// Толщина обычного текста, `FontWeightScale.min…max`.
+    public var fontWeight: Int
 
-    public init(textSize: TextSizeStep = .standard, theme: ThemeMode = .system, wallpaper: ChatWallpaper = .standard) {
+    public init(
+        textSize: TextSizeStep = .standard,
+        theme: ThemeMode = .system,
+        wallpaper: ChatWallpaper = .standard,
+        font: AppFont = .system,
+        fontWeight: Int = FontWeightScale.standard
+    ) {
         self.textSize = textSize
         self.theme = theme
         self.wallpaper = wallpaper
+        self.font = font
+        self.fontWeight = FontWeightScale.clamp(fontWeight)
     }
+
+    /// Строка «Шрифт ›» в «Оформлении»: «Inter, 17 пт».
+    public var fontSummary: String { "\(font.title), \(textSize.bodyPointSize)\u{00A0}пт" }
 
     public static let standard = AppearancePreferences()
 }

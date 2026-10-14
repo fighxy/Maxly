@@ -260,7 +260,7 @@ struct ChatProfileView: View {
                 .padding(.bottom, 8)
             HStack(spacing: 6) {
                 Text(viewModel.title)
-                    .font(.system(size: 24, weight: .semibold))
+                    .font(.app(size: 24, .semibold))
                     .multilineTextAlignment(.center)
                 if viewModel.isOfficial || live.isVerified {
                     Image(systemName: "checkmark.seal.fill")
@@ -275,7 +275,7 @@ struct ChatProfileView: View {
                         .accessibilityLabel("Без звука")
                 }
             }
-            status(font: .system(size: 15))
+            status(font: .app(size: 15))
         }
         .padding(.horizontal, MaxlyTheme.pad)
         .padding(.top, 4)
@@ -337,9 +337,9 @@ struct ChatProfileView: View {
     private var compactTitle: some View {
         VStack(spacing: 1) {
             Text(viewModel.title)
-                .font(.system(size: 17, weight: .semibold))
+                .font(.app(size: 17, .semibold))
                 .lineLimit(1)
-            status(font: .system(size: 13))
+            status(font: .app(size: 13))
         }
     }
 
@@ -644,7 +644,7 @@ struct ChatProfileView: View {
             if !commands.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("КОМАНДЫ")
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, MaxlyTheme.pad + 16)
                     card {
@@ -684,11 +684,11 @@ struct ChatProfileView: View {
                                 .frame(width: 36, height: 36)
                                 .foregroundStyle(Color.maxlyAccent)
                             Text("Все участники и поиск")
-                                .font(.body)
+                                .font(.app(.body))
                                 .foregroundStyle(Color.maxlyAccent)
                             Spacer(minLength: 0)
                             Image(systemName: "chevron.right")
-                                .font(.footnote.weight(.semibold))
+                                .font(.app(.footnote, .semibold))
                                 .foregroundStyle(.tertiary)
                         }
                         .padding(.horizontal, 16)
@@ -703,7 +703,7 @@ struct ChatProfileView: View {
                     HStack(spacing: 12) {
                         AvatarView(title: member.name, id: member.id, url: member.avatarURL, size: 36)
                         Text(member.name)
-                            .font(.body)
+                            .font(.app(.body))
                             .lineLimit(1)
                         Spacer(minLength: 0)
                     }
@@ -730,12 +730,12 @@ struct ChatProfileView: View {
                             AvatarView(title: chat.title, id: chat.id, url: chat.avatarURL, size: 36)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(chat.title)
-                                    .font(.body)
+                                    .font(.app(.body))
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
                                 if chat.participants > 0 {
                                     Text(ChatProfileViewModel.membersText(chat.participants, channel: chat.isChannel))
-                                        .font(.footnote)
+                                        .font(.app(.footnote))
                                         .foregroundStyle(.secondary)
                                 }
                             }
@@ -755,7 +755,7 @@ struct ChatProfileView: View {
     private func section<Rows: View>(title: String, @ViewBuilder _ rows: () -> Rows) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.footnote)
+                .font(.app(.footnote))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, MaxlyTheme.pad + 16)
             card(rows)
@@ -777,10 +777,10 @@ struct ChatProfileView: View {
         } label: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.title)
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.secondary)
                 Text(row.value)
-                    .font(.body)
+                    .font(.app(.body))
                     .foregroundStyle(isLink(row) ? AnyShapeStyle(Color.maxlyAccent) : AnyShapeStyle(.primary))
                     .underline(row.action.map { if case .open = $0 { true } else { false } } ?? false)
                     .lineLimit(row.isMultiline ? nil : 1)
@@ -807,11 +807,11 @@ struct ChatProfileView: View {
         } label: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(command.command)
-                    .font(.body.monospaced())
+                    .font(.appMono(.body))
                     .foregroundStyle(Color.maxlyAccent)
                 if let description = command.description {
                     Text(description)
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -881,7 +881,7 @@ struct ChatProfileView: View {
                         withAnimation(.snappy(duration: 0.25)) { viewModel.sharedTab = tab }
                     } label: {
                         Text(tab.title)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.app(size: 15, .semibold))
                             .foregroundStyle(selected ? Color.maxlyAccent : .secondary)
                             .padding(.vertical, 12)
                             .overlay(alignment: .bottom) {
@@ -929,7 +929,7 @@ struct ChatProfileView: View {
                                     ProgressView().tint(Color.maxlyOnAccent)
                                 } else {
                                     Text(item.ext)
-                                        .font(.system(size: 12, weight: .bold))
+                                        .font(.app(size: 12, .bold))
                                         .foregroundStyle(Color.maxlyOnAccent)
                                 }
                             }
@@ -956,7 +956,7 @@ struct ChatProfileView: View {
                             .fill(AvatarPalette.gradient(ChatAvatar.colorIndex(for: item.host)))
                             .overlay {
                                 Text(item.letter)
-                                    .font(.system(size: 20, weight: .semibold))
+                                    .font(.app(size: 20, .semibold))
                                     .foregroundStyle(.white)
                             }
                     } title: {
@@ -1030,7 +1030,7 @@ struct ChatProfileView: View {
     private var toast: some View {
         if let text = copied ?? viewModel.actionNotice ?? context?.chat.notice {
             Text(text)
-                .font(.footnote.weight(.semibold))
+                .font(.app(.footnote, .semibold))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(.regularMaterial, in: Capsule())
@@ -1130,7 +1130,7 @@ struct ChatHeaderAvatar: View {
 /// «печатает» с тремя бегущими точками, цветом акцента.
 struct TypingStatus: View {
     let text: String
-    var font: Font = .system(size: 13)
+    var font: Font = .app(size: 13)
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -1172,7 +1172,7 @@ private struct ActionTile: View {
                 .font(.system(size: 20, weight: .medium))
                 .frame(height: 24)
             Text(title)
-                .font(.system(size: 12, weight: .medium))
+                .font(.app(size: 12, .medium))
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
         }
@@ -1260,7 +1260,7 @@ private struct SharedMediaCell: View {
             .overlay(alignment: .bottomTrailing) {
                 if let duration = item.duration {
                     Text(duration)
-                        .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                        .font(.app(size: 12, .semibold).monospacedDigit())
                         .foregroundStyle(.white)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)

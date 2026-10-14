@@ -38,9 +38,9 @@ struct MessageSelectionBar: View {
         Button(role: role, action: run) {
             VStack(spacing: 2) {
                 Image(systemName: systemImage)
-                    .font(.body.weight(.semibold))
+                    .font(.app(.body, .semibold))
                 Text(title)
-                    .font(.caption2)
+                    .font(.app(.caption2))
             }
             .frame(maxWidth: .infinity, minHeight: 44)
             .contentShape(Rectangle())
@@ -72,11 +72,11 @@ struct MessageSelectionDeleteSheet: View {
     var body: some View {
         VStack(spacing: 16) {
             Text(request.title)
-                .font(.headline)
+                .font(.app(.headline))
                 .multilineTextAlignment(.center)
             if request.options.forcesForEveryone {
                 Text("Сообщения удалятся у всех подписчиков. Восстановить их не получится.")
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }

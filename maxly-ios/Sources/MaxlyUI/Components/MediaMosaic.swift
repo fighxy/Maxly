@@ -144,7 +144,7 @@ struct MediaMosaic: View {
 
     private func overlayCapsule(_ text: String) -> some View {
         Text(text)
-            .font(.caption2.monospacedDigit().weight(.medium))
+            .font(.app(.caption2, .medium).monospacedDigit())
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(.black.opacity(0.45), in: Capsule())
@@ -155,7 +155,7 @@ struct MediaMosaic: View {
     private func timeCapsule(_ time: String) -> some View {
         HStack(spacing: 3) {
             Text(time)
-                .font(.caption2.monospacedDigit().weight(.medium))
+                .font(.app(.caption2, .medium).monospacedDigit())
             switch status {
             case .sending:
                 Image(systemName: "clock").font(.system(size: 9, weight: .semibold))

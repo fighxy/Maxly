@@ -1,3 +1,4 @@
+import CoreText
 import Foundation
 import Testing
 import SwiftUI
@@ -79,5 +80,52 @@ struct TextSizeDynamicTypeTests {
         #expect(Set(sizes).count == sizes.count)
         #expect(TextSizeStep.standard.dynamicTypeSize == .large)
         #expect(sizes.allSatisfy { !$0.isAccessibilitySize })
+    }
+}
+
+@Suite("Шрифт интерфейса в SwiftUI")
+struct TypographyTests {
+    @Test("Таблица размеров совпадает со шкалой размера текста, толщины переводятся туда и обратно")
+    func tables() {
+        for step in TextSizeStep.allCases {
+            #expect(Typography.pointSize(.body, step) == CGFloat(step.bodyPointSize))
+            #expect(Typography.pointSize(.caption2, step) <= Typography.pointSize(.largeTitle, step))
+        }
+        #expect(Typography.standardWeight(.headline) == 600)
+        #expect(Typography.standardWeight(.subheadline) == 400)
+        let weights: [Font.Weight] = [.ultraLight, .thin, .light, .regular, .medium, .semibold, .bold, .heavy, .black]
+        #expect(weights.map(Typography.numeric) == [100, 200, 300, 400, 500, 600, 700, 800, 900])
+        #expect(weights.map { Typography.weight(Typography.numeric($0)) } == weights)
+        #expect(Typography.weight(560) == .semibold)
+    }
+
+    @Test("Встроенный шрифт берётся из ресурсов с нужной толщиной оси")
+    func bundledFont() throws {
+        let font = FontFiles.font(file: "inter", size: 17, axis: 560, italic: false)
+        #expect(CTFontCopyFamilyName(font) as String == "Inter")
+        #expect(CTFontGetSize(font) == 17)
+        let variation = try #require(CTFontCopyVariation(font) as? [NSNumber: NSNumber])
+        #expect(variation[NSNumber(value: FontFiles.weightAxis)]?.intValue == 560)
+        let mono = FontFiles.font(file: FontWeightScale.monoFile, size: 13, axis: 400, italic: false)
+        #expect(CTFontCopyFamilyName(mono) as String == "JetBrains Mono")
+        for font in AppFont.allCases {
+            guard let file = font.file else { continue }
+            // У Manrope и Nunito имя начертания по умолчанию — «Manrope ExtraLight»: сверяется начало.
+            let family = CTFontCopyFamilyName(FontFiles.font(file: file, size: 15, axis: 500, italic: false)) as String
+            #expect(family.hasPrefix(font.title))
+        }
+    }
+
+    @Test("Применение: те же значения не меняют модель, толщина прижимается к краям")
+    func apply() {
+        let typography = Typography()
+        #expect(!typography.isCustom)
+        typography.apply(font: .nunito, weight: 1000, textSize: .xLarge)
+        #expect(typography.isCustom)
+        #expect(typography.weight == FontWeightScale.max)
+        #expect(typography.textSize == .xLarge)
+        #expect(typography.platformFont(.body).map { CTFontGetSize($0) } == 19)
+        typography.apply(font: .system, weight: 400, textSize: .large)
+        #expect(typography.platformFont(.body) == nil)
     }
 }

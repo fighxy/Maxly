@@ -2,6 +2,7 @@ import Foundation
 import MaxlyDomain
 import Observation
 import SwiftUI
+import MaxlyUI
 
 /// Голосовое на просмотре перед отправкой: прослушать, обрезать ручками по
 /// волне, отправить или выбросить. Обрезка — те же пакеты Opus без перекодирования.
@@ -123,7 +124,7 @@ struct VoiceReviewStrip: View {
             .accessibilityLabel(review.isPlaying ? "Пауза" : "Прослушать")
             wave
             Text(RecordingBar.clock(review.selectedSeconds).components(separatedBy: ",").first ?? "")
-                .font(.footnote.monospacedDigit())
+                .font(.app(.footnote).monospacedDigit())
                 .foregroundStyle(.secondary)
         }
     }

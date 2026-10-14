@@ -103,7 +103,7 @@ struct AttachmentSheet: View {
             if model.tab == .gallery, library.canRead {
                 albumMenu
             } else {
-                Text(model.tab.title).font(.headline)
+                Text(model.tab.title).font(.app(.headline))
             }
             HStack {
                 Button(action: onClose) {
@@ -117,7 +117,7 @@ struct AttachmentSheet: View {
                 Spacer()
                 if model.hasSelection {
                     Button("Сбросить") { model.clearSelection(); editedPhotos = [:];photoHistories = [:];photoOriginals = [:] }
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .transition(.opacity)
                 }
             }
@@ -142,8 +142,8 @@ struct AttachmentSheet: View {
             }
         } label: {
             HStack(spacing: 4) {
-                Text(library.album.title).font(.headline)
-                Image(systemName: "chevron.down").font(.caption.weight(.bold))
+                Text(library.album.title).font(.app(.headline))
+                Image(systemName: "chevron.down").font(.app(.caption, .bold))
             }
             .foregroundStyle(.primary)
         }
@@ -197,7 +197,7 @@ struct AttachmentSheet: View {
             .overlay(alignment: .top) {
                 if model.limitReached {
                     Text("Можно выбрать не больше \(AttachmentSheetModel.selectionLimit)")
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
                         .maxlyGlassCapsule()
@@ -211,9 +211,9 @@ struct AttachmentSheet: View {
                     .font(.system(size: 40))
                     .foregroundStyle(.secondary)
                 Text("Нет доступа к фото")
-                    .font(.headline)
+                    .font(.app(.headline))
                 Text("Разрешите доступ в настройках, чтобы отправлять фото и видео.")
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 Button("Открыть настройки") {
@@ -233,10 +233,10 @@ struct AttachmentSheet: View {
         HStack(spacing: 10) {
             Image(systemName: "lock.shield").foregroundStyle(.secondary)
             Text("Доступ только к выбранным фото")
-                .font(.footnote)
+                .font(.app(.footnote))
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button("Изменить") { library.presentLimitedPicker() }
-                .font(.footnote.weight(.semibold))
+                .font(.app(.footnote, .semibold))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -274,7 +274,7 @@ struct AttachmentSheet: View {
                 .font(.system(size: 40))
                 .foregroundStyle(.secondary)
             Text("Любой файл из «Файлов» или iCloud Drive")
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Button("Выбрать файл") { pickFiles() }
@@ -301,7 +301,7 @@ struct AttachmentSheet: View {
             let contacts = model.filteredContacts
             if contacts.isEmpty {
                 Text(model.contactQuery.isEmpty ? "Контактов пока нет" : "Никого не нашли")
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.secondary)
                     .frame(maxHeight: .infinity)
             } else {
@@ -314,7 +314,7 @@ struct AttachmentSheet: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(contact.displayName).foregroundStyle(.primary)
                                 if let phone = contact.phone, !phone.isEmpty {
-                                    Text(phone).font(.caption).foregroundStyle(.secondary)
+                                    Text(phone).font(.app(.caption)).foregroundStyle(.secondary)
                                 }
                             }
                         }
@@ -333,9 +333,9 @@ struct AttachmentSheet: View {
                 .font(.system(size: 40))
                 .foregroundStyle(.secondary)
             Text("Скоро")
-                .font(.headline)
+                .font(.app(.headline))
             Text("\(tab.title) появится в следующих версиях.")
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .foregroundStyle(.secondary)
         }
         .padding(32)
@@ -368,7 +368,7 @@ struct AttachmentSheet: View {
                         Image(systemName: tab.systemImage)
                             .font(.system(size: 18, weight: .medium))
                         Text(tab.title)
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.app(size: 10, .medium))
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
@@ -408,7 +408,7 @@ struct AttachmentSheet: View {
                     sendSelection()
                 } label: {
                     Text(model.sendTitle)
-                        .font(.body.weight(.semibold))
+                        .font(.app(.body, .semibold))
                         .padding(.horizontal, 6)
                         .frame(minHeight: 30)
                 }
@@ -559,7 +559,7 @@ private struct AssetCell: View {
                 .overlay(alignment: .bottomLeading) {
                     if asset.mediaType == .video {
                         Text(Self.duration(asset.duration))
-                            .font(.caption2.weight(.semibold).monospacedDigit())
+                            .font(.app(.caption2, .semibold).monospacedDigit())
                             .foregroundStyle(.white)
                             .shadow(radius: 2)
                             .padding(6)
@@ -585,7 +585,7 @@ private struct AssetCell: View {
                 Circle().fill(Color.maxlyAccent)
                     .transition(.maxlyPop(reduceMotion: reduceMotion))
                 Text("\(number)")
-                    .font(.system(size: 13, weight: .bold).monospacedDigit())
+                    .font(.app(size: 13, .bold).monospacedDigit())
                     .foregroundStyle(Color.maxlyOnAccent)
                     .contentTransition(.numericText(value: Double(number)))
             } else {

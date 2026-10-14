@@ -57,7 +57,7 @@ struct ChannelSetupView: View {
                         .font(.system(size: 56))
                         .foregroundStyle(Color.maxlyAccent)
                     Text("Приватный канал создан")
-                        .font(.title2.weight(.semibold))
+                        .font(.app(.title2, .semibold))
                     Text("Теперь его можно настроить")
                         .foregroundStyle(.secondary)
                 }
@@ -95,12 +95,12 @@ struct ChannelSetupView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Публичный для бизнеса").foregroundStyle(.primary)
                             Text("Для юрлиц, ИП, самозанятых и госорганизаций")
-                                .font(.footnote)
+                                .font(.app(.footnote))
                                 .foregroundStyle(.secondary)
                         }
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.right")
-                            .font(.footnote)
+                            .font(.app(.footnote))
                             .foregroundStyle(.tertiary)
                     }
                 }
@@ -138,7 +138,7 @@ struct ChannelSetupView: View {
                         ContactRowView(row: row)
                         Spacer(minLength: 8)
                         Image(systemName: model.selected.contains(row.id) ? "checkmark.circle.fill" : "circle")
-                            .font(.title3)
+                            .font(.app(.title3))
                             .foregroundStyle(model.selected.contains(row.id) ? Color.maxlyAccent : Color.secondary)
                     }
                 }
@@ -174,8 +174,8 @@ struct ChannelSetupView: View {
                     .foregroundStyle(Color.maxlyAccent)
                     .opacity(selected ? 1 : 0)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.body.weight(.semibold)).foregroundStyle(.primary)
-                    Text(subtitle).font(.footnote).foregroundStyle(.secondary)
+                    Text(title).font(.app(.body, .semibold)).foregroundStyle(.primary)
+                    Text(subtitle).font(.app(.footnote)).foregroundStyle(.secondary)
                 }
             }
         }
@@ -191,7 +191,7 @@ struct ChannelSetupView: View {
     private var banner: some View {
         if let text = model.notice {
             Text(text)
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(.regularMaterial, in: Capsule())

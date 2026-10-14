@@ -153,6 +153,9 @@ final class AppContainer {
         if let pending { dumps?.save(pending) }
         crashDumps = dumps
         appearance = AppearanceSettings(store: UserDefaultsAppearanceStore())
+        // Шрифт — до первого кадра, иначе запуск мелькал бы системным.
+        Typography.shared.apply(font: appearance.font, weight: appearance.fontWeight, textSize: appearance.textSize)
+        NavigationBarFonts.apply()
         privateMode = PrivateModeSettings(store: UserDefaultsPrivateModeStore())
         accountLimits = AccountLimitsSettings(store: UserDefaultsAccountLimitsStore())
         let keepAlive = BackgroundKeepAlive()

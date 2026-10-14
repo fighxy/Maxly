@@ -77,7 +77,7 @@ struct ContactRenameSheet: View {
             let count = text.wrappedValue.count
             if count > ContactNameRules.limit - 10 {
                 Text("\(count)/\(ContactNameRules.limit)")
-                    .font(.caption.monospacedDigit())
+                    .font(.app(.caption).monospacedDigit())
                     .foregroundStyle(count > ContactNameRules.limit ? .red : .secondary)
             }
         }
@@ -95,11 +95,11 @@ struct ContactRemovedBanner: View {
             Image(systemName: "person.crop.circle.badge.minus")
                 .foregroundStyle(.secondary)
             Text("Контакт удалён")
-                .font(.subheadline.weight(.medium))
+                .font(.app(.subheadline, .medium))
                 .lineLimit(1)
             Spacer(minLength: 8)
             Button("Отменить", action: onUndo)
-                .font(.subheadline.weight(.semibold))
+                .font(.app(.subheadline, .semibold))
                 .foregroundStyle(Color.maxlyAccent)
         }
         .padding(.horizontal, 16)

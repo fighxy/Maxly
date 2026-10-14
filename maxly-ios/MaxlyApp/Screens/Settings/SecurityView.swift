@@ -470,7 +470,7 @@ struct BlockedUsersView: View {
                             Text(user.title)
                             if !user.phone.isEmpty {
                                 Text(PhoneFormatting.format(user.phone))
-                                    .font(.subheadline)
+                                    .font(.app(.subheadline))
                                     .foregroundStyle(.secondary)
                             }
                         }

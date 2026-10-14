@@ -1,6 +1,7 @@
 import SwiftUI
 import AVKit
 import MaxlyDomain
+import MaxlyUI
 
 /// Edits a copy; the attachment is replaced only after export succeeds.
 struct VideoEditor: View {
@@ -26,7 +27,7 @@ struct VideoEditor: View {
             HStack {
                 Button("Отмена") { if changed { confirmClose = true } else { onClose() } }
                 Spacer()
-                Text("Редактор видео").font(.headline)
+                Text("Редактор видео").font(.app(.headline))
                 Spacer()
                 Button("Готово") { save() }.disabled(duration <= 0)
             }.padding().disabled(busy)
@@ -35,7 +36,7 @@ struct VideoEditor: View {
                 .background(.black)
             ScrollView {
             VStack(spacing: 12) {
-                if let failure { Text(failure).font(.footnote).foregroundStyle(.red) }
+                if let failure { Text(failure).font(.app(.footnote)).foregroundStyle(.red) }
                 if busy { ProgressView("Сохраняем видео…") }
                 HStack {
                     Label("Обрезка", systemImage: "scissors")

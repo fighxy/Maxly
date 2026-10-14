@@ -1,5 +1,6 @@
 import QuickLook
 import SwiftUI
+import MaxlyUI
 
 /// Системный просмотр скачанного файла. Заголовок — имя вложения, а не имя во временной папке.
 struct FileQuickLook: View {
@@ -44,7 +45,7 @@ struct FileQuickLook: View {
 
     private func circle(_ symbol: String) -> some View {
         Image(systemName: symbol)
-            .font(.body.weight(.semibold))
+            .font(.app(.body, .semibold))
             .foregroundStyle(.white)
             .frame(width: 36, height: 36)
             .background(.black.opacity(0.45), in: Circle())

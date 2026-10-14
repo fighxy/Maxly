@@ -100,7 +100,7 @@ struct AuthWordmark: View {
                 .shadow(color: .black.opacity(0.18), radius: 12, y: 6)
                 .accessibilityHidden(true)
             Text(verbatim: "Maxly")
-                .font(.system(size: 34, weight: .bold))
+                .font(.app(size: 34, .bold))
                 .foregroundStyle(.primary)
         }
         .padding(.bottom, 16)
@@ -117,10 +117,10 @@ struct AuthHeader: View {
     var body: some View {
         VStack(spacing: 12) {
             Text(title)
-                .font(.title.bold())
+                .font(.app(.title, .bold))
                 .accessibilityAddTraits(.isHeader)
             subtitle
-                .font(.body)
+                .font(.app(.body))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -156,7 +156,7 @@ struct AuthPrimaryButton: View {
         } label: {
             ZStack {
                 Text(title)
-                    .font(.headline)
+                    .font(.app(.headline))
                     .opacity(isBusy ? 0 : 1)
                 if isBusy {
                     ProgressView()
@@ -180,14 +180,14 @@ struct AuthMessage: View {
     var body: some View {
         if let error {
             Label(error, systemImage: "exclamationmark.circle")
-                .font(.footnote)
+                .font(.app(.footnote))
                 .foregroundStyle(.red)
                 .multilineTextAlignment(.center)
                 .padding(.top, 14)
                 .accessibilityAddTraits(.isStaticText)
         } else if let hint {
             Text(hint)
-                .font(.footnote)
+                .font(.app(.footnote))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.top, 14)

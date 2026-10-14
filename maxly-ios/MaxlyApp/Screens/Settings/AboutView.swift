@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 import MaxlyData
 import MaxlyDomain
+import MaxlyUI
 
 /// «О приложении»: версия, журнал и отчёты о сбоях.
 struct AboutView: View {
@@ -13,9 +14,9 @@ struct AboutView: View {
                 VStack(spacing: 10) {
                     MaxlyLogoTile(size: 72)
                     Text(verbatim: "Maxly")
-                        .font(.title2.bold())
+                        .font(.app(.title2, .bold))
                     Text("Версия \(AppContainer.versionNumber)")
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
@@ -53,7 +54,7 @@ struct CrashDumpsSection: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(CrashDumpView.title(for: dump))
                             Text(dump.summary)
-                                .font(.caption.monospaced())
+                                .font(.appMono(.caption))
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
                         }
@@ -97,7 +98,7 @@ struct CrashDumpView: View {
     var body: some View {
         ScrollView {
             Text(text)
-                .font(.caption.monospaced())
+                .font(.appMono(.caption))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()

@@ -8,7 +8,7 @@ public struct UnreadSeparator: View {
 
     public var body: some View {
         Text("Непрочитанные сообщения")
-            .font(.footnote.weight(.semibold))
+            .font(.app(.footnote, .semibold))
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 6)
@@ -38,19 +38,19 @@ struct LinkPreviewCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     if let site = preview.site {
                         Text(site)
-                            .font(.footnote.weight(.semibold))
+                            .font(.app(.footnote, .semibold))
                             .foregroundStyle(outgoing ? textColor : Color.maxlyAccent)
                             .lineLimit(1)
                     }
                     if let title = preview.title {
                         Text(title)
-                            .font(.subheadline.weight(.semibold))
+                            .font(.app(.subheadline, .semibold))
                             .foregroundStyle(textColor)
                             .lineLimit(2)
                     }
                     if let summary = preview.summary {
                         Text(summary)
-                            .font(.footnote)
+                            .font(.app(.footnote))
                             .foregroundStyle(textColor.opacity(0.85))
                             .lineLimit(3)
                     }
@@ -99,12 +99,12 @@ struct InlineKeyboardView: View {
                         } label: {
                             HStack(spacing: 4) {
                                 Text(button.text)
-                                    .font(.subheadline.weight(.medium))
+                                    .font(.app(.subheadline, .medium))
                                     .lineLimit(2)
                                     .multilineTextAlignment(.center)
                                 if let icon = Self.icon(button) {
                                     Image(systemName: icon)
-                                        .font(.caption2.weight(.semibold))
+                                        .font(.app(.caption2, .semibold))
                                 }
                             }
                             .foregroundStyle(.primary)

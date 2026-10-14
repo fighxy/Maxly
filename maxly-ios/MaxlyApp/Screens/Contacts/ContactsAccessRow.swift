@@ -2,6 +2,7 @@ import SwiftUI
 import Contacts
 import UIKit
 import MaxlyDomain
+import MaxlyUI
 
 /// Доступ к адресной книге телефона.
 ///
@@ -42,14 +43,14 @@ struct ContactsAccessRow: View {
     private func row(systemImage: String, title: String, detail: String, action: String, perform: @escaping () -> Void) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: systemImage)
-                .font(.title2)
+                .font(.app(.title2))
                 .foregroundStyle(.tint)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.subheadline.weight(.semibold))
-                Text(detail).font(.footnote).foregroundStyle(.secondary)
+                Text(title).font(.app(.subheadline, .semibold))
+                Text(detail).font(.app(.footnote)).foregroundStyle(.secondary)
                 Button(action, action: perform)
-                    .font(.footnote.weight(.semibold))
+                    .font(.app(.footnote, .semibold))
                     .buttonStyle(.borderless)
                     .padding(.top, 2)
             }

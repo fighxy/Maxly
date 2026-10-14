@@ -2,6 +2,7 @@ import PhotosUI
 import SwiftUI
 import MaxlyDomain
 import MaxlyPresentation
+import MaxlyUI
 
 /// Истории на главном экране: модель в окружении (кольца в списке, шапке и профиле), лента при
 /// входе, просмотр на весь экран, выбор файла и экран публикации, короткие сообщения сверху.
@@ -83,7 +84,7 @@ struct StoryBanner: View {
     var body: some View {
         if let text = stories?.message {
             Text(text)
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(.regularMaterial, in: Capsule())
