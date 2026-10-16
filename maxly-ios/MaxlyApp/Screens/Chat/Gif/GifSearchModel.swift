@@ -13,6 +13,9 @@ enum GifkaSettings {
     }
 
     static let siteURL = URL(string: "https://gifka.me")!
+
+    /// «Пожаловаться» на долгом нажатии по найденной гифке или стикеру.
+    static let reportsEnabled = true
 }
 
 /// Выдача gifka.me для панели: тренды при пустом запросе, поиск с задержкой при вводе.

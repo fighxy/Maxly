@@ -28,12 +28,17 @@ struct GifPanel: View {
     @State private var gifs: GifSearchModel
     @State private var gifkaStickers: GifSearchModel
     @State private var failure: String?
+    /// Ответ на жалобу: «Жалоба отправлена» или ошибка.
+    @State private var reportNotice: String?
+    /// Показы, выбор и отправка для gifka.me (`POST /v1/pingback`); без ключа `nil`.
+    @State private var pingback: GifkaPingback?
 
     init(stickerPanel: StickerPanelModel?, onPickGifka: @escaping (GifkaMedia, GifkaClient) -> Void, onSticker: @escaping (Sticker) -> Void) {
         self.stickerPanel = stickerPanel
         self.onPickGifka = onPickGifka
         self.onSticker = onSticker
         let client = GifkaClient(apiKey: GifkaSettings.apiKey)
+        _pingback = State(initialValue: GifkaPingback(client: client))
         _gifs = State(initialValue: GifSearchModel(type: .gif, client: client))
         _gifkaStickers = State(initialValue: GifSearchModel(type: .sticker, client: client))
     }
@@ -59,6 +64,13 @@ struct GifPanel: View {
             Button("OK", role: .cancel) { failure = nil }
         } message: {
             Text(failure ?? "")
+        }
+        .alert(reportNotice ?? "", isPresented: Binding(get: { reportNotice != nil }, set: { if !$0 { reportNotice = nil } })) {
+            Button("OK", role: .cancel) { reportNotice = nil }
+        }
+        .onDisappear {
+            let pingback = pingback
+            Task { await pingback?.flush() }
         }
     }
 
@@ -93,13 +105,19 @@ struct GifPanel: View {
             }
             .padding(24)
         } else {
-            GifkaResults(model: model) { media in send(media, client: model.client) }
+            GifkaResults(
+                model: model,
+                pingback: pingback,
+                onReport: GifkaSettings.reportsEnabled ? { media, reason in report(media, reason: reason, client: model.client) } : nil
+            ) { media in send(media, client: model.client) }
         }
     }
 
     /// В сетке только лёгкие превью; файл GIF качает чат уже после выбора (лист закрыт,
     /// внизу видна загрузка с отменой).
     private func send(_ media: GifkaMedia, client: GifkaClient) {
+        let pingback = pingback
+        Task { await pingback?.click(media.id) }
         guard media.canSendGIF(hasKey: client.hasKey) else {
             failure = client.hasKey
                 ? "Автор запретил скачивать этот файл"
@@ -107,6 +125,17 @@ struct GifPanel: View {
             return
         }
         onPickGifka(media, client)
+    }
+
+    private func report(_ media: GifkaMedia, reason: GifkaReportReason, client: GifkaClient) {
+        Task {
+            do {
+                try await client.report(media.id, reason: reason)
+                reportNotice = "Жалоба отправлена"
+            } catch {
+                reportNotice = "Не удалось отправить жалобу: \(error.localizedDescription)"
+            }
+        }
     }
 
     private func note(_ text: String) -> some View {
@@ -120,6 +149,9 @@ struct GifPanel: View {
 /// Поле поиска, сетка выдачи и подпись «Гифки: gifka.me».
 private struct GifkaResults: View {
     @Bindable var model: GifSearchModel
+    let pingback: GifkaPingback?
+    /// `nil` — жалобы выключены флагом.
+    let onReport: ((GifkaMedia, GifkaReportReason) -> Void)?
     let onPick: (GifkaMedia) -> Void
 
     var body: some View {
@@ -154,16 +186,22 @@ private struct GifkaResults: View {
                 }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: model.type == .gif ? 2 : 4), spacing: 3) {
                     ForEach(model.items) { media in
-                        GifkaCell(media: media) { onPick(media) }
-                            .onAppear { if media.id == model.items.last?.id { model.loadMore() } }
+                        GifkaCell(media: media, onReport: onReport.map { report in { report(media, $0) } }) { onPick(media) }
+                            .onAppear {
+                                let pingback = pingback
+                                Task { await pingback?.views([media.id]) }
+                                if media.id == model.items.last?.id { model.loadMore() }
+                            }
                     }
                 }
                 .padding(.horizontal, 6)
                 if model.loading { ProgressView().padding() }
-                // Подпись, которую требуют условия API.
-                Link("Гифки: gifka.me", destination: GifkaSettings.siteURL)
-                    .font(.app(.footnote))
-                    .foregroundStyle(.secondary)
+                // Подпись со ссылкой на сайт, которую требуют условия API.
+                Link(destination: GifkaSettings.siteURL) {
+                    Text("Гифки: ").foregroundStyle(.secondary) + Text("gifka.me").underline()
+                }
+                .font(.app(.footnote))
+                .accessibilityHint("Открывает сайт gifka.me")
                     .padding(.vertical, 10)
                     .padding(.bottom, 70)
             }
@@ -176,9 +214,26 @@ private struct GifkaResults: View {
 /// Ячейка выдачи: гифка — ролик MP4 без звука, стикер — картинка WebP.
 private struct GifkaCell: View {
     let media: GifkaMedia
+    var onReport: ((GifkaReportReason) -> Void)?
     let onTap: () -> Void
 
     var body: some View {
+        if let onReport {
+            button.contextMenu {
+                Menu {
+                    ForEach(GifkaReportReason.allCases) { reason in
+                        Button(reason.title) { onReport(reason) }
+                    }
+                } label: {
+                    Label("Пожаловаться", systemImage: "exclamationmark.bubble")
+                }
+            }
+        } else {
+            button
+        }
+    }
+
+    private var button: some View {
         Button(action: onTap) {
             ZStack {
                 RemoteImage(url: (media.previewWebP() ?? media.poster)?.url, maxPixel: 400) {

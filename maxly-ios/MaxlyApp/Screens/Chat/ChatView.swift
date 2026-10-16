@@ -659,6 +659,8 @@ struct ChatView: View {
                 let draft = try MediaExporter.draft(gifData: data)
                 gifDownload = nil
                 await viewModel.sendAttachments([draft], caption: "")
+                // Событие отправки для gifka.me: только id медиа.
+                Task.detached { await client.pingback([GifkaEvent(mediaId: media.id, kind: .send)]) }
             } catch is CancellationError {
             } catch let error as URLError where error.code == .cancelled {
             } catch {
