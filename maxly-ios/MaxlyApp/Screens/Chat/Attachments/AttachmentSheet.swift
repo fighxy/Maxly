@@ -2,6 +2,7 @@
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import MaxlyData
 import MaxlyDomain
 import MaxlyPresentation
 import MaxlyUI
@@ -15,6 +16,8 @@ struct AttachmentSheet: View {
     /// Стикеры MAX для вкладки «GIF»; `nil` — вкладка показывает только gifka.me.
     var stickerPanel: StickerPanelModel? = nil
     var onSticker: ((Sticker) -> Void)? = nil
+    /// Выбрана гифка gifka.me: чат закрывает лист и сам качает файл.
+    var onPickGifka: ((GifkaMedia, GifkaClient) -> Void)? = nil
 
     @State private var model = AttachmentSheetModel()
     @State private var library = PhotoLibrary()
@@ -161,7 +164,7 @@ struct AttachmentSheet: View {
         case .gif:
             GifPanel(
                 stickerPanel: stickerPanel,
-                onSendGIF: { draft in onSend([draft], "") },
+                onPickGifka: { media, client in onPickGifka?(media, client) },
                 onSticker: { sticker in onSticker?(sticker) }
             )
         case .file: filePane

@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import MaxlyData
 import MaxlyDomain
 import MaxlyPresentation
 import MaxlyUI
@@ -71,6 +72,9 @@ struct ChatView: View {
     @State private var profileShown = false
     @State private var forwardList: [ChatListItem] = []
     @State private var attachmentsShown = false
+    /// Гифка gifka.me качается после выбора: строка над полем ввода с отменой.
+    @State private var gifDownload: GifDownload?
+    @State private var gifFailure: String?
     /// Снимки с кнопки камеры в поле ввода (`CameraCaptureFlow`).
     @State private var cameraFlowShown = false
     /// Меню долгого нажатия на сообщение, как в WhatsApp (`MessageMenuHost`).
@@ -266,6 +270,13 @@ struct ChatView: View {
     /// Поле ввода и панель стикеров.
     @ViewBuilder
     private var composerControls: some View {
+        if let gifDownload {
+            GifDownloadBar(title: gifDownload.title) {
+                gifDownload.task.cancel()
+                self.gifDownload = nil
+            }
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
         ChatComposer(
             viewModel: viewModel,
             recording: recording,
@@ -497,6 +508,11 @@ struct ChatView: View {
                 openURL(url)
             }
             .sheet(isPresented: $attachmentsShown) { attachmentSheet }
+            .alert("GIF не отправилась", isPresented: Binding(get: { gifFailure != nil }, set: { if !$0 { gifFailure = nil } })) {
+                Button("OK", role: .cancel) { gifFailure = nil }
+            } message: {
+                Text(gifFailure ?? "")
+            }
             .fullScreenCover(isPresented: $cameraFlowShown) {
                 CameraCaptureFlow(
                     onSend: { drafts, caption in
@@ -630,6 +646,28 @@ struct ChatView: View {
         }
     }
 
+    /// Качает файл GIF выбранной гифки и отправляет его как фото. Дальше пузырь
+    /// показывает обычную загрузку с кольцом и отменой.
+    private func downloadGif(_ media: GifkaMedia, client: GifkaClient) {
+        gifDownload?.task.cancel()
+        let id = UUID()
+        let task = Task { @MainActor in
+            defer { if gifDownload?.id == id { gifDownload = nil } }
+            do {
+                let data = try await client.downloadGIF(media)
+                try Task.checkCancellation()
+                let draft = try MediaExporter.draft(gifData: data)
+                gifDownload = nil
+                await viewModel.sendAttachments([draft], caption: "")
+            } catch is CancellationError {
+            } catch let error as URLError where error.code == .cancelled {
+            } catch {
+                gifFailure = error.localizedDescription
+            }
+        }
+        gifDownload = GifDownload(id: id, title: media.title, task: task)
+    }
+
     private var attachmentSheet: some View {
         AttachmentSheet(
             contactList: contactList,
@@ -642,6 +680,10 @@ struct ChatView: View {
             onSticker: { sticker in
                 attachmentsShown = false
                 Task { await viewModel.sendSticker(sticker) }
+            },
+            onPickGifka: { media, client in
+                attachmentsShown = false
+                downloadGif(media, client: client)
             }
         )
         .presentationDetents([.medium, .large])

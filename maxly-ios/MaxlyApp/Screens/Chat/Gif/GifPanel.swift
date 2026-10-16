@@ -20,19 +20,18 @@ struct GifPanel: View {
     }
 
     var stickerPanel: StickerPanelModel?
-    let onSendGIF: (AttachmentDraft) -> Void
+    let onPickGifka: (GifkaMedia, GifkaClient) -> Void
     let onSticker: (Sticker) -> Void
 
     @AppStorage(GifkaSettings.enabledKey) private var searchEnabled = false
     @State private var tab: Tab = .gifs
     @State private var gifs: GifSearchModel
     @State private var gifkaStickers: GifSearchModel
-    @State private var sending: String?
     @State private var failure: String?
 
-    init(stickerPanel: StickerPanelModel?, onSendGIF: @escaping (AttachmentDraft) -> Void, onSticker: @escaping (Sticker) -> Void) {
+    init(stickerPanel: StickerPanelModel?, onPickGifka: @escaping (GifkaMedia, GifkaClient) -> Void, onSticker: @escaping (Sticker) -> Void) {
         self.stickerPanel = stickerPanel
-        self.onSendGIF = onSendGIF
+        self.onPickGifka = onPickGifka
         self.onSticker = onSticker
         let client = GifkaClient(apiKey: GifkaSettings.apiKey)
         _gifs = State(initialValue: GifSearchModel(type: .gif, client: client))
@@ -56,7 +55,7 @@ struct GifPanel: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(.top, 4)
-        .alert("Не отправилось", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+        .alert("Нельзя отправить", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
             Button("OK", role: .cancel) { failure = nil }
         } message: {
             Text(failure ?? "")
@@ -94,10 +93,12 @@ struct GifPanel: View {
             }
             .padding(24)
         } else {
-            GifkaResults(model: model, sending: sending) { media in send(media, client: model.client) }
+            GifkaResults(model: model) { media in send(media, client: model.client) }
         }
     }
 
+    /// В сетке только лёгкие превью; файл GIF качает чат уже после выбора (лист закрыт,
+    /// внизу видна загрузка с отменой).
     private func send(_ media: GifkaMedia, client: GifkaClient) {
         guard media.canSendGIF(hasKey: client.hasKey) else {
             failure = client.hasKey
@@ -105,18 +106,7 @@ struct GifPanel: View {
                 : "Отправка найденных GIF требует ключа API gifka.me в сборке. Поиск и просмотр работают без него."
             return
         }
-        guard sending == nil else { return }
-        sending = media.id
-        Task {
-            defer { sending = nil }
-            do {
-                let data = try await client.downloadGIF(media)
-                let draft = try MediaExporter.draft(gifData: data)
-                onSendGIF(draft)
-            } catch {
-                failure = error.localizedDescription
-            }
-        }
+        onPickGifka(media, client)
     }
 
     private func note(_ text: String) -> some View {
@@ -130,7 +120,6 @@ struct GifPanel: View {
 /// Поле поиска, сетка выдачи и подпись «Гифки: gifka.me».
 private struct GifkaResults: View {
     @Bindable var model: GifSearchModel
-    let sending: String?
     let onPick: (GifkaMedia) -> Void
 
     var body: some View {
@@ -165,7 +154,7 @@ private struct GifkaResults: View {
                 }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: model.type == .gif ? 2 : 4), spacing: 3) {
                     ForEach(model.items) { media in
-                        GifkaCell(media: media, sending: sending == media.id) { onPick(media) }
+                        GifkaCell(media: media) { onPick(media) }
                             .onAppear { if media.id == model.items.last?.id { model.loadMore() } }
                     }
                 }
@@ -187,7 +176,6 @@ private struct GifkaResults: View {
 /// Ячейка выдачи: гифка — ролик MP4 без звука, стикер — картинка WebP.
 private struct GifkaCell: View {
     let media: GifkaMedia
-    let sending: Bool
     let onTap: () -> Void
 
     var body: some View {
@@ -199,10 +187,6 @@ private struct GifkaCell: View {
                 .scaledToFill()
                 if media.kind == .gif, let mp4 = media.previewMP4() {
                     GifLoopView(url: mp4.url)
-                }
-                if sending {
-                    Color.black.opacity(0.35)
-                    ProgressView().tint(.white)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -278,5 +262,43 @@ private struct MaxStickerGrid: View {
         } else {
             RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.1)).aspectRatio(1, contentMode: .fit)
         }
+    }
+}
+
+/// Гифка, которая качается после выбора.
+struct GifDownload {
+    let id: UUID
+    let title: String
+    let task: Task<Void, Never>
+}
+
+/// Строка над полем ввода: «Загружаем GIF…» с отменой, пока файл не готов к отправке.
+struct GifDownloadBar: View {
+    let title: String
+    let onCancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Загружаем GIF…").font(.app(.subheadline, .semibold))
+                if !title.isEmpty {
+                    Text(title).font(.app(.caption)).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+            Button(action: onCancel) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Отменить отправку GIF")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 10)
+        .padding(.bottom, 6)
     }
 }
