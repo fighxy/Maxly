@@ -76,24 +76,28 @@ final class GifPlayerPool {
 
 /// Гифка в ленте: ролик MP4 без звука по кругу. Играет только пока видна в окне;
 /// до первого кадра под ней видна статичная картинка.
-struct GifLoopView: UIViewRepresentable {
+public struct GifLoopView: UIViewRepresentable {
     let url: URL
 
-    func makeUIView(context: Context) -> GifLoopUIView {
+    public init(url: URL) {
+        self.url = url
+    }
+
+    public func makeUIView(context: Context) -> GifLoopUIView {
         GifLoopUIView(url: url)
     }
 
-    func updateUIView(_ view: GifLoopUIView, context: Context) {
+    public func updateUIView(_ view: GifLoopUIView, context: Context) {
         view.setURL(url)
     }
 
-    static func dismantleUIView(_ view: GifLoopUIView, coordinator: ()) {
+    public static func dismantleUIView(_ view: GifLoopUIView, coordinator: ()) {
         view.detach()
     }
 }
 
-final class GifLoopUIView: UIView {
-    override class var layerClass: AnyClass { AVPlayerLayer.self }
+public final class GifLoopUIView: UIView {
+    override public class var layerClass: AnyClass { AVPlayerLayer.self }
     private var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
     private var url: URL
     private var attached: URL?
@@ -109,7 +113,7 @@ final class GifLoopUIView: UIView {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    public required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func setURL(_ next: URL) {
         guard next != url else { return }
@@ -118,7 +122,7 @@ final class GifLoopUIView: UIView {
         if window != nil { attach() }
     }
 
-    override func didMoveToWindow() {
+    override public func didMoveToWindow() {
         super.didMoveToWindow()
         if window != nil { attach() } else { detach() }
     }

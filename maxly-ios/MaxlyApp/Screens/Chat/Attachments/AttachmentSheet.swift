@@ -155,6 +155,8 @@ struct AttachmentSheet: View {
     private var content: some View {
         switch model.tab {
         case .gallery: gallery
+        case .gif:
+            GifPanel(onSendGIF: { draft in onSend([draft], "") })
         case .file: filePane
         case .contact: contactPane
         case .location, .poll: soon(model.tab)

@@ -82,8 +82,8 @@ struct AttachmentSheetTests {
 
     @Test("Геопозиция и опрос пока недоступны")
     func tabs() {
-        #expect(AttachmentSheetModel.Tab.allCases.filter(\.isAvailable) == [.gallery, .file, .contact])
-        #expect(AttachmentSheetModel.Tab.allCases.map(\.title) == ["Галерея", "Файл", "Геопозиция", "Опрос", "Контакт"])
+        #expect(AttachmentSheetModel.Tab.allCases.filter(\.isAvailable) == [.gallery, .gif, .file, .contact])
+        #expect(AttachmentSheetModel.Tab.allCases.map(\.title) == ["Галерея", "GIF", "Файл", "Геопозиция", "Опрос", "Контакт"])
     }
 }
 

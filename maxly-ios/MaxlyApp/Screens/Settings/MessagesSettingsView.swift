@@ -10,6 +10,7 @@ struct MessagesSettingsView: View {
     @State private var picking = false
     @State private var catalog = ReactionPalette.fallback
     @AppStorage(GifAutoplayMode.storageKey) private var gifAutoplay = GifAutoplayMode.defaultMode.rawValue
+    @AppStorage(GifkaSettings.enabledKey) private var gifkaSearch = false
 
     var body: some View {
         List {
@@ -29,6 +30,11 @@ struct MessagesSettingsView: View {
                 Text("GIF")
             } footer: {
                 Text("Гифки в чатах играют без звука, пока они на экране. Если автовоспроизведение выключено, видна картинка.")
+            }
+            Section {
+                Toggle("Поиск GIF (gifka.me)", isOn: $gifkaSearch)
+            } footer: {
+                Text("Поиск гифок и стикеров во вложениях идёт через сервис gifka.me: текст запроса и ваш IP-адрес уходят на его сервер. Гифки: gifka.me.")
             }
         }
         .navigationTitle("Сообщения")
