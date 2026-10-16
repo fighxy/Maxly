@@ -968,6 +968,12 @@ public struct MessageBubble: View {
     private var stretchesText: Bool {
         !visuals.isEmpty || !message.content.voices.isEmpty || !message.content.files.isEmpty
             || !message.content.contacts.isEmpty || !message.content.calls.isEmpty || showsComments
+            // Цитата, пересылка, имя автора, опрос или превью ссылки тоже могут быть шире
+            // текста: тогда время стоит в правом нижнем углу пузыря, а не после короткой строки.
+            // Ширину пузыря это не меняет: колонка меряет текст по его естественной ширине.
+            || message.content.reply != nil || message.content.forward != nil
+            || message.content.poll != nil || message.content.linkPreview != nil
+            || (showsAuthorName && !authorTitle.isEmpty)
     }
 
     private var hasHeader: Bool {
