@@ -6,6 +6,8 @@ import MaxlyUI
 struct RootView: View {
     @Bindable var container: AppContainer
     @Bindable var router: AppRouter
+    @AppStorage(GifAutoplayMode.storageKey) private var gifAutoplayMode = GifAutoplayMode.defaultMode.rawValue
+    private let network = NetworkKindMonitor.shared
 
     /// Шрифт, толщина и размер текста одной строкой: меняется — экраны получают новый шрифт.
     private var typographyKey: String {
@@ -32,6 +34,9 @@ struct RootView: View {
         .background(InterfaceStyleOverride(theme: container.appearance.theme))
         .environment(\.chatWallpaper, container.appearance.wallpaper)
         .environment(\.imageURLSizing, CoreImageURLSizing())
+        .environment(\.gifAutoplay, GifAutoplayPolicy.allows(
+            GifAutoplayMode(stored: gifAutoplayMode), network: network.kind, constrained: network.constrained
+        ))
         .task { await container.bootstrap() }
         // Нажатие на уведомление о сообщении (приложение было свёрнуто) открывает чат.
         .task {

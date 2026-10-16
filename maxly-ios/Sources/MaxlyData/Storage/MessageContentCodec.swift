@@ -166,7 +166,9 @@ enum MessageContentCodec {
                 width: integer(map["width"]),
                 height: integer(map["height"]),
                 localPath: map["localPath"] as? String,
-                preview: preview(map["previewData"])
+                preview: preview(map["previewData"]),
+                gif: (map["gif"] as? Bool) == true ? true : nil,
+                mp4URL: url(map["mp4Url"])
             ))
         case "VIDEO":
             let videoType = integer(map["videoType"]) ?? 0

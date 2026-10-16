@@ -9,6 +9,7 @@ struct MessagesSettingsView: View {
 
     @State private var picking = false
     @State private var catalog = ReactionPalette.fallback
+    @AppStorage(GifAutoplayMode.storageKey) private var gifAutoplay = GifAutoplayMode.defaultMode.rawValue
 
     var body: some View {
         List {
@@ -17,6 +18,17 @@ struct MessagesSettingsView: View {
                     .foregroundStyle(.secondary)
             } header: {
                 Text("Быстрые реакции")
+            }
+            Section {
+                Picker("Автовоспроизведение GIF", selection: $gifAutoplay) {
+                    ForEach(GifAutoplayMode.allCases) { mode in
+                        Text(mode.title).tag(mode.rawValue)
+                    }
+                }
+            } header: {
+                Text("GIF")
+            } footer: {
+                Text("Гифки в чатах играют без звука, пока они на экране. Если автовоспроизведение выключено, видна картинка.")
             }
         }
         .navigationTitle("Сообщения")

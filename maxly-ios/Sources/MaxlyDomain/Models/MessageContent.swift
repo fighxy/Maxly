@@ -505,15 +505,26 @@ public struct PhotoContent: Hashable, Sendable, Codable {
     public var localPath: String?
     /// Крошечная миниатюра (WebP) из самого вложения: её видно, пока грузится фото.
     public var preview: Data?
+    /// Фото с флагом `gif`: сервер отдаёт его ещё и роликом MP4 без звука ([mp4URL]).
+    /// Необязательное поле, чтобы старые сохранённые сообщения читались как раньше.
+    public var gif: Bool?
+    /// Ролик гифки (`mp4Url`); `nil` у обычного фото.
+    public var mp4URL: URL?
 
-    public init(id: String, url: URL?, width: Int? = nil, height: Int? = nil, localPath: String? = nil, preview: Data? = nil) {
+    public init(id: String, url: URL?, width: Int? = nil, height: Int? = nil, localPath: String? = nil, preview: Data? = nil,
+                gif: Bool? = nil, mp4URL: URL? = nil) {
         self.id = id
         self.url = url
         self.width = width
         self.height = height
         self.localPath = localPath
         self.preview = preview
+        self.gif = gif
+        self.mp4URL = mp4URL
     }
+
+    /// Гифка: флаг `gif` или ролик рядом с картинкой.
+    public var isGif: Bool { gif == true || mp4URL != nil }
 
     public var displayURL: URL? {
         if let localPath, FileManager.default.fileExists(atPath: localPath) {

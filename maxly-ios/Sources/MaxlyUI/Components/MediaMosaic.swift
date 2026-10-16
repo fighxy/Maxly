@@ -26,6 +26,7 @@ struct MediaMosaic: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
     @Environment(\.imageURLSizing) private var imageURLSizing
+    @Environment(\.gifAutoplay) private var gifAutoplay
 
     var body: some View {
         let visuals = attachments.filter(\.isVisual)
@@ -73,6 +74,16 @@ struct MediaMosaic: View {
             }
             .frame(width: width, height: height)
             .clipped()
+            #if canImport(UIKit)
+            // Гифка: ролик без звука поверх картинки, только когда автовоспроизведение
+            // разрешено. Видимость решает сам плеер (окно), картинка остаётся запасной.
+            if let photo = item.photo, photo.isGif, let mp4 = photo.mp4URL,
+               GifAutoplayPolicy.shouldPlay(allowed: gifAutoplay, hasVideo: true, visible: true) {
+                GifLoopView(url: mp4)
+                    .frame(width: width, height: height)
+                    .allowsHitTesting(false)
+            }
+            #endif
             if round, let roundPlayer {
                 roundPlayer
                     .frame(width: width, height: height)
@@ -101,6 +112,8 @@ struct MediaMosaic: View {
         .overlay(alignment: round ? .bottomLeading : .topLeading) {
             if let video = item.video, video.durationMs > 0, !(round && roundPlayer != nil) {
                 overlayCapsule(ChatContentFormat.clock(ms: video.durationMs))
+            } else if item.photo?.isGif == true {
+                overlayCapsule("GIF")
             }
         }
         .overlay(alignment: .bottomTrailing) {
@@ -114,7 +127,7 @@ struct MediaMosaic: View {
         .offset(x: CGFloat(tile.x), y: CGFloat(tile.y))
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isButton)
-        .accessibilityLabel(item.video == nil ? "Фото" : "Видео")
+        .accessibilityLabel(item.video != nil ? "Видео" : item.photo?.isGif == true ? "GIF" : "Фото")
         .accessibilityAction { onOpen(item.id) }
     }
 
