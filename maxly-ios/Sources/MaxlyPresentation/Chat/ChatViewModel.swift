@@ -804,9 +804,11 @@ public final class ChatViewModel {
 
     /// Вложения из листа: делятся на сообщения (`AttachmentBatchPlanner`), цитата уходит
     /// с первым. Каждое сообщение появляется сразу и грузится в фоне.
-    public func sendAttachments(_ drafts: [AttachmentDraft], caption: String) async {
+    /// `true`, если всё ушло; при ошибке её текст уже показан в чате.
+    @discardableResult
+    public func sendAttachments(_ drafts: [AttachmentDraft], caption: String) async -> Bool {
         let plan = AttachmentBatchPlanner.plan(drafts, caption: caption)
-        guard !plan.batches.isEmpty else { return }
+        guard !plan.batches.isEmpty else { return false }
         var reply = replyTarget?.id
         replyTarget = nil
         stickToBottom = true
@@ -820,8 +822,10 @@ public final class ChatViewModel {
                 try await repository.send(text: plan.trailingText, chatId: chatId, replyTo: nil)
             }
             error = nil
+            return true
         } catch {
             show(error)
+            return false
         }
     }
 

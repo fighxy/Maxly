@@ -72,9 +72,8 @@ struct ChatView: View {
     @State private var profileShown = false
     @State private var forwardList: [ChatListItem] = []
     @State private var attachmentsShown = false
-    /// Гифка gifka.me качается после выбора: строка над полем ввода с отменой.
+    /// Гифка gifka.me качается и уходит после выбора: строка над полем ввода с отменой или «Повторить».
     @State private var gifDownload: GifDownload?
-    @State private var gifFailure: String?
     /// Снимки с кнопки камеры в поле ввода (`CameraCaptureFlow`).
     @State private var cameraFlowShown = false
     /// Меню долгого нажатия на сообщение, как в WhatsApp (`MessageMenuHost`).
@@ -271,8 +270,12 @@ struct ChatView: View {
     @ViewBuilder
     private var composerControls: some View {
         if let gifDownload {
-            GifDownloadBar(title: gifDownload.title) {
-                gifDownload.task.cancel()
+            GifDownloadBar(
+                title: gifDownload.title,
+                failure: gifDownload.failure,
+                onRetry: { downloadGif(gifDownload.media, client: gifDownload.client) }
+            ) {
+                gifDownload.task?.cancel()
                 self.gifDownload = nil
             }
             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -508,11 +511,6 @@ struct ChatView: View {
                 openURL(url)
             }
             .sheet(isPresented: $attachmentsShown) { attachmentSheet }
-            .alert("GIF не отправилась", isPresented: Binding(get: { gifFailure != nil }, set: { if !$0 { gifFailure = nil } })) {
-                Button("OK", role: .cancel) { gifFailure = nil }
-            } message: {
-                Text(gifFailure ?? "")
-            }
             .fullScreenCover(isPresented: $cameraFlowShown) {
                 CameraCaptureFlow(
                     onSend: { drafts, caption in
@@ -647,27 +645,34 @@ struct ChatView: View {
     }
 
     /// Качает файл GIF выбранной гифки и отправляет его как фото. Дальше пузырь
-    /// показывает обычную загрузку с кольцом и отменой.
+    /// показывает обычную загрузку с кольцом и отменой. Если скачать или отправить
+    /// не вышло, строка над полем ввода остаётся с ошибкой и «Повторить».
     private func downloadGif(_ media: GifkaMedia, client: GifkaClient) {
-        gifDownload?.task.cancel()
+        gifDownload?.task?.cancel()
         let id = UUID()
         let task = Task { @MainActor in
-            defer { if gifDownload?.id == id { gifDownload = nil } }
             do {
                 let data = try await client.downloadGIF(media)
                 try Task.checkCancellation()
                 let draft = try MediaExporter.draft(gifData: data)
-                gifDownload = nil
-                await viewModel.sendAttachments([draft], caption: "")
+                guard gifDownload?.id == id else { return }
+                guard await viewModel.sendAttachments([draft], caption: "") else {
+                    if gifDownload?.id == id { gifDownload?.failure = "Не удалось отправить сообщение"; gifDownload?.task = nil }
+                    return
+                }
+                if gifDownload?.id == id { gifDownload = nil }
                 // Событие отправки для gifka.me: только id медиа.
                 Task.detached { await client.pingback([GifkaEvent(mediaId: media.id, kind: .send)]) }
             } catch is CancellationError {
             } catch let error as URLError where error.code == .cancelled {
             } catch {
-                gifFailure = error.localizedDescription
+                if gifDownload?.id == id {
+                    gifDownload?.failure = error.localizedDescription
+                    gifDownload?.task = nil
+                }
             }
         }
-        gifDownload = GifDownload(id: id, title: media.title, task: task)
+        gifDownload = GifDownload(id: id, media: media, client: client, task: task)
     }
 
     private var attachmentSheet: some View {

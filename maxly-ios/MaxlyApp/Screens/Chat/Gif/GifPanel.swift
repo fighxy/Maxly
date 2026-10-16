@@ -320,35 +320,55 @@ private struct MaxStickerGrid: View {
     }
 }
 
-/// Гифка, которая качается после выбора.
+/// Гифка, которая качается и уходит после выбора. Если не ушла — строка остаётся
+/// с ошибкой и кнопкой «Повторить».
 struct GifDownload {
     let id: UUID
-    let title: String
-    let task: Task<Void, Never>
+    let media: GifkaMedia
+    let client: GifkaClient
+    var task: Task<Void, Never>?
+    var failure: String?
+
+    var title: String { media.title }
 }
 
-/// Строка над полем ввода: «Загружаем GIF…» с отменой, пока файл не готов к отправке.
+/// Строка над полем ввода: «Загружаем GIF…» с отменой, пока файл не ушёл, или ошибка с «Повторить».
 struct GifDownloadBar: View {
     let title: String
+    var failure: String?
+    var onRetry: () -> Void = {}
     let onCancel: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
-            ProgressView()
+            if failure == nil {
+                ProgressView()
+            } else {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(.red)
+            }
             VStack(alignment: .leading, spacing: 1) {
-                Text("Загружаем GIF…").font(.app(.subheadline, .semibold))
-                if !title.isEmpty {
+                Text(failure == nil ? "Загружаем GIF…" : "GIF не отправилась").font(.app(.subheadline, .semibold))
+                if let failure {
+                    Text(failure).font(.app(.caption)).foregroundStyle(.secondary).lineLimit(2)
+                } else if !title.isEmpty {
                     Text(title).font(.app(.caption)).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             Spacer(minLength: 0)
+            if failure != nil {
+                Button("Повторить", action: onRetry)
+                    .font(.app(.subheadline, .semibold))
+                    .buttonStyle(.borderless)
+            }
             Button(action: onCancel) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 20))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Отменить отправку GIF")
+            .accessibilityLabel(failure == nil ? "Отменить отправку GIF" : "Убрать GIF")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
