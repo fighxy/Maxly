@@ -81,6 +81,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -340,7 +341,7 @@ private fun BubbleContent(
     // С фото или видео пузырь шириной с медиа: подпись переносится под картинкой,
     // а не растягивает пузырь вбок от узкой вертикальной фотографии.
     val mediaWidth = if (visuals.isNotEmpty()) Modifier.width(visualsWidth(visuals, maxWidth - 6.dp) + pad * 2) else Modifier
-    Column(mediaWidth.padding(pad)) {
+    BubbleColumn(mediaWidth.padding(pad)) {
         val headerPadding = Modifier.padding(start = 12.dp, end = 12.dp, top = 7.dp)
         item.authorName?.let {
             Text(
@@ -429,7 +430,7 @@ private fun BubbleContent(
         } else if (voiceOnly && !transcriptShown) {
             Spacer(Modifier.height(6.dp))
         } else {
-            TimeRow(item, colors.secondary, Modifier.align(Alignment.End).padding(start = 12.dp, end = 10.dp, bottom = 6.dp, top = 2.dp))
+            TimeRow(item, colors.secondary, Modifier.layoutId(BubbleColumn.END).padding(start = 12.dp, end = 10.dp, bottom = 6.dp, top = 2.dp))
         }
         content.linkPreview?.let { LinkPreviewCard(it, colors) }
         Reactions(message.id, content.reactions, colors, item.outgoing, Modifier.padding(start = 8.dp, end = 8.dp, bottom = 6.dp)) { onReaction(message, it) }
@@ -527,7 +528,8 @@ private fun TextWithTime(item: ChatItem.Bubble, text: String, colors: BubbleColo
     }
     val inline = remember(animoji) { animojiInlineContent(animoji) }
     val reserve = timeLabel(item)
-    Box(Modifier.padding(start = 12.dp, end = 10.dp, top = 6.dp, bottom = 6.dp)) {
+    // Блок тянется до ширины пузыря: время в правом нижнем углу, даже если пузырь шире текста.
+    Box(Modifier.layoutId(BubbleColumn.FILL).padding(start = 12.dp, end = 10.dp, top = 6.dp, bottom = 6.dp)) {
         Text(
             buildAnnotatedString {
                 append(annotated)
