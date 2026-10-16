@@ -52,6 +52,8 @@ fun MessagesScreen(
     model: AccountSettingsViewModel,
     loadCatalog: suspend () -> List<String>,
     onBack: () -> Unit,
+    /** Настройки гифок; `null` — без блока «Гифки». */
+    gifs: app.maxly.data.GifSettings? = null,
 ) {
     val settings = model.state.collectAsStateWithLifecycle().value.settings
     var picking by remember { mutableStateOf(false) }
@@ -77,6 +79,7 @@ fun MessagesScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp),
             )
+            gifs?.let { app.maxly.ui.settings.GifSettingsSection(it, modes = listOf(app.maxly.domain.GifAutoplay.ALWAYS, app.maxly.domain.GifAutoplay.NEVER)) }
             Spacer(Modifier.weight(1f))
             Box(Modifier.fillMaxWidth().padding(bottom = 28.dp), contentAlignment = Alignment.Center) {
                 Surface(

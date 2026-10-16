@@ -363,6 +363,7 @@ fun MainScreen(
             composable("messages") {
                 MessagesScreen(
                     accountModel,
+                    gifs = container.gifSettings,
                     loadCatalog = { container.messages.reactionCatalog() },
                     onBack = { nav.popBackStack() },
                 )
@@ -432,6 +433,11 @@ fun MainScreen(
                     ) }
                 ChatScreen(
                     model,
+                    gifAutoplay = app.maxly.data.GifSettings.shouldAutoplay(
+                        container.gifSettings.state.collectAsStateWithLifecycle().value.autoplay,
+                        unmetered = androidx.compose.runtime.remember { container.unmeteredNetwork() },
+                    ),
+                    gifSearch = app.maxly.ui.chat.rememberGifSearch(container.gifSettings, container.gifka, container.gifOutgoingDir),
                     onBack = { nav.popBackStack() },
                     onOpenProfile = { nav.navigate("profile/$chatId?fromChat=true") },
                     onOpenParticipant = { id, name ->

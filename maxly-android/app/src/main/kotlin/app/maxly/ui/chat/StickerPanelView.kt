@@ -38,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
@@ -65,19 +66,37 @@ fun StickerPanelView(
     onEmoji: (String) -> Unit,
     onSticker: (Sticker) -> Unit,
     onAnimoji: (AnimatedEmoji) -> Unit = {},
+    /** Вкладка «GIF» (поиск gifka.me); `null` — поиск выключен в настройках. */
+    gifs: app.maxly.presentation.gifs.GifSearchModel? = null,
+    onGif: (app.maxly.domain.OutgoingFile) -> Unit = {},
 ) {
     val state by panel.state.collectAsStateWithLifecycle()
     LaunchedEffect(panel) { panel.prepare() }
+    var gifTab by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    if (gifs == null) gifTab = false
+    val tabs = if (gifs != null) 3 else 2
     Column(Modifier.fillMaxWidth().height(height).background(MaterialTheme.colorScheme.surfaceContainer)) {
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
             StickerPanelState.Mode.entries.forEachIndexed { index, mode ->
                 SegmentedButton(
-                    selected = state.mode == mode,
-                    onClick = { panel.setMode(mode) },
-                    shape = SegmentedButtonDefaults.itemShape(index, StickerPanelState.Mode.entries.size),
+                    selected = !gifTab && state.mode == mode,
+                    onClick = { gifTab = false; panel.setMode(mode) },
+                    shape = SegmentedButtonDefaults.itemShape(index, tabs),
                     icon = {},
                 ) { Text(if (mode == StickerPanelState.Mode.EMOJI) "Эмодзи" else "Стикеры") }
             }
+            if (gifs != null) {
+                SegmentedButton(
+                    selected = gifTab,
+                    onClick = { gifTab = true },
+                    shape = SegmentedButtonDefaults.itemShape(2, tabs),
+                    icon = {},
+                ) { Text("GIF") }
+            }
+        }
+        if (gifTab && gifs != null) {
+            GifSearchPanel(gifs, onGif)
+            return@Column
         }
         when (state.mode) {
             StickerPanelState.Mode.EMOJI -> EmojiGrid(

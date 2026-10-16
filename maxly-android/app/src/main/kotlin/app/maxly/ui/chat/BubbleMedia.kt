@@ -27,6 +27,8 @@ class BubbleMedia(
     val onRoundEnded: (String) -> Unit = {},
     /** User-Agent для CDN видео. */
     val userAgent: String = "",
+    /** Играют ли гифки в ленте сами (настройка и сеть). */
+    val gifAutoplay: State<Boolean> = mutableStateOf(true),
 ) {
     companion object {
         val None = BubbleMedia(mutableStateOf(null), mutableStateOf(ChatMediaState()))

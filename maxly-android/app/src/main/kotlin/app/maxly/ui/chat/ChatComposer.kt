@@ -185,6 +185,8 @@ internal fun Composer(
     /** Ещё снимок камерой: плитка в конце выбранных вложений. */
     onCamera: (() -> Unit)? = null,
     panel: StickerPanel? = null,
+    gifs: app.maxly.presentation.gifs.GifSearchModel? = null,
+    onGif: (OutgoingFile) -> Unit = {},
     onSticker: (Sticker) -> Unit = {},
     onAnimoji: (AnimatedEmoji) -> Unit = {},
     onCancelUpload: () -> Unit = {},
@@ -486,6 +488,8 @@ internal fun Composer(
                             onAnimoji(emoji)
                             insertEmoji.value(emoji.emoji)
                         },
+                        gifs = gifs,
+                        onGif = onGif,
                     )
                 }
             }

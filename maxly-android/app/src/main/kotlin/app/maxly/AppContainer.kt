@@ -152,6 +152,15 @@ class AppContainer(context: Context) {
     /** Приватный режим: только на этом устройстве. */
     val privateMode = app.maxly.data.PrivateModeSettings(preferenceStore)
 
+    /** Гифки: автовоспроизведение и поиск gifka.me (по умолчанию выключен). */
+    val gifSettings = app.maxly.data.GifSettings(preferenceStore)
+    val gifka = app.maxly.data.gifka.GifkaClient(app.maxly.BuildConfig.GIFKA_API_KEY)
+    val gifOutgoingDir = java.io.File(context.cacheDir, "outgoing")
+    private val connectivity = context.applicationContext.getSystemService(android.net.ConnectivityManager::class.java)
+
+    /** Сеть без лимита трафика (Wi‑Fi): для «Только по Wi‑Fi». */
+    fun unmeteredNetwork(): Boolean = connectivity?.let { !it.isActiveNetworkMetered } ?: false
+
     /**
      * Режим призрака и отметки о прочтении — флаги ядра; глушит активность ядро, не приложение.
      * Флаги прежней локальной заглушки один раз переносятся в ядро.

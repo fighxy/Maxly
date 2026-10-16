@@ -187,6 +187,8 @@ internal fun Composer(
     onRemoveAttachment: (OutgoingFile) -> Unit,
     onEditPhoto: (OutgoingFile) -> Unit,
     panel: StickerPanel? = null,
+    gifs: app.maxly.presentation.gifs.GifSearchModel? = null,
+    onGif: (OutgoingFile) -> Unit = {},
     onSticker: (Sticker) -> Unit = {},
     onAnimoji: (AnimatedEmoji) -> Unit = {},
     onCancelUpload: () -> Unit = {},
@@ -445,6 +447,8 @@ internal fun Composer(
                             onAnimoji(emoji)
                             insertEmoji.value(emoji.emoji)
                         },
+                        gifs = gifs,
+                        onGif = onGif,
                     )
                 }
             }

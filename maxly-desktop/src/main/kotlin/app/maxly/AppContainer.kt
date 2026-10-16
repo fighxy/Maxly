@@ -119,6 +119,11 @@ class AppContainer {
     val keyboard = app.maxly.ui.keys.KeyboardSettings(preferenceStore)
     val privateMode = PrivateModeSettings(preferenceStore)
 
+    /** Гифки: автовоспроизведение и поиск gifka.me (по умолчанию выключен). */
+    val gifSettings = app.maxly.data.GifSettings(preferenceStore)
+    val gifka = app.maxly.data.gifka.GifkaClient(app.maxly.BuildConfig.GIFKA_API_KEY)
+    val gifOutgoingDir = java.io.File(AppPaths.cacheDir, "outgoing")
+
     /**
      * Режим призрака и отметки о прочтении — флаги ядра; глушит активность ядро, не приложение.
      * Флаги прежней локальной заглушки один раз переносятся в ядро.

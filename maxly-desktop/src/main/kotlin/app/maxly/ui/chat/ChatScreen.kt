@@ -195,6 +195,10 @@ fun ChatScreen(
     voicePlayer: app.maxly.presentation.chat.VoicePlayer? = null,
     /** Касание полосы, когда голосовое из другого чата: открыть тот чат на сообщении. */
     onOpenVoice: (app.maxly.presentation.chat.VoicePlayback) -> Unit = {},
+    /** Гифки в ленте играют сами. */
+    gifAutoplay: Boolean = true,
+    /** Вкладка «GIF» панели стикеров; `null` — поиск gifka.me выключен. */
+    gifSearch: app.maxly.presentation.gifs.GifSearchModel? = null,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val privacy = app.maxly.ui.components.LocalPrivateMode.current
@@ -220,6 +224,7 @@ fun ChatScreen(
     LaunchedEffect(privacy) { hideAll() }
     val mediaState = model.media.state.collectAsStateWithLifecycle()
     val playback = model.media.playback.collectAsStateWithLifecycle()
+    val gifPlay = androidx.compose.runtime.rememberUpdatedState(gifAutoplay)
     val bubbleMedia = remember(model) {
         BubbleMedia(
             playback = playback,
@@ -233,6 +238,7 @@ fun ChatScreen(
             onFile = model.media::openFile,
             onRoundEnded = model.media::stopRound,
             userAgent = mediaUserAgent,
+            gifAutoplay = gifPlay,
         )
     }
     var attaching by remember { mutableStateOf(false) }
@@ -560,8 +566,10 @@ fun ChatScreen(
                         )
                     },
                     onRemoveAttachment = model::removeAttachment,
-                    onEditPhoto = { editingPhoto = it },
+                    onEditPhoto = { if (!it.isGif) editingPhoto = it },
                     panel = model.stickers,
+                    gifs = gifSearch,
+                    onGif = model::sendGif,
                     onSticker = model::sendSticker,
                     onAnimoji = model::noteAnimoji,
                     onCancelUpload = { model.cancelUpload() },

@@ -1111,6 +1111,26 @@ class ChatViewModel(
             .sortedWith(app.maxly.domain.TextSpans.ORDER)
     }
 
+    /** Гифка из поиска уходит сразу, без подписи; черновик в поле остаётся. */
+    fun sendGif(file: OutgoingFile) {
+        if (_state.value.editing != null) return
+        toLatest()
+        dropUnreadSeparator()
+        val reply = _state.value.replyTo
+        _state.update { it.copy(replyTo = null, uploadProgress = 0f) }
+        viewModelScope.launch {
+            try {
+                repository.sendMedia(chatId, listOf(file), "", reply?.id) { fraction -> _state.update { it.copy(uploadProgress = fraction) } }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                show(e)
+            } finally {
+                _state.update { it.copy(uploadProgress = null) }
+            }
+        }
+    }
+
     private fun sendAttachments(items: List<OutgoingFile>, caption: String) {
         val reply = _state.value.replyTo
         _state.update { it.copy(draft = "", replyTo = null, attachments = emptyList(), uploadProgress = 0f, formatting = emptyList()) }

@@ -68,6 +68,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -658,7 +660,7 @@ private fun aspectOf(visual: ChatAttachment): Double {
 private fun VisualCell(attachment: ChatAttachment, width: Dp) {
     val fill = Modifier.fillMaxWidth().fillMaxHeight()
     when (attachment) {
-        is ChatAttachment.Photo -> PhotoCell(attachment.photo, fill, width)
+        is ChatAttachment.Photo -> if (attachment.photo.isGif) GifCell(attachment.photo, fill, width) else PhotoCell(attachment.photo, fill, width)
         is ChatAttachment.Video -> VideoCell(attachment.video, fill, width)
         else -> Unit
     }
@@ -669,6 +671,34 @@ private fun PhotoCell(photo: PhotoContent, modifier: Modifier, width: Dp) {
     BoxWithConstraints(modifier.background(Color.Black.copy(alpha = 0.2f))) {
         val model = ImageRequests.width(photo.url, cropWidth(width, maxHeight, photo.width, photo.height).value, feedDensity())
         AsyncImage(model, "Фото", Modifier.fillMaxWidth().fillMaxHeight(), contentScale = ContentScale.Crop, filterQuality = FilterQuality.High)
+    }
+}
+
+/**
+ * Гифка: MP4 без звука по кругу встроенным проигрывателем. Без MP4, с выключенным
+ * автовоспроизведением или если ролик не открылся (нет ffmpeg) — статичная картинка с меткой GIF.
+ */
+@Composable
+private fun GifCell(photo: PhotoContent, modifier: Modifier, width: Dp) {
+    val media = LocalBubbleMedia.current
+    val mp4 = photo.mp4Url
+    Box(modifier) {
+        PhotoCell(photo, Modifier.fillMaxWidth().fillMaxHeight(), width)
+        var failed by remember(mp4) { mutableStateOf(false) }
+        if (mp4 != null && media.gifAutoplay.value && !failed) {
+            val player = app.maxly.ui.media.rememberVideoPlayer()
+            val state by player.state.collectAsState()
+            LaunchedEffect(mp4) { player.open(mp4, media.userAgent, autoplay = true, muted = true, loop = true) }
+            LaunchedEffect(state.failed) { if (state.failed) failed = true }
+            if (state.frame != null) app.maxly.ui.media.VideoFrame(state, Modifier.fillMaxWidth().fillMaxHeight(), contentScale = ContentScale.Crop)
+        } else {
+            Text(
+                "GIF",
+                color = Color.White,
+                fontSize = 12.sp,
+                modifier = Modifier.align(Alignment.TopStart).padding(6.dp).clip(RoundedCornerShape(8.dp)).background(Color.Black.copy(alpha = 0.5f)).padding(horizontal = 6.dp, vertical = 1.dp),
+            )
+        }
     }
 }
 

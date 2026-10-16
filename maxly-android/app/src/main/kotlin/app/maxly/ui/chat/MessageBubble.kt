@@ -651,7 +651,11 @@ private fun aspectOf(visual: ChatAttachment): Double {
 private fun VisualCell(attachment: ChatAttachment, width: Dp) {
     val fill = Modifier.fillMaxWidth().fillMaxHeight()
     when (attachment) {
-        is ChatAttachment.Photo -> PhotoCell(attachment.photo, fill, width)
+        is ChatAttachment.Photo -> if (attachment.photo.isGif) {
+            GifMotion(attachment.photo.mp4Url, fill) { PhotoCell(attachment.photo, Modifier.fillMaxWidth().fillMaxHeight(), width) }
+        } else {
+            PhotoCell(attachment.photo, fill, width)
+        }
         is ChatAttachment.Video -> VideoCell(attachment.video, fill, width)
         else -> Unit
     }

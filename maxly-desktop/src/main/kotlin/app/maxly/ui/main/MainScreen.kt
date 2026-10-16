@@ -563,6 +563,11 @@ private fun ChatPane(
             }
             ChatScreen(
                 model,
+                gifAutoplay = app.maxly.data.GifSettings.shouldAutoplay(
+                    container.gifSettings.state.collectAsStateWithLifecycle().value.autoplay,
+                    unmetered = androidx.compose.runtime.remember { true },
+                ),
+                gifSearch = app.maxly.ui.chat.rememberGifSearch(container.gifSettings, container.gifka, container.gifOutgoingDir),
                 onBack = onCloseChat,
                 onOpenProfile = onOpenProfile,
                 onOpenParticipant = onOpenParticipant,
@@ -712,6 +717,7 @@ private fun SettingsPane(
         }
         SettingsPage.Messages -> MessagesScreen(
             accountModel,
+            gifs = container.gifSettings,
             loadCatalog = { container.messages.reactionCatalog() },
             onBack = onBack,
         )
