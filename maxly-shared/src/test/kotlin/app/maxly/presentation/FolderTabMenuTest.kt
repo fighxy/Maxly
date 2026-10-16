@@ -35,7 +35,7 @@ class FolderTabMenuTest {
     }
 
     @Test
-    fun ownFolderHasTelegramOrder() {
+    fun ownFolderMenuOrder() {
         val entries = FolderTabMenu.entries(isAll = false, editable = true, hasUnread = true, allMuted = false, hasChats = true, folderCount = 3)
         assertEquals(
             listOf("Настроить папку", "Добавить чаты", "Прочитать все", "Выкл. уведомления", "Удалить", "Изменить порядок"),

@@ -65,7 +65,7 @@ fun PinBanner(
     onUnpin: () -> Unit,
     onUnpinAll: () -> Unit,
 ) {
-    // Секция карточки под шапкой ([TopDock]): своего фона нет. Слева полоска акцента, как в Telegram.
+    // Секция карточки под шапкой ([TopDock]): своего фона нет. Слева полоска акцента.
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(start = 14.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,

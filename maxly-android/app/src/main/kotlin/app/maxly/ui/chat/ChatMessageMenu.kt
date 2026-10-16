@@ -356,7 +356,7 @@ internal fun MessageActions(
 }
 
 /**
- * Пункты меню долгого нажатия ([MessageMenuOverlay]), как в WhatsApp и на iOS: главные —
+ * Пункты меню долгого нажатия ([MessageMenuOverlay]), как на iOS: главные —
  * «Ответить», «Изменить», «Переслать», «Копировать», «Сведения», «Удалить»; остальное — под «Ещё…».
  */
 internal fun messageMenuActions(

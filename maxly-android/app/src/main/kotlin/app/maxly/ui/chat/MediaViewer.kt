@@ -162,7 +162,7 @@ import kotlin.math.roundToInt
 private val VideoControlsHeight = 104.dp
 
 /**
- * Фото и видео сообщения на весь экран, как в Telegram и WhatsApp.
+ * Фото и видео сообщения на весь экран.
  *
  * - Касание прячет и показывает шапку, подпись, кнопки и системные полосы; у играющего ролика
  *   они уходят сами ([MediaViewerChrome]).
