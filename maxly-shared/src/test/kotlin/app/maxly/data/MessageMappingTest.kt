@@ -261,4 +261,17 @@ class MessageMappingTest {
         assertEquals("99", result.rows[1][0].contactId)
         assertNull(MessageMapping.keyboard(listOf(mapOf("_type" to "INLINE_KEYBOARD", "keyboard" to mapOf("buttons" to emptyList<Any>())))))
     }
+
+    @Test
+    fun gifPhotoKeepsMp4() {
+        val gif = MessageMapping.attachment(mapOf("_type" to "PHOTO", "photoId" to 9L, "baseUrl" to "https://p/9", "gif" to true, "mp4Url" to "https://v/9.mp4")) as ChatAttachment.Photo
+        assertTrue(gif.photo.isGif)
+        assertEquals("https://v/9.mp4", gif.photo.mp4Url)
+        val plain = MessageMapping.attachment(mapOf("_type" to "PHOTO", "photoId" to 8L, "baseUrl" to "https://p/8", "mp4Url" to "https://v/8.mp4")) as ChatAttachment.Photo
+        assertFalse(plain.photo.isGif)
+        assertNull(plain.photo.mp4Url)
+        val noVideo = MessageMapping.attachment(mapOf("_type" to "PHOTO", "photoId" to 7L, "gif" to true)) as ChatAttachment.Photo
+        assertTrue(noVideo.photo.isGif)
+        assertNull(noVideo.photo.mp4Url)
+    }
 }

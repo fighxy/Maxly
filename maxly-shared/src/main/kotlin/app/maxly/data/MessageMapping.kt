@@ -241,6 +241,8 @@ object MessageMapping {
                     width = integer(map["width"]),
                     height = integer(map["height"]),
                     preview = preview(map["previewData"]),
+                    isGif = map["gif"] == true,
+                    mp4Url = if (map["gif"] == true) url(map["mp4Url"]) else null,
                 ),
             )
             "VIDEO" -> ChatAttachment.Video(

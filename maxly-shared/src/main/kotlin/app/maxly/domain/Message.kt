@@ -221,8 +221,18 @@ data class PollAnswer(val id: String, val text: String, val votes: Int = 0)
 /** Служебное закрепление: пустой [messageId] — закреп сняли. */
 data class PinNotice(val messageId: String?, val preview: String)
 
-data class PhotoContent(val id: String, val url: String?, val width: Int? = null, val height: Int? = null, val preview: ByteArray? = null) {
-    override fun equals(other: Any?) = other is PhotoContent && other.id == id && other.url == url && other.width == width && other.height == height
+/** Фото; у гифки [isGif] и, если сервер его дал, [mp4Url] — то же движение в MP4 без звука. */
+data class PhotoContent(
+    val id: String,
+    val url: String?,
+    val width: Int? = null,
+    val height: Int? = null,
+    val preview: ByteArray? = null,
+    val isGif: Boolean = false,
+    val mp4Url: String? = null,
+) {
+    override fun equals(other: Any?) = other is PhotoContent && other.id == id && other.url == url && other.width == width &&
+        other.height == height && other.isGif == isGif && other.mp4Url == mp4Url
     override fun hashCode() = id.hashCode()
 }
 
