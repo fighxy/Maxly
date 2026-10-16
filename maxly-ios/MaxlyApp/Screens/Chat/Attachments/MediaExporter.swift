@@ -5,6 +5,7 @@ import ImageIO
 import UIKit
 import UniformTypeIdentifiers
 import MaxlyDomain
+import MaxlyPresentation
 
 /// Готовит файлы к отправке: фото в JPEG не больше 2560 px, видео в mp4, файлы копией.
 /// Всё кладёт в Caches/Outgoing/<uuid>/: оттуда грузит ядро, а пузырь показывает превью.
@@ -33,8 +34,45 @@ enum MediaExporter {
             return try await exportVideo(avAsset)
         default:
             let data = try await imageData(for: ref.asset)
+            // GIF уходит как есть: перекодирование в JPEG оставило бы один кадр.
+            if isGIF(data) { return try writeGIF(data) }
             return try writePhoto(data)
         }
+    }
+
+    // MARK: GIF
+
+    /// Гифка из байтов (поиск GIF): файл `.gif` без перекодирования, ядро грузит его фото.
+    static func draft(gifData data: Data) throws -> AttachmentDraft {
+        guard isGIF(data) else { throw Failure.unreadable }
+        return try writeGIF(data)
+    }
+
+    private static func fileHead(_ url: URL) -> Data {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return Data() }
+        defer { try? handle.close() }
+        return (try? handle.read(upToCount: 12)) ?? Data()
+    }
+
+    static func isGIF(_ data: Data) -> Bool {
+        SaveNaming.imageExtension(of: data) == "gif"
+    }
+
+    private static func writeGIF(_ data: Data, name: String = "image.gif") throws -> AttachmentDraft {
+        let fileName = name.lowercased().hasSuffix(".gif") ? name : "image.gif"
+        let target = try makeFolder().appendingPathComponent(fileName)
+        try data.write(to: target, options: .atomic)
+        var width: Int?
+        var height: Int?
+        if let source = CGImageSourceCreateWithData(data as CFData, nil),
+           let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
+            width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue
+            height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue
+        }
+        return AttachmentDraft(
+            kind: .photo, path: target.path, fileName: fileName, size: Int64(data.count),
+            width: width, height: height
+        )
     }
 
     // MARK: Камера
@@ -71,6 +109,11 @@ enum MediaExporter {
             }
         }
         if let error = readError ?? copyError { throw error }
+        // Гифка из «Файлов» уходит фотографией с исходными байтами, а не документом.
+        if isGIF(fileHead(target)), let data = try? Data(contentsOf: target) {
+            try? FileManager.default.removeItem(at: target.deletingLastPathComponent())
+            return try writeGIF(data, name: name)
+        }
         let size = (try? FileManager.default.attributesOfItem(atPath: target.path)[.size] as? NSNumber)?.int64Value ?? 0
         return AttachmentDraft(kind: .file, path: target.path, fileName: name, size: size)
     }
