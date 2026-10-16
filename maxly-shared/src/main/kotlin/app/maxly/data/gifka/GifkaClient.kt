@@ -12,6 +12,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -34,6 +36,26 @@ interface GifkaApi {
     suspend fun trending(type: GifkaType = GifkaType.GIF, limit: Int = GifkaClient.PAGE, offset: Int = 0): GifkaPage
     /** Скачать GIF-файл медиа в [target]. Нужен ключ; ссылку берём сразу перед загрузкой и не храним. */
     suspend fun downloadGif(media: GifkaMedia, target: File): File
+    /** События показа, выбора и отправки (`POST /v1/pingback`). */
+    suspend fun pingback(events: List<GifkaEvent>)
+    /** Жалоба на материал (`POST /v1/media/{id}/report`). */
+    suspend fun report(mediaId: String, reason: GifkaReportReason, details: String? = null)
+}
+
+/** Событие pingback: только id медиа и вид, без данных пользователя. */
+data class GifkaEvent(val mediaId: String, val kind: Kind) {
+    enum class Kind(val raw: String) { VIEW("view"), CLICK("click"), SEND("send") }
+}
+
+/** Причины жалобы, как их принимает API. */
+enum class GifkaReportReason(val raw: String, val title: String) {
+    COPYRIGHT("copyright", "Нарушение авторских прав"),
+    NSFW("nsfw", "Откровенный контент"),
+    VIOLENCE("violence", "Насилие"),
+    HATE("hate", "Вражда и оскорбления"),
+    SPAM("spam", "Спам"),
+    WRONG_DESCRIPTION("wrong_description", "Неверное описание"),
+    OTHER("other", "Другое"),
 }
 
 /**
@@ -44,7 +66,10 @@ class GifkaClient(
     private val apiKey: String,
     private val http: OkHttpClient = defaultHttp(),
     private val baseUrl: String = "https://api.gifka.me",
+    /** Не дольше суток по условиям API; держим коротко. */
     private val cacheTtlMs: Long = 10 * 60_000L,
+    /** Допустимый возрастной рейтинг выдачи. */
+    private val rating: String = DEFAULT_RATING,
     private val now: () -> Long = System::currentTimeMillis,
 ) : GifkaApi {
     private val cache = object : LinkedHashMap<String, Pair<Long, GifkaPage>>(32, .75f, true) {
@@ -54,10 +79,10 @@ class GifkaClient(
     val hasKey: Boolean get() = apiKey.isNotBlank()
 
     override suspend fun search(query: String, type: GifkaType, limit: Int, offset: Int): GifkaPage =
-        page("/v1/search", mapOf("q" to query.trim(), "type" to type.raw, "limit" to "$limit", "offset" to "$offset"))
+        page("/v1/search", mapOf("q" to query.trim(), "type" to type.raw, "limit" to "$limit", "offset" to "$offset", "rating" to rating))
 
     override suspend fun trending(type: GifkaType, limit: Int, offset: Int): GifkaPage =
-        page("/v1/media/trending", mapOf("type" to type.raw, "limit" to "$limit", "offset" to "$offset"))
+        page("/v1/media/trending", mapOf("type" to type.raw, "limit" to "$limit", "offset" to "$offset", "rating" to rating))
 
     override suspend fun downloadGif(media: GifkaMedia, target: File): File = withContext(Dispatchers.IO) {
         if (!hasKey) throw GifkaError.KeyRequired()
@@ -83,6 +108,45 @@ class GifkaClient(
             throw GifkaError.Server(200)
         }
         target
+    }
+
+    override suspend fun pingback(events: List<GifkaEvent>) {
+        val valid = events.filter { GifkaParser.isMediaId(it.mediaId) }
+        if (valid.isEmpty()) return
+        val body = kotlinx.serialization.json.buildJsonObject {
+            put("events", kotlinx.serialization.json.buildJsonArray {
+                valid.forEach { event ->
+                    add(kotlinx.serialization.json.buildJsonObject {
+                        put("mediaId", JsonPrimitive(event.mediaId))
+                        put("kind", JsonPrimitive(event.kind.raw))
+                    })
+                }
+            })
+        }
+        post("/v1/pingback", body)
+    }
+
+    override suspend fun report(mediaId: String, reason: GifkaReportReason, details: String?) {
+        if (!GifkaParser.isMediaId(mediaId)) throw GifkaError.Server(400)
+        val body = kotlinx.serialization.json.buildJsonObject {
+            put("reason", JsonPrimitive(reason.raw))
+            details?.trim()?.takeIf { it.isNotEmpty() }?.let { put("details", JsonPrimitive(it.take(500))) }
+        }
+        post("/v1/media/$mediaId/report", body)
+    }
+
+    private suspend fun post(path: String, body: JsonObject) = withContext(Dispatchers.IO) {
+        val request = Request.Builder().url(baseUrl + path)
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .apply { if (hasKey) header("X-Api-Key", apiKey) }
+            .build()
+        try {
+            http.newCall(request).execute().use(::check)
+        } catch (e: GifkaError) {
+            throw e
+        } catch (e: IOException) {
+            throw GifkaError.Network(e)
+        }
     }
 
     private suspend fun page(path: String, params: Map<String, String>): GifkaPage {
@@ -117,6 +181,8 @@ class GifkaClient(
 
     companion object {
         const val PAGE = 30
+        const val DEFAULT_RATING = "pg13"
+        const val SITE_URL = "https://gifka.me"
 
         fun defaultHttp(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
@@ -161,6 +227,9 @@ object GifkaParser {
             gifDownloadUrl = download?.string("gif"),
         )
     }
+
+    /** id медиа gifka.me: 12 символов `[0-9a-z]`. */
+    fun isMediaId(id: String): Boolean = id.matches(Regex("[0-9a-z]{12}"))
 
     /** Файл начинается с сигнатуры GIF87a/GIF89a. */
     fun isGif(file: File): Boolean = runCatching {

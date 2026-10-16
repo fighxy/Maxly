@@ -101,4 +101,45 @@ class GifkaClientTest {
         try { client("gk").downloadGif(media, target); fail() } catch (_: GifkaError.Server) {}
         assertTrue(!target.exists())
     }
+
+    @Test
+    fun ratingDefaultsToPg13() = runTest {
+        client().search("a")
+        client().trending()
+        assertEquals(listOf("pg13", "pg13"), requests.map { it.url.queryParameter("rating") })
+    }
+
+    @Test
+    fun pingbackSendsOnlyIdsAndKinds() = runTest {
+        reply = { 204 to ByteArray(0) }
+        client().pingback(listOf(GifkaEvent("abc123def456", GifkaEvent.Kind.VIEW), GifkaEvent("bad", GifkaEvent.Kind.CLICK), GifkaEvent("abc123def456", GifkaEvent.Kind.SEND)))
+        val request = requests.single()
+        assertEquals("POST", request.method)
+        assertEquals("/v1/pingback", request.url.encodedPath)
+        assertEquals("""{"events":[{"mediaId":"abc123def456","kind":"view"},{"mediaId":"abc123def456","kind":"send"}]}""", body(request))
+    }
+
+    @Test
+    fun pingbackSkipsEmpty() = runTest {
+        client().pingback(listOf(GifkaEvent("x", GifkaEvent.Kind.VIEW)))
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun reportPostsReason() = runTest {
+        reply = { 201 to "{}".toByteArray() }
+        client("gk").report("abc123def456", GifkaReportReason.WRONG_DESCRIPTION, "  не то  ")
+        val request = requests.single()
+        assertEquals("/v1/media/abc123def456/report", request.url.encodedPath)
+        assertEquals("gk", request.header("X-Api-Key"))
+        assertEquals("""{"reason":"wrong_description","details":"не то"}""", body(request))
+        try { client().report("../x", GifkaReportReason.OTHER); fail() } catch (_: GifkaError.Server) {}
+        assertEquals(1, requests.size)
+    }
+
+    private fun body(request: Request): String {
+        val buffer = okio.Buffer()
+        request.body!!.writeTo(buffer)
+        return buffer.readUtf8()
+    }
 }
