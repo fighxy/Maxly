@@ -49,3 +49,13 @@ data class VoiceRecording(
     val waveform: List<Int>,
     val fileName: String = "voice.ogg",
 )
+
+/**
+ * Фото, файл которого ещё надо получить (гифка из поиска): сообщение сразу встаёт в ленту с
+ * [preview], [prepare] скачивает файл перед загрузкой, [onSent] — после отправки.
+ */
+class PreparedPhoto(
+    val preview: PhotoContent,
+    val prepare: suspend () -> OutgoingFile,
+    val onSent: () -> Unit = {},
+)

@@ -328,6 +328,25 @@ class CoreMessageRepository(
         deliver(chatId, local, replyTo, progress)
     }
 
+    /** Фото, чей файл ещё не скачан (гифки из поиска): скачиваются при отправке и повторе. */
+    private val pendingPrepared = java.util.concurrent.ConcurrentHashMap<String, app.maxly.domain.PreparedPhoto>()
+
+    override suspend fun sendPrepared(chatId: String, photo: app.maxly.domain.PreparedPhoto, replyTo: String?, progress: (Float) -> Unit) {
+        val local = Message(
+            id = "local-${localIds.incrementAndGet()}",
+            chatId = chatId,
+            authorId = currentUserId.orEmpty(),
+            text = "",
+            timeMs = clock(),
+            status = MessageStatus.SENDING,
+            content = MessageContent(reply = replyTo?.let { replyPreview(chatId, it) }, attachments = listOf(ChatAttachment.Photo(photo.preview.copy(id = "local-0")))),
+        )
+        pendingPrepared[local.id] = photo
+        put(chatId, local)
+        deliver(chatId, local, replyTo, progress)
+        photo.onSent()
+    }
+
     /** Голосовые не ушедших сообщений: нужны для повтора. */
     private val pendingVoice = java.util.concurrent.ConcurrentHashMap<String, app.maxly.domain.VoiceRecording>()
 
@@ -416,6 +435,11 @@ class CoreMessageRepository(
             val reportProgress: (Float) -> Unit = { value -> uploadProgress.report(value); progress(value) }
             // Уход с экрана не должен обрывать отправку на полпути.
             try {
+                val prepared = pendingPrepared[local.id]
+                // Файл гифки из поиска качается здесь же: ошибка — сообщение с «Повторить».
+                if (pendingMedia[local.id] == null && prepared != null) {
+                    pendingMedia[local.id] = listOf(withContext(NonCancellable) { prepared.prepare() })
+                }
                 val media = pendingMedia[local.id]
                 val recording = pendingVoice[local.id]
                 val note = pendingNotes[local.id]
@@ -460,6 +484,7 @@ class CoreMessageRepository(
                 }
                 DiagnosticEvent.event("send.stage", mapOf("message" to DiagnosticEvent.id(local.id), "stage" to if (uploadCancelled) "cancelled" else "acknowledged"))
                 pendingMedia.remove(local.id)
+                pendingPrepared.remove(local.id)
                 pendingVoice.remove(local.id)?.let { java.io.File(it.path).delete() }
                 pendingNotes.remove(local.id)?.let { java.io.File(it.path).delete() }
                 remove(chatId, local.id)
@@ -474,11 +499,14 @@ class CoreMessageRepository(
         val message = pending.value[chatId]?.firstOrNull { it.id == localId } ?: return
         val sending = message.copy(status = MessageStatus.SENDING, timeMs = clock())
         put(chatId, sending)
+        val prepared = pendingPrepared[localId]
         deliver(chatId, sending, message.content.reply?.messageId)
+        prepared?.onSent()
     }
 
     override fun discard(chatId: String, localId: String) {
         pendingMedia.remove(localId)
+        pendingPrepared.remove(localId)
         pendingVoice.remove(localId)?.let { java.io.File(it.path).delete() }
         pendingNotes.remove(localId)?.let { java.io.File(it.path).delete() }
         remove(chatId, localId)

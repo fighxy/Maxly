@@ -117,6 +117,10 @@ interface MessageRepository {
     suspend fun sendMedia(chatId: String, items: List<OutgoingFile>, caption: String, replyTo: String?, progress: (Float) -> Unit = {}): Unit =
         throw MaxlyError.Rejected("Отправка вложений недоступна")
 
+    /** Отправить фото, которое скачивается уже после появления сообщения в ленте; ошибка — сообщение с «Повторить». */
+    suspend fun sendPrepared(chatId: String, photo: app.maxly.domain.PreparedPhoto, replyTo: String?, progress: (Float) -> Unit = {}): Unit =
+        throw MaxlyError.Rejected("Отправка вложений недоступна")
+
     /** Отправить записанное голосовое. Сообщение сразу встаёт в ленту, как вложения. */
     suspend fun sendVoice(chatId: String, recording: app.maxly.domain.VoiceRecording, replyTo: String?): Unit =
         throw MaxlyError.Rejected("Голосовые недоступны")
