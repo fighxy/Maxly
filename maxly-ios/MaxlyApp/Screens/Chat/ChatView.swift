@@ -637,7 +637,12 @@ struct ChatView: View {
                 attachmentsShown = false
                 Task { await viewModel.sendAttachments(drafts, caption: caption) }
             },
-            onClose: { attachmentsShown = false }
+            onClose: { attachmentsShown = false },
+            stickerPanel: stickerPanel,
+            onSticker: { sticker in
+                attachmentsShown = false
+                Task { await viewModel.sendSticker(sticker) }
+            }
         )
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)

@@ -12,6 +12,9 @@ struct AttachmentSheet: View {
     var contactList: (() -> AsyncStream<[Contact]>)?
     let onSend: ([AttachmentDraft], String) -> Void
     let onClose: () -> Void
+    /// Стикеры MAX для вкладки «GIF»; `nil` — вкладка показывает только gifka.me.
+    var stickerPanel: StickerPanelModel? = nil
+    var onSticker: ((Sticker) -> Void)? = nil
 
     @State private var model = AttachmentSheetModel()
     @State private var library = PhotoLibrary()
@@ -156,7 +159,11 @@ struct AttachmentSheet: View {
         switch model.tab {
         case .gallery: gallery
         case .gif:
-            GifPanel(onSendGIF: { draft in onSend([draft], "") })
+            GifPanel(
+                stickerPanel: stickerPanel,
+                onSendGIF: { draft in onSend([draft], "") },
+                onSticker: { sticker in onSticker?(sticker) }
+            )
         case .file: filePane
         case .contact: contactPane
         case .location, .poll: soon(model.tab)
