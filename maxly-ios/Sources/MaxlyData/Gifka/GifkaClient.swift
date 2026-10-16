@@ -89,6 +89,51 @@ public struct GifkaMedia: Decodable, Hashable, Sendable, Identifiable {
     }
 }
 
+/// Событие pingback: только id медиа и вид, без данных пользователя.
+public struct GifkaEvent: Hashable, Sendable {
+    public enum Kind: String, Sendable {
+        /// Показ в выдаче.
+        case view
+        /// Выбор (нажатие).
+        case click
+        /// Отправка в чат.
+        case send
+    }
+
+    public let mediaId: String
+    public let kind: Kind
+
+    public init(mediaId: String, kind: Kind) {
+        self.mediaId = mediaId
+        self.kind = kind
+    }
+}
+
+/// Причины жалобы, как их принимает `POST /v1/media/{id}/report`.
+public enum GifkaReportReason: String, CaseIterable, Sendable, Identifiable {
+    case copyright
+    case nsfw
+    case violence
+    case hate
+    case spam
+    case wrongDescription = "wrong_description"
+    case other
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .copyright: "Нарушение авторских прав"
+        case .nsfw: "Откровенный контент"
+        case .violence: "Насилие"
+        case .hate: "Вражда и оскорбления"
+        case .spam: "Спам"
+        case .wrongDescription: "Неверное описание"
+        case .other: "Другое"
+        }
+    }
+}
+
 /// Страница выдачи gifka.me.
 public struct GifkaPage: Decodable, Sendable {
     public let items: [GifkaMedia]
@@ -214,6 +259,52 @@ public struct GifkaClient: Sendable {
         guard code == 200 else { throw GifkaError.http(code) }
         guard data.starts(with: Array("GIF8".utf8)) else { throw GifkaError.notGIF }
         return data
+    }
+
+    /// Тело `POST /v1/pingback`: только id медиа и вид события, без данных пользователя.
+    public static func pingbackBody(_ events: [GifkaEvent]) -> Data? {
+        let valid = events.filter { !$0.mediaId.isEmpty }
+        guard !valid.isEmpty else { return nil }
+        let list = valid.map { ["mediaId": $0.mediaId, "kind": $0.kind.rawValue] }
+        return try? JSONSerialization.data(withJSONObject: ["events": list], options: [.sortedKeys])
+    }
+
+    /// Тело `POST /v1/media/{id}/report`.
+    public static func reportBody(reason: GifkaReportReason, details: String? = nil) -> Data {
+        var body: [String: String] = ["reason": reason.rawValue]
+        if let text = details?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+            body["details"] = String(text.prefix(500))
+        }
+        return (try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])) ?? Data()
+    }
+
+    /// Запрос pingback или `nil`, если отправлять нечего или нет ключа (без ключа API его не принимает).
+    public func pingbackRequest(_ events: [GifkaEvent]) -> URLRequest? {
+        guard hasKey, let body = Self.pingbackBody(events) else { return nil }
+        return post(Self.base.appendingPathComponent("v1/pingback"), body: body)
+    }
+
+    /// События показа, выбора и отправки. Ошибки не бросает: pingback не влияет на работу панели.
+    public func pingback(_ events: [GifkaEvent]) async {
+        guard let request = pingbackRequest(events) else { return }
+        _ = try? await session.data(for: request)
+    }
+
+    /// Жалоба на материал.
+    public func report(_ mediaId: String, reason: GifkaReportReason, details: String? = nil) async throws {
+        guard !mediaId.isEmpty, !mediaId.contains("/") else { throw GifkaError.http(400) }
+        let url = Self.base.appendingPathComponent("v1/media").appendingPathComponent(mediaId).appendingPathComponent("report")
+        let (_, response) = try await session.data(for: post(url, body: Self.reportBody(reason: reason, details: details)))
+        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(code) else { throw GifkaError.http(code) }
+    }
+
+    private func post(_ url: URL, body: Data) -> URLRequest {
+        var request = request(url)
+        request.httpMethod = "POST"
+        request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        return request
     }
 
     private func page(_ url: URL) async throws -> GifkaPage {
