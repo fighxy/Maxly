@@ -359,7 +359,7 @@ fun ChatScreen(
     var actionsFor by remember { mutableStateOf<Message?>(null) }
     // Сразу открыть полный выбор реакций («+» в капсуле меню).
     var actionsAllReactions by remember { mutableStateOf(false) }
-    // Меню долгого нажатия поверх ленты, как в WhatsApp: строка и её место на экране.
+    // Меню долгого нажатия поверх ленты: строка и её место на экране.
     var menuTarget by remember { mutableStateOf<Pair<ChatItem.Bubble, androidx.compose.ui.geometry.Rect>?>(null) }
     var deleting by remember { mutableStateOf<Message?>(null) }
     var forwarding by remember { mutableStateOf<Message?>(null) }
@@ -457,7 +457,7 @@ fun ChatScreen(
         containerColor = Color.Transparent,
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().imePadding()) {
-            // Карточка под шапкой, как в Telegram: сверху плеер голосового, под ним закреп. Без
+            // Карточка под шапкой: сверху плеер голосового, под ним закреп. Без
             // закрепа плеер висит один чуть ниже шапки.
             val voice = remember(voicePlayer, model, onOpenVoice) {
                 voicePlayer?.let { player ->
@@ -545,7 +545,7 @@ fun ChatScreen(
                     onCamera = { recording.onCameraTap() },
                     panel = model.stickers,
                     gifs = gifSearch,
-                    onGif = model::sendGif,
+                    onGif = model::sendPrepared,
                     onSticker = model::sendSticker,
                     onAnimoji = model::noteAnimoji,
                     onCancelUpload = { model.cancelUpload() },

@@ -186,7 +186,7 @@ internal fun Composer(
     onCamera: (() -> Unit)? = null,
     panel: StickerPanel? = null,
     gifs: app.maxly.presentation.gifs.GifSearchModel? = null,
-    onGif: (OutgoingFile) -> Unit = {},
+    onGif: (app.maxly.domain.PreparedPhoto) -> Unit = {},
     onSticker: (Sticker) -> Unit = {},
     onAnimoji: (AnimatedEmoji) -> Unit = {},
     onCancelUpload: () -> Unit = {},
@@ -212,6 +212,7 @@ internal fun Composer(
     linkAt: (Int, Int) -> String? = { _, _ -> null },
 ) {
     var showPanel by rememberSaveable { mutableStateOf(false) }
+    var gifSearchFocused by remember { mutableStateOf(false) }
     val voice = app.maxly.ui.chat.rememberRecordingUi(recording, recordingLive)
     val hasPanel = panel != null
     val onPanel: (Boolean) -> Unit = { showPanel = it }
@@ -233,7 +234,8 @@ internal fun Composer(
     val openLink: () -> Unit = { if (!field.selection.collapsed) linkRange = field.selection }
     val imeVisible = WindowInsets.isImeVisible
     // Клавиатура открылась поверх панели: панель уходит.
-    LaunchedEffect(imeVisible) { if (imeVisible) showPanel = false }
+    // Клавиатура для поиска гифок не закрывает панель.
+    LaunchedEffect(imeVisible) { if (imeVisible && !gifSearchFocused) showPanel = false }
     BackHandler(enabled = showPanel) { showPanel = false }
     Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
         Column(if (showPanel) Modifier else Modifier.navigationBarsPadding()) {
@@ -443,7 +445,7 @@ internal fun Composer(
                 }
                 Spacer(Modifier.width(6.dp))
                 val enabled = state.canSend
-                // Пустое поле — камера и микрофон, как в WhatsApp: удержание микрофона — голосовое,
+                // Пустое поле — камера и микрофон: удержание микрофона — голосовое,
                 // удержание камеры — кружок, нажатие камеры — снимок. Во время записи другая
                 // кнопка прячется: камера при голосовом уходит, микрофон при кружке гаснет на месте.
                 if (recording != null && (voice.state.isActive || (!enabled && state.editing == null && state.uploadProgress == null))) {
@@ -489,7 +491,13 @@ internal fun Composer(
                             insertEmoji.value(emoji.emoji)
                         },
                         gifs = gifs,
-                        onGif = onGif,
+                        onGif = {
+                            // Панель закрывается сразу: сообщение с гифкой уже в ленте.
+                            showPanel = false
+                            gifSearchFocused = false
+                            onGif(it)
+                        },
+                        onGifSearchFocus = { gifSearchFocused = it },
                     )
                 }
             }

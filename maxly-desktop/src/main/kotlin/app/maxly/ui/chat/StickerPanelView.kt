@@ -68,7 +68,8 @@ fun StickerPanelView(
     onAnimoji: (AnimatedEmoji) -> Unit = {},
     /** Вкладка «GIF» (поиск gifka.me); `null` — поиск выключен в настройках. */
     gifs: app.maxly.presentation.gifs.GifSearchModel? = null,
-    onGif: (app.maxly.domain.OutgoingFile) -> Unit = {},
+    onGif: (app.maxly.domain.PreparedPhoto) -> Unit = {},
+    onGifSearchFocus: (Boolean) -> Unit = {},
 ) {
     val state by panel.state.collectAsStateWithLifecycle()
     LaunchedEffect(panel) { panel.prepare() }
@@ -95,7 +96,7 @@ fun StickerPanelView(
             }
         }
         if (gifTab && gifs != null) {
-            GifSearchPanel(gifs, onGif)
+            GifSearchPanel(gifs, onGif, onSearchFocus = onGifSearchFocus)
             return@Column
         }
         when (state.mode) {

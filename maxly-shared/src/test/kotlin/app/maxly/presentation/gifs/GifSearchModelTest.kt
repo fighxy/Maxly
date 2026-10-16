@@ -2,6 +2,8 @@ package app.maxly.presentation.gifs
 
 import app.maxly.data.gifka.GifkaApi
 import app.maxly.data.gifka.GifkaError
+import app.maxly.data.gifka.GifkaEvent
+import app.maxly.data.gifka.GifkaReportReason
 import app.maxly.domain.GifkaMedia
 import app.maxly.domain.GifkaPage
 import app.maxly.domain.GifkaType
@@ -35,6 +37,10 @@ class GifSearchModelTest {
         override suspend fun downloadGif(media: GifkaMedia, target: File): File {
             target.parentFile.mkdirs(); target.writeBytes("GIF89a".toByteArray()); return target
         }
+        val events = mutableListOf<GifkaEvent>()
+        val reports = mutableListOf<Pair<String, GifkaReportReason>>()
+        override suspend fun pingback(events: List<GifkaEvent>) { this.events += events }
+        override suspend fun report(mediaId: String, reason: GifkaReportReason, details: String?) { reports += mediaId to reason }
     }
 
     private val dir = Files.createTempDirectory("gifs").toFile()
@@ -66,19 +72,51 @@ class GifSearchModelTest {
     }
 
     @Test
-    fun withoutKeyNothingIsDownloaded() = runTest {
-        val model = GifSearchModel(FakeApi(), backgroundScope, { dir }, canSend = false)
-        assertNull(model.prepare(media("a")))
+    fun withoutKeyNothingIsPicked() = runTest {
+        val api = FakeApi()
+        val model = GifSearchModel(api, backgroundScope, { dir }, canSend = false)
+        assertNull(model.pick(media("aaaaaaaaaaaa")))
         assertEquals(GifSearchModel.NO_KEY, model.state.value.error)
+        advanceTimeBy(5000); runCurrent()
+        assertTrue(api.events.none { it.kind == GifkaEvent.Kind.CLICK })
     }
 
     @Test
-    fun preparedFileIsGifPhoto() = runTest {
-        val model = GifSearchModel(FakeApi(), backgroundScope, { dir }, canSend = true)
-        val file = model.prepare(media("abc"))!!
+    fun pickGivesPreviewAndDownloadsGifLater() = runTest {
+        val api = FakeApi()
+        val model = GifSearchModel(api, backgroundScope, { dir }, canSend = true)
+        val pick = model.pick(media("abcabcabcabc"))!!
+        assertTrue(pick.preview.isGif)
+        assertEquals("https://x/abcabcabcabc.webp", pick.preview.url)
+        val file = pick.prepare()
         assertEquals(OutgoingFile.Kind.PHOTO, file.kind)
         assertTrue(file.name.endsWith(".gif"))
         assertEquals(10, file.width)
-        assertNull(model.state.value.sendingId)
+        pick.onSent()
+        advanceTimeBy(5000); runCurrent()
+        assertEquals(listOf(GifkaEvent.Kind.CLICK, GifkaEvent.Kind.SEND), api.events.filter { it.mediaId == "abcabcabcabc" }.map { it.kind })
+    }
+
+    @Test
+    fun viewsAreReportedOncePerItem() = runTest {
+        val api = FakeApi()
+        val model = GifSearchModel(api, backgroundScope, { dir }, canSend = true)
+        model.open(); runCurrent()
+        model.onQuery("x"); advanceTimeBy(500); runCurrent()
+        model.onQuery(""); runCurrent()
+        advanceTimeBy(5000); runCurrent()
+        assertEquals(listOf("t", "x"), api.events.filter { it.kind == GifkaEvent.Kind.VIEW }.map { it.mediaId })
+    }
+
+    @Test
+    fun reportRemovesItemAndShowsNotice() = runTest {
+        val api = FakeApi()
+        val model = GifSearchModel(api, backgroundScope, { dir }, canSend = true)
+        model.open(); runCurrent()
+        val item = model.state.value.items.single()
+        model.report(item, GifkaReportReason.SPAM); runCurrent()
+        assertTrue(model.state.value.items.isEmpty())
+        assertEquals(listOf("t" to GifkaReportReason.SPAM), api.reports)
+        assertEquals("Жалоба отправлена", model.state.value.notice)
     }
 }
