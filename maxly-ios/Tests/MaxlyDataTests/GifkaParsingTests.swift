@@ -326,7 +326,7 @@ struct GifkaParsingTests {
         #expect(items.first { $0.name == "q" }?.value == "кот")
         #expect(items.first { $0.name == "type" }?.value == "sticker")
         #expect(items.first { $0.name == "offset" }?.value == "20")
-        #expect(items.first { $0.name == "rating" }?.value == "pg")
+        #expect(items.first { $0.name == "rating" }?.value == "pg13")
         #expect(GifkaClient.trendingURL(type: .gif, limit: 5, offset: 0).path == "/v1/media/trending")
     }
 }

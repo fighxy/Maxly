@@ -146,17 +146,19 @@ public struct GifkaClient: Sendable {
     }
 
     public static let base = URL(string: "https://api.gifka.me")!
-    /// Возрастной рейтинг выдачи (условия API требуют передавать его).
-    public static let rating = "pg"
+    /// Возрастной рейтинг выдачи (условия API требуют передавать его; по умолчанию до pg13).
+    public static let rating = "pg13"
 
     public let apiKey: String?
     private let session: URLSession
+    private let cache: GifkaResponseCache
 
-    public init(apiKey: String?, session: URLSession = .shared) {
+    public init(apiKey: String?, session: URLSession = .shared, cache: GifkaResponseCache = .shared) {
         let trimmed = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         // Незаполненная переменная сборки остаётся строкой `$(GIFKA_API_KEY)`.
         self.apiKey = trimmed.isEmpty || trimmed.hasPrefix("$(") ? nil : trimmed
         self.session = session
+        self.cache = cache
     }
 
     public var hasKey: Bool { apiKey != nil }
@@ -215,9 +217,12 @@ public struct GifkaClient: Sendable {
     }
 
     private func page(_ url: URL) async throws -> GifkaPage {
+        if let cached = cache.page(for: url) { return cached }
         let (data, response) = try await session.data(for: request(url))
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard code == 200 else { throw GifkaError.http(code) }
-        return try GifkaPage.parse(data)
+        let page = try GifkaPage.parse(data)
+        cache.store(page, for: url)
+        return page
     }
 }
