@@ -32,11 +32,12 @@ object AttachmentImporter {
         val mime = resolver.getType(uri)
         val kind = OutgoingFile.kindOf(mime)
         val fallback = when (kind) {
-            OutgoingFile.Kind.PHOTO -> "photo.jpg"
+            OutgoingFile.Kind.PHOTO -> if (mime == "image/gif") "animation.gif" else "photo.jpg"
             OutgoingFile.Kind.VIDEO -> "video.mp4"
             OutgoingFile.Kind.FILE -> "file"
         }
         val safe = (name ?: uri.lastPathSegment ?: fallback).replace(Regex("[\\\\/:*?\"<>|\\x00-\\x1f]"), "_").trim().ifEmpty { fallback }.take(120)
+            .let { OutgoingFile.nameFor(it, mime) }
         val target = File(File(context.cacheDir, "outgoing/${UUID.randomUUID()}"), safe)
         target.parentFile?.mkdirs()
         resolver.openInputStream(uri)?.use { input -> target.outputStream().use { input.copyTo(it) } } ?: return null

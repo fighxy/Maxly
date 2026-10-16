@@ -11,6 +11,9 @@ data class OutgoingFile(
 ) {
     enum class Kind { PHOTO, VIDEO, FILE }
 
+    /** Гифка уходит как есть: её не открывают в редакторе и не перекодируют. */
+    val isGif: Boolean get() = kind == Kind.PHOTO && name.endsWith(".gif", ignoreCase = true)
+
     companion object {
         /** Тип вложения по MIME: картинки — фото, видео — видео, остальное — файл. */
         fun kindOf(mime: String?): Kind = when {
@@ -18,6 +21,12 @@ data class OutgoingFile(
             mime.startsWith("image/") && mime != "image/svg+xml" -> Kind.PHOTO
             mime.startsWith("video/") -> Kind.VIDEO
             else -> Kind.FILE
+        }
+
+        /** Имя файла с расширением по MIME: `image/gif` всегда кончается на `.gif`, чтобы ядро отправило гифку. */
+        fun nameFor(name: String, mime: String?): String {
+            if (mime != "image/gif" || name.endsWith(".gif", ignoreCase = true)) return name
+            return name.substringBeforeLast('.', name).ifEmpty { "animation" } + ".gif"
         }
 
         /** Сколько вложений уходит одним сообщением. */
