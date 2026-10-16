@@ -24,6 +24,8 @@ android {
         versionName = "0.1.0"
         buildConfigField("String", "CORE_REVISION", "\"${coreRevision()}\"")
         buildConfigField("String", "BUILD_SHA", "\"${System.getenv("MAXLY_BUILD_SHA") ?: "dev"}\"")
+        // Ключ gifka.me из окружения (секрет CI); пусто — без ключа: поиск есть, отправки из поиска нет.
+        buildConfigField("String", "GIFKA_API_KEY", "\"${gifkaApiKey()}\"")
     }
 
     signingConfigs {
@@ -139,3 +141,6 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
 }
+
+/** Ключ gifka.me из переменной GIFKA_API_KEY; в репозиторий он не попадает. Чужие символы отбрасываются. */
+fun gifkaApiKey(): String = System.getenv("GIFKA_API_KEY").orEmpty().trim().takeIf { it.matches(Regex("[A-Za-z0-9_-]*")) }.orEmpty()

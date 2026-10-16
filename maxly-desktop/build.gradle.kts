@@ -45,6 +45,9 @@ val generateBuildConfig = tasks.register("generateBuildConfig") {
     val versionName = "0.1.0"
     val buildSha = System.getenv("MAXLY_BUILD_SHA")?.takeIf { it.isNotBlank() } ?: "dev"
     val revision = coreRevision
+    // Ключ gifka.me из окружения (секрет CI); пусто — отправка из поиска выключена.
+    val gifkaKey = System.getenv("GIFKA_API_KEY").orEmpty().trim().takeIf { it.matches(Regex("[A-Za-z0-9_-]*")) }.orEmpty()
+    inputs.property("gifkaKey", gifkaKey)
     inputs.property("versionName", versionName)
     inputs.property("buildSha", buildSha)
     inputs.property("coreRevision", revision)
@@ -61,6 +64,7 @@ val generateBuildConfig = tasks.register("generateBuildConfig") {
             |    const val VERSION_NAME = "$versionName"
             |    const val BUILD_SHA = "$buildSha"
             |    const val CORE_REVISION = "$revision"
+            |    const val GIFKA_API_KEY = "$gifkaKey"
             |}
             |""".trimMargin(),
         )
