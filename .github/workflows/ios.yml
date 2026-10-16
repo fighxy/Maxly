@@ -99,6 +99,10 @@ jobs:
       # не доходит до подключения к серверу.
       - name: Build Maxly
         if: steps.token.outputs.present == 'true'
+        # Ключ gifka.me (необязательный): Xcode берёт переменную окружения как настройку сборки
+        # и подставляет её в Info.plist (GifkaAPIKey). Без секрета значение пустое.
+        env:
+          GIFKA_API_KEY: ${{ secrets.GIFKA_API_KEY }}
         run: xcodebuild -project maxly-ios/Maxly.xcodeproj -scheme Maxly -destination 'generic/platform=iOS Simulator' -derivedDataPath build/sim ARCHS=arm64 CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- build
       # Запуск в симуляторе ловит падения, которых не видно при сборке. Если приложение
       # закрылось, шаг печатает отчёт о сбое (стек) и журнал приложения.
@@ -117,6 +121,8 @@ jobs:
         id: ipa
         # Файл нужен и тогда, когда проверка запуска красная: по нему проверяют на телефоне.
         if: ${{ !cancelled() && steps.token.outputs.present == 'true' }}
+        env:
+          GIFKA_API_KEY: ${{ secrets.GIFKA_API_KEY }}
         run: |
           set -euo pipefail
           xcodebuild -project maxly-ios/Maxly.xcodeproj -scheme Maxly -configuration Release \
