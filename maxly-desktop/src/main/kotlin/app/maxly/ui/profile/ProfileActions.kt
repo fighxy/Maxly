@@ -53,6 +53,11 @@ import app.maxly.presentation.profile.ProfileMenu.Entry
 import app.maxly.presentation.profile.ProfileMenu.Tile
 import app.maxly.presentation.profile.ProfileUiState
 import app.maxly.ui.chatlist.CreateFolderDialog
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.HideImage
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Wallpaper
 import app.maxly.ui.chatlist.FolderSubmenu
 
 /**
@@ -82,10 +87,19 @@ class ProfileChatActions(
     val onCreateFolder: (String) -> Unit = {},
     /** Куда можно отправить карточку контакта. */
     val shareTargets: () -> List<ChatListItem> = { emptyList() },
+    /** Подменю «Обои» в «Ещё»: своё фото чата; `null` — пункта нет. */
+    val wallpaper: ChatWallpaperMenu? = null,
+)
+
+/** Обои одного чата: [choice] — что выбрано сейчас, [onPickPhoto] открывает выбор фото. */
+class ChatWallpaperMenu(
+    val choice: app.maxly.domain.ChatWallpaperChoice,
+    val onPickPhoto: () -> Unit,
+    val onChoose: (app.maxly.domain.ChatWallpaperChoice) -> Unit,
 )
 
 /** Подменю «Ещё». */
-private enum class MorePage { MAIN, FOLDERS }
+private enum class MorePage { MAIN, FOLDERS, WALLPAPER }
 
 /**
  * Ряд плиток профиля: [onWrite] открывает переписку (у профиля открытого чата — [onBack]),
@@ -122,7 +136,7 @@ fun ProfileActionRow(
                 Tile.SOUND -> SoundTile(actions, weight)
                 Tile.SEARCH -> Tile(tile.title, Icons.Outlined.Search, weight) { actions.onSearch() }
                 Tile.JOIN, Tile.SUBSCRIBE -> Tile(tile.title, Icons.Outlined.AddCircle, weight) { actions.onJoin?.invoke() }
-                Tile.MORE -> MoreTile(entries, weight, actions.onToggleFolder, actions.onCreateFolder) { entry ->
+                Tile.MORE -> MoreTile(entries, weight, actions.onToggleFolder, actions.onCreateFolder, actions.wallpaper) { entry ->
                     when (entry) {
                         Entry.ShareContact -> sharing = true
                         Entry.ShareLink -> profile.link?.let(onShareLink)
@@ -171,6 +185,7 @@ private fun MoreTile(
     modifier: Modifier,
     onToggleFolder: (String) -> Unit,
     onCreateFolder: (String) -> Unit,
+    wallpaper: ChatWallpaperMenu?,
     onEntry: (Entry) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
@@ -182,14 +197,33 @@ private fun MoreTile(
         Tile(Tile.MORE.title, Icons.Outlined.MoreHoriz, Modifier.fillMaxWidth()) { open = true }
         DropdownMenu(expanded = open, onDismissRequest = close) {
             when (page) {
-                MorePage.MAIN -> entries.forEach { entry ->
-                    MenuItem(entry.title, icon(entry), danger = entry.isDanger, more = entry is Entry.Folders) {
-                        if (entry is Entry.Folders) {
-                            page = MorePage.FOLDERS
-                        } else {
-                            close()
-                            onEntry(entry)
+                MorePage.MAIN -> {
+                    entries.forEach { entry ->
+                        MenuItem(entry.title, icon(entry), danger = entry.isDanger, more = entry is Entry.Folders) {
+                            if (entry is Entry.Folders) {
+                                page = MorePage.FOLDERS
+                            } else {
+                                close()
+                                onEntry(entry)
+                            }
                         }
+                    }
+                    if (wallpaper != null) MenuItem("Обои", Icons.Outlined.Wallpaper, more = true) { page = MorePage.WALLPAPER }
+                }
+                MorePage.WALLPAPER -> if (wallpaper != null) {
+                    val choice = wallpaper.choice
+                    MenuItem("Назад", Icons.AutoMirrored.Filled.ArrowBack) { page = MorePage.MAIN }
+                    MenuItem("Своё фото…", if (choice is app.maxly.domain.ChatWallpaperChoice.Photo) Icons.Filled.Check else Icons.Outlined.Image) {
+                        close()
+                        wallpaper.onPickPhoto()
+                    }
+                    MenuItem("Как в общих", if (choice == app.maxly.domain.ChatWallpaperChoice.Global) Icons.Filled.Check else Icons.Outlined.Wallpaper) {
+                        close()
+                        wallpaper.onChoose(app.maxly.domain.ChatWallpaperChoice.Global)
+                    }
+                    MenuItem("Без обоев", if (choice == app.maxly.domain.ChatWallpaperChoice.Plain) Icons.Filled.Check else Icons.Outlined.HideImage) {
+                        close()
+                        wallpaper.onChoose(app.maxly.domain.ChatWallpaperChoice.Plain)
                     }
                 }
                 MorePage.FOLDERS -> FolderSubmenu(

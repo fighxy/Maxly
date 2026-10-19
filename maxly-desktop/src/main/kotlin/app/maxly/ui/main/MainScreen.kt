@@ -539,7 +539,7 @@ private fun ChatPane(
                 onBack = onCloseProfile,
                 onWrite = if (profileFor == chatId) null else ({ onWriteParticipant(profileFor) }),
                 mediaUserAgent = container.videoSourceUserAgent(),
-                chatActions = if (profileFor != chatId) null else profileChatActions(chatId, chatList, chatListState.items) { action ->
+                chatActions = if (profileFor != chatId) null else profileChatActions(chatId, chatList, chatListState.items, wallpaper = rememberChatWallpaperMenu(container, chatId)) { action ->
                     chatAction = chatId to action
                     onCloseProfile()
                 },
@@ -561,7 +561,7 @@ private fun ChatPane(
                     profiles = container.profiles,
                 )
             }
-            ChatScreen(
+            WithChatWallpaper(container, chatId) { ChatScreen(
                 model,
                 gifAutoplay = app.maxly.data.GifSettings.shouldAutoplay(
                     container.gifSettings.state.collectAsStateWithLifecycle().value.autoplay,
@@ -593,7 +593,7 @@ private fun ChatPane(
                     }
                     MiniAppScreen(app, onClose)
                 },
-            )
+            ) }
         }
     }
 }
@@ -607,6 +607,8 @@ private fun profileChatActions(
     chatList: ChatListViewModel,
     /** Строки списка сейчас: звук чата и куда отправить контакт. */
     items: List<app.maxly.presentation.chatlist.ChatListItem>,
+    /** «Обои» в «Ещё»: своё фото этого чата. */
+    wallpaper: app.maxly.ui.profile.ChatWallpaperMenu? = null,
     request: (ChatAction) -> Unit,
 ): ProfileChatActions {
     val listed = chatList.isListed(chatId)
@@ -626,6 +628,39 @@ private fun profileChatActions(
         onToggleFolder = { chatList.toggleFolder(chatId, it) },
         onCreateFolder = { chatList.createFolder(chatId, it) },
         shareTargets = { items },
+        wallpaper = wallpaper,
+    )
+}
+
+/** Обои одного чата для подменю «Обои» в профиле: своё фото, «Как в общих», «Без обоев». */
+@Composable
+internal fun rememberChatWallpaperMenu(container: app.maxly.AppContainer, chatId: String): app.maxly.ui.profile.ChatWallpaperMenu {
+    val photos = container.wallpaperPhotos
+    val revision = photos.state.collectAsStateWithLifecycle().value.revision
+    val account = container.wallpaperAccount()
+    val pick = app.maxly.ui.components.rememberWallpaperPicker(photos) { path ->
+        if (path != null) photos.setChat(account, chatId, app.maxly.domain.ChatWallpaperChoice.Photo(path))
+    }
+    return androidx.compose.runtime.remember(revision, account, chatId) {
+        app.maxly.ui.profile.ChatWallpaperMenu(
+            choice = photos.chatChoice(account, chatId),
+            onPickPhoto = pick,
+            onChoose = { photos.setChat(account, chatId, it) },
+        )
+    }
+}
+
+/** Обои открытого чата: своё фото чата важнее общих из «Оформления». */
+@Composable
+internal fun WithChatWallpaper(container: app.maxly.AppContainer, chatId: String, content: @Composable () -> Unit) {
+    val photos = container.wallpaperPhotos
+    val revision = photos.state.collectAsStateWithLifecycle().value.revision
+    val account = container.wallpaperAccount()
+    val base = app.maxly.ui.components.LocalChatBackdrop.current
+    val resolved = androidx.compose.runtime.remember(revision, account, chatId) { photos.resolve(account, chatId) }
+    androidx.compose.runtime.CompositionLocalProvider(
+        app.maxly.ui.components.LocalChatBackdrop provides base.copy(resolved = resolved),
+        content = content,
     )
 }
 
@@ -748,7 +783,7 @@ private fun SettingsPane(
         SettingsPage.About -> AboutScreen(onBack)
         SettingsPage.Keyboard -> KeyboardScreen(container.keyboard, onBack)
         SettingsPage.Devices -> DevicesScreen(container.sessions, onBack)
-        SettingsPage.Appearance -> AppearanceScreen(container.appearance, onBack)
+        SettingsPage.Appearance -> AppearanceScreen(container.appearance, onBack, photos = container.wallpaperPhotos)
         SettingsPage.Profile -> ProfileEditScreen(accountModel, onBack, onLogout)
         SettingsPage.Privacy -> PrivacyScreen(accountModel, onBack, onBlocked = { onOpen(SettingsPage.Blocked) }, privateMode = container.privateMode, ghost = ghostModel)
         SettingsPage.Security -> SecurityScreen(securityModel, onBack, onChangeEmail = onOpenRecovery, account = accountModel, onFamilyProtection = onFamilyProtection)

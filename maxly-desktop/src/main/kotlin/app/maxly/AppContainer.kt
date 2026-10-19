@@ -103,6 +103,12 @@ class AppContainer {
 
     val appearance = AppearanceSettings(preferenceStore)
 
+    /** Своё фото на обоях: копии в ~/.maxly/wallpapers, настройки только на устройстве. */
+    val wallpaperPhotos = app.maxly.data.WallpaperPhotoSettings(preferenceStore, java.io.File(AppPaths.home, "wallpapers"))
+
+    /** Аккаунт для обоев чата: свои у каждого аккаунта на устройстве. */
+    fun wallpaperAccount(): String = messages.currentUserId.orEmpty()
+
     /** «Уведомления о сообщениях»: показывать ли их, пока окно свёрнуто или не в фокусе. */
     val notificationSettings = app.maxly.data.NotificationSettings(preferenceStore)
 

@@ -52,6 +52,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.maxly.data.AppearanceSettings
+import app.maxly.data.WallpaperPhotoSettings
+import app.maxly.domain.ResolvedWallpaper
+import app.maxly.domain.WallpaperScale
+import app.maxly.ui.components.rememberWallpaperPicker
 import app.maxly.domain.ChatWallpaper
 import app.maxly.domain.TextSizeStep
 import app.maxly.domain.ThemeMode
@@ -64,8 +68,15 @@ import app.maxly.ui.theme.MaxlyOutgoing
 /** «Оформление»: образец переписки, «Шрифт ›» (шрифт, толщина, размер), тема и обои чата. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppearanceScreen(settings: AppearanceSettings, onBack: () -> Unit) {
+fun AppearanceScreen(
+    settings: AppearanceSettings,
+    onBack: () -> Unit,
+    /** Своё фото на обоях; `null` — блока «Выбрать фото…» нет. */
+    photos: WallpaperPhotoSettings? = null,
+) {
     val prefs by settings.state.collectAsStateWithLifecycle()
+    val photoState = photos?.state?.collectAsStateWithLifecycle()?.value
+    val globalPhoto = photoState?.globalPhoto
     val dark = LocalChatBackdrop.current.dark
     // «Шрифт ›» открывает свой экран поверх «Оформления»; «Назад» возвращает сюда.
     var fontOpen by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
@@ -84,7 +95,7 @@ fun AppearanceScreen(settings: AppearanceSettings, onBack: () -> Unit) {
         contentWindowInsets = WindowInsets(0),
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-            Preview(ChatBackdrop(prefs.wallpaper, dark))
+            Preview(ChatBackdrop(prefs.wallpaper, dark, globalPhoto?.let { ResolvedWallpaper.Photo(it) } ?: ResolvedWallpaper.Preset))
             Section("Текст")
             androidx.compose.material3.ListItem(
                 headlineContent = { Text("Шрифт") },
@@ -111,10 +122,44 @@ fun AppearanceScreen(settings: AppearanceSettings, onBack: () -> Unit) {
             Section("Обои чата")
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 ChatWallpaper.entries.forEach { choice ->
-                    WallpaperTile(choice, dark, selected = prefs.wallpaper == choice) { settings.setWallpaper(choice) }
+                    WallpaperTile(choice, dark, selected = globalPhoto == null && prefs.wallpaper == choice) {
+                        // Набор вместо своего фото: копия фото больше не нужна.
+                        photos?.resetGlobal()
+                        settings.setWallpaper(choice)
+                    }
                 }
             }
+            if (photos != null) PhotoControls(photos, photoState ?: photos.state.value)
             Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+/** «Выбрать фото…», «Сбросить», затемнение 0–60 % и размытие для своего фото. */
+@Composable
+private fun PhotoControls(photos: WallpaperPhotoSettings, state: WallpaperPhotoSettings.State) {
+    var failed by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val pick = rememberWallpaperPicker(photos) { path ->
+        failed = path == null
+        if (path != null) photos.setGlobal(path)
+    }
+    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TextButton(onClick = { failed = false; pick() }) { Text("Выбрать фото…") }
+        TextButton(onClick = { failed = false; photos.resetGlobal() }, enabled = state.global != null) { Text("Сбросить") }
+    }
+    if (failed) {
+        Text("Не удалось открыть фото — выберите JPEG, PNG или WebP", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+    }
+    if (state.global != null) {
+        Text("Затемнение — ${state.dimPercent}\u00A0%", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
+        Slider(
+            value = state.dimPercent.toFloat(),
+            onValueChange = { photos.setDim(Math.round(it)) },
+            valueRange = WallpaperScale.MIN_DIM.toFloat()..WallpaperScale.MAX_DIM.toFloat(),
+        )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Размытие", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            androidx.compose.material3.Switch(checked = state.blur, onCheckedChange = photos::setBlur)
         }
     }
 }
@@ -135,7 +180,7 @@ private fun Preview(backdrop: ChatBackdrop) {
     Box(Modifier.fillMaxWidth().height(200.dp).clip(RoundedCornerShape(20.dp))) {
         ChatWallpaperBackground(backdrop)
         Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)) {
-            Surface(shape = RoundedCornerShape(18.dp, 18.dp, 18.dp, 6.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            Surface(shape = RoundedCornerShape(18.dp, 18.dp, 18.dp, 6.dp), color = if (!backdrop.dark && backdrop.hasImage) Color.White else MaterialTheme.colorScheme.surfaceContainerHigh, contentColor = MaterialTheme.colorScheme.onSurface) {
                 Text("Доброе утро! Как тебе новые обои?", Modifier.padding(horizontal = 12.dp, vertical = 8.dp), fontSize = 16.sp)
             }
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {

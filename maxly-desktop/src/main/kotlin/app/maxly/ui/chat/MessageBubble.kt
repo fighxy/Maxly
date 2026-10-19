@@ -140,7 +140,7 @@ fun bubbleColors(outgoing: Boolean): BubbleColors {
     } else {
         // На обоях в светлой теме чужой пузырь белый, чтобы читался на светлом узоре.
         val backdrop = app.maxly.ui.components.LocalChatBackdrop.current
-        val onWallpaper = !backdrop.dark && backdrop.wallpaper.image(false) != null
+        val onWallpaper = !backdrop.dark && backdrop.hasImage
         BubbleColors(if (onWallpaper) Color.White else scheme.surfaceContainerHigh, scheme.onSurface, scheme.onSurfaceVariant, scheme.primary)
     }
 }

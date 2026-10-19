@@ -59,7 +59,12 @@ internal fun AppRoot(container: AppContainer) {
         val density = LocalDensity.current
         CompositionLocalProvider(
             LocalDensity provides Density(density.density, density.fontScale * prefs.textSize.scale),
-            LocalChatBackdrop provides ChatBackdrop(prefs.wallpaper, dark),
+            LocalChatBackdrop provides ChatBackdrop(
+                        prefs.wallpaper,
+                        dark,
+                        container.wallpaperPhotos.state.collectAsStateWithLifecycle().value.globalPhoto
+                            ?.let { app.maxly.domain.ResolvedWallpaper.Photo(it) } ?: app.maxly.domain.ResolvedWallpaper.Preset,
+                    ),
         ) {
             Root(container)
         }
