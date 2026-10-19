@@ -8,7 +8,7 @@ import Foundation
 /// текста сервера) — текст сервера или самого сообщения, иначе `fallback`.
 ///
 /// Без текста ядра (сообщение сохранено старой сборкой) строка пишется так же, как пишет ядро
-/// (`controlFallbackText` ядра d5e8aed, сценарии `test-fixtures/service-messages`): только
+/// (`controlFallbackText` ядра 3b21250, сценарии `test-fixtures/service-messages`): только
 /// чтобы не показывать `fallback` до перечитывания истории.
 public enum ServiceText {
     public static let fallback = "Служебное сообщение"
@@ -43,7 +43,10 @@ public enum ServiceText {
         switch notice.event.lowercased() {
         case "new":
             let chatType = notice.chatType?.uppercased()
-            if chatType == "DIALOG", !mine, let actorLabel { return "\(actorLabel) теперь в MAX" }
+            if chatType == "DIALOG" {
+                if mine { return "Вы теперь в MAX" }
+                return actorLabel.map { "\($0) теперь в MAX" } ?? "Контакт теперь в MAX"
+            }
             let channel = chatType == "CHANNEL"
             let what = channel ? "канал" : "чат"
             if let made = subject("создал(а)", "создали") { return title.map { "\(made) \(what) «\($0)»" } ?? "\(made) \(what)" }
