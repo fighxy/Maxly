@@ -18,15 +18,7 @@ import org.junit.Test
  * Закрепление (`expect.kind` = `null`) — не событие чата; текст его строки тоже пишет ядро.
  */
 class ServiceMessagesFixtureTest {
-    private val fixtures = SharedFixtures(
-        "service-messages",
-        disagreements = mapOf(
-            "events / pin-is-not-an-event" to
-                "сценарий ждёт общую строку; ядро 2843f2d пишет «Закреплено: <текст>»",
-            "events / unpin-is-not-an-event" to
-                "сценарий ждёт общую строку; ядро 2843f2d пишет «Закрепление снято»",
-        ),
-    )
+    private val fixtures = SharedFixtures("service-messages")
 
     @Test
     fun everyFixtureIsPlayed() {

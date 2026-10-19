@@ -14,7 +14,7 @@ public struct MessageContent: Hashable, Sendable, Codable {
     public var forward: MessageForward?
     /// Текст сообщения меняли после отправки.
     public var edited: Bool?
-    /// Служебное закрепление. Пустой `messageId` — закреп сняли.
+    /// Служебное закрепление или его снятие (`PinNotice.isUnpin`).
     public var pin: PinNotice?
     /// Своё сообщение с вложениями, которые ещё не загружены: что и откуда отправлять.
     /// Есть, пока сообщение не принято сервером; по нему работает повтор после сбоя.
@@ -122,7 +122,7 @@ public struct MessageContent: Hashable, Sendable, Codable {
         case .call(let call): call.isGroup ? .groupCall : .call
         case .poll: .poll
         // Служебное событие вложением не считается, но строке списка нужен его вид.
-        case nil: service != nil ? .service : nil
+        case nil: service != nil || pin != nil ? .service : nil
         }
     }
 
@@ -564,14 +564,30 @@ public struct ServiceNotice: Hashable, Sendable, Codable {
     }
 }
 
-/// Служебное закрепление. Пустой `messageId` значит, что закреп сняли.
+/// Служебное закрепление (`CONTROL` `pin` / `unpin`).
+///
+/// - `messageId` — закреплённое сообщение (`pinnedMessage.id`), по нему плашка открывает его;
+///   `nil` у `unpin` и у `pin` без `pinnedMessage`;
+/// - `preview` — текст закреплённого как пришёл (`pinnedMessage.text`), пустой — нет текста;
+/// - `unpinned` — событие `unpin`. `nil` у записей старых сборок: там снятие — пустой `messageId`;
+/// - `coreText` — текст ядра (`IosControl.fallbackText`): «Закреплено: …», «Сообщение
+///   закреплено», «Закрепление снято» или текст сервера.
 public struct PinNotice: Hashable, Sendable, Codable {
     public var messageId: String?
     public var preview: String
+    public var unpinned: Bool?
+    public var coreText: String?
 
-    public init(messageId: String?, preview: String) {
+    public init(messageId: String?, preview: String, unpinned: Bool? = nil, coreText: String? = nil) {
         self.messageId = messageId
         self.preview = preview
+        self.unpinned = unpinned
+        self.coreText = coreText
+    }
+
+    /// Закреп сняли: `unpin`, а у старых записей — закрепление без сообщения.
+    public var isUnpin: Bool {
+        unpinned ?? (messageId?.isEmpty != false)
     }
 }
 

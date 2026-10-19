@@ -228,11 +228,12 @@ public actor SyncEngine {
             // У пересланного свой текст пуст: в строке — текст пересланного и стрелка.
             var preview = event.text.isEmpty ? (content.forward?.text ?? "") : event.text
             // Служебное событие: в строке и уведомлении текст ядра, как у других клиентов.
-            if content.service != nil {
+            if content.isService {
                 preview = ServiceText.text(
                     of: content, authorId: event.authorId, authorName: event.authorName, currentUserId: mine
                 ) ?? preview
-                if content.service?.coreText == nil, let stored = await messages.serviceText(serverId: event.messageId) {
+                if (content.service?.coreText ?? content.pin?.coreText) == nil,
+                   let stored = await messages.serviceText(serverId: event.messageId) {
                     // Без текста ядра — как его записала база, с именами участников.
                     preview = stored
                 }

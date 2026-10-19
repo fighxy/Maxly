@@ -1,13 +1,15 @@
 import SwiftUI
 import MaxlyDomain
 
-/// Служебная строка разделяет группы пузырей и не предлагает ответ или реакцию.
+/// Служебная строка закрепления: текст ядра (`ServiceText.text(pin)`), нажатие открывает
+/// закреплённое сообщение (`pinnedMessage.id`). Разделяет группы пузырей и не предлагает ответ
+/// или реакцию.
 struct ServiceMessageNotice: View {
     let pin: PinNotice
     let onOpen: (String) -> Void
 
     private var target: String? {
-        guard let id = pin.messageId, !id.isEmpty else { return nil }
+        guard !pin.isUnpin, let id = pin.messageId, !id.isEmpty else { return nil }
         return id
     }
 
@@ -26,7 +28,7 @@ struct ServiceMessageNotice: View {
     }
 
     private var label: some View {
-        Text(target == nil ? "Закрепление снято" : (pin.preview.isEmpty ? "Сообщение закреплено" : "Закреплено: \(pin.preview)"))
+        Text(ServiceText.text(pin))
             .font(.app(.footnote))
             .foregroundStyle(.primary)
             .multilineTextAlignment(.center)

@@ -38,7 +38,14 @@ struct ServiceMessageFixtureTests {
         let content = MessageContentCodec.decode(json)
         guard let expect = item["expect"] as? [String: Any] else { throw FixtureError("\(label): нет expect") }
         guard let kind = expect["kind"] as? String else {
+            // Закрепление: не событие чата, а своя плашка с текстом, как у ядра.
             #expect(content.service == nil, "\(label): ждали не событие, а получили \(String(describing: content.service))")
+            let pin = try #require(content.pin, "\(label): закрепление не разобрано")
+            if let text = expect["text"] as? String {
+                var shown = pin
+                if let core = item["coreText"] as? String { shown.coreText = core }
+                #expect(ServiceText.text(shown) == text, "\(label): «\(ServiceText.text(shown))»")
+            }
             return
         }
         guard let parsed = content.service else { throw FixtureError("\(label): событие не разобрано") }

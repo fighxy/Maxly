@@ -223,9 +223,12 @@ struct ServiceMessageDataTests {
         #expect(core(CoreControl(event: "system"), lastText: "Вход с нового устройства").preview == "Вход с нового устройства")
         #expect(core(CoreControl(event: "system")).preview == ServiceText.fallback)
         #expect(core(CoreControl(event: "futureEvent", message: "Сервер: новое событие")).preview == "Сервер: новое событие")
-        let pin = core(CoreControl(event: "pin"), lastText: "")
-        #expect(pin.preview == nil)
-        #expect(pin.lastMedia == nil)
+        let pin = core(CoreControl(event: "pin", fallbackText: "Закреплено: Сбор в 10", pinnedMessageId: "77", pinnedText: "Сбор в 10"))
+        #expect(pin.preview == "Закреплено: Сбор в 10")
+        #expect(pin.lastMedia == .service)
+        // Без текста ядра — те же слова, что у ядра.
+        #expect(core(CoreControl(event: "pin", pinnedMessageId: "77")).preview == "Сообщение закреплено")
+        #expect(core(CoreControl(event: "unpin")).preview == "Закрепление снято")
         #expect(core(nil, lastText: "Привет").preview == "Привет")
 
         let parts = try await makeServiceParts()
@@ -245,5 +248,68 @@ struct ServiceMessageDataTests {
         #expect(ServiceText.text(ServiceNotice(event: "add", userIds: ["202"]), actorId: "101", actorName: "") == "Добавлены участники")
         #expect(ServiceText.text(ServiceNotice(event: "new", title: "Дача", chatType: "CHAT"), actorId: "101", actorName: "") == "Создан чат «Дача»")
         #expect(ServiceText.text(ServiceNotice(event: "botStarted", viewerId: "1"), actorId: "101", actorName: "Анна") == "Бот запущен")
+    }
+
+    @Test("Закрепление: текст ядра, id закреплённого для перехода, снятие — только unpin")
+    func pinCoreText() {
+        func decoded(_ attach: String, control: CoreControl? = nil) -> MessageContent {
+            CoreMapping.message(CoreMessage(
+                id: "20", chatId: "g1", authorId: "101", text: "", timeMs: 1_000,
+                contentJSON: #"{"attaches":["# + attach + #"]}"#, authorName: "Анна", control: control
+            )).domain.content
+        }
+        func text(_ content: MessageContent) -> String? {
+            ServiceText.text(of: content, authorId: "101", authorName: "Анна")
+        }
+        let pinned = decoded(#"{"_type":"CONTROL","event":"pin","pinnedMessage":{"id":77,"text":"Сбор в 10"}}"#)
+        #expect(pinned.pin?.messageId == "77")
+        #expect(pinned.pin?.isUnpin == false)
+        #expect(text(pinned) == "Закреплено: Сбор в 10")
+        #expect(pinned.previewMedia == .service)
+
+        // Пустой текст — «Сообщение закреплено», а не «Закреплено: Сообщение».
+        let empty = decoded(#"{"_type":"CONTROL","event":"pin","pinnedMessage":{"id":78,"text":"  "}}"#)
+        #expect(empty.pin?.messageId == "78")
+        #expect(text(empty) == "Сообщение закреплено")
+
+        // pin без pinnedMessage — закрепление, а не снятие.
+        let bare = decoded(#"{"_type":"CONTROL","event":"pin"}"#)
+        #expect(bare.pin?.isUnpin == false)
+        #expect(text(bare) == "Сообщение закреплено")
+
+        let unpin = decoded(#"{"_type":"CONTROL","event":"unpin"}"#)
+        #expect(unpin.pin?.isUnpin == true)
+        #expect(text(unpin) == "Закрепление снято")
+
+        // Текст ядра (с текстом закреплённого из стора) важнее своего, id приходит из ядра.
+        let core = decoded(
+            #"{"_type":"CONTROL","event":"pin"}"#,
+            control: CoreControl(event: "pin", fallbackText: "Закреплено: Встреча", pinnedMessageId: "1")
+        )
+        #expect(core.pin?.messageId == "1")
+        #expect(text(core) == "Закреплено: Встреча")
+        let server = decoded(
+            #"{"_type":"CONTROL","event":"unpin"}"#,
+            control: CoreControl(event: "unpin", fallbackText: "Сервер: снято")
+        )
+        #expect(text(server) == "Сервер: снято")
+
+        // Записи старых сборок: закрепление без сообщения — снятие.
+        #expect(PinNotice(messageId: nil, preview: "").isUnpin)
+        #expect(!PinNotice(messageId: "5", preview: "").isUnpin)
+    }
+
+    @Test("Текст закреплённого: первая строка, до 50 знаков с «…»")
+    func pinPreview() {
+        #expect(ServiceText.pinPreview(nil) == nil)
+        #expect(ServiceText.pinPreview(" \n\t") == nil)
+        #expect(ServiceText.pinPreview("\n  Первая  \nвторая") == "Первая")
+        let exact = String(repeating: "а", count: 50)
+        #expect(ServiceText.pinPreview(exact) == exact)
+        #expect(ServiceText.pinPreview(String(repeating: "б", count: 80)) == String(repeating: "б", count: 49) + "…")
+        #expect(ServiceText.pinPreview("слово" + String(repeating: " ", count: 60) + "x") == "слово…")
+        #expect(ServiceText.pinPreview(String(repeating: "x", count: 48) + "😀😀") == String(repeating: "x", count: 48) + "…")
+        #expect(ServiceText.text(PinNotice(messageId: "1", preview: String(repeating: "в", count: 200)))
+            == "Закреплено: " + String(repeating: "в", count: 49) + "…")
     }
 }

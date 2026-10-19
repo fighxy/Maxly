@@ -82,9 +82,39 @@ public enum ServiceText {
         }
     }
 
-    /// Текст служебного сообщения или `nil`, если `content` — не событие. `currentUserId` —
-    /// аккаунт, когда событие сохранено без него.
+    /// Плашка закрепления: текст ядра, без него — те же слова, что у ядра: «Закреплено: <первая
+    /// строка, до 50 знаков с «…»>», без текста — «Сообщение закреплено», снятие — «Закрепление
+    /// снято». Автора в тексте нет.
+    public static func text(_ pin: PinNotice) -> String {
+        if let core = clean(pin.coreText) { return core }
+        if pin.isUnpin { return "Закрепление снято" }
+        return pinPreview(pin.preview).map { "Закреплено: \($0)" } ?? "Сообщение закреплено"
+    }
+
+    /// Длина `pinPreview` в UTF-16, «…» включительно (`PIN_PREVIEW_MAX` ядра).
+    public static let pinPreviewMax = 50
+
+    /// Первая непустая строка текста без пробелов по краям, длиннее `pinPreviewMax` — обрезанная
+    /// с «…» (не посреди суррогатной пары), как `pinPreview` ядра. `nil` — текста нет.
+    public static func pinPreview(_ text: String?) -> String? {
+        guard let line = text?
+            .components(separatedBy: CharacterSet(charactersIn: "\r\n"))
+            .lazy
+            .map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+            .first(where: { !$0.isEmpty }) else { return nil }
+        let units = Array(line.utf16)
+        guard units.count > pinPreviewMax else { return line }
+        var end = pinPreviewMax - 1
+        if UTF16.isLeadSurrogate(units[end - 1]) { end -= 1 }
+        let head = String(decoding: units[0..<end], as: UTF16.self)
+        let trimmed = head.replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression)
+        return trimmed + "…"
+    }
+
+    /// Текст служебного сообщения (событие или закрепление) или `nil`, если `content` — не
+    /// служебное. `currentUserId` — аккаунт, когда событие сохранено без него.
     public static func text(of content: MessageContent, authorId: String, authorName: String, currentUserId: String = "") -> String? {
+        if content.service == nil, let pin = content.pin { return text(pin) }
         guard var notice = content.service else { return nil }
         if notice.viewerId?.isEmpty != false, !currentUserId.isEmpty { notice.viewerId = currentUserId }
         return text(notice, actorId: authorId, actorName: authorName)

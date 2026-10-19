@@ -1,7 +1,7 @@
 {
   "kind": "control",
   "name": "events",
-  "description": "Каждое событие вложения CONTROL: какой это вид (kind) и какой текст строки. pin и unpin — закрепление, у него своя плашка, kind null. message — сообщение сервера (sender, senderName, text, attaches), viewer — id аккаунта, names — имена, известные клиенту (id → имя). coreText — текст ядра (IosControl.fallbackText: текст сервера, иначе текст известного события с «Вы» и именами), если есть: он заменяет свой, в том числе «теперь в MAX» для new личного чата.",
+  "description": "Каждое событие вложения CONTROL: какой это вид (kind) и какой текст строки. pin и unpin — закрепление, у него своя плашка, kind null; text — текст ядра для плашки. message — сообщение сервера (sender, senderName, text, attaches), viewer — id аккаунта, names — имена, известные клиенту (id → имя). coreText — текст ядра (IosControl.fallbackText: текст сервера, иначе текст известного события с «Вы» и именами), если есть: он заменяет свой, в том числе «теперь в MAX» для new личного чата.",
   "cases": [
     {
       "name": "hello",
@@ -523,7 +523,8 @@
       "viewer": "1",
       "names": {},
       "expect": {
-        "kind": null
+        "kind": null,
+        "text": "Закреплено: Сбор в 10"
       }
     },
     {
@@ -542,7 +543,8 @@
       "viewer": "1",
       "names": {},
       "expect": {
-        "kind": null
+        "kind": null,
+        "text": "Закрепление снято"
       }
     },
     {

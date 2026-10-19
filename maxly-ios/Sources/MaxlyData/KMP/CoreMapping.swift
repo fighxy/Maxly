@@ -81,14 +81,33 @@ enum CoreMapping {
     }
 
     /// Текст служебного последнего сообщения для строки списка: текст ядра, иначе текст
-    /// сервера или самого сообщения, иначе «Служебное сообщение». `nil` — закрепление: у него
-    /// своя строка, как у сохранённого сообщения.
+    /// сервера, у закрепления — слова ядра (`ServiceText.text(pin)`), иначе текст самого
+    /// сообщения, иначе «Служебное сообщение».
     static func serviceText(_ control: CoreControl, messageText: String) -> String? {
-        let event = control.event.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !["pin", "unpin"].contains(event) else { return nil }
-        return [control.fallbackText, control.shortMessage, control.message, messageText]
+        let server = [control.fallbackText, control.shortMessage, control.message]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first { !$0.isEmpty } ?? ServiceText.fallback
+            .first { !$0.isEmpty }
+        if let server { return server }
+        if let pin = pinNotice(control) { return ServiceText.text(pin) }
+        let text = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? ServiceText.fallback : text
+    }
+
+    /// Закрепление из вложения ядра; `nil` — не `pin` / `unpin`.
+    static func pinNotice(_ control: CoreControl) -> PinNotice? {
+        switch control.event.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "pin":
+            let id = control.pinnedMessageId?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return PinNotice(
+                messageId: id?.isEmpty == false && id != "0" ? id : nil,
+                preview: control.pinnedText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+                unpinned: false
+            )
+        case "unpin":
+            return PinNotice(messageId: nil, preview: "", unpinned: true)
+        default:
+            return nil
+        }
     }
 
     static func contact(_ contact: CoreContact, now: Date = Date()) -> Contact {
@@ -191,13 +210,19 @@ enum CoreMapping {
 
     /// Служебное вложение ядра поверх разобранного фрагмента: текст ядра (`coreText`, его
     /// показывают лента, строка списка и уведомление), а без `CONTROL` во фрагменте — само
-    /// событие. Закрепление остаётся своей плашкой.
+    /// событие. Закрепление — своя плашка (`PinNotice`) с текстом ядра и id закреплённого.
     static func withControl(_ control: CoreControl, _ content: MessageContent) -> MessageContent {
-        guard content.pin == nil else { return content }
         let event = control.event.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !["pin", "unpin"].contains(event.lowercased()) else { return content }
         let fallback = control.fallbackText?.trimmingCharacters(in: .whitespacesAndNewlines)
         var copy = content
+        if content.pin != nil || ["pin", "unpin"].contains(event.lowercased()) {
+            guard var pin = content.pin ?? pinNotice(control) else { return content }
+            if pin.messageId?.isEmpty != false, !pin.isUnpin, let id = pinNotice(control)?.messageId { pin.messageId = id }
+            if pin.preview.isEmpty, let text = pinNotice(control)?.preview, !text.isEmpty { pin.preview = text }
+            if let fallback, !fallback.isEmpty { pin.coreText = fallback }
+            copy.pin = pin
+            return copy
+        }
         var notice = content.service ?? ServiceNotice(
             event: event,
             userIds: control.userIds.filter { !$0.isEmpty && $0 != "0" },

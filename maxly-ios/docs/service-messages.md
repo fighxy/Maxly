@@ -9,7 +9,7 @@
 
 ## Путь данных
 
-Текст пишет ядро (`controlFallbackText`, ядро d5e8aed): лента, строка списка чатов и
+Текст пишет ядро (`controlFallbackText`, ядро 2843f2d): лента, строка списка чатов и
 уведомление показывают одно и то же, как Android и десктоп.
 
 1. Ядро отдаёт вложения сообщения как пришли (`contentJSON` с `CONTROL` целиком) и готовый
@@ -20,8 +20,10 @@
 
    `fallbackText` — текст сервера (`shortMessage`, затем `message`), иначе текст известного
    события: «Вы» для аккаунта, имена отправителя и участников из стора ядра, «теперь в MAX» для
-   `hello` и `new` личного чата. `nil` — ядру сказать нечего (`pin`, `system`, незнакомое
-   событие без текста сервера). Сообщения без `type` ядро не отбрасывает (`type` = `""`).
+   `hello` и `new` личного чата, «Закреплено: …» / «Сообщение закреплено» у `pin` (текст из
+   `pinnedMessage` или стора), «Закрепление снято» у `unpin`. `nil` — ядру сказать нечего
+   (`system`, незнакомое событие без текста сервера). У `pin` ещё `pinnedMessageId` и
+   `pinnedText`. Сообщения без `type` ядро не отбрасывает (`type` = `""`).
 2. `MaxIosCore` переносит `IosControl` в `CoreControl` (`CoreMessage.control`,
    `CoreEvent.control`, `CoreChat.lastControl`).
 3. `MessageContentCodec.serviceNotice` разбирает `CONTROL` в `MessageContent.service`
@@ -44,13 +46,15 @@
    помечаются непрочитанными (`MessageContent.isService`). Уведомление приходит только
    о «теперь в MAX» (`hello`, `new` личного чата).
 
-Закрепление (`pin`, `unpin`) ядро не подписывает (`fallbackText` = `nil`), поэтому у iOS
-остаётся своя плашка «Закреплено: …» (`pins.md`), а строка списка по `lastControl` для него
-не меняется.
+Закрепление (`pin`, `unpin`) — `MessageContent.pin` (`PinNotice`), а не событие: своя плашка
+(`ServiceMessageNotice`) с текстом ядра (`PinNotice.coreText`) и переходом к закреплённому по
+`pinnedMessage.id` (или `IosControl.pinnedMessageId`). Без текста ядра — те же слова
+(`ServiceText.text(pin)`, `ServiceText.pinPreview`): пустой текст и `pin` без `pinnedMessage`
+— «Сообщение закреплено» (это не снятие, `PinNotice.unpinned` = `false`), `unpin` —
+«Закрепление снято». Строка списка и уведомление о закреплении — тем же текстом.
 
 ## Чего не хватает в ядре
 
 - В `contentJSON` у `CONTROL` только id участников (`userId`, `userIds`). Имена знает
   `fallbackText`, но не сам фрагмент: если ядро имени не знает, текст безличный
   («Добавлены участники»), даже когда имя есть в базе iOS.
-- `pin` / `unpin` без текста ядра: «Закреплено: …» пишется на iOS.

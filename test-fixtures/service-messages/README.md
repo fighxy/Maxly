@@ -25,7 +25,7 @@ showHistory?, startPayload?, shortMessage? | message?}`. Известные со
 | `icon` | новое фото чата | `url`, `photoToken` |
 | `botStarted` | запущен бот | `startPayload` |
 | `system` | текст сервера | `shortMessage` / `message` / текст сообщения |
-| `pin`, `unpin` | закрепление: своя плашка, не событие | `pinnedMessage` |
+| `pin`, `unpin` | закрепление: своя плашка, не событие (`unpin` — снятие) | `pinnedMessage` (`{id, text}`) у `pin` |
 
 Автор события — отправитель сообщения. Имена участников ядро не присылает (только id):
 клиент берёт их из того, что уже знает (`names` сценария).
@@ -46,11 +46,16 @@ showHistory?, startPayload?, shortMessage? | message?}`. Известные со
 7. Текст пишет ядро (`controlFallbackText`, у iOS — `IosControl.fallbackText`, в сценарии —
    `coreText`): сначала `shortMessage`, затем `message` сервера, затем текст события по
    правилам 1–4 (с ядра d5e8aed), в том числе «теперь в MAX» для `hello` и `new` личного чата.
-   Ядру нечего сказать (`pin`, `system`, незнакомое событие без текста сервера) — правило 5.
+   Ядру нечего сказать (`system`, незнакомое событие без текста сервера) — правило 5.
+8. Закрепление (с ядра 2843f2d) — без автора: `pin` — «Закреплено: <текст>» (первая непустая
+   строка `pinnedMessage.text`, иначе текст закреплённого из стора; длиннее 50 знаков UTF-16 —
+   49 и «…»), без текста — «Сообщение закреплено», в том числе `pin` без `pinnedMessage`
+   (это не снятие); `unpin` — «Закрепление снято». Текст сервера важнее. Плашка по
+   `pinnedMessage.id` открывает закреплённое.
 
 ## Формат
 
 `{kind: "control", name, description, cases: [{name, message: {sender, senderName, text,
 attaches}, viewer, names, coreText?, expect: {kind, text}}]}`. `expect.kind` — вид события `ServiceText.Kind`
 (`joined`, `created`, `added`, `removed`, `left`, `joinedByLink`, `renamed`, `photo`,
-`botStarted`, `system`, `unknown`); `null` — сообщение не служебное событие (закрепление).
+`botStarted`, `system`, `unknown`); `null` — сообщение не служебное событие (закрепление), `text` у него — текст плашки (правило 8).

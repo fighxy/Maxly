@@ -812,7 +812,8 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         )
     }
 
-    /// `IosControl` ядра: `fallbackText` уже учитывает аккаунт, отправителя и имена из стора.
+    /// `IosControl` ядра: `fallbackText` уже учитывает аккаунт, отправителя, имена и текст
+    /// закреплённого из стора.
     private static func control(_ control: IosControl) -> CoreControl {
         CoreControl(
             event: control.event,
@@ -820,7 +821,9 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             title: control.title,
             fallbackText: control.fallbackText,
             message: control.message,
-            shortMessage: control.shortMessage
+            shortMessage: control.shortMessage,
+            pinnedMessageId: control.pinnedMessageId,
+            pinnedText: control.pinnedText
         )
     }
 

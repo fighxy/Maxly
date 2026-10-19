@@ -258,7 +258,8 @@ enum MessageContentCodec {
         return PollContent(id: id, title: title.isEmpty ? "Опрос" : title, answers: answers, total: total, multiple: multiple)
     }
 
-    /// `CONTROL` `pin` / `unpin`. Текст берётся из `pinnedMessage.text`.
+    /// `CONTROL` `pin` / `unpin`: id и текст из `pinnedMessage` (`{id, text}`). `pin` без
+    /// `pinnedMessage` или без его id — всё равно закрепление, а не снятие.
     private static func pinNotice(_ value: Any?) -> PinNotice? {
         guard let list = value as? [Any] else { return nil }
         for item in list {
@@ -267,12 +268,11 @@ enum MessageContentCodec {
             guard type == "CONTROL" else { continue }
             switch (map["event"] as? String)?.lowercased() {
             case "unpin":
-                return PinNotice(messageId: nil, preview: "")
+                return PinNotice(messageId: nil, preview: "", unpinned: true)
             case "pin":
-                guard let pinned = map["pinnedMessage"] as? [String: Any] else { return PinNotice(messageId: nil, preview: "") }
-                guard let id = stringId(pinned["id"]) else { return nil }
-                let text = (pinned["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                return PinNotice(messageId: id, preview: text.isEmpty ? "Сообщение" : text)
+                let pinned = map["pinnedMessage"] as? [String: Any]
+                let text = (pinned?["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                return PinNotice(messageId: stringId(pinned?["id"]), preview: text, unpinned: false)
             default:
                 continue
             }

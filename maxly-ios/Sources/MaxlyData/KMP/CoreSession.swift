@@ -394,7 +394,8 @@ public struct CoreMessage: Sendable, Equatable {
 
 /// Служебное вложение из ядра (`IosControl`): событие, участники, название и текст ядра
 /// (`fallbackText`: текст сервера, иначе текст известного события с «Вы» для аккаунта, именами
-/// отправителя и участников; `nil` — ядру сказать нечего: `pin`, `system`, незнакомое событие).
+/// отправителя и участников, «Закреплено: …» / «Сообщение закреплено» у `pin`, «Закрепление
+/// снято» у `unpin`; `nil` — ядру сказать нечего: `system`, незнакомое событие).
 public struct CoreControl: Sendable, Equatable {
     public var event: String
     public var userIds: [String]
@@ -403,6 +404,9 @@ public struct CoreControl: Sendable, Equatable {
     /// Готовые тексты сервера (`message`, `shortMessage`), если пришли.
     public var message: String?
     public var shortMessage: String?
+    /// У `pin`: закреплённое сообщение (его открывает плашка) и его текст как пришёл.
+    public var pinnedMessageId: String?
+    public var pinnedText: String?
 
     public init(
         event: String,
@@ -410,8 +414,12 @@ public struct CoreControl: Sendable, Equatable {
         title: String? = nil,
         fallbackText: String? = nil,
         message: String? = nil,
-        shortMessage: String? = nil
+        shortMessage: String? = nil,
+        pinnedMessageId: String? = nil,
+        pinnedText: String? = nil
     ) {
+        self.pinnedMessageId = pinnedMessageId
+        self.pinnedText = pinnedText
         self.event = event
         self.userIds = userIds
         self.title = title
