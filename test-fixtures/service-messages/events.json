@@ -610,6 +610,75 @@
         "kind": "joined",
         "text": "Анна теперь в MAX"
       }
+    },
+    {
+      "name": "add-server-core-text",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "add",
+            "userIds": [
+              102
+            ],
+            "shortMessage": "Сервер: участник добавлен"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "coreText": "Сервер: участник добавлен",
+      "expect": {
+        "kind": "added",
+        "text": "Сервер: участник добавлен"
+      }
+    },
+    {
+      "name": "hello-server-core-text",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "hello",
+            "shortMessage": "Сервер: контакт в сети"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "coreText": "Сервер: контакт в сети",
+      "expect": {
+        "kind": "joined",
+        "text": "Сервер: контакт в сети"
+      }
+    },
+    {
+      "name": "unknown-server-core-text",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "futureEvent",
+            "message": "Сервер: новое событие"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "coreText": "Сервер: новое событие",
+      "expect": {
+        "kind": "unknown",
+        "text": "Сервер: новое событие"
+      }
     }
   ]
 }

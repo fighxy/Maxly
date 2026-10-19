@@ -10,9 +10,11 @@
 ## Путь данных
 
 1. Ядро отдаёт вложения сообщения как пришли: `IosMessage.contentJson` и `contentJson` пуша
-   `message` несут `attaches` с `CONTROL` целиком. С ядра 41125fc у `IosMessage` есть ещё
-   `control` (`IosControl`: событие, участники, название, `fallbackText`); `CoreMapping`
-   берёт из него нейтральный текст ядра и само событие, если фрагмента нет.
+   `message` несут `attaches` с `CONTROL` целиком. С ядра 40e5326 у `IosMessage` есть ещё
+   `control` (`IosControl`: событие, участники, название, `fallbackText`, `message`,
+   `shortMessage`); `CoreMapping` берёт из него текст ядра (`fallbackText`: свой у `new` и
+   `botStarted`, иначе текст сервера) и само событие, если фрагмента нет. Сообщения без
+   `type` ядро больше не отбрасывает (`type` = `""`), клиент по `type` их не фильтрует.
 2. `MessageContentCodec.serviceNotice` разбирает его в `MessageContent.service`
    (`ServiceNotice`: событие, участники, название, текст сервера).
 3. `MessageRepositoryImpl.upsert` дописывает в событие имена участников (у отправителя этого

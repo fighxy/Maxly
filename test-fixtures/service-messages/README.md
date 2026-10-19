@@ -39,8 +39,9 @@ showHistory?, startPayload?, shortMessage? | message?}`. Известные со
 5. `system` и незнакомое событие — текст сервера (`shortMessage`, `message`, затем текст
    сообщения), без него — «Служебное сообщение».
 6. Регистр `event` и `_type` не важен; `userId` `0` — нет участника.
-7. Нейтральный текст ядра (`coreText`, из `IosControl.fallbackText`: сейчас у `new` и
-   `botStarted`) заменяет свой текст, кроме «теперь в MAX».
+7. Текст ядра (`coreText`, из `IosControl.fallbackText`: свой у `new` и `botStarted`, у
+   остальных событий — `shortMessage`, затем `message` сервера) заменяет свой текст, кроме
+   «теперь в MAX» для `new` личного чата (там ядро пишет общее «Чат создан»).
 
 ## Формат
 

@@ -133,4 +133,22 @@ struct ServiceMessageDataTests {
         #expect(pin.content.pin != nil)
         #expect(pin.content.service == nil)
     }
+
+    @Test("Текст сервера из вложения ядра: событие без type и без фрагмента не теряется")
+    func coreControlServerText() {
+        let server = CoreMapping.message(CoreMessage(
+            id: "11", chatId: "g1", authorId: "101", text: "", timeMs: 4_000, authorName: "Анна",
+            control: CoreControl(event: "futureEvent", fallbackText: "Сервер: новое событие", shortMessage: "Сервер: новое событие")
+        )).domain
+        #expect(server.content.isService)
+        #expect(server.content.service?.text == "Сервер: новое событие")
+        #expect(ServiceText.text(of: server.content, authorId: server.authorId, authorName: server.authorName) == "Сервер: новое событие")
+
+        let silent = CoreMapping.message(CoreMessage(
+            id: "12", chatId: "g1", authorId: "101", text: "", timeMs: 5_000, authorName: "Анна",
+            control: CoreControl(event: "")
+        )).domain
+        #expect(silent.content.isService)
+        #expect(ServiceText.text(of: silent.content, authorId: silent.authorId, authorName: silent.authorName) == ServiceText.fallback)
+    }
 }

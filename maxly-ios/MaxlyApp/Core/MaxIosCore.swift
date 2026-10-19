@@ -808,7 +808,14 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             reactionsJSON: message.reactionsJson,
             updateTimeMs: message.updateTime,
             control: message.control.map { control in
-                CoreControl(event: control.event, userIds: control.userIds, title: control.title, fallbackText: control.fallbackText)
+                CoreControl(
+                    event: control.event,
+                    userIds: control.userIds,
+                    title: control.title,
+                    fallbackText: control.fallbackText,
+                    message: control.message,
+                    shortMessage: control.shortMessage
+                )
             }
         )
     }

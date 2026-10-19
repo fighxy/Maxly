@@ -188,6 +188,11 @@ enum CoreMapping {
             title: control.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? control.title : nil
         )
         if let fallback, !fallback.isEmpty { notice.coreText = fallback }
+        if notice.text == nil {
+            notice.text = [control.shortMessage, control.message]
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .first { !$0.isEmpty }
+        }
         copy.service = notice
         return copy
     }

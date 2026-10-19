@@ -393,12 +393,24 @@ public struct CoreControl: Sendable, Equatable {
     public var userIds: [String]
     public var title: String?
     public var fallbackText: String?
+    /// Готовые тексты сервера (`message`, `shortMessage`), если пришли.
+    public var message: String?
+    public var shortMessage: String?
 
-    public init(event: String, userIds: [String] = [], title: String? = nil, fallbackText: String? = nil) {
+    public init(
+        event: String,
+        userIds: [String] = [],
+        title: String? = nil,
+        fallbackText: String? = nil,
+        message: String? = nil,
+        shortMessage: String? = nil
+    ) {
         self.event = event
         self.userIds = userIds
         self.title = title
         self.fallbackText = fallbackText
+        self.message = message
+        self.shortMessage = shortMessage
     }
 }
 
