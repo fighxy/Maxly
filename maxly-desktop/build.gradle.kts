@@ -34,6 +34,59 @@ val webrtcNatives: String = run {
     }
 }
 
+/**
+ * Цель сборки ffmpeg под ОС и процессор хоста, как у папок appResourcesRootDir:
+ * linux-x64, windows-x64, macos-arm64, macos-x64.
+ */
+val ffmpegTarget: String = run {
+    val os = System.getProperty("os.name").lowercase()
+    val arch = System.getProperty("os.arch").lowercase()
+    val cpu = if ("aarch64" in arch || "arm64" in arch) "arm64" else "x64"
+    when {
+        "win" in os -> "windows-$cpu"
+        "mac" in os -> "macos-$cpu"
+        else -> "linux-$cpu"
+    }
+}
+
+/**
+ * Свой ffmpeg под LGPL для установщика: папка из scripts/build-ffmpeg.sh
+ * (build/ffmpeg/<цель>) или MAXLY_FFMPEG_DIR — куда CI кладёт сборку своей ОС.
+ */
+val ffmpegBuildDir: File = System.getenv("MAXLY_FFMPEG_DIR")?.takeIf { it.isNotBlank() }?.let(::file)
+    ?: layout.buildDirectory.dir("ffmpeg/$ffmpegTarget").get().asFile
+val ffmpegExecutable: String = if (ffmpegTarget.startsWith("windows")) "ffmpeg.exe" else "ffmpeg"
+
+/**
+ * Ресурсы приложения с ffmpeg: build/ffmpeg-bundle/<цель>/ffmpeg(.exe), его лицензии и
+ * THIRD_PARTY/ffmpeg. Без собранного ffmpeg папка пустая и приложение берёт ffmpeg из PATH;
+ * -Pmaxly.ffmpeg.require=true (CI установщиков) в этом случае роняет сборку.
+ */
+val prepareFfmpegBundle = tasks.register<Sync>("prepareFfmpegBundle") {
+    val source = ffmpegBuildDir
+    val executable = ffmpegExecutable
+    val required = providers.gradleProperty("maxly.ffmpeg.require").map { it.toBoolean() }.orElse(false)
+    inputs.property("required", required)
+    from(source) {
+        include(executable, "BUILDINFO.txt", "licenses/**")
+        into(ffmpegTarget)
+    }
+    from(layout.projectDirectory.dir("THIRD_PARTY/ffmpeg")) {
+        into("$ffmpegTarget/licenses")
+    }
+    into(layout.buildDirectory.dir("ffmpeg-bundle"))
+    // Тексты лицензий есть и у сборки, и в THIRD_PARTY: одинаковые, берётся первый.
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    doFirst {
+        val binary = source.resolve(executable)
+        if (!binary.isFile) {
+            val hint = "Нет $binary: соберите bash scripts/build-ffmpeg.sh $ffmpegTarget или задайте MAXLY_FFMPEG_DIR"
+            if (required.get()) throw GradleException(hint)
+            logger.warn("$hint. Приложение возьмёт ffmpeg из PATH.")
+        }
+    }
+}
+
 /** Ревизия ядра из core.lock: короткий хеш для экрана «О приложении». */
 val coreRevision: String = file("core.lock").readLines()
     .firstOrNull { it.startsWith("revision=") }?.substringAfter('=')?.trim()?.take(7)
@@ -165,6 +218,9 @@ compose.desktop {
         )
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Dmg, TargetFormat.Deb)
+            // Свой ffmpeg (LGPL) в ресурсах приложения; путь к ним приложение видит в
+            // compose.application.resources.dir (app.maxly.media.Ffmpeg).
+            appResourcesRootDir.set(layout.dir(prepareFfmpegBundle.map { it.destinationDir }))
             // Модули JDK сверх набора плагина (java.base, java.desktop, java.logging, jdk.crypto.ec) —
             // по suggestRuntimeModules. Без них установленная сборка падает там, где запуск из IDE
             // работает: jdk.unsupported — sun.misc.Unsafe для библиотек, java.management — стеки
@@ -228,6 +284,9 @@ compose.desktop {
 // (test-fixtures/readers), а также разметка, черновики, выбор сообщений,
 // участники и имена (test-fixtures/{formatting,drafts,selection,members,names}) — вход тестов общего кода: правка файла перезапускает их.
 tasks.withType<Test>().configureEach {
+    // Тесты проигрывателя и записи берут свой ffmpeg, если он собран (CI), иначе — из PATH.
+    val bundled = ffmpegBuildDir.resolve(ffmpegExecutable)
+    if (bundled.isFile) systemProperty("maxly.ffmpeg", bundled.absolutePath)
     inputs.dir(layout.projectDirectory.dir("../test-fixtures/calls/ws2"))
         .withPropertyName("ws2Fixtures")
         .withPathSensitivity(PathSensitivity.RELATIVE)
@@ -252,4 +311,48 @@ tasks.withType<Test>().configureEach {
     inputs.dir(layout.projectDirectory.dir("../test-fixtures/names"))
         .withPropertyName("namesFixtures")
         .withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
+// Ресурсы приложения (ffmpeg) готовятся до run, createDistributable и упаковки.
+tasks.matching { it.name == "prepareAppResources" }.configureEach { dependsOn(prepareFfmpegBundle) }
+
+/** Запуск команды в doLast; ненулевой код — ошибка сборки. */
+fun runCommand(vararg command: String) {
+    val process = ProcessBuilder(*command).redirectErrorStream(true).start()
+    val output = process.inputStream.bufferedReader().readText()
+    if (process.waitFor() != 0) throw GradleException("${command.joinToString(" ")}: $output")
+}
+
+// Плагин Compose копирует ресурсы приложения без бита исполнения: ffmpeg в образе — 0644.
+tasks.matching { it.name == "createDistributable" || it.name == "createReleaseDistributable" }.configureEach {
+    doLast {
+        outputs.files.asFileTree.matching { include("**/resources/ffmpeg") }.forEach { it.setExecutable(true, false) }
+    }
+}
+
+/**
+ * .deb после jpackage: ffmpeg исполняемый (иначе приложение копирует его в кэш), в Depends —
+ * libva2 и libva-drm2 (с ними связан ffmpeg; jpackage ресурсы не разбирает), в Recommends —
+ * драйверы VA-API (без них не сжимаются кружки).
+ */
+tasks.matching { it.name == "packageDeb" || it.name == "packageReleaseDeb" }.configureEach {
+    doLast {
+        outputs.files.asFileTree.matching { include("**/*.deb") }.forEach { deb ->
+            val work = temporaryDir.resolve("deb")
+            work.deleteRecursively()
+            runCommand("dpkg-deb", "-R", deb.absolutePath, work.absolutePath)
+            val ffmpeg = work.walkTopDown().firstOrNull { it.isFile && it.name == "ffmpeg" && it.parentFile.name == "resources" }
+                ?: return@forEach
+            ffmpeg.setExecutable(true, false)
+            val control = work.resolve("DEBIAN/control")
+            val lines = control.readLines().map { line ->
+                if (line.startsWith("Depends:")) "${line.trimEnd()}, libva2, libva-drm2" else line
+            }.toMutableList()
+            val at = lines.indexOfFirst { it.startsWith("Depends:") }
+            lines.add(at + 1, "Recommends: va-driver-all")
+            control.writeText(lines.joinToString("\n", postfix = "\n"))
+            runCommand("dpkg-deb", "--root-owner-group", "-b", work.absolutePath, deb.absolutePath)
+            work.deleteRecursively()
+        }
+    }
 }
