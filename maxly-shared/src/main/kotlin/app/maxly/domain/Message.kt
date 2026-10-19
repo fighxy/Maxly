@@ -218,8 +218,18 @@ data class PollContent(
 
 data class PollAnswer(val id: String, val text: String, val votes: Int = 0)
 
-/** Служебное закрепление: пустой [messageId] — закреп сняли. */
-data class PinNotice(val messageId: String?, val preview: String)
+/**
+ * Служебное закрепление. Закреп снят только при [unpinned]; `pin` без id закреплённого
+ * (нет `pinnedMessage` или в нём нет `id`) плашку не меняет.
+ */
+data class PinNotice(val messageId: String?, val preview: String, val unpinned: Boolean = false) {
+    /** Уведомление меняет плашку: снимает закреп или ставит известный. */
+    val affectsBar: Boolean get() = unpinned || !messageId.isNullOrEmpty()
+
+    companion object {
+        val Unpinned = PinNotice(null, "", unpinned = true)
+    }
+}
 
 /** Фото; у гифки [isGif] и, если сервер его дал, [mp4Url] — то же движение в MP4 без звука. */
 data class PhotoContent(

@@ -234,7 +234,24 @@ class MessageMappingTest {
         assertEquals("Сообщение", blank!!.preview)
         val unpin = MessageMapping.pinNotice(listOf(mapOf("_type" to "CONTROL", "event" to "unpin")))
         assertNull(unpin!!.messageId)
+        assertTrue(unpin.unpinned)
+        assertFalse(pin.unpinned)
         assertNull(MessageMapping.pinNotice(listOf(mapOf("_type" to "CONTROL", "event" to "new"))))
+    }
+
+    @Test
+    fun pinWithoutPinnedIdIsNotAnUnpin() {
+        val bare = MessageMapping.pinNotice(listOf(mapOf("_type" to "CONTROL", "event" to "pin")))!!
+        assertFalse(bare.unpinned)
+        assertNull(bare.messageId)
+        assertFalse(bare.affectsBar)
+        val noId = MessageMapping.pinNotice(
+            listOf(mapOf("_type" to "CONTROL", "event" to "pin", "pinnedMessage" to mapOf("text" to "важное"))),
+        )!!
+        assertFalse(noId.unpinned)
+        assertNull(noId.messageId)
+        assertFalse(noId.affectsBar)
+        assertTrue(MessageMapping.pinNotice(listOf(mapOf("_type" to "CONTROL", "event" to "UNPIN")))!!.affectsBar)
     }
 
     @Test

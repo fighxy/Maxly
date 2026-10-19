@@ -2014,9 +2014,9 @@ class ChatViewModel(
         if (!openedAtMessage) requestScroll(ScrollRequest.Target.Unread(anchor))
     }
 
-    /** Последнее служебное pin/unpin в истории: id сообщения и само уведомление. */
+    /** Последнее служебное pin/unpin в истории, меняющее плашку: id сообщения и само уведомление. */
     private fun latestPinAnchor(): Pair<String, PinNotice>? =
-        history.asReversed().firstNotNullOfOrNull { message -> message.content.pin?.let { message.id to it } }
+        history.asReversed().firstNotNullOfOrNull { message -> message.content.pin?.takeIf { it.affectsBar }?.let { message.id to it } }
 
     private fun pinnedNow(): Pair<String, String>? {
         pins?.let { bar -> return bar.current?.let { it.messageId to it.preview } }
@@ -2112,7 +2112,7 @@ class ChatViewModel(
                     pins = PinnedBar()
                 } else {
                     pinBaselineId = latestPinAnchor()?.first
-                    pinOverride = PinNotice(null, "")
+                    pinOverride = PinNotice.Unpinned
                 }
                 rebuild()
                 _messages.value = "Все закрепы сняты"
@@ -2147,7 +2147,7 @@ class ChatViewModel(
             try {
                 repository.pin(chatId, "0")
                 pinBaselineId = latestPinAnchor()?.first
-                pinOverride = PinNotice(null, "")
+                pinOverride = PinNotice.Unpinned
                 rebuild()
                 _messages.value = "Закреп снят"
             } catch (e: CancellationException) {

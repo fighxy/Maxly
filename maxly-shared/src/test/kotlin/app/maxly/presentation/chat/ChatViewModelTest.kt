@@ -895,7 +895,7 @@ class ChatViewModelTest {
     fun pinChipLeadsToThePinnedMessage() {
         val model = vm()
         val pin = msg("3").copy(isService = true, text = "Закреплено: привет", content = MessageContent(pin = PinNotice("2", "привет")))
-        val unpin = msg("4").copy(isService = true, text = "Закрепление снято", content = MessageContent(pin = PinNotice(null, "")))
+        val unpin = msg("4").copy(isService = true, text = "Закрепление снято", content = MessageContent(pin = PinNotice.Unpinned))
         repo.list.value = listOf(msg("2"), pin, unpin)
         val chips = model.state.value.items.filterIsInstance<ChatItem.Service>().associateBy { it.key }
         assertEquals("2", chips.getValue("3").pinnedMessageId)
@@ -1090,8 +1090,20 @@ class ChatViewModelTest {
         assertNull(model.state.value.pinnedMessageId)
         repo.list.value = listOf(msg("9", text = "важно"), pinned, msg("8", text = "рядом"))
         assertNull(model.state.value.pinnedMessageId)
-        val released = msg("13", text = "снял", content = MessageContent(pin = PinNotice(null, "")), service = true)
+        val released = msg("13", text = "снял", content = MessageContent(pin = PinNotice.Unpinned), service = true)
         repo.list.value = listOf(msg("9", text = "важно"), pinned, released)
+        assertNull(model.state.value.pinnedMessageId)
+    }
+
+    @Test
+    fun pinWithoutPinnedIdKeepsTheBar() {
+        val model = vm()
+        val pinned = msg("10", text = "закрепил", content = MessageContent(pin = PinNotice("9", "важно")), service = true)
+        val bare = msg("11", text = "Сообщение закреплено", content = MessageContent(pin = PinNotice(null, "")), service = true)
+        repo.list.value = listOf(msg("9", text = "важно"), pinned, bare)
+        assertEquals("9", model.state.value.pinnedMessageId)
+        val released = msg("12", text = "Закрепление снято", content = MessageContent(pin = PinNotice.Unpinned), service = true)
+        repo.list.value = listOf(msg("9", text = "важно"), pinned, bare, released)
         assertNull(model.state.value.pinnedMessageId)
     }
 

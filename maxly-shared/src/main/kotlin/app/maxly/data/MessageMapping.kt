@@ -162,11 +162,12 @@ object MessageMapping {
         for (item in attaches.orEmpty()) {
             val control = com.maxly.core.media.Attachment.from(item) as? com.maxly.core.media.Attachment.Control ?: continue
             when (control.event?.lowercase()) {
-                "unpin" -> return PinNotice(null, "")
+                "unpin" -> return PinNotice.Unpinned
                 "pin" -> {
+                    // `pin` без `pinnedMessage` или без его id — не снятие: плашка остаётся прежней.
                     if (control.raw["pinnedMessage"] !is Map<*, *>) return PinNotice(null, "")
-                    val id = control.pinnedMessageId?.toString() ?: return null
                     val text = control.pinnedText?.trim().orEmpty().ifEmpty { "Сообщение" }
+                    val id = control.pinnedMessageId?.toString()?.takeIf { it.isNotEmpty() } ?: return PinNotice(null, text)
                     return PinNotice(id, text)
                 }
             }
