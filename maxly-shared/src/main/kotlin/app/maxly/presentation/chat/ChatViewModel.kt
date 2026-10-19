@@ -56,7 +56,8 @@ sealed interface ChatItem {
         override val key: String get() = "unread"
     }
 
-    data class Service(override val key: String, val text: String) : ChatItem
+    /** Служебная строка; [pinnedMessageId] — закреплённое сообщение, касание ведёт к нему. */
+    data class Service(override val key: String, val text: String, val pinnedMessageId: String? = null) : ChatItem
 
     data class Bubble(
         val message: Message,
@@ -2706,7 +2707,7 @@ internal fun feedItems(
             previous = null
         }
         if (message.isService) {
-            result += ChatItem.Service(message.id, message.text)
+            result += ChatItem.Service(message.id, message.text, message.content.pin?.messageId?.takeIf { it.isNotEmpty() })
             previous = null
             continue
         }

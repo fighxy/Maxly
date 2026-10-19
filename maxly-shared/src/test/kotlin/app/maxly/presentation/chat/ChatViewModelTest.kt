@@ -888,6 +888,18 @@ class ChatViewModelTest {
         repo.list.value = listOf(msg("1").copy(isService = true, text = "Чат создан"), msg("2"))
         val service = model.state.value.items.filterIsInstance<ChatItem.Service>().single()
         assertEquals("Чат создан", service.text)
+        assertNull(service.pinnedMessageId)
+    }
+
+    @Test
+    fun pinChipLeadsToThePinnedMessage() {
+        val model = vm()
+        val pin = msg("3").copy(isService = true, text = "Закреплено: привет", content = MessageContent(pin = PinNotice("2", "привет")))
+        val unpin = msg("4").copy(isService = true, text = "Закрепление снято", content = MessageContent(pin = PinNotice(null, "")))
+        repo.list.value = listOf(msg("2"), pin, unpin)
+        val chips = model.state.value.items.filterIsInstance<ChatItem.Service>().associateBy { it.key }
+        assertEquals("2", chips.getValue("3").pinnedMessageId)
+        assertNull(chips.getValue("4").pinnedMessageId)
     }
 
     @Test

@@ -247,9 +247,11 @@ internal fun DayChip(label: String) {
 
 /** Служебная строка (`CONTROL`): серая плашка по центру, без пузыря, меню и реакций. */
 @Composable
-internal fun ServiceChip(text: String) {
+internal fun ServiceChip(text: String, onClick: (() -> Unit)? = null) {
     Box(Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 4.dp), contentAlignment = Alignment.Center) {
-        Surface(Modifier.widthIn(max = 520.dp), shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f)) {
+        // Закрепление ведёт к закреплённому сообщению, как на iOS.
+        val tap = if (onClick != null) Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick) else Modifier
+        Surface(Modifier.widthIn(max = 520.dp).then(tap), shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f)) {
             Text(text, Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         }
     }
@@ -469,7 +471,10 @@ internal fun ChatFeed(
             items(state.items, key = { it.key }, contentType = { it::class }) { item ->
                 when (item) {
                     is ChatItem.Day -> DayChip(item.label)
-                    is ChatItem.Service -> ServiceChip(item.text)
+                    is ChatItem.Service -> ServiceChip(
+                        item.text,
+                        onClick = item.pinnedMessageId?.let { id -> { model.jumpTo(id, from = item.key) } },
+                    )
                     ChatItem.Unread -> UnreadDivider()
                     is ChatItem.Bubble -> SelectableBubble(
                         selecting = selecting,
