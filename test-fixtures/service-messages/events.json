@@ -616,6 +616,28 @@
       }
     },
     {
+      "name": "new-dialog-mine",
+      "message": {
+        "sender": "1",
+        "senderName": "Иван",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "new",
+            "chatType": "DIALOG"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "coreText": "Вы теперь в MAX",
+      "expect": {
+        "kind": "joined",
+        "text": "Вы теперь в MAX"
+      }
+    },
+    {
       "name": "add-server-core-text",
       "message": {
         "sender": "101",
