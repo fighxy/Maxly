@@ -178,6 +178,8 @@ fun MediaViewer(
     onClose: () -> Unit,
     /** Сохранить открытое в «Загрузки»; `null` — без кнопки. */
     onSave: (() -> Unit)? = null,
+    /** Пункт меню сохранения: фото профиля уходит в галерею, а не в «Загрузки». */
+    saveLabel: String = "Сохранить в «Загрузки»",
     saving: Boolean = false,
     /** Поделиться открытым фото или видео (системное окно «Поделиться»). */
     onShare: (() -> Unit)? = null,
@@ -306,7 +308,7 @@ fun MediaViewer(
                 when (val item = state.items[page]) {
                     is ChatAttachment.Photo -> ZoomablePhoto(
                         url = item.photo.url,
-                        placeholder = MediaTiles.tile(item.id)?.model,
+                        placeholder = MediaTiles.tile(item.id)?.model ?: state.previews[item.id],
                         turns = turns[item.id] ?: 0,
                         active = active,
                         onChrome = { chrome = !chrome },
@@ -343,6 +345,7 @@ fun MediaViewer(
                     onRotate = { if (current != null) turns[current.id] = (turns[current.id] ?: 0) + 1 },
                     onClose = { close() },
                     onSave = onSave,
+                    saveLabel = saveLabel,
                     saving = saving,
                     onShare = onShare,
                     onShowInChat = onShowInChat?.let { show -> { close(then = show) } },
@@ -519,6 +522,7 @@ private fun ViewerHeader(
     onRotate: () -> Unit,
     onClose: () -> Unit,
     onSave: (() -> Unit)?,
+    saveLabel: String,
     saving: Boolean,
     onShare: (() -> Unit)?,
     onShowInChat: (() -> Unit)?,
@@ -568,7 +572,7 @@ private fun ViewerHeader(
                     }
                     if (onSave != null) {
                         DropdownMenuItem(
-                            text = { Text("Сохранить в «Загрузки»") },
+                            text = { Text(saveLabel) },
                             leadingIcon = { Icon(Icons.Outlined.Download, null) },
                             enabled = !saving,
                             onClick = {
@@ -673,6 +677,8 @@ private fun ZoomablePhoto(
     var offset by remember { mutableStateOf(Offset.Zero) }
     var imageSize by remember { mutableStateOf(Size.Unspecified) }
     var loaded by remember { mutableStateOf(false) }
+    // Оригинал не загрузился: остаётся уменьшенная копия в своём размере, без растяжения.
+    var failed by remember { mutableStateOf(false) }
     val angle by animateFloatAsState(turns * 90f, label = "rotation")
     val scope = rememberCoroutineScope()
     val chromeToggle by rememberUpdatedState(onChrome)
@@ -740,7 +746,7 @@ private fun ZoomablePhoto(
             AsyncImage(
                 model = placeholder,
                 contentDescription = null,
-                contentScale = ContentScale.Fit,
+                contentScale = if (failed) ContentScale.Inside else ContentScale.Fit,
                 modifier = Modifier.fillMaxSize().graphicsLayer {
                     scaleX = scale
                     scaleY = scale
@@ -756,7 +762,9 @@ private fun ZoomablePhoto(
             onSuccess = {
                 imageSize = it.painter.intrinsicSize
                 loaded = true
+                failed = false
             },
+            onError = { failed = true },
             modifier = Modifier.fillMaxSize().graphicsLayer {
                 val fit = sidewaysFit(imageSize, size, turns)
                 scaleX = scale * fit

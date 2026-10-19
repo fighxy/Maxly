@@ -91,6 +91,8 @@ import coil3.compose.AsyncImage
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.platform.LocalDensity
 import app.maxly.presentation.media.ImageRequests
+import app.maxly.presentation.media.AvatarPhoto
+import androidx.compose.foundation.combinedClickable
 
 /** Профиль: шапка, сведения, команды бота и общие медиа по вкладкам. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -131,8 +133,23 @@ fun ProfileScreen(
     model.contactActions?.let { app.maxly.ui.contacts.ContactActionsHost(it, model::notify) }
     LaunchedEffect(notice) {
         val text = notice ?: return@LaunchedEffect
+        // Поверх открытого просмотра снекбар не виден: «Фото сохранено» и ошибки — всплывающей подсказкой.
+        if (text == AvatarPhoto.SAVED || mediaState.viewer != null) {
+            model.consumeNotice()
+            android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
+            return@LaunchedEffect
+        }
         snackbar.showSnackbar(text)
         model.consumeNotice()
+    }
+    // До Android 10 запись в общие папки требует разрешения.
+    val avatarStorage = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { granted -> if (granted) model.media.saveAvatar() else model.notify("Нет доступа к памяти телефона") }
+    val requestAvatarSave: () -> Unit = {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q ||
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) model.media.saveAvatar() else avatarStorage.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
     }
     LaunchedEffect(mediaState.openFile) {
         val file = mediaState.openFile ?: return@LaunchedEffect
@@ -176,7 +193,9 @@ fun ProfileScreen(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
     ) { padding ->
         LazyColumn(Modifier.padding(padding).fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 24.dp)) {
-            item(key = "header") { Header(state) }
+            item(key = "header") {
+                Header(state, photoId = model.avatarPhotoId, onPhoto = { preview -> model.openAvatar(preview) })
+            }
             item(key = "actions") {
                 if (chatActions != null) {
                     ProfileActionRow(
@@ -354,7 +373,16 @@ fun ProfileScreen(
     }
 
     mediaState.viewer?.let { viewer ->
-        MediaViewer(viewer, mediaUserAgent, onPage = model.media::showPage, onClose = model.media::closeViewer, onShare = model.media::shareViewed)
+        if (AvatarPhoto.isAvatar(viewer)) {
+            MediaViewer(
+                viewer, mediaUserAgent, onPage = model.media::showPage, onClose = model.media::closeViewer,
+                onSave = if (model.media.canSaveAvatar()) requestAvatarSave else null,
+                saveLabel = "Сохранить в галерею",
+                saving = viewer.messageId in mediaState.saving,
+            )
+        } else {
+            MediaViewer(viewer, mediaUserAgent, onPage = model.media::showPage, onClose = model.media::closeViewer, onShare = model.media::shareViewed)
+        }
     }
     app.maxly.ui.chat.ShareFileEffect(model.media)
 }
@@ -367,8 +395,14 @@ private fun start(context: android.content.Context, intent: Intent) {
     }
 }
 
+/**
+ * Шапка профиля. Касание фото открывает его на весь экран ([onPhoto] получает квадрат шапки,
+ * он виден, пока грузится оригинал). С кольцом историй касание открывает истории, а фото —
+ * долгое нажатие. Без фото аватар не нажимается.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun Header(state: ProfileUiState) {
+private fun Header(state: ProfileUiState, photoId: String?, onPhoto: (String?) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         // Кольцо историй собеседника: владельца вне ленты профиль спрашивает сам.
         val stories = app.maxly.ui.stories.LocalStoryRings.current
@@ -383,12 +417,31 @@ private fun Header(state: ProfileUiState) {
             else -> null
         }
         androidx.compose.runtime.LaunchedEffect(ownerId, ownerType) { stories.loadOwner(ownerId, ownerType) }
-        app.maxly.ui.stories.StoryRingAvatar(
-            state.avatar,
-            stories.ringFor(ownerId, ownerType),
-            104.dp,
-            onRingClick = ownerId?.let { id -> { stories.open(id) } },
-        )
+        val ring = stories.ringFor(ownerId, ownerType)
+        val size = 104.dp
+        val density = LocalDensity.current
+        val photoUrl = (state.avatar.kind as? app.maxly.presentation.chatlist.ChatAvatar.Kind.Photo)?.url?.takeIf { photoId != null }
+        // Тот же адрес, что у картинки аватара: просмотр берёт её из кэша и вылетает с её места.
+        val inner = if (ring == null) size else size - (size.value * 0.045f).coerceIn(2f, 3.5f).dp * 4
+        val preview = photoUrl?.let { ImageRequests.square(it, inner.value, density.density) }
+        val openStories = ownerId?.takeIf { ring != null }?.let { id -> { stories.open(id) } }
+        val openPhoto = if (photoUrl != null) ({ onPhoto(preview) }) else null
+        val tap = openStories ?: openPhoto
+        val press = Modifier
+            .then(if (photoId != null) Modifier.mediaTile(photoId, preview, with(density) { inner.toPx() } / 2) else Modifier)
+            .then(
+                if (tap != null) {
+                    Modifier.clip(CircleShape).combinedClickable(
+                        onClickLabel = if (openStories != null) "Открыть истории" else "Открыть фото",
+                        onLongClickLabel = if (openStories != null && openPhoto != null) "Открыть фото" else null,
+                        onLongClick = if (openStories != null) openPhoto else null,
+                        onClick = tap,
+                    )
+                } else {
+                    Modifier
+                },
+            )
+        app.maxly.ui.stories.StoryRingAvatar(state.avatar, ring, size, modifier = press)
         Spacer(Modifier.height(14.dp))
         Row(Modifier.padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(state.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)

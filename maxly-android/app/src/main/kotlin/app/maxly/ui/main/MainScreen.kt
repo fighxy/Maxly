@@ -481,7 +481,7 @@ fun MainScreen(
                 val fromChat = entry.arguments?.getBoolean("fromChat") == true
                 val title = entry.arguments?.getString("title")
                 val model = viewModel(key = "profile-$chatId") {
-                    ProfileViewModel(chatId, title, container.profiles, container.messages, container.voicePlayer, container.files, account = container.account, contacts = container.contacts)
+                    ProfileViewModel(chatId, title, container.profiles, container.messages, container.voicePlayer, container.files, account = container.account, contacts = container.contacts, saver = container.mediaSaver)
                 }
                 ProfileScreen(
                     model,

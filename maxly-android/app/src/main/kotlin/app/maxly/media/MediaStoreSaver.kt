@@ -21,7 +21,7 @@ import java.io.File
 
 /**
  * Сохранение в «Загрузки» телефона, в Download/Maxly: фото, видео, файлы и голосовые. Фото и
- * видео оттуда видны и в галерее. Фото в WebP и HEIC сохраняются в JPEG. С Android 10 через
+ * видео оттуда видны и в галерее. Фото профиля — в Pictures/Maxly ([savePicture]). Фото в WebP и HEIC сохраняются в JPEG. С Android 10 через
  * MediaStore без разрешений, раньше — файлом в папку (нужно разрешение на запись, его спрашивает
  * экран).
  */
@@ -30,7 +30,18 @@ class MediaStoreSaver(context: Context) : MediaSaver {
 
     override fun place(kind: SavedKind) = "«Загрузки»"
 
-    override suspend fun save(path: String, name: String, kind: SavedKind, directory: String?) = withContext(Dispatchers.IO) {
+    override suspend fun save(path: String, name: String, kind: SavedKind, directory: String?) = store(path, name, kind, Place.DOWNLOADS)
+
+    /** Фото профиля — в Pictures/Maxly: его видно в галерее, как снимок, а не как загрузку. */
+    override suspend fun savePicture(path: String, name: String) = store(path, name, SavedKind.IMAGE, Place.PICTURES)
+
+    /** Общая папка: «Загрузки» или «Изображения», в обеих — подпапка Maxly. */
+    private enum class Place(val directory: String) {
+        DOWNLOADS(Environment.DIRECTORY_DOWNLOADS),
+        PICTURES(Environment.DIRECTORY_PICTURES),
+    }
+
+    private suspend fun store(path: String, name: String, kind: SavedKind, place: Place) = withContext(Dispatchers.IO) {
         val original = File(path)
         if (!original.isFile) throw MaxlyError.Rejected("Файл не найден")
         val jpeg = if (kind == SavedKind.IMAGE && SaveNaming.needsTranscode(name)) toJpeg(original) else null
@@ -38,7 +49,7 @@ class MediaStoreSaver(context: Context) : MediaSaver {
         val saved = SaveNaming.safe(if (jpeg != null) SaveNaming.withExtension(name, "jpg") else name)
         try {
             val mime = mimeOf(saved, kind)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) insert(source, saved, mime) else legacy(source, saved, mime)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) insert(source, saved, mime, place) else legacy(source, saved, mime, place)
         } catch (e: SecurityException) {
             throw MaxlyError.Rejected("Нет доступа к памяти телефона")
         } finally {
@@ -73,15 +84,19 @@ class MediaStoreSaver(context: Context) : MediaSaver {
     }
 
     @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
-    private fun insert(source: File, name: String, mime: String) {
+    private fun insert(source: File, name: String, mime: String, place: Place) {
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, name)
             put(MediaStore.MediaColumns.MIME_TYPE, mime)
-            put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/Maxly")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, "${place.directory}/Maxly")
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
         val resolver = app.contentResolver
-        val uri = resolver.insert(MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
+        val collection = when (place) {
+            Place.DOWNLOADS -> MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            Place.PICTURES -> MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        }
+        val uri = resolver.insert(collection, values)
             ?: throw MaxlyError.Rejected("Не удалось сохранить")
         try {
             resolver.openOutputStream(uri)?.use { out -> source.inputStream().use { it.copyTo(out) } }
@@ -94,8 +109,8 @@ class MediaStoreSaver(context: Context) : MediaSaver {
     }
 
     @Suppress("DEPRECATION")
-    private fun legacy(source: File, name: String, mime: String) {
-        val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Maxly").apply { mkdirs() }
+    private fun legacy(source: File, name: String, mime: String, place: Place) {
+        val dir = File(Environment.getExternalStoragePublicDirectory(place.directory), "Maxly").apply { mkdirs() }
         val target = File(dir, SaveNaming.freeName(name) { File(dir, it).exists() })
         source.copyTo(target)
         MediaScannerConnection.scanFile(app, arrayOf(target.absolutePath), arrayOf(mime), null)
