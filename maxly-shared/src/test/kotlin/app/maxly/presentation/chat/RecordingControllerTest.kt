@@ -15,6 +15,7 @@ import org.junit.Test
 private class FakeRecorder : ComposerRecorder {
     var access = ComposerRecorder.Access.GRANTED
     var startOk = true
+    var failure: String? = null
     val log = mutableListOf<String>()
     override var onLimit: (() -> Unit)? = null
 
@@ -28,6 +29,8 @@ private class FakeRecorder : ComposerRecorder {
         log += "start $mode"
         return startOk
     }
+
+    override fun startFailure(mode: RecordingMode): String? = failure
 
     override suspend fun stop(mode: RecordingMode): RecordedDraft {
         log += "stop $mode"
@@ -192,6 +195,19 @@ class RecordingControllerTest {
         recorder.onLimit?.invoke()
         runCurrent()
         assertEquals(1, sent.size)
+    }
+
+    @Test
+    fun failedStartShowsTheRecordersReason() = runTest {
+        val (controller, _) = controller()
+        recorder.startOk = false
+        recorder.failure = "Кружки не записываются: нет кодировщика H.264"
+        controller.press(RecordingMode.VIDEO)
+        advanceTimeBy(300)
+        runCurrent()
+        assertEquals(listOf("start VIDEO"), recorder.log)
+        assertEquals(RecordingController.Phase.IDLE, controller.state.value.phase)
+        assertEquals("Кружки не записываются: нет кодировщика H.264", controller.state.value.hint)
     }
 
     @Test

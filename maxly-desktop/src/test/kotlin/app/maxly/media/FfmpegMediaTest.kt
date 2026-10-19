@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * То, что ffmpeg делает в приложении: GIF (MP4 H.264) в кадры RGBA, голосовое в Ogg/Opus и
- * обратно в PCM. Идут с ffmpeg из сборки (`maxly.ffmpeg`) или из PATH.
+ * обратно в PCM, кружок системным H.264. Идут с ffmpeg из сборки (`maxly.ffmpeg`) или из PATH.
  */
 class FfmpegMediaTest {
     private val gif = File("src/test/resources/media/gif-h264.mp4")
@@ -68,5 +68,20 @@ class FfmpegMediaTest {
         assertEquals(0, code)
         val seconds = pcm.size / 2 / 48_000.0
         assertTrue("PCM $seconds с", seconds in 0.9..1.1)
+    }
+
+    @Test
+    fun videoNoteIsEncodedBySystemH264() {
+        assumeTrue("нет ffmpeg", Ffmpeg.binary != null)
+        val encoder = H264Encoders.forCurrent()
+        assumeTrue("нет кодировщика H.264 у этой системы", encoder != null)
+        val side = DesktopVideoNoteRecorder.SIDE
+        val out = Files.createTempFile("maxly-note", ".mp4").toFile().apply { deleteOnExit() }
+        val frame = ByteArray(side * side * 3 / 2).also { it.fill(80, 0, side * side); it.fill(-128, side * side, it.size) }
+        val frames = ByteArray(frame.size * 25).also { all -> repeat(25) { frame.copyInto(all, it * frame.size) } }
+        val (code, _) = run(H264Encoders.encodeCommand(Ffmpeg.path, encoder!!, side, DesktopVideoNoteRecorder.FPS, out.absolutePath), frames)
+        assertEquals(0, code)
+        val (_, pam) = run(VideoCommands.video(out.absolutePath, 0))
+        assertEquals(side, assertNotNull(PamReader(pam.inputStream()).next()).width)
     }
 }

@@ -5,7 +5,7 @@ import app.maxly.platform.AppPaths
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-/** ОС, под которую выбирается имя файла ffmpeg. */
+/** ОС, под которую выбираются имя файла ffmpeg и кодировщик H.264. */
 internal enum class HostOs {
     WINDOWS, MACOS, LINUX;
 
@@ -98,4 +98,89 @@ object Ffmpeg {
         process.inputStream.readBytes()
         process.waitFor(10, TimeUnit.SECONDS) && process.exitValue() == 0
     }.getOrDefault(false)
+}
+
+/**
+ * Кодировщик H.264 для кружка. В установщике свой ffmpeg без libx264 и libopenh264, поэтому
+ * сжимает система: Media Foundation на Windows, VideoToolbox на macOS, VA-API на Linux.
+ * [global] — ключи до входа (устройство VA-API), [codec] — после.
+ */
+internal data class H264Encoder(val name: String, val global: List<String> = emptyList(), val codec: List<String>)
+
+internal object H264Encoders {
+    const val BITRATE = "1200k"
+
+    /** Кандидаты по порядку. libopenh264 и libx264 бывают только у ffmpeg из PATH, в наш не входят. */
+    fun candidates(os: HostOs, renderNodes: List<String> = vaapiNodes()): List<H264Encoder> {
+        val system = when (os) {
+            HostOs.WINDOWS -> listOf(H264Encoder("h264_mf", codec = listOf("-c:v", "h264_mf", "-b:v", BITRATE, "-pix_fmt", "nv12")))
+            HostOs.MACOS -> listOf(H264Encoder("h264_videotoolbox", codec = listOf("-c:v", "h264_videotoolbox", "-allow_sw", "1", "-b:v", BITRATE, "-pix_fmt", "yuv420p")))
+            HostOs.LINUX -> renderNodes.map { node ->
+                H264Encoder(
+                    "h264_vaapi",
+                    global = listOf("-vaapi_device", node),
+                    codec = listOf("-vf", "format=nv12,hwupload", "-c:v", "h264_vaapi", "-b:v", BITRATE),
+                )
+            }
+        }
+        return system + listOf(
+            H264Encoder("libopenh264", codec = listOf("-c:v", "libopenh264", "-b:v", BITRATE, "-pix_fmt", "yuv420p")),
+            H264Encoder("libx264", codec = listOf("-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-pix_fmt", "yuv420p")),
+        )
+    }
+
+    /** Узлы видеокарты для VA-API: `/dev/dri/renderD128` и дальше. */
+    fun vaapiNodes(): List<String> =
+        File("/dev/dri").listFiles { file -> file.name.startsWith("renderD") }.orEmpty().map { it.absolutePath }.sorted()
+
+    /** Сжатие сырого YUV 4:2:0 [side]×[side] из `pipe:0` в [output]. */
+    fun encodeCommand(ffmpeg: String, encoder: H264Encoder, side: Int, fps: Int, output: String): List<String> =
+        listOf(ffmpeg, "-y", "-hide_banner", "-loglevel", "error") + encoder.global +
+            listOf("-f", "rawvideo", "-pix_fmt", "yuv420p", "-s", "${side}x$side", "-r", "$fps", "-i", "pipe:0") +
+            encoder.codec + output
+
+    /** Первый кандидат, который [works]; `null` — сжимать нечем. */
+    fun pick(candidates: List<H264Encoder>, works: (H264Encoder) -> Boolean): H264Encoder? = candidates.firstOrNull(works)
+
+    /**
+     * Пробное сжатие пары кадров: кодировщик есть в сборке и система его дала (на Windows N
+     * без Media Feature Pack h264_mf не откроется, без драйвера VA-API — h264_vaapi).
+     */
+    fun probe(ffmpeg: String, encoder: H264Encoder, side: Int = 64, fps: Int = 25): Boolean = runCatching {
+        val command = encodeCommand(ffmpeg, encoder, side, fps, "-").toMutableList()
+        command.add(command.size - 1, "-f")
+        command.add(command.size - 1, "null")
+        val process = ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).start()
+        val drain = Thread { runCatching { process.inputStream.readBytes() } }.apply { isDaemon = true; start() }
+        val frame = ByteArray(side * side * 3 / 2).also { bytes ->
+            bytes.fill(16, 0, side * side)
+            bytes.fill(-128, side * side, bytes.size)
+        }
+        runCatching { process.outputStream.use { out -> repeat(10) { out.write(frame) } } }
+        val done = process.waitFor(15, TimeUnit.SECONDS)
+        if (!done) process.destroyForcibly()
+        drain.join(1_000)
+        done && process.exitValue() == 0
+    }.getOrDefault(false)
+
+    @Volatile private var chosen: Pair<String, H264Encoder?>? = null
+
+    /** Кодировщик для этого ffmpeg; проверка — один раз за запуск. */
+    @Synchronized
+    fun forCurrent(): H264Encoder? {
+        val ffmpeg = Ffmpeg.binary?.path ?: return null
+        chosen?.takeIf { it.first == ffmpeg }?.let { return it.second }
+        val encoder = pick(candidates(HostOs.current)) { probe(ffmpeg, it) }
+        DiagnosticEvent.event("media.h264_encoder", mapOf("encoder" to (encoder?.name ?: "NONE")), snapshot = true)
+        chosen = ffmpeg to encoder
+        return encoder
+    }
+
+    /** Почему кружок не пишется, для подсказки под полем ввода. */
+    fun unavailableText(os: HostOs, ffmpegFound: Boolean): String = when {
+        !ffmpegFound -> "Кружки не записываются: не найден ffmpeg"
+        os == HostOs.WINDOWS -> "Кружки не записываются: в Windows нет кодировщика H.264 (Media Foundation). В выпусках N и KN установите Media Feature Pack"
+        os == HostOs.MACOS -> "Кружки не записываются: macOS не дала кодировщик H.264 (VideoToolbox)"
+        else -> "Кружки не записываются: нет кодировщика H.264 через VA-API. Нужен драйвер VA-API видеокарты"
+    }
 }

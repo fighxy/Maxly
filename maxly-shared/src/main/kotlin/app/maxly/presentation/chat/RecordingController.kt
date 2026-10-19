@@ -37,6 +37,12 @@ interface ComposerRecorder {
     /** Включить микрофон (или камеру с микрофоном). `false` — не вышло. */
     suspend fun start(mode: RecordingMode): Boolean
 
+    /**
+     * Своя подсказка, почему последний [start] вернул `false` (например, нечем сжать видео);
+     * `null` — обычное «не удалось включить микрофон/камеру».
+     */
+    fun startFailure(mode: RecordingMode): String? = null
+
     /** Остановить и отдать запись; `null` — слишком коротко или не вышло. */
     suspend fun stop(mode: RecordingMode): RecordedDraft?
 
@@ -447,7 +453,7 @@ class RecordingController(
         pressJob = null
         warming = false
         _state.update { it.copy(phase = Phase.IDLE) }
-        show(if (mode == RecordingMode.VOICE) "Не удалось включить микрофон" else "Не удалось включить камеру")
+        show(recorder.startFailure(mode) ?: if (mode == RecordingMode.VOICE) "Не удалось включить микрофон" else "Не удалось включить камеру")
     }
 
     private fun discard(mode: RecordingMode) = enqueue { recorder.cancel(mode) }

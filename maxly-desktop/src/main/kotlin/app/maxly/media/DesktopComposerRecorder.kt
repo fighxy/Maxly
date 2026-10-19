@@ -43,6 +43,8 @@ class DesktopComposerRecorder(
         RecordingMode.VIDEO -> note.start()
     }
 
+    override fun startFailure(mode: RecordingMode): String? = if (mode == RecordingMode.VIDEO) note.unavailable else null
+
     override suspend fun stop(mode: RecordingMode): RecordedDraft? = when (mode) {
         RecordingMode.VOICE -> voice.finish(RecordingGesture.MINIMUM_DURATION_MS)?.let(RecordedDraft::Voice)
         RecordingMode.VIDEO -> note.stop()?.let(RecordedDraft::Note)

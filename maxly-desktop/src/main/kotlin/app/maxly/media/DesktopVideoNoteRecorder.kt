@@ -39,7 +39,8 @@ import kotlin.math.abs
 
 /**
  * Кружок на ПК: камера через webrtc-java, звук через Java Sound, ffmpeg кодирует квадрат
- * 480×480 H.264 и AAC в MP4 — тот же формат, что у телефона. До минуты.
+ * 480×480 H.264 и AAC в MP4 — тот же формат, что у телефона. До минуты. H.264 сжимает
+ * системный кодировщик ([H264Encoders]); нет его — запись не начинается, [unavailable] говорит почему.
  */
 class DesktopVideoNoteRecorder(private val scope: CoroutineScope) {
     private val _elapsed = MutableStateFlow<Long?>(null)
@@ -67,8 +68,19 @@ class DesktopVideoNoteRecorder(private val scope: CoroutineScope) {
     @Volatile
     private var latest: ByteArray? = null
 
+    /** Почему последний [start] не включил запись, если дело не в камере; `null` — причина в камере. */
+    @Volatile
+    var unavailable: String? = null
+        private set
+
     suspend fun start(): Boolean = withContext(Dispatchers.IO) {
         if (encoder != null) return@withContext true
+        unavailable = null
+        // Кодировщик — до камеры: без него камера не мигнёт зря.
+        val h264 = H264Encoders.forCurrent() ?: run {
+            unavailable = H264Encoders.unavailableText(HostOs.current, Ffmpeg.binary != null)
+            return@withContext false
+        }
         val folder = File(AppPaths.cacheDir, "outgoing/notes").apply { mkdirs() }
         val stamp = System.currentTimeMillis()
         val videoFile = File(folder, "note-$stamp-video.mp4")
@@ -85,11 +97,8 @@ class DesktopVideoNoteRecorder(private val scope: CoroutineScope) {
                 if (image != null) _preview.value = image
             }
             videoTrack.addSink(frames)
-            val process = ProcessBuilder(
-                Ffmpeg.path, "-y", "-hide_banner", "-loglevel", "error",
-                "-f", "rawvideo", "-pix_fmt", "yuv420p", "-s", "${SIDE}x$SIDE", "-r", "$FPS", "-i", "pipe:0",
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-pix_fmt", "yuv420p", videoFile.absolutePath,
-            ).redirectError(ProcessBuilder.Redirect.DISCARD).start()
+            val process = ProcessBuilder(H264Encoders.encodeCommand(Ffmpeg.path, h264, SIDE, FPS, videoFile.absolutePath))
+                .redirectError(ProcessBuilder.Redirect.DISCARD).start()
             val format = AudioFormat(48_000f, 16, 1, true, false)
             val line = AudioSystem.getLine(DataLine.Info(TargetDataLine::class.java, format)) as TargetDataLine
             line.open(format)
