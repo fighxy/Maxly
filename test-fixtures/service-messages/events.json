@@ -1,0 +1,549 @@
+{
+  "kind": "control",
+  "name": "events",
+  "description": "Каждое событие вложения CONTROL: какой это вид (kind) и какой текст строки. pin и unpin — закрепление, у него своя плашка, kind null. message — сообщение сервера (sender, senderName, text, attaches), viewer — id аккаунта, names — имена, известные клиенту (id → имя).",
+  "cases": [
+    {
+      "name": "hello",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "hello"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "joined",
+        "text": "Анна теперь в MAX"
+      }
+    },
+    {
+      "name": "hello-user-id",
+      "message": {
+        "sender": "101",
+        "senderName": "",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "hello",
+            "userId": 303
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {
+        "202": "Борис",
+        "303": "Вера"
+      },
+      "expect": {
+        "kind": "joined",
+        "text": "Вера теперь в MAX"
+      }
+    },
+    {
+      "name": "new-dialog",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "new",
+            "chatType": "DIALOG"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "joined",
+        "text": "Анна теперь в MAX"
+      }
+    },
+    {
+      "name": "new-chat",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "new",
+            "chatType": "CHAT",
+            "title": "Дача",
+            "userIds": [
+              202,
+              303
+            ]
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {
+        "202": "Борис",
+        "303": "Вера"
+      },
+      "expect": {
+        "kind": "created",
+        "text": "Анна создал(а) чат «Дача»"
+      }
+    },
+    {
+      "name": "new-chat-mine",
+      "message": {
+        "sender": "1",
+        "senderName": "Иван",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "new",
+            "chatType": "CHAT",
+            "title": "Дача",
+            "userIds": [
+              202
+            ]
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {
+        "202": "Борис",
+        "303": "Вера"
+      },
+      "expect": {
+        "kind": "created",
+        "text": "Вы создали чат «Дача»"
+      }
+    },
+    {
+      "name": "new-chat-untitled",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "new",
+            "chatType": "CHAT"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "created",
+        "text": "Анна создал(а) чат"
+      }
+    },
+    {
+      "name": "new-channel",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "new",
+            "chatType": "CHANNEL",
+            "title": "Новости"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "created",
+        "text": "Анна создал(а) канал «Новости»"
+      }
+    },
+    {
+      "name": "add-two",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "add",
+            "userIds": [
+              202,
+              303
+            ],
+            "showHistory": true
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {
+        "202": "Борис",
+        "303": "Вера"
+      },
+      "expect": {
+        "kind": "added",
+        "text": "Анна добавил(а) Борис и Вера"
+      }
+    },
+    {
+      "name": "add-viewer",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "add",
+            "userIds": [
+              1
+            ]
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "added",
+        "text": "Анна добавил(а) вас"
+      }
+    },
+    {
+      "name": "add-self",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "add",
+            "userIds": [
+              101
+            ]
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "added",
+        "text": "Анна вступил(а) в чат"
+      }
+    },
+    {
+      "name": "add-mine",
+      "message": {
+        "sender": "1",
+        "senderName": "Иван",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "add",
+            "userIds": [
+              202
+            ]
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {
+        "202": "Борис",
+        "303": "Вера"
+      },
+      "expect": {
+        "kind": "added",
+        "text": "Вы добавили Борис"
+      }
+    },
+    {
+      "name": "remove",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "remove",
+            "userIds": [
+              202
+            ]
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {
+        "202": "Борис",
+        "303": "Вера"
+      },
+      "expect": {
+        "kind": "removed",
+        "text": "Анна удалил(а) Борис"
+      }
+    },
+    {
+      "name": "remove-self",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "remove",
+            "userIds": [
+              101
+            ]
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "removed",
+        "text": "Анна покинул(а) чат"
+      }
+    },
+    {
+      "name": "remove-viewer",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "remove",
+            "userId": 1
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "removed",
+        "text": "Анна удалил(а) вас"
+      }
+    },
+    {
+      "name": "leave",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "leave"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "left",
+        "text": "Анна покинул(а) чат"
+      }
+    },
+    {
+      "name": "leave-mine",
+      "message": {
+        "sender": "1",
+        "senderName": "Иван",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "leave"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "left",
+        "text": "Вы покинули чат"
+      }
+    },
+    {
+      "name": "join-by-link",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "joinByLink"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "joinedByLink",
+        "text": "Анна вступил(а) в чат по ссылке"
+      }
+    },
+    {
+      "name": "title",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "title",
+            "title": "Дача 2027"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "renamed",
+        "text": "Анна изменил(а) название на «Дача 2027»"
+      }
+    },
+    {
+      "name": "title-mine",
+      "message": {
+        "sender": "1",
+        "senderName": "Иван",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "title",
+            "title": "Дача 2027"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "renamed",
+        "text": "Вы изменили название на «Дача 2027»"
+      }
+    },
+    {
+      "name": "icon",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "icon",
+            "url": "https://i.example/chat.jpg"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "photo",
+        "text": "Анна изменил(а) фото чата"
+      }
+    },
+    {
+      "name": "bot-started",
+      "message": {
+        "sender": "1",
+        "senderName": "Иван",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "botStarted",
+            "startPayload": "ref42"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "botStarted",
+        "text": "Вы запустили бота"
+      }
+    },
+    {
+      "name": "system",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "system",
+            "shortMessage": "Номер телефона подтверждён"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "system",
+        "text": "Номер телефона подтверждён"
+      }
+    },
+    {
+      "name": "pin-is-not-an-event",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "pin",
+            "pinnedMessage": {
+              "id": 77,
+              "text": "Сбор в 10"
+            }
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": null
+      }
+    },
+    {
+      "name": "unpin-is-not-an-event",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "unpin"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": null
+      }
+    }
+  ]
+}

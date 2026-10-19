@@ -92,4 +92,18 @@ struct TranscriptLayoutTests {
         #expect(rows.map(\.showsAuthorName) == [true, false, true])
         #expect(rows.map(\.showsAuthorAvatar) == [true, false, true])
     }
+
+    @Test("Событие чата — тоже служебная строка: без имени и аватара, в непрочитанные не входит")
+    func serviceEventBoundary() {
+        var event = message("2", author: "bob", name: "Боб", at: 2)
+        event.text = ""
+        event.content.service = ServiceNotice(event: "leave")
+        let messages = [message("1", author: "bob", name: "Боб", at: 1), event, message("3", author: "bob", name: "Боб", at: 3)]
+        let rows = TranscriptLayout.rows(messages, currentUserId: "me")
+        #expect(rows.allSatisfy { $0.group == .single })
+        #expect(rows.map(\.showsAuthorName) == [true, false, true])
+        #expect(rows.map(\.showsAuthorAvatar) == [true, false, true])
+        // Два непрочитанных — это «1» и «3»: событие не считается.
+        #expect(TranscriptLayout.unreadAnchor(messages, unread: 2, currentUserId: "me", complete: true) == "1")
+    }
 }

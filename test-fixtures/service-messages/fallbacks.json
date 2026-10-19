@@ -1,0 +1,405 @@
+{
+  "kind": "control",
+  "name": "fallbacks",
+  "description": "Неполные события: нет имени, нет текста, незнакомое событие, id строками, другие вложения рядом. message — сообщение сервера (sender, senderName, text, attaches), viewer — id аккаунта, names — имена, известные клиенту (id → имя).",
+  "cases": [
+    {
+      "name": "unknown-event",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "present"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "unknown",
+        "text": "Служебное сообщение"
+      }
+    },
+    {
+      "name": "unknown-event-with-text",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "widget",
+            "message": "Новый виджет"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "unknown",
+        "text": "Новый виджет"
+      }
+    },
+    {
+      "name": "no-event",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "unknown",
+        "text": "Служебное сообщение"
+      }
+    },
+    {
+      "name": "system-without-text",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "system"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "system",
+        "text": "Служебное сообщение"
+      }
+    },
+    {
+      "name": "system-message-text",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "Вход с нового устройства",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "system"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "system",
+        "text": "Вход с нового устройства"
+      }
+    },
+    {
+      "name": "hello-without-name",
+      "message": {
+        "sender": "101",
+        "senderName": "",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "hello"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "joined",
+        "text": "Контакт теперь в MAX"
+      }
+    },
+    {
+      "name": "leave-without-name",
+      "message": {
+        "sender": "101",
+        "senderName": "",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "leave"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "left",
+        "text": "Участник покинул(а) чат"
+      }
+    },
+    {
+      "name": "add-unknown-names",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "add",
+            "userIds": [
+              404,
+              405
+            ]
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "added",
+        "text": "Анна добавил(а) 2 участника"
+      }
+    },
+    {
+      "name": "add-five-unknown",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "add",
+            "userIds": [
+              401,
+              402,
+              403,
+              404,
+              405
+            ]
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "added",
+        "text": "Анна добавил(а) 5 участников"
+      }
+    },
+    {
+      "name": "add-one-unknown",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "add",
+            "userIds": [
+              404
+            ]
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "added",
+        "text": "Анна добавил(а) участника"
+      }
+    },
+    {
+      "name": "add-known-and-unknown",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "add",
+            "userIds": [
+              202,
+              404,
+              405
+            ]
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {
+        "202": "Борис",
+        "303": "Вера"
+      },
+      "expect": {
+        "kind": "added",
+        "text": "Анна добавил(а) Борис и ещё 2"
+      }
+    },
+    {
+      "name": "add-three-known",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "add",
+            "userIds": [
+              "202",
+              "303",
+              "505"
+            ]
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {
+        "202": "Борис",
+        "303": "Вера",
+        "505": "Глеб"
+      },
+      "expect": {
+        "kind": "added",
+        "text": "Анна добавил(а) Борис, Вера и Глеб"
+      }
+    },
+    {
+      "name": "remove-without-users",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "remove"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "removed",
+        "text": "Анна удалил(а) участника"
+      }
+    },
+    {
+      "name": "title-without-title",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "title",
+            "title": "  "
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "renamed",
+        "text": "Анна изменил(а) название чата"
+      }
+    },
+    {
+      "name": "event-case",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "JOINBYLINK"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "joinedByLink",
+        "text": "Анна вступил(а) в чат по ссылке"
+      }
+    },
+    {
+      "name": "type-key",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "type": "control",
+            "event": "leave"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "left",
+        "text": "Анна покинул(а) чат"
+      }
+    },
+    {
+      "name": "zero-user-id",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "hello",
+            "userId": 0
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "joined",
+        "text": "Анна теперь в MAX"
+      }
+    },
+    {
+      "name": "photo-and-control",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "PHOTO",
+            "photoId": 5,
+            "baseUrl": "https://i.example/5"
+          },
+          {
+            "_type": "CONTROL",
+            "event": "icon"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "expect": {
+        "kind": "photo",
+        "text": "Анна изменил(а) фото чата"
+      }
+    }
+  ]
+}
