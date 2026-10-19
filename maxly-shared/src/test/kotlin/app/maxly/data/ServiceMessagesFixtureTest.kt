@@ -21,10 +21,6 @@ class ServiceMessagesFixtureTest {
     private val fixtures = SharedFixtures(
         "service-messages",
         disagreements = mapOf(
-            "events / new-chat-core-text" to
-                "coreText сценария — старый нейтральный текст ядра; ядро d5e8aed пишет автора, когда знает имя",
-            "events / bot-started-core-text" to
-                "coreText сценария — старый нейтральный текст ядра; ядро d5e8aed пишет «Вы» для своего запуска",
             "events / pin-is-not-an-event" to
                 "сценарий ждёт общую строку; ядро 2843f2d пишет «Закреплено: <текст>»",
             "events / unpin-is-not-an-event" to
