@@ -400,6 +400,77 @@
         "kind": "photo",
         "text": "Анна изменил(а) фото чата"
       }
+    },
+    {
+      "name": "pin-empty-text",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "pin",
+            "pinnedMessage": {
+              "id": 78,
+              "text": "  "
+            }
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "coreText": "Сообщение закреплено",
+      "expect": {
+        "kind": null,
+        "text": "Сообщение закреплено"
+      }
+    },
+    {
+      "name": "pin-without-pinned-message",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "pin"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "coreText": "Сообщение закреплено",
+      "expect": {
+        "kind": null,
+        "text": "Сообщение закреплено"
+      }
+    },
+    {
+      "name": "pin-long-multiline-text",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "pin",
+            "pinnedMessage": {
+              "id": 79,
+              "text": "Сбор в субботу в 10:00 у главного входа в парк, берите воду и перекус\nВторая строка с подробностями"
+            }
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "coreText": "Закреплено: Сбор в субботу в 10:00 у главного входа в парк, б…",
+      "expect": {
+        "kind": null,
+        "text": "Закреплено: Сбор в субботу в 10:00 у главного входа в парк, б…"
+      }
     }
   ]
 }
