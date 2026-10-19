@@ -556,8 +556,8 @@ private struct CaptionView: View {
 
 /// Фото: щипок и двойное касание увеличивают (двойное — в 2,5 раза к точке касания и обратно),
 /// одиночное прячет интерфейс. Пока грузится оригинал, видна картинка плитки из ленты (с ней
-/// же прилетел кадр), без неё — кольцо.
-private struct PhotoPage: View {
+/// же прилетел кадр), без неё — кольцо. Им же показывает фото своего профиля `AvatarViewer`.
+struct PhotoPage: View {
     let url: URL?
     var placeholder: UIImage?
     let turns: Int

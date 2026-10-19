@@ -775,7 +775,10 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             commands: profile.commands.map { CoreProfile.Command(name: $0.name, description: $0.description_) },
             hasWebApp: profile.hasWebApp,
             commentsEnabled: profile.comments < 0 ? nil : profile.comments == 1,
-            presence: Int(profile.presence)
+            presence: Int(profile.presence),
+            // Снимок целиком (`baseRawUrl`, `baseRawIconUrl`) ядро в `IosProfile` пока не отдаёт:
+            // просмотр открывает оригинал аватара. Когда появится поле — подставить его здесь.
+            photoURL: ""
         )
     }
 

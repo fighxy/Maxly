@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import UIKit
+import MaxlyDomain
 import MaxlyPresentation
 import MaxlyUI
 
@@ -88,81 +89,182 @@ struct ProfileAvatar: View {
     }
 }
 
-/// Просмотр своего фото на весь экран с меню: сохранить, поделиться, изменить, удалить.
+/// Своё фото на весь экран. Сразу видна картинка аватара из кэша, потом её сменяет оригинал;
+/// щипок и двойное касание увеличивают, смахивание вверх или вниз закрывает. Справа —
+/// «Поделиться» и меню: сохранить в «Фото» или «Файлы», изменить, удалить.
 struct AvatarViewer: View {
     let account: AccountSettingsModel
+    /// Размер аватара в шапке настроек: по нему находится картинка в кэше.
+    var avatarSize: CGFloat = 96
     let onChange: () -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var image: UIImage?
+    @Environment(\.displayScale) private var displayScale
+    @Environment(\.imageURLSizing) private var imageURLSizing
+    @State private var saver = ProfilePhotoSaver()
     @State private var confirmDelete = false
-    @State private var saved = false
+    @State private var zoomed = false
+    @State private var chromeVisible = true
+    @State private var dragOffset: CGFloat = 0
+    @State private var dragging = false
+
+    init(account: AccountSettingsModel, avatarSize: CGFloat = 96, onChange: @escaping () -> Void) {
+        self.account = account
+        self.avatarSize = avatarSize
+        self.onChange = onChange
+    }
+
+    private var fullURL: URL? { account.profile?.fullPhotoURL }
+
+    /// Маленькая картинка шапки: тот же адрес и размер декодирования, что у `ProfileAvatar`.
+    private var placeholder: UIImage? {
+        let small = ImageURLRequests.url(
+            account.profile?.avatarURL, shape: .square, pointSize: avatarSize, scale: displayScale,
+            fullScreen: false, sizing: imageURLSizing
+        )
+        guard let small else { return nil }
+        return ImagePipeline.shared.cached(small, maxPixel: Int(avatarSize * 3))?.image
+    }
 
     var body: some View {
-        NavigationStack {
+        GeometryReader { geo in
             ZStack {
-                Color.black.ignoresSafeArea()
-                if let image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .accessibilityLabel("Фото профиля")
-                } else {
-                    ProgressView().tint(.white)
-                }
-            }
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Закрыть") { dismiss() }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        if let image {
-                            Button {
-                                UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-                                saved = true
-                            } label: {
-                                Label("Сохранить в Фото", systemImage: "square.and.arrow.down")
-                            }
-                            let shared = Image(uiImage: image)
-                            ShareLink(item: shared, preview: SharePreview("Фото профиля", image: shared)) {
-                                Label("Поделиться", systemImage: "square.and.arrow.up")
-                            }
-                        }
-                        Button {
-                            dismiss()
-                            onChange()
-                        } label: {
-                            Label("Изменить фото", systemImage: "photo.badge.plus")
-                        }
-                        Button(role: .destructive) {
-                            confirmDelete = true
-                        } label: {
-                            Label("Удалить фото", systemImage: "trash")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
+                Color.black
+                    .opacity(MediaDismissRule.backgroundOpacity(offset: dragOffset, height: geo.size.height))
+                    .ignoresSafeArea()
+                PhotoPage(url: fullURL, placeholder: placeholder, turns: 0, onTap: {
+                    withAnimation(.easeInOut(duration: 0.2)) { chromeVisible.toggle() }
+                }) { zoomed = $0 }
+                .id(fullURL)
+                .offset(y: dragOffset)
+                .ignoresSafeArea()
+                .accessibilityLabel("Фото профиля")
+                if chromeVisible && dragOffset == 0 {
+                    VStack {
+                        header
+                        Spacer()
                     }
-                    .accessibilityLabel("Действия с фото")
+                    .transition(.opacity)
                 }
             }
-            .confirmationDialog("Удалить фото профиля?", isPresented: $confirmDelete, titleVisibility: .visible) {
-                Button("Удалить фото", role: .destructive) {
-                    Task {
-                        await account.removePhoto()
-                        if !account.hasPhoto { dismiss() }
-                    }
-                }
-                Button("Отмена", role: .cancel) {}
-            }
-            .alert("Фото сохранено", isPresented: $saved) {
-                Button("OK", role: .cancel) {}
-            }
+            .simultaneousGesture(dismissDrag(height: geo.size.height))
         }
+        .overlay(alignment: .bottom) { noticeView }
+        .animation(.easeInOut(duration: 0.2), value: saver.notice)
+        .statusBarHidden(!chromeVisible)
+        .presentationBackground(.clear)
         .preferredColorScheme(.dark)
-        .task(id: account.profile?.avatarURL) {
-            guard let url = account.profile?.avatarURL else { return }
-            image = await ImagePipeline.shared.image(for: url)?.image
+        .profilePhotoExport(saver)
+        .confirmationDialog("Удалить фото профиля?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Удалить фото", role: .destructive) {
+                Task {
+                    await account.removePhoto()
+                    if !account.hasPhoto { dismiss() }
+                }
+            }
+            Button("Отмена", role: .cancel) {}
         }
+    }
+
+    /// Слева «Закрыть», справа одна стеклянная капсула: «Поделиться» и «Ещё».
+    private var header: some View {
+        HStack(spacing: 12) {
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.app(.body, .semibold))
+                    .foregroundStyle(.white)
+                    .maxlyGlassCircle()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Закрыть")
+            Spacer(minLength: 8)
+            HStack(spacing: 0) {
+                Button {
+                    saver.save(fullURL, title: account.profile?.displayName ?? "", to: .share)
+                } label: {
+                    ZStack {
+                        if saver.isSaving {
+                            ProgressView().tint(.white)
+                        } else {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                    }
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(saver.isSaving || fullURL == nil)
+                .accessibilityLabel("Поделиться")
+                moreMenu
+            }
+            .font(.app(.body, .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 2)
+            .maxlyGlassCapsule(interactive: false)
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
+    }
+
+    private var moreMenu: some View {
+        Menu {
+            if fullURL != nil {
+                Button("Сохранить в Фото", systemImage: "square.and.arrow.down") {
+                    saver.save(fullURL, title: account.profile?.displayName ?? "", to: .photos)
+                }
+                Button("Сохранить в Файлы", systemImage: "folder") {
+                    saver.save(fullURL, title: account.profile?.displayName ?? "", to: .files)
+                }
+            }
+            Button("Изменить фото", systemImage: "photo.badge.plus") {
+                dismiss()
+                onChange()
+            }
+            Button("Удалить фото", systemImage: "trash", role: .destructive) {
+                confirmDelete = true
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .disabled(saver.isSaving)
+        .accessibilityLabel("Действия с фото")
+    }
+
+    @ViewBuilder
+    private var noticeView: some View {
+        if let notice = saver.notice {
+            Text(notice)
+                .font(.app(.subheadline, .medium))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.black.opacity(0.6), in: Capsule())
+                .padding(.bottom, 40)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .allowsHitTesting(false)
+        }
+    }
+
+    /// Смахивание вверх или вниз: фото идёт за пальцем, далеко или броском — закрыть.
+    private func dismissDrag(height: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 16)
+            .onChanged { value in
+                guard !zoomed else { return }
+                if !dragging {
+                    guard abs(value.translation.height) > abs(value.translation.width) else { return }
+                    dragging = true
+                }
+                dragOffset = value.translation.height
+            }
+            .onEnded { value in
+                defer { dragging = false }
+                guard dragging else { return }
+                if MediaDismissRule.shouldClose(offset: dragOffset, velocity: value.velocity.height, height: height) {
+                    dismiss()
+                } else {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { dragOffset = 0 }
+                }
+            }
     }
 }

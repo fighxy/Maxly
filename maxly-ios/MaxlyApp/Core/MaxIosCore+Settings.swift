@@ -401,7 +401,9 @@ extension MaxIosCore {
             phone: value.phone,
             avatarURL: value.avatarUrl.isEmpty ? nil : URL(string: value.avatarUrl),
             hasPhoto: !value.photoId.isEmpty || !value.avatarUrl.isEmpty,
-            link: value.link.isEmpty ? nil : URL(string: value.link)
+            link: value.link.isEmpty ? nil : URL(string: value.link),
+            // Своё фото целиком (`baseRawUrl`) ядро в `IosMyProfile` пока не отдаёт.
+            photoURL: nil
         ))
     }
 

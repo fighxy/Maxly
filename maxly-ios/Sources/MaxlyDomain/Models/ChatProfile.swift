@@ -36,6 +36,9 @@ public struct ChatProfile: Hashable, Sendable, Codable {
     public let peerId: String?
     public var title: String
     public var avatarURL: URL?
+    /// Снимок целиком, без обрезки под кружок (`baseRawUrl`, у группы и канала
+    /// `baseRawIconUrl`). `nil`, пока ядро его не отдаёт: тогда открывается оригинал аватара.
+    public var photoURL: URL?
     public var description: String?
     /// Короткое имя (`helper_bot`) или полная ссылка, как прислал сервер.
     public var link: String?
@@ -62,6 +65,7 @@ public struct ChatProfile: Hashable, Sendable, Codable {
         peerId: String? = nil,
         title: String,
         avatarURL: URL? = nil,
+        photoURL: URL? = nil,
         description: String? = nil,
         link: String? = nil,
         phone: String? = nil,
@@ -78,6 +82,7 @@ public struct ChatProfile: Hashable, Sendable, Codable {
         self.peerId = peerId
         self.title = title
         self.avatarURL = avatarURL
+        self.photoURL = photoURL
         self.description = description
         self.link = link
         self.phone = phone
@@ -89,6 +94,9 @@ public struct ChatProfile: Hashable, Sendable, Codable {
         self.webApp = hasWebApp ? true : nil
         self.commentsEnabled = commentsEnabled
     }
+
+    /// Что открыть в просмотре фото: снимок целиком или оригинал аватара (`ProfilePhotoURL`).
+    public var fullPhotoURL: URL? { ProfilePhotoURL.full(avatar: avatarURL, raw: photoURL) }
 
     /// Публичная ссылка Max: полная как есть, короткое имя — `https://max.ru/<имя>`.
     public var linkURL: URL? {

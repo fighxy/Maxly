@@ -254,6 +254,8 @@ public struct CoreProfile: Sendable, Equatable {
     public var peerId: String
     public var title: String
     public var avatarURL: String
+    /// Снимок целиком без обрезки (`baseRawUrl` / `baseRawIconUrl`); пусто, если ядро не дало.
+    public var photoURL: String
     public var description: String
     public var link: String
     /// Цифры без `+`.
@@ -275,9 +277,11 @@ public struct CoreProfile: Sendable, Equatable {
         kind: String, chatId: String, peerId: String = "", title: String = "", avatarURL: String = "",
         description: String = "", link: String = "", phone: String = "", participants: Int = 0,
         lastSeenMs: Int64 = 0, online: Bool = false, official: Bool = false, isPublic: Bool = false,
-        commands: [Command] = [], hasWebApp: Bool = false, commentsEnabled: Bool? = nil, presence: Int = -1
+        commands: [Command] = [], hasWebApp: Bool = false, commentsEnabled: Bool? = nil, presence: Int = -1,
+        photoURL: String = ""
     ) {
         self.kind = kind
+        self.photoURL = photoURL
         self.chatId = chatId
         self.peerId = peerId
         self.title = title

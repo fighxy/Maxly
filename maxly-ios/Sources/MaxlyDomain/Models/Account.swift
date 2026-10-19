@@ -10,6 +10,8 @@ public struct MyProfile: Sendable, Hashable {
     /// Цифры без `+`. Пусто, если номер неизвестен.
     public var phone: String
     public var avatarURL: URL?
+    /// Своё фото целиком, без обрезки (`baseRawUrl`). `nil`, пока ядро его не отдаёт.
+    public var photoURL: URL?
     /// Есть ли фото на сервере: только его можно удалить.
     public var hasPhoto: Bool
     /// Ссылка на профиль для QR и «Поделиться». `nil`, если сервер её не дал.
@@ -17,7 +19,7 @@ public struct MyProfile: Sendable, Hashable {
 
     public init(
         id: String, firstName: String, lastName: String = "", about: String = "", phone: String = "",
-        avatarURL: URL? = nil, hasPhoto: Bool = false, link: URL? = nil
+        avatarURL: URL? = nil, hasPhoto: Bool = false, link: URL? = nil, photoURL: URL? = nil
     ) {
         self.id = id
         self.firstName = firstName
@@ -25,9 +27,13 @@ public struct MyProfile: Sendable, Hashable {
         self.about = about
         self.phone = phone
         self.avatarURL = avatarURL
+        self.photoURL = photoURL
         self.hasPhoto = hasPhoto
         self.link = link
     }
+
+    /// Что открыть в просмотре своего фото: снимок целиком или оригинал аватара.
+    public var fullPhotoURL: URL? { ProfilePhotoURL.full(avatar: avatarURL, raw: photoURL) }
 
     /// Имя и фамилия через пробел; «Без имени», если обоих нет.
     public var displayName: String {

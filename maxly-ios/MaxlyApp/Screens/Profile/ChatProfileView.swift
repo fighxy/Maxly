@@ -66,6 +66,8 @@ struct ChatProfileView: View {
 
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.displayScale) private var displayScale
+    @Environment(\.imageURLSizing) private var imageURLSizing
     /// Истории собеседника: кольцо на аватаре, касание открывает их.
     @Environment(StoriesViewModel.self) private var stories: StoriesViewModel?
     @State private var copied: String?
@@ -74,6 +76,9 @@ struct ChatProfileView: View {
     /// Сдвиг шапки: больше нуля — профиль тянут вниз, меньше — прокрутили.
     @State private var offset: CGFloat = 0
     @State private var avatarViewer: MediaViewerRequest?
+    /// Где стоит аватар шапки: просмотр фото вылетает из него и возвращается в него.
+    @State private var avatarFrame: CGRect = .zero
+    @State private var photoSaver = ProfilePhotoSaver()
     /// Подтверждение очистки или удаления.
     @State private var erase: EraseAsk?
     /// Подтверждение выхода из группы или отписки от канала.
@@ -236,7 +241,14 @@ struct ChatProfileView: View {
         .animation(.snappy, value: context?.chat.notice)
         .modifier(ProfileChatCovers(chat: context?.chat, onShowMessage: context?.onShowMessageId))
         .mediaViewerCover(item: $avatarViewer) { request in
-            MediaViewer(request: request) { avatarViewer = nil }
+            let fullURL = request.slides.first?.stillURL
+            MediaViewer(
+                request: request,
+                notice: photoSaver.notice,
+                isSaving: photoSaver.isSaving,
+                onSave: { _, target in photoSaver.save(fullURL, title: viewModel.title, to: target) }
+            ) { avatarViewer = nil }
+            .profilePhotoExport(photoSaver)
         }
     }
 
@@ -302,19 +314,41 @@ struct ChatProfileView: View {
                 stories?.open(owner, kind: storyKind)
                 return
             }
-            guard let url = viewModel.shown.avatarURL else { return }
-            avatarViewer = MediaViewerRequest(
-                id: "avatar",
-                slides: [MediaSlide(id: "avatar", stillURL: url, playURL: nil, isVideo: false)]
-            )
+            openPhoto()
         } label: {
             ChatHeaderAvatar(viewModel: viewModel, size: Self.avatarSize, isOnline: viewModel.isOnline || live.isOnline)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { avatarFrame = $0 }
+                .opacity(MediaSourceRegistry.shared.hiddenId == photoTileId ? 0 : 1)
+                .onDisappear { MediaSourceRegistry.shared.remove(photoTileId) }
         }
         .buttonStyle(.plain)
-        .disabled(viewModel.shown.avatarURL == nil && !hasStories)
+        .disabled(viewModel.shown.fullPhotoURL == nil && !hasStories)
         .scaleEffect(scale, anchor: pull > 0 ? .top : .bottom)
         .opacity(reduceMotion ? 1 : Double(max(0, min(1, 1 + (scroll + 40) / 80))))
         .accessibilityLabel("Фото профиля")
+    }
+
+    private var photoTileId: String { "profile-photo-\(viewModel.chatId)" }
+
+    /// Фото на весь экран: сразу видна маленькая картинка из кэша (с ней же кадр вылетает из
+    /// аватара), потом её сменяет оригинал — снимок целиком, если ядро его дало.
+    private func openPhoto() {
+        guard let full = viewModel.shown.fullPhotoURL else { return }
+        let id = photoTileId
+        // Тот же адрес и размер декодирования, что у аватара шапки (`ChatAvatarView`):
+        // картинка берётся из кэша без новой загрузки.
+        let small = ImageURLRequests.url(
+            viewModel.shown.avatarURL, shape: .square, pointSize: Self.avatarSize, scale: displayScale,
+            fullScreen: false, sizing: imageURLSizing
+        )
+        if avatarFrame.width > 0 {
+            MediaSourceRegistry.shared.update(id, .init(frame: avatarFrame, url: small, maxPixel: Int(Self.avatarSize * 3), cornerRadius: avatarFrame.width / 2))
+        }
+        avatarViewer = MediaViewerRequest(
+            id: id,
+            slides: [MediaSlide(id: id, stillURL: full, playURL: nil, isVideo: false)],
+            author: viewModel.title
+        )
     }
 
     /// Владелец колец: человек, бот, группа или канал.
