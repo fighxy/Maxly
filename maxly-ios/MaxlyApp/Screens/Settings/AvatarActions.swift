@@ -113,7 +113,9 @@ struct AvatarViewer: View {
         self.onChange = onChange
     }
 
-    private var fullURL: URL? { account.profile?.fullPhotoURL }
+    /// По порядку: оригинал, потом размеры сервера.
+    private var candidates: [URL] { account.profile?.photoCandidates ?? [] }
+    private var fullURL: URL? { candidates.first }
 
     /// Маленькая картинка шапки: тот же адрес и размер декодирования, что у `ProfileAvatar`.
     private var placeholder: UIImage? {
@@ -131,7 +133,7 @@ struct AvatarViewer: View {
                 Color.black
                     .opacity(MediaDismissRule.backgroundOpacity(offset: dragOffset, height: geo.size.height))
                     .ignoresSafeArea()
-                PhotoPage(url: fullURL, placeholder: placeholder, turns: 0, onTap: {
+                PhotoPage(url: fullURL, fallbacks: Array(candidates.dropFirst()), placeholder: placeholder, turns: 0, onTap: {
                     withAnimation(.easeInOut(duration: 0.2)) { chromeVisible.toggle() }
                 }) { zoomed = $0 }
                 .id(fullURL)
@@ -179,7 +181,7 @@ struct AvatarViewer: View {
             Spacer(minLength: 8)
             HStack(spacing: 0) {
                 Button {
-                    saver.save(fullURL, title: account.profile?.displayName ?? "", to: .share)
+                    saver.save(candidates, title: account.profile?.displayName ?? "", to: .share)
                 } label: {
                     ZStack {
                         if saver.isSaving {
@@ -209,10 +211,10 @@ struct AvatarViewer: View {
         Menu {
             if fullURL != nil {
                 Button("Сохранить в Фото", systemImage: "square.and.arrow.down") {
-                    saver.save(fullURL, title: account.profile?.displayName ?? "", to: .photos)
+                    saver.save(candidates, title: account.profile?.displayName ?? "", to: .photos)
                 }
                 Button("Сохранить в Файлы", systemImage: "folder") {
-                    saver.save(fullURL, title: account.profile?.displayName ?? "", to: .files)
+                    saver.save(candidates, title: account.profile?.displayName ?? "", to: .files)
                 }
             }
             Button("Изменить фото", systemImage: "photo.badge.plus") {

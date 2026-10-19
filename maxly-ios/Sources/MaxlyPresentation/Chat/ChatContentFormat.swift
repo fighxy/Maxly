@@ -137,12 +137,15 @@ public struct MediaSlide: Identifiable, Hashable, Sendable {
     public var stillURL: URL?
     public var playURL: URL?
     public var isVideo: Bool
+    /// Фото: что пробовать по порядку, если `stillURL` не загрузился (размеры фото профиля).
+    public var fallbackURLs: [URL]
 
-    public init(id: String, stillURL: URL?, playURL: URL?, isVideo: Bool) {
+    public init(id: String, stillURL: URL?, playURL: URL?, isVideo: Bool, fallbackURLs: [URL] = []) {
         self.id = id
         self.stillURL = stillURL
         self.playURL = playURL
         self.isVideo = isVideo
+        self.fallbackURLs = fallbackURLs
     }
 }
 

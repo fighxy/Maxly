@@ -4,7 +4,8 @@ import UniformTypeIdentifiers
 import MaxlyDomain
 import MaxlyPresentation
 
-/// Сохранить фото профиля или поделиться им: оригинал качается во временный файл, потом
+/// Сохранить фото профиля или поделиться им: оригинал (не вышло — самый большой размер
+/// сервера) качается во временный файл, потом
 /// уходит в «Фото» (только добавление, `PhotoLibrarySaver`), в «Файлы» или в окно «Поделиться».
 @MainActor
 @Observable
@@ -22,12 +23,18 @@ final class ProfilePhotoSaver {
     var export: Export?
     private var noticeTask: Task<Void, Never>?
 
-    func save(_ url: URL?, title: String, to target: SaveTarget) {
-        guard let url, !isSaving else { return }
+    /// `candidates` — по порядку: оригинал, потом размеры сервера (`photoCandidates`).
+    func save(_ candidates: [URL], title: String, to target: SaveTarget) {
+        guard !candidates.isEmpty, !isSaving else { return }
         isSaving = true
         Task {
             defer { isSaving = false }
-            guard let file = await Self.download(url, title: title) else {
+            var saved: URL?
+            for url in candidates {
+                saved = await Self.download(url, title: title)
+                if saved != nil { break }
+            }
+            guard let file = saved else {
                 show("Не удалось загрузить фото")
                 return
             }

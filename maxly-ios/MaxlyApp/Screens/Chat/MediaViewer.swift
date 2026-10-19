@@ -223,6 +223,7 @@ struct MediaViewer: View {
         } else {
             PhotoPage(
                 url: slide.stillURL,
+                fallbacks: slide.fallbackURLs,
                 placeholder: Self.tile(slide.id)?.image,
                 turns: turns[slide.id] ?? 0,
                 onTap: { chrome.toggle() }
@@ -559,6 +560,8 @@ private struct CaptionView: View {
 /// же прилетел кадр), без неё — кольцо. Им же показывает фото своего профиля `AvatarViewer`.
 struct PhotoPage: View {
     let url: URL?
+    /// Что пробовать по порядку, если `url` не загрузился.
+    var fallbacks: [URL] = []
     var placeholder: UIImage?
     let turns: Int
     let onTap: () -> Void
@@ -567,7 +570,7 @@ struct PhotoPage: View {
 
     var body: some View {
         ZStack {
-            ZoomableImage(url: url, placeholder: placeholder, turns: turns, onTap: onTap, onLoaded: { loaded = $0 }, onZoom: onZoom)
+            ZoomableImage(url: url, fallbacks: fallbacks, placeholder: placeholder, turns: turns, onTap: onTap, onLoaded: { loaded = $0 }, onZoom: onZoom)
             if !loaded && placeholder == nil {
                 ProgressView()
                     .tint(.white)
@@ -593,6 +596,7 @@ private final class PhotoScrollView: UIScrollView {
 
 private struct ZoomableImage: UIViewRepresentable {
     let url: URL?
+    var fallbacks: [URL] = []
     /// Видна, пока не пришёл оригинал.
     var placeholder: UIImage?
     /// Поворот четвертями по часовой: картинка перерисовывается повёрнутой и заново вписывается.
@@ -694,10 +698,17 @@ private struct ZoomableImage: UIViewRepresentable {
                 show(UIImage(contentsOfFile: url.path))
                 return
             }
+            let candidates = [url] + parent.fallbacks.filter { $0 != url }
             task = Task { [weak self] in
+                // Первый адрес, что отдал картинку; размеры сервера идут от большего к меньшему.
                 let image: UIImage? = await Task.detached(priority: .userInitiated) {
-                    guard let (data, _) = try? await URLSession.shared.data(from: url) else { return nil }
-                    return UIImage(data: data)
+                    for candidate in candidates {
+                        if Task.isCancelled { return nil }
+                        guard let (data, response) = try? await URLSession.shared.data(from: candidate) else { continue }
+                        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { continue }
+                        if let image = UIImage(data: data) { return image }
+                    }
+                    return nil
                 }.value
                 guard !Task.isCancelled, let self else { return }
                 // Оригинал не скачался — остаётся плитка, если она есть.

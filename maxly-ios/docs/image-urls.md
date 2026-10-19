@@ -19,14 +19,15 @@
 
 Без `fn` адрес отдаёт оригинал.
 
-Просмотр на весь экран открывает `ChatProfile.fullPhotoURL` (для своего профиля — `MyProfile.fullPhotoURL`). Адрес выбирает `ProfilePhotoURL.full`: снимок целиком, если он есть, иначе оригинал квадрата. Запрос `fn` из адреса убирается. Маленький аватар из кэша не растягивается: он виден только до прихода оригинала.
+Ядро передаёт в `IosProfile` (и в `IosChat`, `IosContact`) два поля. `avatarUrl` остаётся миниатюрой.
 
-Пока мост ядра не передаёт снимок целиком: `IosProfile` и `IosMyProfile` содержат только `avatarUrl`, то есть `baseUrl` или `baseIconUrl`. Поле `photoURL` поэтому пустое (`MaxIosCore.profile` и `profileResult`), и просмотр показывает оригинал квадрата. Когда ядро добавит поле, достаточно передать его в эти два места.
+- `avatarFullUrl` — оригинал: `baseRawUrl`, а без него `baseUrl`, с удалённым `fn`.
+- `avatarViewerUrls` — размеры сервера от большего к меньшему, начиная с `w_1440`.
 
-Нужно от ядра:
+У диалога в обоих полях фото собеседника. На iOS они попадают в `ChatProfile.photoURL` и `photoViewerURLs`. `IosMyProfile` этих полей не содержит, поэтому для своего профиля приложение строит их из `avatarUrl` через `IosImageSize.originalUrl` и `viewerUrls`.
 
-- `MaxUser.baseRawUrl` из `raw["baseRawUrl"]`.
-- В `IosProfile` строка `avatarRawUrl`: у человека и бота `user.baseRawUrl`, у группы и канала `chat.raw["baseRawIconUrl"]`. Пустая строка, если снимка нет.
-- В `IosMyProfile` строка `avatarRawUrl` из `user.baseRawUrl`.
+Просмотр и сохранение идут по `photoCandidates`: сначала оригинал, затем при ошибке загрузки следующий размер. Официальный клиент всегда запрашивает размер, поэтому список размеров служит запасным вариантом, если адрес без `fn` не отдаётся. Маленький аватар из кэша не растягивается: он виден только до прихода первой загруженной картинки.
 
-Галерея прошлых фото (код 39 `CONTACT_PHOTOS`, `{contactId, count, from}` → `{ids, urls, total}`) пока не подключена.
+Если подписанный адрес истёк (`expires`, `IosImageSize.expired`), профиль перед открытием перечитывается, и просмотр получает новые адреса.
+
+Пока не подключена галерея прошлых фото: `MaxIosClient.loadContactPhotos(userId, from)`, код 39 `CONTACT_PHOTOS`.

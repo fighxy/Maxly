@@ -241,12 +241,12 @@ struct ChatProfileView: View {
         .animation(.snappy, value: context?.chat.notice)
         .modifier(ProfileChatCovers(chat: context?.chat, onShowMessage: context?.onShowMessageId))
         .mediaViewerCover(item: $avatarViewer) { request in
-            let fullURL = request.slides.first?.stillURL
+            let candidates = request.slides.first.map { slide in [slide.stillURL].compactMap { $0 } + slide.fallbackURLs } ?? []
             MediaViewer(
                 request: request,
                 notice: photoSaver.notice,
                 isSaving: photoSaver.isSaving,
-                onSave: { _, target in photoSaver.save(fullURL, title: viewModel.title, to: target) }
+                onSave: { _, target in photoSaver.save(candidates, title: viewModel.title, to: target) }
             ) { avatarViewer = nil }
             .profilePhotoExport(photoSaver)
         }
@@ -309,22 +309,37 @@ struct ChatProfileView: View {
         let scale = reduceMotion ? 1 : (pull > 0 ? 1 + min(pull, 160) / 320 : max(0.55, 1 + scroll / 220))
         let owner = storyOwner
         let hasStories = stories?.ring(of: owner, kind: storyKind) != nil
-        return Button {
+        let canOpen = viewModel.shown.fullPhotoURL != nil
+        // С кольцом историй касание открывает истории, долгое нажатие — фото.
+        let tap = {
             if hasStories, let owner {
                 stories?.open(owner, kind: storyKind)
-                return
+            } else {
+                openPhoto(inRing: false)
             }
-            openPhoto()
-        } label: {
-            ChatHeaderAvatar(viewModel: viewModel, size: Self.avatarSize, isOnline: viewModel.isOnline || live.isOnline)
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { avatarFrame = $0 }
-                .opacity(MediaSourceRegistry.shared.hiddenId == photoTileId ? 0 : 1)
-                .onDisappear { MediaSourceRegistry.shared.remove(photoTileId) }
         }
-        .buttonStyle(.plain)
-        .disabled(viewModel.shown.fullPhotoURL == nil && !hasStories)
-        .scaleEffect(scale, anchor: pull > 0 ? .top : .bottom)
-        .opacity(reduceMotion ? 1 : Double(max(0, min(1, 1 + (scroll + 40) / 80))))
+        return ChatHeaderAvatar(viewModel: viewModel, size: Self.avatarSize, isOnline: viewModel.isOnline || live.isOnline)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { avatarFrame = $0 }
+            .opacity(MediaSourceRegistry.shared.hiddenId == photoTileId ? 0 : 1)
+            .onDisappear { MediaSourceRegistry.shared.remove(photoTileId) }
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Circle())
+            .onTapGesture(perform: tap)
+            .onLongPressGesture(minimumDuration: 0.4) {
+                if hasStories && canOpen { openPhoto(inRing: true) }
+            }
+            .allowsHitTesting(canOpen || hasStories)
+            .scaleEffect(scale, anchor: pull > 0 ? .top : .bottom)
+            .opacity(reduceMotion ? 1 : Double(max(0, min(1, 1 + (scroll + 40) / 80))))
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint(hasStories ? "Открывает истории" : "")
+            .accessibilityAction(.default, tap)
+            .accessibilityActions {
+                if hasStories && canOpen {
+                    Button("Открыть фото") { openPhoto(inRing: true) }
+                }
+            }
         .accessibilityLabel("Фото профиля")
     }
 
@@ -332,21 +347,39 @@ struct ChatProfileView: View {
 
     /// Фото на весь экран: сразу видна маленькая картинка из кэша (с ней же кадр вылетает из
     /// аватара), потом её сменяет оригинал — снимок целиком, если ядро его дало.
-    private func openPhoto() {
+    /// `inRing` — фото внутри кольца историй: оно меньше аватара (как в `StoryRingAvatar`).
+    private func openPhoto(inRing: Bool) {
         guard let full = viewModel.shown.fullPhotoURL else { return }
+        // Подписанный адрес истёк: карточка перечитывается, новые адреса — у неё.
+        if imageURLSizing.isExpired(full.absoluteString, nowMillis: Int64(Date().timeIntervalSince1970 * 1000)) {
+            Task {
+                await viewModel.load()
+                showPhoto(inRing: inRing)
+            }
+            return
+        }
+        showPhoto(inRing: inRing)
+    }
+
+    private func showPhoto(inRing: Bool) {
+        let candidates = viewModel.shown.photoCandidates
+        guard let full = candidates.first else { return }
         let id = photoTileId
+        let size = Self.avatarSize
+        let photoSize = inRing ? size - min(max(size * 0.045, 2), 3.5) * 4 : size
         // Тот же адрес и размер декодирования, что у аватара шапки (`ChatAvatarView`):
         // картинка берётся из кэша без новой загрузки.
         let small = ImageURLRequests.url(
-            viewModel.shown.avatarURL, shape: .square, pointSize: Self.avatarSize, scale: displayScale,
+            viewModel.shown.avatarURL, shape: .square, pointSize: photoSize, scale: displayScale,
             fullScreen: false, sizing: imageURLSizing
         )
         if avatarFrame.width > 0 {
-            MediaSourceRegistry.shared.update(id, .init(frame: avatarFrame, url: small, maxPixel: Int(Self.avatarSize * 3), cornerRadius: avatarFrame.width / 2))
+            let frame = avatarFrame.insetBy(dx: (size - photoSize) / 2, dy: (size - photoSize) / 2)
+            MediaSourceRegistry.shared.update(id, .init(frame: frame, url: small, maxPixel: Int(photoSize * 3), cornerRadius: frame.width / 2))
         }
         avatarViewer = MediaViewerRequest(
             id: id,
-            slides: [MediaSlide(id: id, stillURL: full, playURL: nil, isVideo: false)],
+            slides: [MediaSlide(id: id, stillURL: full, playURL: nil, isVideo: false, fallbackURLs: Array(candidates.dropFirst()))],
             author: viewModel.title
         )
     }

@@ -402,8 +402,10 @@ extension MaxIosCore {
             avatarURL: value.avatarUrl.isEmpty ? nil : URL(string: value.avatarUrl),
             hasPhoto: !value.photoId.isEmpty || !value.avatarUrl.isEmpty,
             link: value.link.isEmpty ? nil : URL(string: value.link),
-            // Своё фото целиком (`baseRawUrl`) ядро в `IosMyProfile` пока не отдаёт.
-            photoURL: nil
+            // `IosMyProfile` даёт только `avatarUrl` (`baseUrl`): оригинал и размеры для просмотра
+            // строит ядро из него.
+            photoURL: value.avatarUrl.isEmpty ? nil : URL(string: IosImageSize.shared.originalUrl(rawUrl: "", baseUrl: value.avatarUrl)),
+            photoViewerURLs: IosImageSize.shared.viewerUrls(rawUrl: "", baseUrl: value.avatarUrl).compactMap(URL.init(string:))
         ))
     }
 

@@ -10,8 +10,10 @@ public struct MyProfile: Sendable, Hashable {
     /// Цифры без `+`. Пусто, если номер неизвестен.
     public var phone: String
     public var avatarURL: URL?
-    /// Своё фото целиком, без обрезки (`baseRawUrl`). `nil`, пока ядро его не отдаёт.
+    /// Оригинал своего фото без `fn`. `nil` — открывается аватар без `fn`.
     public var photoURL: URL?
+    /// Размеры сервера, если оригинал не загрузился, от большего к меньшему.
+    public var photoViewerURLs: [URL]
     /// Есть ли фото на сервере: только его можно удалить.
     public var hasPhoto: Bool
     /// Ссылка на профиль для QR и «Поделиться». `nil`, если сервер её не дал.
@@ -19,7 +21,8 @@ public struct MyProfile: Sendable, Hashable {
 
     public init(
         id: String, firstName: String, lastName: String = "", about: String = "", phone: String = "",
-        avatarURL: URL? = nil, hasPhoto: Bool = false, link: URL? = nil, photoURL: URL? = nil
+        avatarURL: URL? = nil, hasPhoto: Bool = false, link: URL? = nil, photoURL: URL? = nil,
+        photoViewerURLs: [URL] = []
     ) {
         self.id = id
         self.firstName = firstName
@@ -28,12 +31,18 @@ public struct MyProfile: Sendable, Hashable {
         self.phone = phone
         self.avatarURL = avatarURL
         self.photoURL = photoURL
+        self.photoViewerURLs = photoViewerURLs
         self.hasPhoto = hasPhoto
         self.link = link
     }
 
     /// Что открыть в просмотре своего фото: снимок целиком или оригинал аватара.
     public var fullPhotoURL: URL? { ProfilePhotoURL.full(avatar: avatarURL, raw: photoURL) }
+
+    /// Что пробовать загрузить по порядку: оригинал, потом размеры сервера.
+    public var photoCandidates: [URL] {
+        ProfilePhotoURL.candidates(avatar: avatarURL, raw: photoURL, viewer: photoViewerURLs)
+    }
 
     /// Имя и фамилия через пробел; «Без имени», если обоих нет.
     public var displayName: String {

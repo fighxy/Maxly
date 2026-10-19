@@ -36,9 +36,12 @@ public struct ChatProfile: Hashable, Sendable, Codable {
     public let peerId: String?
     public var title: String
     public var avatarURL: URL?
-    /// Снимок целиком, без обрезки под кружок (`baseRawUrl`, у группы и канала
-    /// `baseRawIconUrl`). `nil`, пока ядро его не отдаёт: тогда открывается оригинал аватара.
+    /// Оригинал фото для просмотра (`avatarFullUrl` ядра: снимок целиком без `fn`).
+    /// `nil` — открывается аватар без `fn`.
     public var photoURL: URL?
+    /// Размеры сервера на случай, если оригинал не загрузился, от большего к меньшему
+    /// (`avatarViewerUrls`). Необязательное поле: в карточках, сохранённых раньше, его нет.
+    public var photoViewerURLs: [URL]?
     public var description: String?
     /// Короткое имя (`helper_bot`) или полная ссылка, как прислал сервер.
     public var link: String?
@@ -66,6 +69,7 @@ public struct ChatProfile: Hashable, Sendable, Codable {
         title: String,
         avatarURL: URL? = nil,
         photoURL: URL? = nil,
+        photoViewerURLs: [URL] = [],
         description: String? = nil,
         link: String? = nil,
         phone: String? = nil,
@@ -83,6 +87,7 @@ public struct ChatProfile: Hashable, Sendable, Codable {
         self.title = title
         self.avatarURL = avatarURL
         self.photoURL = photoURL
+        self.photoViewerURLs = photoViewerURLs.isEmpty ? nil : photoViewerURLs
         self.description = description
         self.link = link
         self.phone = phone
@@ -97,6 +102,11 @@ public struct ChatProfile: Hashable, Sendable, Codable {
 
     /// Что открыть в просмотре фото: снимок целиком или оригинал аватара (`ProfilePhotoURL`).
     public var fullPhotoURL: URL? { ProfilePhotoURL.full(avatar: avatarURL, raw: photoURL) }
+
+    /// Что пробовать загрузить по порядку: оригинал, потом размеры сервера.
+    public var photoCandidates: [URL] {
+        ProfilePhotoURL.candidates(avatar: avatarURL, raw: photoURL, viewer: photoViewerURLs ?? [])
+    }
 
     /// Публичная ссылка Max: полная как есть, короткое имя — `https://max.ru/<имя>`.
     public var linkURL: URL? {

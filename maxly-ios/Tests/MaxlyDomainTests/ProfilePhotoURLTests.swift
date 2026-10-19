@@ -31,6 +31,16 @@ struct ProfilePhotoURLTests {
         #expect(ProfilePhotoURL.full(avatar: nil, raw: nil) == nil)
     }
 
+    @Test("Порядок загрузки: оригинал, потом размеры сервера, без повторов")
+    func candidates() {
+        let avatar = url("https://i.cdn.test/a?r=1&fn=sqr_96")
+        let big = url("https://i.cdn.test/a?r=1&fn=w_1440")
+        let small = url("https://i.cdn.test/a?r=1&fn=sqr_720")
+        #expect(ProfilePhotoURL.candidates(avatar: avatar, raw: nil, viewer: [big, small, big]) == [url("https://i.cdn.test/a?r=1"), big, small])
+        #expect(ProfilePhotoURL.candidates(avatar: nil, raw: nil, viewer: [big]) == [big])
+        #expect(ProfilePhotoURL.candidates(avatar: nil, raw: nil, viewer: []).isEmpty)
+    }
+
     @Test("Карточка чата открывает снимок целиком, если он есть")
     func chatProfile() {
         var profile = ChatProfile(kind: .channel, chatId: "-5", title: "Новости", avatarURL: url("https://i.cdn.test/c?r=1&fn=sqr_192"))
@@ -38,5 +48,9 @@ struct ProfilePhotoURLTests {
         profile.photoURL = url("https://i.cdn.test/craw?r=1")
         #expect(profile.fullPhotoURL == url("https://i.cdn.test/craw?r=1"))
         #expect(ChatProfile(kind: .group, chatId: "-6", title: "Без фото").fullPhotoURL == nil)
+        let sized = url("https://i.cdn.test/craw?r=1&fn=w_1440")
+        let card = ChatProfile(kind: .user, chatId: "7", title: "Анна", photoURL: url("https://i.cdn.test/craw?r=1"), photoViewerURLs: [sized])
+        #expect(card.photoCandidates == [url("https://i.cdn.test/craw?r=1"), sized])
+        #expect(ChatProfile(kind: .user, chatId: "8", title: "Борис").photoViewerURLs == nil)
     }
 }

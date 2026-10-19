@@ -6,12 +6,21 @@ import Foundation
 /// без обрезки), у группы и канала — `baseIconUrl` и `baseRawIconUrl`. Размер задаёт запрос
 /// `fn` (`sqr_N` у квадрата, `w_N` у снимка), адрес без `fn` — оригинал. Ядро дописывает
 /// размер как `&fn=…`, даже когда `?` в адресе нет.
+///
+/// Оригинал (`avatarFullUrl` ядра) просмотр пробует первым. Если он не загрузился, идут
+/// размеры сервера от большего к меньшему (`avatarViewerUrls`, начиная с `w_1440`).
 public enum ProfilePhotoURL {
-    /// Что открыть на весь экран: снимок целиком, если ядро его дало, иначе оригинал аватара.
-    /// Маленькую картинку из кэша просмотр показывает, пока грузится эта.
+    /// Оригинал: снимок целиком, если ядро его дало, иначе аватар без `fn`.
     public static func full(avatar: URL?, raw: URL?) -> URL? {
         if let raw { return withoutSize(raw) }
         return avatar.map(withoutSize)
+    }
+
+    /// По порядку, что загружать: оригинал, потом размеры сервера. Повторы убраны.
+    /// Маленький аватар сюда не входит: он только виден, пока грузится первый удачный.
+    public static func candidates(avatar: URL?, raw: URL?, viewer: [URL]) -> [URL] {
+        var seen = Set<URL>()
+        return ([full(avatar: avatar, raw: raw)].compactMap { $0 } + viewer).filter { seen.insert($0).inserted }
     }
 
     /// Тот же адрес без запроса `fn`. Остальные параметры (подпись, срок) остаются.

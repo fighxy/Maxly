@@ -144,6 +144,7 @@ enum CoreMapping {
             title: core.title,
             avatarURL: text(core.avatarURL).flatMap(URL.init(string:)),
             photoURL: text(core.photoURL).flatMap(URL.init(string:)),
+            photoViewerURLs: core.photoViewerURLs.compactMap { text($0).flatMap(URL.init(string:)) },
             description: text(core.description),
             link: text(core.link),
             phone: text(core.phone).map { "+" + $0 },

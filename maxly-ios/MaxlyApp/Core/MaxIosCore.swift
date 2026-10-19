@@ -776,9 +776,9 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             hasWebApp: profile.hasWebApp,
             commentsEnabled: profile.comments < 0 ? nil : profile.comments == 1,
             presence: Int(profile.presence),
-            // Снимок целиком (`baseRawUrl`, `baseRawIconUrl`) ядро в `IosProfile` пока не отдаёт:
-            // просмотр открывает оригинал аватара. Когда появится поле — подставить его здесь.
-            photoURL: ""
+            // Оригинал и размеры для просмотра; у диалога — фото собеседника.
+            photoURL: profile.avatarFullUrl,
+            photoViewerURLs: profile.avatarViewerUrls
         )
     }
 
