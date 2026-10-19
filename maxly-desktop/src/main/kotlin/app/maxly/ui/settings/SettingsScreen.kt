@@ -62,6 +62,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.graphics.ColorFilter
 import app.maxly.platform.DesktopActions
 import app.maxly.ui.res.painterResource
@@ -108,6 +109,11 @@ fun SettingsScreen(
     ghost: GhostModeViewModel? = null,
     /** Ключ открытого раздела: строка подсвечивается, пока деталь видна рядом. */
     selected: String? = null,
+    /**
+     * Своё фото на весь экран по щелчку по аватару, правый щелчок — «Открыть фото» и «Сохранить
+     * фото как…»; `null` — щелчок ведёт в «Изменить профиль». Просмотр показывает [OwnAvatarViewerHost].
+     */
+    ownAvatar: app.maxly.presentation.settings.OwnAvatarViewModel? = null,
 ) {
     var confirm by rememberSaveable { mutableStateOf(false) }
     var sheet by rememberSaveable { mutableStateOf<String?>(null) }
@@ -129,7 +135,7 @@ fun SettingsScreen(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())) {
-            ProfileHeader(account, onEditProfile, ghost)
+            ProfileHeader(account, onEditProfile, ghost, ownAvatar)
             if (limitsRow != null) {
                 SettingsItem(Icons.Outlined.Timer, limitsRow.title, subtitle = limitsRow.subtitle) { sheet = "limits" }
             }
@@ -193,10 +199,25 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun ProfileHeader(account: Account?, onEdit: () -> Unit, ghost: GhostModeViewModel?) {
+private fun ProfileHeader(account: Account?, onEdit: () -> Unit, ghost: GhostModeViewModel?, ownAvatar: app.maxly.presentation.settings.OwnAvatarViewModel?) {
     Column(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         val name = account?.displayName.orEmpty()
-        Box(Modifier.clip(CircleShape).clickable(onClick = onEdit)) { AccountAvatar(account, 96.dp) }
+        // Есть фото — щелчок открывает его целиком, как в чужом профиле; без фото — правка профиля.
+        val canOpen = ownAvatar?.canOpen(account) == true
+        val preview = ownAvatarPreview(account, 96.dp)
+        val openPhoto = { ownAvatar?.open(account, preview); Unit }
+        val menu = if (!canOpen) emptyList() else listOf(
+            androidx.compose.foundation.ContextMenuItem("Открыть фото", openPhoto),
+            androidx.compose.foundation.ContextMenuItem("Сохранить фото как…") { saveOwnAvatarAs(ownAvatar!!, account) },
+            androidx.compose.foundation.ContextMenuItem("Изменить профиль", onEdit),
+        )
+        androidx.compose.foundation.ContextMenuArea(items = { menu }, enabled = menu.isNotEmpty()) {
+            Box(
+                Modifier.clip(CircleShape)
+                    .pointerHoverIcon(androidx.compose.ui.input.pointer.PointerIcon.Hand)
+                    .clickable(onClick = if (canOpen) openPhoto else onEdit),
+            ) { AccountAvatar(account, 96.dp) }
+        }
         Spacer(Modifier.height(12.dp))
         Text(name.ifEmpty { " " }, style = MaterialTheme.typography.headlineSmall)
         account?.description?.let {

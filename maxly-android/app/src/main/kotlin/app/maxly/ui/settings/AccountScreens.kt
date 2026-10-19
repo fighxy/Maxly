@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.HourglassEmpty
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.Phone
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.AlertDialog
@@ -95,6 +96,45 @@ fun AccountAvatar(account: Account?, size: androidx.compose.ui.unit.Dp) {
     Avatar(avatar, size)
 }
 
+/** Квадрат шапки [account] размером [size]: тот же адрес, что у [AccountAvatar], просмотр берёт его из кэша. */
+@Composable
+fun ownAvatarPreview(account: Account?, size: androidx.compose.ui.unit.Dp): String? {
+    val url = account?.avatarUrl ?: return null
+    return app.maxly.presentation.media.ImageRequests.square(url, size.value, androidx.compose.ui.platform.LocalDensity.current.density)
+}
+
+/**
+ * Своё фото на весь экран из [model]: оригинал, затем размеры ядра от большего к меньшему,
+ * с «Сохранить в галерею». «Фото сохранено» и ошибки — всплывающей подсказкой поверх просмотра.
+ */
+@Composable
+fun OwnAvatarViewerHost(model: app.maxly.presentation.settings.OwnAvatarViewModel, mediaUserAgent: String) {
+    val context = LocalContext.current
+    val notice by model.notice.collectAsStateWithLifecycle()
+    val mediaState by model.media.state.collectAsStateWithLifecycle()
+    LaunchedEffect(notice) {
+        val text = notice ?: return@LaunchedEffect
+        model.consumeNotice()
+        android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
+    }
+    // До Android 10 запись в общие папки требует разрешения.
+    val storage = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) model.media.saveAvatar() else model.notify("Нет доступа к памяти телефона")
+    }
+    val requestSave: () -> Unit = {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q ||
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) model.media.saveAvatar() else storage.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+    }
+    val viewer = mediaState.viewer?.takeIf(app.maxly.presentation.media.AvatarPhoto::isAvatar) ?: return
+    app.maxly.ui.chat.MediaViewer(
+        viewer, mediaUserAgent, onPage = model.media::showPage, onClose = model.media::closeViewer,
+        onSave = if (model.media.canSaveAvatar()) requestSave else null,
+        saveLabel = "Сохранить в галерею",
+        saving = viewer.messageId in mediaState.saving,
+    )
+}
+
 @Composable
 private fun ErrorDialog(model: AccountSettingsViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
@@ -109,7 +149,14 @@ private fun ErrorDialog(model: AccountSettingsViewModel) {
 /** «Изменить профиль»: фото, имя, фамилия, «О себе». */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfileEditScreen(model: AccountSettingsViewModel, onBack: () -> Unit, onLogout: () -> Unit) {
+fun ProfileEditScreen(
+    model: AccountSettingsViewModel,
+    onBack: () -> Unit,
+    onLogout: () -> Unit,
+    /** Просмотр своего фото: пункт «Открыть фото»; `null` — без него. */
+    ownAvatar: app.maxly.presentation.settings.OwnAvatarViewModel? = null,
+    mediaUserAgent: String = "",
+) {
     val state by model.state.collectAsStateWithLifecycle()
     val account = state.account
     val context = LocalContext.current
@@ -175,7 +222,18 @@ fun ProfileEditScreen(model: AccountSettingsViewModel, onBack: () -> Unit, onLog
                         }
                     }
                 }
+                val photoPreview = ownAvatarPreview(account, 112.dp)
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    if (ownAvatar != null && ownAvatar.canOpen(account)) {
+                        DropdownMenuItem(
+                            text = { Text("Открыть фото") },
+                            leadingIcon = { Icon(Icons.Outlined.Visibility, null) },
+                            onClick = {
+                                menu = false
+                                ownAvatar.open(account, photoPreview)
+                            },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("Выбрать фото") },
                         leadingIcon = { Icon(Icons.Outlined.Image, null) },
@@ -236,6 +294,7 @@ fun ProfileEditScreen(model: AccountSettingsViewModel, onBack: () -> Unit, onLog
     }
     ErrorDialog(model)
     DeleteProfileDialogs(model, deletion, onStep = { deletion = it }, onLogout = onLogout)
+    ownAvatar?.let { OwnAvatarViewerHost(it, mediaUserAgent) }
 }
 
 private enum class DeletionStep { NONE, WARNING, TYPING }

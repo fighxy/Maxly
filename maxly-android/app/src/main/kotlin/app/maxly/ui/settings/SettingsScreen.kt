@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.dp
 import app.maxly.BuildConfig
 import app.maxly.R
 import app.maxly.domain.Account
+import app.maxly.ui.chat.mediaTile
 import app.maxly.domain.AccountLimits
 import app.maxly.presentation.settings.AccountLimitsText
 import app.maxly.presentation.settings.GhostModeViewModel
@@ -106,6 +107,9 @@ fun SettingsScreen(
     accountLimits: AccountLimits? = null,
     /** Свой статус под номером («Показывать мой онлайн»); `null` — без него. */
     ghost: GhostModeViewModel? = null,
+    /** Своё фото на весь экран по касанию аватара; `null` — касание ведёт в «Изменить профиль». */
+    ownAvatar: app.maxly.presentation.settings.OwnAvatarViewModel? = null,
+    mediaUserAgent: String = "",
 ) {
     var confirm by rememberSaveable { mutableStateOf(false) }
     var sheet by rememberSaveable { mutableStateOf<String?>(null) }
@@ -127,7 +131,7 @@ fun SettingsScreen(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())) {
-            ProfileHeader(account, onEditProfile, ghost)
+            ProfileHeader(account, onEditProfile, ghost, ownAvatar)
             if (limitsRow != null) {
                 SettingsItem(Icons.Outlined.Timer, limitsRow.title, subtitle = limitsRow.subtitle) { sheet = "limits" }
             }
@@ -186,13 +190,20 @@ fun SettingsScreen(
             dismissButton = { TextButton(onClick = { confirm = false }) { Text(stringResource(R.string.settings_cancel)) } },
         )
     }
+    ownAvatar?.let { OwnAvatarViewerHost(it, mediaUserAgent) }
 }
 
 @Composable
-private fun ProfileHeader(account: Account?, onEdit: () -> Unit, ghost: GhostModeViewModel?) {
+private fun ProfileHeader(account: Account?, onEdit: () -> Unit, ghost: GhostModeViewModel?, ownAvatar: app.maxly.presentation.settings.OwnAvatarViewModel?) {
     Column(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         val name = account?.displayName.orEmpty()
-        Box(Modifier.clip(CircleShape).clickable(onClick = onEdit)) { AccountAvatar(account, 96.dp) }
+        // Есть фото — касание открывает его целиком, как в чужом профиле; без фото — правка профиля.
+        val photoId = ownAvatar?.photoId(account)
+        val preview = ownAvatarPreview(account, 96.dp)
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val tile = if (photoId != null) Modifier.mediaTile(photoId, preview, with(density) { 96.dp.toPx() } / 2) else Modifier
+        val tap: () -> Unit = if (photoId != null) ({ ownAvatar.open(account, preview) }) else onEdit
+        Box(tile.clip(CircleShape).clickable(onClickLabel = if (photoId != null) "Открыть фото" else "Изменить профиль", onClick = tap)) { AccountAvatar(account, 96.dp) }
         Spacer(Modifier.height(12.dp))
         Text(name.ifEmpty { " " }, style = MaterialTheme.typography.headlineSmall)
         account?.description?.let {

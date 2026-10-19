@@ -687,6 +687,7 @@ private fun SettingsPane(
     expanded: Boolean,
 ) {
     val securityModel = viewModel { SecurityViewModel(container.account) }
+    val ownAvatarModel = viewModel { app.maxly.presentation.settings.OwnAvatarViewModel(container.account, container.messages, container.files, container.mediaSaver) }
     val paneAccount by accountModel.state.collectAsStateWithLifecycle()
     val ghostModel = viewModel { GhostModeViewModel(container.ghostMode, container.ownPresence, foreground = container.windowShown) }
     val limits by container.accountLimits.state.collectAsStateWithLifecycle()
@@ -736,6 +737,7 @@ private fun SettingsPane(
                     accountLimits = limits,
                     ghost = ghostModel,
                     selected = selected,
+                    ownAvatar = ownAvatarModel,
                 )
             }
             if (expanded) VerticalDivider()
@@ -784,7 +786,7 @@ private fun SettingsPane(
         SettingsPage.Keyboard -> KeyboardScreen(container.keyboard, onBack)
         SettingsPage.Devices -> DevicesScreen(container.sessions, onBack)
         SettingsPage.Appearance -> AppearanceScreen(container.appearance, onBack, photos = container.wallpaperPhotos)
-        SettingsPage.Profile -> ProfileEditScreen(accountModel, onBack, onLogout)
+        SettingsPage.Profile -> ProfileEditScreen(accountModel, onBack, onLogout, ownAvatar = ownAvatarModel)
         SettingsPage.Privacy -> PrivacyScreen(accountModel, onBack, onBlocked = { onOpen(SettingsPage.Blocked) }, privateMode = container.privateMode, ghost = ghostModel)
         SettingsPage.Security -> SecurityScreen(securityModel, onBack, onChangeEmail = onOpenRecovery, account = accountModel, onFamilyProtection = onFamilyProtection)
         SettingsPage.MyStories -> app.maxly.ui.stories.MyStoriesScreen(
@@ -820,4 +822,5 @@ private fun SettingsPane(
             }
         }
     }
+    app.maxly.ui.settings.OwnAvatarViewerHost(ownAvatarModel, container.videoSourceUserAgent(), account)
 }

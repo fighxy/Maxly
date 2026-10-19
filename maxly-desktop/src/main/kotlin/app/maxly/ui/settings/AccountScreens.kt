@@ -91,6 +91,46 @@ fun AccountAvatar(account: Account?, size: androidx.compose.ui.unit.Dp) {
     Avatar(avatar, size)
 }
 
+/** Квадрат шапки [account] размером [size]: тот же адрес, что у [AccountAvatar], просмотр берёт его из кэша. */
+@Composable
+fun ownAvatarPreview(account: Account?, size: androidx.compose.ui.unit.Dp): String? {
+    val url = account?.avatarUrl ?: return null
+    return app.maxly.presentation.media.ImageRequests.square(url, size.value, androidx.compose.ui.platform.LocalDensity.current.density)
+}
+
+/** «Сохранить фото как…» своего фото: системный диалог с именем по умолчанию, в полном качестве. */
+fun saveOwnAvatarAs(model: app.maxly.presentation.settings.OwnAvatarViewModel, account: Account?, inViewer: Boolean = false) {
+    app.maxly.platform.DesktopSaveDialog.choose("Сохранить фото профиля", model.fileName(account))?.let { file ->
+        if (inViewer) model.media.saveAvatar(file.absolutePath) else model.saveAs(account, file.absolutePath)
+    }
+}
+
+/**
+ * Своё фото на весь экран из [model]: оригинал, затем размеры ядра от большего к меньшему, с
+ * «Сохранить» и «Сохранить как…». Подсказка «Фото сохранено» и ошибки видны поверх просмотра.
+ */
+@Composable
+fun OwnAvatarViewerHost(model: app.maxly.presentation.settings.OwnAvatarViewModel, mediaUserAgent: String, account: Account?) {
+    val notice by model.notice.collectAsStateWithLifecycle()
+    val mediaState by model.media.state.collectAsStateWithLifecycle()
+    var shown by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(notice) {
+        val text = notice ?: return@LaunchedEffect
+        model.consumeNotice()
+        shown = text
+        kotlinx.coroutines.delay(2_000)
+        shown = null
+    }
+    val viewer = mediaState.viewer?.takeIf(app.maxly.presentation.media.AvatarPhoto::isAvatar) ?: return
+    app.maxly.ui.chat.MediaViewer(
+        viewer, mediaUserAgent, onPage = model.media::showPage, onClose = model.media::closeViewer,
+        onSave = if (model.media.canSaveAvatar()) ({ model.media.saveAvatar() }) else null,
+        onSaveAs = if (model.media.canSaveAvatar(toFile = true)) ({ saveOwnAvatarAs(model, account, inViewer = true) }) else null,
+        saving = viewer.messageId in mediaState.saving,
+        notice = shown,
+    )
+}
+
 @Composable
 private fun ErrorDialog(model: AccountSettingsViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
@@ -105,7 +145,13 @@ private fun ErrorDialog(model: AccountSettingsViewModel) {
 /** «Изменить профиль»: фото, имя, фамилия, «О себе». */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfileEditScreen(model: AccountSettingsViewModel, onBack: () -> Unit, onLogout: () -> Unit) {
+fun ProfileEditScreen(
+    model: AccountSettingsViewModel,
+    onBack: () -> Unit,
+    onLogout: () -> Unit,
+    /** Своё фото: пункты «Открыть фото» и «Сохранить фото как…»; `null` — без них. */
+    ownAvatar: app.maxly.presentation.settings.OwnAvatarViewModel? = null,
+) {
     val state by model.state.collectAsStateWithLifecycle()
     val account = state.account
     val scope = rememberCoroutineScope()
@@ -174,7 +220,26 @@ fun ProfileEditScreen(model: AccountSettingsViewModel, onBack: () -> Unit, onLog
                         }
                     }
                 }
+                val photoPreview = ownAvatarPreview(account, 112.dp)
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    if (ownAvatar != null && ownAvatar.canOpen(account)) {
+                        DropdownMenuItem(
+                            text = { Text("Открыть фото") },
+                            leadingIcon = { Icon(Icons.Outlined.Visibility, null) },
+                            onClick = {
+                                menu = false
+                                ownAvatar.open(account, photoPreview)
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Сохранить фото как…") },
+                            leadingIcon = { Icon(Icons.Outlined.Image, null) },
+                            onClick = {
+                                menu = false
+                                saveOwnAvatarAs(ownAvatar, account)
+                            },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("Выбрать фото") },
                         leadingIcon = { Icon(Icons.Outlined.Image, null) },

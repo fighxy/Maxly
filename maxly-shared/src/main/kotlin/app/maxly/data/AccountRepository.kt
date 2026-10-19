@@ -105,18 +105,7 @@ interface AccountRepository {
 class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
     override val account: Flow<Account?> = client.store.state.map { state ->
         val me = state.me ?: return@map null
-        val user = state.users[me] ?: return@map Account(me.toString(), "", "", null, null)
-        val name = user.names.firstOrNull()
-        Account(
-            id = me.toString(),
-            firstName = name?.firstName?.takeIf { it.isNotBlank() } ?: name?.name.orEmpty(),
-            lastName = name?.lastName.orEmpty(),
-            phone = user.phone?.let { "+$it" },
-            avatarUrl = user.baseUrl?.takeIf { it.isNotBlank() },
-            description = user.description?.trim()?.takeIf { it.isNotEmpty() },
-            link = user.link?.takeIf { it.isNotBlank() },
-            hasPhoto = (user.photoId ?: 0L) > 0L || !user.baseUrl.isNullOrBlank(),
-        )
+        accountOf(me, state.users[me])
     }.distinctUntilChanged()
 
     override val settings: Flow<AccountSettings> = client.accountConfig.map(::settingsOf).distinctUntilChanged()
@@ -346,6 +335,27 @@ class CoreAccountRepository(private val client: MaxClient) : AccountRepository {
                 "DOUBLE_TAP_REACTION_DISABLED" to false,
             )
             else -> privacyOf(change)!!.let { (key, value) -> PrivacyConfig.payload(key, value) }
+        }
+
+        /**
+         * Свой профиль [me] из карточки [user]; без карточки — пустой. Фото для просмотра — те же
+         * поля ядра, что у чужих профилей: `avatarFullUrl` и `avatarViewerUrls`.
+         */
+        fun accountOf(me: Long, user: MaxUser?): Account {
+            if (user == null) return Account(me.toString(), "", "", null, null)
+            val name = user.names.firstOrNull()
+            return Account(
+                id = me.toString(),
+                firstName = name?.firstName?.takeIf { it.isNotBlank() } ?: name?.name.orEmpty(),
+                lastName = name?.lastName.orEmpty(),
+                phone = user.phone?.let { "+$it" },
+                avatarUrl = user.baseUrl?.takeIf { it.isNotBlank() },
+                description = user.description?.trim()?.takeIf { it.isNotEmpty() },
+                link = user.link?.takeIf { it.isNotBlank() },
+                hasPhoto = (user.photoId ?: 0L) > 0L || !user.baseUrl.isNullOrBlank(),
+                avatarFullUrl = user.avatarFullUrl,
+                avatarViewerUrls = user.avatarViewerUrls,
+            )
         }
 
         fun blockedOf(user: MaxUser): BlockedUser = BlockedUser(

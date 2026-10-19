@@ -12,6 +12,13 @@ data class Account(
     val link: String? = null,
     /** Есть фото профиля: его можно удалить. */
     val hasPhoto: Boolean = avatarUrl != null,
+    /**
+     * Оригинал своего фото для просмотра и сохранения (`avatarFullUrl` ядра, без `fn`); `null` —
+     * фото нет. [avatarUrl] — только квадрат для шапки.
+     */
+    val avatarFullUrl: String? = null,
+    /** Запасные размеры своего фото от большего к меньшему (`avatarViewerUrls` ядра). */
+    val avatarViewerUrls: List<String> = emptyList(),
 ) {
     val displayName: String get() = listOf(firstName, lastName).filter { it.isNotBlank() }.joinToString(" ")
 }

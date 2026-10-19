@@ -139,6 +139,7 @@ fun MainScreen(
     val callsModel = viewModel { CallsViewModel(container.calls, container.callMarks, connection = container.session.connection) }
     val calls by callsModel.state.collectAsStateWithLifecycle()
     val accountModel = viewModel { AccountSettingsViewModel(container.account) }
+    val ownAvatarModel = viewModel { app.maxly.presentation.settings.OwnAvatarViewModel(container.account, container.messages, container.files, container.mediaSaver) }
     val securityModel = viewModel { SecurityViewModel(container.account) }
     val ghostModel = viewModel { GhostModeViewModel(container.ghostMode, container.ownPresence) }
     val accountState by accountModel.state.collectAsStateWithLifecycle()
@@ -335,6 +336,8 @@ fun MainScreen(
                     profileLink = app.maxly.presentation.settings.ProfileLink.link(accountState.settings.inviteLink, account?.link),
                     accountLimits = limits,
                     ghost = ghostModel,
+                    ownAvatar = ownAvatarModel,
+                    mediaUserAgent = container.videoSourceUserAgent(),
                 )
             }
             composable("notifications") {
@@ -368,7 +371,7 @@ fun MainScreen(
                     onBack = { nav.popBackStack() },
                 )
             }
-            composable("profile-edit") { ProfileEditScreen(accountModel, onBack = { nav.popBackStack() }, onLogout = onLogout) }
+            composable("profile-edit") { ProfileEditScreen(accountModel, onBack = { nav.popBackStack() }, onLogout = onLogout, ownAvatar = ownAvatarModel, mediaUserAgent = container.videoSourceUserAgent()) }
             composable("privacy") { PrivacyScreen(accountModel, onBack = { nav.popBackStack() }, onBlocked = { nav.navigate("blocked") }, privateMode = container.privateMode, ghost = ghostModel) }
             composable("security") {
                 SecurityScreen(
