@@ -32,8 +32,63 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Свой ffmpeg под LGPL для установщиков: из исходников ffmpeg.lock, без GPL, libx264 и
+  # libopenh264 (scripts/build-ffmpeg.sh). Windows собирается кросс-компиляцией на Linux.
+  # Сборка в кэше, пока не меняются ffmpeg.lock и скрипт.
+  ffmpeg:
+    name: ffmpeg (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Старый glibc: ffmpeg из .deb запускается и на системах старше раннера упаковки.
+          - os: ubuntu-22.04
+            target: linux-x64
+            tools: nasm pkg-config libva-dev
+          - os: ubuntu-24.04
+            target: windows-x64
+            tools: nasm pkg-config mingw-w64
+          - os: macos-latest
+            target: macos-arm64
+    defaults:
+      run:
+        working-directory: maxly-desktop
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cached ffmpeg
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: maxly-desktop/build/ffmpeg/${{ matrix.target }}
+          key: ffmpeg-${{ matrix.target }}-${{ matrix.os }}-${{ hashFiles('maxly-desktop/ffmpeg.lock', 'maxly-desktop/scripts/build-ffmpeg.sh') }}
+      - name: Build tools
+        if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends ${{ matrix.tools }}
+      - name: Build tools
+        if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'macOS'
+        run: brew install pkgconf || true
+      - name: Build ffmpeg
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: bash scripts/build-ffmpeg.sh ${{ matrix.target }}
+      - name: Build info
+        run: |
+          cat build/ffmpeg/${{ matrix.target }}/BUILDINFO.txt
+          ls -l build/ffmpeg/${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-${{ matrix.target }}-${{ github.sha }}
+          path: maxly-desktop/build/ffmpeg/${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 7
+
   test:
     name: Build and tests
+    needs: ffmpeg
     runs-on: ubuntu-latest
     env:
       # Ключ gifka.me для BuildConfig; у форков пусто — сборка без ключа.
@@ -54,9 +109,17 @@ jobs:
         env:
           MAX_KMP_CORE_TOKEN: ${{ secrets.MAX_KMP_CORE_TOKEN }}
         run: bash scripts/fetch-core.sh
-      # ffmpeg для тестов встроенного проигрывателя видео: без него они пропускаются.
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      # Тесты проигрывателя, голосовых и кружков идут с тем же ffmpeg, что ляжет в .deb.
+      - uses: actions/download-artifact@v4
+        with:
+          name: ffmpeg-linux-x64-${{ github.sha }}
+          path: maxly-desktop/build/ffmpeg/linux-x64
+      - name: Bundled ffmpeg
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libva2 libva-drm2
+          chmod +x build/ffmpeg/linux-x64/ffmpeg
+          build/ffmpeg/linux-x64/ffmpeg -hide_banner -version | head -n 3
       # build включает jvmTest: тесты общего кода из maxly-shared на библиотеках десктопа.
       - name: Build and tests
         env:
@@ -73,7 +136,7 @@ jobs:
 
   package:
     name: Installer (${{ matrix.format }})
-    needs: test
+    needs: [test, ffmpeg]
     runs-on: ${{ matrix.os }}
     env:
       # Ключ gifka.me для BuildConfig; у форков пусто — сборка без ключа.
@@ -86,12 +149,15 @@ jobs:
           - os: ubuntu-latest
             format: deb
             task: packageDeb
+            ffmpeg: linux-x64
           - os: windows-latest
             format: msi
             task: packageMsi
+            ffmpeg: windows-x64
           - os: macos-latest
             format: dmg
             task: packageDmg
+            ffmpeg: macos-arm64
     defaults:
       run:
         working-directory: maxly-desktop
@@ -104,12 +170,22 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
-      # jpackage собирает .deb через fakeroot.
+      # jpackage собирает .deb через fakeroot. libva нужна ffmpeg из установщика: jpackage
+      # находит пакеты его библиотек и пишет их в Depends.
       - name: Packaging tools
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q fakeroot
+          sudo apt-get install -y -q fakeroot libva2 libva-drm2
+      # Свой ffmpeg в ресурсы приложения; без него задача упаковки падает (maxly.ffmpeg.require).
+      - uses: actions/download-artifact@v4
+        with:
+          name: ffmpeg-${{ matrix.ffmpeg }}-${{ github.sha }}
+          path: maxly-desktop/build/ffmpeg/${{ matrix.ffmpeg }}
+      - name: Bundled ffmpeg
+        run: |
+          chmod +x build/ffmpeg/${{ matrix.ffmpeg }}/ffmpeg* || true
+          cat build/ffmpeg/${{ matrix.ffmpeg }}/BUILDINFO.txt
       - name: Fetch maxly-core
         if: runner.os != 'Windows'
         env:
@@ -127,13 +203,13 @@ jobs:
         if: runner.os != 'Windows'
         env:
           MAXLY_BUILD_SHA: ${{ github.sha }}
-        run: ./gradlew --console=plain ${{ matrix.task }}
+        run: ./gradlew --console=plain -Pmaxly.ffmpeg.require=true ${{ matrix.task }}
       - name: Build installer
         if: runner.os == 'Windows'
         shell: pwsh
         env:
           MAXLY_BUILD_SHA: ${{ github.sha }}
-        run: .\gradlew.bat --console=plain ${{ matrix.task }}
+        run: .\gradlew.bat --console=plain "-Pmaxly.ffmpeg.require=true" ${{ matrix.task }}
       # Ошибки jpackage, WiX и hdiutil пишутся в файлы, в лог шага они не попадают.
       - name: Packaging logs
         if: failure()
@@ -211,5 +287,5 @@ jobs:
           done
           ls -lh release
           export TITLE="🕊 Maxly для Desktop — последняя сборка"
-          export NOTES="Свежая сборка Maxly из \`main\` для Windows, macOS и Linux: \`Maxly.msi\`, \`Maxly.dmg\`, \`Maxly.deb\`. Maxly ставится отдельным приложением, войти нужно заново, старый Orbitle потом можно удалить."$'\n\n'"Коммит ${short} (${GITHUB_SHA}), собран $(date -u '+%Y-%m-%d %H:%M') UTC. macOS: сборка без подписи — открыть через «Открыть» в контекстном меню. Для голосовых, кружков и видео нужен ffmpeg в PATH."
+          export NOTES="Свежая сборка Maxly из \`main\` для Windows, macOS и Linux: \`Maxly.msi\`, \`Maxly.dmg\`, \`Maxly.deb\`. Maxly ставится отдельным приложением, войти нужно заново, старый Orbitle потом можно удалить."$'\n\n'"Коммит ${short} (${GITHUB_SHA}), собран $(date -u '+%Y-%m-%d %H:%M') UTC. macOS: сборка без подписи — открыть через «Открыть» в контекстном меню. ffmpeg (LGPL) входит в установщик; кружки сжимает системный кодировщик H.264 (Windows N/KN — с Media Feature Pack, Linux — с драйвером VA-API)."
           bash scripts/publish-latest.sh "${files[@]}"
