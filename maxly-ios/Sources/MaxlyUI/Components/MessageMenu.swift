@@ -119,10 +119,30 @@ struct MessageMenuOverlay: View {
     private static let margin: CGFloat = 12
 
     var body: some View {
+        // Раскладка — внутри safe area: под панелью навигации (она рисуется поверх этого слоя,
+        // и ряд реакций под ней не виден) и над индикатором «домой». До краёв экрана доходит
+        // только размытая подложка. Клавиатура уходит при открытии меню, её отступ не считается.
         GeometryReader { proxy in
             let origin = proxy.frame(in: .global).origin
-            let layout = placement(in: proxy.size, safe: proxy.safeAreaInsets, origin: origin)
+            let source = request.frame.offsetBy(dx: -origin.x, dy: -origin.y)
+            let layout = placement(in: proxy.size, source: source)
             ZStack(alignment: .topLeading) {
+                if reactionBarWidth > 0 {
+                    reactionBar
+                        .frame(width: layout.reactions.width)
+                        .scaleEffect(shown ? 1 : 0.6, anchor: request.isOutgoing ? .bottomTrailing : .bottomLeading)
+                        .opacity(shown ? 1 : 0)
+                        .position(x: layout.reactions.midX, y: layout.reactions.midY)
+                }
+                preview(layout: layout, source: source)
+                actions
+                    .frame(width: layout.actions.width, height: layout.actions.height)
+                    .scaleEffect(shown ? 1 : 0.6, anchor: request.isOutgoing ? .topTrailing : .topLeading)
+                    .opacity(shown ? 1 : 0)
+                    .position(x: layout.actions.midX, y: layout.actions.midY)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+            .background {
                 Rectangle()
                     .fill(.ultraThinMaterial)
                     .overlay(Color.black.opacity(0.25))
@@ -131,31 +151,10 @@ struct MessageMenuOverlay: View {
                     .onTapGesture { close() }
                     .accessibilityLabel("Закрыть меню")
                     .accessibilityAddTraits(.isButton)
-                if reactionBarWidth > 0 {
-                    reactionBar
-                        .frame(width: layout.reactions.width)
-                        .scaleEffect(shown ? 1 : 0.6, anchor: request.isOutgoing ? .bottomTrailing : .bottomLeading)
-                        .opacity(shown ? 1 : 0)
-                        .position(x: layout.reactions.midX, y: layout.reactions.midY)
-                }
-                request.preview
-                    .frame(width: layout.preview.width, height: layout.preview.height, alignment: .top)
-                    .clipped()
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-                    .shadow(color: .black.opacity(shown ? 0.25 : 0), radius: 12, y: 4)
-                    .position(
-                        x: (shown ? layout.preview.minX : request.frame.minX - origin.x) + layout.preview.width / 2,
-                        y: (shown ? layout.preview.minY : request.frame.minY - origin.y) + layout.preview.height / 2
-                    )
-                actions
-                    .frame(width: layout.actions.width, height: layout.actions.height)
-                    .scaleEffect(shown ? 1 : 0.6, anchor: request.isOutgoing ? .topTrailing : .topLeading)
-                    .opacity(shown ? 1 : 0)
-                    .position(x: layout.actions.midX, y: layout.actions.midY)
+                    .ignoresSafeArea()
             }
         }
-        .ignoresSafeArea()
+        .ignoresSafeArea(.keyboard)
         .accessibilityAddTraits(.isModal)
         .accessibilityAction(.escape) { close() }
         .task(id: closing) {
@@ -166,6 +165,23 @@ struct MessageMenuOverlay: View {
         .onAppear {
             withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(duration: 0.3, bounce: 0.15)) { shown = true }
         }
+    }
+
+    /// Копия пузыря: стартует на его месте в натуральном размере и переезжает в раскладку.
+    /// Выше свободного места — уменьшается, а ниже предельного масштаба обрезается снизу
+    /// со скруглёнными углами, как у пузыря.
+    private func preview(layout: MessageMenuLayout, source: CGRect) -> some View {
+        let scale = shown ? layout.previewScale : 1
+        let frame = shown ? layout.preview : source
+        return request.preview
+            .frame(width: source.width, height: source.height, alignment: .top)
+            .scaleEffect(scale, anchor: .topLeading)
+            .frame(width: frame.width, height: frame.height, alignment: .topLeading)
+            .clipShape(RoundedRectangle(cornerRadius: layout.previewClipped ? 18 : 0, style: .continuous))
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .shadow(color: .black.opacity(shown ? 0.25 : 0), radius: 12, y: 4)
+            .position(x: frame.midX, y: frame.midY)
     }
 
     // MARK: Раскладка
@@ -183,13 +199,14 @@ struct MessageMenuOverlay: View {
     }
 
     /// Пузырь стоит на своём месте, пока ряд реакций сверху и пункты снизу влезают; иначе
-    /// сдвигается, а слишком высокий — обрезается сверху вниз.
-    private func placement(in size: CGSize, safe: EdgeInsets, origin: CGPoint) -> MessageMenuLayout {
+    /// сдвигается, а слишком высокий уменьшается (и ниже предела обрезается снизу).
+    /// `size` — область внутри safe area, `source` — пузырь в её координатах.
+    private func placement(in size: CGSize, source: CGRect) -> MessageMenuLayout {
         MessageMenuLayout(
-            bounds: CGRect(x: safe.leading + Self.margin, y: safe.top + Self.margin,
-                           width: max(0, size.width - safe.leading - safe.trailing - Self.margin * 2),
-                           height: max(0, size.height - safe.top - safe.bottom - Self.margin * 2)),
-            source: request.frame.offsetBy(dx: -origin.x, dy: -origin.y), outgoing: request.isOutgoing,
+            bounds: CGRect(x: Self.margin, y: Self.margin,
+                           width: max(0, size.width - Self.margin * 2),
+                           height: max(0, size.height - Self.margin * 2)),
+            source: source, outgoing: request.isOutgoing,
             actionHeight: menuHeight, actionWidth: Self.menuWidth,
             reactionWidth: reactionBarWidth, reactionHeight: reactionBarWidth > 0 ? Self.reactionHeight : 0)
     }
