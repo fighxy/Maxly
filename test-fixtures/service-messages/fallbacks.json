@@ -124,6 +124,28 @@
       }
     },
     {
+      "name": "new-dialog-without-name",
+      "message": {
+        "sender": "0",
+        "senderName": "",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "new",
+            "chatType": "DIALOG"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "coreText": "Контакт теперь в MAX",
+      "expect": {
+        "kind": "joined",
+        "text": "Контакт теперь в MAX"
+      }
+    },
+    {
       "name": "leave-without-name",
       "message": {
         "sender": "101",
@@ -353,6 +375,28 @@
       "expect": {
         "kind": "left",
         "text": "Анна покинул(а) чат"
+      }
+    },
+    {
+      "name": "type-key-new-dialog",
+      "message": {
+        "sender": "101",
+        "senderName": "",
+        "text": "",
+        "attaches": [
+          {
+            "type": "control",
+            "event": "new",
+            "chatType": "DIALOG"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "coreText": "Контакт теперь в MAX",
+      "expect": {
+        "kind": "joined",
+        "text": "Контакт теперь в MAX"
       }
     },
     {
