@@ -32,7 +32,7 @@ struct ProfilePhotoGalleryTests {
         let gallery = ProfilePhotoGallery(
             current: .init(id: "tile", candidates: [current]),
             idPrefix: "tile",
-            loader: { (from: Int) async throws(MaxlyError) -> ProfilePhotoPage in await pages.page(from) }
+            loader: { from in .success(await pages.page(from)) }
         )
         #expect(gallery.total == 1)
         await gallery.loadMore()
@@ -56,7 +56,7 @@ struct ProfilePhotoGalleryTests {
         let failing = ProfilePhotoGallery(
             current: .init(id: "u", candidates: [url("https://i.cdn.test/u")]),
             idPrefix: "u",
-            loader: { (_: Int) async throws(MaxlyError) -> ProfilePhotoPage in throw .networkUnavailable }
+            loader: { _ in .failure(.networkUnavailable) }
         )
         await failing.loadMore()
         await failing.loadMore()

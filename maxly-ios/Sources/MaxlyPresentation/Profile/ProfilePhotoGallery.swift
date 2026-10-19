@@ -21,7 +21,9 @@ public final class ProfilePhotoGallery: Identifiable {
         }
     }
 
-    public typealias Loader = @Sendable (_ from: Int) async throws(MaxlyError) -> ProfilePhotoPage
+    /// Страница истории с `from`-го фото. `Result`, а не типизированный `throws`: хранить
+    /// функцию с ним iOS 17 не умеет.
+    public typealias Loader = @Sendable (_ from: Int) async -> Result<ProfilePhotoPage, MaxlyError>
 
     public private(set) var items: [Item]
     /// Всего фото с учётом ещё не загруженных; не меньше, чем `items.count`.
@@ -64,9 +66,10 @@ public final class ProfilePhotoGallery: Identifiable {
         isLoading = true
         defer { isLoading = false }
         let page: ProfilePhotoPage
-        do {
-            page = try await loader(nextFrom)
-        } catch {
+        switch await loader(nextFrom) {
+        case .success(let value):
+            page = value
+        case .failure(let error):
             // Отказ не повторяется по кругу: листается то, что уже есть.
             Log.warning(.chats, "История фото не загрузилась: \(error)")
             finished = true

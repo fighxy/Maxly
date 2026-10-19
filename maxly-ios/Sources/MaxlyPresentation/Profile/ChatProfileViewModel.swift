@@ -76,8 +76,12 @@ public final class ChatProfileViewModel {
         var loader: ProfilePhotoGallery.Loader?
         if shown.kind == .user, let userId = shown.peerId, !userId.isEmpty {
             let repository = repository
-            loader = { @Sendable (from: Int) async throws(MaxlyError) -> ProfilePhotoPage in
-                try await repository.photos(userId: userId, from: from)
+            loader = { @Sendable (from: Int) async -> Result<ProfilePhotoPage, MaxlyError> in
+                do throws(MaxlyError) {
+                    return .success(try await repository.photos(userId: userId, from: from))
+                } catch {
+                    return .failure(error)
+                }
             }
         }
         return ProfilePhotoGallery(current: .init(id: tileId, candidates: current), idPrefix: tileId, loader: loader)
