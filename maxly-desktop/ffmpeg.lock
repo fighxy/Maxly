@@ -1,0 +1,8 @@
+# Исходники ffmpeg, который кладётся в установщики (scripts/build-ffmpeg.sh). Двоичных файлов
+# в репозитории нет: CI собирает их из этих архивов, суммы SHA-256 проверяются до сборки.
+ffmpeg.version=9.0.2
+ffmpeg.url=https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz
+ffmpeg.sha256=8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e
+opus.version=1.6.1
+opus.url=https://downloads.xiph.org/releases/opus/opus-1.6.1.tar.gz
+opus.sha256=6ffcb593207be92584df15b32466ed64bbec99109f007c82205f0194572411a1
