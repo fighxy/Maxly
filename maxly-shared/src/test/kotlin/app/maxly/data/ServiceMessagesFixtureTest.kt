@@ -6,8 +6,10 @@ import app.maxly.SharedFixtures.Companion.obj
 import app.maxly.SharedFixtures.Companion.raw
 import app.maxly.SharedFixtures.Companion.str
 import com.maxly.core.api.MaxMessage
+import com.maxly.core.media.controlFallbackText
 import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -22,19 +24,26 @@ class ServiceMessagesFixtureTest {
 
     @Test
     fun everyFixtureIsPlayed() {
+        // Играются все файлы каталога и все их случаи: новый случай или файл счётчика не требует.
         val files = fixtures.files()
-        assertEquals(listOf("events", "fallbacks"), files.map { it.nameWithoutExtension })
-        for (file in files) play(file.nameWithoutExtension, fixtures.read(file))
-        // events — 30 случаев, fallbacks — 18.
-        assertEquals(48, fixtures.played)
+        var expected = 0
+        for (file in files) expected += play(file.nameWithoutExtension, fixtures.read(file))
+        assertTrue("нет случаев", expected > 0)
+        assertEquals("сыграны не все случаи", expected, fixtures.played)
         fixtures.finish("ServiceMessagesFixtureTest", files.size)
     }
 
-    private fun play(file: String, fixture: JsonObject) {
+    /** Играет все случаи файла; возвращает их число. Имена случаев в файле не повторяются. */
+    private fun play(file: String, fixture: JsonObject): Int {
         assertEquals("$file: kind", "control", fixture["kind"].str)
-        for (case in fixtures.cases(fixture)) {
+        val cases = fixtures.cases(fixture)
+        val names = cases.map { it["name"].str }
+        assertTrue("$file: случай без имени", names.none { it.isNullOrBlank() })
+        assertEquals("$file: имена случаев повторяются", names.size, names.toSet().size)
+        for (case in cases) {
             fixtures.case("$file / ${case["name"].str}") { check(case) }
         }
+        return cases.size
     }
 
     private fun SharedFixtures.Case.check(case: JsonObject) {
@@ -48,13 +57,18 @@ class ServiceMessagesFixtureTest {
         )!!
         val names = case["names"].obj.orEmpty().mapNotNull { (id, name) -> id.toLongOrNull()?.let { it to name.str } }.toMap() +
             listOfNotNull(sender?.let { it to message["senderName"].str })
-        val text = ServiceMessages.text(core, case["viewer"].str?.toLongOrNull()) { names[it]?.takeIf(String::isNotBlank) }
+        val viewer = case["viewer"].str?.toLongOrNull()
+        val nameOf = { id: Long -> names[id]?.takeIf(String::isNotBlank) }
+        val text = ServiceMessages.text(core, viewer, nameOf = nameOf)
         check("служебное", true, ServiceMessages.isService(core))
+        // coreText сценария — то, что пишет само ядро.
+        case["coreText"].str?.let { coreText ->
+            check("текст ядра", coreText, controlFallbackText(ServiceMessages.control(core)!!, selfId = viewer, actorId = sender, nameOf = nameOf))
+        }
         if (expect["kind"].str == null) {
+            // Закрепление: не событие чата, но текст плашки тоже пишет ядро; он обязан быть в сценарии.
             check("закрепление", true, MessageMapping.pinNotice(attaches) != null)
-            // Сценарий без текста — старое правило «закрепление не событие, строка общая».
-            check("текст", expect["text"].str ?: ServiceMessages.GENERIC, text)
-            return
+            check("текст плашки в сценарии", true, expect["text"].str != null)
         }
         check("текст", expect["text"].str, text)
     }
