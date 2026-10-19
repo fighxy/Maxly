@@ -93,6 +93,9 @@ struct ChatProfileView: View {
     @State private var role = ChatOwnRole(isOwner: false, isAdmin: false)
     @State private var creatingFolder = false
     @State private var sharingContact = false
+    /// Лист «Обои»: своё фото только для этого чата.
+    @State private var wallpaperShown = false
+    @Environment(ChatWallpaperLibrary.self) private var wallpapers: ChatWallpaperLibrary?
     @Environment(\.dismiss) private var dismiss
     @State private var manageModel: ChatManageModel?
     @State private var manageContacts: [ChatAdminPerson] = []
@@ -186,6 +189,11 @@ struct ChatProfileView: View {
             set: { creatingFolder = $0 != nil }
         )) { _, title in
             context?.list?.createFolder(title)
+        }
+        .sheet(isPresented: $wallpaperShown) {
+            if let wallpapers, let chatId = wallpaperChatId {
+                ChatWallpaperSheet(chatId: chatId, library: wallpapers)
+            }
         }
         .sheet(isPresented: $sharingContact) {
             ForwardPickerView(
@@ -622,16 +630,25 @@ struct ChatProfileView: View {
         (viewModel.shown.kind == .group || viewModel.shown.kind == .channel) && chatAdmin != nil && listed && role.isAdmin
     }
 
-    /// Чего нет в меню Max, но есть у нас: опрос и отложенная отправка.
+    /// Чат, чьи обои меняет «Обои»: только профиль, открытый из самого чата.
+    private var wallpaperChatId: String? {
+        guard wallpapers != nil else { return nil }
+        return context?.chat.chatId
+    }
+
+    /// Чего нет в меню Max, но есть у нас: опрос, отложенная отправка и свои обои чата.
     @ViewBuilder
     private var extras: some View {
-        if context?.onPoll != nil || context?.onSchedule != nil {
+        if context?.onPoll != nil || context?.onSchedule != nil || wallpaperChatId != nil {
             Section {
                 if let poll = context?.onPoll {
                     Button(action: poll) { Label("Опрос", systemImage: "chart.bar") }
                 }
                 if let schedule = context?.onSchedule {
                     Button(action: schedule) { Label("Отправить позже", systemImage: "clock") }
+                }
+                if wallpaperChatId != nil {
+                    Button { wallpaperShown = true } label: { Label("Обои", systemImage: "photo.on.rectangle") }
                 }
             }
         }

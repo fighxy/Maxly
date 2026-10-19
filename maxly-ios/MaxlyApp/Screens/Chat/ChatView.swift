@@ -104,6 +104,8 @@ struct ChatView: View {
     /// Обои из «Оформления» и где они лежат на экране (для перехода в них у низа ленты).
     @Environment(\.chatWallpaper) private var wallpaper
     @State private var wallpaperFrame: CGRect = .zero
+    /// Свои фото обоев: обои этого чата, иначе общие.
+    @Environment(ChatWallpaperLibrary.self) private var wallpapers: ChatWallpaperLibrary?
     @State private var recording = RecordingSession()
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var composerFocused: Bool
@@ -122,6 +124,11 @@ struct ChatView: View {
         chatEvents
     }
 
+    /// Своё фото за лентой: обои этого чата, иначе общие; `nil` — встроенные из «Оформления».
+    private var customWallpaper: CustomWallpaperBackdrop? {
+        wallpapers?.backdrop(chatId: viewModel.chatId)
+    }
+
     /// Лента с обоями, верхними плашками, полем ввода и панелью стикеров.
     private var transcriptLayer: some View {
         ChatTranscript(
@@ -133,6 +140,7 @@ struct ChatView: View {
             focus: $composerFocused,
             bottomControlsTop: bottomControlsTop,
             wallpaperFrame: wallpaperFrame,
+            customWallpaper: customWallpaper,
             quickReaction: quickReaction,
             headerBottom: headerBottom,
             keyboardTop: keyboardTop,
@@ -167,7 +175,7 @@ struct ChatView: View {
         // Обои за лентой: на весь экран, под шапкой, полем ввода и клавиатурой, не
         // прокручиваются с сообщениями.
         .background {
-            ChatWallpaperBackground(wallpaper: wallpaper)
+            ChatWallpaperBackground(wallpaper: wallpaper, custom: customWallpaper)
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { wallpaperFrame = $0 }
                 .ignoresSafeArea()
         }

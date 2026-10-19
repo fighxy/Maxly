@@ -33,6 +33,8 @@ struct RootView: View {
         }
         .background(InterfaceStyleOverride(theme: container.appearance.theme))
         .environment(\.chatWallpaper, container.appearance.wallpaper)
+        // Свои фото обоев: экран чата берёт обои чата или общие, профиль чата их меняет.
+        .environment(container.wallpapers)
         .environment(\.imageURLSizing, CoreImageURLSizing())
         .environment(\.gifAutoplay, GifAutoplayPolicy.allows(
             GifAutoplayMode(stored: gifAutoplayMode), network: network.kind, constrained: network.constrained

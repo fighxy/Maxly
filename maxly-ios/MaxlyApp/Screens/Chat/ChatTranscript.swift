@@ -28,6 +28,8 @@ struct ChatTranscript: View {
     var bottomControlsTop: CGFloat = 0
     /// Где на экране лежит фон с обоями: низ ленты тает в ту же картинку.
     var wallpaperFrame: CGRect = .zero
+    /// Своё фото за лентой (обои чата или общие); `nil` — встроенные обои.
+    var customWallpaper: CustomWallpaperBackdrop? = nil
     /// Эмодзи двойного нажатия. `nil` — быстрая реакция выключена.
     var quickReaction: String? = nil
     /// Низ шапки (панель навигации и плашки под ней) в глобальных координатах: выше него
@@ -169,7 +171,7 @@ struct ChatTranscript: View {
 
                 .chatSystemEdgeEffectHidden()
                 // Лёгкий переход в фон под нижними кнопками. Раньше кнопки «вниз»: она рисуется поверх.
-                .overlay { ChatBottomBlur(controlsTop: bottomControlsTop, wallpaper: wallpaper, wallpaperFrame: wallpaperFrame) }
+                .overlay { ChatBottomBlur(controlsTop: bottomControlsTop, wallpaper: wallpaper, custom: customWallpaper, wallpaperFrame: wallpaperFrame) }
                 .overlay(alignment: .bottom) {
                     if viewModel.showsSavedPlaceholder {
                         SavedMessagesPlaceholder()

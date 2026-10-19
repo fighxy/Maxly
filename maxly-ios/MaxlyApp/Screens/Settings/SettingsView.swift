@@ -148,7 +148,7 @@ struct SettingsView: View {
                     SettingsRowLabel("Папки", systemImage: "folder.fill", tint: .blue)
                 }
                 NavigationLink {
-                    AppearanceView(settings: container.appearance)
+                    AppearanceView(settings: container.appearance, wallpapers: container.wallpapers)
                 } label: {
                     SettingsRowLabel("Оформление", systemImage: "textformat.size", tint: .purple)
                 }

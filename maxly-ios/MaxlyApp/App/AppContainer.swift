@@ -123,6 +123,8 @@ final class AppContainer {
     let appearance: AppearanceSettings
     /// Приватный режим: тоже настройка устройства, выход из аккаунта её не сбрасывает.
     let privateMode: PrivateModeSettings
+    /// Свои фото обоев (общие и по чатам): только на устройстве, выход из аккаунта их не трогает.
+    let wallpapers: ChatWallpaperLibrary
     /// Ограничения нового сеанса: панель после входа и строка в настройках. Выход стирает отметку.
     let accountLimits: AccountLimitsSettings
     /// Приложение живо в фоне: входящие звонки и уведомления о сообщениях (docs/background.md).
@@ -160,6 +162,7 @@ final class AppContainer {
         Typography.shared.apply(font: appearance.font, weight: appearance.fontWeight, textSize: appearance.textSize)
         NavigationBarFonts.apply()
         privateMode = PrivateModeSettings(store: UserDefaultsPrivateModeStore())
+        wallpapers = ChatWallpaperLibrary(store: Self.makeWallpaperStore())
         accountLimits = AccountLimitsSettings(store: UserDefaultsAccountLimitsStore())
         let keepAlive = BackgroundKeepAlive()
         backgroundKeepAlive = keepAlive
@@ -757,6 +760,14 @@ final class AppContainer {
         let model = DevicesModel(repository: accounts)
         devicesScreenModel = model
         return model
+    }
+
+    /// Папка своих обоев. Без `Application Support` — временная: обои живут до перезапуска.
+    private static func makeWallpaperStore() -> FileCustomWallpaperStore {
+        if let store = try? FileCustomWallpaperStore.standard() { return store }
+        Log.error(.settings, "Обои: нет Application Support, папка временная")
+        let fallback = FileManager.default.temporaryDirectory.appending(path: FileCustomWallpaperStore.folder, directoryHint: .isDirectory)
+        return FileCustomWallpaperStore(directory: fallback)
     }
 
     /// Кэш: своя раскладка медиа, база сообщений отдельно, «Прочее» — подготовленные к

@@ -4,14 +4,21 @@ import MaxlyPresentation
 import MaxlyUI
 
 /// «Оформление»: предпросмотр, шрифт (свой экран: шрифт, толщина, размер текста), тема и обои чата.
+/// Обои — встроенные или своё фото («Своё фото» первым в ряду, открывает «Обои чата»).
 struct AppearanceView: View {
     let settings: AppearanceSettings
+    let wallpapers: ChatWallpaperLibrary
+    @State private var customShown = false
+
+    /// Своё фото для всех чатов: оно закрывает встроенные обои.
+    private var globalPhoto: CustomWallpaperBackdrop? { wallpapers.backdrop(for: .global) }
 
     var body: some View {
         List {
             Section {
-                AppearancePreview(wallpaper: settings.wallpaper)
+                AppearancePreview(wallpaper: settings.wallpaper, custom: globalPhoto)
                     .animation(MaxlyMotion.fade, value: settings.wallpaper)
+                    .animation(MaxlyMotion.fade, value: globalPhoto)
                     .listRowBackground(Color.maxlyBackground)
             } header: {
                 Text("Предпросмотр")
@@ -46,8 +53,11 @@ struct AppearanceView: View {
             Section {
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 12) {
+                        CustomWallpaperOption(photo: globalPhoto) { customShown = true }
                         ForEach(ChatWallpaper.allCases, id: \.self) { wallpaper in
-                            WallpaperOption(wallpaper: wallpaper, isSelected: settings.wallpaper == wallpaper) {
+                            WallpaperOption(wallpaper: wallpaper, isSelected: globalPhoto == nil && settings.wallpaper == wallpaper) {
+                                // Встроенные обои заменяют своё фото: его файл удаляется.
+                                wallpapers.reset(.global)
                                 settings.setWallpaper(wallpaper)
                             }
                         }
@@ -61,11 +71,14 @@ struct AppearanceView: View {
             } header: {
                 Text("Обои чата")
             } footer: {
-                Text("Фон за сообщениями во всех чатах. «Осень (авто)» светлая в светлой теме и тёмная в тёмной.")
+                Text("Фон за сообщениями во всех чатах. «Своё фото» — снимок из медиатеки, он хранится только на этом устройстве. «Осень (авто)» светлая в светлой теме и тёмная в тёмной. Отдельные обои для чата — в его профиле: «Ещё» → «Обои».")
             }
         }
         .navigationTitle("Оформление")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $customShown) {
+            ChatWallpaperSettingsView(scope: .global, library: wallpapers, builtIn: settings.wallpaper)
+        }
     }
 }
 
@@ -234,9 +247,11 @@ struct AppearancePreview: View {
     private let incoming: Message
     private let outgoing: Message
     private let wallpaper: ChatWallpaper
+    private let custom: CustomWallpaperBackdrop?
 
-    init(wallpaper: ChatWallpaper = .plain, now: Date = Date()) {
+    init(wallpaper: ChatWallpaper = .plain, custom: CustomWallpaperBackdrop? = nil, now: Date = Date()) {
         self.wallpaper = wallpaper
+        self.custom = custom
         let chat = Chat(
             id: "appearance-preview",
             title: "Анна Смирнова",
@@ -275,7 +290,7 @@ struct AppearancePreview: View {
             }
             .padding(.vertical, 10)
             .padding(.horizontal, 6)
-            .background { ChatWallpaperBackground(wallpaper: wallpaper) }
+            .background { ChatWallpaperBackground(wallpaper: wallpaper, custom: custom) }
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .environment(\.chatWallpaper, wallpaper)
         }
@@ -361,6 +376,68 @@ private struct WallpaperOption: View {
         .padding(.bottom, 12)
         .frame(maxHeight: .infinity, alignment: .bottom)
         .accessibilityHidden(true)
+    }
+}
+
+/// «Своё фото» в ряду обоев: уменьшенное своё фото или значок добавления. Касание открывает
+/// «Обои чата»: выбрать фото, поменять его или сбросить.
+private struct CustomWallpaperOption: View {
+    let photo: CustomWallpaperBackdrop?
+    let action: () -> Void
+
+    private static let size = CGSize(width: 66, height: 117)
+    private static let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+
+    private var isSelected: Bool { photo != nil }
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                thumbnail
+                    .frame(width: Self.size.width, height: Self.size.height)
+                    .clipShape(Self.shape)
+                    .overlay {
+                        Self.shape.strokeBorder(
+                            isSelected ? Color.maxlyAccent : Color.secondary.opacity(0.35),
+                            lineWidth: isSelected ? 2.5 : 0.5
+                        )
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        if isSelected {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 18, weight: .semibold))
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(Color.white, Color.maxlyAccent)
+                                .padding(6)
+                        }
+                    }
+                Text("Своё фото")
+                    .font(.app(.caption))
+                    .foregroundStyle(isSelected ? .primary : .secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(width: 84)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Своё фото")
+        .accessibilityHint(isSelected ? "Изменить или сбросить" : "Выбрать фото из медиатеки")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    @ViewBuilder
+    private var thumbnail: some View {
+        if let photo {
+            ChatWallpaperBackground(wallpaper: .plain, custom: photo)
+        } else {
+            ZStack {
+                Color.secondary.opacity(0.12)
+                Image(systemName: "photo.badge.plus")
+                    .font(.system(size: 24, weight: .regular))
+                    .foregroundStyle(Color.maxlyAccent)
+            }
+        }
     }
 }
 

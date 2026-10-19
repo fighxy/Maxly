@@ -88,6 +88,8 @@ struct ChatBottomBlur: View {
 
     let controlsTop: CGFloat
     var wallpaper: ChatWallpaper = .plain
+    /// Своё фото: лента тает в него так же, как во встроенные обои.
+    var custom: CustomWallpaperBackdrop? = nil
     /// Где на экране лежит фон с обоями. Пусто — ещё не измерен.
     var wallpaperFrame: CGRect = .zero
 
@@ -118,8 +120,8 @@ struct ChatBottomBlur: View {
     /// Во что тает лента: обои на их же месте или ровный фон экрана.
     @ViewBuilder
     private func fill(in frame: CGRect) -> some View {
-        if wallpaper.hasImage, wallpaperFrame.width > 0, wallpaperFrame.height > 0 {
-            ChatWallpaperBackground(wallpaper: wallpaper)
+        if wallpaper.hasImage || custom != nil, wallpaperFrame.width > 0, wallpaperFrame.height > 0 {
+            ChatWallpaperBackground(wallpaper: wallpaper, custom: custom)
                 .frame(width: wallpaperFrame.width, height: wallpaperFrame.height)
                 .offset(x: wallpaperFrame.minX - frame.minX, y: wallpaperFrame.minY - frame.minY)
                 .frame(width: frame.width, height: frame.height, alignment: .topLeading)
