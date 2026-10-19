@@ -1,5 +1,7 @@
 package app.maxly.presentation.profile
 
+import app.maxly.presentation.media.AvatarPhoto
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.maxly.data.CoreErrors
@@ -92,31 +94,58 @@ class ProfileViewModel(
     val hasAvatarPhoto: Boolean get() = avatarOwner() != null
 
     /** id кадра фото профиля в просмотре; `null` — фото нет. */
-    val avatarPhotoId: String? get() = avatarOwner()?.let(app.maxly.presentation.media.AvatarPhoto::photoId)
+    val avatarPhotoId: String? get() = avatarOwner()?.let(AvatarPhoto::photoId)
 
     /**
      * Фото профиля на весь экран: человек и бот — по id собеседника, группа и канал — по id чата.
-     * [preview] — квадрат, который шапка уже показала. Без фото ничего не открывается.
+     * [preview] — квадрат, который шапка уже показала. У человека следом подгружаются прошлые
+     * фото профиля. Протухший адрес — карточка перечитывается один раз. Без фото ничего не открывается.
      */
     fun openAvatar(preview: String? = null) {
         val owner = avatarOwner() ?: return
         val state = _state.value
-        media.openAvatar(owner, state.profile.avatarUrl, state.title, preview)
+        val current = currentFrame(owner, state.profile, preview) ?: return
+        val withHistory = state.profile.kind == ChatProfile.Kind.USER && state.profile.peerId != null
+        media.openAvatar(owner, listOf(current), state.title, refresh = {
+            val fresh = profiles.profile(chatId)
+            listOfNotNull(currentFrame(owner, fresh, null)) + if (withHistory) history(owner, fresh) else emptyList()
+        })
+        if (withHistory) {
+            viewModelScope.launch {
+                val frames = try {
+                    history(owner, state.profile)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    return@launch
+                }
+                media.addAvatarFrames(owner, frames)
+            }
+        }
+    }
+
+    private fun currentFrame(owner: String, profile: ChatProfile, preview: String?): AvatarPhoto.Frame? =
+        AvatarPhoto.current(owner, profile.avatarFullUrl, profile.avatarViewerUrls, preview)
+
+    private suspend fun history(owner: String, profile: ChatProfile): List<AvatarPhoto.Frame> {
+        val peer = profile.peerId ?: return emptyList()
+        return AvatarPhoto.history(owner, profiles.contactPhotos(peer), profile.photoId, currentFrame(owner, profile, null))
     }
 
     /** «Сохранить фото как…» из меню шапки: в выбранный [file], просмотр не нужен. */
     fun saveAvatarAs(file: String) {
         val owner = avatarOwner() ?: return
         val state = _state.value
-        media.saveAvatar(app.maxly.presentation.media.AvatarPhoto.viewer(owner, state.profile.avatarUrl, state.title), file)
+        val current = currentFrame(owner, state.profile, null) ?: return
+        media.saveAvatar(AvatarPhoto.viewer(owner, listOf(current), state.title), file)
     }
 
     /** Имя, которое «Сохранить как…» предлагает для фото профиля. */
-    fun avatarFileName(): String = app.maxly.presentation.media.AvatarPhoto.fileName(_state.value.title, now(), "jpg")
+    fun avatarFileName(): String = AvatarPhoto.fileName(_state.value.title, now(), "jpg")
 
     private fun avatarOwner(): String? {
         val profile = _state.value.profile
-        if (profile.kind == ChatProfile.Kind.SAVED || app.maxly.presentation.media.AvatarPhoto.original(profile.avatarUrl) == null) return null
+        if (profile.kind == ChatProfile.Kind.SAVED || AvatarPhoto.candidates(profile.avatarFullUrl, profile.avatarViewerUrls).isEmpty()) return null
         return when (profile.kind) {
             ChatProfile.Kind.USER, ChatProfile.Kind.BOT -> profile.peerId ?: profile.chatId
             else -> profile.chatId

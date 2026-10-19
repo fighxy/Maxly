@@ -42,7 +42,7 @@ object ChatMapping {
         val peerId = dialogPeer(chat, me)
         val peer = peerId?.let { state.users[it] }
         val title = chat.title?.takeIf { it.isNotBlank() } ?: peerId?.let(state::displayLabel).orEmpty()
-        val avatar = (chat.raw["baseIconUrl"] as? String)?.takeIf { it.isNotBlank() } ?: peer?.baseUrl?.takeIf { it.isNotBlank() }
+        val avatar = chat.iconThumbUrl?.takeIf { it.isNotBlank() } ?: peer?.baseUrl?.takeIf { it.isNotBlank() }
         val forwarded = forwardedOf(last)
         val attaches = last?.attaches?.takeIf { it.isNotEmpty() } ?: (forwarded?.get("attaches") as? List<*>).orEmpty()
         val media = attachmentKind(attaches)

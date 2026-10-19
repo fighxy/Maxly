@@ -36,6 +36,8 @@ data class MediaViewerState(
     val caption: String = "",
     /** Уже загруженные уменьшенные копии: id вложения → адрес. Видны, пока грузится оригинал. */
     val previews: Map<String, String> = emptyMap(),
+    /** Адреса кадра в порядке попыток (фото профиля): id вложения → адреса. */
+    val fallbacks: Map<String, List<String>> = emptyMap(),
 )
 
 /** Кружок, который играет прямо в ленте. [url] — `null`, пока адрес спрашивается у сервера. */
@@ -226,6 +228,7 @@ class ChatMedia(
         if (index == viewer.index) return
         _state.update { it.copy(viewer = viewer.copy(index = index)) }
         viewer.items.getOrNull(index)?.let(::prepare)
+        resolveAvatarAround(index)
     }
 
     fun closeViewer() = _state.update { it.copy(viewer = null) }
@@ -312,13 +315,98 @@ class ChatMedia(
 
     // Фото профиля
 
+    private var avatarRefresh: (suspend () -> List<AvatarPhoto.Frame>)? = null
+    private var avatarRefreshed = false
+    private val avatarJobs = mutableMapOf<String, Job>()
+
     /**
-     * Открыть фото профиля [ownerId] в просмотре. [preview] — квадрат, уже показанный в шапке.
-     * Без фото ничего не открывается.
+     * Открыть фото профиля [ownerId] в просмотре: [frames], текущее первым. Без кадров ничего не
+     * открывается. [refresh] перечитывает контакт или чат и отдаёт кадры заново: зовётся один раз
+     * за просмотр, если адрес протух или ни один размер не загрузился.
      */
-    fun openAvatar(ownerId: String, url: String?, title: String, preview: String? = null) {
-        val viewer = AvatarPhoto.viewer(ownerId, url, title, preview) ?: return
-        _state.update { it.copy(viewer = viewer) }
+    fun openAvatar(ownerId: String, frames: List<AvatarPhoto.Frame>, title: String, refresh: (suspend () -> List<AvatarPhoto.Frame>)? = null) {
+        val viewer = AvatarPhoto.viewer(ownerId, frames, title) ?: return
+        avatarJobs.values.forEach { it.cancel() }
+        avatarJobs.clear()
+        avatarRefresh = refresh
+        avatarRefreshed = false
+        _state.update { it.copy(viewer = if (files != null) viewer.withoutRemoteUrls() else viewer) }
+        resolveAvatarAround(0)
+    }
+
+    /** Дописать к открытому фото профиля [ownerId] прошлые фото [frames] (после текущего). */
+    fun addAvatarFrames(ownerId: String, frames: List<AvatarPhoto.Frame>) {
+        val key = AvatarPhoto.VIEWER_PREFIX + ownerId
+        var added = false
+        _state.update { state ->
+            val viewer = state.viewer?.takeIf { it.messageId == key } ?: return@update state
+            val known = viewer.items.map { it.id }.toSet()
+            val fresh = frames.filter { it.id !in known }
+            if (fresh.isEmpty()) return@update state
+            added = true
+            val extra = AvatarPhoto.viewer(ownerId, fresh, viewer.authorName)!!.let { if (files != null) it.withoutRemoteUrls() else it }
+            state.copy(viewer = viewer.copy(
+                items = viewer.items + extra.items,
+                previews = viewer.previews + extra.previews,
+                fallbacks = viewer.fallbacks + extra.fallbacks,
+            ))
+        }
+        if (added) resolveAvatarAround(_state.value.viewer?.index ?: 0)
+    }
+
+    private fun MediaViewerState.withoutRemoteUrls(): MediaViewerState = copy(items = items.map { item ->
+        val photo = (item as? ChatAttachment.Photo)?.photo ?: return@map item
+        if (photo.url != null && isLocalUrl(photo.url)) item else ChatAttachment.Photo(photo.copy(url = null))
+    })
+
+    private fun isLocalUrl(url: String) = app.maxly.presentation.media.ImageRequests.isLocal(url)
+
+    /** Кадр [index] и соседи: найти загружаемый адрес. */
+    private fun resolveAvatarAround(index: Int) {
+        val viewer = _state.value.viewer?.takeIf(AvatarPhoto::isAvatar) ?: return
+        if (files == null) return
+        for (i in listOf(index, index + 1, index - 1)) {
+            val item = viewer.items.getOrNull(i) as? ChatAttachment.Photo ?: continue
+            if (item.photo.url != null || avatarJobs[item.id]?.isActive == true) continue
+            avatarJobs[item.id] = scope.launch { resolveAvatar(viewer.messageId, item.id) }
+        }
+    }
+
+    private suspend fun resolveAvatar(key: String, id: String) {
+        val files = files ?: return
+        val owner = key.removePrefix(AvatarPhoto.VIEWER_PREFIX)
+        var urls = _state.value.viewer?.takeIf { it.messageId == key }?.fallbacks?.get(id) ?: return
+        if (AvatarPhoto.isExpired(urls, now())) urls = refreshAvatar(key, id) ?: urls
+        val load: suspend (String) -> String = { url -> files.download(url, AvatarPhoto.cacheId(owner, url), "avatar") {} }
+        var found = AvatarPhoto.firstLoaded(urls, load)
+        if (found == null) found = refreshAvatar(key, id)?.let { AvatarPhoto.firstLoaded(it, load) }
+        val local = found?.second?.let { java.io.File(it).toURI().toString() } ?: return
+        _state.update { state ->
+            val viewer = state.viewer?.takeIf { it.messageId == key } ?: return@update state
+            state.copy(viewer = viewer.copy(items = viewer.items.map { item ->
+                if (item.id == id && item is ChatAttachment.Photo) ChatAttachment.Photo(item.photo.copy(url = local)) else item
+            }))
+        }
+    }
+
+    /** Перечитать контакт или чат один раз за просмотр; адреса кадра [id] после этого. */
+    private suspend fun refreshAvatar(key: String, id: String): List<String>? {
+        val refresh = avatarRefresh ?: return null
+        if (avatarRefreshed) return _state.value.viewer?.takeIf { it.messageId == key }?.fallbacks?.get(id)
+        avatarRefreshed = true
+        val frames = try {
+            refresh()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return null
+        }
+        val fresh = frames.associate { it.id to it.urls }
+        _state.update { state ->
+            val viewer = state.viewer?.takeIf { it.messageId == key } ?: return@update state
+            state.copy(viewer = viewer.copy(fallbacks = viewer.fallbacks + fresh.filterKeys { it in viewer.fallbacks }))
+        }
+        return fresh[id]
     }
 
     /** Открытое фото профиля можно сохранить: в общую папку или в выбранный файл. */
@@ -326,7 +414,7 @@ class ChatMedia(
         AvatarPhoto.isAvatar(_state.value.viewer) && files != null && (toFile || saver != null)
 
     /**
-     * Сохранить открытое фото профиля в полном качестве: в [file] («Сохранить как…» на
+     * Сохранить показанное фото профиля в полном качестве: в [file] («Сохранить как…» на
      * компьютере) или в папку фото платформы ([MediaSaver.savePicture]).
      */
     fun saveAvatar(file: String? = null) = saveAvatar(_state.value.viewer, file)
@@ -343,9 +431,15 @@ class ChatMedia(
         _state.update { it.copy(saving = it.saving + key) }
         scope.launch {
             try {
-                val url = content.url ?: throw MaxlyError.Rejected("Фото недоступно")
                 val owner = key.removePrefix(AvatarPhoto.VIEWER_PREFIX)
-                val path = files.download(url, AvatarPhoto.cacheId(owner, url), "avatar") {}
+                val shown = content.url?.takeIf(::isLocalUrl)
+                val path = if (shown != null) {
+                    java.io.File(java.net.URI(shown)).path
+                } else {
+                    val urls = viewer.fallbacks[content.id] ?: listOfNotNull(content.url)
+                    AvatarPhoto.firstLoaded(urls) { url -> files.download(url, AvatarPhoto.cacheId(owner, url), "avatar") {} }?.second
+                        ?: throw MaxlyError.Rejected(AvatarPhoto.FAILED)
+                }
                 val ext = SaveNaming.imageExtension(header(path))
                 if (file != null) {
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {

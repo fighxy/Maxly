@@ -216,7 +216,7 @@ class CoreStoriesRepository(
             return StoryRing(
                 owner = owner(preview.owner),
                 name = (if (user != null) state.displayName(id) else null)?.takeIf { it.isNotBlank() } ?: chat?.title.orEmpty(),
-                avatarUrl = user?.baseUrl?.takeIf { it.isNotBlank() } ?: (chat?.raw?.get("baseIconUrl") as? String)?.takeIf { it.isNotBlank() },
+                avatarUrl = user?.baseUrl?.takeIf { it.isNotBlank() } ?: chat?.iconThumbUrl?.takeIf { it.isNotBlank() },
                 updatedAtMs = preview.updateTime,
                 total = preview.totalCount,
                 read = preview.readCount,

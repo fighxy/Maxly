@@ -37,9 +37,11 @@ class MediaSavingTest {
 
     private class Files : MessageFiles {
         val urls = mutableListOf<String>()
+        val broken = mutableSetOf<String>()
         override fun cached(fileId: String, name: String): String? = null
         override suspend fun download(url: String, fileId: String, name: String, progress: (Float) -> Unit): String {
             urls += url
+            if (url in broken) throw java.io.IOException("404")
             return "/nonexistent/$fileId/$name"
         }
     }
@@ -143,9 +145,14 @@ class MediaSavingTest {
     private val avatarTime = java.time.LocalDateTime.of(2026, 10, 19, 15, 43, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
     private val avatarMedia = ChatMedia("10", repo, TestScope(UnconfinedTestDispatcher()), null, files, saver, onNotice = { notices += it }, now = { avatarTime }) { errors += it }
 
+    private fun frame(vararg urls: String, id: String = "avatar-42") = app.maxly.presentation.media.AvatarPhoto.Frame(id, urls.toList())
+
     @Test
     fun savesTheAvatarOriginalToPictures() {
-        avatarMedia.openAvatar("42", "https://cdn/a?r=1&fn=sqr_192", "Анна Смирнова", preview = "https://cdn/a?r=1&fn=sqr_288")
+        avatarMedia.openAvatar("42", listOf(frame("https://cdn/a?r=1", "https://cdn/a?r=1&fn=w_1440")), "Анна Смирнова")
+        assertEquals(listOf("https://cdn/a?r=1"), files.urls)
+        val shown = (avatarMedia.state.value.viewer!!.items.single() as ChatAttachment.Photo).photo.url!!
+        assertTrue(shown.startsWith("file:"))
         assertTrue(avatarMedia.canSaveAvatar())
         avatarMedia.saveAvatar()
         assertEquals(listOf("https://cdn/a?r=1"), files.urls)
@@ -156,8 +163,56 @@ class MediaSavingTest {
     }
 
     @Test
+    fun brokenOriginalFallsBackToTheLargestServerSize() {
+        files.broken += listOf("https://cdn/a", "https://cdn/a&fn=w_1440")
+        avatarMedia.openAvatar("42", listOf(frame("https://cdn/a", "https://cdn/a&fn=w_1440", "https://cdn/a&fn=sqr_720", "https://cdn/a&fn=w_1080")), "Анна")
+        assertEquals(listOf("https://cdn/a", "https://cdn/a&fn=w_1440", "https://cdn/a&fn=sqr_720"), files.urls)
+        val shown = (avatarMedia.state.value.viewer!!.items.single() as ChatAttachment.Photo).photo.url!!
+        assertTrue(shown.contains("sqr_720") || shown.startsWith("file:"))
+    }
+
+    @Test
+    fun expiredUrlRereadsTheProfileOnce() {
+        var rereads = 0
+        avatarMedia.openAvatar("42", listOf(frame("https://cdn/a?r=1&expires=1000")), "Анна", refresh = {
+            rereads++
+            listOf(frame("https://cdn/a?r=2"))
+        })
+        assertEquals(1, rereads)
+        assertEquals(listOf("https://cdn/a?r=2"), files.urls)
+    }
+
+    @Test
+    fun allSizesFailingRereadsOnceThenGivesUp() {
+        var rereads = 0
+        files.broken += listOf("https://cdn/a", "https://cdn/b")
+        avatarMedia.openAvatar("42", listOf(frame("https://cdn/a")), "Анна", refresh = {
+            rereads++
+            listOf(frame("https://cdn/b"))
+        })
+        assertEquals(1, rereads)
+        assertEquals(listOf("https://cdn/a", "https://cdn/b"), files.urls)
+        assertEquals(null, (avatarMedia.state.value.viewer!!.items.single() as ChatAttachment.Photo).photo.url)
+        avatarMedia.saveAvatar()
+        assertEquals(listOf(app.maxly.presentation.media.AvatarPhoto.FAILED), errors.map { it.message })
+    }
+
+    @Test
+    fun pastPhotosAreAddedAfterTheCurrentAndSavedWhenShown() {
+        avatarMedia.openAvatar("42", listOf(frame("https://cdn/a")), "Анна")
+        avatarMedia.addAvatarFrames("42", listOf(frame("https://cdn/old", id = "avatar-42-6"), frame("https://cdn/older", id = "avatar-42-5")))
+        val viewer = avatarMedia.state.value.viewer!!
+        assertEquals(listOf("avatar-42", "avatar-42-6", "avatar-42-5"), viewer.items.map { it.id })
+        avatarMedia.showPage(2)
+        assertTrue("https://cdn/older" in files.urls)
+        avatarMedia.saveAvatar()
+        assertEquals(1, saver.pictures.size)
+        assertEquals(listOf("Фото сохранено"), notices)
+    }
+
+    @Test
     fun noAvatarNoViewerNoSave() {
-        avatarMedia.openAvatar("42", null, "Анна")
+        avatarMedia.openAvatar("42", emptyList(), "Анна")
         assertEquals(null, avatarMedia.state.value.viewer)
         assertFalse(avatarMedia.canSaveAvatar())
         avatarMedia.saveAvatar()
@@ -176,7 +231,7 @@ class MediaSavingTest {
     @Test
     fun avatarSaveFailureIsReported() {
         saver.failure = app.maxly.domain.MaxlyError.Rejected("Нет доступа к памяти телефона")
-        avatarMedia.openAvatar("42", "https://cdn/a", "Анна")
+        avatarMedia.openAvatar("42", listOf(frame("https://cdn/a")), "Анна")
         avatarMedia.saveAvatar()
         assertEquals(listOf("Нет доступа к памяти телефона"), errors.map { it.message })
         assertTrue(notices.isEmpty())

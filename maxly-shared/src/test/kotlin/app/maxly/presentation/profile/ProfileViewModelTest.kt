@@ -44,6 +44,12 @@ private class FakeProfiles : ProfileRepository {
         requests += tab to beforeMessageId
         return pages[tab]?.removeFirstOrNull() ?: emptyList()
     }
+    var photos: List<Pair<Long?, String>> = emptyList()
+    val photoRequests = mutableListOf<String>()
+    override suspend fun contactPhotos(peerId: String): List<Pair<Long?, String>> {
+        photoRequests += peerId
+        return photos
+    }
     override fun presence(peerId: String): MutableStateFlow<PeerPresence?> {
         watched += peerId
         return presence
@@ -64,24 +70,32 @@ class ProfileViewModelTest {
 
     @Test
     fun avatarOpensTheOriginalOfThePeer() {
-        profiles.fresh = ChatProfile(ChatProfile.Kind.USER, "10", "Анна", avatarUrl = "https://cdn/a?r=1&fn=sqr_96", peerId = "42")
+        profiles.fresh = ChatProfile(
+            ChatProfile.Kind.USER, "10", "Анна", avatarUrl = "https://cdn/a?r=1&fn=sqr_96", peerId = "42",
+            avatarFullUrl = "https://cdn/a?r=1", avatarViewerUrls = listOf("https://cdn/a?r=1&fn=w_1440"), photoId = 7,
+        )
+        profiles.photos = listOf(7L to "https://cdn/a?r=1&fn=sqr_96", 6L to "https://cdn/old?r=2")
         val model = vm()
         assertTrue(model.hasAvatarPhoto)
         assertEquals("avatar-42", model.avatarPhotoId)
         model.openAvatar(preview = "https://cdn/a?r=1&fn=sqr_288")
         val viewer = model.media.state.value.viewer!!
-        assertEquals("https://cdn/a?r=1", (viewer.items.single() as ChatAttachment.Photo).photo.url)
+        assertEquals(listOf("42"), profiles.photoRequests)
+        assertEquals(listOf("avatar-42", "avatar-42-6"), viewer.items.map { it.id })
+        assertEquals("https://cdn/a?r=1", (viewer.items.first() as ChatAttachment.Photo).photo.url)
+        assertEquals(listOf("https://cdn/a?r=1", "https://cdn/a?r=1&fn=w_1440"), viewer.fallbacks["avatar-42"])
         assertEquals("https://cdn/a?r=1&fn=sqr_288", viewer.previews["avatar-42"])
         assertEquals("Анна", viewer.authorName)
     }
 
     @Test
     fun channelAvatarIsTheChatIcon() {
-        profiles.fresh = ChatProfile(ChatProfile.Kind.CHANNEL, "-70", "Новости", avatarUrl = "https://cdn/icon")
+        profiles.fresh = ChatProfile(ChatProfile.Kind.CHANNEL, "-70", "Новости", avatarUrl = "https://cdn/icon&fn=sqr_96", avatarFullUrl = "https://cdn/icon")
         val model = ProfileViewModel("-70", "Новости", profiles, repo, now = { now }, presence = PresenceText(ZoneOffset.UTC), sharedPauseMs = 0)
         assertEquals("avatar--70", model.avatarPhotoId)
         model.openAvatar()
         assertEquals("https://cdn/icon", (model.media.state.value.viewer!!.items.single() as ChatAttachment.Photo).photo.url)
+        assertTrue(profiles.photoRequests.isEmpty())
     }
 
     @Test
@@ -92,7 +106,7 @@ class ProfileViewModelTest {
         model.openAvatar()
         assertNull(model.media.state.value.viewer)
 
-        profiles.fresh = ChatProfile(ChatProfile.Kind.SAVED, "10", "Избранное", avatarUrl = "https://cdn/me")
+        profiles.fresh = ChatProfile(ChatProfile.Kind.SAVED, "10", "Избранное", avatarUrl = "https://cdn/me", avatarFullUrl = "https://cdn/me")
         val saved = vm()
         assertNull(saved.avatarPhotoId)
         saved.openAvatar()

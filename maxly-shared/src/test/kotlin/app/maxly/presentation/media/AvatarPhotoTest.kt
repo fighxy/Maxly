@@ -1,7 +1,6 @@
 package app.maxly.presentation.media
 
 import app.maxly.domain.ChatAttachment
-import com.maxly.core.media.ImageShape
 import com.maxly.core.media.ImageSizes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -13,46 +12,79 @@ import java.time.ZoneOffset
 class AvatarPhotoTest {
     private val base = "https://i.oneme.ru/i?r=BTGBPUwtwgYUeoFhO7rESmr8"
 
+    private val raw = "https://i.oneme.ru/i?r=RAWaaaa"
+    private val thumb = "$base&fn=sqr_96"
+
     @Test
-    fun originalIsTheCoreUrlWithoutSize() {
-        assertEquals(base, AvatarPhoto.original(base))
-        assertEquals(base, AvatarPhoto.original(ImageSizes.url(base, ImageSizes.SQUARE_MAX)))
-        assertEquals(base, AvatarPhoto.original("$base&fn=sqr_96&fn=w_480"))
+    fun fullUrlFirstThenViewerUrlsLargestFirst() {
+        val full = ImageSizes.originalUrl(raw, thumb)
+        val viewer = ImageSizes.viewerUrls(raw, thumb)
+        val urls = AvatarPhoto.candidates(full, viewer)
+        assertEquals(raw, urls.first())
+        assertEquals(viewer, urls.drop(1))
+        assertEquals("$raw&fn=w_1440", urls[1])
+        assertEquals("$raw&fn=sqr_720", urls[2])
+        assertEquals("$base&fn=w_1440", urls[3])
+        assertEquals("$base&fn=sqr_64", urls.last())
+        // Квадрат шапки как пришёл (с его `fn`) не берётся вместо оригинала.
+        assertFalse(thumb in urls.take(urls.indexOf("$base&fn=sqr_96")))
     }
 
     @Test
-    fun originalKeepsOtherParameters() {
-        assertEquals("https://cdn/a?r=1&expires=1760000000000", AvatarPhoto.original("https://cdn/a?fn=sqr_192&r=1&expires=1760000000000"))
-        assertEquals("https://cdn/a", AvatarPhoto.original("https://cdn/a?fn=sqr_192"))
-        // Ядро дописывает `&fn=` и к адресу без `?`.
-        assertEquals("https://cdn/a", AvatarPhoto.original("https://cdn/a&fn=sqr_64"))
-        assertEquals("https://cdn/a&t=2", AvatarPhoto.original("https://cdn/a&fn=sqr_64&t=2"))
+    fun withoutRawTheBaseOriginalLeads() {
+        val urls = AvatarPhoto.candidates(ImageSizes.originalUrl(null, thumb), ImageSizes.viewerUrls(null, thumb))
+        assertEquals(listOf(base, "$base&fn=w_1440", "$base&fn=sqr_720"), urls.take(3))
     }
 
     @Test
-    fun noPhotoNoOriginal() {
-        assertNull(AvatarPhoto.original(null))
-        assertNull(AvatarPhoto.original(""))
-        assertNull(AvatarPhoto.original("   "))
-        assertEquals("file:///data/a.jpg", AvatarPhoto.original("file:///data/a.jpg"))
+    fun candidatesDropBlanksAndRepeats() {
+        assertEquals(listOf("https://cdn/a", "https://cdn/a&fn=w_1440"), AvatarPhoto.candidates(" https://cdn/a ", listOf("", "https://cdn/a", "https://cdn/a&fn=w_1440")))
+        assertEquals(listOf("https://cdn/a&fn=w_1440"), AvatarPhoto.candidates(null, listOf("https://cdn/a&fn=w_1440")))
+        assertTrue(AvatarPhoto.candidates(null, emptyList()).isEmpty())
+        assertTrue(AvatarPhoto.candidates("  ", emptyList()).isEmpty())
+        assertEquals(listOf("file:///data/a.jpg"), AvatarPhoto.candidates("file:///data/a.jpg", listOf("https://cdn/a&fn=w_1440")))
     }
 
     @Test
-    fun previewIsTheHeaderSquare() {
-        // 104 dp × 2,75 = 286 px: первый шаг не меньше — sqr_288.
-        val preview = AvatarPhoto.preview("$base&fn=sqr_64", 104f, 2.75f)
-        assertEquals(ImageSizes.sizedUrl(base, ImageShape.SQUARE, 286), preview)
-        assertEquals("sqr_288", preview!!.substringAfter("fn="))
-        assertNull(AvatarPhoto.preview(null, 104f, 2f))
+    fun firstLoadedWalksTheChainInOrder() = kotlinx.coroutines.runBlocking {
+        val tried = mutableListOf<String>()
+        val found = AvatarPhoto.firstLoaded(listOf("full", "w_1440", "sqr_720", "w_1080")) { url ->
+            tried += url
+            if (url == "sqr_720") "file-$url" else throw java.io.IOException("404")
+        }
+        assertEquals("sqr_720" to "file-sqr_720", found)
+        assertEquals(listOf("full", "w_1440", "sqr_720"), tried)
+        assertNull(AvatarPhoto.firstLoaded(listOf("a", "b")) { throw java.io.IOException("404") })
     }
 
     @Test
-    fun viewerOpensTheOriginalWithThePreviewFirst() {
-        val preview = AvatarPhoto.preview(base, 104f, 2f)
-        val viewer = AvatarPhoto.viewer("42", "$base&fn=sqr_96", "  Анна Смирнова ", preview)!!
-        val photo = (viewer.items.single() as ChatAttachment.Photo).photo
-        assertEquals(base, photo.url)
-        assertEquals(preview, viewer.previews[photo.id])
+    fun expiredWhenAnyUrlIsPastItsDeadline() {
+        assertTrue(AvatarPhoto.isExpired(listOf("https://cdn/a?r=1&expires=1000"), 1000))
+        assertFalse(AvatarPhoto.isExpired(listOf("https://cdn/a?r=1&expires=1000"), 999))
+        assertFalse(AvatarPhoto.isExpired(listOf("https://cdn/a?r=1"), Long.MAX_VALUE))
+    }
+
+    @Test
+    fun historySkipsTheCurrentPhotoAndKeepsServerOrder() {
+        val current = AvatarPhoto.current("42", base, ImageSizes.viewerUrls(null, base))!!
+        val frames = AvatarPhoto.history("42", listOf(7L to "$base&fn=sqr_192", 6L to "https://cdn/old?r=2", 5L to "https://cdn/older?r=3&fn=w_480"), 7L, current)
+        assertEquals(listOf("avatar-42-6", "avatar-42-5"), frames.map { it.id })
+        assertEquals("https://cdn/older?r=3", frames[1].urls.first())
+        assertEquals("https://cdn/older?r=3&fn=w_1440", frames[1].urls[1])
+        assertEquals("https://cdn/older?r=3&fn=w_480", frames[1].preview)
+        // Без id совпадающий с текущим адрес тоже пропускается.
+        assertEquals(listOf("avatar-42-n1"), AvatarPhoto.history("42", listOf(null to "$base&fn=sqr_96", null to "https://cdn/old"), null, current).map { it.id })
+    }
+
+    @Test
+    fun viewerShowsCurrentFirstWithItsChain() {
+        val current = AvatarPhoto.current("42", base, listOf("$base&fn=w_1440"), preview = thumb)!!
+        val old = AvatarPhoto.Frame("avatar-42-6", listOf("https://cdn/old", "https://cdn/old&fn=w_1440"))
+        val viewer = AvatarPhoto.viewer("42", listOf(current, old), "  Анна Смирнова ")!!
+        assertEquals(listOf("avatar-42", "avatar-42-6"), viewer.items.map { it.id })
+        assertEquals(base, (viewer.items[0] as ChatAttachment.Photo).photo.url)
+        assertEquals(listOf(base, "$base&fn=w_1440"), viewer.fallbacks["avatar-42"])
+        assertEquals(thumb, viewer.previews["avatar-42"])
         assertEquals("Анна Смирнова", viewer.authorName)
         assertEquals(0, viewer.index)
         assertTrue(AvatarPhoto.isAvatar(viewer))
@@ -62,8 +94,8 @@ class AvatarPhotoTest {
 
     @Test
     fun noAvatarOpensNothing() {
-        assertNull(AvatarPhoto.viewer("42", null, "Анна"))
-        assertNull(AvatarPhoto.viewer("42", "", "Анна"))
+        assertNull(AvatarPhoto.current("42", null, emptyList()))
+        assertNull(AvatarPhoto.viewer("42", emptyList(), "Анна"))
     }
 
     @Test

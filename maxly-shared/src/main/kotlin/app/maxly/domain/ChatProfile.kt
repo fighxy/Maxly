@@ -5,7 +5,14 @@ data class ChatProfile(
     val kind: Kind,
     val chatId: String,
     val title: String = "",
+    /** Квадрат аватара для шапки (миниатюра ядра). */
     val avatarUrl: String? = null,
+    /** Оригинал фото профиля для просмотра (`avatarFullUrl` / `iconFullUrl` ядра). */
+    val avatarFullUrl: String? = null,
+    /** Запасные размеры фото профиля от большего к меньшему (`avatarViewerUrls` / `iconViewerUrls`). */
+    val avatarViewerUrls: List<String> = emptyList(),
+    /** id текущего фото профиля человека; `null` — неизвестно. */
+    val photoId: Long? = null,
     val peerId: String? = null,
     val description: String? = null,
     /** Публичная ссылка: `https://max.ru/name`. */

@@ -30,6 +30,12 @@ interface ProfileRepository {
 
     /** Присутствие человека [peerId] по мере пушей; `null` — о нём ничего не известно. */
     fun presence(peerId: String): Flow<PeerPresence?> = emptyFlow()
+
+    /**
+     * Фото профиля человека [peerId], текущее первым: id фото (`null` — сервер не сопоставил) и
+     * адрес как пришёл (`CONTACT_PHOTOS`). Пусто — истории нет.
+     */
+    suspend fun contactPhotos(peerId: String): List<Pair<Long?, String>> = emptyList()
 }
 
 class CoreProfileRepository(private val client: MaxClient) : ProfileRepository {
@@ -74,6 +80,17 @@ class CoreProfileRepository(private val client: MaxClient) : ProfileRepository {
             .map { info -> info?.let { PeerPresence(PresenceTime.isOnline(it), PresenceTime.ms(it.seen), PresenceTime.status(it)) } }
     }
 
+    override suspend fun contactPhotos(peerId: String): List<Pair<Long?, String>> {
+        val id = peerId.toLongOrNull() ?: return emptyList()
+        val out = mutableListOf<Pair<Long?, String>>()
+        repeat(MAX_PHOTO_PAGES) {
+            val page = MaxCoreGateway.read { client.api.users.contactPhotos(id, from = out.size) }
+            out += page.photos.map { it.photoId to it.url }
+            if (page.photos.isEmpty() || out.size >= page.total) return out
+        }
+        return out
+    }
+
     private fun userProfile(
         chatId: String,
         card: com.maxly.core.api.MaxUser,
@@ -86,7 +103,10 @@ class CoreProfileRepository(private val client: MaxClient) : ProfileRepository {
             kind = if (bot) ChatProfile.Kind.BOT else ChatProfile.Kind.USER,
             chatId = chatId,
             title = client.store.state.value.displayName(displayFrom.id) ?: displayFrom.displayName.orEmpty(),
-            avatarUrl = displayFrom.baseUrl?.takeIf { it.isNotEmpty() },
+            avatarUrl = displayFrom.avatarThumbUrl,
+            avatarFullUrl = displayFrom.avatarFullUrl,
+            avatarViewerUrls = displayFrom.avatarViewerUrls,
+            photoId = displayFrom.photoId?.takeIf { it > 0 },
             peerId = displayFrom.id.toString(),
             description = card.description?.trim()?.takeIf { it.isNotEmpty() },
             link = card.link?.takeIf { it.isNotEmpty() }?.let(::absoluteLink),
@@ -106,7 +126,9 @@ class CoreProfileRepository(private val client: MaxClient) : ProfileRepository {
             kind = if (chat.type == "CHANNEL") ChatProfile.Kind.CHANNEL else ChatProfile.Kind.GROUP,
             chatId = chat.id.toString(),
             title = chat.title.orEmpty(),
-            avatarUrl = (chat.raw["baseIconUrl"] as? String)?.takeIf { it.isNotEmpty() },
+            avatarUrl = chat.iconThumbUrl?.takeIf { it.isNotEmpty() },
+            avatarFullUrl = chat.iconFullUrl,
+            avatarViewerUrls = chat.iconViewerUrls,
             description = (chat.raw["description"] as? String)?.trim()?.takeIf { it.isNotEmpty() },
             link = (chat.raw["link"] as? String)?.takeIf { it.isNotEmpty() }?.let(::absoluteLink),
             participants = chat.participantsCount.takeIf { it > 0 },
@@ -127,6 +149,9 @@ class CoreProfileRepository(private val client: MaxClient) : ProfileRepository {
 
     private companion object {
         const val PAGE = 40
+
+        /** Не больше 10 страниц по 50 прошлых фото. */
+        const val MAX_PHOTO_PAGES = 10
 
         /** `name` или `max.ru/name` → полный адрес. */
         fun absoluteLink(link: String): String = when {
