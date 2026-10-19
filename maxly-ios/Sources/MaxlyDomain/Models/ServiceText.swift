@@ -27,12 +27,12 @@ public enum ServiceText {
     /// ядру незнакомо (`system`, незнакомое): тогда текст сервера или `fallback`.
     static func storedText(_ notice: ServiceNotice, actorId: String, actorName: String, outgoing: Bool?) -> String? {
         let viewer = notice.viewerId ?? ""
-        let actor = actorId.isEmpty || actorId == "0" ? nil : actorId
-        let mine = outgoing ?? (actor != nil && !viewer.isEmpty && actor == viewer)
+        let sender: String? = actorId.isEmpty || actorId == "0" ? nil : actorId
+        let mine = outgoing ?? (sender != nil && !viewer.isEmpty && sender == viewer)
         let name: (String) -> String? = { id in
-            clean(notice.names?[id]) ?? (id == actor ? clean(actorName) : nil)
+            clean(notice.names?[id]) ?? (id == sender ? clean(actorName) : nil)
         }
-        let actorLabel = actor.flatMap(name)
+        let actorLabel = sender.flatMap(name)
         func subject(_ past: String, _ plural: String) -> String? {
             if mine { return "Вы \(plural)" }
             return actorLabel.map { "\($0) \(past)" }
@@ -42,16 +42,16 @@ public enum ServiceText {
         let targets = ids.isEmpty ? [notice.userId].compactMap { $0 }.filter { !$0.isEmpty && $0 != "0" } : ids
         switch notice.event.lowercased() {
         case "new":
-            let type = notice.chatType?.uppercased()
-            if type == "DIALOG", !mine, let actorLabel { return "\(actorLabel) теперь в MAX" }
-            let channel = type == "CHANNEL"
+            let chatType = notice.chatType?.uppercased()
+            if chatType == "DIALOG", !mine, let actorLabel { return "\(actorLabel) теперь в MAX" }
+            let channel = chatType == "CHANNEL"
             let what = channel ? "канал" : "чат"
             if let made = subject("создал(а)", "создали") { return title.map { "\(made) \(what) «\($0)»" } ?? "\(made) \(what)" }
             if let title { return channel ? "Создан канал «\(title)»" : "Создан чат «\(title)»" }
             return channel ? "Канал создан" : "Чат создан"
         case "add", "remove":
             let add = notice.event.lowercased() == "add"
-            if let actor, targets == [actor] {
+            if let sender, targets == [sender] {
                 return add
                     ? subject("вступил(а) в чат", "вступили в чат") ?? "Участник вступил(а) в чат"
                     : subject("покинул(а) чат", "покинули чат") ?? "Участник покинул(а) чат"
@@ -72,8 +72,8 @@ public enum ServiceText {
         case "joinbylink":
             return subject("вступил(а) в чат по ссылке", "вступили в чат по ссылке") ?? "Участник вступил(а) в чат по ссылке"
         case "hello":
-            let who = notice.userId.flatMap { id -> String? in id.isEmpty || id == "0" ? nil : id } ?? actor
-            if let who, (!viewer.isEmpty && who == viewer) || (mine && who == actor) { return "Вы теперь в MAX" }
+            let who = notice.userId.flatMap { id -> String? in id.isEmpty || id == "0" ? nil : id } ?? sender
+            if let who, (!viewer.isEmpty && who == viewer) || (mine && who == sender) { return "Вы теперь в MAX" }
             return who.flatMap(name).map { "\($0) теперь в MAX" } ?? "Контакт теперь в MAX"
         case "botstarted":
             return mine ? "Вы запустили бота" : "Бот запущен"
