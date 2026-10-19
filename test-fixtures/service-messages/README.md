@@ -4,7 +4,9 @@
 лежит в `event`. Клиент показывает его серой плашкой по центру ленты (без пузыря и аватара)
 и тем же текстом в строке списка чатов. Swift проигрывает сценарии в
 `ServiceMessageFixtureTests` (`maxly-ios/Tests/MaxlyDataTests`): разбор — `MessageContentCodec`,
-текст — `ServiceText` в `MaxlyDomain`. Новый файл без проигрывателя — ошибка.
+текст — `ServiceText` в `MaxlyDomain`. Android и десктоп — в `ServiceMessagesFixtureTest`
+(`maxly-shared`): разбор — `ServiceMessages.notice`, текст — `ServiceMessages.text`. Новый файл
+без проигрывателя — ошибка.
 
 ## Вложение
 

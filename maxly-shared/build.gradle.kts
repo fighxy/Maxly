@@ -56,7 +56,7 @@ dependencies {
 
 // Общие с iOS сценарии ws2 (test-fixtures/calls/ws2), «печатает» (test-fixtures/typing) и «Кем прочитано»
 // (test-fixtures/readers), а также разметка, черновики, выбор сообщений,
-// участники и имена (test-fixtures/{formatting,drafts,selection,members,names}) — вход тестов: правка файла перезапускает их.
+// участники, имена и служебные сообщения (test-fixtures/{formatting,drafts,selection,members,names,service-messages}) — вход тестов: правка файла перезапускает их.
 tasks.withType<Test>().configureEach {
     inputs.dir(layout.projectDirectory.dir("../test-fixtures/calls/ws2"))
         .withPropertyName("ws2Fixtures")
@@ -81,5 +81,8 @@ tasks.withType<Test>().configureEach {
         .withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.dir(layout.projectDirectory.dir("../test-fixtures/names"))
         .withPropertyName("namesFixtures")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.dir(layout.projectDirectory.dir("../test-fixtures/service-messages"))
+        .withPropertyName("serviceMessagesFixtures")
         .withPathSensitivity(PathSensitivity.RELATIVE)
 }

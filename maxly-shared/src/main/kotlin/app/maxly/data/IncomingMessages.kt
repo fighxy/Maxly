@@ -15,7 +15,8 @@ import kotlinx.coroutines.flow.mapNotNull
  * Сервер Max шлёт пуши только своему приложению, поэтому уведомление собирается на устройстве
  * из того, что пришло по соединению ядра. Берутся события после того, как ядро влило их в стор
  * (`appliedEvents`): название чата и имя автора уже известны. Свои сообщения, комментарии
- * к постам, служебные строки и повторы одного и того же сообщения не проходят.
+ * к постам, служебные события, кроме «теперь в MAX» (`hello`, `new` личного чата), и повторы
+ * одного и того же сообщения не проходят. Закрепление уведомляет, как на iOS.
  */
 class IncomingMessages(private val client: MaxClient, private val clock: () -> Long = System::currentTimeMillis) {
     private val seen = RecentKeys(SEEN_LIMIT)
@@ -29,7 +30,8 @@ class IncomingMessages(private val client: MaxClient, private val clock: () -> L
         val state = client.store.state.value
         val sender = message.sender ?: return null
         if (sender == state.me || MessageMapping.isComment(message)) return null
-        if (ServiceMessages.isService(message)) return null
+        // Из служебных — только «теперь в MAX» (и закрепление), как на iOS.
+        if (!ServiceMessages.notifies(message)) return null
         if (!seen.add("$chatId:${message.id}")) return null
         val now = clock()
         val chat = state.chats[chatId]?.let { ChatMapping.chat(it, state, client.accountConfig.value, now, mutes = ChatMutes.of(client)) }

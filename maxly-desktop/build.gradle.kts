@@ -282,7 +282,7 @@ compose.desktop {
 
 // Общие с iOS сценарии ws2 (test-fixtures/calls/ws2), «печатает» (test-fixtures/typing) и «Кем прочитано»
 // (test-fixtures/readers), а также разметка, черновики, выбор сообщений,
-// участники и имена (test-fixtures/{formatting,drafts,selection,members,names}) — вход тестов общего кода: правка файла перезапускает их.
+// участники, имена и служебные сообщения (test-fixtures/{formatting,drafts,selection,members,names,service-messages}) — вход тестов общего кода: правка файла перезапускает их.
 tasks.withType<Test>().configureEach {
     // Тесты проигрывателя и записи берут свой ffmpeg, если он собран (CI), иначе — из PATH.
     val bundled = ffmpegBuildDir.resolve(ffmpegExecutable)
@@ -310,6 +310,9 @@ tasks.withType<Test>().configureEach {
         .withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.dir(layout.projectDirectory.dir("../test-fixtures/names"))
         .withPropertyName("namesFixtures")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.dir(layout.projectDirectory.dir("../test-fixtures/service-messages"))
+        .withPropertyName("serviceMessagesFixtures")
         .withPathSensitivity(PathSensitivity.RELATIVE)
 }
 

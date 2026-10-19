@@ -189,7 +189,8 @@ class ChatMappingTest {
         )
         val chat = dialog(last = hello)
         val mapped = ChatMapping.chat(chat, state(chat), null, 0)
-        assertEquals("Служебное сообщение", mapped.preview)
+        // Имя — из того, что знает клиент (контакт собеседника), как в ленте.
+        assertEquals("Анна Тест теперь в MAX", mapped.preview)
         assertTrue(mapped.lastMessage!!.isService)
         assertNull(mapped.lastMessage.media)
         assertNull(mapped.lastMessage.delivery)

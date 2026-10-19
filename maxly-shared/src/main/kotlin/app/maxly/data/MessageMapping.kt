@@ -50,12 +50,12 @@ object MessageMapping {
         val outgoing = sender != null && sender == state.me
         // Имена — по правилу ядра: книга, своё имя контакта, имя профиля, телефон.
         val names: (Long) -> String? = { id -> state.displayName(id) }
-        val service = ServiceMessages.text(message)
+        val service = ServiceMessages.text(message, state)
         return Message(
             id = message.id.toString(),
             chatId = (message.chatId ?: fallbackChatId).toString(),
             authorId = sender?.toString().orEmpty(),
-            // Служебное без текста не теряется: подпись ядра или «Служебное сообщение».
+            // Служебное без текста не теряется: текст ядра, свой текст события или «Служебное сообщение».
             text = service ?: message.text,
             timeMs = message.time,
             status = MessageStatus.SENT,
@@ -159,19 +159,20 @@ object MessageMapping {
 
     /** `CONTROL` `pin` / `unpin`. Текст берётся из `pinnedMessage.text`. */
     fun pinNotice(attaches: List<*>?): PinNotice? {
-        val control = attaches.orEmpty().firstNotNullOfOrNull { item ->
-            (item as? Map<*, *>)?.takeIf { it["_type"] == "CONTROL" }
-        } ?: return null
-        return when ((control["event"] as? String)?.lowercase()) {
-            "unpin" -> PinNotice(null, "")
-            "pin" -> {
-                val pinned = control["pinnedMessage"] as? Map<*, *> ?: return PinNotice(null, "")
-                val id = stringId(pinned["id"]) ?: return null
-                val text = (pinned["text"] as? String)?.trim().orEmpty().ifEmpty { "Сообщение" }
-                PinNotice(id, text)
+        for (item in attaches.orEmpty()) {
+            if (!ServiceMessages.isControl(item)) continue
+            val control = item as Map<*, *>
+            when ((control["event"] as? String)?.lowercase()) {
+                "unpin" -> return PinNotice(null, "")
+                "pin" -> {
+                    val pinned = control["pinnedMessage"] as? Map<*, *> ?: return PinNotice(null, "")
+                    val id = stringId(pinned["id"]) ?: return null
+                    val text = (pinned["text"] as? String)?.trim().orEmpty().ifEmpty { "Сообщение" }
+                    return PinNotice(id, text)
+                }
             }
-            else -> null
         }
+        return null
     }
 
     /** Ссылка `FORWARD`: автор и текст оригинала. */
