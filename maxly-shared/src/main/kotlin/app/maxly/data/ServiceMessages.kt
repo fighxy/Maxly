@@ -3,6 +3,8 @@ package app.maxly.data
 import com.maxly.core.api.MaxMessage
 import com.maxly.core.state.MaxState
 import com.maxly.core.media.Attachment
+import com.maxly.core.media.attachments
+import com.maxly.core.media.isService
 import com.maxly.core.media.controlFallbackText
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -11,7 +13,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * Служебные сообщения: вложение `CONTROL` (ключ `_type` или `type`, регистр не важен).
+ * Служебные сообщения: вложение `CONTROL` (`_type` в любом регистре или `type: "control"` —
+ * узнаёт ядро, [Attachment.from]).
  *
  * Текст пишет ядро ([controlFallbackText]): сначала текст сервера (`shortMessage`, `message`),
  * затем свой текст известного события — «Вы» для своих событий, имена участников из [MaxState]
@@ -37,37 +40,11 @@ object ServiceMessages {
 
     private val logged = RecentKeys(LOGGED_SHAPES)
 
-    /** Вложение `CONTROL` (ключ `_type` или `type`, регистр не важен). */
-    fun isControl(value: Any?): Boolean {
-        val map = value as? Map<*, *> ?: return false
-        return ((map["_type"] ?: map["type"]) as? String)?.uppercase() == "CONTROL"
-    }
+    /** `CONTROL` сообщения в разборе ядра (`_type` в любом регистре или `type: "control"`). */
+    fun control(message: MaxMessage): Attachment.Control? =
+        message.attachments.firstNotNullOfOrNull { it as? Attachment.Control }
 
-    private fun controlMap(attaches: List<*>?): Map<*, *>? =
-        attaches.orEmpty().firstOrNull(::isControl) as? Map<*, *>
-
-    /** `CONTROL` сообщения в разборе ядра; `type: "control"` ядро не узнаёт — он собирается здесь же. */
-    fun control(message: MaxMessage): Attachment.Control? = controlMap(message.attaches)?.let(::coreControl)
-
-    private fun coreControl(map: Map<*, *>): Attachment.Control =
-        (Attachment.from(map) as? Attachment.Control) ?: Attachment.Control(
-            event = map["event"] as? String,
-            userId = ChatMapping.longOf(map["userId"]),
-            userIds = (map["userIds"] as? List<*>).orEmpty().mapNotNull { ChatMapping.longOf(it) },
-            title = map["title"] as? String,
-            url = map["url"] as? String,
-            chatType = map["chatType"] as? String,
-            raw = map,
-            message = map["message"] as? String,
-            shortMessage = map["shortMessage"] as? String,
-            photoToken = map["photoToken"] as? String,
-            showHistory = map["showHistory"] as? Boolean,
-            startPayload = map["startPayload"] as? String,
-            pinnedMessageId = ChatMapping.longOf((map["pinnedMessage"] as? Map<*, *>)?.get("id")),
-            pinnedText = (map["pinnedMessage"] as? Map<*, *>)?.get("text") as? String,
-        )
-
-    fun isService(message: MaxMessage?): Boolean = message != null && controlMap(message.attaches) != null
+    fun isService(message: MaxMessage?): Boolean = message?.isService == true
 
     /** Подпись служебного [message] без знания аккаунта и имён; `null`, если сообщение не служебное. */
     fun text(message: MaxMessage): String? = text(message, selfId = null)
@@ -119,11 +96,10 @@ object ServiceMessages {
      * считает и уведомляет о нём, как об обычном сообщении. Не служебное — `true`.
      */
     fun notifies(message: MaxMessage): Boolean {
-        val control = controlMap(message.attaches) ?: return true
-        val event = (control["event"] as? String)?.trim()?.lowercase().orEmpty()
-        return when (event) {
+        val control = control(message) ?: return true
+        return when (control.event?.trim()?.lowercase().orEmpty()) {
             "pin", "unpin", "hello" -> true
-            "new" -> (control["chatType"] as? String)?.uppercase() == "DIALOG"
+            "new" -> control.chatType.equals("DIALOG", ignoreCase = true)
             else -> false
         }
     }

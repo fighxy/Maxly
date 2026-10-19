@@ -57,6 +57,9 @@ class ServiceMessagesTest {
         assertEquals("Вера теперь в MAX", text(control("hello", "userId" to 8L)))
         assertEquals("Анна теперь в MAX", text(control("new", "chatType" to "DIALOG")))
         assertEquals("Вы теперь в MAX", text(control("hello", "userId" to 1L)))
+        assertEquals("Вы теперь в MAX", text(control("new", "chatType" to "DIALOG"), sender = 1L))
+        assertEquals("Контакт теперь в MAX", text(control("new", "chatType" to "DIALOG"), sender = 99L))
+        assertEquals("Контакт теперь в MAX", ServiceMessages.text(message(control("new", "chatType" to "DIALOG"), sender = 0L)))
     }
 
     @Test

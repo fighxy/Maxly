@@ -160,14 +160,13 @@ object MessageMapping {
     /** `CONTROL` `pin` / `unpin`. Текст берётся из `pinnedMessage.text`. */
     fun pinNotice(attaches: List<*>?): PinNotice? {
         for (item in attaches.orEmpty()) {
-            if (!ServiceMessages.isControl(item)) continue
-            val control = item as Map<*, *>
-            when ((control["event"] as? String)?.lowercase()) {
+            val control = com.maxly.core.media.Attachment.from(item) as? com.maxly.core.media.Attachment.Control ?: continue
+            when (control.event?.lowercase()) {
                 "unpin" -> return PinNotice(null, "")
                 "pin" -> {
-                    val pinned = control["pinnedMessage"] as? Map<*, *> ?: return PinNotice(null, "")
-                    val id = stringId(pinned["id"]) ?: return null
-                    val text = (pinned["text"] as? String)?.trim().orEmpty().ifEmpty { "Сообщение" }
+                    if (control.raw["pinnedMessage"] !is Map<*, *>) return PinNotice(null, "")
+                    val id = control.pinnedMessageId?.toString() ?: return null
+                    val text = control.pinnedText?.trim().orEmpty().ifEmpty { "Сообщение" }
                     return PinNotice(id, text)
                 }
             }
