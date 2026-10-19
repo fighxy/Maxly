@@ -175,6 +175,8 @@ fun MediaViewer(
     onCopy: (() -> Unit)? = null,
     /** «Перейти к сообщению»: просмотр закрывается, лента едет к сообщению. */
     onShowInChat: (() -> Unit)? = null,
+    /** Подсказка поверх просмотра («Фото сохранено»); снекбар экрана под ним не виден. */
+    notice: String? = null,
 ) {
     // Просмотр проявляется с лёгким приближением и так же гаснет при закрытии.
     val shown = remember { Animatable(0f) }
@@ -277,6 +279,13 @@ fun MediaViewer(
                     }
                 },
         ) {
+            // Правый щелчок по кадру: те же «Сохранить как…», «Сохранить» и «Копировать», что в шапке.
+            val menu = buildList {
+                if (onSaveAs != null) add(androidx.compose.foundation.ContextMenuItem("Сохранить как…") { if (!saving) onSaveAs() })
+                if (onSave != null) add(androidx.compose.foundation.ContextMenuItem("Сохранить в «Загрузки»") { if (!saving) onSave() })
+                if (onCopy != null) add(androidx.compose.foundation.ContextMenuItem("Копировать файл") { onCopy() })
+            }
+            androidx.compose.foundation.ContextMenuArea(items = { menu }, enabled = menu.isNotEmpty()) {
             HorizontalPager(
                 pager,
                 Modifier.fillMaxSize().graphicsLayer {
@@ -291,6 +300,7 @@ fun MediaViewer(
                 when (val item = state.items[page]) {
                     is ChatAttachment.Photo -> ZoomablePhoto(
                         item.photo.url,
+                        state.previews[item.id],
                         turns[item.id] ?: 0,
                         onChrome = { chrome = !chrome },
                         onZoomed = { zoomed = it },
@@ -317,6 +327,7 @@ fun MediaViewer(
                     )
                     else -> Unit
                 }
+            }
             }
             val current = state.items.getOrNull(pager.currentPage)
             AnimatedVisibility(chrome, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
@@ -368,6 +379,19 @@ fun MediaViewer(
                         }
                     }
                 }
+            }
+            AnimatedVisibility(notice != null, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
+                var shownNotice by remember { mutableStateOf(notice.orEmpty()) }
+                if (notice != null) shownNotice = notice
+                Text(
+                    shownNotice,
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier
+                        .padding(bottom = 32.dp)
+                        .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(18.dp))
+                        .padding(horizontal = 16.dp, vertical = 9.dp),
+                )
             }
         }
     }
@@ -508,6 +532,8 @@ private fun viewerDate(timeMs: Long): String {
 @Composable
 private fun ZoomablePhoto(
     url: String?,
+    /** Уменьшенная копия, уже загруженная экраном: видна, пока грузится оригинал. */
+    placeholder: String?,
     turns: Int,
     onChrome: () -> Unit,
     onZoomed: (Boolean) -> Unit,
@@ -516,6 +542,8 @@ private fun ZoomablePhoto(
     var offset by remember { mutableStateOf(Offset.Zero) }
     var imageSize by remember { mutableStateOf(androidx.compose.ui.geometry.Size.Unspecified) }
     var loaded by remember { mutableStateOf(false) }
+    // Оригинал не загрузился: остаётся уменьшенная копия в своём размере, без растяжения.
+    var failed by remember { mutableStateOf(false) }
     val angle by animateFloatAsState(turns * 90f, label = "rotation")
     val chromeToggle by rememberUpdatedState(onChrome)
     // Повернули — зум и сдвиг сначала.
@@ -592,6 +620,19 @@ private fun ZoomablePhoto(
         // уменьшенную копию и фото мылится.
         val context = LocalPlatformContext.current
         val request = remember(url) { ImageRequest.Builder(context).data(url).size(Size.ORIGINAL).build() }
+        if (!loaded && placeholder != null) {
+            AsyncImage(
+                model = placeholder,
+                contentDescription = null,
+                contentScale = if (failed) ContentScale.Inside else ContentScale.Fit,
+                modifier = Modifier.fillMaxSize().graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offset.x
+                    translationY = offset.y
+                },
+            )
+        }
         AsyncImage(
             model = request,
             filterQuality = FilterQuality.High,
@@ -600,7 +641,9 @@ private fun ZoomablePhoto(
             onSuccess = {
                 imageSize = it.painter.intrinsicSize
                 loaded = true
+                failed = false
             },
+            onError = { failed = true },
             modifier = Modifier.fillMaxSize().graphicsLayer {
                 val fit = sidewaysFit(imageSize, size, turns)
                 scaleX = scale * fit
@@ -610,7 +653,7 @@ private fun ZoomablePhoto(
                 translationY = offset.y
             },
         )
-        if (!loaded && url != null) CircularProgressIndicator(color = Color.White)
+        if (!loaded && url != null && placeholder == null) CircularProgressIndicator(color = Color.White)
     }
 }
 

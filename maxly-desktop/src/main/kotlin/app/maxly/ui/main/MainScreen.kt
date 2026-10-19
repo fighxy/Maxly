@@ -532,7 +532,7 @@ private fun ChatPane(
                 )
             } else {
             val model = viewModel(key = "profile-$profileFor") {
-                ProfileViewModel(profileFor, chatTitle.takeIf { profileFor == chatId }, container.profiles, container.messages, container.voicePlayer, container.files, account = container.account, contacts = container.contacts)
+                ProfileViewModel(profileFor, chatTitle.takeIf { profileFor == chatId }, container.profiles, container.messages, container.voicePlayer, container.files, account = container.account, contacts = container.contacts, saver = container.mediaSaver)
             }
             ProfileScreen(
                 model,

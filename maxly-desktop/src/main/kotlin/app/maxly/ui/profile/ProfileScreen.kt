@@ -1,5 +1,7 @@
 package app.maxly.ui.profile
 
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import app.maxly.presentation.media.AvatarPhoto
 import androidx.compose.material.icons.outlined.AddCircle
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
@@ -124,10 +126,25 @@ fun ProfileScreen(
     }
 
     model.contactActions?.let { app.maxly.ui.contacts.ContactActionsHost(it, model::notify) }
+    // Подсказка поверх открытого просмотра: снекбар экрана под ним не виден.
+    var viewerNotice by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(notice) {
         val text = notice ?: return@LaunchedEffect
+        if (mediaState.viewer != null) {
+            model.consumeNotice()
+            viewerNotice = text
+            kotlinx.coroutines.delay(2_000)
+            viewerNotice = null
+            return@LaunchedEffect
+        }
         snackbar.showSnackbar(text)
         model.consumeNotice()
+    }
+    // «Сохранить как…» фото профиля: системный диалог с именем по умолчанию.
+    val saveAvatarAs: (inViewer: Boolean) -> Unit = { inViewer ->
+        app.maxly.platform.DesktopSaveDialog.choose("Сохранить фото профиля", model.avatarFileName())?.let { file ->
+            if (inViewer) model.media.saveAvatar(file.absolutePath) else model.saveAvatarAs(file.absolutePath)
+        }
     }
     LaunchedEffect(mediaState.openFile) {
         val file = mediaState.openFile ?: return@LaunchedEffect
@@ -171,7 +188,14 @@ fun ProfileScreen(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
     ) { padding ->
         LazyColumn(Modifier.padding(padding).fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 24.dp)) {
-            item(key = "header") { Header(state) }
+            item(key = "header") {
+                Header(
+                    state,
+                    hasPhoto = model.hasAvatarPhoto,
+                    onPhoto = { preview -> model.openAvatar(preview) },
+                    onSaveAs = { saveAvatarAs(false) },
+                )
+            }
             item(key = "actions") {
                 if (chatActions != null) {
                     ProfileActionRow(
@@ -349,7 +373,17 @@ fun ProfileScreen(
     }
 
     mediaState.viewer?.let { viewer ->
-        MediaViewer(viewer, mediaUserAgent, onPage = model.media::showPage, onClose = model.media::closeViewer, onCopy = model.media::shareViewed)
+        if (AvatarPhoto.isAvatar(viewer)) {
+            MediaViewer(
+                viewer, mediaUserAgent, onPage = model.media::showPage, onClose = model.media::closeViewer,
+                onSave = if (model.media.canSaveAvatar()) ({ model.media.saveAvatar() }) else null,
+                onSaveAs = if (model.media.canSaveAvatar(toFile = true)) ({ saveAvatarAs(true) }) else null,
+                saving = viewer.messageId in mediaState.saving,
+                notice = viewerNotice,
+            )
+        } else {
+            MediaViewer(viewer, mediaUserAgent, onPage = model.media::showPage, onClose = model.media::closeViewer, onCopy = model.media::shareViewed, notice = viewerNotice)
+        }
     }
     LaunchedEffect(mediaState.shareFile) {
         val file = mediaState.shareFile ?: return@LaunchedEffect
@@ -358,8 +392,13 @@ fun ProfileScreen(
     }
 }
 
+/**
+ * Шапка профиля. Щелчок по фото открывает его на весь экран ([onPhoto] получает квадрат шапки,
+ * он виден, пока грузится оригинал); с кольцом историй щелчок открывает истории. Правый щелчок —
+ * «Открыть фото» и «Сохранить фото как…». Без фото аватар не нажимается.
+ */
 @Composable
-private fun Header(state: ProfileUiState) {
+private fun Header(state: ProfileUiState, hasPhoto: Boolean, onPhoto: (String?) -> Unit, onSaveAs: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         // Кольцо историй собеседника: владельца вне ленты профиль спрашивает сам.
         val stories = app.maxly.ui.stories.LocalStoryRings.current
@@ -374,12 +413,28 @@ private fun Header(state: ProfileUiState) {
             else -> null
         }
         androidx.compose.runtime.LaunchedEffect(ownerId, ownerType) { stories.loadOwner(ownerId, ownerType) }
-        app.maxly.ui.stories.StoryRingAvatar(
-            state.avatar,
-            stories.ringFor(ownerId, ownerType),
-            104.dp,
-            onRingClick = ownerId?.let { id -> { stories.open(id) } },
+        val ring = stories.ringFor(ownerId, ownerType)
+        val size = 104.dp
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val photoUrl = (state.avatar.kind as? app.maxly.presentation.chatlist.ChatAvatar.Kind.Photo)?.url?.takeIf { hasPhoto }
+        // Тот же адрес, что у картинки аватара: просмотр сразу показывает её из кэша.
+        val inner = if (ring == null) size else size - (size.value * 0.045f).coerceIn(2f, 3.5f).dp * 4
+        val preview = photoUrl?.let { app.maxly.presentation.media.ImageRequests.square(it, inner.value, density.density) }
+        val openStories = ownerId?.takeIf { ring != null }?.let { id -> { stories.open(id) } }
+        val openPhoto = if (photoUrl != null) ({ onPhoto(preview) }) else null
+        val tap = openStories ?: openPhoto
+        val press = if (tap != null) {
+            Modifier.clip(CircleShape).pointerHoverIcon(androidx.compose.ui.input.pointer.PointerIcon.Hand).clickable(onClick = tap)
+        } else {
+            Modifier
+        }
+        val menu = if (openPhoto == null) emptyList() else listOf(
+            androidx.compose.foundation.ContextMenuItem("Открыть фото", openPhoto),
+            androidx.compose.foundation.ContextMenuItem("Сохранить фото как…", onSaveAs),
         )
+        androidx.compose.foundation.ContextMenuArea(items = { menu }, enabled = menu.isNotEmpty()) {
+            app.maxly.ui.stories.StoryRingAvatar(state.avatar, ring, size, modifier = press)
+        }
         Spacer(Modifier.height(14.dp))
         Row(Modifier.padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(state.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
