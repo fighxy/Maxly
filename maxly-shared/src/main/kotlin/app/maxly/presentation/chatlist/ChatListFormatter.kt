@@ -184,6 +184,7 @@ class ChatListFormatter(private val zone: ZoneId = ZoneId.systemDefault()) {
     fun senderName(chat: Chat): String? {
         if (chat.type != ChatType.GROUP) return null
         val last = chat.lastMessage ?: return null
+        if (last.isService) return null
         if (last.isOutgoing) return "Вы"
         return last.authorName?.trim()?.takeIf { it.isNotEmpty() }
     }

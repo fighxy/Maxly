@@ -1,5 +1,6 @@
 package app.maxly.diagnostics
 
+import app.maxly.data.ServiceMessages
 import android.app.ActivityManager
 import android.app.ApplicationExitInfo
 import android.content.Context
@@ -58,6 +59,8 @@ object Diagnostics {
             Log.println(priority, "$TAG/$tag", text)
         }
         AppLog.file = log
+        // Только отладочная сборка: сырые CONTROL с незнакомым событием, без id чатов.
+        if (BuildConfig.DEBUG) ServiceMessages.debugLog = { AppLog.i("control", it) }
         DiagnosticEvent.event("app.start", mapOf("platform" to "android", "version" to BuildConfig.VERSION_NAME,
             "build_sha" to BuildConfig.BUILD_SHA, "core_revision" to BuildConfig.CORE_REVISION), snapshot = true)
         DiagnosticEvent.event("notification.capability", mapOf("message_push" to "not_implemented", "incoming_call" to "system_notification"), snapshot = true)

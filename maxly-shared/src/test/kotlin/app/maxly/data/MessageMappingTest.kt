@@ -147,9 +147,13 @@ class MessageMappingTest {
         val control = mapOf("_type" to "CONTROL", "event" to "add", "userIds" to listOf(2L))
         val result = MessageMapping.message(message(mapOf("attaches" to listOf(control)), sender = 3L), 10, state)
         assertTrue(result.isService)
-        assertEquals("Добавил(а) Анна", result.text)
+        // Событие без подписи ядра не прячется.
+        assertEquals("Служебное сообщение", result.text)
         val created = MessageMapping.message(message(mapOf("attaches" to listOf(mapOf("_type" to "CONTROL", "event" to "new", "title" to "Дача")))), 10, state)
         assertEquals("Создан чат «Дача»", created.text)
+        val withText = MessageMapping.message(message(mapOf("attaches" to listOf(mapOf("_type" to "CONTROL", "event" to "x"))), text = "С сервера"), 10, state)
+        assertTrue(withText.isService)
+        assertEquals("С сервера", withText.text)
     }
 
     @Test

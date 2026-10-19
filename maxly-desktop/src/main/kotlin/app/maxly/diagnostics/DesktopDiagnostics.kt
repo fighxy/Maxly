@@ -1,5 +1,6 @@
 package app.maxly.diagnostics
 
+import app.maxly.data.ServiceMessages
 import app.maxly.BuildConfig
 import app.maxly.data.calls.CallLog
 import app.maxly.data.diagnostics.DiagnosticEvent
@@ -60,6 +61,11 @@ object DesktopDiagnostics {
             error?.printStackTrace(console)
         }
         AppLog.file = log
+        // Только по просьбе (MAXLY_DEBUG_CONTROL=1 или -Dmaxly.debugControl=true): сырые CONTROL
+        // с незнакомым событием, без id чатов.
+        if (System.getenv("MAXLY_DEBUG_CONTROL") == "1" || System.getProperty("maxly.debugControl") == "true") {
+            ServiceMessages.debugLog = { AppLog.i("control", it) }
+        }
         DiagnosticEvent.event("app.start", mapOf("platform" to "desktop", "version" to BuildConfig.VERSION_NAME,
             "build_sha" to BuildConfig.BUILD_SHA, "core_revision" to BuildConfig.CORE_REVISION), snapshot = true)
         DiagnosticEvent.event("notification.capability", mapOf("message_push" to "not_implemented", "incoming_call" to "in_app"), snapshot = true)

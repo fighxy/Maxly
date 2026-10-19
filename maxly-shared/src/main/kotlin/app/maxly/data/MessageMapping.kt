@@ -50,19 +50,20 @@ object MessageMapping {
         val outgoing = sender != null && sender == state.me
         // Имена — по правилу ядра: книга, своё имя контакта, имя профиля, телефон.
         val names: (Long) -> String? = { id -> state.displayName(id) }
-        val control = message.attaches.firstNotNullOfOrNull { (it as? Map<*, *>)?.takeIf { map -> map["_type"] == "CONTROL" } }
+        val service = ServiceMessages.text(message)
         return Message(
             id = message.id.toString(),
             chatId = (message.chatId ?: fallbackChatId).toString(),
             authorId = sender?.toString().orEmpty(),
-            text = if (control != null && message.text.isBlank()) serviceText(control, sender?.let(state::displayName), names) else message.text,
+            // Служебное без текста не теряется: подпись ядра или «Служебное сообщение».
+            text = service ?: message.text,
             timeMs = message.time,
             status = MessageStatus.SENT,
             content = content(message, names),
             authorName = sender?.let(state::displayLabel).orEmpty(),
             authorAvatarUrl = user?.baseUrl?.takeIf { it.isNotBlank() },
             isRead = outgoing && peerRead > 0 && peerRead >= message.time,
-            isService = control != null,
+            isService = service != null,
         )
     }
 
@@ -78,25 +79,6 @@ object MessageMapping {
             emoji = reader.reaction?.takeIf { it.isNotEmpty() },
             readMarkMs = reader.readMark,
         )
-
-    /** Подпись служебного сообщения (`CONTROL`) по его `event`. */
-    fun serviceText(control: Map<*, *>, actor: String?, names: (Long) -> String?): String {
-        val who = actor?.takeIf { it.isNotBlank() }
-        val targets = (control["userIds"] as? List<*>).orEmpty().mapNotNull { ChatMapping.longOf(it)?.let(names) }
-        val whom = targets.joinToString(", ")
-        val title = (control["title"] as? String)?.trim().orEmpty()
-        return when ((control["event"] as? String)?.lowercase()) {
-            "new" -> if (title.isNotEmpty()) "Создан чат «$title»" else "Чат создан"
-            "add" -> listOfNotNull(who, "добавил(а)", whom.ifEmpty { "участников" }).joinToString(" ")
-            "remove" -> listOfNotNull(who, "исключил(а)", whom.ifEmpty { "участника" }).joinToString(" ")
-            "leave" -> listOfNotNull(who, "покинул(а) чат").joinToString(" ")
-            "joinbylink" -> listOfNotNull(who, "присоединился(-ась) по ссылке").joinToString(" ")
-            "title" -> if (title.isNotEmpty()) listOfNotNull(who, "изменил(а) название на «$title»").joinToString(" ") else "Название изменено"
-            "icon" -> listOfNotNull(who, "изменил(а) фото чата").joinToString(" ")
-            "pin" -> listOfNotNull(who, "закрепил(а) сообщение").joinToString(" ")
-            else -> "Служебное сообщение"
-        }.replaceFirstChar { it.uppercase() }
-    }
 
     fun content(message: MaxMessage, names: (Long) -> String? = { null }): MessageContent {
         val body = (message.raw["message"] as? Map<*, *>) ?: message.raw

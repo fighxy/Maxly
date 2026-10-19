@@ -54,6 +54,8 @@ data class ChatLastMessage(
     val thumbnailUrl: String? = null,
     /** Пересланное сообщение: строка показывает стрелку перед текстом. */
     val isForwarded: Boolean = false,
+    /** Служебное (`CONTROL`): текст — его подпись, без автора, галочек и значка вложения. */
+    val isService: Boolean = false,
 )
 
 /**

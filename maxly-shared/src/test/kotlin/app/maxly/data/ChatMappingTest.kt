@@ -180,4 +180,32 @@ class ChatMappingTest {
         assertEquals(listOf("10"), mapped[1].chatIds)
         assertEquals(listOf("4", "CHANNEL"), mapped[1].filters)
     }
+
+    @Test
+    fun serviceLastMessageBecomesPreview() {
+        val hello = mapOf(
+            "id" to 501L, "sender" to 2L, "text" to "", "time" to 1_000L, "type" to "USER",
+            "attaches" to listOf(mapOf("_type" to "CONTROL", "event" to "hello")),
+        )
+        val chat = dialog(last = hello)
+        val mapped = ChatMapping.chat(chat, state(chat), null, 0)
+        assertEquals("Служебное сообщение", mapped.preview)
+        assertTrue(mapped.lastMessage!!.isService)
+        assertNull(mapped.lastMessage.media)
+        assertNull(mapped.lastMessage.delivery)
+        // В группе служебная строка без «Имя:».
+        val group = CoreChat.from(
+            mapOf(
+                "id" to 20L, "type" to "CHAT", "status" to "ACTIVE", "title" to "Дача", "participants" to mapOf(me to 0L, 2L to 0L),
+                "lastMessage" to mapOf(
+                    "id" to 502L, "sender" to me, "text" to "", "time" to 1_000L, "type" to "USER",
+                    "attaches" to listOf(mapOf("_type" to "CONTROL", "event" to "new", "title" to "Дача")),
+                ),
+            ),
+        )!!
+        val row = app.maxly.presentation.chatlist.ChatListFormatter().item(ChatMapping.chat(group, state(group), null, 0), 0)
+        assertEquals("Создан чат «Дача»", row.preview)
+        assertNull(row.sender)
+        assertNull(row.delivery)
+    }
 }

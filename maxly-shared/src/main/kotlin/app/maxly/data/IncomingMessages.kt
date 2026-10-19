@@ -29,7 +29,7 @@ class IncomingMessages(private val client: MaxClient, private val clock: () -> L
         val state = client.store.state.value
         val sender = message.sender ?: return null
         if (sender == state.me || MessageMapping.isComment(message)) return null
-        if (message.attaches.any { (it as? Map<*, *>)?.get("_type") == "CONTROL" }) return null
+        if (ServiceMessages.isService(message)) return null
         if (!seen.add("$chatId:${message.id}")) return null
         val now = clock()
         val chat = state.chats[chatId]?.let { ChatMapping.chat(it, state, client.accountConfig.value, now, mutes = ChatMutes.of(client)) }

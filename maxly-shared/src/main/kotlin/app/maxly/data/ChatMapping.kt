@@ -46,10 +46,14 @@ object ChatMapping {
         val forwarded = forwardedOf(last)
         val attaches = last?.attaches?.takeIf { it.isNotEmpty() } ?: (forwarded?.get("attaches") as? List<*>).orEmpty()
         val media = attachmentKind(attaches)
+        // Служебная строка: подпись как в ленте, без автора, галочек и значка вложения.
+        val service = last?.let { ServiceMessages.preview(it) }
         val outgoing = last?.sender != null && me != null && last.sender == me
         // Отметка собеседника — и из карточки чата, и из пушей прочтения: пуш карточку не меняет.
         val peerRead = ReadMarks.peer(chat, state)
-        val lastMessage = if (last != null && (outgoing || last.sender != null || media != null)) {
+        val lastMessage = if (last != null && service != null) {
+            ChatLastMessage(authorId = last.sender?.toString(), isService = true)
+        } else if (last != null && (outgoing || last.sender != null || media != null)) {
             var delivery = if (outgoing) DeliveryState.SENT else null
             // Собеседник прочитал всё до своей отметки: отправленное не позже неё прочитано. Сравнивается
             // время самого сообщения: время последнего события чата двигают и правки, и реакции.
@@ -76,7 +80,7 @@ object ChatMapping {
             lastMessageId = last?.id?.toString(),
             unreadCount = chat.newMessages,
             updatedAtMs = updated,
-            preview = (last?.text?.takeIf { it.isNotEmpty() } ?: forwarded?.get("text") as? String)?.takeIf { it.isNotEmpty() },
+            preview = service ?: (last?.text?.takeIf { it.isNotEmpty() } ?: forwarded?.get("text") as? String)?.takeIf { it.isNotEmpty() },
             lastMessage = lastMessage,
             avatarUrl = avatar,
             pinOrder = pinOrder,
