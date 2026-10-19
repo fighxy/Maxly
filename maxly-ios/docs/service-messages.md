@@ -9,7 +9,7 @@
 
 ## Путь данных
 
-Текст пишет ядро (`controlFallbackText`, ядро 2843f2d): лента, строка списка чатов и
+Текст пишет ядро (`controlFallbackText`, ядро 3b21250): лента, строка списка чатов и
 уведомление показывают одно и то же, как Android и десктоп.
 
 1. Ядро отдаёт вложения сообщения как пришли (`contentJSON` с `CONTROL` целиком) и готовый
@@ -24,6 +24,8 @@
    `pinnedMessage` или стора), «Закрепление снято» у `unpin`. `nil` — ядру сказать нечего
    (`system`, незнакомое событие без текста сервера). У `pin` ещё `pinnedMessageId` и
    `pinnedText`. Сообщения без `type` ядро не отбрасывает (`type` = `""`).
+   `CONTROL` ядро узнаёт само (с 3b21250): `_type` в любом регистре, а без `_type` —
+   `type: "control"`. Клиент вложение не переписывает.
 2. `MaxIosCore` переносит `IosControl` в `CoreControl` (`CoreMessage.control`,
    `CoreEvent.control`, `CoreChat.lastControl`).
 3. `MessageContentCodec.serviceNotice` разбирает `CONTROL` в `MessageContent.service`
