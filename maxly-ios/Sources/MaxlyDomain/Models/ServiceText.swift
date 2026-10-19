@@ -1,11 +1,15 @@
 import Foundation
 
-/// Текст служебного события чата (`ServiceNotice`) для ленты и строки списка чатов.
+/// Текст служебного события чата (`ServiceNotice`) для ленты, строки списка чатов и уведомлений.
 ///
-/// Автор события — отправитель сообщения. Свои события пишутся от «Вы», участник-аккаунт —
-/// «вас». Имя, которого нет, заменяется словом «Участник» (или «Контакт» для «теперь в MAX»).
-/// Название берётся в «ёлочки». Незнакомое событие без текста сервера — `fallback`.
-/// Текст ядра (`coreText`) заменяет свой, кроме `new` личного чата («теперь в MAX»).
+/// Текст пишет ядро (`IosControl.fallbackText`, в событии — `coreText`): сначала текст сервера,
+/// затем свой текст известного события с «Вы» для аккаунта и именами из стора ядра. Так все
+/// клиенты показывают одно и то же. Если ядру сказать нечего (`system`, незнакомое событие без
+/// текста сервера) — текст сервера или самого сообщения, иначе `fallback`.
+///
+/// Без текста ядра (сообщение сохранено старой сборкой) строка пишется так же, как пишет ядро
+/// (`controlFallbackText` ядра d5e8aed, сценарии `test-fixtures/service-messages`): только
+/// чтобы не показывать `fallback` до перечитывания истории.
 public enum ServiceText {
     public static let fallback = "Служебное сообщение"
 
@@ -13,47 +17,68 @@ public enum ServiceText {
     /// - `outgoing` — сообщение своё (если вызывающий это знает); без него «своё» решает
     ///   `viewerId` события.
     public static func text(_ notice: ServiceNotice, actorId: String, actorName: String, outgoing: Bool? = nil) -> String {
+        if let core = clean(notice.coreText) { return core }
+        return storedText(notice, actorId: actorId, actorName: actorName, outgoing: outgoing)
+            ?? clean(notice.text)
+            ?? fallback
+    }
+
+    /// Текст известного события без текста ядра, теми же словами, что у ядра. `nil` — событие
+    /// ядру незнакомо (`system`, незнакомое): тогда текст сервера или `fallback`.
+    static func storedText(_ notice: ServiceNotice, actorId: String, actorName: String, outgoing: Bool?) -> String? {
         let viewer = notice.viewerId ?? ""
-        let mine = outgoing ?? (!viewer.isEmpty && actorId == viewer)
-        let actor = mine ? "Вы" : (clean(actorName) ?? clean(notice.names?[actorId]) ?? "Участник")
-        func action(_ past: String, _ plural: String) -> String {
-            mine ? "Вы \(plural)" : "\(actor) \(past)"
+        let actor = actorId.isEmpty || actorId == "0" ? nil : actorId
+        let mine = outgoing ?? (actor != nil && !viewer.isEmpty && actor == viewer)
+        let name: (String) -> String? = { id in
+            clean(notice.names?[id]) ?? (id == actor ? clean(actorName) : nil)
+        }
+        let actorLabel = actor.flatMap(name)
+        func subject(_ past: String, _ plural: String) -> String? {
+            if mine { return "Вы \(plural)" }
+            return actorLabel.map { "\($0) \(past)" }
         }
         let title = clean(notice.title)
-        let targets = notice.participantIds
-        let onlyActor = targets.isEmpty || targets == [actorId]
-        let eventKind = Self.kind(notice)
-        // Текст ядра (свой для `new`/`botStarted`, иначе текст сервера) важнее своего. «Теперь
-        // в MAX» для `new` личного чата ядро не различает и пишет «Чат создан».
-        let genericCore = eventKind == .joined && notice.event.lowercased() == "new"
-        if !genericCore, let core = clean(notice.coreText) { return core }
-        switch eventKind {
-        case .joined:
-            return joinedText(notice, actorId: actorId, actorName: actorName, mine: mine)
-        case .created:
-            let what = notice.chatType?.uppercased() == "CHANNEL" ? "канал" : "чат"
-            let base = action("создал(а) \(what)", "создали \(what)")
-            return title.map { "\(base) «\($0)»" } ?? base
-        case .added:
-            if onlyActor { return action("вступил(а) в чат", "вступили в чат") }
-            return action("добавил(а)", "добавили") + " " + list(targets, notice: notice, actorId: actorId, actorName: actorName)
-        case .removed:
-            if targets.isEmpty { return action("удалил(а) участника", "удалили участника") }
-            if targets == [actorId] { return action("покинул(а) чат", "покинули чат") }
-            return action("удалил(а)", "удалили") + " " + list(targets, notice: notice, actorId: actorId, actorName: actorName)
-        case .left:
-            return action("покинул(а) чат", "покинули чат")
-        case .joinedByLink:
-            return action("вступил(а) в чат по ссылке", "вступили в чат по ссылке")
-        case .renamed:
-            guard let title else { return action("изменил(а) название чата", "изменили название чата") }
-            return action("изменил(а) название на «\(title)»", "изменили название на «\(title)»")
-        case .photo:
-            return action("изменил(а) фото чата", "изменили фото чата")
-        case .botStarted:
-            return action("запустил(а) бота", "запустили бота")
-        case .system, .unknown:
-            return clean(notice.text) ?? title ?? fallback
+        let ids = notice.userIds.filter { !$0.isEmpty && $0 != "0" }
+        let targets = ids.isEmpty ? [notice.userId].compactMap { $0 }.filter { !$0.isEmpty && $0 != "0" } : ids
+        switch notice.event.lowercased() {
+        case "new":
+            let type = notice.chatType?.uppercased()
+            if type == "DIALOG", !mine, let actorLabel { return "\(actorLabel) теперь в MAX" }
+            let channel = type == "CHANNEL"
+            let what = channel ? "канал" : "чат"
+            if let made = subject("создал(а)", "создали") { return title.map { "\(made) \(what) «\($0)»" } ?? "\(made) \(what)" }
+            if let title { return channel ? "Создан канал «\(title)»" : "Создан чат «\(title)»" }
+            return channel ? "Канал создан" : "Чат создан"
+        case "add", "remove":
+            let add = notice.event.lowercased() == "add"
+            if let actor, targets == [actor] {
+                return add
+                    ? subject("вступил(а) в чат", "вступили в чат") ?? "Участник вступил(а) в чат"
+                    : subject("покинул(а) чат", "покинули чат") ?? "Участник покинул(а) чат"
+            }
+            guard let did = add ? subject("добавил(а)", "добавили") : subject("удалил(а)", "удалили") else {
+                return add ? "Добавлены участники" : "Удалены участники"
+            }
+            return did + " " + list(targets, viewerId: viewer, name: name)
+        case "leave":
+            return subject("покинул(а) чат", "покинули чат") ?? "Участник покинул(а) чат"
+        case "title":
+            if let renamed = subject("изменил(а) название", "изменили название") {
+                return title.map { "\(renamed) на «\($0)»" } ?? "\(renamed) чата"
+            }
+            return title.map { "Название чата изменено на «\($0)»" } ?? "Название чата изменено"
+        case "icon":
+            return subject("изменил(а) фото чата", "изменили фото чата") ?? "Фото чата изменено"
+        case "joinbylink":
+            return subject("вступил(а) в чат по ссылке", "вступили в чат по ссылке") ?? "Участник вступил(а) в чат по ссылке"
+        case "hello":
+            let who = notice.userId.flatMap { id -> String? in id.isEmpty || id == "0" ? nil : id } ?? actor
+            if let who, (!viewer.isEmpty && who == viewer) || (mine && who == actor) { return "Вы теперь в MAX" }
+            return who.flatMap(name).map { "\($0) теперь в MAX" } ?? "Контакт теперь в MAX"
+        case "botstarted":
+            return mine ? "Вы запустили бота" : "Бот запущен"
+        default:
+            return nil
         }
     }
 
@@ -88,30 +113,20 @@ public enum ServiceText {
         }
     }
 
-    /// «<Имя> теперь в MAX»: имя того, о ком событие (`userId`, иначе отправитель).
-    private static func joinedText(_ notice: ServiceNotice, actorId: String, actorName: String, mine: Bool) -> String {
-        let subject = notice.participantIds.first ?? actorId
-        let viewer = notice.viewerId ?? ""
-        if (!viewer.isEmpty && subject == viewer) || (mine && subject == actorId) { return "Вы теперь в MAX" }
-        let name = clean(notice.names?[subject]) ?? (subject == actorId ? clean(actorName) : nil) ?? "Контакт"
-        return "\(name) теперь в MAX"
-    }
-
     /// Участники через запятую и «и»; аккаунт — «вас», без имени — счётом.
-    static func list(_ ids: [String], notice: ServiceNotice, actorId: String, actorName: String) -> String {
-        let viewer = notice.viewerId ?? ""
+    static func list(_ ids: [String], viewerId viewer: String, name: (String) -> String?) -> String {
         var names: [String] = []
         var unknown = 0
         for id in ids {
             if !viewer.isEmpty, id == viewer {
                 names.append("вас")
-            } else if let name = clean(notice.names?[id]) ?? (id == actorId ? clean(actorName) : nil) {
-                names.append(name)
+            } else if let known = name(id) {
+                names.append(known)
             } else {
                 unknown += 1
             }
         }
-        if names.isEmpty { return unknown == 1 ? "участника" : "\(unknown) \(participants(unknown))" }
+        if names.isEmpty { return unknown <= 1 ? "участника" : "\(unknown) \(participants(unknown))" }
         if unknown > 0 { return names.joined(separator: ", ") + " и ещё \(unknown)" }
         guard names.count > 1, let last = names.last else { return names[0] }
         return names.dropLast().joined(separator: ", ") + " и " + last

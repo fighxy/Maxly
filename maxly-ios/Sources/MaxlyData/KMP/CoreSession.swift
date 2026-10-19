@@ -148,13 +148,19 @@ public struct CoreChat: Sendable, Equatable {
     /// Диалог с ботом, у которого есть мини-приложение (ядро знает его опции). `false` у групп,
     /// каналов, людей и бота, о котором ядро ещё ничего не загрузило.
     public var hasWebApp: Bool
+    /// Первое вложение `CONTROL` последнего сообщения (`IosChat.lastControl`): у служебного
+    /// последнего сообщения строка берёт текст ядра, даже если самого сообщения нет в базе.
+    /// `nil` — последнее сообщение обычное или мост его не передал.
+    public var lastControl: CoreControl?
 
     public init(
         id: String, title: String, type: String, lastMessageId: String, lastText: String, updatedAtMs: Int64, unread: Int,
         avatarURL: String = "", lastAuthorId: String = "", lastMedia: String = "", lastThumbURL: String = "", comments: Int = -1,
         canWrite: Int = -1, muted: Int = -1, lastAuthorName: String = "", lastFromMe: Int = -1, lastForwarded: Bool = false,
-        peerReadMs: Int64 = 0, active: Bool = true, lastTimeMs: Int64 = 0, hasWebApp: Bool = false
+        peerReadMs: Int64 = 0, active: Bool = true, lastTimeMs: Int64 = 0, hasWebApp: Bool = false,
+        lastControl: CoreControl? = nil
     ) {
+        self.lastControl = lastControl
         self.hasWebApp = hasWebApp
         self.active = active
         self.lastTimeMs = lastTimeMs
@@ -386,8 +392,9 @@ public struct CoreMessage: Sendable, Equatable {
     }
 }
 
-/// Служебное вложение из ядра (`IosControl`): событие, участники, название и нейтральный
-/// текст ядра для известного события (`fallbackText`, `nil` — ядро его не знает).
+/// Служебное вложение из ядра (`IosControl`): событие, участники, название и текст ядра
+/// (`fallbackText`: текст сервера, иначе текст известного события с «Вы» для аккаунта, именами
+/// отправителя и участников; `nil` — ядру сказать нечего: `pin`, `system`, незнакомое событие).
 public struct CoreControl: Sendable, Equatable {
     public var event: String
     public var userIds: [String]
@@ -503,6 +510,9 @@ public struct CoreEvent: Sendable, Equatable {
     public var draft: CoreDraft?
     /// Код статуса у `presence` (`-1` у остальных).
     public var presence: Int
+    /// Служебное вложение сообщения у `message` и `edited` (`IosEvent.control`), `nil` у
+    /// обычного сообщения и остальных событий.
+    public var control: CoreControl?
 
     public init(
         kind: Kind,
@@ -521,8 +531,10 @@ public struct CoreEvent: Sendable, Equatable {
         updateTimeMs: Int64 = 0,
         muted: Int = -1,
         draft: CoreDraft? = nil,
-        presence: Int = -1
+        presence: Int = -1,
+        control: CoreControl? = nil
     ) {
+        self.control = control
         self.kind = kind
         self.chatId = chatId
         self.messageId = messageId

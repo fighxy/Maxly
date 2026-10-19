@@ -735,7 +735,8 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             peerReadMs: chat.peerReadMs,
             active: chat.active != 0,
             lastTimeMs: chat.lastTimeMs,
-            hasWebApp: chat.hasWebApp
+            hasWebApp: chat.hasWebApp,
+            lastControl: chat.lastControl.map(Self.control)
         )
     }
 
@@ -807,16 +808,19 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             authorAvatarURL: message.authorAvatarUrl,
             reactionsJSON: message.reactionsJson,
             updateTimeMs: message.updateTime,
-            control: message.control.map { control in
-                CoreControl(
-                    event: control.event,
-                    userIds: control.userIds,
-                    title: control.title,
-                    fallbackText: control.fallbackText,
-                    message: control.message,
-                    shortMessage: control.shortMessage
-                )
-            }
+            control: message.control.map(Self.control)
+        )
+    }
+
+    /// `IosControl` ядра: `fallbackText` уже учитывает аккаунт, отправителя и имена из стора.
+    private static func control(_ control: IosControl) -> CoreControl {
+        CoreControl(
+            event: control.event,
+            userIds: control.userIds,
+            title: control.title,
+            fallbackText: control.fallbackText,
+            message: control.message,
+            shortMessage: control.shortMessage
         )
     }
 
@@ -839,7 +843,8 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             updateTimeMs: event.updateTime,
             muted: Int(event.muted),
             draft: event.draft.map(Self.draft),
-            presence: Int(event.presence)
+            presence: Int(event.presence),
+            control: event.control.map(Self.control)
         )
     }
 }

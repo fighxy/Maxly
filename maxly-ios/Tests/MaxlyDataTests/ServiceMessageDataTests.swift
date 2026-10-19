@@ -37,6 +37,11 @@ private func groupChat(_ id: String, lastMessageId: String = "m1", preview: Stri
     )
 }
 
+private actor NoticeSink: IncomingMessageSink {
+    private(set) var notices: [IncomingMessageNotice] = []
+    func incoming(_ notice: IncomingMessageNotice) async { notices.append(notice) }
+}
+
 private func plain(_ id: String, chat: String, author: String, name: String, at seconds: TimeInterval) -> MessageRecord {
     MessageRecord(
         id: id, serverId: id, chatId: chat, authorId: author, text: "Привет",
@@ -114,9 +119,9 @@ struct ServiceMessageDataTests {
         let created = CoreMapping.message(CoreMessage(
             id: "8", chatId: "g1", authorId: "101", text: "", timeMs: 1_000,
             contentJSON: #"{"attaches":[{"_type":"CONTROL","event":"new","chatType":"CHAT","title":"Дача"}]}"#, authorName: "Анна",
-            control: CoreControl(event: "new", userIds: [], title: "Дача", fallbackText: "Создан чат «Дача»")
+            control: CoreControl(event: "new", userIds: [], title: "Дача", fallbackText: "Анна создал(а) чат «Дача»")
         )).domain
-        #expect(ServiceText.text(of: created.content, authorId: created.authorId, authorName: created.authorName) == "Создан чат «Дача»")
+        #expect(ServiceText.text(of: created.content, authorId: created.authorId, authorName: created.authorName) == "Анна создал(а) чат «Дача»")
 
         let bare = CoreMapping.message(CoreMessage(
             id: "9", chatId: "g1", authorId: "101", text: "", timeMs: 2_000, authorName: "Анна",
@@ -150,5 +155,95 @@ struct ServiceMessageDataTests {
         )).domain
         #expect(silent.content.isService)
         #expect(ServiceText.text(of: silent.content, authorId: silent.authorId, authorName: silent.authorName) == ServiceText.fallback)
+    }
+
+    @Test("Пуш с вложением ядра: в строке и уведомлении текст ядра, «теперь в MAX» — тоже ядра")
+    func pushedCoreText() async throws {
+        let parts = try await makeServiceParts()
+        let sink = NoticeSink()
+        await parts.sync.attachIncoming(sink)
+        try await parts.chats.upsert([groupChat("g1")])
+        await parts.sync.consume(CoreEvent(
+            kind: .message, chatId: "g1", messageId: "m2", authorId: "101", text: "", title: "", chatType: "",
+            timeMs: 200_000, unread: -1,
+            contentJSON: #"{"attaches":[{"_type":"CONTROL","event":"add","userIds":[404,405]}]}"#,
+            authorName: "Анна",
+            control: CoreControl(event: "add", userIds: ["404", "405"], fallbackText: "Анна добавил(а) Глеб и Дину")
+        ))
+        let chat = try #require(await row(parts.chats, "g1"))
+        #expect(chat.preview == "Анна добавил(а) Глеб и Дину")
+        #expect(chat.lastMessage?.media == .service)
+        // Из событий групп уведомляет только «теперь в MAX».
+        #expect(await sink.notices.isEmpty)
+
+        try await parts.chats.upsert([ChatRecord(
+            id: "d1", title: "Анна", type: .private, lastMessageId: "m1", unreadCount: 0,
+            updatedAt: Date(timeIntervalSince1970: 100), preview: "Привет"
+        )])
+        await parts.sync.consume(CoreEvent(
+            kind: .message, chatId: "d1", messageId: "m3", authorId: "101", text: "", title: "", chatType: "",
+            timeMs: 300_000, unread: -1,
+            contentJSON: #"{"attaches":[{"_type":"CONTROL","event":"new","chatType":"DIALOG"}]}"#,
+            authorName: "",
+            control: CoreControl(event: "new", fallbackText: "Анна Петрова теперь в MAX")
+        ))
+        #expect(try #require(await row(parts.chats, "d1")).preview == "Анна Петрова теперь в MAX")
+        let notices = await sink.notices
+        #expect(notices.map(\.text) == ["Анна Петрова теперь в MAX"])
+    }
+
+    @Test("Правка служебного из пуша: строка берёт текст ядра")
+    func editedCoreText() async throws {
+        let parts = try await makeServiceParts()
+        try await parts.chats.upsert([groupChat("g1", lastMessageId: "m4", preview: "Анна изменил(а) название на «Дача»", at: 200)])
+        let control = #"{"attaches":[{"_type":"CONTROL","event":"title","title":"Дача 2027"}]}"#
+        await parts.sync.consume(CoreEvent(
+            kind: .message, chatId: "g1", messageId: "m4", authorId: "101", text: "", title: "", chatType: "",
+            timeMs: 200_000, unread: -1, contentJSON: control, authorName: "Анна",
+            control: CoreControl(event: "title", title: "Дача 2027", fallbackText: "Анна изменил(а) название на «Дача 2027»")
+        ))
+        await parts.sync.consume(CoreEvent(
+            kind: .edited, chatId: "g1", messageId: "m4", authorId: "101", text: "", title: "", chatType: "",
+            timeMs: 200_000, unread: -1, contentJSON: control, authorName: "Анна", updateTimeMs: 210_000,
+            control: CoreControl(event: "title", title: "Дача 2027", fallbackText: "Сервер: название изменено")
+        ))
+        #expect(try #require(await row(parts.chats, "g1")).preview == "Сервер: название изменено")
+    }
+
+    @Test("Строка списка с lastControl: текст ядра без сообщения в базе")
+    func chatRowLastControl() async throws {
+        func core(_ control: CoreControl?, lastText: String = "") -> ChatRecord {
+            var chat = CoreChat(id: "g5", title: "Дача", type: "CHAT", lastMessageId: "m7", lastText: lastText, updatedAtMs: 500_000, unread: 0)
+            chat.lastControl = control
+            return CoreMapping.chat(chat)
+        }
+        let named = core(CoreControl(event: "leave", fallbackText: "Борис покинул(а) чат"))
+        #expect(named.preview == "Борис покинул(а) чат")
+        #expect(named.lastMedia == .service)
+        #expect(core(CoreControl(event: "system"), lastText: "Вход с нового устройства").preview == "Вход с нового устройства")
+        #expect(core(CoreControl(event: "system")).preview == ServiceText.fallback)
+        #expect(core(CoreControl(event: "futureEvent", message: "Сервер: новое событие")).preview == "Сервер: новое событие")
+        let pin = core(CoreControl(event: "pin"), lastText: "")
+        #expect(pin.preview == nil)
+        #expect(pin.lastMedia == nil)
+        #expect(core(nil, lastText: "Привет").preview == "Привет")
+
+        let parts = try await makeServiceParts()
+        try await parts.chats.upsert([named])
+        let chat = try #require(await row(parts.chats, "g5"))
+        #expect(chat.preview == "Борис покинул(а) чат")
+        #expect(chat.lastMessage?.media == .service)
+    }
+
+    @Test("Текст ядра важнее своего, и у new личного чата")
+    func coreTextWins() {
+        var notice = ServiceNotice(event: "new", chatType: "DIALOG", viewerId: "1")
+        #expect(ServiceText.text(notice, actorId: "101", actorName: "Анна") == "Анна теперь в MAX")
+        notice.coreText = "Анна Петрова теперь в MAX"
+        #expect(ServiceText.text(notice, actorId: "101", actorName: "Анна") == "Анна Петрова теперь в MAX")
+        // Без текста ядра и без имени — безлично, как пишет ядро.
+        #expect(ServiceText.text(ServiceNotice(event: "add", userIds: ["202"]), actorId: "101", actorName: "") == "Добавлены участники")
+        #expect(ServiceText.text(ServiceNotice(event: "new", title: "Дача", chatType: "CHAT"), actorId: "101", actorName: "") == "Создан чат «Дача»")
+        #expect(ServiceText.text(ServiceNotice(event: "botStarted", viewerId: "1"), actorId: "101", actorName: "Анна") == "Бот запущен")
     }
 }

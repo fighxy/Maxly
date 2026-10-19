@@ -9,34 +9,48 @@
 
 ## Путь данных
 
-1. Ядро отдаёт вложения сообщения как пришли: `IosMessage.contentJson` и `contentJson` пуша
-   `message` несут `attaches` с `CONTROL` целиком. С ядра 40e5326 у `IosMessage` есть ещё
-   `control` (`IosControl`: событие, участники, название, `fallbackText`, `message`,
-   `shortMessage`); `CoreMapping` берёт из него текст ядра (`fallbackText`: свой у `new` и
-   `botStarted`, иначе текст сервера) и само событие, если фрагмента нет. Сообщения без
-   `type` ядро больше не отбрасывает (`type` = `""`), клиент по `type` их не фильтрует.
-2. `MessageContentCodec.serviceNotice` разбирает его в `MessageContent.service`
-   (`ServiceNotice`: событие, участники, название, текст сервера).
-3. `MessageRepositoryImpl.upsert` дописывает в событие имена участников (у отправителя этого
-   сообщения или из последнего сохранённого сообщения участника), id аккаунта и текст
-   сообщения (`ServiceNotice.filled`).
-4. Текст строит `ServiceText` (`MaxlyDomain`): лента — `MessageBubble`, строка списка —
-   `SyncEngine` (пуш), `ChatRepositoryImpl.replaceLast` (удалили последнее) и снимок
-   списка (`servicePreviews`). Вид последнего сообщения в строке — `MessageMediaKind.service`.
-5. Служебные строки не входят в непрочитанные, не выбираются, не закрепляются и не
+Текст пишет ядро (`controlFallbackText`, ядро d5e8aed): лента, строка списка чатов и
+уведомление показывают одно и то же, как Android и десктоп.
+
+1. Ядро отдаёт вложения сообщения как пришли (`contentJSON` с `CONTROL` целиком) и готовый
+   `IosControl` (событие, участники, название, `fallbackText`, `message`, `shortMessage`):
+   - история — `IosMessage.control`;
+   - пуши `message` и `edited` — `IosEvent.control`;
+   - строка списка чатов — `IosChat.lastControl` (по последнему сообщению чата).
+
+   `fallbackText` — текст сервера (`shortMessage`, затем `message`), иначе текст известного
+   события: «Вы» для аккаунта, имена отправителя и участников из стора ядра, «теперь в MAX» для
+   `hello` и `new` личного чата. `nil` — ядру сказать нечего (`pin`, `system`, незнакомое
+   событие без текста сервера). Сообщения без `type` ядро не отбрасывает (`type` = `""`).
+2. `MaxIosCore` переносит `IosControl` в `CoreControl` (`CoreMessage.control`,
+   `CoreEvent.control`, `CoreChat.lastControl`).
+3. `MessageContentCodec.serviceNotice` разбирает `CONTROL` в `MessageContent.service`
+   (`ServiceNotice`), `CoreMapping.withControl` кладёт в него текст ядра (`coreText`), а без
+   `CONTROL` во фрагменте — само событие. Так же — у сообщения из пуша (`MessageRecord(event)`).
+4. `MessageRepositoryImpl.upsert` дописывает в событие имена участников, id аккаунта и текст
+   сообщения (`ServiceNotice.filled`): они нужны, только если текста ядра нет.
+5. `ServiceText` (`MaxlyDomain`) отдаёт `coreText`; без него — текст сервера или сообщения,
+   иначе «Служебное сообщение». Сообщение, сохранённое без текста ядра (старой сборкой),
+   пишется теми же словами, что пишет ядро (`ServiceText.storedText`), пока история не
+   перечитана. Своих формулировок, отличных от ядра, у iOS нет.
+6. Где показывается:
+   - лента — `MessageBubble` (`ServiceEventNotice`);
+   - строка списка — `CoreMapping.chat` по `lastControl` (текст ядра, вид
+     `MessageMediaKind.service`; сообщения в базе для этого не нужно), `SyncEngine` (пуши
+     `message` и `edited`), `ChatRepositoryImpl.replaceLast` (удалили последнее) и снимок
+     списка (`servicePreviews`);
+   - уведомление — `SyncEngine`: тот же текст, что в строке.
+7. Служебные строки не входят в непрочитанные, не выбираются, не закрепляются и не
    помечаются непрочитанными (`MessageContent.isService`). Уведомление приходит только
-   о «теперь в MAX».
+   о «теперь в MAX» (`hello`, `new` личного чата).
+
+Закрепление (`pin`, `unpin`) ядро не подписывает (`fallbackText` = `nil`), поэтому у iOS
+остаётся своя плашка «Закреплено: …» (`pins.md`), а строка списка по `lastControl` для него
+не меняется.
 
 ## Чего не хватает в ядре
 
-- `IosEvent` (пуш `message`) не несёт `control`: у события из пуша нет текста ядра, и до
-  перечитывания истории строка пишется своим текстом.
-
-- `IosChat` не несёт вложений последнего сообщения: у `CONTROL` пусты и `lastText`, и
-  `lastMedia` (`attachmentKind` знает только медиа). Пока последнего сообщения нет в базе,
-  строка показывает «Служебное сообщение». Нужен, например, `lastContentJson` (тот же
-  фрагмент, что `IosMessage.contentJson`) или готовый `lastControl` (`event`, `userId`,
-  `userIds`, `title`, `chatType`).
-- В `contentJson` у `CONTROL` только id участников (`userId`, `userIds`). Имена клиент
-  ищет сам и не всегда находит. Ядро знает их (`MaxState.displayName`), как уже делает для
-  `link.message.senderName`: нужен, например, `userNames` (id → имя) в каждом `CONTROL`.
+- В `contentJSON` у `CONTROL` только id участников (`userId`, `userIds`). Имена знает
+  `fallbackText`, но не сам фрагмент: если ядро имени не знает, текст безличный
+  («Добавлены участники»), даже когда имя есть в базе iOS.
+- `pin` / `unpin` без текста ядра: «Закреплено: …» пишется на iOS.

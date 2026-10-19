@@ -73,7 +73,22 @@ enum CoreMapping {
         // Мини-приложение бывает только у бота: заодно строка узнаёт, что это бот.
         record.hasWebApp = chat.hasWebApp
         if chat.hasWebApp { record.isBot = true }
+        if let control = chat.lastControl, let text = serviceText(control, messageText: chat.lastText) {
+            record.preview = text
+            record.lastMedia = .service
+        }
         return record
+    }
+
+    /// Текст служебного последнего сообщения для строки списка: текст ядра, иначе текст
+    /// сервера или самого сообщения, иначе «Служебное сообщение». `nil` — закрепление: у него
+    /// своя строка, как у сохранённого сообщения.
+    static func serviceText(_ control: CoreControl, messageText: String) -> String? {
+        let event = control.event.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !["pin", "unpin"].contains(event) else { return nil }
+        return [control.fallbackText, control.shortMessage, control.message, messageText]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? ServiceText.fallback
     }
 
     static func contact(_ contact: CoreContact, now: Date = Date()) -> Contact {
@@ -174,8 +189,9 @@ enum CoreMapping {
         )
     }
 
-    /// Служебное вложение ядра поверх разобранного фрагмента: текст ядра для известного события,
-    /// а без `CONTROL` во фрагменте — само событие. Закрепление остаётся своей плашкой.
+    /// Служебное вложение ядра поверх разобранного фрагмента: текст ядра (`coreText`, его
+    /// показывают лента, строка списка и уведомление), а без `CONTROL` во фрагменте — само
+    /// событие. Закрепление остаётся своей плашкой.
     static func withControl(_ control: CoreControl, _ content: MessageContent) -> MessageContent {
         guard content.pin == nil else { return content }
         let event = control.event.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -233,6 +249,7 @@ extension MessageRecord {
     init?(_ event: CoreEvent) {
         guard event.kind == .message || event.kind == .edited, !event.messageId.isEmpty, !event.chatId.isEmpty else { return nil }
         var content = MessageContentCodec.decode(event.contentJSON)
+        if let control = event.control { content = CoreMapping.withControl(control, content) }
         let reactions = MessageContentCodec.reactionUpdate(event.reactionsJSON)
         if let reactions { content.reactions = reactions.applied(to: content.reactions) }
         self.init(

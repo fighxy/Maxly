@@ -4,7 +4,8 @@ import MaxlyDomain
 @testable import MaxlyData
 
 /// Сценарии служебных сообщений из `test-fixtures/service-messages`: вложение `CONTROL`
-/// разбирает `MessageContentCodec`, текст строит `ServiceText`. Формат — в README рядом с ними.
+/// разбирает `MessageContentCodec`, текст строит `ServiceText` — текст ядра (`coreText`
+/// сценария), а без него те же слова, что пишет ядро. Формат — в README рядом с ними.
 @Suite("Служебные сообщения: общие сценарии")
 struct ServiceMessageFixtureTests {
     static let played = ["events", "fallbacks"]
@@ -50,14 +51,21 @@ struct ServiceMessageFixtureTests {
             viewerId: item["viewer"] as? String ?? "",
             messageText: message["text"] as? String ?? ""
         )
-        if let core = item["coreText"] as? String { notice.coreText = core }
+        let actorId = message["sender"] as? String ?? ""
+        let actorName = message["senderName"] as? String ?? ""
+        let core = item["coreText"] as? String
+        if let core { notice.coreText = core }
         #expect(name(of: ServiceText.kind(notice)) == kind, "\(label): kind \(ServiceText.kind(notice))")
-        let text = ServiceText.text(
-            notice,
-            actorId: message["sender"] as? String ?? "",
-            actorName: message["senderName"] as? String ?? ""
-        )
+        let text = ServiceText.text(notice, actorId: actorId, actorName: actorName)
         #expect(text == expect["text"] as? String, "\(label): «\(text)»")
+        // Текст ядра без текста сервера: сохранённое без него событие пишется теми же словами.
+        let serverText = (attaches as? [[String: Any]] ?? []).contains { $0["shortMessage"] != nil || $0["message"] != nil }
+        if let core, !serverText {
+            var stored = notice
+            stored.coreText = nil
+            let own = ServiceText.text(stored, actorId: actorId, actorName: actorName)
+            #expect(own == core, "\(label): без текста ядра «\(own)», ядро «\(core)»")
+        }
     }
 
     static func name(of kind: ServiceText.Kind) -> String {

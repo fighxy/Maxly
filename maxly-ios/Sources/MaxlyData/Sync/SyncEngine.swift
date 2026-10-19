@@ -223,15 +223,19 @@ public actor SyncEngine {
             let own = !mine.isEmpty && event.authorId == mine
             // Пришло сообщение — автор больше не печатает.
             await chats.stopTyping(chatId: event.chatId, userId: event.authorId)
-            let content = MessageContentCodec.decode(event.contentJSON)
+            // Фрагмент с вложением ядра (`IosEvent.control`): у служебного — текст ядра.
+            let content = MessageContentCodec.decode(record.contentJSON)
             // У пересланного свой текст пуст: в строке — текст пересланного и стрелка.
             var preview = event.text.isEmpty ? (content.forward?.text ?? "") : event.text
-            // Служебное событие: в строке его текст, с именами участников из базы.
+            // Служебное событие: в строке и уведомлении текст ядра, как у других клиентов.
             if content.service != nil {
-                let stored = await messages.serviceText(serverId: event.messageId)
-                preview = stored ?? ServiceText.text(
+                preview = ServiceText.text(
                     of: content, authorId: event.authorId, authorName: event.authorName, currentUserId: mine
                 ) ?? preview
+                if content.service?.coreText == nil, let stored = await messages.serviceText(serverId: event.messageId) {
+                    // Без текста ядра — как его записала база, с именами участников.
+                    preview = stored
+                }
             }
             let known = (try? await chats.noteMessage(
                 chatId: event.chatId,
@@ -270,7 +274,11 @@ public actor SyncEngine {
         case .edited:
             guard let record = MessageRecord(event) else { return }
             _ = try? await messages.applyEdit(record)
-            try? await chats.noteEdit(chatId: event.chatId, messageId: event.messageId, text: event.text)
+            // Правка служебного (`IosEvent.control`): в строке — текст ядра, а не пустой текст.
+            let edited = MessageContentCodec.decode(record.contentJSON)
+            let me = await messages.currentUser()
+            let text = ServiceText.text(of: edited, authorId: event.authorId, authorName: event.authorName, currentUserId: me) ?? event.text
+            try? await chats.noteEdit(chatId: event.chatId, messageId: event.messageId, text: text)
         case .deleted:
             guard !event.messageId.isEmpty else { return }
             let last = event.chatId.isEmpty ? nil : await chats.lastMessageId(chatId: event.chatId)

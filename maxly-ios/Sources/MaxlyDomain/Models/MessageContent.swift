@@ -516,7 +516,7 @@ public struct ServiceNotice: Hashable, Sendable, Codable {
     public var text: String?
     public var chatType: String?
     public var viewerId: String?
-    /// Нейтральный текст ядра для известного события (`IosControl.fallbackText`).
+    /// Текст ядра (`IosControl.fallbackText`): его показывают лента, строка списка и уведомление.
     public var coreText: String?
 
     public init(
