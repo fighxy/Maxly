@@ -37,7 +37,7 @@ import kotlin.coroutines.coroutineContext
  * Удалённый ролик играет, пока качается: загрузка идёт в кэш одним соединением, а ffmpeg читает
  * её через [LocalVideoServer] (дальнее место при перемотке — прямо у CDN). Догнав загрузку (кадр
  * не пришёл вовремя), проигрыватель встаёт на буферизацию до запаса в пару секунд ролика.
- * Скачанный ролик дальше играет из файла. Без ffmpeg в PATH состояние — [State.failed], экран
+ * Скачанный ролик дальше играет из файла. ffmpeg — свой из установщика или из PATH ([Ffmpeg]); без него состояние — [State.failed], экран
  * предлагает системный проигрыватель.
  */
 class DesktopVideoPlayer(private val scope: CoroutineScope) {
@@ -471,7 +471,7 @@ internal object VideoCommands {
     const val MAX_SIDE = 960
 
     fun video(path: String, startMs: Long): List<String> = listOf(
-        "ffmpeg", "-nostdin", "-hide_banner", "-nostats", "-loglevel", "info",
+        Ffmpeg.path, "-nostdin", "-hide_banner", "-nostats", "-loglevel", "info",
         "-ss", seconds(startMs), "-i", path,
         "-an", "-sn",
         "-vf", "fps=$FPS,scale=w='min($MAX_SIDE,iw)':h='min($MAX_SIDE,ih)':force_original_aspect_ratio=decrease",
@@ -479,7 +479,7 @@ internal object VideoCommands {
     )
 
     fun audio(path: String, startMs: Long): List<String> = listOf(
-        "ffmpeg", "-nostdin", "-hide_banner", "-nostats", "-loglevel", "error",
+        Ffmpeg.path, "-nostdin", "-hide_banner", "-nostats", "-loglevel", "error",
         "-ss", seconds(startMs), "-i", path,
         "-vn", "-sn", "-f", "s16le", "-ac", "2", "-ar", "44100", "-",
     )

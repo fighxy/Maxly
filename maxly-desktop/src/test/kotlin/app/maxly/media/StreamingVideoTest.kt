@@ -134,14 +134,12 @@ class StreamingVideoTest {
         }
     }
 
-    private fun ffmpeg(): Boolean = runCatching {
-        ProcessBuilder("ffmpeg", "-version").redirectErrorStream(true).start().apply { inputStream.readBytes() }.waitFor() == 0
-    }.getOrDefault(false)
+    private fun ffmpeg(): Boolean = Ffmpeg.binary != null
 
     private fun sample(seconds: Double, faststart: Boolean, size: String = "320x240", bitrate: String? = null): ByteArray {
         val file = Files.createTempFile("maxly-stream", ".mp4").toFile().apply { deleteOnExit() }
         val args = mutableListOf(
-            "ffmpeg", "-y", "-loglevel", "error",
+            Ffmpeg.path, "-y", "-loglevel", "error",
             "-f", "lavfi", "-i", "testsrc=size=$size:rate=25:duration=$seconds" + (if (bitrate != null) ",noise=alls=60:allf=t+u" else ""),
             "-f", "lavfi", "-i", "sine=frequency=440:duration=$seconds",
             "-pix_fmt", "yuv420p", "-shortest",
@@ -159,7 +157,7 @@ class StreamingVideoTest {
      */
     @Test
     fun playerStartsBeforeTheDownloadEnds(): Unit = runBlocking {
-        assumeTrue("нет ffmpeg в PATH", ffmpeg())
+        assumeTrue("нет ffmpeg", ffmpeg())
         val data = sample(6.0, faststart = true)
         // Весь ролик идёт ~3 с.
         val cdn = StreamingDownload(Slow(data, chunk = maxOf(4096, data.size / 150), pauseMs = 20), target())
@@ -187,7 +185,7 @@ class StreamingVideoTest {
     /** Индекс в конце файла: ffmpeg берёт его диапазоном у источника и начинает до конца загрузки. */
     @Test
     fun moovAtTheEndIsFetchedByRange(): Unit = runBlocking {
-        assumeTrue("нет ffmpeg в PATH", ffmpeg())
+        assumeTrue("нет ffmpeg", ffmpeg())
         val data = sample(5.0, faststart = false, size = "1280x720", bitrate = "8M")
         assertTrue("ролик ${data.size} Б должен быть больше AHEAD", data.size > StreamingDownload.AHEAD * 3 / 2)
         // Около 1,6 МБ/с: весь ролик качается несколько секунд.
@@ -215,7 +213,7 @@ class StreamingVideoTest {
     /** Перемотка вперёд за край загрузки: кадр с нужного места приходит, не дожидаясь загрузки. */
     @Test
     fun seekAheadWhileDownloading(): Unit = runBlocking {
-        assumeTrue("нет ffmpeg в PATH", ffmpeg())
+        assumeTrue("нет ffmpeg", ffmpeg())
         val data = sample(6.0, faststart = true, size = "1280x720", bitrate = "8M")
         // Около 0,8 МБ/с: до конца ролика загрузка дойдёт нескоро.
         val cdn = StreamingDownload(Slow(data, chunk = 32 * 1024, pauseMs = 40), target())
@@ -242,7 +240,7 @@ class StreamingVideoTest {
     /** Сеть медленнее ролика: проигрыватель встаёт на буферизацию с кадром на экране и доигрывает до конца. */
     @Test
     fun slowNetworkBuffersAndPlaysOn(): Unit = runBlocking {
-        assumeTrue("нет ffmpeg в PATH", ffmpeg())
+        assumeTrue("нет ffmpeg", ffmpeg())
         val data = sample(3.0, faststart = true, size = "1280x720", bitrate = "8M")
         // Примерно вдвое медленнее, чем ролик играет.
         val perSecond = data.size / 6

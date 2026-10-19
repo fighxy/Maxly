@@ -86,7 +86,7 @@ class DesktopVideoNoteRecorder(private val scope: CoroutineScope) {
             }
             videoTrack.addSink(frames)
             val process = ProcessBuilder(
-                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                Ffmpeg.path, "-y", "-hide_banner", "-loglevel", "error",
                 "-f", "rawvideo", "-pix_fmt", "yuv420p", "-s", "${SIDE}x$SIDE", "-r", "$FPS", "-i", "pipe:0",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-pix_fmt", "yuv420p", videoFile.absolutePath,
             ).redirectError(ProcessBuilder.Redirect.DISCARD).start()
@@ -171,7 +171,7 @@ class DesktopVideoNoteRecorder(private val scope: CoroutineScope) {
         val note = File(videoFile.parentFile, videoFile.name.replace("-video.mp4", ".mp4"))
         val muxed = runCatching {
             ProcessBuilder(
-                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                Ffmpeg.path, "-y", "-hide_banner", "-loglevel", "error",
                 "-i", videoFile.absolutePath,
                 "-f", "s16le", "-ar", "48000", "-ac", "1", "-i", audioFile.absolutePath,
                 "-c:v", "copy", "-c:a", "aac", "-b:a", "64k", "-shortest", "-movflags", "+faststart", note.absolutePath,

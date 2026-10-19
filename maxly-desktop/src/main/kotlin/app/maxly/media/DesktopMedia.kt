@@ -280,7 +280,7 @@ class DesktopVoicePlayer(private val scope: CoroutineScope, private val download
         val rate = speed
         val meta = metas[voiceId] ?: VoiceMeta()
         val ffmpeg = ProcessBuilder(
-            "ffmpeg", "-hide_banner", "-loglevel", "error",
+            Ffmpeg.path, "-hide_banner", "-loglevel", "error",
             "-ss", startSec.toString(), "-i", file.absolutePath,
             "-af", "atempo=$rate",
             "-f", "s16le", "-ac", "1", "-ar", "48000", "-",
@@ -396,7 +396,7 @@ class DesktopVoiceRecorder(private val scope: CoroutineScope) {
         val ogg = File(target.parentFile, target.nameWithoutExtension + ".ogg")
         val converted = runCatching {
             val code = ProcessBuilder(
-                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                Ffmpeg.path, "-y", "-hide_banner", "-loglevel", "error",
                 "-i", target.absolutePath, "-c:a", "libopus", "-b:a", "32k", "-ac", "1", "-ar", "48000", ogg.absolutePath,
             ).redirectError(ProcessBuilder.Redirect.DISCARD).start().waitFor()
             code == 0 && ogg.length() > 0

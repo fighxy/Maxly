@@ -72,14 +72,12 @@ class DesktopVideoPlayerTest {
         assertNull(VideoCommands.durationMs("  Duration: N/A, bitrate: N/A"))
     }
 
-    private fun ffmpeg(): Boolean = runCatching {
-        ProcessBuilder("ffmpeg", "-version").redirectErrorStream(true).start().apply { inputStream.readBytes() }.waitFor() == 0
-    }.getOrDefault(false)
+    private fun ffmpeg(): Boolean = Ffmpeg.binary != null
 
     /** Ролик из генератора ffmpeg: полосы и тон. */
     private fun sample(width: Int, height: Int, seconds: Double, audio: Boolean = true): File {
         val file = Files.createTempFile("maxly-video", ".mp4").toFile().apply { deleteOnExit() }
-        val args = mutableListOf("ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=${width}x$height:rate=25:duration=$seconds")
+        val args = mutableListOf(Ffmpeg.path, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=${width}x$height:rate=25:duration=$seconds")
         if (audio) args += listOf("-f", "lavfi", "-i", "sine=frequency=440:duration=$seconds")
         args += listOf("-pix_fmt", "yuv420p", "-shortest", file.absolutePath)
         val code = ProcessBuilder(args).redirectErrorStream(true).start().apply { inputStream.readBytes() }.waitFor()
@@ -89,7 +87,7 @@ class DesktopVideoPlayerTest {
 
     @Test
     fun ffmpegDecodesAtConstantRateAndScalesDown() {
-        assumeTrue("нет ffmpeg в PATH", ffmpeg())
+        assumeTrue("нет ffmpeg", ffmpeg())
         val file = sample(1920, 1080, 1.0, audio = false)
         val process = ProcessBuilder(VideoCommands.video(file.absolutePath, 0)).redirectError(ProcessBuilder.Redirect.DISCARD).start()
         val reader = PamReader(BufferedInputStream(process.inputStream, 1 shl 20))
@@ -108,7 +106,7 @@ class DesktopVideoPlayerTest {
 
     @Test
     fun playerShowsFramesLearnsDurationAndEnds(): Unit = runBlocking {
-        assumeTrue("нет ffmpeg в PATH", ffmpeg())
+        assumeTrue("нет ffmpeg", ffmpeg())
         val file = sample(320, 240, 1.0)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val player = DesktopVideoPlayer(scope)
@@ -132,10 +130,10 @@ class DesktopVideoPlayerTest {
 
     @Test
     fun colorsArriveAsRgba(): Unit = runBlocking {
-        assumeTrue("нет ffmpeg в PATH", ffmpeg())
+        assumeTrue("нет ffmpeg", ffmpeg())
         val file = Files.createTempFile("maxly-red", ".mp4").toFile().apply { deleteOnExit() }
         val code = ProcessBuilder(
-            "ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:size=64x64:rate=25:duration=0.5",
+            Ffmpeg.path, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:size=64x64:rate=25:duration=0.5",
             "-pix_fmt", "yuv420p", file.absolutePath,
         ).redirectErrorStream(true).start().apply { inputStream.readBytes() }.waitFor()
         assertEquals(0, code)
@@ -154,7 +152,7 @@ class DesktopVideoPlayerTest {
 
     @Test
     fun missingFileFails(): Unit = runBlocking {
-        assumeTrue("нет ffmpeg в PATH", ffmpeg())
+        assumeTrue("нет ffmpeg", ffmpeg())
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val player = DesktopVideoPlayer(scope)
         try {
