@@ -6,20 +6,27 @@ import app.maxly.SharedFixtures.Companion.obj
 import app.maxly.SharedFixtures.Companion.raw
 import app.maxly.SharedFixtures.Companion.str
 import com.maxly.core.api.MaxMessage
-import com.maxly.core.media.controlFallbackText
 import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
  * Общие с iOS сценарии служебных сообщений из `test-fixtures/service-messages` (правила и
- * формат — в README каталога, Swift — `ServiceMessageFixtureTests`). Вложения разбирает
- * [ServiceMessages.notice], текст строит [ServiceMessages.text]; `coreText` сценария — текст ядра
- * ([com.maxly.core.media.controlFallbackText]), как его подставляет iOS.
+ * формат — в README каталога, Swift — `ServiceMessageFixtureTests`). Текст — путь приложения:
+ * [ServiceMessages.text] поверх [com.maxly.core.media.controlFallbackText] ядра. Аккаунт —
+ * `viewer`, имена — `names` сценария и `senderName` отправителя (их клиент берёт из стора).
+ * Закрепление (`expect.kind` = `null`) — не событие чата: ядро о нём молчит, строка общая.
  */
 class ServiceMessagesFixtureTest {
-    private val fixtures = SharedFixtures("service-messages")
+    private val fixtures = SharedFixtures(
+        "service-messages",
+        disagreements = mapOf(
+            "events / new-chat-core-text" to
+                "coreText сценария — старый нейтральный текст ядра; ядро d5e8aed пишет автора, когда знает имя",
+            "events / bot-started-core-text" to
+                "coreText сценария — старый нейтральный текст ядра; ядро d5e8aed пишет «Вы» для своего запуска",
+        ),
+    )
 
     @Test
     fun everyFixtureIsPlayed() {
@@ -42,42 +49,20 @@ class ServiceMessagesFixtureTest {
         val message = case["message"].obj ?: error("$where: нет message")
         val attaches = message["attaches"].array.map { it.raw() }
         val expect = case["expect"].obj ?: error("$where: нет expect")
-        val kind = expect["kind"].str
-        val notice = ServiceMessages.notice(attaches)
-        val sender = message["sender"].str.orEmpty()
-        val messageText = message["text"].str.orEmpty()
-        // Через сообщение ядра: строка служебная при любом исходе (закрепление — тоже).
+        val sender = message["sender"].str?.toLongOrNull()
         val core = MaxMessage.from(
-            mapOf("id" to 1L, "chatId" to 9L, "sender" to sender.toLongOrNull(), "text" to messageText, "time" to 1L, "type" to "USER", "attaches" to attaches),
+            mapOf("id" to 1L, "chatId" to 9L, "sender" to sender, "text" to message["text"].str.orEmpty(), "time" to 1L, "type" to "USER", "attaches" to attaches),
             9L,
         )!!
+        val names = case["names"].obj.orEmpty().mapNotNull { (id, name) -> id.toLongOrNull()?.let { it to name.str } }.toMap() +
+            listOfNotNull(sender?.let { it to message["senderName"].str })
+        val text = ServiceMessages.text(core, case["viewer"].str?.toLongOrNull()) { names[it]?.takeIf(String::isNotBlank) }
         check("служебное", true, ServiceMessages.isService(core))
-        if (kind == null) {
-            check("не событие", null, notice)
+        if (expect["kind"].str == null) {
             check("закрепление", true, MessageMapping.pinNotice(attaches) != null)
+            check("текст", ServiceMessages.GENERIC, text)
             return
         }
-        notice ?: run { check("событие разобрано", kind, null); return }
-        check("kind", kind, ServiceMessages.kind(notice).fixtureName)
-        val names = case["names"].obj.orEmpty().mapValues { it.value.str }
-        val text = ServiceMessages.text(
-            notice,
-            actorId = sender,
-            actorName = message["senderName"].str,
-            viewerId = case["viewer"].str,
-            names = { names[it] },
-            messageText = messageText,
-            coreText = case["coreText"].str,
-        )
         check("текст", expect["text"].str, text)
-        assertTrue(text.isNotBlank())
-        // Путь приложения: текст ядра считает само ядро. Где сценарий задаёт coreText, ядро
-        // обязано дать его же; где ядру сказать нечего, итог тот же, что у iOS.
-        val fallback = controlFallbackText(ServiceMessages.control(core)!!)
-        val coreText = case["coreText"].str
-        if (coreText != null) check("текст ядра", coreText, fallback)
-        if (coreText != null || fallback == null) {
-            check("текст приложения", expect["text"].str, ServiceMessages.text(core, case["viewer"].str, { names[it] }, message["senderName"].str))
-        }
     }
 }

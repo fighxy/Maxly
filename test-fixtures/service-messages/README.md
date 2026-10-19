@@ -5,7 +5,7 @@
 и тем же текстом в строке списка чатов. Swift проигрывает сценарии в
 `ServiceMessageFixtureTests` (`maxly-ios/Tests/MaxlyDataTests`): разбор — `MessageContentCodec`,
 текст — `ServiceText` в `MaxlyDomain`. Android и десктоп — в `ServiceMessagesFixtureTest`
-(`maxly-shared`): разбор — `ServiceMessages.notice`, текст — `ServiceMessages.text`. Новый файл
+(`maxly-shared`): текст — `controlFallbackText` ядра через `ServiceMessages.text`. Новый файл
 без проигрывателя — ошибка.
 
 ## Вложение

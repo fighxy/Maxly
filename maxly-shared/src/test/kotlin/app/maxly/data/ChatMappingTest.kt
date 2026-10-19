@@ -205,7 +205,7 @@ class ChatMappingTest {
             ),
         )!!
         val row = app.maxly.presentation.chatlist.ChatListFormatter().item(ChatMapping.chat(group, state(group), null, 0), 0)
-        assertEquals("Создан чат «Дача»", row.preview)
+        assertEquals("Вы создали чат «Дача»", row.preview)
         assertNull(row.sender)
         assertNull(row.delivery)
     }
