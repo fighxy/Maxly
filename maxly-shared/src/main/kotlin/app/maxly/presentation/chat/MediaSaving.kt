@@ -22,6 +22,12 @@ interface MediaSaver {
      */
     suspend fun save(path: String, name: String, kind: SavedKind, directory: String? = null)
 
+    /**
+     * Фото профиля в полном качестве. Телефон кладёт его в Pictures/Maxly, без своей папки —
+     * туда же, куда фото из сообщений.
+     */
+    suspend fun savePicture(path: String, name: String) = save(path, name, SavedKind.IMAGE)
+
     /** Куда попадает [kind] без выбранной папки: для «Сохранено в …». */
     fun place(kind: SavedKind): String = if (kind == SavedKind.OTHER) "«Загрузки»" else "галерею"
 }

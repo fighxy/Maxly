@@ -76,6 +76,8 @@ class ProfileViewModel(
     private val account: app.maxly.data.AccountRepository? = null,
     /** Контакты: переименовать, удалить, добавить собеседника. `null` — без этих пунктов. */
     private val contacts: app.maxly.data.ContactRepository? = null,
+    /** Куда сохранить фото профиля; `null` — без «Сохранить». */
+    saver: app.maxly.presentation.chat.MediaSaver? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(build(profiles.cached(chatId) ?: ChatProfile(ChatProfile.Kind.USER, chatId, title.orEmpty()), loading = true))
@@ -84,7 +86,42 @@ class ProfileViewModel(
     private val _notice = MutableStateFlow<String?>(null)
     val notice: StateFlow<String?> = _notice.asStateFlow()
 
-    val media = ChatMedia(chatId, messages, viewModelScope, player, files, onError = { show(it) })
+    val media = ChatMedia(chatId, messages, viewModelScope, player, files, saver, onNotice = { notify(it) }, onError = { show(it) })
+
+    /** Есть фото профиля: касание аватара в шапке откроет его на весь экран. */
+    val hasAvatarPhoto: Boolean get() = avatarOwner() != null
+
+    /** id кадра фото профиля в просмотре; `null` — фото нет. */
+    val avatarPhotoId: String? get() = avatarOwner()?.let(app.maxly.presentation.media.AvatarPhoto::photoId)
+
+    /**
+     * Фото профиля на весь экран: человек и бот — по id собеседника, группа и канал — по id чата.
+     * [preview] — квадрат, который шапка уже показала. Без фото ничего не открывается.
+     */
+    fun openAvatar(preview: String? = null) {
+        val owner = avatarOwner() ?: return
+        val state = _state.value
+        media.openAvatar(owner, state.profile.avatarUrl, state.title, preview)
+    }
+
+    /** «Сохранить фото как…» из меню шапки: в выбранный [file], просмотр не нужен. */
+    fun saveAvatarAs(file: String) {
+        val owner = avatarOwner() ?: return
+        val state = _state.value
+        media.saveAvatar(app.maxly.presentation.media.AvatarPhoto.viewer(owner, state.profile.avatarUrl, state.title), file)
+    }
+
+    /** Имя, которое «Сохранить как…» предлагает для фото профиля. */
+    fun avatarFileName(): String = app.maxly.presentation.media.AvatarPhoto.fileName(_state.value.title, now(), "jpg")
+
+    private fun avatarOwner(): String? {
+        val profile = _state.value.profile
+        if (profile.kind == ChatProfile.Kind.SAVED || app.maxly.presentation.media.AvatarPhoto.original(profile.avatarUrl) == null) return null
+        return when (profile.kind) {
+            ChatProfile.Kind.USER, ChatProfile.Kind.BOT -> profile.peerId ?: profile.chatId
+            else -> profile.chatId
+        }
+    }
 
     /** Диалоги действий с контактом; `null` — без контактов. */
     val contactActions: app.maxly.presentation.contacts.ContactActions? =

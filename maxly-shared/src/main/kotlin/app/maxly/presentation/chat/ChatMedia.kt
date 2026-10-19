@@ -7,6 +7,7 @@ import app.maxly.domain.Message
 import app.maxly.domain.MessageStatus
 import app.maxly.domain.MaxlyError
 import app.maxly.domain.VoiceContent
+import app.maxly.presentation.media.AvatarPhoto
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -33,6 +34,8 @@ data class MediaViewerState(
     val videoUrls: Map<String, String> = emptyMap(),
     /** Подпись сообщения под фото или видео; пустая — без подписи. */
     val caption: String = "",
+    /** Уже загруженные уменьшенные копии: id вложения → адрес. Видны, пока грузится оригинал. */
+    val previews: Map<String, String> = emptyMap(),
 )
 
 /** Кружок, который играет прямо в ленте. [url] — `null`, пока адрес спрашивается у сервера. */
@@ -74,6 +77,8 @@ class ChatMedia(
     /** Галерея и «Загрузки»; `null` — сохранять некуда. */
     private val saver: MediaSaver? = null,
     private val onNotice: (String) -> Unit = {},
+    /** Часы для имени сохранённого фото профиля. */
+    private val now: () -> Long = System::currentTimeMillis,
     private val onError: (Exception) -> Unit,
 ) {
     private val _state = MutableStateFlow(ChatMediaState())
@@ -303,6 +308,61 @@ class ChatMedia(
         val item = viewer.items.getOrNull(viewer.index) ?: return
         if (saver == null || files == null || viewer.messageId.toLongOrNull() == null) return
         saveItems(viewer.messageId, viewer.timeMs, listOf(item), directory, indexBase = viewer.index)
+    }
+
+    // Фото профиля
+
+    /**
+     * Открыть фото профиля [ownerId] в просмотре. [preview] — квадрат, уже показанный в шапке.
+     * Без фото ничего не открывается.
+     */
+    fun openAvatar(ownerId: String, url: String?, title: String, preview: String? = null) {
+        val viewer = AvatarPhoto.viewer(ownerId, url, title, preview) ?: return
+        _state.update { it.copy(viewer = viewer) }
+    }
+
+    /** Открытое фото профиля можно сохранить: в общую папку или в выбранный файл. */
+    fun canSaveAvatar(toFile: Boolean = false): Boolean =
+        AvatarPhoto.isAvatar(_state.value.viewer) && files != null && (toFile || saver != null)
+
+    /**
+     * Сохранить открытое фото профиля в полном качестве: в [file] («Сохранить как…» на
+     * компьютере) или в папку фото платформы ([MediaSaver.savePicture]).
+     */
+    fun saveAvatar(file: String? = null) = saveAvatar(_state.value.viewer, file)
+
+    /** Сохранить фото профиля [photo] ([AvatarPhoto.viewer]) без открытого просмотра: меню шапки. */
+    fun saveAvatar(photo: MediaViewerState?, file: String?) {
+        val viewer = photo?.takeIf(AvatarPhoto::isAvatar) ?: return
+        val content = (viewer.items.getOrNull(viewer.index) as? ChatAttachment.Photo)?.photo ?: return
+        val files = files ?: return
+        val saver = saver
+        if (file == null && saver == null) return
+        val key = viewer.messageId
+        if (key in _state.value.saving) return
+        _state.update { it.copy(saving = it.saving + key) }
+        scope.launch {
+            try {
+                val url = content.url ?: throw MaxlyError.Rejected("Фото недоступно")
+                val owner = key.removePrefix(AvatarPhoto.VIEWER_PREFIX)
+                val path = files.download(url, AvatarPhoto.cacheId(owner, url), "avatar") {}
+                val ext = SaveNaming.imageExtension(header(path))
+                if (file != null) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        java.io.File(path).copyTo(java.io.File(AvatarPhoto.chosenFile(file, ext)), overwrite = true)
+                    }
+                } else {
+                    saver!!.savePicture(path, AvatarPhoto.fileName(viewer.authorName, now(), ext))
+                }
+                onNotice(AvatarPhoto.SAVED)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onError(e as? MaxlyError ?: MaxlyError.Rejected("Не удалось сохранить фото"))
+            } finally {
+                _state.update { it.copy(saving = it.saving - key) }
+            }
+        }
     }
 
     /** Поделиться фото или видео, открытым в просмотре: файл скачивается и уходит экрану. */

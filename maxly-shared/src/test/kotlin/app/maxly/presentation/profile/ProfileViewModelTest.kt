@@ -63,6 +63,43 @@ class ProfileViewModelTest {
         Message(id, "10", "2", text, at, content = MessageContent(attachments = attachments.toList(), formatting = spans), authorName = "Анна")
 
     @Test
+    fun avatarOpensTheOriginalOfThePeer() {
+        profiles.fresh = ChatProfile(ChatProfile.Kind.USER, "10", "Анна", avatarUrl = "https://cdn/a?r=1&fn=sqr_96", peerId = "42")
+        val model = vm()
+        assertTrue(model.hasAvatarPhoto)
+        assertEquals("avatar-42", model.avatarPhotoId)
+        model.openAvatar(preview = "https://cdn/a?r=1&fn=sqr_288")
+        val viewer = model.media.state.value.viewer!!
+        assertEquals("https://cdn/a?r=1", (viewer.items.single() as ChatAttachment.Photo).photo.url)
+        assertEquals("https://cdn/a?r=1&fn=sqr_288", viewer.previews["avatar-42"])
+        assertEquals("Анна", viewer.authorName)
+    }
+
+    @Test
+    fun channelAvatarIsTheChatIcon() {
+        profiles.fresh = ChatProfile(ChatProfile.Kind.CHANNEL, "-70", "Новости", avatarUrl = "https://cdn/icon")
+        val model = ProfileViewModel("-70", "Новости", profiles, repo, now = { now }, presence = PresenceText(ZoneOffset.UTC), sharedPauseMs = 0)
+        assertEquals("avatar--70", model.avatarPhotoId)
+        model.openAvatar()
+        assertEquals("https://cdn/icon", (model.media.state.value.viewer!!.items.single() as ChatAttachment.Photo).photo.url)
+    }
+
+    @Test
+    fun noAvatarOrSavedMessagesOpenNothing() {
+        profiles.fresh = ChatProfile(ChatProfile.Kind.USER, "10", "Анна", peerId = "42")
+        val model = vm()
+        assertFalse(model.hasAvatarPhoto)
+        model.openAvatar()
+        assertNull(model.media.state.value.viewer)
+
+        profiles.fresh = ChatProfile(ChatProfile.Kind.SAVED, "10", "Избранное", avatarUrl = "https://cdn/me")
+        val saved = vm()
+        assertNull(saved.avatarPhotoId)
+        saved.openAvatar()
+        assertNull(saved.media.state.value.viewer)
+    }
+
+    @Test
     fun headerShowsCachedThenFreshProfile() {
         profiles.cachedProfile = ChatProfile(ChatProfile.Kind.USER, "10", "Анна С.")
         val model = vm()

@@ -22,7 +22,12 @@ class MediaSavingTest {
     private class Saver : MediaSaver {
         val saved = mutableListOf<Pair<String, SavedKind>>()
         val directories = mutableListOf<String?>()
+        val pictures = mutableListOf<String>()
         var failure: Exception? = null
+        override suspend fun savePicture(path: String, name: String) {
+            failure?.let { throw it }
+            pictures += name
+        }
         override suspend fun save(path: String, name: String, kind: SavedKind, directory: String?) {
             failure?.let { throw it }
             saved += name to kind
@@ -133,5 +138,48 @@ class MediaSavingTest {
         assertEquals("webp", SaveNaming.imageExtension("RIFF\u0000\u0000\u0000\u0000WEBP".toByteArray()))
         assertEquals("jpg", SaveNaming.imageExtension(byteArrayOf(0xFF.toByte(), 0xD8.toByte())))
         assertEquals("Maxly 1970-01-01 00.00.00 3.png", SaveNaming.name(0, 2, "png", ZoneOffset.UTC))
+    }
+
+    private val avatarTime = java.time.LocalDateTime.of(2026, 10, 19, 15, 43, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+    private val avatarMedia = ChatMedia("10", repo, TestScope(UnconfinedTestDispatcher()), null, files, saver, onNotice = { notices += it }, now = { avatarTime }) { errors += it }
+
+    @Test
+    fun savesTheAvatarOriginalToPictures() {
+        avatarMedia.openAvatar("42", "https://cdn/a?r=1&fn=sqr_192", "Анна Смирнова", preview = "https://cdn/a?r=1&fn=sqr_288")
+        assertTrue(avatarMedia.canSaveAvatar())
+        avatarMedia.saveAvatar()
+        assertEquals(listOf("https://cdn/a?r=1"), files.urls)
+        assertEquals(listOf("Фото профиля — Анна Смирнова 2026-10-19 15.43.00.jpg"), saver.pictures)
+        assertTrue(saver.saved.isEmpty())
+        assertEquals(listOf("Фото сохранено"), notices)
+        assertTrue(avatarMedia.state.value.saving.isEmpty())
+    }
+
+    @Test
+    fun noAvatarNoViewerNoSave() {
+        avatarMedia.openAvatar("42", null, "Анна")
+        assertEquals(null, avatarMedia.state.value.viewer)
+        assertFalse(avatarMedia.canSaveAvatar())
+        avatarMedia.saveAvatar()
+        assertTrue(files.urls.isEmpty() && saver.pictures.isEmpty() && notices.isEmpty())
+    }
+
+    @Test
+    fun messageViewerIsNotSavedAsAvatar() {
+        val m = msg(ChatAttachment.Photo(PhotoContent("p1", "https://cdn/p1")))
+        avatarMedia.openVisual(m, m.content.attachments.first())
+        assertFalse(avatarMedia.canSaveAvatar())
+        avatarMedia.saveAvatar()
+        assertTrue(saver.pictures.isEmpty())
+    }
+
+    @Test
+    fun avatarSaveFailureIsReported() {
+        saver.failure = app.maxly.domain.MaxlyError.Rejected("Нет доступа к памяти телефона")
+        avatarMedia.openAvatar("42", "https://cdn/a", "Анна")
+        avatarMedia.saveAvatar()
+        assertEquals(listOf("Нет доступа к памяти телефона"), errors.map { it.message })
+        assertTrue(notices.isEmpty())
+        assertTrue(avatarMedia.state.value.saving.isEmpty())
     }
 }
