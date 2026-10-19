@@ -38,6 +38,22 @@ class ServiceMessagesTest {
     }
 
     @Test
+    fun controlMessageShowsViaCoreFallback() {
+        assertEquals("Пётр добавлен", ServiceMessages.text(message(control("add", "shortMessage" to "Пётр добавлен", "message" to "Иван добавил Петра"))))
+        assertEquals("Иван добавил Петра", ServiceMessages.text(message(control("add", "message" to "Иван добавил Петра"))))
+        // Outer MaxMessage.text still wins over Control.message/shortMessage.
+        assertEquals("снаружи", ServiceMessages.text(message(control("add", "shortMessage" to "коротко"), text = "снаружи")))
+    }
+
+    @Test
+    fun typelessMessageStillMaps() {
+        val raw = mapOf("id" to 7L, "chatId" to 555L, "text" to "", "time" to 1L, "attaches" to listOf(control("add", "shortMessage" to "ок")))
+        val msg = MaxMessage.from(raw, 555L)!!
+        assertEquals("", msg.type)
+        assertEquals("ок", ServiceMessages.text(msg))
+    }
+
+    @Test
     fun plainMessageIsNotService() {
         val plain = message(null, text = "привет")
         assertFalse(ServiceMessages.isService(plain))
