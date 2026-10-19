@@ -58,4 +58,5 @@ showHistory?, startPayload?, shortMessage? | message?}`. Известные со
 `{kind: "control", name, description, cases: [{name, message: {sender, senderName, text,
 attaches}, viewer, names, coreText?, expect: {kind, text}}]}`. `expect.kind` — вид события `ServiceText.Kind`
 (`joined`, `created`, `added`, `removed`, `left`, `joinedByLink`, `renamed`, `photo`,
-`botStarted`, `system`, `unknown`); `null` — сообщение не служебное событие (закрепление), `text` у него — текст плашки (правило 8).
+`botStarted`, `system`, `unknown`); `null` — сообщение не служебное событие (закрепление), `text` и `coreText` у него — текст плашки
+от ядра (правило 8).

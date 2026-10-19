@@ -522,6 +522,7 @@
       },
       "viewer": "1",
       "names": {},
+      "coreText": "Закреплено: Сбор в 10",
       "expect": {
         "kind": null,
         "text": "Закреплено: Сбор в 10"
@@ -542,6 +543,7 @@
       },
       "viewer": "1",
       "names": {},
+      "coreText": "Закрепление снято",
       "expect": {
         "kind": null,
         "text": "Закрепление снято"

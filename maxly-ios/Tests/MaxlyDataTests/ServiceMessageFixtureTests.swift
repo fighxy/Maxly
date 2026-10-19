@@ -45,6 +45,8 @@ struct ServiceMessageFixtureTests {
                 var shown = pin
                 if let core = item["coreText"] as? String { shown.coreText = core }
                 #expect(ServiceText.text(shown) == text, "\(label): «\(ServiceText.text(shown))»")
+                // Без текста ядра — те же слова.
+                #expect(ServiceText.text(pin) == text, "\(label): без текста ядра «\(ServiceText.text(pin))»")
             }
             return
         }

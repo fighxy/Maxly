@@ -312,4 +312,24 @@ struct ServiceMessageDataTests {
         #expect(ServiceText.text(PinNotice(messageId: "1", preview: String(repeating: "в", count: 200)))
             == "Закреплено: " + String(repeating: "в", count: 49) + "…")
     }
+
+    @Test("Уведомление о закреплении — текстом ядра, а не пустым текстом сообщения")
+    func pinNotification() async throws {
+        let parts = try await makeServiceParts()
+        let sink = NoticeSink()
+        await parts.sync.attachIncoming(sink)
+        try await parts.chats.upsert([groupChat("g1")])
+        await parts.sync.consume(CoreEvent(
+            kind: .message, chatId: "g1", messageId: "m8", authorId: "101", text: "", title: "", chatType: "",
+            timeMs: 200_000, unread: -1,
+            contentJSON: #"{"attaches":[{"_type":"CONTROL","event":"pin","pinnedMessage":{"id":7}}]}"#,
+            authorName: "Анна",
+            control: CoreControl(event: "pin", fallbackText: "Закреплено: Сбор в 10", pinnedMessageId: "7")
+        ))
+        let notices = await sink.notices
+        #expect(notices.map(\.text) == ["Закреплено: Сбор в 10"])
+        let chat = try #require(await row(parts.chats, "g1"))
+        #expect(chat.preview == "Закреплено: Сбор в 10")
+        #expect(chat.lastMessage?.media == .service)
+    }
 }
