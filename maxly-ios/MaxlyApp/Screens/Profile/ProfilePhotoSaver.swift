@@ -83,7 +83,7 @@ final class ProfilePhotoSaver {
         }
         let body: Data
         let ext: String
-        switch mime?.lowercased() {
+        switch (mime ?? "").lowercased() {
         case "image/jpeg", "image/jpg":
             body = data
             ext = "jpg"
@@ -110,7 +110,7 @@ final class ProfilePhotoSaver {
     /// «Фото — Анна Петрова» без знаков, которые файловая система не любит.
     nonisolated static func fileName(_ title: String) -> String {
         let banned = CharacterSet(charactersIn: "/\\:?%*|\"<>").union(.newlines).union(.controlCharacters)
-        let clean = title.unicodeScalars.filter { !banned.contains($0) }.map(String.init).joined()
+        let clean = String(String.UnicodeScalarView(title.unicodeScalars.filter { !banned.contains($0) }))
             .trimmingCharacters(in: .whitespaces)
         let short = String(clean.prefix(60))
         return short.isEmpty ? "Фото профиля" : "Фото — \(short)"
