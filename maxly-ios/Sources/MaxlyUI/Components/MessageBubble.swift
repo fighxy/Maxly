@@ -785,24 +785,17 @@ public struct MessageBubble: View {
         layout.metadata == .reactions
     }
 
+    /// Реакции и время в одной раскладке: время в правом нижнем углу последнего ряда или
+    /// своей строкой, а высота ряда — все ряды плашек. Строка комментариев всегда ниже.
     private var reactionsRow: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            ReactionChips(
-                messageId: message.id,
-                reactions: message.content.reactions,
-                interactive: allowsReactions,
-                onOutgoing: isOutgoing,
-                onToggle: onReact
-            )
-            if timeInReactions {
-                Spacer(minLength: 0)
-                // Время не сжимается и не переносится: плашки переносятся в оставшейся ширине.
-                meta
-                    .fixedSize()
-                    .layoutPriority(1)
-                    .padding(.bottom, 2)
-            }
-        }
+        ReactionChips(
+            messageId: message.id,
+            reactions: message.content.reactions,
+            interactive: allowsReactions,
+            onOutgoing: isOutgoing,
+            meta: timeInReactions ? AnyView(meta.padding(.bottom, 2)) : nil,
+            onToggle: onReact
+        )
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
         .padding(.top, hasText ? 0 : 6)

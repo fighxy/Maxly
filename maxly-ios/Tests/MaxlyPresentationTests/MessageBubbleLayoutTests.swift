@@ -60,6 +60,22 @@ struct MessageBubbleLayoutTests {
         #expect(layout("Текст", content: MessageContent(reactions: [reaction])).metadata == .reactions)
     }
 
+    @Test("Пост с комментариями и многими реакциями: реакции в пузыре, время в их ряду")
+    func reactionsWithComments() {
+        let many = ["😡", "👍", "👎", "👌", "🤬", "✅", "🤔"].map { MessageReaction(emoji: $0, count: 1, mine: false) }
+        for comments in [false, true] {
+            for (text, attachments) in [("Пост", [ChatAttachment]()), ("Подпись", [photo]), ("", [file])] {
+                let result = layout(text, content: MessageContent(attachments: attachments, reactions: many), comments: comments)
+                #expect(result.hasFill)
+                #expect(result.reactionsInside)
+                #expect(result.metadata == .reactions)
+            }
+        }
+        // Фото без подписи с комментариями — тоже карточка: строка комментариев под реакциями.
+        let photoPost = layout(content: MessageContent(attachments: [photo], reactions: many), comments: true)
+        #expect(photoPost.hasFill && photoPost.reactionsInside)
+    }
+
     @Test("Время только у последнего голосового или звонка; подпись забирает его себе")
     func voiceAndCall() {
         let secondVoice = ChatAttachment.voice(VoiceContent(id: "v2", url: nil))
