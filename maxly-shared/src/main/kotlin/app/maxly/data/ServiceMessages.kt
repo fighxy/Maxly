@@ -15,8 +15,10 @@ import kotlinx.serialization.json.JsonPrimitive
  *
  * Текст пишет ядро ([controlFallbackText]): сначала текст сервера (`shortMessage`, `message`),
  * затем свой текст известного события — «Вы» для своих событий, имена участников из [MaxState]
- * (контакты и известные пользователи), «… теперь в MAX» для `hello` и `new` личного чата.
- * Если ядру сказать нечего (`system`, `pin`, незнакомое событие без текста сервера) — текст
+ * (контакты и известные пользователи), «… теперь в MAX» для `hello` и `new` личного чата,
+ * «Закреплено: …» / «Сообщение закреплено» / «Закрепление снято» для `pin` и `unpin` (текст
+ * закрепа без `pinnedMessage.text` — из сообщений чата в сторе, [localText]).
+ * Если ядру сказать нечего (`system`, незнакомое событие без текста сервера) — текст
  * самого сообщения, иначе [GENERIC]. Служебное сообщение без текста не прячется: в ленте и в
  * списке чатов остаётся серая строка. Сценарии — `test-fixtures/service-messages`.
  */
@@ -61,6 +63,8 @@ object ServiceMessages {
             photoToken = map["photoToken"] as? String,
             showHistory = map["showHistory"] as? Boolean,
             startPayload = map["startPayload"] as? String,
+            pinnedMessageId = ChatMapping.longOf((map["pinnedMessage"] as? Map<*, *>)?.get("id")),
+            pinnedText = (map["pinnedMessage"] as? Map<*, *>)?.get("text") as? String,
         )
 
     fun isService(message: MaxMessage?): Boolean = message != null && controlMap(message.attaches) != null
@@ -69,15 +73,35 @@ object ServiceMessages {
     fun text(message: MaxMessage): String? = text(message, selfId = null)
 
     /** Подпись служебного [message] по стору ядра: аккаунт — [MaxState.me], имена — [MaxState.displayName]. */
-    fun text(message: MaxMessage, state: MaxState): String? = text(message, state.me) { id -> state.displayName(id) }
+    fun text(message: MaxMessage, state: MaxState, fallbackChatId: Long? = null): String? =
+        text(message, state.me, pinnedText = { id -> localText(state, message.chatId ?: fallbackChatId, id) }) { id -> state.displayName(id) }
+
+    /**
+     * Текст сообщения [messageId] из сообщений чата, которые уже есть в сторе ядра (лента,
+     * история, пуши), — для закрепа, у которого сервер прислал только id; `null`, если его нет.
+     */
+    fun localText(state: MaxState, chatId: Long?, messageId: Long): String? {
+        val messages = chatId?.let { state.messages[it] } ?: return null
+        return messages.lastOrNull { it.id == messageId }?.text?.takeIf { it.isNotBlank() }
+    }
 
     /**
      * Подпись служебного [message]; `null`, если сообщение не служебное. [selfId] — аккаунт,
-     * [nameOf] — имя пользователя, известное клиенту, или `null`.
+     * [nameOf] — имя пользователя, известное клиенту, или `null`; [pinnedText] — текст
+     * закреплённого сообщения по id, если сервер прислал в `pinnedMessage` только id.
      */
-    fun text(message: MaxMessage, selfId: Long?, nameOf: (Long) -> String? = { null }): String? {
+    fun text(
+        message: MaxMessage,
+        selfId: Long?,
+        pinnedText: (Long) -> String? = { null },
+        nameOf: (Long) -> String? = { null },
+    ): String? {
         val control = control(message) ?: return null
-        val core = runCatching { controlFallbackText(control, selfId = selfId, actorId = message.sender, nameOf = nameOf) }.getOrNull()
+        val pinned = control.pinnedMessageId?.takeIf { control.pinnedText.isNullOrBlank() }
+            ?.let { id -> runCatching { pinnedText(id) }.getOrNull() }
+        val core = runCatching {
+            controlFallbackText(control, selfId = selfId, actorId = message.sender, pinnedText = pinned, nameOf = nameOf)
+        }.getOrNull()
         core?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
         message.text.trim().takeIf { it.isNotEmpty() }?.let { return it }
         logUnknown(control, message)
@@ -87,7 +111,7 @@ object ServiceMessages {
     /** Строка для списка чатов: та же подпись в одну строку. */
     fun preview(message: MaxMessage): String? = oneLine(text(message))
 
-    fun preview(message: MaxMessage, state: MaxState): String? = oneLine(text(message, state))
+    fun preview(message: MaxMessage, state: MaxState, fallbackChatId: Long? = null): String? = oneLine(text(message, state, fallbackChatId))
 
     /**
      * Уведомлять ли о служебном сообщении — как iOS (`SyncEngine`, 535c980): из событий чата только

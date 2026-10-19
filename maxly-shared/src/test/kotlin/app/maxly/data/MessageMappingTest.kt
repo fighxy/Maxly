@@ -205,6 +205,23 @@ class MessageMappingTest {
     }
 
     @Test
+    fun pinRowTextComesFromTheCore() {
+        fun pin(pinned: Map<String, Any?>?) = message(
+            mapOf("id" to 90L, "attaches" to listOf(mapOf("_type" to "CONTROL", "event" to "pin") + (pinned?.let { mapOf("pinnedMessage" to it) } ?: emptyMap()))),
+        )
+        val inline = MessageMapping.message(pin(mapOf("id" to 5L, "text" to "Сбор в 10")), 10, state)
+        assertTrue(inline.isService)
+        assertEquals("Закреплено: Сбор в 10", inline.text)
+        assertEquals("5", inline.content.pin!!.messageId)
+        // Только id: текст — из сообщений чата в сторе.
+        val stored = MaxMessage.from(mapOf("id" to 5L, "chatId" to 10L, "sender" to 2L, "text" to "Из стора\nвторая строка", "time" to 500L, "type" to "USER"), 10L)!!
+        val withStore = state.copy(messages = mapOf(10L to listOf(stored)))
+        assertEquals("Закреплено: Из стора", MessageMapping.message(pin(mapOf("id" to 5L)), 10, withStore).text)
+        assertEquals("Сообщение закреплено", MessageMapping.message(pin(mapOf("id" to 6L)), 10, withStore).text)
+        assertEquals("Закрепление снято", MessageMapping.message(message(mapOf("attaches" to listOf(mapOf("_type" to "CONTROL", "event" to "unpin")))), 10, state).text)
+    }
+
+    @Test
     fun pinControlReadsThePinnedText() {
         val pin = MessageMapping.pinNotice(
             listOf(mapOf("_type" to "CONTROL", "event" to "pin", "pinnedMessage" to mapOf("id" to 9L, "text" to "важное"))),

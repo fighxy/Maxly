@@ -15,7 +15,7 @@ import org.junit.Test
  * формат — в README каталога, Swift — `ServiceMessageFixtureTests`). Текст — путь приложения:
  * [ServiceMessages.text] поверх [com.maxly.core.media.controlFallbackText] ядра. Аккаунт —
  * `viewer`, имена — `names` сценария и `senderName` отправителя (их клиент берёт из стора).
- * Закрепление (`expect.kind` = `null`) — не событие чата: ядро о нём молчит, строка общая.
+ * Закрепление (`expect.kind` = `null`) — не событие чата; текст его строки тоже пишет ядро.
  */
 class ServiceMessagesFixtureTest {
     private val fixtures = SharedFixtures(
@@ -25,6 +25,10 @@ class ServiceMessagesFixtureTest {
                 "coreText сценария — старый нейтральный текст ядра; ядро d5e8aed пишет автора, когда знает имя",
             "events / bot-started-core-text" to
                 "coreText сценария — старый нейтральный текст ядра; ядро d5e8aed пишет «Вы» для своего запуска",
+            "events / pin-is-not-an-event" to
+                "сценарий ждёт общую строку; ядро 2843f2d пишет «Закреплено: <текст>»",
+            "events / unpin-is-not-an-event" to
+                "сценарий ждёт общую строку; ядро 2843f2d пишет «Закрепление снято»",
         ),
     )
 
@@ -60,7 +64,8 @@ class ServiceMessagesFixtureTest {
         check("служебное", true, ServiceMessages.isService(core))
         if (expect["kind"].str == null) {
             check("закрепление", true, MessageMapping.pinNotice(attaches) != null)
-            check("текст", ServiceMessages.GENERIC, text)
+            // Сценарий без текста — старое правило «закрепление не событие, строка общая».
+            check("текст", expect["text"].str ?: ServiceMessages.GENERIC, text)
             return
         }
         check("текст", expect["text"].str, text)

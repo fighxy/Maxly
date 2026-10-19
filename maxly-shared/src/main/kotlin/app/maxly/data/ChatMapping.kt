@@ -47,7 +47,7 @@ object ChatMapping {
         val attaches = last?.attaches?.takeIf { it.isNotEmpty() } ?: (forwarded?.get("attaches") as? List<*>).orEmpty()
         val media = attachmentKind(attaches)
         // Служебная строка: подпись как в ленте, без автора, галочек и значка вложения.
-        val service = last?.let { ServiceMessages.preview(it, state) }
+        val service = last?.let { ServiceMessages.preview(it, state, chat.id) }
         val outgoing = last?.sender != null && me != null && last.sender == me
         // Отметка собеседника — и из карточки чата, и из пушей прочтения: пуш карточку не меняет.
         val peerRead = ReadMarks.peer(chat, state)

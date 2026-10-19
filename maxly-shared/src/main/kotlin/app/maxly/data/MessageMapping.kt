@@ -50,7 +50,7 @@ object MessageMapping {
         val outgoing = sender != null && sender == state.me
         // Имена — по правилу ядра: книга, своё имя контакта, имя профиля, телефон.
         val names: (Long) -> String? = { id -> state.displayName(id) }
-        val service = ServiceMessages.text(message, state)
+        val service = ServiceMessages.text(message, state, fallbackChatId)
         return Message(
             id = message.id.toString(),
             chatId = (message.chatId ?: fallbackChatId).toString(),
