@@ -103,7 +103,7 @@ fi
 # libopus: статически, только кодек. Защита стека выключена: на mingw-w64 ей нужна libssp.
 (
   cd "$opus_src"
-  CFLAGS="-O2 $cflags" LDFLAGS="$ldflags" ./configure "${host_flags[@]}" --prefix="$prefix" \
+  CFLAGS="-O2 $cflags" LDFLAGS="$ldflags" ./configure ${host_flags[@]+"${host_flags[@]}"} --prefix="$prefix" \
     --disable-shared --enable-static --with-pic --disable-doc --disable-extra-programs --disable-stack-protector
   make -j"$jobs"
   make install
@@ -121,7 +121,7 @@ configure_flags=(
   --disable-debug --disable-doc --disable-ffplay --disable-ffprobe
   --disable-shared --enable-static
   --enable-libopus
-  "${ffmpeg_flags[@]}"
+  ${ffmpeg_flags[@]+"${ffmpeg_flags[@]}"}
   --extra-cflags="-I$prefix/include $cflags"
   --extra-ldflags="-L$prefix/lib $ldflags"
 )
