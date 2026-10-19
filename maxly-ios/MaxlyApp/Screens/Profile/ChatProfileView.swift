@@ -305,9 +305,9 @@ struct ChatProfileView: View {
         let hasStories = stories?.ring(of: owner, kind: storyKind) != nil
         let canOpen = viewModel.shown.fullPhotoURL != nil
         // С кольцом историй касание открывает истории, долгое нажатие — фото.
-        let tap = {
+        let tap: () -> Void = {
             if hasStories, let owner {
-                stories?.open(owner, kind: storyKind)
+                _ = stories?.open(owner, kind: storyKind)
             } else {
                 openPhoto(inRing: false)
             }
