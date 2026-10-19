@@ -75,7 +75,8 @@ struct ChatProfileView: View {
     @State private var membersList: ChatMembersListModel?
     /// Сдвиг шапки: больше нуля — профиль тянут вниз, меньше — прокрутили.
     @State private var offset: CGFloat = 0
-    @State private var avatarViewer: MediaViewerRequest?
+    /// Открытый просмотр фото профиля.
+    @State private var photoGallery: ProfilePhotoGallery?
     /// Где стоит аватар шапки: просмотр фото вылетает из него и возвращается в него.
     @State private var avatarFrame: CGRect = .zero
     @State private var photoSaver = ProfilePhotoSaver()
@@ -240,15 +241,8 @@ struct ChatProfileView: View {
         .animation(.snappy, value: viewModel.actionNotice)
         .animation(.snappy, value: context?.chat.notice)
         .modifier(ProfileChatCovers(chat: context?.chat, onShowMessage: context?.onShowMessageId))
-        .mediaViewerCover(item: $avatarViewer) { request in
-            let candidates = request.slides.first.map { slide in [slide.stillURL].compactMap { $0 } + slide.fallbackURLs } ?? []
-            MediaViewer(
-                request: request,
-                notice: photoSaver.notice,
-                isSaving: photoSaver.isSaving,
-                onSave: { _, target in photoSaver.save(candidates, title: viewModel.title, to: target) }
-            ) { avatarViewer = nil }
-            .profilePhotoExport(photoSaver)
+        .mediaViewerCover(item: $photoGallery) { gallery in
+            ProfilePhotoViewer(gallery: gallery, title: viewModel.title, saver: photoSaver) { photoGallery = nil }
         }
     }
 
@@ -362,9 +356,8 @@ struct ChatProfileView: View {
     }
 
     private func showPhoto(inRing: Bool) {
-        let candidates = viewModel.shown.photoCandidates
-        guard let full = candidates.first else { return }
         let id = photoTileId
+        guard let gallery = viewModel.photoGallery(tileId: id) else { return }
         let size = Self.avatarSize
         let photoSize = inRing ? size - min(max(size * 0.045, 2), 3.5) * 4 : size
         // Тот же адрес и размер декодирования, что у аватара шапки (`ChatAvatarView`):
@@ -377,11 +370,7 @@ struct ChatProfileView: View {
             let frame = avatarFrame.insetBy(dx: (size - photoSize) / 2, dy: (size - photoSize) / 2)
             MediaSourceRegistry.shared.update(id, .init(frame: frame, url: small, maxPixel: Int(photoSize * 3), cornerRadius: frame.width / 2))
         }
-        avatarViewer = MediaViewerRequest(
-            id: id,
-            slides: [MediaSlide(id: id, stillURL: full, playURL: nil, isVideo: false, fallbackURLs: Array(candidates.dropFirst()))],
-            author: viewModel.title
-        )
+        photoGallery = gallery
     }
 
     /// Владелец колец: человек, бот, группа или канал.

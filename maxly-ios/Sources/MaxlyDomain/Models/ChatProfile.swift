@@ -117,6 +117,36 @@ public struct ChatProfile: Hashable, Sendable, Codable {
     }
 }
 
+/// Одно фото из истории фото человека (код 39 `CONTACT_PHOTOS`).
+public struct ProfilePhoto: Hashable, Sendable {
+    /// Пусто, если сервер id не прислал.
+    public var id: String
+    /// Оригинал без `fn`.
+    public var url: URL
+    /// Размеры сервера от большего к меньшему, если оригинал не загрузился.
+    public var viewerURLs: [URL]
+
+    public init(id: String, url: URL, viewerURLs: [URL] = []) {
+        self.id = id
+        self.url = url
+        self.viewerURLs = viewerURLs
+    }
+
+    /// Что пробовать по порядку: оригинал, потом размеры.
+    public var candidates: [URL] { ProfilePhotoURL.candidates(avatar: nil, raw: url, viewer: viewerURLs) }
+}
+
+/// Страница истории фото: `total` — сколько всего фото знает сервер (0, если не прислал).
+public struct ProfilePhotoPage: Hashable, Sendable {
+    public var photos: [ProfilePhoto]
+    public var total: Int
+
+    public init(photos: [ProfilePhoto], total: Int) {
+        self.photos = photos
+        self.total = total
+    }
+}
+
 /// Источник карточек чатов.
 public protocol ChatProfileRepository: Sendable {
     func profile(chatId: String) async throws(MaxlyError) -> ChatProfile
@@ -124,9 +154,12 @@ public protocol ChatProfileRepository: Sendable {
     func cachedProfile(chatId: String) async -> ChatProfile?
     /// Карточка, пришедшая с сервера меньше `maxAge` секунд назад. `nil` — пора спросить сервер.
     func recentProfile(chatId: String, maxAge: TimeInterval) async -> ChatProfile?
+    /// Фото человека, начиная с `from`-го (код 39). Только у людей: у групп и каналов истории нет.
+    func photos(userId: String, from: Int) async throws(MaxlyError) -> ProfilePhotoPage
 }
 
 public extension ChatProfileRepository {
     func cachedProfile(chatId: String) async -> ChatProfile? { nil }
     func recentProfile(chatId: String, maxAge: TimeInterval) async -> ChatProfile? { nil }
+    func photos(userId: String, from: Int) async throws(MaxlyError) -> ProfilePhotoPage { ProfilePhotoPage(photos: [], total: 0) }
 }

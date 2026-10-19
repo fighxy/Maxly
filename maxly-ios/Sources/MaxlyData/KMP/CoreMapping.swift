@@ -158,6 +158,16 @@ enum CoreMapping {
         )
     }
 
+    /// Страница истории фото. Без оригинала берётся адрес как прислан; пустой адрес пропускается.
+    static func photos(_ core: CoreContactPhotos) -> ProfilePhotoPage {
+        let photos = core.photos.compactMap { photo -> ProfilePhoto? in
+            let full = photo.fullURL.isEmpty ? photo.url : photo.fullURL
+            guard !full.isEmpty, let url = URL(string: full) else { return nil }
+            return ProfilePhoto(id: photo.photoId, url: url, viewerURLs: photo.viewerURLs.compactMap(URL.init(string:)))
+        }
+        return ProfilePhotoPage(photos: photos, total: max(core.total, 0))
+    }
+
     /// Звонок для экрана. Исход по `hangupType`, как у официального клиента: входящий без
     /// ответа — пропущенный, исходящий без ответа — отменённый, `REJECTED` у исходящего —
     /// собеседник отклонил.

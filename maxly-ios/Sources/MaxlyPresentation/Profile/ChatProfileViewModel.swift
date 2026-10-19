@@ -68,6 +68,21 @@ public final class ChatProfileViewModel {
 
     @ObservationIgnored private let placeholder: ChatProfile
 
+    /// Просмотр фото профиля: текущее фото и, у человека, история с сервера. `nil` без фото.
+    /// `tileId` — id текущего фото (с ним кадр вылетает из аватара шапки).
+    public func photoGallery(tileId: String) -> ProfilePhotoGallery? {
+        let current = shown.photoCandidates
+        guard !current.isEmpty else { return nil }
+        var loader: ProfilePhotoGallery.Loader?
+        if shown.kind == .user, let userId = shown.peerId, !userId.isEmpty {
+            let repository = repository
+            loader = { @Sendable (from: Int) async throws(MaxlyError) -> ProfilePhotoPage in
+                try await repository.photos(userId: userId, from: from)
+            }
+        }
+        return ProfilePhotoGallery(current: .init(id: tileId, candidates: current), idPrefix: tileId, loader: loader)
+    }
+
     /// Карточка для шапки: загруженная или то, что известно заранее.
     public var shown: ChatProfile { profile ?? placeholder }
 

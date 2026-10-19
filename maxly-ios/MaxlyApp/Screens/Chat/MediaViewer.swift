@@ -32,6 +32,8 @@ struct MediaViewer: View {
     var onSave: ((String, SaveTarget) -> Void)?
     /// «Перейти к сообщению»: просмотр закрывается, лента едет к сообщению.
     var onShowInChat: (() -> Void)?
+    /// Открыт кадр с этим id: экран может догрузить следующие (история фото профиля).
+    var onShown: ((String) -> Void)?
     let onClose: () -> Void
 
     @State private var selection: String?
@@ -68,8 +70,10 @@ struct MediaViewer: View {
         isSaving: Bool = false,
         onSave: ((String, SaveTarget) -> Void)? = nil,
         onShowInChat: (() -> Void)? = nil,
+        onShown: ((String) -> Void)? = nil,
         onClose: @escaping () -> Void
     ) {
+        self.onShown = onShown
         self.request = request
         self.download = download
         self.notice = notice
@@ -118,6 +122,7 @@ struct MediaViewer: View {
         .onChange(of: selection) { _, id in
             zoomed = false
             chrome.show()
+            if let id { onShown?(id) }
             if phase == .open { MediaSourceRegistry.shared.hiddenId = id }
         }
         .onAppear { OrientationLock.allowRotation() }
@@ -303,8 +308,9 @@ struct MediaViewer: View {
         if let date = request.date {
             parts.append(date.formatted(.dateTime.day().month(.wide).hour().minute()))
         }
-        if request.slides.count > 1, let index = request.slides.firstIndex(where: { $0.id == selection }) {
-            parts.append("\(index + 1) из \(request.slides.count)")
+        let total = max(request.total ?? 0, request.slides.count)
+        if total > 1, let index = request.slides.firstIndex(where: { $0.id == selection }) {
+            parts.append("\(index + 1) из \(total)")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
@@ -474,7 +480,7 @@ private struct ThumbnailStrip: View {
                 HStack(spacing: 3) {
                     ForEach(slides) { slide in
                         let selected = slide.id == selection
-                        RemoteImage(url: slide.stillURL, maxPixel: 200) {
+                        RemoteImage(url: slide.thumbnailURL ?? slide.stillURL, maxPixel: 200) {
                             Color.white.opacity(0.12)
                         }
                         .frame(width: selected ? 44 : 30, height: 44)

@@ -556,4 +556,15 @@ public struct CoreChatProfileRepository: ChatProfileRepository {
     public func recentProfile(chatId: String, maxAge: TimeInterval) async -> ChatProfile? {
         await cache?.fresh(chatId: chatId, maxAge: maxAge)
     }
+
+    public func photos(userId: String, from: Int) async throws(MaxlyError) -> ProfilePhotoPage {
+        do {
+            let page = CoreMapping.photos(try await core.loadContactPhotos(userId: userId, from: from))
+            Log.info(.chats, "Фото профиля \(userId) с \(from): \(page.photos.count) из \(page.total)")
+            return page
+        } catch {
+            Log.warning(.chats, "Фото профиля \(userId) не загрузились: \(error)")
+            throw CoreMapping.apiError(error).maxlyError
+        }
+    }
 }

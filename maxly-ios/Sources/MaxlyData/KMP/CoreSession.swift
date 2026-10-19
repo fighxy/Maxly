@@ -304,6 +304,32 @@ public struct CoreProfile: Sendable, Equatable {
     }
 }
 
+/// Одно фото из истории: адрес как прислал сервер, оригинал без `fn` и размеры для просмотра.
+public struct CoreContactPhoto: Sendable, Equatable {
+    public var photoId: String
+    public var url: String
+    public var fullURL: String
+    public var viewerURLs: [String]
+
+    public init(photoId: String = "", url: String, fullURL: String = "", viewerURLs: [String] = []) {
+        self.photoId = photoId
+        self.url = url
+        self.fullURL = fullURL
+        self.viewerURLs = viewerURLs
+    }
+}
+
+/// Страница истории фото; `total` — сколько всего у сервера (0, если не прислал).
+public struct CoreContactPhotos: Sendable, Equatable {
+    public var photos: [CoreContactPhoto]
+    public var total: Int
+
+    public init(photos: [CoreContactPhoto] = [], total: Int = 0) {
+        self.photos = photos
+        self.total = total
+    }
+}
+
 /// Ответ на нажатие inline-кнопки бота: пустые строки — сервер их не прислал.
 public struct CoreButtonAnswer: Sendable, Equatable {
     public var text: String
@@ -666,6 +692,8 @@ public protocol MaxCore: Sendable {
     /// не уходит. Ошибка — сервер не принял отбой.
     func rejectIncomingCall(conversationId: String, peerId: String, reason: String) async throws
     func loadProfile(chatId: String) async throws -> CoreProfile
+    /// Фото человека из истории, начиная с `from`-го (`CONTACT_PHOTOS` 39).
+    func loadContactPhotos(userId: String, from: Int) async throws -> CoreContactPhotos
     /// Задать закреплённые чаты сервера целиком, сверху вниз (`FOLDERS_UPDATE`, поле `favorites`
     /// папки «Все чаты»). Закрепить, открепить и переставить — это один и тот же вызов.
     /// Возвращает список, который подтвердил сервер. При ошибке ядро оставляет прежний список.
@@ -894,6 +922,7 @@ public protocol MaxCore: Sendable {
 }
 
 public extension MaxCore {
+    func loadContactPhotos(userId: String, from: Int) async throws -> CoreContactPhotos { CoreContactPhotos() }
     /// Ядро без отдельного отказа входа: причины нет.
     func loginRejection() async -> CoreLoginRejection? { nil }
 

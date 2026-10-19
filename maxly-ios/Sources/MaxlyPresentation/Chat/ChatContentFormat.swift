@@ -139,9 +139,12 @@ public struct MediaSlide: Identifiable, Hashable, Sendable {
     public var isVideo: Bool
     /// Фото: что пробовать по порядку, если `stillURL` не загрузился (размеры фото профиля).
     public var fallbackURLs: [URL]
+    /// Миниатюра для ленты внизу просмотра; `nil` — `stillURL`.
+    public var thumbnailURL: URL?
 
-    public init(id: String, stillURL: URL?, playURL: URL?, isVideo: Bool, fallbackURLs: [URL] = []) {
+    public init(id: String, stillURL: URL?, playURL: URL?, isVideo: Bool, fallbackURLs: [URL] = [], thumbnailURL: URL? = nil) {
         self.id = id
+        self.thumbnailURL = thumbnailURL
         self.stillURL = stillURL
         self.playURL = playURL
         self.isVideo = isVideo
@@ -170,9 +173,12 @@ public struct MediaViewerRequest: Identifiable, Hashable, Sendable {
     public var author: String?
     public var date: Date?
     public var caption: String?
+    /// Сколько всего кадров, если загружены не все (история фото профиля); `nil` — `slides.count`.
+    public var total: Int?
 
-    public init(id: String, slides: [MediaSlide], messageId: String? = nil, author: String? = nil, date: Date? = nil, caption: String? = nil) {
+    public init(id: String, slides: [MediaSlide], messageId: String? = nil, author: String? = nil, date: Date? = nil, caption: String? = nil, total: Int? = nil) {
         self.id = id
+        self.total = total
         self.slides = slides
         self.messageId = messageId
         self.author = author

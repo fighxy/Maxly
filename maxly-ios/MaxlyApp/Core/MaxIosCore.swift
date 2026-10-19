@@ -536,6 +536,31 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func loadContactPhotos(userId: String, from: Int) async throws -> CoreContactPhotos {
+        try await call("loadContactPhotos") { done in
+            self.client.loadContactPhotos(userId: userId, from: Int32(from)) { page, kind, key in
+                if let kind {
+                    done(.failure(Self.failed(kind: kind, key: key)))
+                } else if let page {
+                    let size = IosImageSize.shared
+                    done(.success(CoreContactPhotos(
+                        photos: page.photos.map { photo in
+                            CoreContactPhoto(
+                                photoId: photo.photoId,
+                                url: photo.url,
+                                fullURL: size.originalUrl(rawUrl: photo.url, baseUrl: ""),
+                                viewerURLs: size.viewerUrls(rawUrl: photo.url, baseUrl: "")
+                            )
+                        },
+                        total: Int(page.total)
+                    )))
+                } else {
+                    done(.failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)))
+                }
+            }
+        }
+    }
+
     func loadProfile(chatId: String) async throws -> CoreProfile {
         try await call("loadProfile") { done in
             self.client.loadProfile(chatId: chatId) { profile, kind, key in
