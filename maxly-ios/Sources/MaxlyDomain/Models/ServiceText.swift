@@ -5,6 +5,7 @@ import Foundation
 /// Автор события — отправитель сообщения. Свои события пишутся от «Вы», участник-аккаунт —
 /// «вас». Имя, которого нет, заменяется словом «Участник» (или «Контакт» для «теперь в MAX»).
 /// Название берётся в «ёлочки». Незнакомое событие без текста сервера — `fallback`.
+/// Нейтральный текст ядра (`coreText`) заменяет свой, кроме «теперь в MAX».
 public enum ServiceText {
     public static let fallback = "Служебное сообщение"
 
@@ -21,7 +22,11 @@ public enum ServiceText {
         let title = clean(notice.title)
         let targets = notice.participantIds
         let onlyActor = targets.isEmpty || targets == [actorId]
-        switch kind(notice) {
+        let eventKind = Self.kind(notice)
+        // Текст ядра для известного события важнее своего. «Теперь в MAX» ядро не различает:
+        // для `new` личного чата оно пишет «Чат создан».
+        if eventKind != .joined, let core = clean(notice.coreText) { return core }
+        switch eventKind {
         case .joined:
             return joinedText(notice, actorId: actorId, actorName: actorName, mine: mine)
         case .created:

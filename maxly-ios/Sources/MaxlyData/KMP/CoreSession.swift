@@ -355,6 +355,9 @@ public struct CoreMessage: Sendable, Equatable {
     public var reactionsJSON: String
     /// Время последней правки (`updateTime`, мс). `0` — не правили.
     public var updateTimeMs: Int64
+    /// Первое вложение `CONTROL`, как его разобрало ядро (`IosMessage.control`). `nil` — не
+    /// служебное сообщение или мост его не передал.
+    public var control: CoreControl?
 
     public init(
         id: String,
@@ -366,7 +369,8 @@ public struct CoreMessage: Sendable, Equatable {
         authorName: String = "",
         authorAvatarURL: String = "",
         reactionsJSON: String = "",
-        updateTimeMs: Int64 = 0
+        updateTimeMs: Int64 = 0,
+        control: CoreControl? = nil
     ) {
         self.id = id
         self.chatId = chatId
@@ -378,6 +382,23 @@ public struct CoreMessage: Sendable, Equatable {
         self.authorAvatarURL = authorAvatarURL
         self.reactionsJSON = reactionsJSON
         self.updateTimeMs = updateTimeMs
+        self.control = control
+    }
+}
+
+/// Служебное вложение из ядра (`IosControl`): событие, участники, название и нейтральный
+/// текст ядра для известного события (`fallbackText`, `nil` — ядро его не знает).
+public struct CoreControl: Sendable, Equatable {
+    public var event: String
+    public var userIds: [String]
+    public var title: String?
+    public var fallbackText: String?
+
+    public init(event: String, userIds: [String] = [], title: String? = nil, fallbackText: String? = nil) {
+        self.event = event
+        self.userIds = userIds
+        self.title = title
+        self.fallbackText = fallbackText
     }
 }
 

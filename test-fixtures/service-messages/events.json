@@ -1,7 +1,7 @@
 {
   "kind": "control",
   "name": "events",
-  "description": "Каждое событие вложения CONTROL: какой это вид (kind) и какой текст строки. pin и unpin — закрепление, у него своя плашка, kind null. message — сообщение сервера (sender, senderName, text, attaches), viewer — id аккаунта, names — имена, известные клиенту (id → имя).",
+  "description": "Каждое событие вложения CONTROL: какой это вид (kind) и какой текст строки. pin и unpin — закрепление, у него своя плашка, kind null. message — сообщение сервера (sender, senderName, text, attaches), viewer — id аккаунта, names — имена, известные клиенту (id → имя). coreText — нейтральный текст ядра для известного события (IosControl.fallbackText), если есть: он важнее своего, кроме «теперь в MAX».",
   "cases": [
     {
       "name": "hello",
@@ -543,6 +543,72 @@
       "names": {},
       "expect": {
         "kind": null
+      }
+    },
+    {
+      "name": "new-chat-core-text",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "new",
+            "chatType": "CHAT",
+            "title": "Дача"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "coreText": "Создан чат «Дача»",
+      "expect": {
+        "kind": "created",
+        "text": "Создан чат «Дача»"
+      }
+    },
+    {
+      "name": "bot-started-core-text",
+      "message": {
+        "sender": "1",
+        "senderName": "Иван",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "botStarted"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "coreText": "Бот запущен",
+      "expect": {
+        "kind": "botStarted",
+        "text": "Бот запущен"
+      }
+    },
+    {
+      "name": "new-dialog-ignores-core-text",
+      "message": {
+        "sender": "101",
+        "senderName": "Анна",
+        "text": "",
+        "attaches": [
+          {
+            "_type": "CONTROL",
+            "event": "new",
+            "chatType": "DIALOG"
+          }
+        ]
+      },
+      "viewer": "1",
+      "names": {},
+      "coreText": "Чат создан",
+      "expect": {
+        "kind": "joined",
+        "text": "Анна теперь в MAX"
       }
     }
   ]

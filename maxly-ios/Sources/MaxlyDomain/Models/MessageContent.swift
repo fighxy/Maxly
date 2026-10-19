@@ -516,6 +516,8 @@ public struct ServiceNotice: Hashable, Sendable, Codable {
     public var text: String?
     public var chatType: String?
     public var viewerId: String?
+    /// Нейтральный текст ядра для известного события (`IosControl.fallbackText`).
+    public var coreText: String?
 
     public init(
         event: String,
@@ -525,7 +527,8 @@ public struct ServiceNotice: Hashable, Sendable, Codable {
         title: String? = nil,
         text: String? = nil,
         chatType: String? = nil,
-        viewerId: String? = nil
+        viewerId: String? = nil,
+        coreText: String? = nil
     ) {
         self.event = event
         self.userId = userId
@@ -535,6 +538,7 @@ public struct ServiceNotice: Hashable, Sendable, Codable {
         self.text = text
         self.chatType = chatType
         self.viewerId = viewerId
+        self.coreText = coreText
     }
 
     /// Событие с тем, чего во вложении нет: имена участников (`known`, уже записанные важнее),

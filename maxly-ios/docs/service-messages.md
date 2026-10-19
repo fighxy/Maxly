@@ -10,7 +10,9 @@
 ## Путь данных
 
 1. Ядро отдаёт вложения сообщения как пришли: `IosMessage.contentJson` и `contentJson` пуша
-   `message` несут `attaches` с `CONTROL` целиком.
+   `message` несут `attaches` с `CONTROL` целиком. С ядра 41125fc у `IosMessage` есть ещё
+   `control` (`IosControl`: событие, участники, название, `fallbackText`); `CoreMapping`
+   берёт из него нейтральный текст ядра и само событие, если фрагмента нет.
 2. `MessageContentCodec.serviceNotice` разбирает его в `MessageContent.service`
    (`ServiceNotice`: событие, участники, название, текст сервера).
 3. `MessageRepositoryImpl.upsert` дописывает в событие имена участников (у отправителя этого
@@ -24,6 +26,9 @@
    о «теперь в MAX».
 
 ## Чего не хватает в ядре
+
+- `IosEvent` (пуш `message`) не несёт `control`: у события из пуша нет текста ядра, и до
+  перечитывания истории строка пишется своим текстом.
 
 - `IosChat` не несёт вложений последнего сообщения: у `CONTROL` пусты и `lastText`, и
   `lastMedia` (`attachmentKind` знает только медиа). Пока последнего сообщения нет в базе,

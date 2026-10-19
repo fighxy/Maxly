@@ -108,4 +108,29 @@ struct ServiceMessageDataTests {
         #expect(message.content.previewMedia == .service)
         #expect(ServiceText.text(of: message.content, authorId: message.authorId, authorName: message.authorName) == "Анна теперь в MAX")
     }
+
+    @Test("Вложение ядра: текст ядра для известного события, событие без фрагмента не теряется")
+    func coreControl() {
+        let created = CoreMapping.message(CoreMessage(
+            id: "8", chatId: "g1", authorId: "101", text: "", timeMs: 1_000,
+            contentJSON: #"{"attaches":[{"_type":"CONTROL","event":"new","chatType":"CHAT","title":"Дача"}]}"#, authorName: "Анна",
+            control: CoreControl(event: "new", userIds: [], title: "Дача", fallbackText: "Создан чат «Дача»")
+        )).domain
+        #expect(ServiceText.text(of: created.content, authorId: created.authorId, authorName: created.authorName) == "Создан чат «Дача»")
+
+        let bare = CoreMapping.message(CoreMessage(
+            id: "9", chatId: "g1", authorId: "101", text: "", timeMs: 2_000, authorName: "Анна",
+            control: CoreControl(event: "leave", userIds: [], title: nil, fallbackText: nil)
+        )).domain
+        #expect(bare.content.isService)
+        #expect(ServiceText.text(of: bare.content, authorId: bare.authorId, authorName: bare.authorName) == "Анна покинул(а) чат")
+
+        let pin = CoreMapping.message(CoreMessage(
+            id: "10", chatId: "g1", authorId: "101", text: "", timeMs: 3_000,
+            contentJSON: #"{"attaches":[{"_type":"CONTROL","event":"pin","pinnedMessage":{"id":7,"text":"Сбор"}}]}"#,
+            control: CoreControl(event: "pin")
+        )).domain
+        #expect(pin.content.pin != nil)
+        #expect(pin.content.service == nil)
+    }
 }

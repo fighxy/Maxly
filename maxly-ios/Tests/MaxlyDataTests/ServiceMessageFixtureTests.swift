@@ -45,11 +45,12 @@ struct ServiceMessageFixtureTests {
         // Запись в базу и обратно не теряет событие.
         #expect(MessageContentCodec.decode(MessageContentCodec.encode(content)).service == parsed, "\(label): запись в базу")
         let names = (item["names"] as? [String: String]) ?? [:]
-        let notice = parsed.filled(
+        var notice = parsed.filled(
             names: names,
             viewerId: item["viewer"] as? String ?? "",
             messageText: message["text"] as? String ?? ""
         )
+        if let core = item["coreText"] as? String { notice.coreText = core }
         #expect(name(of: ServiceText.kind(notice)) == kind, "\(label): kind \(ServiceText.kind(notice))")
         let text = ServiceText.text(
             notice,

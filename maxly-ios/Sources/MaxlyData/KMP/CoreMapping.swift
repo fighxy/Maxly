@@ -154,6 +154,7 @@ enum CoreMapping {
 
     static func message(_ message: CoreMessage) -> MessageRecord {
         var content = MessageContentCodec.decode(message.contentJSON)
+        if let control = message.control { content = withControl(control, content) }
         let reactions = MessageContentCodec.reactionUpdate(message.reactionsJSON)
         if let reactions { content.reactions = reactions.applied(to: content.reactions) }
         return MessageRecord(
@@ -171,6 +172,24 @@ enum CoreMapping {
             reactionsKnown: reactions != nil,
             updateTimeMs: max(message.updateTimeMs, 0)
         )
+    }
+
+    /// Служебное вложение ядра поверх разобранного фрагмента: текст ядра для известного события,
+    /// а без `CONTROL` во фрагменте — само событие. Закрепление остаётся своей плашкой.
+    static func withControl(_ control: CoreControl, _ content: MessageContent) -> MessageContent {
+        guard content.pin == nil else { return content }
+        let event = control.event.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !["pin", "unpin"].contains(event.lowercased()) else { return content }
+        let fallback = control.fallbackText?.trimmingCharacters(in: .whitespacesAndNewlines)
+        var copy = content
+        var notice = content.service ?? ServiceNotice(
+            event: event,
+            userIds: control.userIds.filter { !$0.isEmpty && $0 != "0" },
+            title: control.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? control.title : nil
+        )
+        if let fallback, !fallback.isEmpty { notice.coreText = fallback }
+        copy.service = notice
+        return copy
     }
 
     /// Категория ошибки для репозиториев. `kind` — имя `ErrorKind` ядра.
