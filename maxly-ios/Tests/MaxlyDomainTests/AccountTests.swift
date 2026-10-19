@@ -28,6 +28,17 @@ struct AccountTests {
         #expect(MyProfile(id: "1", firstName: " ", lastName: "").displayName == "Без имени")
     }
 
+    @Test("Своё фото: сначала оригинал целиком, потом размеры от большего, не квадрат")
+    func ownPhotoCandidates() {
+        let avatar = URL(string: "https://i.oneme.ru/i?r=sq&fn=sqr_288")!
+        let full = URL(string: "https://i.oneme.ru/i?r=raw")!
+        let big = URL(string: "https://i.oneme.ru/i?r=raw&fn=w_1440")!
+        let small = URL(string: "https://i.oneme.ru/i?r=raw&fn=w_720")!
+        let profile = MyProfile(id: "1", firstName: "Иван", avatarURL: avatar, photoURL: full, photoViewerURLs: [big, small])
+        #expect(profile.fullPhotoURL == full)
+        #expect(profile.photoCandidates == [full, big, small])
+    }
+
     @Test("Почта для восстановления скрыта, домен виден")
     func emailMask() {
         #expect(TwoFactorStatus.mask(email: "ivan@ya.ru") == "i•••n@ya.ru")

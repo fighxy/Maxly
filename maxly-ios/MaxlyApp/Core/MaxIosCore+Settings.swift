@@ -402,11 +402,25 @@ extension MaxIosCore {
             avatarURL: value.avatarUrl.isEmpty ? nil : URL(string: value.avatarUrl),
             hasPhoto: !value.photoId.isEmpty || !value.avatarUrl.isEmpty,
             link: value.link.isEmpty ? nil : URL(string: value.link),
-            // `IosMyProfile` даёт только `avatarUrl` (`baseUrl`): оригинал и размеры для просмотра
-            // строит ядро из него.
-            photoURL: value.avatarUrl.isEmpty ? nil : URL(string: IosImageSize.shared.originalUrl(rawUrl: "", baseUrl: value.avatarUrl)),
-            photoViewerURLs: IosImageSize.shared.viewerUrls(rawUrl: "", baseUrl: value.avatarUrl).compactMap(URL.init(string:))
+            // Оригинал и размеры для просмотра даёт ядро (`avatarFullUrl`, `avatarViewerUrls`), как у
+            // чужих профилей. Только если оба пусты, они строятся из `avatarUrl`.
+            photoURL: ownPhotoURL(value),
+            photoViewerURLs: ownViewerURLs(value)
         ))
+    }
+
+    static func ownPhotoURL(_ value: IosMyProfile) -> URL? {
+        if !value.avatarFullUrl.isEmpty { return URL(string: value.avatarFullUrl) }
+        guard value.avatarViewerUrls.isEmpty, !value.avatarUrl.isEmpty else { return nil }
+        return URL(string: IosImageSize.shared.originalUrl(rawUrl: "", baseUrl: value.avatarUrl))
+    }
+
+    static func ownViewerURLs(_ value: IosMyProfile) -> [URL] {
+        if !value.avatarFullUrl.isEmpty || !value.avatarViewerUrls.isEmpty {
+            return value.avatarViewerUrls.compactMap(URL.init(string:))
+        }
+        guard !value.avatarUrl.isEmpty else { return [] }
+        return IosImageSize.shared.viewerUrls(rawUrl: "", baseUrl: value.avatarUrl).compactMap(URL.init(string:))
     }
 
     private static func settingsResult(_ value: IosAccountSettings?, _ kind: String?, _ key: String?) -> Result<AccountSettings, Error> {
