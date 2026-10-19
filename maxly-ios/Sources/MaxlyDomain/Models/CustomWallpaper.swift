@@ -1,172 +1,178 @@
 import Foundation
 
-/// Для чего задано своё фото обоев: для всех чатов или для одного чата или канала.
+/// Своё фото на обоях: общее для всех чатов («Оформление» → «Обои чата») и своё у чата («Ещё» →
+/// «Обои» в профиле). Хранится только на устройстве, на сервер ничего не уходит.
+///
+/// Затемнение и размытие общие для всех фото. Порядок для чата: своё фото чата, затем
+/// «Без обоев» чата, затем общее фото, иначе встроенные обои из «Оформления».
+public enum CustomWallpaperStyle {
+    public static let minDim = 0
+    public static let maxDim = 60
+    /// Длинная сторона копии фото в пикселях: маленькие фото не растягиваются.
+    public static let maxSide = 2560
+    /// Радиус размытия в пунктах экрана, когда «Размытие» включено.
+    public static let blurRadius = 18.0
+
+    public static func clampDim(_ percent: Int) -> Int { min(max(percent, minDim), maxDim) }
+
+    /// Непрозрачность чёрного слоя поверх фото.
+    public static func dimOpacity(_ percent: Int) -> Double { Double(clampDim(percent)) / 100 }
+
+    /// «Затемнение — 20 %».
+    public static func dimCaption(_ percent: Int) -> String {
+        "Затемнение — \(clampDim(percent))\u{00A0}%"
+    }
+
+    /// Размытая копия фото: строится один раз, когда размытие включено, и лежит рядом.
+    public static func blurredName(_ file: String) -> String { "blur-" + file }
+
+    /// Размер копии для фото `width`×`height`: длинная сторона не больше `maxSide`, пропорции
+    /// сохраняются, маленькие фото не растягиваются, стороны не меньше 1.
+    public static func target(width: Int, height: Int, maxSide: Int = maxSide) -> (width: Int, height: Int) {
+        guard width > 0, height > 0 else { return (1, 1) }
+        let longest = max(width, height)
+        guard longest > maxSide else { return (width, height) }
+        let scale = Double(maxSide) / Double(longest)
+        let w = min(max(Int((Double(width) * scale).rounded()), 1), maxSide)
+        let h = min(max(Int((Double(height) * scale).rounded()), 1), maxSide)
+        return (w, h)
+    }
+}
+
+/// Для чего меняется фото: общее или для одного чата (ключ `CustomWallpaperIndex.chatKey`).
 public enum WallpaperScope: Hashable, Sendable {
     case global
     case chat(String)
 }
 
-/// Своё фото за лентой чата. Хранится только на устройстве: картинка уже уменьшена до размера
-/// экрана и размыта при сохранении, поэтому экран чата рисует её как есть, одним слоем.
-public struct CustomWallpaper: Codable, Equatable, Sendable {
-    /// Имя файла в папке обоев (`global-1a2b3c4d.jpg`, `chat-123-1a2b3c4d.jpg`).
-    public var file: String
-    /// Затемнение в светлой теме, `dimRange`. В тёмной теме фото затемняется сильнее.
-    public var dim: Double
-    /// Размытие, `0…1`: уже запечено в картинку, хранится для подписи и повторной настройки.
-    public var blur: Double
-    public var updatedAt: Date
-
-    public static let dimRange: ClosedRange<Double> = 0...0.7
-    public static let blurRange: ClosedRange<Double> = 0...1
-    public static let defaultDim = 0.1
-    public static let defaultBlur = 0.0
-    /// Доля оставшейся яркости, которую тёмная тема добавляет к затемнению.
-    public static let darkExtra = 0.3
-    /// Наибольший радиус размытия в пунктах экрана: `blur == 1`.
-    public static let maxBlurRadius = 24.0
-
-    public init(file: String, dim: Double = Self.defaultDim, blur: Double = Self.defaultBlur, updatedAt: Date = Date()) {
-        self.file = file
-        self.dim = Self.clampDim(dim)
-        self.blur = Self.clampBlur(blur)
-        // Целые секунды: так же время читается из `wallpapers.json`.
-        self.updatedAt = Date(timeIntervalSince1970: updatedAt.timeIntervalSince1970.rounded())
-    }
-
-    public static func clampDim(_ value: Double) -> Double {
-        guard value.isFinite else { return defaultDim }
-        return min(max(value, dimRange.lowerBound), dimRange.upperBound)
-    }
-
-    public static func clampBlur(_ value: Double) -> Double {
-        guard value.isFinite else { return defaultBlur }
-        return min(max(value, blurRange.lowerBound), blurRange.upperBound)
-    }
-
-    /// Непрозрачность чёрного слоя поверх фото. В тёмной теме выше: светлое фото не слепит.
-    public static func dimOpacity(_ dim: Double, dark: Bool) -> Double {
-        let base = clampDim(dim)
-        return dark ? base + (1 - base) * darkExtra : base
-    }
-
-    public func dimOpacity(dark: Bool) -> Double { Self.dimOpacity(dim, dark: dark) }
-
-    /// Радиус размытия в пунктах экрана.
-    public static func blurRadius(_ blur: Double) -> Double { clampBlur(blur) * maxBlurRadius }
-
-    /// «Затемнение 10 %», «Размытие 40 %»: подписи ползунков.
-    public static func percent(_ value: Double) -> String {
-        "\(Int((value * 100).rounded()))\u{00A0}%"
-    }
-
-    private enum CodingKeys: String, CodingKey { case file, dim, blur, updatedAt }
-
-    public init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let file = try container.decode(String.self, forKey: .file)
-        let dim = try container.decodeIfPresent(Double.self, forKey: .dim) ?? Self.defaultDim
-        let blur = try container.decodeIfPresent(Double.self, forKey: .blur) ?? Self.defaultBlur
-        let seconds = try container.decodeIfPresent(Double.self, forKey: .updatedAt) ?? 0
-        self.init(file: file, dim: dim, blur: blur, updatedAt: Date(timeIntervalSince1970: seconds))
-    }
-
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(file, forKey: .file)
-        try container.encode(dim, forKey: .dim)
-        try container.encode(blur, forKey: .blur)
-        // Секунды Unix: одинаково читаются на всех платформах.
-        try container.encode(updatedAt.timeIntervalSince1970.rounded(), forKey: .updatedAt)
-    }
+/// Что выбрано в «Обоях» чата.
+public enum ChatWallpaperChoice: Equatable, Sendable {
+    /// «Как в общих»: обои из «Оформления».
+    case global
+    /// «Без обоев»: в этом чате ровный фон, даже если в «Оформлении» есть обои или фото.
+    case plain
+    /// «Своё фото…» только для этого чата: имя файла в папке обоев.
+    case photo(String)
 }
 
-/// Все свои обои устройства: общие и по чатам (ключ — id чата).
-///
-/// Порядок выбора для чата: обои этого чата, потом общие, потом встроенные из «Оформления».
+/// Итог для чата: своё фото (имя файла), ровный фон или встроенные обои из «Оформления».
+public enum ResolvedChatWallpaper: Equatable, Sendable {
+    case photo(String)
+    case plain
+    case preset
+}
+
+/// Все свои обои устройства: `wallpapers.json` в папке обоев.
 public struct CustomWallpaperIndex: Codable, Equatable, Sendable {
     public static let currentVersion = 1
+    /// Значение чата «Без обоев».
+    public static let plainValue = "plain"
 
     public var version: Int
-    public var global: CustomWallpaper?
-    public var chats: [String: CustomWallpaper]
+    /// Файл общего фото; `nil` — общего фото нет.
+    public var global: String?
+    /// Затемнение всех фото, `CustomWallpaperStyle.minDim…maxDim` процентов.
+    public var dimPercent: Int
+    /// Размыть все фото.
+    public var blur: Bool
+    /// По ключу `chatKey(account:chatId:)`: имя файла своего фото или `plain`. Нет ключа — «Как в общих».
+    public var chats: [String: String]
 
-    public init(global: CustomWallpaper? = nil, chats: [String: CustomWallpaper] = [:]) {
+    public init(global: String? = nil, dimPercent: Int = 0, blur: Bool = false, chats: [String: String] = [:]) {
         version = Self.currentVersion
         self.global = global
+        self.dimPercent = CustomWallpaperStyle.clampDim(dimPercent)
+        self.blur = blur
         self.chats = chats
     }
 
     public static let empty = CustomWallpaperIndex()
 
-    public var isEmpty: Bool { global == nil && chats.isEmpty }
+    /// Ключ чата: аккаунт и чат, у разных аккаунтов обои свои.
+    public static func chatKey(account: String, chatId: String) -> String { "\(account).\(chatId)" }
 
-    /// Своё фото, заданное именно для `scope` (общие для чата не подставляются).
-    public subscript(scope: WallpaperScope) -> CustomWallpaper? {
-        get {
-            switch scope {
-            case .global: global
-            case .chat(let id): chats[id]
-            }
-        }
-        set {
-            switch scope {
-            case .global: global = newValue
-            case .chat(let id): chats[id] = newValue
-            }
+    public func choice(chatKey: String) -> ChatWallpaperChoice {
+        switch chats[chatKey] {
+        case nil, "": .global
+        case Self.plainValue: .plain
+        case let file?: .photo(file)
         }
     }
 
-    /// Что показать в чате `chatId`: его обои, иначе общие. `nil` — встроенные из «Оформления».
-    public func resolve(chatId: String?) -> CustomWallpaper? {
-        if let chatId, let own = chats[chatId] { return own }
-        return global
+    /// Фото чата, затем «Без обоев» чата, затем общее фото, иначе встроенные обои.
+    public func resolve(chatKey: String?) -> ResolvedChatWallpaper {
+        switch chatKey.map(choice(chatKey:)) ?? .global {
+        case .photo(let file): .photo(file)
+        case .plain: .plain
+        case .global: global.map(ResolvedChatWallpaper.photo) ?? .preset
+        }
     }
 
-    /// Все файлы, на которые есть ссылки: остальные в папке обоев лишние.
-    public var files: Set<String> {
-        var names = Set(chats.values.map(\.file))
-        if let global { names.insert(global.file) }
+    /// Файлы фото, на которые есть ссылки (без размытых копий).
+    public var photoFiles: Set<String> {
+        var names = Set(chats.values.filter { !$0.isEmpty && $0 != Self.plainValue })
+        if let global { names.insert(global) }
         return names
     }
 
-    private enum CodingKeys: String, CodingKey { case version, global, chats }
+    private enum CodingKeys: String, CodingKey { case version, global, dimPercent, blur, chats }
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         version = try container.decodeIfPresent(Int.self, forKey: .version) ?? Self.currentVersion
-        global = try container.decodeIfPresent(CustomWallpaper.self, forKey: .global)
-        chats = try container.decodeIfPresent([String: CustomWallpaper].self, forKey: .chats) ?? [:]
+        global = try container.decodeIfPresent(String.self, forKey: .global).flatMap { $0.isEmpty ? nil : $0 }
+        dimPercent = CustomWallpaperStyle.clampDim(try container.decodeIfPresent(Int.self, forKey: .dimPercent) ?? 0)
+        blur = try container.decodeIfPresent(Bool.self, forKey: .blur) ?? false
+        chats = try container.decodeIfPresent([String: String].self, forKey: .chats) ?? [:]
     }
 }
 
-/// Своё фото, готовое к показу: где лежит картинка и насколько её затемнить.
+/// Своё фото, готовое к показу.
 public struct CustomWallpaperBackdrop: Equatable, Sendable {
+    /// Копия фото (длинная сторона до 2560 пикселей).
     public let url: URL
-    public let dim: Double
-    /// Чьи это обои: чата или общие.
-    public let scope: WallpaperScope
+    /// Размытая копия рядом; строится один раз при первом показе с размытием.
+    public let blurredURL: URL
+    public let dimPercent: Int
+    public let blur: Bool
 
-    public init(url: URL, dim: Double, scope: WallpaperScope) {
+    public init(url: URL, blurredURL: URL, dimPercent: Int, blur: Bool) {
         self.url = url
-        self.dim = dim
-        self.scope = scope
+        self.blurredURL = blurredURL
+        self.dimPercent = dimPercent
+        self.blur = blur
     }
 
-    public func dimOpacity(dark: Bool) -> Double { CustomWallpaper.dimOpacity(dim, dark: dark) }
+    public var dimOpacity: Double { CustomWallpaperStyle.dimOpacity(dimPercent) }
 }
 
-/// Где лежат свои обои. Картинка приходит уже готовой (уменьшенной и размытой).
+/// Фон ленты чата с учётом своих обоев.
+public enum ChatBackground: Equatable, Sendable {
+    case photo(CustomWallpaperBackdrop)
+    /// «Без обоев» у чата: ровный фон.
+    case plain
+    /// Встроенные обои из «Оформления».
+    case preset
+
+    public var photo: CustomWallpaperBackdrop? {
+        if case .photo(let backdrop) = self { backdrop } else { nil }
+    }
+}
+
+/// Где лежат свои обои. Картинка приходит уже уменьшенной.
 @MainActor
 public protocol CustomWallpaperStore: AnyObject {
     func load() -> CustomWallpaperIndex
-    /// Где лежит файл обоев.
-    func url(for wallpaper: CustomWallpaper) -> URL
-    /// Записать фото для `scope`; прежний файл этого `scope` удаляется.
+    func url(forFile file: String) -> URL
+    /// Записать фото для `scope`; прежнее фото этого `scope` удаляется. Возвращает имя файла.
     @discardableResult
-    func save(image: Data, dim: Double, blur: Double, for scope: WallpaperScope) throws -> CustomWallpaper
-    /// Убрать свои обои `scope` вместе с файлом.
-    func remove(_ scope: WallpaperScope)
+    func savePhoto(_ image: Data, for scope: WallpaperScope) throws -> String
+    /// «Как в общих» или «Без обоев» у чата; прежнее фото чата удаляется.
+    func setChat(_ chatKey: String, plain: Bool)
+    /// «Сбросить» общее фото.
+    func resetGlobal()
+    func setDim(_ percent: Int)
+    func setBlur(_ blur: Bool)
 }
 
 /// Свои обои только в памяти: для тестов и превью.
@@ -182,21 +188,41 @@ public final class InMemoryCustomWallpaperStore: CustomWallpaperStore {
 
     public func load() -> CustomWallpaperIndex { index }
 
-    public func url(for wallpaper: CustomWallpaper) -> URL {
-        URL(fileURLWithPath: "/memory/wallpapers", isDirectory: true).appendingPathComponent(wallpaper.file)
+    public func url(forFile file: String) -> URL {
+        URL(fileURLWithPath: "/memory/wallpapers", isDirectory: true).appendingPathComponent(file)
     }
 
-    public func save(image: Data, dim: Double, blur: Double, for scope: WallpaperScope) throws -> CustomWallpaper {
+    public func savePhoto(_ image: Data, for scope: WallpaperScope) throws -> String {
         counter += 1
-        if let old = index[scope] { images[old.file] = nil }
-        let wallpaper = CustomWallpaper(file: "wallpaper-\(counter).jpg", dim: dim, blur: blur)
-        images[wallpaper.file] = image
-        index[scope] = wallpaper
-        return wallpaper
+        let file = "wallpaper-\(counter).jpg"
+        images[file] = image
+        switch scope {
+        case .global:
+            drop(index.global)
+            index.global = file
+        case .chat(let key):
+            drop(index.chats[key])
+            index.chats[key] = file
+        }
+        return file
     }
 
-    public func remove(_ scope: WallpaperScope) {
-        if let old = index[scope] { images[old.file] = nil }
-        index[scope] = nil
+    public func setChat(_ chatKey: String, plain: Bool) {
+        drop(index.chats[chatKey])
+        index.chats[chatKey] = plain ? CustomWallpaperIndex.plainValue : nil
+    }
+
+    public func resetGlobal() {
+        drop(index.global)
+        index.global = nil
+    }
+
+    public func setDim(_ percent: Int) { index.dimPercent = CustomWallpaperStyle.clampDim(percent) }
+
+    public func setBlur(_ blur: Bool) { index.blur = blur }
+
+    private func drop(_ file: String?) {
+        guard let file, file != CustomWallpaperIndex.plainValue else { return }
+        images[file] = nil
     }
 }

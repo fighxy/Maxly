@@ -6,53 +6,61 @@ import MaxlyDomain
 @Suite("Свои обои")
 @MainActor
 struct ChatWallpaperLibraryTests {
-    @Test("Чат берёт свои обои, потом общие, без них — встроенные")
+    private let chat = ChatWallpaperLibrary.chatKey(account: "7", chatId: "1")
+    private let other = ChatWallpaperLibrary.chatKey(account: "7", chatId: "2")
+
+    @Test("Фото чата, «Без обоев» чата, общее фото, встроенные — по порядку")
     func resolution() {
         let store = InMemoryCustomWallpaperStore()
         let library = ChatWallpaperLibrary(store: store)
-        #expect(library.backdrop(chatId: "1") == nil)
-        #expect(library.apply(image: Data([1]), dim: 0.2, blur: 0, for: .global))
-        #expect(library.backdrop(chatId: "1")?.scope == .global)
-        #expect(library.backdrop(chatId: "1")?.dim == 0.2)
-        #expect(library.apply(image: Data([2]), dim: 0.4, blur: 0.5, for: .chat("1")))
-        #expect(library.backdrop(chatId: "1")?.scope == .chat("1"))
-        #expect(library.backdrop(chatId: "1")?.dim == 0.4)
-        #expect(library.backdrop(chatId: "2")?.scope == .global)
-        #expect(library.backdrop(for: .chat("2")) == nil)
-        #expect(library.hasOwn(.chat("1")))
-        #expect(!library.hasOwn(.chat("2")))
+        #expect(library.background(chatKey: chat) == .preset)
+        #expect(library.setPhoto(Data([1]), for: .global))
+        #expect(library.background(chatKey: chat).photo != nil)
+        library.setChoice(.plain, chatKey: chat)
+        #expect(library.background(chatKey: chat) == .plain)
+        #expect(library.background(chatKey: other).photo == library.globalBackdrop)
+        #expect(library.setPhoto(Data([2]), for: .chat(chat)))
+        #expect(library.choice(chatKey: chat) == .photo("wallpaper-2.jpg"))
+        #expect(library.background(chatKey: chat).photo?.url.lastPathComponent == "wallpaper-2.jpg")
+        library.setChoice(.global, chatKey: chat)
+        #expect(store.images.keys.sorted() == ["wallpaper-1.jpg"])
+        #expect(library.background(chatKey: chat).photo?.url.lastPathComponent == "wallpaper-1.jpg")
     }
 
-    @Test("Сброс обоев чата удаляет картинку и возвращает общие")
+    @Test("Затемнение и размытие общие для всех фото")
+    func sharedStyle() {
+        let library = ChatWallpaperLibrary(store: InMemoryCustomWallpaperStore())
+        library.setPhoto(Data([1]), for: .global)
+        library.setPhoto(Data([2]), for: .chat(chat))
+        library.setDim(90)
+        library.setBlur(true)
+        #expect(library.dimPercent == 60)
+        for key in [chat, other] {
+            let photo = library.background(chatKey: key).photo
+            #expect(photo?.dimPercent == 60)
+            #expect(photo?.blur == true)
+            #expect(photo?.blurredURL.lastPathComponent.hasPrefix("blur-") == true)
+        }
+    }
+
+    @Test("«Сбросить» убирает общее фото и его файл")
     func reset() {
         let store = InMemoryCustomWallpaperStore()
         let library = ChatWallpaperLibrary(store: store)
-        library.apply(image: Data([1]), dim: 0.1, blur: 0, for: .global)
-        library.apply(image: Data([2]), dim: 0.1, blur: 0, for: .chat("5"))
-        #expect(store.images.count == 2)
-        library.reset(.chat("5"))
-        #expect(store.images.count == 1)
-        #expect(library.backdrop(chatId: "5")?.scope == .global)
-        library.reset(.global)
+        library.setPhoto(Data([1]), for: .global)
+        #expect(library.hasGlobalPhoto)
+        library.resetGlobal()
+        #expect(!library.hasGlobalPhoto)
         #expect(store.images.isEmpty)
-        #expect(library.backdrop(chatId: "5") == nil)
-        #expect(library.index.isEmpty)
+        #expect(library.background(chatKey: chat) == .preset)
     }
 
     @Test("Ошибка записи не меняет обои и даёт текст для экрана")
     func failure() {
         let library = ChatWallpaperLibrary(store: FailingStore())
-        #expect(!library.apply(image: Data([1]), dim: 0.1, blur: 0, for: .global))
+        #expect(!library.setPhoto(Data([1]), for: .global))
         #expect(library.errorMessage == "Не удалось сохранить обои")
-        #expect(library.backdrop(chatId: nil) == nil)
-    }
-
-    @Test("Сохранённые обои читаются при запуске")
-    func loadsSaved() {
-        let saved = CustomWallpaperIndex(chats: ["9": CustomWallpaper(file: "chat-9-x.jpg", dim: 0.3)])
-        let library = ChatWallpaperLibrary(store: InMemoryCustomWallpaperStore(saved))
-        #expect(library.wallpaper(for: .chat("9"))?.file == "chat-9-x.jpg")
-        #expect(library.backdrop(chatId: "9")?.url.lastPathComponent == "chat-9-x.jpg")
+        #expect(library.background(chatKey: nil) == .preset)
     }
 }
 
@@ -60,7 +68,10 @@ struct ChatWallpaperLibraryTests {
 private final class FailingStore: CustomWallpaperStore {
     struct Failure: Error {}
     func load() -> CustomWallpaperIndex { .empty }
-    func url(for wallpaper: CustomWallpaper) -> URL { URL(fileURLWithPath: "/dev/null") }
-    func save(image: Data, dim: Double, blur: Double, for scope: WallpaperScope) throws -> CustomWallpaper { throw Failure() }
-    func remove(_ scope: WallpaperScope) {}
+    func url(forFile file: String) -> URL { URL(fileURLWithPath: "/dev/null") }
+    func savePhoto(_ image: Data, for scope: WallpaperScope) throws -> String { throw Failure() }
+    func setChat(_ chatKey: String, plain: Bool) {}
+    func resetGlobal() {}
+    func setDim(_ percent: Int) {}
+    func setBlur(_ blur: Bool) {}
 }

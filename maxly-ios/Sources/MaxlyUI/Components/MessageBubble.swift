@@ -92,7 +92,7 @@ public struct MessageBubble: View {
     @State private var scrubbing = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Обои за лентой: входящий пузырь светлой темы на них белый.
-    @Environment(\.chatWallpaper) private var wallpaper
+    @Environment(\.chatWallpaperHasImage) private var wallpaperHasImage
     /// Анимодзи чата: крупные эмодзи играют и без отметки сервера.
     @Environment(\.animojiCatalog) private var animojiCatalog
     private static let replyThreshold: CGFloat = 56
@@ -990,7 +990,7 @@ public struct MessageBubble: View {
     private var fill: Color {
         guard hasFill else { return .clear }
         if isOutgoing { return Color.maxlyOutgoing }
-        return wallpaper.hasImage ? Color.maxlyIncomingOnWallpaper : Color.maxlyIncoming
+        return wallpaperHasImage ? Color.maxlyIncomingOnWallpaper : Color.maxlyIncoming
     }
 
     private var textColor: Color {

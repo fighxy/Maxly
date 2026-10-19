@@ -22,32 +22,45 @@ enum WallpaperImages {
     }
 }
 
-/// Свои фото обоев, прочитанные с диска. Файл уже размером с экран и размыт при сохранении,
-/// поэтому картинка декодируется один раз вне главного потока и дальше рисуется как есть.
-/// В памяти остаются несколько последних: общие и пара чатов.
+/// Свои фото обоев, прочитанные с диска. Копия уже уменьшена при выборе, поэтому картинка
+/// декодируется один раз вне главного потока и дальше рисуется как есть. С размытием берётся
+/// размытая копия рядом (`blur-<имя>`): её один раз строит Core Image и кладёт на диск, так что
+/// при прокрутке ничего не размывается. В памяти остаются несколько последних.
 @MainActor
 enum CustomWallpaperImages {
     private static var cache: [URL: UIImage] = [:]
     private static var order: [URL] = []
     private static let limit = 4
 
-    static func cached(_ url: URL) -> UIImage? { cache[url] }
+    static func key(_ backdrop: CustomWallpaperBackdrop) -> URL { backdrop.blur ? backdrop.blurredURL : backdrop.url }
 
-    static func load(_ url: URL) async -> UIImage? {
-        if let cached = cache[url] { return cached }
+    static func cached(_ backdrop: CustomWallpaperBackdrop) -> UIImage? { cache[key(backdrop)] }
+
+    static func load(_ backdrop: CustomWallpaperBackdrop) async -> UIImage? {
+        let key = key(backdrop)
+        if let cached = cache[key] { return cached }
+        let base = backdrop.url
+        let blurred = backdrop.blur ? backdrop.blurredURL : nil
+        let cover = WallpaperPhoto.cover().points
         let decoded = await Task.detached(priority: .userInitiated) { () -> DecodedWallpaper? in
-            guard let image = UIImage(contentsOfFile: url.path) else { return nil }
+            if let blurred {
+                if let image = UIImage(contentsOfFile: blurred.path) {
+                    return DecodedWallpaper(image: image.preparingForDisplay() ?? image)
+                }
+                guard let made = WallpaperPhoto.blurredCopy(of: base, to: blurred, coverPoints: cover) else { return nil }
+                return DecodedWallpaper(image: made.preparingForDisplay() ?? made)
+            }
+            guard let image = UIImage(contentsOfFile: base.path) else { return nil }
             return DecodedWallpaper(image: image.preparingForDisplay() ?? image)
         }.value
         guard let image = decoded?.image else {
-            Log.error(.ui, "Свои обои не читаются: \(url.lastPathComponent)")
+            Log.error(.ui, "Своё фото обоев не читается: \(key.lastPathComponent)")
             return nil
         }
-        store(image, for: url)
+        store(image, for: key)
         return image
     }
 
-    /// Только что сохранённая картинка: экран чата покажет её сразу, без чтения с диска.
     static func store(_ image: UIImage, for url: URL) {
         if cache[url] == nil { order.append(url) }
         cache[url] = image
@@ -60,8 +73,9 @@ enum CustomWallpaperImages {
 /// Декодированная картинка переходит из фоновой задачи только как неизменяемый результат.
 private struct DecodedWallpaper: @unchecked Sendable { let image: UIImage }
 
-/// Фон ленты чата: своё фото (обои чата или общие), иначе встроенные обои из «Оформления».
-/// Не прокручивается с лентой и не двигается за клавиатурой.
+/// Фон ленты чата: своё фото (чата или общее), иначе встроенные обои из «Оформления»
+/// («Без обоев» у чата приходит сюда как `.plain`). Не прокручивается с лентой и не двигается
+/// за клавиатурой.
 struct ChatWallpaperBackground: View {
     let wallpaper: ChatWallpaper
     /// Своё фото; `nil` — встроенные обои.
@@ -71,7 +85,7 @@ struct ChatWallpaperBackground: View {
 
     var body: some View {
         if let custom {
-            CustomWallpaperLayer(backdrop: custom, fallback: wallpaper, thumbnail: thumbnail)
+            CustomWallpaperLayer(backdrop: custom)
         } else {
             BuiltInWallpaperBackground(wallpaper: wallpaper, thumbnail: thumbnail)
         }
@@ -79,17 +93,14 @@ struct ChatWallpaperBackground: View {
 }
 
 /// Своё фото с заполнением по большей стороне и затемнением поверх: два статичных слоя, без
-/// размытия на лету. Пока картинка читается с диска, видны встроенные обои.
+/// размытия на лету. Пока картинка читается, виден ровный фон экрана.
 private struct CustomWallpaperLayer: View {
     let backdrop: CustomWallpaperBackdrop
-    let fallback: ChatWallpaper
-    let thumbnail: Bool
-    @State private var loaded: (url: URL, image: UIImage)?
-    @Environment(\.colorScheme) private var colorScheme
+    @State private var loaded: (key: URL, image: UIImage)?
 
     private var image: UIImage? {
-        if let loaded, loaded.url == backdrop.url { return loaded.image }
-        return CustomWallpaperImages.cached(backdrop.url)
+        if let loaded, loaded.key == CustomWallpaperImages.key(backdrop) { return loaded.image }
+        return CustomWallpaperImages.cached(backdrop)
     }
 
     var body: some View {
@@ -101,17 +112,17 @@ private struct CustomWallpaperLayer: View {
                             .resizable()
                             .scaledToFill()
                     }
-                    .overlay { Color.black.opacity(backdrop.dimOpacity(dark: colorScheme == .dark)) }
+                    .overlay { Color.black.opacity(backdrop.dimOpacity) }
                     .clipped()
                     .accessibilityHidden(true)
             } else {
-                BuiltInWallpaperBackground(wallpaper: fallback, thumbnail: thumbnail)
+                Color.maxlyChatBackground
             }
         }
-        .task(id: backdrop.url) {
-            guard CustomWallpaperImages.cached(backdrop.url) == nil else { return }
-            let url = backdrop.url
-            if let image = await CustomWallpaperImages.load(url) { loaded = (url, image) }
+        .task(id: CustomWallpaperImages.key(backdrop)) {
+            guard CustomWallpaperImages.cached(backdrop) == nil else { return }
+            let key = CustomWallpaperImages.key(backdrop)
+            if let image = await CustomWallpaperImages.load(backdrop) { loaded = (key, image) }
         }
     }
 }

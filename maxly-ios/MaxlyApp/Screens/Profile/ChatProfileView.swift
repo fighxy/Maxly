@@ -93,8 +93,8 @@ struct ChatProfileView: View {
     @State private var role = ChatOwnRole(isOwner: false, isAdmin: false)
     @State private var creatingFolder = false
     @State private var sharingContact = false
-    /// Лист «Обои»: своё фото только для этого чата.
-    @State private var wallpaperShown = false
+    /// «Своё фото…» из «Ещё» → «Обои»: выбор фото для этого чата.
+    @State private var pickingWallpaper = false
     @Environment(ChatWallpaperLibrary.self) private var wallpapers: ChatWallpaperLibrary?
     @Environment(\.dismiss) private var dismiss
     @State private var manageModel: ChatManageModel?
@@ -190,11 +190,7 @@ struct ChatProfileView: View {
         )) { _, title in
             context?.list?.createFolder(title)
         }
-        .sheet(isPresented: $wallpaperShown) {
-            if let wallpapers, let chatId = wallpaperChatId {
-                ChatWallpaperSheet(chatId: chatId, library: wallpapers)
-            }
-        }
+        .chatWallpaperPhotoFlow(isPresented: $pickingWallpaper, chatKey: wallpaperChatKey, library: wallpapers)
         .sheet(isPresented: $sharingContact) {
             ForwardPickerView(
                 targets: context?.shareTargets() ?? [],
@@ -630,16 +626,16 @@ struct ChatProfileView: View {
         (viewModel.shown.kind == .group || viewModel.shown.kind == .channel) && chatAdmin != nil && listed && role.isAdmin
     }
 
-    /// Чат, чьи обои меняет «Обои»: только профиль, открытый из самого чата.
-    private var wallpaperChatId: String? {
-        guard wallpapers != nil else { return nil }
-        return context?.chat.chatId
+    /// Ключ обоев чата («Ещё» → «Обои»): только профиль, открытый из самого чата.
+    private var wallpaperChatKey: String? {
+        guard wallpapers != nil, let chat = context?.chat else { return nil }
+        return ChatWallpaperLibrary.chatKey(account: chat.currentUserId, chatId: chat.chatId)
     }
 
     /// Чего нет в меню Max, но есть у нас: опрос, отложенная отправка и свои обои чата.
     @ViewBuilder
     private var extras: some View {
-        if context?.onPoll != nil || context?.onSchedule != nil || wallpaperChatId != nil {
+        if context?.onPoll != nil || context?.onSchedule != nil || wallpaperChatKey != nil {
             Section {
                 if let poll = context?.onPoll {
                     Button(action: poll) { Label("Опрос", systemImage: "chart.bar") }
@@ -647,8 +643,8 @@ struct ChatProfileView: View {
                 if let schedule = context?.onSchedule {
                     Button(action: schedule) { Label("Отправить позже", systemImage: "clock") }
                 }
-                if wallpaperChatId != nil {
-                    Button { wallpaperShown = true } label: { Label("Обои", systemImage: "photo.on.rectangle") }
+                if let wallpapers, let key = wallpaperChatKey {
+                    ChatWallpaperMenu(chatKey: key, library: wallpapers) { pickingWallpaper = true }
                 }
             }
         }

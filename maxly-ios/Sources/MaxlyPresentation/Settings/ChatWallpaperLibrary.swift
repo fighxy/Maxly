@@ -2,10 +2,11 @@ import Foundation
 import Observation
 import MaxlyDomain
 
-/// Свои фото обоев: общие для всех чатов и отдельные для чата или канала.
+/// Свои фото обоев: общее («Оформление» → «Обои чата») и своё у чата («Ещё» → «Обои» в профиле).
+/// Затемнение и размытие общие для всех фото.
 ///
-/// Экран чата спрашивает `backdrop(chatId:)`: обои чата, иначе общие, иначе `nil` — тогда
-/// остаются встроенные обои из «Оформления». Картинку сюда отдают уже готовой.
+/// Экран чата спрашивает `background(chatKey:)`: фото чата, затем «Без обоев» чата, затем общее
+/// фото, иначе встроенные обои из «Оформления». Картинку сюда отдают уже уменьшенной.
 @MainActor
 @Observable
 public final class ChatWallpaperLibrary {
@@ -20,50 +21,88 @@ public final class ChatWallpaperLibrary {
         index = store.load()
     }
 
-    /// Своё фото, заданное именно для `scope`.
-    public func wallpaper(for scope: WallpaperScope) -> CustomWallpaper? { index[scope] }
-
-    public func hasOwn(_ scope: WallpaperScope) -> Bool { index[scope] != nil }
-
-    /// Что показать за лентой чата `chatId`; `nil` — встроенные обои.
-    public func backdrop(chatId: String?) -> CustomWallpaperBackdrop? {
-        guard let wallpaper = index.resolve(chatId: chatId) else { return nil }
-        let scope: WallpaperScope = if let chatId, index.chats[chatId] != nil { .chat(chatId) } else { .global }
-        return CustomWallpaperBackdrop(url: store.url(for: wallpaper), dim: wallpaper.dim, scope: scope)
+    public static func chatKey(account: String, chatId: String) -> String {
+        CustomWallpaperIndex.chatKey(account: account, chatId: chatId)
     }
 
-    /// Своё фото именно `scope` для показа (без подстановки общих).
-    public func backdrop(for scope: WallpaperScope) -> CustomWallpaperBackdrop? {
-        guard let wallpaper = index[scope] else { return nil }
-        return CustomWallpaperBackdrop(url: store.url(for: wallpaper), dim: wallpaper.dim, scope: scope)
+    public var hasGlobalPhoto: Bool { index.global != nil }
+    public var dimPercent: Int { index.dimPercent }
+    public var blur: Bool { index.blur }
+
+    public func choice(chatKey: String) -> ChatWallpaperChoice { index.choice(chatKey: chatKey) }
+
+    /// Фон ленты чата; без ключа (чат не известен) — как в общих.
+    public func background(chatKey: String?) -> ChatBackground {
+        switch index.resolve(chatKey: chatKey) {
+        case .photo(let file): .photo(backdrop(file))
+        case .plain: .plain
+        case .preset: .preset
+        }
     }
+
+    /// Общее фото для предпросмотра в «Оформлении».
+    public var globalBackdrop: CustomWallpaperBackdrop? { index.global.map(backdrop) }
 
     /// Поставить готовую картинку для `scope`. `false` — не записалось, текст в `errorMessage`.
     @discardableResult
-    public func apply(image: Data, dim: Double, blur: Double, for scope: WallpaperScope) -> Bool {
+    public func setPhoto(_ image: Data, for scope: WallpaperScope) -> Bool {
         do {
-            try store.save(image: image, dim: dim, blur: blur, for: scope)
+            try store.savePhoto(image, for: scope)
             index = store.load()
-            Log.info(.ui, "Свои обои: \(Self.describe(scope)), \(image.count / 1024) КиБ")
+            Log.info(.ui, "Своё фото обоев: \(Self.describe(scope)), \(image.count / 1024) КиБ")
             return true
         } catch {
             errorMessage = "Не удалось сохранить обои"
-            Log.error(.ui, "Свои обои не записаны: \(error.localizedDescription)")
+            Log.error(.ui, "Своё фото обоев не записано: \(error.localizedDescription)")
             return false
         }
     }
 
-    /// «Сбросить обои»: своё фото `scope` удаляется вместе с файлом.
-    public func reset(_ scope: WallpaperScope) {
-        guard index[scope] != nil else { return }
-        store.remove(scope)
+    /// «Как в общих» (фото чата удаляется) или «Без обоев» у чата.
+    public func setChoice(_ choice: ChatWallpaperChoice, chatKey: String) {
+        switch choice {
+        case .global: store.setChat(chatKey, plain: false)
+        case .plain: store.setChat(chatKey, plain: true)
+        case .photo: return
+        }
         index = store.load()
-        Log.info(.ui, "Свои обои сброшены: \(Self.describe(scope))")
+        Log.info(.ui, "Обои чата: \(choice == .plain ? "без обоев" : "как в общих")")
+    }
+
+    /// «Сбросить»: общее фото удаляется, остаются встроенные обои.
+    public func resetGlobal() {
+        guard index.global != nil else { return }
+        store.resetGlobal()
+        index = store.load()
+        Log.info(.ui, "Общее фото обоев сброшено")
+    }
+
+    public func setDim(_ percent: Int) {
+        let value = CustomWallpaperStyle.clampDim(percent)
+        guard value != index.dimPercent else { return }
+        store.setDim(value)
+        index = store.load()
+    }
+
+    public func setBlur(_ blur: Bool) {
+        guard blur != index.blur else { return }
+        store.setBlur(blur)
+        index = store.load()
+        Log.info(.ui, "Размытие фото обоев: \(blur)")
+    }
+
+    private func backdrop(_ file: String) -> CustomWallpaperBackdrop {
+        CustomWallpaperBackdrop(
+            url: store.url(forFile: file),
+            blurredURL: store.url(forFile: CustomWallpaperStyle.blurredName(file)),
+            dimPercent: index.dimPercent,
+            blur: index.blur
+        )
     }
 
     private static func describe(_ scope: WallpaperScope) -> String {
         switch scope {
-        case .global: "общие"
+        case .global: "общее"
         case .chat: "чат"
         }
     }

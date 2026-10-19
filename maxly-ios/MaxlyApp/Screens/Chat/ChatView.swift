@@ -124,10 +124,17 @@ struct ChatView: View {
         chatEvents
     }
 
-    /// Своё фото за лентой: обои этого чата, иначе общие; `nil` — встроенные из «Оформления».
-    private var customWallpaper: CustomWallpaperBackdrop? {
-        wallpapers?.backdrop(chatId: viewModel.chatId)
+    /// Фон этого чата: своё фото чата, «Без обоев» чата, общее фото или встроенные обои.
+    private var chatBackground: ChatBackground {
+        let key = ChatWallpaperLibrary.chatKey(account: viewModel.currentUserId, chatId: viewModel.chatId)
+        return wallpapers?.background(chatKey: key) ?? .preset
     }
+
+    /// Своё фото за лентой; `nil` — встроенные обои.
+    private var customWallpaper: CustomWallpaperBackdrop? { chatBackground.photo }
+
+    /// Встроенные обои этого чата: «Без обоев» у чата убирает и их.
+    private var shownWallpaper: ChatWallpaper { chatBackground == .plain ? .plain : wallpaper }
 
     /// Лента с обоями, верхними плашками, полем ввода и панелью стикеров.
     private var transcriptLayer: some View {
@@ -146,6 +153,8 @@ struct ChatView: View {
             keyboardTop: keyboardTop,
             onAuthor: openParticipant
         )
+        .environment(\.chatWallpaper, shownWallpaper)
+        .environment(\.chatHasPhotoWallpaper, customWallpaper != nil)
         // Только что поставленная реакция: значок играет в плашке и сообщает своё место в этом
         // пространстве, эффект вокруг — слоем поверх ленты.
         .coordinateSpace(.named(ReactionBurstHost.space))
@@ -175,7 +184,7 @@ struct ChatView: View {
         // Обои за лентой: на весь экран, под шапкой, полем ввода и клавиатурой, не
         // прокручиваются с сообщениями.
         .background {
-            ChatWallpaperBackground(wallpaper: wallpaper, custom: customWallpaper)
+            ChatWallpaperBackground(wallpaper: shownWallpaper, custom: customWallpaper)
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { wallpaperFrame = $0 }
                 .ignoresSafeArea()
         }
@@ -485,6 +494,7 @@ struct ChatView: View {
                         .presentationDragIndicator(.visible)
                         // В листе комментариев обоев нет: пузыри обычные.
                         .environment(\.chatWallpaper, .plain)
+                        .environment(\.chatHasPhotoWallpaper, false)
                 }
             }
             .sheet(item: $viewModel.reactionPickerTarget) { message in
