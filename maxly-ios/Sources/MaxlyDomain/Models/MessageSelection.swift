@@ -198,6 +198,7 @@ public enum MessageSelectionRules {
         case .poll: "Опрос"
         case .call: "Звонок"
         case .groupCall: "Групповой звонок"
+        case .service: ServiceText.fallback
         case nil: "Сообщение"
         }
     }

@@ -69,9 +69,9 @@ public final class MessageSelectionModel {
 
     // MARK: Выбор
 
-    /// Можно ли выбрать сообщение: всё, кроме служебного о закрепе.
+    /// Можно ли выбрать сообщение: всё, кроме служебных (закреп и события чата).
     public func canSelect(_ message: Message) -> Bool {
-        message.content.pin == nil
+        !message.content.isService
     }
 
     /// «Выбрать» в меню сообщения: режим включается с ним.

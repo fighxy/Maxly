@@ -225,7 +225,14 @@ public actor SyncEngine {
             await chats.stopTyping(chatId: event.chatId, userId: event.authorId)
             let content = MessageContentCodec.decode(event.contentJSON)
             // У пересланного свой текст пуст: в строке — текст пересланного и стрелка.
-            let preview = event.text.isEmpty ? (content.forward?.text ?? "") : event.text
+            var preview = event.text.isEmpty ? (content.forward?.text ?? "") : event.text
+            // Служебное событие: в строке его текст, с именами участников из базы.
+            if content.service != nil {
+                let stored = await messages.serviceText(serverId: event.messageId)
+                preview = stored ?? ServiceText.text(
+                    of: content, authorId: event.authorId, authorName: event.authorName, currentUserId: mine
+                ) ?? preview
+            }
             let known = (try? await chats.noteMessage(
                 chatId: event.chatId,
                 messageId: event.messageId,
@@ -244,7 +251,10 @@ public actor SyncEngine {
                 // Чата ещё нет в базе: подтянуть его строку, иначе сообщение не будет видно в списке.
                 try? await chats.refresh(chatId: event.chatId)
             }
-            if fromOther, inserted.contains(record.id), let sink = incomingSink {
+            // Из служебных уведомляет только «теперь в MAX»: вход, выход и переименования
+            // в группах уведомлений не стоят.
+            let notifies = content.service.map { ServiceText.kind($0) == .joined } ?? true
+            if fromOther, notifies, inserted.contains(record.id), let sink = incomingSink {
                 let info = await chats.notificationInfo(chatId: event.chatId)
                 await sink.incoming(IncomingMessageNotice(
                     chatId: event.chatId,

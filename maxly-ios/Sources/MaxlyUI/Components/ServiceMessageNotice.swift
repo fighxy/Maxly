@@ -36,3 +36,23 @@ struct ServiceMessageNotice: View {
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
     }
 }
+
+/// Служебное событие чата: кто вступил, вышел, сменил название или фото. Серая плашка по
+/// центру, без пузыря, аватара, меню и ответа свайпом.
+struct ServiceEventNotice: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.app(.footnote))
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .lineLimit(3)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .accessibilityElement(children: .combine)
+    }
+}

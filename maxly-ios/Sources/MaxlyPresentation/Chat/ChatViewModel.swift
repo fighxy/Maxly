@@ -1545,7 +1545,7 @@ public final class ChatViewModel {
     private func recountUnreadBelow() {
         var count = 0
         if let seen = seenUpTo {
-            for message in live where message.timestamp > seen && !isOutgoing(message) && message.content.pin == nil {
+            for message in live where message.timestamp > seen && !isOutgoing(message) && !message.content.isService {
                 count += 1
             }
         }
@@ -1579,7 +1579,7 @@ public final class ChatViewModel {
     }
 
     private func countsAsUnread(_ message: Message) -> Bool {
-        !isOutgoing(message) && message.content.pin == nil
+        !isOutgoing(message) && !message.content.isService
     }
 
     public func openComments(_ message: Message) {
@@ -2311,7 +2311,7 @@ public final class ChatViewModel {
 
     /// Пометить непрочитанным можно сообщение, принятое сервером, кроме служебного о закрепе.
     public func canMarkUnread(_ message: Message) -> Bool {
-        message.status == .sent && Int64(message.serverId ?? message.id) != nil && message.content.pin == nil
+        message.status == .sent && Int64(message.serverId ?? message.id) != nil && !message.content.isService
     }
 
     /// Чат помечают непрочитанным с этого сообщения. Экран передаёт пометку списку чатов и
@@ -2404,7 +2404,7 @@ public final class ChatViewModel {
 
     /// Меню закрепа: в диалоге «Только у меня», в группе «Уведомить участников».
     public func requestPin(_ message: Message) {
-        guard message.status == .sent, Int64(message.id) != nil, message.content.pin == nil else { return }
+        guard message.status == .sent, Int64(message.id) != nil, !message.content.isService else { return }
         pinPrompt = message
     }
 
@@ -2416,7 +2416,7 @@ public final class ChatViewModel {
     }
 
     public func pin(_ message: Message, forMe: Bool = false, notify: Bool = true) async {
-        guard message.status == .sent, Int64(message.id) != nil, message.content.pin == nil else { return }
+        guard message.status == .sent, Int64(message.id) != nil, !message.content.isService else { return }
         let preview = message.replySnippet.trimmingCharacters(in: .whitespacesAndNewlines)
         let title = preview.isEmpty ? "Сообщение" : preview
         do {

@@ -23,6 +23,9 @@ public struct MessageContent: Hashable, Sendable, Codable {
     public var linkPreview: LinkPreview?
     /// Inline-кнопки бота под сообщением (вложение `INLINE_KEYBOARD`).
     public var keyboard: InlineKeyboard?
+    /// Служебное событие чата (вложение `CONTROL`, кроме закрепления): кто-то вступил, вышел,
+    /// сменил название или фото. Необязательное поле: старые записи его не содержат.
+    public var service: ServiceNotice?
 
     public init(
         reply: MessageReply? = nil,
@@ -36,7 +39,8 @@ public struct MessageContent: Hashable, Sendable, Codable {
         drafts: [AttachmentDraft]? = nil,
         pin: PinNotice? = nil,
         linkPreview: LinkPreview? = nil,
-        keyboard: InlineKeyboard? = nil
+        keyboard: InlineKeyboard? = nil,
+        service: ServiceNotice? = nil
     ) {
         self.reply = reply
         self.attachments = attachments
@@ -50,6 +54,7 @@ public struct MessageContent: Hashable, Sendable, Codable {
         self.pin = pin
         self.linkPreview = linkPreview
         self.keyboard = keyboard?.rows.isEmpty == true ? nil : keyboard
+        self.service = service
     }
 
     public static let empty = MessageContent()
@@ -57,7 +62,13 @@ public struct MessageContent: Hashable, Sendable, Codable {
     public var isEmpty: Bool {
         reply == nil && attachments.isEmpty && reactions.isEmpty && comments == nil && (threadOf?.isEmpty != false)
             && (formatting?.isEmpty != false) && forward == nil && edited != true && (drafts?.isEmpty != false) && pin == nil
-            && linkPreview == nil && keyboard == nil
+            && linkPreview == nil && keyboard == nil && service == nil
+    }
+
+    /// Служебная строка ленты (закрепление или событие чата): без пузыря, аватара и меню,
+    /// в счётчик непрочитанных не входит.
+    public var isService: Bool {
+        pin != nil || service != nil
     }
 
     /// Вложения ещё загружаются или ждут повтора.
@@ -110,7 +121,8 @@ public struct MessageContent: Hashable, Sendable, Codable {
         case .sticker: .sticker
         case .call(let call): call.isGroup ? .groupCall : .call
         case .poll: .poll
-        case nil: nil
+        // Служебное событие вложением не считается, но строке списка нужен его вид.
+        case nil: service != nil ? .service : nil
         }
     }
 
@@ -483,6 +495,68 @@ public struct PollAnswer: Hashable, Sendable, Codable {
         self.id = id
         self.text = text
         self.votes = votes
+    }
+}
+
+/// Служебное событие чата из вложения `CONTROL`. Текст строит `ServiceText`.
+///
+/// - `event` — событие сервера как пришло: `new`, `add`, `remove`, `leave`, `title`, `icon`,
+///   `joinByLink`, `hello`, `system`, `botStarted` или незнакомое;
+/// - `userId` / `userIds` — участник и список участников события (id строками);
+/// - `names` — известные имена этих участников (id → имя), их подставляет хранилище;
+/// - `title` — новое название (`new`, `title`), `text` — готовый текст сервера, если он есть;
+/// - `chatType` — `chatType` события `new` (`CHAT`, `CHANNEL`, `DIALOG`);
+/// - `viewerId` — id аккаунта, который сохранил сообщение: по нему участник «вы».
+public struct ServiceNotice: Hashable, Sendable, Codable {
+    public var event: String
+    public var userId: String?
+    public var userIds: [String]
+    public var names: [String: String]?
+    public var title: String?
+    public var text: String?
+    public var chatType: String?
+    public var viewerId: String?
+
+    public init(
+        event: String,
+        userId: String? = nil,
+        userIds: [String] = [],
+        names: [String: String]? = nil,
+        title: String? = nil,
+        text: String? = nil,
+        chatType: String? = nil,
+        viewerId: String? = nil
+    ) {
+        self.event = event
+        self.userId = userId
+        self.userIds = userIds
+        self.names = names?.isEmpty == true ? nil : names
+        self.title = title
+        self.text = text
+        self.chatType = chatType
+        self.viewerId = viewerId
+    }
+
+    /// Событие с тем, чего во вложении нет: имена участников (`known`, уже записанные важнее),
+    /// аккаунт, если он ещё не записан, и текст самого сообщения, если своего текста нет.
+    public func filled(names known: [String: String], viewerId viewer: String, messageText: String) -> ServiceNotice {
+        var copy = self
+        var merged = names ?? [:]
+        for (id, name) in known where merged[id] == nil {
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { merged[id] = trimmed }
+        }
+        copy.names = merged.isEmpty ? nil : merged
+        if copy.viewerId?.isEmpty != false, !viewer.isEmpty { copy.viewerId = viewer }
+        let text = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if copy.text?.isEmpty != false, !text.isEmpty { copy.text = text }
+        return copy
+    }
+
+    /// Все участники события: `userId`, затем `userIds`, без повторов.
+    public var participantIds: [String] {
+        var seen = Set<String>()
+        return ([userId].compactMap { $0 } + userIds).filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 }
 

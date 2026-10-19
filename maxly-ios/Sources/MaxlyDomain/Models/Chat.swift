@@ -41,6 +41,8 @@ public enum MessageMediaKind: String, Codable, Hashable, Sendable, CaseIterable 
     case call
     /// Групповой звонок: у вложения `CALL` есть ссылка для входа.
     case groupCall
+    /// Служебное событие чата (`CONTROL`): текст события, без автора и значка вложения.
+    case service
 }
 
 /// Последнее сообщение чата в том объёме, который нужен строке списка.

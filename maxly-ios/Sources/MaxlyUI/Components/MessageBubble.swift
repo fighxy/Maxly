@@ -204,6 +204,11 @@ public struct MessageBubble: View {
         } else if let pin = message.content.pin {
             ServiceMessageNotice(pin: pin, onOpen: onFocusReply)
                 .background(highlighted ? Color.maxlyAccent.opacity(0.12) : Color.clear)
+        } else if let service = message.content.service {
+            ServiceEventNotice(text: ServiceText.text(
+                service, actorId: message.authorId, actorName: message.authorName, outgoing: isOutgoing
+            ))
+            .background(highlighted ? Color.maxlyAccent.opacity(0.12) : Color.clear)
         } else {
             messageRow
         }

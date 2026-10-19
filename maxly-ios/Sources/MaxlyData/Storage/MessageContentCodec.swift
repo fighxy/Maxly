@@ -55,7 +55,8 @@ enum MessageContentCodec {
             edited: (object["edited"] as? Bool) == true,
             pin: pinNotice(object["attaches"]),
             linkPreview: linkPreview(object["attaches"]),
-            keyboard: keyboard(object["attaches"])
+            keyboard: keyboard(object["attaches"]),
+            service: serviceNotice(object["attaches"])
         )
     }
 
@@ -275,6 +276,34 @@ enum MessageContentCodec {
             default:
                 continue
             }
+        }
+        return nil
+    }
+
+    /// `CONTROL` с событием чата, кроме `pin` / `unpin` (это `pinNotice`): `{event, userId?,
+    /// userIds?, title?, chatType?, shortMessage? | message? | text?}`. Без `event` — незнакомое
+    /// событие: строка всё равно показывается, общим текстом.
+    static func serviceNotice(_ value: Any?) -> ServiceNotice? {
+        guard let list = value as? [Any] else { return nil }
+        for item in list {
+            guard let map = item as? [String: Any] else { continue }
+            let type = ((map["_type"] as? String) ?? (map["type"] as? String))?.uppercased()
+            guard type == "CONTROL" else { continue }
+            let event = (map["event"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if ["pin", "unpin"].contains(event.lowercased()) { continue }
+            let ids = (map["userIds"] as? [Any] ?? []).compactMap { stringId($0) }.filter { $0 != "0" }
+            let single = stringId(map["userId"]).flatMap { $0 == "0" ? nil : $0 }
+            let text = ["shortMessage", "message", "text"].lazy
+                .compactMap { (map[$0] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty }
+                .first
+            return ServiceNotice(
+                event: event,
+                userId: single,
+                userIds: ids,
+                title: (map["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                text: text,
+                chatType: (map["chatType"] as? String)?.nilIfEmpty
+            )
         }
         return nil
     }

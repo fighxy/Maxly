@@ -706,6 +706,10 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             chat.lastForwarded = content?.forward != nil
             chat.lastAuthorName = message.flatMap { $0.authorName.isEmpty ? nil : $0.authorName }
             if let forwarded = content?.forward?.text, message?.text.isEmpty == true { chat.preview = forwarded }
+            if let message, let content,
+               let service = ServiceText.text(of: content, authorId: message.authorId, authorName: message.authorName, currentUserId: currentUser) {
+                chat.preview = service
+            }
             if let message { chat.updatedAt = message.timestamp }
             chat.lastMessageAt = message?.timestamp.unixMillis ?? 0
             try modelContext.save()
@@ -1234,7 +1238,41 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse), SortDescriptor(\.id)]
         )
         let chats = (try? modelContext.fetch(descriptor)) ?? []
-        return chats.map(Self.domain)
+        let services = servicePreviews(chats)
+        return chats.map { row -> Chat in
+            var chat = Self.domain(row)
+            if let id = row.lastMessageId, let text = services[id] {
+                chat.preview = text
+                var last = chat.lastMessage ?? ChatLastMessage(authorId: row.lastAuthorId)
+                last.media = .service
+                chat.lastMessage = last
+            }
+            return chat
+        }
+    }
+
+    /// Текст служебного последнего сообщения по его id. Строка списка с сервера не несёт
+    /// вложений последнего сообщения (`IosChat` отдаёт только текст и вид медиа, а у `CONTROL`
+    /// их нет), поэтому без текста и вида оно ищется в сохранённых сообщениях. Ищутся
+    /// только такие строки, и одной выборкой.
+    private func servicePreviews(_ chats: [SDChat]) -> [String: String] {
+        let wanted = Array(Set(chats.compactMap { chat -> String? in
+            guard let id = chat.lastMessageId, chat.lastMediaRaw == nil,
+                  (chat.preview ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            return id
+        }))
+        guard !wanted.isEmpty else { return [:] }
+        let rows = (try? modelContext.fetch(FetchDescriptor<SDMessage>(predicate: #Predicate { message in
+            message.serverId.flatMap { serverId in wanted.contains(serverId) } ?? false
+        }))) ?? []
+        var result: [String: String] = [:]
+        for row in rows {
+            guard let serverId = row.serverId, result[serverId] == nil else { continue }
+            let content = MessageContentCodec.decode(row.contentJSON)
+            guard let text = ServiceText.text(of: content, authorId: row.authorId, authorName: row.authorName) else { continue }
+            result[serverId] = text
+        }
+        return result
     }
 
     static func domain(_ chat: SDChat) -> Chat {

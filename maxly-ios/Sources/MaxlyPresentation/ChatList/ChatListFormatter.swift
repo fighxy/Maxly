@@ -232,7 +232,8 @@ public struct ChatListFormatter: Sendable {
     /// Автор над текстом. В группах — «Вы» или имя, если оно известно. В личных чатах,
     /// каналах и «Избранном» автор очевиден, строка отдаётся тексту.
     public func senderName(for chat: Chat) -> String? {
-        guard chat.type == .group, let last = chat.lastMessage else { return nil }
+        // Служебное событие уже называет участника в тексте.
+        guard chat.type == .group, let last = chat.lastMessage, last.media != .service else { return nil }
         if last.isOutgoing { return "Вы" }
         let name = last.authorName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return name.isEmpty ? nil : name
@@ -248,7 +249,7 @@ public struct ChatListFormatter: Sendable {
 
     private func delivery(for chat: Chat, style: ChatListItem.PreviewStyle) -> DeliveryState? {
         guard style == .message, chat.type != .channel, !chat.isSavedMessages,
-              let last = chat.lastMessage, last.isOutgoing else { return nil }
+              let last = chat.lastMessage, last.isOutgoing, last.media != .service else { return nil }
         return last.delivery ?? .sent
     }
 
@@ -319,6 +320,7 @@ public struct ChatListFormatter: Sendable {
         case .poll: "Опрос"
         case .call: CallBubbleText.preview(isGroup: false)
         case .groupCall: CallBubbleText.preview(isGroup: true)
+        case .service: ServiceText.fallback
         }
     }
 

@@ -50,7 +50,7 @@ public final class MessageInfoViewModel: Identifiable {
 
     /// Сведения есть у сообщений, принятых сервером: не у отправляемых, неудачных и отложенных.
     public static func isAvailable(for message: Message) -> Bool {
-        message.status == .sent && message.serverId.flatMap { Int64($0) } != nil && message.content.pin == nil
+        message.status == .sent && message.serverId.flatMap { Int64($0) } != nil && !message.content.isService
     }
 
     private var state: MessageReaders.MessageState {

@@ -26,7 +26,7 @@ struct ChatListMediaPreviewTests {
             .photo: "Фотография", .video: "Видео", .voice: "Голосовое сообщение",
             .videoMessage: "Видеосообщение", .audio: "Аудио", .file: "Файл", .sticker: "Стикер",
             .gif: "GIF", .location: "Геопозиция", .contact: "Контакт", .poll: "Опрос",
-            .call: "Звонок", .groupCall: "Групповой звонок",
+            .call: "Звонок", .groupCall: "Групповой звонок", .service: "Служебное сообщение",
         ]
         #expect(Set(expected.keys) == Set(MessageMediaKind.allCases))
         for (kind, label) in expected {

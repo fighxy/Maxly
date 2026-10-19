@@ -30,11 +30,11 @@ public enum TranscriptLayout {
             let outgoing = !currentUserId.isEmpty && message.authorId == currentUserId
             let startsDay = ChatContentFormat.startsDay(message.timestamp, after: previous?.timestamp)
             let startsUnread = unreadAnchorId != nil && message.id == unreadAnchorId
-            let service = message.content.pin != nil
+            let service = message.content.isService
             // Разделитель и служебная строка разрывают серию с обеих сторон.
             // Имя, аватар и углы используют одни и те же границы, включая паузу по времени.
-            let previousInGroup = !service && !startsUnread && previous?.content.pin == nil ? previous : nil
-            let nextInGroup = !service && next?.content.pin == nil && next?.id != unreadAnchorId ? next : nil
+            let previousInGroup = !service && !startsUnread && previous?.content.isService != true ? previous : nil
+            let nextInGroup = !service && next?.content.isService != true && next?.id != unreadAnchorId ? next : nil
             let group = ChatContentFormat.group(
                 authorId: message.authorId,
                 date: message.timestamp,
@@ -63,7 +63,7 @@ public enum TranscriptLayout {
         guard unread > 0 else { return nil }
         if readMark > 0, messages.contains(where: { $0.status == .sent && ReadMark.time(of: $0) <= readMark }),
            let first = messages.first(where: {
-               $0.status == .sent && $0.authorId != currentUserId && $0.content.pin == nil && ReadMark.time(of: $0) > readMark
+               $0.status == .sent && $0.authorId != currentUserId && !$0.content.isService && ReadMark.time(of: $0) > readMark
            }) {
             return first.id
         }
@@ -77,7 +77,7 @@ public enum TranscriptLayout {
         guard unread > 0 else { return nil }
         var seen = 0
         var oldest: String?
-        for message in messages.reversed() where message.authorId != currentUserId && message.content.pin == nil {
+        for message in messages.reversed() where message.authorId != currentUserId && !message.content.isService {
             seen += 1
             oldest = message.id
             if seen == unread { return message.id }

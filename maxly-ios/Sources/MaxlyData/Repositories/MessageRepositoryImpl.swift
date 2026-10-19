@@ -1320,7 +1320,8 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             var byId = try messages(ids: records.map(\.id))
             var byServerId = try messages(serverIds: records.map { $0.serverId ?? $0.id })
             let chatRows = try chats(ids: records.map(\.chatId))
-            for record in records {
+            for original in records {
+                let record = withServiceDetails(original)
                 let key = record.serverId ?? record.id
                 if byId[record.id] == nil, byServerId[key] == nil, try holdsEcho(record) {
                     heldEchoes[key] = record
@@ -1372,6 +1373,49 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         }
         touched.forEach(notify(chatId:))
         return inserted
+    }
+
+    /// Служебному событию — имена участников, текст сообщения и id аккаунта. Ядро даёт только
+    /// id участников (`userIds`), поэтому имя берётся у отправителя этого сообщения или из
+    /// последнего сохранённого сообщения участника. Не нашлось — текст обойдётся без имени.
+    private func withServiceDetails(_ record: MessageRecord) -> MessageRecord {
+        guard record.contentJSON.contains("\"service\"") else { return record }
+        var content = MessageContentCodec.decode(record.contentJSON)
+        guard let notice = content.service else { return record }
+        var names: [String: String] = [:]
+        for id in notice.participantIds where notice.names?[id] == nil {
+            if id == record.authorId, !record.authorName.isEmpty {
+                names[id] = record.authorName
+            } else if let known = knownAuthorName(id) {
+                names[id] = known
+            }
+        }
+        content.service = notice.filled(names: names, viewerId: currentUserId, messageText: record.text)
+        var copy = record
+        copy.contentJSON = MessageContentCodec.encode(content)
+        return copy
+    }
+
+    /// Текст служебного сообщения с серверным id `serverId`, как его сохранила база (с именами
+    /// участников). `nil` — сообщения нет или оно не служебное.
+    public func serviceText(serverId: String) -> String? {
+        guard let stored = (try? message(serverId: serverId)) ?? (try? message(id: serverId)) else { return nil }
+        return ServiceText.text(
+            of: Self.content(of: stored), authorId: stored.authorId, authorName: stored.authorName, currentUserId: currentUserId
+        )
+    }
+
+    /// Последнее известное имя пользователя: из его сохранённых сообщений в любом чате.
+    private func knownAuthorName(_ userId: String) -> String? {
+        let id = userId
+        var descriptor = FetchDescriptor<SDMessage>(
+            predicate: #Predicate { $0.authorId == id && $0.authorName != "" },
+            sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+        )
+        descriptor.fetchLimit = 1
+        let name = (try? modelContext.fetch(descriptor).first?.authorName) ?? ""
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     /// Своё сообщение с сервера, а в этом чате ещё отправляется своё: скорее всего, это эхо
