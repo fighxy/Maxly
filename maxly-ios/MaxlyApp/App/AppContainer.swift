@@ -719,7 +719,7 @@ final class AppContainer {
         privacyAdapter ?? UnavailablePrivacyControls()
     }
 
-    /// «Дополнительно» в «Безопасности» и свой статус в шапке настроек. Одна модель на вход.
+    /// «Дополнительно» в «Конфиденциальности» и свой статус в шапке настроек. Одна модель на вход.
     func ghostSettingsModel() -> GhostSettingsModel {
         if let ghostScreenModel { return ghostScreenModel }
         let model = GhostSettingsModel(

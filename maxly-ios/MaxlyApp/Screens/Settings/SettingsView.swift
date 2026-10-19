@@ -78,17 +78,26 @@ struct SettingsView: View {
                     SettingsRowLabel("Уведомления и звук", systemImage: "bell.badge.fill", tint: .red)
                 }
                 NavigationLink {
+                    PrivacyView(
+                        account: account,
+                        model: container.securitySettingsModel(),
+                        privacy: container.privacySettingsModel(),
+                        ghost: container.ghostSettingsModel()
+                    )
+                } label: {
+                    SettingsRowLabel("Конфиденциальность", systemImage: "hand.raised.fill", tint: .blue)
+                }
+                NavigationLink {
                     SecurityView(
                         account: account,
                         model: container.securitySettingsModel(),
                         privacy: container.privacySettingsModel(),
-                        ghost: container.ghostSettingsModel(),
                         privateMode: container.privateMode,
                         makeEmailFlow: container.recoveryEmailFlow,
                         makeBotApp: { container.botAppModel($0) }
                     )
                 } label: {
-                    SettingsRowLabel("Безопасность", systemImage: "lock.shield.fill", tint: .gray)
+                    SettingsRowLabel("Безопасность", systemImage: "lock.fill", tint: .gray)
                 }
                 NavigationLink {
                     DevicesView(model: container.devicesModel())

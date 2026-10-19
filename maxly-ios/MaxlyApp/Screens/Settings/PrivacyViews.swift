@@ -91,20 +91,6 @@ struct PrivacyChoiceView: View {
     }
 }
 
-/// Заголовок части «Конфиденциальность» над блоком «Дополнительно».
-struct PrivacyPartHeader: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Конфиденциальность")
-                .font(.app(.title3, .semibold))
-                .foregroundStyle(Color.primary)
-                .textCase(nil)
-            Text("Дополнительно")
-        }
-        .padding(.top, 8)
-    }
-}
-
 /// Свой статус под номером в шапке настроек: «в сети» или «был(а) …», как видит сервер.
 /// Нет строки, если «Показывать мой онлайн» выключено или статус ещё неизвестен.
 struct OwnPresenceLine: View {
