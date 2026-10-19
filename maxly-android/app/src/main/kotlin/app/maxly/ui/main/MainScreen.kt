@@ -416,7 +416,7 @@ fun MainScreen(
             composable("blocked") { BlockedUsersScreen(accountModel, onBack = { nav.popBackStack() }) }
             composable("about") { AboutScreen(onBack = { nav.popBackStack() }) }
             composable("devices") { DevicesScreen(container.sessions, onBack = { nav.popBackStack() }) }
-            composable("appearance") { AppearanceScreen(container.appearance, onBack = { nav.popBackStack() }) }
+            composable("appearance") { AppearanceScreen(container.appearance, onBack = { nav.popBackStack() }, photos = container.wallpaperPhotos) }
             composable(
                 "chat/{chatId}?title={title}",
                 arguments = listOf(navArgument("title") { type = NavType.StringType; nullable = true; defaultValue = null }),
@@ -431,7 +431,7 @@ fun MainScreen(
                         chats = container.chats,
                         profiles = container.profiles,
                     ) }
-                ChatScreen(
+                WithChatWallpaper(container, chatId) { ChatScreen(
                     model,
                     gifAutoplay = app.maxly.data.GifSettings.shouldAutoplay(
                         container.gifSettings.state.collectAsStateWithLifecycle().value.autoplay,
@@ -468,7 +468,7 @@ fun MainScreen(
                         }
                         MiniAppScreen(app, onClose)
                     },
-                )
+                ) }
             }
             composable(
                 "profile/{chatId}?fromChat={fromChat}&title={title}",
@@ -489,7 +489,7 @@ fun MainScreen(
                     // Из чата профиль закрывается назад, «Написать» нужна только снаружи.
                     onWrite = if (fromChat) null else ({ openChat(chatId, title) }),
                     mediaUserAgent = container.videoSourceUserAgent(),
-                    chatActions = if (fromChat) profileChatActions(chatId, chatList, chats.items) { action ->
+                    chatActions = if (fromChat) profileChatActions(chatId, chatList, chats.items, wallpaper = rememberChatWallpaperMenu(container, chatId)) { action ->
                         chatAction = chatId to action
                         nav.popBackStack()
                     } else null,
@@ -618,6 +618,8 @@ internal fun profileChatActions(
     chatList: ChatListViewModel,
     /** Строки списка сейчас: звук чата и куда отправить контакт. */
     items: List<app.maxly.presentation.chatlist.ChatListItem>,
+    /** «Обои» в «Ещё»: своё фото этого чата. */
+    wallpaper: app.maxly.ui.profile.ChatWallpaperMenu? = null,
     request: (ChatAction) -> Unit,
 ): ProfileChatActions {
     val listed = chatList.isListed(chatId)
@@ -637,5 +639,38 @@ internal fun profileChatActions(
         onToggleFolder = { chatList.toggleFolder(chatId, it) },
         onCreateFolder = { chatList.createFolder(chatId, it) },
         shareTargets = { items },
+        wallpaper = wallpaper,
+    )
+}
+
+/** Обои одного чата для подменю «Обои» в профиле: своё фото, «Как в общих», «Без обоев». */
+@Composable
+internal fun rememberChatWallpaperMenu(container: app.maxly.AppContainer, chatId: String): app.maxly.ui.profile.ChatWallpaperMenu {
+    val photos = container.wallpaperPhotos
+    val revision = photos.state.collectAsStateWithLifecycle().value.revision
+    val account = container.wallpaperAccount()
+    val pick = app.maxly.ui.components.rememberWallpaperPicker(photos) { path ->
+        if (path != null) photos.setChat(account, chatId, app.maxly.domain.ChatWallpaperChoice.Photo(path))
+    }
+    return androidx.compose.runtime.remember(revision, account, chatId) {
+        app.maxly.ui.profile.ChatWallpaperMenu(
+            choice = photos.chatChoice(account, chatId),
+            onPickPhoto = pick,
+            onChoose = { photos.setChat(account, chatId, it) },
+        )
+    }
+}
+
+/** Обои открытого чата: своё фото чата важнее общих из «Оформления». */
+@Composable
+internal fun WithChatWallpaper(container: app.maxly.AppContainer, chatId: String, content: @Composable () -> Unit) {
+    val photos = container.wallpaperPhotos
+    val revision = photos.state.collectAsStateWithLifecycle().value.revision
+    val account = container.wallpaperAccount()
+    val base = app.maxly.ui.components.LocalChatBackdrop.current
+    val resolved = androidx.compose.runtime.remember(revision, account, chatId) { photos.resolve(account, chatId) }
+    androidx.compose.runtime.CompositionLocalProvider(
+        app.maxly.ui.components.LocalChatBackdrop provides base.copy(resolved = resolved),
+        content = content,
     )
 }
