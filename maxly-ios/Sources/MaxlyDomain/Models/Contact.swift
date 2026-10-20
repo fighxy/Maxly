@@ -86,3 +86,28 @@ public extension Contact.Presence {
         }
     }
 }
+
+/// Своё имя контакта одной строкой (`customName` ядра) и обратно — имя и фамилия для полей.
+public enum ContactCustomName {
+    /// Первое слово — имя, остальное — фамилия. Пустая строка — оба поля пустые.
+    public static func split(_ name: String) -> (firstName: String, lastName: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let space = trimmed.firstIndex(where: \.isWhitespace) else { return (trimmed, "") }
+        let first = String(trimmed[..<space])
+        let last = trimmed[space...].trimmingCharacters(in: .whitespacesAndNewlines)
+        return (first, last)
+    }
+
+    /// Имя и фамилия через пробел, без пустых частей.
+    public static func join(firstName: String, lastName: String) -> String {
+        [firstName, lastName]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    /// Номер для сравнения с адресной книгой: последние десять цифр.
+    public static func phoneKey(_ phone: String) -> String {
+        String(phone.filter { $0.isASCII && $0.isNumber }.suffix(10))
+    }
+}
