@@ -241,7 +241,27 @@ class ProfileViewModel(
         }
     }
 
-    /** «Удалить из контактов» и «Переименовать» в меню профиля. */
+    /**
+     * Что показать в профиле: «Изменить» и «Удалить из контактов» у контакта, «Добавить в
+     * контакты» у человека вне контактов. Свой профиль («Избранное»), боты, группы и каналы — ничего.
+     */
+    fun contactAction(state: ProfileUiState = _state.value): app.maxly.presentation.contacts.ProfileContactAction {
+        if (contactActions == null || state.profile.peerId == null) return app.maxly.presentation.contacts.ProfileContactAction.NONE
+        return app.maxly.presentation.contacts.ProfileContactAction.of(
+            kind = state.profile.kind,
+            isContact = state.contact != null,
+            isBot = state.contact?.let { it.isBot || it.isServiceAccount } == true,
+            loaded = !state.isLoading,
+        )
+    }
+
+    /** «Добавить в контакты»: человек из профиля попадает в контакты. */
+    fun addContact() {
+        if (contactAction() != app.maxly.presentation.contacts.ProfileContactAction.ADD) return
+        _state.value.profile.peerId?.let { contactActions?.add(it) }
+    }
+
+    /** «Изменить» в шапке профиля контакта и «Удалить из контактов» внизу. */
     fun askRenameContact() {
         _state.value.contact?.let { contactActions?.askRename(it) }
     }

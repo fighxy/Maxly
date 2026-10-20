@@ -23,7 +23,13 @@ data class Contact(
     val isServiceAccount: Boolean = false,
     /** Имя по правилу ядра (книга, своё имя контакта, имя профиля); `null` — из имени и фамилии. */
     val label: String? = null,
+    /** Своё имя контакта (`CUSTOM`), видное только этому аккаунту; пусто — его нет. */
+    val customFirstName: String = "",
+    val customLastName: String = "",
 ) {
+    /** У контакта есть своё имя (`CUSTOM`). */
+    val hasCustomName: Boolean get() = customFirstName.isNotBlank() || customLastName.isNotBlank()
+
     val displayName: String
         get() {
             label?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }

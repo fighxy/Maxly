@@ -130,7 +130,8 @@ fun ProfileScreen(
         )
     }
 
-    model.contactActions?.let { app.maxly.ui.contacts.ContactActionsHost(it, model::notify) }
+    model.contactActions?.let { app.maxly.ui.contacts.ContactActionsHost(it, snackbar, model::notify, fullScreenEdit = true) }
+    val contactAction = model.contactAction(state)
     LaunchedEffect(notice) {
         val text = notice ?: return@LaunchedEffect
         // Поверх открытого просмотра снекбар не виден: «Фото сохранено» и ошибки — всплывающей подсказкой.
@@ -183,6 +184,10 @@ fun ProfileScreen(
                     val editable = state.profile.kind == ChatProfile.Kind.GROUP || state.profile.kind == ChatProfile.Kind.CHANNEL
                     if (onManage != null && editable && state.profile.isAdmin) {
                         IconButton(onClick = onManage) { Icon(Icons.Outlined.Edit, "Изменить") }
+                    }
+                    // «Изменить контакт»: своё имя человека из контактов.
+                    if (contactAction == app.maxly.presentation.contacts.ProfileContactAction.EDIT) {
+                        IconButton(onClick = model::askRenameContact) { Icon(Icons.Outlined.Edit, "Изменить") }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
@@ -261,15 +266,9 @@ fun ProfileScreen(
                     }
                 }
             }
-            if (state.contact != null && model.contactActions != null) {
-                item(key = "contact") {
+            when (contactAction) {
+                app.maxly.presentation.contacts.ProfileContactAction.EDIT -> item(key = "contact") {
                     Card {
-                        Text(
-                            "Переименовать контакт",
-                            Modifier.fillMaxWidth().clickable(onClick = model::askRenameContact).padding(horizontal = 16.dp, vertical = 14.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
                         Text(
                             "Удалить из контактов",
                             Modifier.fillMaxWidth().clickable(onClick = model::askRemoveContact).padding(horizontal = 16.dp, vertical = 14.dp),
@@ -278,6 +277,17 @@ fun ProfileScreen(
                         )
                     }
                 }
+                app.maxly.presentation.contacts.ProfileContactAction.ADD -> item(key = "contact") {
+                    Card {
+                        Text(
+                            "Добавить в контакты",
+                            Modifier.fillMaxWidth().clickable(onClick = model::addContact).padding(horizontal = 16.dp, vertical = 14.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                }
+                app.maxly.presentation.contacts.ProfileContactAction.NONE -> Unit
             }
             state.blocked?.takeIf { chatActions == null }?.let { blocked ->
                 item(key = "block") {

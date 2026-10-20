@@ -62,7 +62,7 @@ fun ContactsScreen(model: ContactsViewModel, onOpen: (ContactRow) -> Unit) {
     LaunchedEffect(Unit) { model.appeared() }
     val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    app.maxly.ui.contacts.ContactActionsHost(model.actions) { text -> scope.launch { snackbar.showSnackbar(text) } }
+    app.maxly.ui.contacts.ContactActionsHost(model.actions, snackbar, onNotice = { text -> scope.launch { snackbar.showSnackbar(text) } })
     Scaffold(
         topBar = {
             if (state.isSearching) {

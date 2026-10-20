@@ -20,12 +20,16 @@ import org.junit.Test
 
 /** Контакты в памяти с правкой, удалением и добавлением по номеру. */
 class EditableContacts : ContactRepository {
-    val list = MutableStateFlow(listOf(Contact("2", "Анна", "Смирнова", phone = "79001112233")))
+    val list = MutableStateFlow(listOf(Contact("2", "Анна", "Смирнова", phone = "79001112233", customFirstName = "Анна", customLastName = "Смирнова")))
     val pushes = MutableSharedFlow<Contact>(extraBufferCapacity = 4)
     val renames = mutableListOf<Triple<String, String, String?>>()
     val removed = mutableListOf<String>()
     val added = mutableListOf<Triple<String, String?, String?>>()
+    /** id, вернувшиеся в контакты через `ADD`. */
+    val readded = mutableListOf<String>()
     var failure: Exception? = null
+    /** Сбой только у `ADD` (отмена удаления). */
+    var addFailure: Exception? = null
     var known = false
     override val contacts = list
     override val changes = pushes
@@ -33,7 +37,9 @@ class EditableContacts : ContactRepository {
     override suspend fun rename(userId: String, firstName: String, lastName: String?): Contact {
         failure?.let { throw it }
         renames += Triple(userId, firstName, lastName)
-        val renamed = Contact(userId, firstName, lastName.orEmpty())
+        // Два пустых поля — своего имени нет, видно имя человека (как в ядре).
+        val reset = firstName.isBlank() && lastName.isNullOrBlank()
+        val renamed = if (reset) Contact(userId, "Анна", "Смирнова") else Contact(userId, firstName, lastName.orEmpty(), customFirstName = firstName, customLastName = lastName.orEmpty())
         list.update { all -> all.map { if (it.id == userId) renamed else it } }
         return renamed
     }
@@ -42,6 +48,14 @@ class EditableContacts : ContactRepository {
         removed += userId
         list.update { all -> all.filterNot { it.id == userId } }
         return true
+    }
+    override suspend fun add(userId: String): Contact {
+        addFailure?.let { throw it }
+        failure?.let { throw it }
+        readded += userId
+        val back = Contact(userId, "Анна", "Смирнова")
+        list.update { all -> all.filterNot { it.id == userId } + back }
+        return back
     }
     override suspend fun addByPhone(phone: String, firstName: String?, lastName: String?): AddedContact {
         failure?.let { throw it }
@@ -90,7 +104,8 @@ class ContactActionsTest {
         repo.failure = null
         model.actions.remove()
         assertEquals(listOf("2"), repo.removed)
-        assertEquals("Контакт удалён", model.actions.state.value.notice)
+        assertEquals("2", model.actions.state.value.undo?.userId)
+        assertNull(model.actions.state.value.dialog)
         assertEquals(ContactsUiState.Content.EMPTY, model.state.value.content)
     }
 
@@ -148,5 +163,30 @@ class ProfileContactTest {
         model.askRemoveContact()
         model.contactActions!!.remove()
         assertNull(model.state.value.contact)
+    }
+
+    @Test
+    fun profileShowsEditForAContactAndAddForAStranger() {
+        val model = vm()
+        assertEquals(ProfileContactAction.EDIT, model.contactAction())
+        model.askRemoveContact()
+        model.contactActions!!.remove()
+        assertEquals(ProfileContactAction.ADD, model.contactAction())
+        model.addContact()
+        assertEquals(listOf("2"), repo.readded)
+        assertEquals(ProfileContactAction.EDIT, model.contactAction())
+    }
+
+    @Test
+    fun noContactActionsForBotsGroupsAndSavedMessages() {
+        for (kind in listOf(ChatProfile.Kind.BOT, ChatProfile.Kind.GROUP, ChatProfile.Kind.CHANNEL, ChatProfile.Kind.SAVED)) {
+            val card = object : app.maxly.data.ProfileRepository {
+                override fun cached(chatId: String) = ChatProfile(kind, chatId, "X", peerId = "2")
+                override suspend fun profile(chatId: String) = cached(chatId)
+                override suspend fun sharedPage(chatId: String, tab: SharedMediaTab, beforeMessageId: String) = emptyList<app.maxly.domain.Message>()
+            }
+            val model = ProfileViewModel("3", null, card, FakeMessages(), contacts = repo)
+            assertEquals(kind.name, ProfileContactAction.NONE, model.contactAction())
+        }
     }
 }

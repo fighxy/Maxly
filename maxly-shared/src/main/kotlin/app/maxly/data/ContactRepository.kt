@@ -135,9 +135,22 @@ class CoreContactRepository(private val client: MaxClient) : ContactRepository {
             return chosen.name?.trim().orEmpty() to ""
         }
 
+        /**
+         * Своё имя контакта из записи `CUSTOM`: имя и фамилия; без них — поле `name` как имя.
+         * Нет записи — две пустые строки (не собственное имя человека).
+         */
+        fun customName(names: List<UserName>): Pair<String, String> {
+            val custom = names.firstOrNull { it.type == "CUSTOM" } ?: return "" to ""
+            val first = custom.firstName?.trim().orEmpty()
+            val last = custom.lastName?.trim().orEmpty()
+            if (first.isNotEmpty() || last.isNotEmpty()) return first to last
+            return custom.name?.trim().orEmpty() to ""
+        }
+
         fun contact(user: MaxUser, state: MaxState): Contact {
             val (first, last) = visibleName(user.names)
             val presence = state.presence[user.id]
+            val (customFirst, customLast) = customName(user.names)
             return Contact(
                 id = user.id.toString(),
                 firstName = first,
@@ -151,6 +164,8 @@ class CoreContactRepository(private val client: MaxClient) : ContactRepository {
                 isBot = "BOT" in user.options,
                 isOfficial = "OFFICIAL" in user.options,
                 isServiceAccount = "SERVICE_ACCOUNT" in user.options,
+                customFirstName = customFirst,
+                customLastName = customLast,
             )
         }
     }

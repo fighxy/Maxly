@@ -66,7 +66,7 @@ fun ContactsScreen(model: ContactsViewModel, onOpen: (ContactRow) -> Unit, phone
     LaunchedEffect(Unit) { model.appeared() }
     val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    app.maxly.ui.contacts.ContactActionsHost(model.actions) { text -> scope.launch { snackbar.showSnackbar(text) } }
+    app.maxly.ui.contacts.ContactActionsHost(model.actions, snackbar, fullScreenEdit = true, onNotice = { text -> scope.launch { snackbar.showSnackbar(text) } })
     phoneBook?.let { PhoneBookAccess(it) }
     val book = phoneBook?.state?.collectAsStateWithLifecycle()?.value
     val bookRow: (androidx.compose.foundation.lazy.LazyListScope.() -> Unit) = {
