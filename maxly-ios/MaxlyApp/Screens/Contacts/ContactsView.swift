@@ -31,20 +31,31 @@ struct ContactsView: View {
     var body: some View {
         list
             .sheet(item: $renaming) { contact in
-                ContactRenameSheet(viewModel: viewModel, contact: contact)
+                ContactEditSheet(
+                    fields: ContactsViewModel.editFields(for: contact),
+                    placeholder: contact.customName.isEmpty
+                        ? (contact.firstName.isEmpty ? "Имя" : contact.firstName, contact.lastName.isEmpty ? "Фамилия" : contact.lastName)
+                        : ("Имя", "Фамилия"),
+                    phone: contact.phone
+                ) { first, last in
+                    viewModel.dismissError()
+                    let saved = await viewModel.rename(id: contact.id, firstName: first, lastName: last)
+                    defer { if !saved { viewModel.dismissError() } }
+                    return saved ? nil : (viewModel.errorMessage ?? "Не удалось сохранить имя")
+                }
             }
             .confirmationDialog(
-                removing.map { "Удалить «\($0.displayName)» из контактов?" } ?? "",
+                removing.map { ContactRemoveTexts.title($0.displayName) } ?? "",
                 isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
                 titleVisibility: .visible,
                 presenting: removing
             ) { contact in
-                Button("Удалить контакт", role: .destructive) {
+                Button(ContactRemoveTexts.confirm, role: .destructive) {
                     Task { await viewModel.remove(id: contact.id) }
                 }
                 Button("Отмена", role: .cancel) {}
             } message: { _ in
-                Text("Чат с человеком останется.")
+                Text(ContactRemoveTexts.message)
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if let removed = viewModel.removed {
@@ -222,13 +233,15 @@ struct ContactsView: View {
                 }
             }
             if viewModel.canEdit, let contact = viewModel.contact(id: row.id) {
-                Button("Переименовать", systemImage: "pencil") {
+                Button("Изменить", systemImage: "pencil") {
                     viewModel.dismissError()
                     renaming = contact
                 }
-                Button("Удалить контакт", systemImage: "person.crop.circle.badge.minus", role: .destructive) {
+                .disabled(viewModel.isEditing)
+                Button(ContactRemoveTexts.menuItem, systemImage: "person.crop.circle.badge.minus", role: .destructive) {
                     removing = contact
                 }
+                .disabled(viewModel.isEditing)
             }
         }
         .accessibilityLabel("\(privateMode.isMasked ? PrivateModeMask.contactTitle : row.title), \(row.status)")
