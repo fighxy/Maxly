@@ -216,19 +216,37 @@ public final class ContactsViewModel {
     /// Удалённый контакт, пока висит плашка «Отменить».
     public struct RemovedContact: Identifiable, Equatable, Sendable {
         public let id: String
+        /// Имя, которое было видно в списке.
         public let firstName: String
         public let lastName: String
-        public var title: String { [firstName, lastName].filter { !$0.isEmpty }.joined(separator: " ") }
+        /// Своё имя контакта (`customName`); пусто — своего имени не было.
+        public let customName: String
+
+        public init(id: String, firstName: String, lastName: String, customName: String = "") {
+            self.id = id
+            self.firstName = firstName
+            self.lastName = lastName
+            self.customName = customName
+        }
+
+        public var title: String { ContactCustomName.join(firstName: firstName, lastName: lastName) }
     }
 
     public var canEdit: Bool { repository.capabilities.contains(.edit) }
     /// Последний удалённый: плашка с «Отменить», пока её не закрыли.
     public private(set) var removed: RemovedContact?
-    /// Идёт запрос переименования, удаления или возврата.
+    /// Идёт запрос переименования, удаления или возврата: «Изменить» и «Удалить» недоступны.
     public private(set) var isEditing = false
+    /// Имена контактов изменились: списку чатов, шапке и подписям пора перечитать имена.
+    @ObservationIgnored public var onNamesChanged: (() -> Void)?
 
     public func contact(id: String) -> Contact? {
         contacts.first { $0.id == id }
+    }
+
+    /// Поля листа «Изменить контакт»: своё имя, разбитое на имя и фамилию; без него пусто.
+    public static func editFields(for contact: Contact) -> (firstName: String, lastName: String) {
+        ContactCustomName.split(contact.customName)
     }
 
     /// `true` — сервер принял новое имя, список уже с ним.
@@ -237,22 +255,31 @@ public final class ContactsViewModel {
             errorMessage = problem
             return false
         }
+        guard !isEditing else { return false }
         let first = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
         let last = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleared = first.isEmpty && last.isEmpty
         isEditing = true
         defer { isEditing = false }
         do {
             let saved = try await repository.rename(userId: id, firstName: first, lastName: last)
-            if let index = contacts.firstIndex(where: { $0.id == id }) {
+            errorMessage = nil
+            let answered = !saved.firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || !saved.lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            if cleared && !answered {
+                // Своё имя сброшено, а имени человека в ответе нет: список перечитывается,
+                // чтобы показать имя, которое указал сам человек, а не пустую строку.
+                await reloadList()
+            } else if let index = contacts.firstIndex(where: { $0.id == id }) {
                 var updated = contacts[index]
-                // Ответ без имени — сервер вернул прежние имена или их ещё нет в ответе.
-                let answered = !saved.firstName.isEmpty || !saved.lastName.isEmpty
+                // Ответ без имени — сервер ещё не прислал новое имя: берётся отправленное.
                 updated.firstName = answered ? saved.firstName : first
                 updated.lastName = answered ? saved.lastName : last
+                updated.customName = ContactCustomName.join(firstName: first, lastName: last)
                 contacts[index] = updated
                 rebuild()
             }
-            errorMessage = nil
+            onNamesChanged?()
             return true
         } catch {
             errorMessage = error.userMessage
@@ -261,42 +288,67 @@ public final class ContactsViewModel {
     }
 
     /// Убрать из контактов. Строка уходит сразу, плашка предлагает «Отменить».
+    /// Плашка прошлого удаления заменяется: то удаление остаётся в силе.
     public func remove(id: String) async {
-        guard let contact = contact(id: id) else { return }
+        guard !isEditing, let contact = contact(id: id) else { return }
         isEditing = true
         defer { isEditing = false }
         do {
             try await repository.remove(userId: id)
             contacts.removeAll { $0.id == id }
-            removed = RemovedContact(id: id, firstName: contact.firstName, lastName: contact.lastName)
+            removed = RemovedContact(id: id, firstName: contact.firstName, lastName: contact.lastName, customName: contact.customName)
             errorMessage = nil
             rebuild()
+            onNamesChanged?()
         } catch {
             errorMessage = error.userMessage
         }
     }
 
-    /// «Отменить»: контакт возвращается с прежним именем.
+    /// «Отменить»: контакт возвращается со своим именем, которое было до удаления. Своего
+    /// имени не было — контакт просто возвращается и показывает имя человека.
+    /// Неудача любого шага видна в окне ошибки.
     public func undoRemove() async {
-        guard let removed else { return }
+        guard let removed, !isEditing else { return }
         self.removed = nil
         isEditing = true
         defer { isEditing = false }
+        let custom = ContactCustomName.split(removed.customName)
+        let hasCustom = !custom.firstName.isEmpty
         do {
-            _ = try await repository.addFoundContact(userId: removed.id, firstName: removed.firstName)
-            if !removed.lastName.isEmpty {
-                _ = try? await repository.rename(userId: removed.id, firstName: removed.firstName, lastName: removed.lastName)
-            }
-            errorMessage = nil
-            deactivate()
-            activate()
+            _ = try await repository.addFoundContact(userId: removed.id, firstName: hasCustom ? custom.firstName : removed.firstName)
         } catch {
-            errorMessage = error.userMessage
+            errorMessage = Self.undoFailure(error.userMessage)
+            return
         }
+        var failure: String?
+        if hasCustom, !custom.lastName.isEmpty {
+            do {
+                _ = try await repository.rename(userId: removed.id, firstName: custom.firstName, lastName: custom.lastName)
+            } catch {
+                failure = "Контакт вернулся, но не удалось вернуть его имя. " + (error.userMessage ?? "")
+            }
+        }
+        errorMessage = failure.map { $0.trimmingCharacters(in: .whitespaces) }
+        deactivate()
+        activate()
+        onNamesChanged?()
+    }
+
+    static func undoFailure(_ message: String?) -> String {
+        guard let message, !message.isEmpty else { return "Не удалось вернуть контакт" }
+        return "Не удалось вернуть контакт. \(message)"
     }
 
     public func dismissRemoved() {
         removed = nil
+    }
+
+    /// Свежий список с сервера; неудача синхронизации не мешает переподписке.
+    private func reloadList() async {
+        try? await repository.sync()
+        deactivate()
+        activate()
     }
 
     // MARK: Внутреннее
