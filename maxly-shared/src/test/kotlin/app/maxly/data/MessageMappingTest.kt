@@ -167,6 +167,28 @@ class MessageMappingTest {
     }
 
     @Test
+    fun pollMarksOwnAnswersFromResultOptions() {
+        val parsed = MessageMapping.poll(
+            mapOf(
+                "pollId" to 5L,
+                "title" to "Куда",
+                "answers" to listOf(mapOf("answerId" to 1, "text" to "Да"), mapOf("answerId" to 2, "text" to "Нет")),
+                "state" to mapOf(
+                    "total" to 4,
+                    "result" to listOf(
+                        mapOf("answerId" to 1, "voteCount" to 1, "rate" to 25, "options" to 0),
+                        mapOf("answerId" to 2, "voteCount" to 3, "rate" to 75, "options" to 1),
+                    ),
+                ),
+            ),
+        )!!
+        assertEquals(setOf("2"), parsed.mine)
+        assertEquals(listOf(25, 75), parsed.answers.map { it.rate })
+        assertFalse(app.maxly.presentation.chat.PollRules.canVote(parsed))
+        assertTrue(app.maxly.presentation.chat.PollRules.canVote(parsed.copy(revote = true)))
+    }
+
+    @Test
     fun pollNeedsTwoAnswersAndAPollId() {
         val parsed = MessageMapping.poll(
             mapOf(

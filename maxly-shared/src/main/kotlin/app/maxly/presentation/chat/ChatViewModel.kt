@@ -236,6 +236,10 @@ class ChatViewModel(
     /** Отмеченные, но не отправленные ответы опросов с несколькими ответами. */
     private val pollPicked = HashMap<String, Set<String>>()
     private var pollRefresh: kotlinx.coroutines.Job? = null
+    /** Опросы, где сервер ответил `poll.already.voted`, пока свежие свои ответы не пришли. */
+    private val pollVoted = HashSet<String>()
+    /** Опросы, голос в которых ещё в пути: повторные касания игнорируются. */
+    private val pollVoting = HashSet<String>()
 
     /** Голосовые, расшифровка, просмотр фото и видео, файлы. */
     val media = ChatMedia(chatId, repository, viewModelScope, voicePlayer, files, mediaSaver, onNotice = { _messages.value = it }, onError = { show(it) })
@@ -2262,7 +2266,7 @@ class ChatViewModel(
     /** Опрос сообщения со свежими счётчиками, своим голосом и отметками. */
     private fun withPollState(message: Message): Message {
         val poll = message.content.poll ?: return message
-        val merged = PollRules.merge(poll, pollFresh[poll.id], pollMine[poll.id], pollPicked[poll.id])
+        val merged = PollRules.merge(poll, pollFresh[poll.id], pollMine[poll.id], pollPicked[poll.id], poll.id in pollVoted)
         if (merged == poll) return message
         val attachments = message.content.attachments.map { if (it is app.maxly.domain.ChatAttachment.Poll) app.maxly.domain.ChatAttachment.Poll(merged) else it }
         return message.copy(content = message.content.copy(attachments = attachments))
@@ -2275,6 +2279,7 @@ class ChatViewModel(
     fun vote(message: Message, answerId: String) {
         if (!isServer(message)) return
         val poll = withPollState(message).content.poll ?: return
+        if (poll.id in pollVoting) return
         if (!PollRules.canVote(poll)) return
         if (answerId == PollRules.SUBMIT) {
             if (poll.picked.isNotEmpty()) submitVote(message.id, poll, poll.picked.toList())
@@ -2289,18 +2294,32 @@ class ChatViewModel(
     }
 
     private fun submitVote(messageId: String, poll: app.maxly.domain.PollContent, answers: List<String>) {
+        if (!pollVoting.add(poll.id)) return
         viewModelScope.launch {
             try {
                 val tally = repository.votePoll(chatId, messageId, poll.id, answers)
-                if (tally != null) pollFresh[poll.id] = PollRules.applyTally(pollFresh[poll.id] ?: poll.copy(mine = emptySet(), picked = emptySet()), tally)
-                pollMine[poll.id] = answers.toSet()
+                // ответ на голос — новое состояние опроса: применяется сразу и целиком, со своими ответами
+                if (tally != null) pollFresh[poll.id] = PollRules.applyTally(pollFresh[poll.id] ?: poll, tally, answers)
+                pollMine[poll.id] = tally?.mine?.takeIf { it.isNotEmpty() } ?: answers.toSet()
                 pollPicked.remove(poll.id)
+                pollVoting.remove(poll.id)
                 rebuild()
                 refreshPolls(force = true)
             } catch (e: CancellationException) {
+                pollVoting.remove(poll.id)
                 throw e
             } catch (e: Exception) {
-                show(e)
+                pollVoting.remove(poll.id)
+                if (app.maxly.data.CoreErrors.isPollAlreadyVoted(e)) {
+                    // голос уже есть на сервере: без повтора, итоги и свои ответы — из свежего состояния (306)
+                    pollVoted += poll.id
+                    pollPicked.remove(poll.id)
+                    rebuild()
+                    refreshPolls(force = true)
+                    _messages.value = PollRules.ALREADY_VOTED_TEXT
+                } else {
+                    show(e)
+                }
             }
         }
     }

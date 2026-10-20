@@ -13,7 +13,12 @@ sealed class MaxlyError(message: String) : Exception(message) {
      * запросы ([RATE_LIMIT_CODE]) — просьба подождать, на остальное — код ошибки.
      */
     data class Server(val code: String, val text: String? = null) : MaxlyError(
-        text ?: if (code == RATE_LIMIT_CODE) "Сервер просит подождать: слишком много запросов" else "Ошибка сервера ($code). Попробуйте позже",
+        when {
+            code == POLL_ALREADY_VOTED_CODE -> "Вы уже проголосовали"
+            text != null -> text
+            code == RATE_LIMIT_CODE -> "Сервер просит подождать: слишком много запросов"
+            else -> "Ошибка сервера ($code). Попробуйте позже"
+        },
     )
     /** Запрос отклонён как неверный. */
     data object InvalidRequest : MaxlyError("Сервер отклонил запрос")
@@ -40,6 +45,9 @@ sealed class MaxlyError(message: String) : Exception(message) {
     companion object {
         /** Код ответа сервера, когда клиент спрашивает слишком часто. */
         const val RATE_LIMIT_CODE = "too.many.requests"
+
+        /** Повторный голос в опросе без права переголосовать (`poll.already.voted`). */
+        const val POLL_ALREADY_VOTED_CODE = "poll.already.voted"
 
         /** Код устарел, и сервис входа уже выслал новый. */
         val codeRenewed = Rejected("Код устарел — выслали новый")

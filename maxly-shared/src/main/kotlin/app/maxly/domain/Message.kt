@@ -201,8 +201,10 @@ sealed interface ChatAttachment {
 
 /**
  * Опрос в сообщении. [id] — `pollId`, по нему уходит голос. [multiple], [revote], [closed] —
- * биты `settings`. [mine] — за что голосовали с этого устройства, [picked] — отмеченные, но ещё
- * не отправленные ответы опроса с несколькими ответами.
+ * биты `settings`. [mine] — свои ответы (`PollState.myAnswerIds` ядра или голос с этого
+ * устройства), [voted] — сервер сказал, что голос уже отдан, хотя свои ответы ещё не пришли
+ * (`poll.already.voted`). [picked] — отмеченные, но ещё не отправленные ответы опроса с
+ * несколькими ответами.
  */
 data class PollContent(
     val id: String,
@@ -214,9 +216,11 @@ data class PollContent(
     val closed: Boolean = false,
     val mine: Set<String> = emptySet(),
     val picked: Set<String> = emptySet(),
+    val voted: Boolean = false,
 )
 
-data class PollAnswer(val id: String, val text: String, val votes: Int = 0)
+/** Ответ опроса; [rate] — доля голосов в процентах от сервера (`PollResult.rate`), `null` — не прислал. */
+data class PollAnswer(val id: String, val text: String, val votes: Int = 0, val rate: Int? = null)
 
 /**
  * Служебное закрепление. Закреп снят только при [unpinned]; `pin` без id закреплённого

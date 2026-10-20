@@ -651,7 +651,12 @@ class CoreMessageRepository(
         val answers = answerIds.mapNotNull { it.toLongOrNull() }
         if (answers.isEmpty()) return null
         val state = MaxCoreGateway.call { client.votePoll(chat, message, poll, answers) }
-        return app.maxly.domain.PollTally(state.total, state.results.associate { it.answerId.toString() to it.voteCount })
+        return app.maxly.domain.PollTally(
+            total = state.total,
+            votes = state.results.associate { it.answerId.toString() to it.voteCount },
+            mine = state.myAnswerIds.map { it.toString() }.toSet(),
+            rates = state.results.associate { it.answerId.toString() to it.rate },
+        )
     }
 
     override suspend fun pollUpdates(chatId: String, polls: List<Pair<String, String>>): Map<String, app.maxly.domain.PollContent> {

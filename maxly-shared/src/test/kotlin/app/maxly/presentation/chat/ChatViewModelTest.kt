@@ -193,10 +193,14 @@ class FakeMessages : MessageRepository {
 
     val votes = mutableListOf<Triple<String, String, List<String>>>()
     var tally: app.maxly.domain.PollTally? = null
+    var voteFailure: Exception? = null
+    var voteGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
     val pollRefreshes = mutableListOf<List<Pair<String, String>>>()
     var freshPolls: Map<String, app.maxly.domain.PollContent> = emptyMap()
     override suspend fun votePoll(chatId: String, messageId: String, pollId: String, answerIds: List<String>): app.maxly.domain.PollTally? {
         votes += Triple(messageId, pollId, answerIds)
+        voteGate?.await()
+        voteFailure?.let { throw it }
         return tally
     }
     override suspend fun pollUpdates(chatId: String, polls: List<Pair<String, String>>): Map<String, app.maxly.domain.PollContent> {
@@ -954,6 +958,79 @@ class ChatViewModelTest {
         assertEquals(listOf(listOf("30" to "p30")), repo.pollRefreshes)
         model.vote(poll, "2")
         assertEquals(1, repo.votes.size)
+    }
+
+    @Test
+    fun voteReplyStateIsAppliedWithOwnAnswerAndClosesVoting() {
+        val poll = pollMessage("33")
+        repo.list.value = listOf(poll)
+        repo.tally = app.maxly.domain.PollTally(4, mapOf("1" to 1, "2" to 3), mine = setOf("2"), rates = mapOf("1" to 25, "2" to 75))
+        val model = vm()
+        model.vote(poll, "2")
+        val shown = shownPoll(model, "33")
+        assertEquals(4, shown.total)
+        assertEquals(listOf(1, 3), shown.answers.map { it.votes })
+        assertEquals(setOf("2"), shown.mine)
+        assertEquals(listOf("25%", "75%"), shown.answers.map { PollRules.counter(shown, it) })
+        assertFalse(PollRules.canVote(shown))
+        model.vote(poll, "1")
+        assertEquals(1, repo.votes.size)
+    }
+
+    @Test
+    fun alreadyVotedRefreshesWithoutRetryOrRawCode() {
+        val poll = pollMessage("34")
+        repo.list.value = listOf(poll)
+        repo.voteFailure = app.maxly.data.CoreFailure("SERVER", "poll.already.voted", "Vote failed", "Vote failed")
+        repo.freshPolls = mapOf("p34" to poll.content.poll!!.copy(total = 2, mine = setOf("1"),
+            answers = listOf(app.maxly.domain.PollAnswer("1", "Кино", 2), app.maxly.domain.PollAnswer("2", "Парк", 0))))
+        val model = vm()
+        model.vote(poll, "2")
+        assertEquals(1, repo.votes.size)
+        assertEquals(listOf(listOf("34" to "p34")), repo.pollRefreshes)
+        assertEquals("Вы уже проголосовали", model.messages.value)
+        assertFalse(model.messages.value.orEmpty().contains("poll.already.voted"))
+        val shown = shownPoll(model, "34")
+        assertEquals(setOf("1"), shown.mine)
+        assertEquals(2, shown.total)
+        assertFalse(PollRules.canVote(shown))
+        model.vote(poll, "1")
+        assertEquals(1, repo.votes.size)
+    }
+
+    @Test
+    fun tapsWhileVoteInFlightAreIgnored() {
+        val poll = pollMessage("35", multiple = true)
+        repo.list.value = listOf(poll)
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        repo.voteGate = gate
+        repo.tally = app.maxly.domain.PollTally(1, mapOf("1" to 1))
+        val model = vm()
+        model.vote(poll, "1")
+        model.vote(poll, PollRules.SUBMIT)
+        model.vote(poll, PollRules.SUBMIT)
+        model.vote(poll, "2")
+        assertEquals(1, repo.votes.size)
+        gate.complete(Unit)
+        assertEquals(setOf("1"), shownPoll(model, "35").mine)
+        assertFalse(PollRules.canVote(shownPoll(model, "35")))
+        model.vote(poll, PollRules.SUBMIT)
+        assertEquals(1, repo.votes.size)
+    }
+
+    @Test
+    fun pollArrivingAlreadyVotedShowsOwnAnswerAndResults() {
+        val poll = pollMessage("36")
+        val voted = poll.copy(content = MessageContent(attachments = listOf(app.maxly.domain.ChatAttachment.Poll(
+            poll.content.poll!!.copy(total = 3, mine = setOf("1"), answers = listOf(
+                app.maxly.domain.PollAnswer("1", "Кино", 1, rate = 33), app.maxly.domain.PollAnswer("2", "Парк", 2, rate = 67)))))))
+        repo.list.value = listOf(voted)
+        val model = vm()
+        val shown = shownPoll(model, "36")
+        assertFalse(PollRules.canVote(shown))
+        assertEquals(listOf("33%", "67%"), shown.answers.map { PollRules.counter(shown, it) })
+        model.vote(voted, "2")
+        assertTrue(repo.votes.isEmpty())
     }
 
     @Test

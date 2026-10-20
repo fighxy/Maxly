@@ -18,5 +18,13 @@ sealed interface ScheduledChange {
     data object Reload : ScheduledChange
 }
 
-/** Счётчики опроса из ответа на голос (`SEND_VOTE` 304): всего и по id ответа. */
-data class PollTally(val total: Int, val votes: Map<String, Int>)
+/**
+ * Состояние опроса из ответа на голос (`SEND_VOTE` 304, `PollState` ядра): всего голосов,
+ * голоса и проценты по id ответа, свои ответы ([mine] — `PollState.myAnswerIds`).
+ */
+data class PollTally(
+    val total: Int,
+    val votes: Map<String, Int>,
+    val mine: Set<String> = emptySet(),
+    val rates: Map<String, Int> = emptyMap(),
+)

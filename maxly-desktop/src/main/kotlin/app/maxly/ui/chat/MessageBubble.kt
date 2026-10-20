@@ -487,7 +487,7 @@ private fun PollChoices(poll: PollContent, colors: BubbleColors, onVote: (String
                         overflow = TextOverflow.Ellipsis,
                         fontWeight = if (chosen) FontWeight.SemiBold else null,
                     )
-                    Text(answer.votes.toString(), style = MaterialTheme.typography.labelMedium, color = colors.secondary)
+                    Text(app.maxly.presentation.chat.PollRules.counter(poll, answer), style = MaterialTheme.typography.labelMedium, color = colors.secondary)
                 }
                 Box(
                     Modifier

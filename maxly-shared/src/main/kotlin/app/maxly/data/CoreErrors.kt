@@ -8,6 +8,14 @@ import kotlinx.coroutines.CancellationException
  * идёт первым, свои тексты — запасные.
  */
 object CoreErrors {
+    /** Отказ `poll.already.voted` ([com.maxly.core.transport.ServerErrorException.isPollAlreadyVoted]). */
+    fun isPollAlreadyVoted(error: Throwable): Boolean = when (error) {
+        is CoreFailure -> error.key == com.maxly.core.transport.ServerErrorException.ERROR_POLL_ALREADY_VOTED
+        is MaxlyError.Server -> error.code == com.maxly.core.transport.ServerErrorException.ERROR_POLL_ALREADY_VOTED
+        is com.maxly.core.transport.ServerErrorException -> error.isPollAlreadyVoted
+        else -> false
+    }
+
     /** Запасной текст, когда об ошибке сказать нечего. */
     const val UNKNOWN_TEXT = "Что-то пошло не так"
 
