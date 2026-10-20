@@ -99,6 +99,10 @@ struct ChatProfileView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var manageModel: ChatManageModel?
     @State private var manageContacts: [ChatAdminPerson] = []
+    /// Лист «Изменить контакт».
+    @State private var editingContact = false
+    /// Подтверждение «Удалить из контактов».
+    @State private var removingContact = false
     @Namespace private var tabs
 
     private static let avatarSize: CGFloat = 100
@@ -113,6 +117,7 @@ struct ChatProfileView: View {
                 membersSection
                 commonChatsSection
                 sharedMedia
+                contactSection
             }
             .padding(.bottom, 32)
         }
@@ -125,6 +130,13 @@ struct ChatProfileView: View {
                 compactTitle
                     .opacity(titleShown ? 1 : 0)
                     .animation(.easeOut(duration: 0.18), value: titleShown)
+            }
+            // «Изменить» контакт: своё имя человека в аккаунте.
+            if viewModel.contactAction == .manage {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Изменить") { editingContact = true }
+                        .disabled(viewModel.isChangingContact)
+                }
             }
             // «Изменить» группу или канал, как в Max: карандаш у админа и владельца.
             if canEdit {
@@ -161,6 +173,36 @@ struct ChatProfileView: View {
             Text(erase == .clear
                  ? "Все сообщения в этом чате будут удалены без возможности восстановления."
                  : "Чат будет удалён вместе со всей перепиской.")
+        }
+        .sheet(isPresented: $editingContact) {
+            ContactEditSheet(
+                fields: viewModel.contactEditFields,
+                placeholder: viewModel.contactNamePlaceholder,
+                phone: viewModel.shown.phone
+            ) { first, last in
+                let saved = await viewModel.renameContact(firstName: first, lastName: last)
+                defer { if !saved { viewModel.dismissContactError() } }
+                return saved ? nil : (viewModel.contactError ?? "Не удалось сохранить имя")
+            }
+        }
+        .confirmationDialog(ContactRemoveTexts.title(viewModel.title), isPresented: $removingContact, titleVisibility: .visible) {
+            Button(ContactRemoveTexts.confirm, role: .destructive) {
+                Task { _ = await viewModel.removeContact() }
+            }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text(ContactRemoveTexts.message)
+        }
+        .alert(
+            "Не получилось",
+            isPresented: Binding(
+                get: { viewModel.contactError != nil && !editingContact },
+                set: { if !$0 { viewModel.dismissContactError() } }
+            )
+        ) {
+            Button("Понятно", role: .cancel) {}
+        } message: {
+            Text(viewModel.contactError ?? "")
         }
         .confirmationDialog(leaveTitle, isPresented: $leaving, titleVisibility: .visible) {
             Button(isChannel ? "Отписаться" : "Покинуть группу", role: .destructive) {
@@ -819,6 +861,46 @@ struct ChatProfileView: View {
                 }
             }
         }
+    }
+
+    /// Отдельный блок внизу: «Удалить из контактов» у контакта, «Добавить в контакты» у остальных людей.
+    @ViewBuilder
+    private var contactSection: some View {
+        switch viewModel.contactAction {
+        case .manage:
+            card {
+                Button(role: .destructive) { removingContact = true } label: {
+                    contactRow(ContactRemoveTexts.menuItem, systemImage: "person.crop.circle.badge.minus", tint: .red)
+                }
+                .buttonStyle(RowStyle())
+                .disabled(viewModel.isChangingContact)
+            }
+        case .add:
+            card {
+                Button { Task { _ = await viewModel.addToContacts() } } label: {
+                    contactRow("Добавить в контакты", systemImage: "person.crop.circle.badge.plus", tint: .maxlyAccent)
+                }
+                .buttonStyle(RowStyle())
+                .disabled(viewModel.isChangingContact)
+            }
+        case .none:
+            EmptyView()
+        }
+    }
+
+    private func contactRow(_ title: String, systemImage: String, tint: Color) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.app(.body))
+                .frame(width: 24)
+            Text(title)
+                .font(.app(.body))
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 16)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
     }
 
     private func section<Rows: View>(title: String, @ViewBuilder _ rows: () -> Rows) -> some View {
