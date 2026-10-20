@@ -488,8 +488,10 @@ final class AppContainer {
             kind: kind,
             repository: profiles,
             actions: profileActions,
-            presence: presenceService
-        )
+            presence: presenceService,
+            contacts: contacts,
+            currentUserId: currentUserId
+        ).withNamesChanged { [weak self] in self?.contactNamesChanged() }
     }
 
     /// Живые данные шапки чата: сеть, «печатает…», звук. Читаются из наблюдаемого списка,
@@ -522,8 +524,10 @@ final class AppContainer {
             kind: .user,
             repository: profiles,
             actions: profileActions,
-            presence: presenceService
-        )
+            presence: presenceService,
+            contacts: contacts,
+            currentUserId: currentUserId
+        ).withNamesChanged { [weak self] in self?.contactNamesChanged() }
     }
 
     /// Комментарии есть у постов канала.
@@ -661,8 +665,16 @@ final class AppContainer {
     func contactsViewModel() -> ContactsViewModel {
         if let contactsModel { return contactsModel }
         let model = ContactsViewModel(contacts: contacts, currentUserId: currentUserId, presence: presenceService)
+        model.onNamesChanged = { [weak self] in self?.contactNamesChanged(fromContacts: true) }
         contactsModel = model
         return model
+    }
+
+    /// Имя контакта сменили или контакт удалили: список чатов (заголовки, шапка чата, подписи
+    /// отправителей берут имена из него и из ядра) и вкладка «Контакты» перечитываются.
+    func contactNamesChanged(fromContacts: Bool = false) {
+        if let listModel { Task { await listModel.refresh() } }
+        if !fromContacts, let contactsModel { Task { await contactsModel.sync() } }
     }
 
     func callsViewModel() -> CallsViewModel {
@@ -1084,4 +1096,11 @@ final class AppContainer {
 /// Последний сетевой путь для `NWPathMonitor`; пишется только с очереди монитора.
 private final class PathSnapshot: @unchecked Sendable {
     var value: String?
+}
+
+private extension ChatProfileViewModel {
+    func withNamesChanged(_ action: @escaping () -> Void) -> ChatProfileViewModel {
+        onNamesChanged = action
+        return self
+    }
 }
