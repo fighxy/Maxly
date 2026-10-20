@@ -55,8 +55,12 @@ public final class ChatProfileViewModel {
         actions: (any ProfileActionsRepository)? = nil,
         formatter: ContactsFormatter = ContactsFormatter(),
         presence: (any PresenceProvider)? = nil,
+        contacts: (any ContactRepository)? = nil,
+        currentUserId: String? = nil,
         now: @escaping () -> Date = { Date() }
     ) {
+        self.contacts = contacts
+        self.currentUserId = currentUserId
         self.chatId = chatId
         self.repository = repository
         self.actions = actions
@@ -67,6 +71,128 @@ public final class ChatProfileViewModel {
     }
 
     @ObservationIgnored private let placeholder: ChatProfile
+    /// Контакты аккаунта: «Изменить», «Удалить из контактов», «Добавить в контакты».
+    @ObservationIgnored private let contacts: (any ContactRepository)?
+    @ObservationIgnored private let currentUserId: String?
+
+    // MARK: Контакт
+
+    /// Что профиль человека предлагает сделать с контактом.
+    public enum ContactAction: Equatable, Sendable {
+        /// Ничего: свой профиль, «Избранное», бот, группа, канал или нечем менять контакты.
+        case none
+        /// Не в контактах: «Добавить в контакты».
+        case add
+        /// В контактах: «Изменить» и «Удалить из контактов».
+        case manage
+    }
+
+    /// Идёт запрос изменения, удаления или добавления контакта.
+    public private(set) var isChangingContact = false
+    /// Ошибка последнего действия с контактом; экран показывает её окном.
+    public private(set) var contactError: String?
+    /// Имена контакта изменились: списку чатов, шапке и подписям пора перечитать имена.
+    @ObservationIgnored public var onNamesChanged: (() -> Void)?
+
+    public var contactAction: ContactAction {
+        let card = shown
+        guard card.kind == .user, let peer = card.peerId, !peer.isEmpty, let contacts else { return .none }
+        if let currentUserId, peer == currentUserId { return .none }
+        if card.isContact { return contacts.capabilities.contains(.edit) ? .manage : .none }
+        return contacts.capabilities.contains(.add) ? .add : .none
+    }
+
+    /// Поля листа «Изменить контакт»: своё имя, разбитое на имя и фамилию; без него пусто.
+    public var contactEditFields: (firstName: String, lastName: String) {
+        ContactCustomName.split(shown.customName ?? "")
+    }
+
+    /// Подсказка в пустых полях: имя, которое видно сейчас (без своего имени — имя человека).
+    public var contactNamePlaceholder: (firstName: String, lastName: String) {
+        guard shown.customName == nil else { return ("Имя", "Фамилия") }
+        let own = ContactCustomName.split(shown.title)
+        return (own.firstName.isEmpty ? "Имя" : own.firstName, own.lastName.isEmpty ? "Фамилия" : own.lastName)
+    }
+
+    /// Сохранить своё имя контакта. Оба поля пустые — вернётся имя, которое указал человек.
+    public func renameContact(firstName: String, lastName: String) async -> Bool {
+        guard contactAction == .manage, let peer = shown.peerId, let contacts, !isChangingContact else { return false }
+        if let problem = ContactNameRules.problem(firstName: firstName, lastName: lastName) {
+            contactError = problem
+            return false
+        }
+        isChangingContact = true
+        defer { isChangingContact = false }
+        do {
+            let saved = try await contacts.rename(userId: peer, firstName: firstName, lastName: lastName)
+            contactError = nil
+            let custom = ContactCustomName.join(firstName: firstName, lastName: lastName)
+            do {
+                var card = shown
+                card.customName = custom.isEmpty ? nil : custom
+                let answered = ContactCustomName.join(firstName: saved.firstName, lastName: saved.lastName)
+                if !custom.isEmpty { card.title = custom } else if !answered.isEmpty { card.title = answered }
+                profile = card
+            }
+            onNamesChanged?()
+            // Без своего имени заголовок — имя человека: его знает только свежая карточка.
+            if custom.isEmpty { await load() }
+            return true
+        } catch {
+            contactError = error.userMessage ?? "Не удалось сохранить имя"
+            return false
+        }
+    }
+
+    /// «Удалить из контактов». Переписка остаётся.
+    public func removeContact() async -> Bool {
+        guard contactAction == .manage, let peer = shown.peerId, let contacts, !isChangingContact else { return false }
+        isChangingContact = true
+        defer { isChangingContact = false }
+        do {
+            try await contacts.remove(userId: peer)
+            contactError = nil
+            do {
+                var card = shown
+                card.contact = nil
+                card.customName = nil
+                profile = card
+            }
+            onNamesChanged?()
+            await load()
+            return true
+        } catch {
+            contactError = error.userMessage ?? "Не удалось удалить из контактов"
+            return false
+        }
+    }
+
+    /// «Добавить в контакты»: как из поиска по номеру — с именем, которое видно сейчас.
+    public func addToContacts() async -> Bool {
+        guard contactAction == .add, let peer = shown.peerId, let contacts, !isChangingContact else { return false }
+        let name = String(shown.title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(ContactNameRules.limit))
+        isChangingContact = true
+        defer { isChangingContact = false }
+        do {
+            _ = try await contacts.addFoundContact(userId: peer, firstName: name)
+            contactError = nil
+            do {
+                var card = shown
+                card.contact = true
+                profile = card
+            }
+            onNamesChanged?()
+            await load()
+            return true
+        } catch {
+            contactError = error.userMessage ?? "Не удалось добавить в контакты"
+            return false
+        }
+    }
+
+    public func dismissContactError() {
+        contactError = nil
+    }
 
     /// Просмотр фото профиля: текущее фото и, у человека, история с сервера. `nil` без фото.
     /// `tileId` — id текущего фото (с ним кадр вылетает из аватара шапки).
