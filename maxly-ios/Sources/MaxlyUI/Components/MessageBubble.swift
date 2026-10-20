@@ -1054,56 +1054,112 @@ struct QuickDoubleTap: ViewModifier {
     }
 }
 
-/// Ответы опроса. Нажатие отправляет голос, если экран передал `onVote`.
-private struct PollChoices: View {
+/// Ответы опроса. Нажатие отправляет голос, если экран передал `onVote` и голосовать можно.
+/// После голоса — проценты, полоса доли и галочка у своих ответов.
+struct PollChoices: View {
     let poll: PollContent
     let outgoing: Bool
     let onVote: ((String) -> Void)?
     var onCast: (([String]) -> Void)? = nil
     @State private var picked: Set<String> = []
+    /// Голос отправлен, ответ сервера ещё не пришёл: второе нажатие ничего не шлёт.
+    @State private var sent = false
+
+    /// Ответы можно нажимать.
+    var interactive: Bool {
+        guard poll.canVote, !sent else { return false }
+        return poll.multiple ? onCast != nil : onVote != nil
+    }
+
+    private var primary: Color { outgoing ? Color.maxlyOutgoingText : Color.primary }
+    private var secondary: Color { outgoing ? Color.maxlyOutgoingSecondary : Color.secondary }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(poll.title)
                 .font(.app(.subheadline, .semibold))
-                .foregroundStyle(outgoing ? Color.maxlyOutgoingText : Color.primary)
+                .foregroundStyle(primary)
             ForEach(poll.answers, id: \.id) { answer in
                 Button {
+                    guard interactive else { return }
                     if poll.multiple {
                         if picked.contains(answer.id) { picked.remove(answer.id) } else { picked.insert(answer.id) }
                     } else {
+                        sent = true
                         onVote?(answer.id)
                     }
                 } label: {
-                    HStack {
-                        Text(answer.text)
-                            .font(.app(.subheadline))
-                            .foregroundStyle(outgoing ? Color.maxlyOutgoingText : Color.primary)
-                            .multilineTextAlignment(.leading)
-                        Spacer(minLength: 8)
-                        Text("\(answer.votes)")
-                            .font(.app(.caption).monospacedDigit())
-                            .foregroundStyle(outgoing ? Color.maxlyOutgoingSecondary : Color.secondary)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background((outgoing ? Color.maxlyOutgoingText : Color.primary).opacity(picked.contains(answer.id) ? 0.28 : 0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    row(answer)
                 }
                 .buttonStyle(.plain)
-                .disabled(poll.multiple ? onCast == nil : onVote == nil)
+                .disabled(!interactive)
+                .accessibilityAddTraits(poll.isMine(answer.id) ? .isSelected : [])
             }
-            if poll.multiple, onCast != nil {
-                Button("Голосовать") { onCast?(Array(picked)) }
-                    .font(.app(.subheadline, .semibold))
-                    .disabled(picked.isEmpty)
+            if poll.multiple, interactive {
+                Button("Голосовать") {
+                    sent = true
+                    onCast?(Array(picked))
+                }
+                .font(.app(.subheadline, .semibold))
+                .frame(minHeight: 44)
+                .disabled(picked.isEmpty)
             }
             Text(poll.total == 1 ? "1 голос" : "\(poll.total) голосов")
                 .font(.app(.caption))
-                .foregroundStyle(outgoing ? Color.maxlyOutgoingSecondary : Color.secondary)
+                .foregroundStyle(secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Опрос, \(poll.title)")
+        .onChange(of: poll) { _, _ in
+            sent = false
+            if !poll.canVote { picked = [] }
+        }
+    }
+
+    @ViewBuilder
+    private func row(_ answer: PollAnswer) -> some View {
+        let mine = poll.isMine(answer.id)
+        let results = poll.showsResults
+        let share = Double(poll.percent(of: answer)) / 100
+        HStack(spacing: 8) {
+            if mine {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.app(.subheadline))
+                    .foregroundStyle(primary)
+                    .accessibilityLabel("Ваш ответ")
+            } else if poll.multiple, interactive {
+                Image(systemName: picked.contains(answer.id) ? "checkmark.circle.fill" : "circle")
+                    .font(.app(.subheadline))
+                    .foregroundStyle(secondary)
+            }
+            Text(answer.text)
+                .font(.app(.subheadline, mine ? .semibold : .regular))
+                .foregroundStyle(primary)
+                .multilineTextAlignment(.leading)
+            Spacer(minLength: 8)
+            Text(results ? "\(poll.percent(of: answer))%" : "\(answer.votes)")
+                .font(.app(.caption).monospacedDigit())
+                .foregroundStyle(secondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(minHeight: 44)
+        .background(alignment: .leading) {
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(primary.opacity(picked.contains(answer.id) ? 0.28 : 0.12))
+                if results {
+                    GeometryReader { proxy in
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(primary.opacity(mine ? 0.22 : 0.12))
+                            .frame(width: proxy.size.width * share)
+                    }
+                }
+            }
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .accessibilityValue(results ? "\(poll.percent(of: answer)) процентов, \(answer.votes)" : "")
     }
 }
 

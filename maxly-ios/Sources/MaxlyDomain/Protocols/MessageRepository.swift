@@ -104,7 +104,7 @@ public protocol MessageRepository: Sendable {
     func schedule(chatId: String, text: String, sendAt: Date) async throws(MaxlyError)
     func scheduled(chatId: String) async throws(MaxlyError) -> [FoundMessage]
     func sendPoll(chatId: String, title: String, answers: [String]) async throws(MaxlyError)
-    func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws(MaxlyError)
+    func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws(MaxlyError) -> PollCountUpdate
     func castVotes(chatId: String, messageId: String, pollId: String, answerIds: [String]) async throws(MaxlyError) -> PollCountUpdate
     func refreshPolls(chatId: String, polls: [(messageId: String, pollId: String)]) async throws(MaxlyError) -> [PollCountUpdate]
     func applyPollCounts(chatId: String, messageId: String, update: PollCountUpdate) async
@@ -160,7 +160,7 @@ extension MessageRepository {
     public func schedule(chatId: String, text: String, sendAt: Date) async throws(MaxlyError) { throw .invalidRequest }
     public func scheduled(chatId: String) async throws(MaxlyError) -> [FoundMessage] { throw .invalidRequest }
     public func sendPoll(chatId: String, title: String, answers: [String]) async throws(MaxlyError) { throw .invalidRequest }
-    public func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws(MaxlyError) { throw .invalidRequest }
+    public func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws(MaxlyError) -> PollCountUpdate { throw .invalidRequest }
     public func castVotes(chatId: String, messageId: String, pollId: String, answerIds: [String]) async throws(MaxlyError) -> PollCountUpdate { throw .invalidRequest }
     public func refreshPolls(chatId: String, polls: [(messageId: String, pollId: String)]) async throws(MaxlyError) -> [PollCountUpdate] { throw .invalidRequest }
     public func applyPollCounts(chatId: String, messageId: String, update: PollCountUpdate) async {}

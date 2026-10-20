@@ -92,10 +92,16 @@ extension MaxIosCore {
         }
     }
 
-    func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws {
-        let _: Void = try await call("votePoll") { done in
-            self.client.votePoll(chatId: chatId, messageId: messageId, pollId: pollId, answerId: answerId) { _, kind, key in
-                if let kind { done(.failure(Self.failed(kind: kind, key: key))) } else { done(.success(())) }
+    func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws -> CorePollCounts {
+        try await call("votePoll") { done in
+            self.client.votePoll(chatId: chatId, messageId: messageId, pollId: pollId, answerId: answerId) { state, kind, key in
+                if let kind {
+                    done(.failure(Self.failed(kind: kind, key: key)))
+                } else if let state {
+                    done(.success(Self.counts(pollId: pollId, state: state, sent: [answerId])))
+                } else {
+                    done(.failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)))
+                }
             }
         }
     }
@@ -106,7 +112,7 @@ extension MaxIosCore {
                 if let kind {
                     done(.failure(Self.failed(kind: kind, key: key)))
                 } else if let state {
-                    done(.success(Self.counts(pollId: pollId, total: Int(state.total), answers: state.answers, multiple: false)))
+                    done(.success(Self.counts(pollId: pollId, state: state, sent: answerIds)))
                 } else {
                     done(.failure(CoreFailure(kind: "MALFORMED_REPLY", key: nil)))
                 }
@@ -122,7 +128,8 @@ extension MaxIosCore {
                     done(.failure(Self.failed(kind: kind, key: key)))
                 } else {
                     done(.success((polls ?? []).map {
-                        Self.counts(pollId: $0.pollId, total: Int($0.total), answers: $0.answers, multiple: $0.multiple)
+                        Self.counts(pollId: $0.pollId, total: Int($0.total), answers: $0.answers, multiple: $0.multiple,
+                                    myAnswerIds: Self.mine($0.myAnswerIds, answers: $0.answers), revote: $0.revote, closed: $0.closed)
                     }))
                 }
             }
@@ -151,12 +158,29 @@ extension MaxIosCore {
         }
     }
 
-    private static func counts(pollId: String, total: Int, answers: [IosPollAnswer], multiple: Bool) -> CorePollCounts {
+    /// Ответ на голос: ядро уже отмечает отправленные ответы своими, `sent` — запасной путь.
+    private static func counts(pollId: String, state: IosPollState, sent: [String]) -> CorePollCounts {
+        let mine = Self.mine(state.myAnswerIds, answers: state.answers)
+        return counts(pollId: pollId, total: Int(state.total), answers: state.answers, multiple: false,
+                      myAnswerIds: mine.isEmpty ? sent : mine)
+    }
+
+    private static func mine(_ ids: [String], answers: [IosPollAnswer]) -> [String] {
+        var result = ids.filter { !$0.isEmpty }
+        for answer in answers where answer.mine && !answer.answerId.isEmpty && !result.contains(answer.answerId) {
+            result.append(answer.answerId)
+        }
+        return result
+    }
+
+    private static func counts(pollId: String, total: Int, answers: [IosPollAnswer], multiple: Bool,
+                               myAnswerIds: [String]?, revote: Bool? = nil, closed: Bool? = nil) -> CorePollCounts {
         var votes: [String: Int] = [:]
         for answer in answers where !answer.answerId.isEmpty {
             votes[answer.answerId] = Int(answer.votes)
         }
-        return CorePollCounts(pollId: pollId, total: total, votes: votes, multiple: multiple)
+        return CorePollCounts(pollId: pollId, total: total, votes: votes, multiple: multiple,
+                              myAnswerIds: myAnswerIds, revote: revote, closed: closed)
     }
 
     func searchInChat(chatId: String, query: String) async throws -> [CoreFoundMessage] {

@@ -245,17 +245,24 @@ enum MessageContentCodec {
             guard let answer = item as? [String: Any], let answerId = stringId(answer["answerId"]) else { return nil }
             let text = (answer["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !text.isEmpty else { return nil }
-            let votes = results.compactMap { $0 as? [String: Any] }
-                .first { stringId($0["answerId"]) == answerId }
-                .flatMap { integer($0["voteCount"]) } ?? 0
-            return PollAnswer(id: answerId, text: text, votes: votes)
+            let result = results.compactMap { $0 as? [String: Any] }.first { stringId($0["answerId"]) == answerId }
+            let votes = result.flatMap { integer($0["voteCount"]) } ?? 0
+            // Бит 1 у `options` результата — ответ текущего пользователя.
+            let options = result.flatMap { integer($0["options"]) } ?? 0
+            let mine = options & 1 != 0 || ((map["myAnswerIds"] as? [Any]) ?? []).contains { stringId($0) == answerId }
+            return PollAnswer(id: answerId, text: text, votes: votes, mine: mine)
         }
         guard answers.count >= 2 else { return nil }
         let total = integer(state?["total"]) ?? answers.reduce(0) { $0 + $1.votes }
         let title = (map["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let flags = integer(map["flags"]) ?? 0
         let multiple = PollContent.allowsSeveral(flags: flags) || (map["multiple"] as? Bool == true)
-        return PollContent(id: id, title: title.isEmpty ? "Опрос" : title, answers: answers, total: total, multiple: multiple)
+        return PollContent(
+            id: id, title: title.isEmpty ? "Опрос" : title, answers: answers, total: total, multiple: multiple,
+            myAnswerIds: answers.filter(\.mine).map(\.id),
+            revote: PollContent.allowsRevote(flags: flags) || (map["revote"] as? Bool == true),
+            closed: PollContent.isClosed(flags: flags) || (map["closed"] as? Bool == true)
+        )
     }
 
     /// `CONTROL` `pin` / `unpin`: id и текст из `pinnedMessage` (`{id, text}`). `pin` без

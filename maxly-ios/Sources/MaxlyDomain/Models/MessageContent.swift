@@ -436,20 +436,71 @@ public struct PollContent: Hashable, Sendable, Codable {
     public var total: Int
     /// Несколько ответов сразу. Старые записи без поля — один ответ.
     public var multiple: Bool
+    /// Ответы, за которые голосовал текущий пользователь. Пусто — ещё не голосовал.
+    public var myAnswerIds: [String]
+    /// Голос можно изменить (флаг опроса `REVOTE`).
+    public var revote: Bool
+    /// Опрос закрыт (флаг `CLOSED`).
+    public var closed: Bool
 
-    public init(id: String, title: String, answers: [PollAnswer], total: Int = 0, multiple: Bool = false) {
+    public init(id: String, title: String, answers: [PollAnswer], total: Int = 0, multiple: Bool = false,
+                myAnswerIds: [String] = [], revote: Bool = false, closed: Bool = false) {
         self.id = id
         self.title = title
         self.answers = answers
         self.total = total
         self.multiple = multiple
+        self.myAnswerIds = myAnswerIds
+        self.revote = revote
+        self.closed = closed
+    }
+
+    /// Текущий пользователь уже голосовал.
+    public var voted: Bool { !myAnswerIds.isEmpty || answers.contains { $0.mine } }
+
+    /// Голосовать можно: опрос открыт и голоса ещё нет или его разрешено менять.
+    public var canVote: Bool { !closed && (!voted || revote) }
+
+    /// Показывать результаты: проценты и отметку своего ответа.
+    public var showsResults: Bool { voted || closed }
+
+    /// Ответ выбран текущим пользователем.
+    public func isMine(_ answerId: String) -> Bool {
+        myAnswerIds.contains(answerId) || answers.contains { $0.id == answerId && $0.mine }
+    }
+
+    /// Доля голосов за ответ в целых процентах, 0…100.
+    public func percent(of answer: PollAnswer) -> Int {
+        let base = total > 0 ? total : answers.reduce(0) { $0 + $1.votes }
+        guard base > 0 else { return 0 }
+        return min(100, max(0, Int((Double(answer.votes) * 100 / Double(base)).rounded())))
     }
 
     /// Бит 2 маски флагов опроса — несколько ответов.
     public static func allowsSeveral(flags: Int) -> Bool { flags & 2 != 0 }
+    /// Бит 4 — голос можно изменить.
+    public static func allowsRevote(flags: Int) -> Bool { flags & 4 != 0 }
+    /// Бит 8 — опрос закрыт.
+    public static func isClosed(flags: Int) -> Bool { flags & 8 != 0 }
+
+    /// Свежие счётчики и свой голос. `myAnswerIds == nil` в обновлении — прежний голос остаётся.
+    public mutating func apply(_ update: PollCountUpdate) {
+        total = update.total
+        multiple = multiple || update.multiple
+        if let revote = update.revote { self.revote = revote }
+        if let closed = update.closed { self.closed = closed }
+        let mine = update.myAnswerIds.map(Set.init)
+        if let mine { myAnswerIds = answers.map(\.id).filter { mine.contains($0) } }
+        answers = answers.map { answer in
+            var next = answer
+            if let votes = update.votes[answer.id] { next.votes = votes }
+            if let mine { next.mine = mine.contains(answer.id) }
+            return next
+        }
+    }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, answers, total, multiple
+        case id, title, answers, total, multiple, myAnswerIds, revote, closed
     }
 
     public init(from decoder: Decoder) throws {
@@ -459,6 +510,9 @@ public struct PollContent: Hashable, Sendable, Codable {
         answers = try c.decode([PollAnswer].self, forKey: .answers)
         total = try c.decodeIfPresent(Int.self, forKey: .total) ?? 0
         multiple = try c.decodeIfPresent(Bool.self, forKey: .multiple) ?? false
+        myAnswerIds = try c.decodeIfPresent([String].self, forKey: .myAnswerIds) ?? []
+        revote = try c.decodeIfPresent(Bool.self, forKey: .revote) ?? false
+        closed = try c.decodeIfPresent(Bool.self, forKey: .closed) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -468,33 +522,60 @@ public struct PollContent: Hashable, Sendable, Codable {
         try c.encode(answers, forKey: .answers)
         try c.encode(total, forKey: .total)
         try c.encode(multiple, forKey: .multiple)
+        try c.encode(myAnswerIds, forKey: .myAnswerIds)
+        try c.encode(revote, forKey: .revote)
+        try c.encode(closed, forKey: .closed)
     }
 }
 
 /// Свежие счётчики опроса. `messageId` пустой у ответа на голос: его знает вызывающий.
+/// `myAnswerIds`, `revote`, `closed` — `nil`, когда ответ сервера о них молчит.
 public struct PollCountUpdate: Hashable, Sendable {
     public var pollId: String
     public var total: Int
     public var votes: [String: Int]
     public var multiple: Bool
+    public var myAnswerIds: [String]?
+    public var revote: Bool?
+    public var closed: Bool?
 
-    public init(pollId: String, total: Int, votes: [String: Int], multiple: Bool = false) {
+    public init(pollId: String, total: Int, votes: [String: Int], multiple: Bool = false,
+                myAnswerIds: [String]? = nil, revote: Bool? = nil, closed: Bool? = nil) {
         self.pollId = pollId
         self.total = total
         self.votes = votes
         self.multiple = multiple
+        self.myAnswerIds = myAnswerIds
+        self.revote = revote
+        self.closed = closed
     }
+
+    /// Текущий пользователь голосовал, по этому ответу сервера.
+    public var voted: Bool { !(myAnswerIds ?? []).isEmpty }
 }
 
 public struct PollAnswer: Hashable, Sendable, Codable {
     public var id: String
     public var text: String
     public var votes: Int
+    /// Текущий пользователь выбрал этот ответ.
+    public var mine: Bool
 
-    public init(id: String, text: String, votes: Int = 0) {
+    public init(id: String, text: String, votes: Int = 0, mine: Bool = false) {
         self.id = id
         self.text = text
         self.votes = votes
+        self.mine = mine
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, text, votes, mine }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        text = try c.decode(String.self, forKey: .text)
+        votes = try c.decodeIfPresent(Int.self, forKey: .votes) ?? 0
+        mine = try c.decodeIfPresent(Bool.self, forKey: .mine) ?? false
     }
 }
 

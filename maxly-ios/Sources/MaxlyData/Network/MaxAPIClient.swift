@@ -160,7 +160,7 @@ public protocol MaxAPI: Sendable {
     func scheduleMessage(chatId: String, text: String, sendAtMs: Int64) async -> Result<Void, MaxAPIError>
     func scheduledMessages(chatId: String) async -> Result<[FoundMessage], MaxAPIError>
     func sendPoll(chatId: String, title: String, answers: [String]) async -> Result<Void, MaxAPIError>
-    func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async -> Result<Void, MaxAPIError>
+    func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async -> Result<CorePollCounts, MaxAPIError>
     func castPollVotes(chatId: String, messageId: String, pollId: String, answerIds: [String]) async -> Result<CorePollCounts, MaxAPIError>
     func pollUpdates(chatId: String, polls: [CorePollRef]) async -> Result<[CorePollCounts], MaxAPIError>
     func editScheduled(chatId: String, messageId: String, text: String, sendAtMs: Int64) async -> Result<FoundMessage, MaxAPIError>
@@ -305,7 +305,7 @@ public extension MaxAPI {
     func scheduleMessage(chatId: String, text: String, sendAtMs: Int64) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
     func scheduledMessages(chatId: String) async -> Result<[FoundMessage], MaxAPIError> { .failure(.invalidResponse) }
     func sendPoll(chatId: String, title: String, answers: [String]) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
-    func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async -> Result<Void, MaxAPIError> { .failure(.invalidResponse) }
+    func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async -> Result<CorePollCounts, MaxAPIError> { .failure(.invalidResponse) }
     func castPollVotes(chatId: String, messageId: String, pollId: String, answerIds: [String]) async -> Result<CorePollCounts, MaxAPIError> { .failure(.invalidResponse) }
     func pollUpdates(chatId: String, polls: [CorePollRef]) async -> Result<[CorePollCounts], MaxAPIError> { .failure(.invalidResponse) }
     func editScheduled(chatId: String, messageId: String, text: String, sendAtMs: Int64) async -> Result<FoundMessage, MaxAPIError> { .failure(.invalidResponse) }
@@ -494,7 +494,7 @@ public final class MaxAPIClient: MaxAPI, Sendable {
         await catching { _ = try await core.sendPoll(chatId: chatId, title: title, answers: answers) }
     }
 
-    public func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async -> Result<Void, MaxAPIError> {
+    public func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async -> Result<CorePollCounts, MaxAPIError> {
         await catching { try await core.votePoll(chatId: chatId, messageId: messageId, pollId: pollId, answerId: answerId) }
     }
 
