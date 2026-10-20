@@ -124,7 +124,9 @@ public final class ChatProfileViewModel {
         isChangingContact = true
         defer { isChangingContact = false }
         do {
-            let saved = try await contacts.rename(userId: peer, firstName: firstName, lastName: lastName)
+            let first = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let last = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let saved = try await contacts.rename(userId: peer, firstName: first, lastName: last)
             contactError = nil
             let custom = ContactCustomName.join(firstName: firstName, lastName: lastName)
             do {
