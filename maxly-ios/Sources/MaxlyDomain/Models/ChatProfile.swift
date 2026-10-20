@@ -61,6 +61,13 @@ public struct ChatProfile: Hashable, Sendable, Codable {
     /// Родные комментарии канала (опция `COMMENTS`). `nil` — карточка не сказала. Когда они
     /// выключены, обсуждение часто ведёт бот: кнопкой мини-приложения под постом.
     public var commentsEnabled: Bool?
+    /// Человек в контактах аккаунта (`isContact` ядра). Необязательное поле: в карточках,
+    /// сохранённых раньше, его нет.
+    public var contact: Bool?
+    /// Имя, которое аккаунт дал контакту (`customName` ядра); `nil` — своего имени нет.
+    public var customName: String?
+
+    public var isContact: Bool { contact == true }
 
     public init(
         kind: Kind,
@@ -79,7 +86,9 @@ public struct ChatProfile: Hashable, Sendable, Codable {
         isPublic: Bool = false,
         commands: [BotCommand] = [],
         hasWebApp: Bool = false,
-        commentsEnabled: Bool? = nil
+        commentsEnabled: Bool? = nil,
+        isContact: Bool = false,
+        customName: String = ""
     ) {
         self.kind = kind
         self.chatId = chatId
@@ -98,6 +107,9 @@ public struct ChatProfile: Hashable, Sendable, Codable {
         self.commands = commands
         self.webApp = hasWebApp ? true : nil
         self.commentsEnabled = commentsEnabled
+        self.contact = isContact ? true : nil
+        let custom = customName.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.customName = custom.isEmpty ? nil : custom
     }
 
     /// Что открыть в просмотре фото: снимок целиком или оригинал аватара (`ProfilePhotoURL`).

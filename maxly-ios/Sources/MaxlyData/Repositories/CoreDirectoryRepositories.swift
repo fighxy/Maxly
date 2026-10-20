@@ -98,17 +98,16 @@ public actor CoreContactRepository: ContactRepository {
 
     public func rename(userId: String, firstName: String, lastName: String) async throws(MaxlyError) -> Contact {
         if let problem = ContactNameRules.problem(firstName: firstName, lastName: lastName) { throw .rejected(problem) }
+        let first = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let last = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
-            let saved = try await core.renameContact(
-                userId: userId,
-                firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
-                lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines)
-            )
+            let saved = try await core.renameContact(userId: userId, firstName: first, lastName: last)
             var contact = CoreMapping.contact(saved)
             if contact.id.isEmpty, let known = cached?.first(where: { $0.id == userId }) {
                 contact = known
-                contact.firstName = firstName
-                contact.lastName = lastName
+                contact.firstName = first
+                contact.lastName = last
+                contact.customName = [first, last].filter { !$0.isEmpty }.joined(separator: " ")
             }
             if var list = cached, let index = list.firstIndex(where: { $0.id == userId }) {
                 list[index] = contact
