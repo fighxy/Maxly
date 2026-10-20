@@ -955,16 +955,17 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         }
     }
 
-    public func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws(MaxlyError) {
-        if case .failure(let error) = await api.votePoll(chatId: chatId, messageId: messageId, pollId: pollId, answerId: answerId) {
-            throw error.maxlyError
+    public func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws(MaxlyError) -> PollCountUpdate {
+        switch await api.votePoll(chatId: chatId, messageId: messageId, pollId: pollId, answerId: answerId) {
+        case .success(let counts): return counts.update
+        case .failure(let error): throw error.maxlyError
         }
     }
 
     public func castVotes(chatId: String, messageId: String, pollId: String, answerIds: [String]) async throws(MaxlyError) -> PollCountUpdate {
         switch await api.castPollVotes(chatId: chatId, messageId: messageId, pollId: pollId, answerIds: answerIds) {
         case .success(let counts):
-            return PollCountUpdate(pollId: counts.pollId, total: counts.total, votes: counts.votes, multiple: counts.multiple)
+            return counts.update
         case .failure(let error):
             throw error.maxlyError
         }
@@ -974,7 +975,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         let refs = polls.map { CorePollRef(messageId: $0.messageId, pollId: $0.pollId) }
         switch await api.pollUpdates(chatId: chatId, polls: refs) {
         case .success(let counts):
-            return counts.map { PollCountUpdate(pollId: $0.pollId, total: $0.total, votes: $0.votes, multiple: $0.multiple) }
+            return counts.map(\.update)
         case .failure(let error):
             throw error.maxlyError
         }
@@ -988,13 +989,7 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             content.attachments = content.attachments.map { attachment in
                 guard case .poll(var poll) = attachment else { return attachment }
                 guard update.pollId.isEmpty || poll.id == update.pollId else { return attachment }
-                poll.total = update.total
-                poll.multiple = poll.multiple || update.multiple
-                poll.answers = poll.answers.map { answer in
-                    var next = answer
-                    if let votes = update.votes[answer.id] { next.votes = votes }
-                    return next
-                }
+                poll.apply(update)
                 changed = true
                 return .poll(poll)
             }

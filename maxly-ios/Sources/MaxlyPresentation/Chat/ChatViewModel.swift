@@ -2528,14 +2528,44 @@ public final class ChatViewModel {
         pinsFromList = true
     }
 
+    /// Опросы, голос в которых сейчас в пути: повторное нажатие не шлёт второй голос.
+    public private(set) var votingPolls: Set<String> = []
+    /// Сервер ответил `poll.already.voted`: больше голос в этот опрос не шлём.
+    public private(set) var alreadyVotedPolls: Set<String> = []
+
+    /// Голос в опрос можно отправить сейчас.
+    public func canVote(in poll: PollContent) -> Bool {
+        poll.canVote && !votingPolls.contains(poll.id) && !alreadyVotedPolls.contains(poll.id)
+    }
+
     public func vote(_ message: Message, answerId: String) async {
-        guard let poll = message.content.poll, let serverId = message.serverId ?? (Int64(message.id) != nil ? message.id : nil) else { return }
+        guard let poll = message.content.poll, !answerId.isEmpty,
+              let serverId = message.serverId ?? (Int64(message.id) != nil ? message.id : nil),
+              canVote(in: poll) else { return }
+        votingPolls.insert(poll.id)
+        defer { votingPolls.remove(poll.id) }
         do {
-            try await repository.votePoll(chatId: chatId, messageId: serverId, pollId: poll.id, answerId: answerId)
+            let update = try await repository.votePoll(chatId: chatId, messageId: serverId, pollId: poll.id, answerId: answerId)
+            await repository.applyPollCounts(chatId: chatId, messageId: message.id, update: update)
             error = nil
         } catch {
-            show(error)
+            await pollVoteFailed(error, message: message, serverId: serverId, pollId: poll.id)
         }
+    }
+
+    /// `poll.already.voted`: голос уже засчитан. Без повтора — свежий опрос с сервера и результаты.
+    private func pollVoteFailed(_ failure: MaxlyError, message: Message, serverId: String, pollId: String) async {
+        guard failure.isPollAlreadyVoted else {
+            show(failure)
+            return
+        }
+        error = nil
+        alreadyVotedPolls.insert(pollId)
+        if let updates = try? await repository.refreshPolls(chatId: chatId, polls: [(serverId, pollId)]),
+           let update = updates.first(where: { $0.pollId == pollId || $0.pollId.isEmpty }) {
+            await repository.applyPollCounts(chatId: chatId, messageId: message.id, update: update)
+        }
+        showNotice(MaxlyError.server(code: MaxlyError.pollAlreadyVotedCode, text: nil).userMessage ?? "")
     }
 
     public func sendPoll(title: String, answers: [String]) async {
@@ -2603,13 +2633,16 @@ public final class ChatViewModel {
     public func castVotes(_ message: Message, answerIds: [String]) async {
         let ids = answerIds.filter { !$0.isEmpty }
         guard let poll = message.content.poll, !ids.isEmpty,
-              let serverId = message.serverId ?? (Int64(message.id) != nil ? message.id : nil) else { return }
+              let serverId = message.serverId ?? (Int64(message.id) != nil ? message.id : nil),
+              canVote(in: poll) else { return }
+        votingPolls.insert(poll.id)
+        defer { votingPolls.remove(poll.id) }
         do {
             let update = try await repository.castVotes(chatId: chatId, messageId: serverId, pollId: poll.id, answerIds: ids)
             await repository.applyPollCounts(chatId: chatId, messageId: message.id, update: update)
             error = nil
         } catch {
-            show(error)
+            await pollVoteFailed(error, message: message, serverId: serverId, pollId: poll.id)
         }
     }
 

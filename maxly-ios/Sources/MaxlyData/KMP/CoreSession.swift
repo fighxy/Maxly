@@ -96,17 +96,30 @@ public struct CorePollRef: Sendable, Equatable {
     }
 }
 
-/// Счётчики опроса. `multiple` у обновления 306; у ответа на голос флага нет.
+/// Счётчики опроса. `multiple`, `revote`, `closed` у обновления 306; у ответа на голос флагов нет.
+/// `myAnswerIds` — ответы текущего пользователя (`nil`, если ядро о них не сообщило).
 public struct CorePollCounts: Sendable, Equatable {
     public var pollId: String
     public var total: Int
     public var votes: [String: Int]
     public var multiple: Bool
-    public init(pollId: String, total: Int, votes: [String: Int], multiple: Bool = false) {
+    public var myAnswerIds: [String]?
+    public var revote: Bool?
+    public var closed: Bool?
+    public init(pollId: String, total: Int, votes: [String: Int], multiple: Bool = false,
+                myAnswerIds: [String]? = nil, revote: Bool? = nil, closed: Bool? = nil) {
         self.pollId = pollId
         self.total = total
         self.votes = votes
         self.multiple = multiple
+        self.myAnswerIds = myAnswerIds
+        self.revote = revote
+        self.closed = closed
+    }
+
+    public var update: PollCountUpdate {
+        PollCountUpdate(pollId: pollId, total: total, votes: votes, multiple: multiple,
+                        myAnswerIds: myAnswerIds, revote: revote, closed: closed)
     }
 }
 
@@ -816,7 +829,7 @@ public protocol MaxCore: Sendable {
     func scheduleMessage(chatId: String, text: String, sendAtMs: Int64) async throws
     func scheduledMessages(chatId: String) async throws -> [CoreFoundMessage]
     func sendPoll(chatId: String, title: String, answers: [String]) async throws -> CoreMessage
-    func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws
+    func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws -> CorePollCounts
     /// Несколько ответов одного опроса (`SEND_VOTE` 304).
     func castPollVotes(chatId: String, messageId: String, pollId: String, answerIds: [String]) async throws -> CorePollCounts
     /// Счётчики видимых опросов (`GET_POLL_UPDATES` 306). Пуша со счётом нет.
@@ -1104,7 +1117,7 @@ public extension MaxCore {
     func scheduleMessage(chatId: String, text: String, sendAtMs: Int64) async throws { throw unsupported }
     func scheduledMessages(chatId: String) async throws -> [CoreFoundMessage] { throw unsupported }
     func sendPoll(chatId: String, title: String, answers: [String]) async throws -> CoreMessage { throw unsupported }
-    func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws { throw unsupported }
+    func votePoll(chatId: String, messageId: String, pollId: String, answerId: String) async throws -> CorePollCounts { throw unsupported }
     func castPollVotes(chatId: String, messageId: String, pollId: String, answerIds: [String]) async throws -> CorePollCounts { throw unsupported }
     func pollUpdates(chatId: String, polls: [CorePollRef]) async throws -> [CorePollCounts] { throw unsupported }
     func editScheduled(chatId: String, messageId: String, text: String, sendAtMs: Int64) async throws -> CoreFoundMessage { throw unsupported }

@@ -28,6 +28,7 @@ extension MaxlyError: LocalizedError {
         switch self {
         case .networkUnavailable: "Нет соединения с сервером"
         case .authExpired: "Сессия истекла, войдите снова"
+        case .server(let code, _) where code == Self.pollAlreadyVotedCode: "Вы уже проголосовали"
         case .server(_, let text?) where !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
             text.trimmingCharacters(in: .whitespacesAndNewlines)
         case .server(let code, _) where code == Self.rateLimitCode: "Сервер просит подождать: слишком много запросов"
@@ -43,6 +44,15 @@ extension MaxlyError: LocalizedError {
 }
 
 extension MaxlyError {
+    /// Ключ сервера на повторный голос в опросе без смены голоса.
+    public static let pollAlreadyVotedCode = "poll.already.voted"
+
+    /// Сервер уже засчитал голос текущего пользователя в этом опросе.
+    public var isPollAlreadyVoted: Bool {
+        if case .server(let code, _) = self { return code == Self.pollAlreadyVotedCode }
+        return false
+    }
+
     /// Текст для экрана. `nil` у отмены: её пользователю не показывают.
     public var userMessage: String? {
         self == .cancelled ? nil : errorDescription
@@ -60,6 +70,7 @@ extension MaxlyError {
     /// Повтор того же действия позже может пройти без участия пользователя.
     public var isTransient: Bool {
         switch self {
+        case .server(let code, _) where code == Self.pollAlreadyVotedCode: false
         case .networkUnavailable, .server, .syncFailed: true
         case .authExpired, .invalidRequest, .rejected, .storageError, .cancelled, .unknown: false
         }

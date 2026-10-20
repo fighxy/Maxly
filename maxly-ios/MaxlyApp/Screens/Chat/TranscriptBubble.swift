@@ -175,8 +175,10 @@ struct TranscriptBubble: View, Equatable {
                 : nil,
             onMarkUnread: viewModel.canMarkUnread(message) ? { viewModel.requestMarkUnread(message) } : nil,
             onInfo: state.showsInfo ? { [chatType = state.chatType] in viewModel.showMessageInfo(message, chatType: chatType) } : nil,
-            onVote: { answerId in Task { await viewModel.vote(message, answerId: answerId) } },
-            onCast: { ids in Task { await viewModel.castVotes(message, answerIds: ids) } },
+            onVote: message.content.poll.map(viewModel.canVote(in:)) ?? false
+                ? { answerId in Task { await viewModel.vote(message, answerId: answerId) } } : nil,
+            onCast: message.content.poll.map(viewModel.canVote(in:)) ?? false
+                ? { ids in Task { await viewModel.castVotes(message, answerIds: ids) } } : nil,
             onButton: { button in press(button) },
             onAuthor: state.chatType == .group ? { onAuthor(message) } : nil,
             onSelect: state.selectable ? { [reduceMotion] in
