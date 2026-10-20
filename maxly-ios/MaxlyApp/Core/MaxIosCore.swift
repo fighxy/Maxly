@@ -778,7 +778,9 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             isBot: contact.isBot,
             isOfficial: contact.isOfficial,
             isServiceAccount: contact.isServiceAccount,
-            presence: Int(contact.presence)
+            presence: Int(contact.presence),
+            isContact: contact.isContact,
+            customName: contact.customName
         )
     }
 
@@ -803,7 +805,9 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             presence: Int(profile.presence),
             // Оригинал и размеры для просмотра; у диалога — фото собеседника.
             photoURL: profile.avatarFullUrl,
-            photoViewerURLs: profile.avatarViewerUrls
+            photoViewerURLs: profile.avatarViewerUrls,
+            isContact: profile.isContact,
+            customName: profile.customName
         )
     }
 

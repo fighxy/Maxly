@@ -216,11 +216,18 @@ public struct CoreContact: Sendable, Equatable {
     public var isServiceAccount: Bool
     /// Код статуса (`-1` неизвестно, `0` не в сети, `1` в сети, `2` недавно, `3` давно).
     public var presence: Int
+    /// В контактах аккаунта (`isContact` ядра).
+    public var isContact: Bool
+    /// Своё имя контакта (`customName` ядра); пусто — нет.
+    public var customName: String
 
     public init(
         id: String, firstName: String, lastName: String, phone: String, avatarURL: String, lastSeenMs: Int64, online: Bool,
-        accountStatus: Int? = nil, isBot: Bool = false, isOfficial: Bool = false, isServiceAccount: Bool = false, presence: Int = -1
+        accountStatus: Int? = nil, isBot: Bool = false, isOfficial: Bool = false, isServiceAccount: Bool = false, presence: Int = -1,
+        isContact: Bool = false, customName: String = ""
     ) {
+        self.isContact = isContact
+        self.customName = customName
         self.id = id
         self.firstName = firstName
         self.lastName = lastName
@@ -274,14 +281,20 @@ public struct CoreProfile: Sendable, Equatable {
     public var commentsEnabled: Bool?
     /// Код статуса человека (`-1` неизвестно или не человек, `0`–`3` как у `CorePresence`).
     public var presence: Int
+    /// Человек в контактах аккаунта (`isContact` ядра).
+    public var isContact: Bool
+    /// Своё имя контакта (`customName` ядра); пусто — нет.
+    public var customName: String
 
     public init(
         kind: String, chatId: String, peerId: String = "", title: String = "", avatarURL: String = "",
         description: String = "", link: String = "", phone: String = "", participants: Int = 0,
         lastSeenMs: Int64 = 0, online: Bool = false, official: Bool = false, isPublic: Bool = false,
         commands: [Command] = [], hasWebApp: Bool = false, commentsEnabled: Bool? = nil, presence: Int = -1,
-        photoURL: String = "", photoViewerURLs: [String] = []
+        photoURL: String = "", photoViewerURLs: [String] = [], isContact: Bool = false, customName: String = ""
     ) {
+        self.isContact = isContact
+        self.customName = customName
         self.kind = kind
         self.photoURL = photoURL
         self.photoViewerURLs = photoViewerURLs

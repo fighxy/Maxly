@@ -121,7 +121,8 @@ enum CoreMapping {
             presence: presence,
             isBot: contact.isBot,
             isOfficial: contact.isOfficial,
-            isServiceAccount: contact.isServiceAccount
+            isServiceAccount: contact.isServiceAccount,
+            customName: contact.customName.trimmingCharacters(in: .whitespacesAndNewlines)
         )
     }
 
@@ -154,7 +155,9 @@ enum CoreMapping {
             isPublic: core.isPublic,
             commands: core.commands.map { ChatProfile.BotCommand(name: $0.name, description: text($0.description)) },
             hasWebApp: core.hasWebApp,
-            commentsEnabled: core.commentsEnabled
+            commentsEnabled: core.commentsEnabled,
+            isContact: core.isContact,
+            customName: core.customName
         )
     }
 

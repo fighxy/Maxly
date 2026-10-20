@@ -28,6 +28,9 @@ public struct Contact: Identifiable, Hashable, Sendable {
     public var isOfficial: Bool
     /// Опция `SERVICE_ACCOUNT`.
     public var isServiceAccount: Bool
+    /// Имя, которое аккаунт сам дал контакту (`customName` ядра); пусто — своего имени нет
+    /// и показывается имя, которое указал человек.
+    public var customName: String
 
     public init(
         id: String,
@@ -38,7 +41,8 @@ public struct Contact: Identifiable, Hashable, Sendable {
         presence: Presence = .unknown,
         isBot: Bool = false,
         isOfficial: Bool = false,
-        isServiceAccount: Bool = false
+        isServiceAccount: Bool = false,
+        customName: String = ""
     ) {
         self.id = id
         self.firstName = firstName
@@ -49,6 +53,7 @@ public struct Contact: Identifiable, Hashable, Sendable {
         self.isBot = isBot
         self.isOfficial = isOfficial
         self.isServiceAccount = isServiceAccount
+        self.customName = customName
     }
 
     /// Имя для списка: имя и фамилия, иначе телефон.
