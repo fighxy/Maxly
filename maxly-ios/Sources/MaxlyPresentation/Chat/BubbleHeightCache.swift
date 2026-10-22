@@ -27,7 +27,8 @@ public final class BubbleHeightCache: @unchecked Sendable {
     private let lock = NSLock()
 
     /// Точная высота текста (points). Ставит MaxlyUI `BubbleTextMeasurer.installAsHeightProvider`.
-    public static var textHeightProvider: (@Sendable (String, Double) -> Double)?
+    /// Меняется только при старте приложения / в тестах — как `Log.sink`.
+    nonisolated(unsafe) public static var textHeightProvider: (@Sendable (String, Double) -> Double)?
 
     public init() {}
 

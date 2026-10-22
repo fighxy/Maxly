@@ -357,12 +357,32 @@ final class CommentsCollectionController: UIViewController {
             Color.clear.frame(height: 1)
         case .post:
             if let post {
+                let reveal = coordinator?.parent.reveal
+                let reduceMotion = coordinator?.parent.reduceMotion ?? false
                 VStack(spacing: 6) {
-                    MessageBubble(
-                        message: post,
-                        isOutgoing: false,
-                        maxWidth: width * MaxlyTheme.bubbleMax,
-                        allowsReactions: false
+                    PrivateBubbleGate(
+                        isRevealed: reveal?.isRevealed(post.id) ?? true,
+                        accessibilityText: PrivateModeMask.messageText(for: post, outgoing: false),
+                        onReveal: {
+                            guard let reveal else { return }
+                            withAnimation(MaxlyMotion.quick(reduceMotion: reduceMotion)) { reveal.reveal(post.id) }
+                        },
+                        real: {
+                            MessageBubble(
+                                message: post,
+                                isOutgoing: false,
+                                maxWidth: width * MaxlyTheme.bubbleMax,
+                                allowsReactions: false
+                            )
+                        },
+                        masked: {
+                            MessageBubble(
+                                message: PrivateModeMask.message(post, outgoing: false),
+                                isOutgoing: false,
+                                maxWidth: width * MaxlyTheme.bubbleMax,
+                                allowsReactions: false
+                            )
+                        }
                     )
                     DaySeparator("Начало обсуждения")
                 }
