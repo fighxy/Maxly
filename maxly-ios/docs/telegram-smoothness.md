@@ -6,7 +6,7 @@
 
 | Слой | Суть | Статус в этой ветке |
 |---|---|---|
-| **A. Движок ленты** | `UICollectionView` + recycling + кэш высот вместо `LazyVStack` | Движок `TranscriptCollectionFeed` готов; включение через `UserDefaults` `maxly.transcript.feed` = `collection` после QA на устройстве |
+| **A. Движок ленты** | `UICollectionView` + recycling + кэш высот вместо `LazyVStack` | `TranscriptCollectionFeed` по умолчанию; откат: `UserDefaults` `maxly.transcript.feed` = `lazyStack` |
 | **B. Ужесточение рендера** | Decode-ahead картинок, кэш высот, реже геометрия на главном | Включено |
 | **C. Данные / сеть** | Prefetch истории за ~20 строк до верха (как Android `PAGE_TRIGGER`) | Включено |
 | **D. UX motion** | «Полёт» своего пузыря из поля ввода (`maxlyComposerFlight`) | Включено |
@@ -21,9 +21,9 @@
 - Клавиатура: `keyboardDismissMode = .interactive`.
 - Команды прокрутки — через `scrollToItem`, тот же `TranscriptScrollController`.
 
-Переключение: `UserDefaults` ключ `maxly.transcript.feed` → `collection` | `lazyStack` (сейчас по умолчанию `lazyStack`, пока collection не пройдёт QA).
+Переключение: `UserDefaults` ключ `maxly.transcript.feed` → `collection` (дефолт) | `lazyStack` (откат).
 
-Проверка на устройстве перед сменой дефолта: открытие на unread, preload сверху, jump к цитате, follow bottom при новом, Reduce Motion, длинный чат 5k+.
+Регрессии на устройстве: открытие на unread, preload сверху, jump к цитате, follow bottom при новом, Reduce Motion, длинный чат 5k+.
 
 ## B — Рендер
 
