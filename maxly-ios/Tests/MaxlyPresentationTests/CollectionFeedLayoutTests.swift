@@ -11,8 +11,8 @@ struct CollectionFeedLayoutTests {
         let long = row(text: String(repeating: "слово ", count: 40))
         let rows = [short, long]
         let cache = BubbleHeightCache()
-        let newest = CollectionFeedLayout.height(displayIndex: 0, chronological: rows, maxWidth: 280, cache: cache)
-        let older = CollectionFeedLayout.height(displayIndex: 1, chronological: rows, maxWidth: 280, cache: cache)
+        let older = CollectionFeedLayout.height(index: 0, chronological: rows, maxWidth: 280, cache: cache)
+        let newest = CollectionFeedLayout.height(index: 1, chronological: rows, maxWidth: 280, cache: cache)
         #expect(newest != nil)
         #expect(older != nil)
         #expect(newest! > older!)
@@ -25,8 +25,8 @@ struct CollectionFeedLayoutTests {
         let rows = [short, long]
         let cache = BubbleHeightCache()
         cache.store(id: short.id, height: 400)
-        let newest = CollectionFeedLayout.height(displayIndex: 0, chronological: rows, maxWidth: 280, cache: cache)
-        let older = CollectionFeedLayout.height(displayIndex: 1, chronological: rows, maxWidth: 280, cache: cache)
+        let older = CollectionFeedLayout.height(index: 0, chronological: rows, maxWidth: 280, cache: cache)
+        let newest = CollectionFeedLayout.height(index: 1, chronological: rows, maxWidth: 280, cache: cache)
         #expect(older == 400)
         #expect(newest != 400)
     }

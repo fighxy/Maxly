@@ -24,12 +24,11 @@ final class MeasuredHostingCell: UICollectionViewCell {
     private var measureAttempts = 0
     private var measuring = false
 
-    static let invert = CGAffineTransform(scaleX: 1, y: -1)
-
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = .clear
-        transform = Self.invert
+        clipsToBounds = false
+        contentView.clipsToBounds = false
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -39,13 +38,6 @@ final class MeasuredHostingCell: UICollectionViewCell {
         measureAttempts = 0
         measuring = false
         onMeasuredHeight = nil
-        transform = Self.invert
-    }
-
-    override func apply(_ layoutAttributes: UICollectionViewLayoutAttributes) {
-        super.apply(layoutAttributes)
-        // Атрибуты сбрасывают transform в identity и переворачивают текст.
-        transform = Self.invert
     }
 
     func resetMeasurement() {
@@ -64,118 +56,32 @@ final class MeasuredHostingCell: UICollectionViewCell {
         measuring = false
         measureAttempts += 1
         let delta = abs(fitted.height - bounds.height)
-        guard fitted.height > 8, fitted.height < 2500, delta > 2 else { return }
-        // Безумный fitting (хост на всю высоту экрана) не должен затирать оценку TextKit.
-        guard fitted.height < max(bounds.height * 2.5, bounds.height + 220) else {
-            measureAttempts = 3
-            return
-        }
+        // Длинный пост канала выше оценки в разы. Режем только безумный fitting.
+        guard fitted.height > 8, fitted.height < 4000, delta > 2 else { return }
         measureAttempts = 3
         onMeasuredHeight?(fitted.height)
     }
 }
 
-/// UICollectionView с `scaleY(-1)`: системный индикатор тоже переворачивается,
-/// VoiceOver без правки читает снизу вверх.
-final class InvertedCollectionView: UICollectionView {
-    override init(frame: CGRect, collectionViewLayout layout: UICollectionViewLayout) {
-        super.init(frame: frame, collectionViewLayout: layout)
-        showsVerticalScrollIndicator = false
-        showsHorizontalScrollIndicator = false
-        contentInsetAdjustmentBehavior = .never
-        insetsLayoutMarginsFromSafeArea = false
-        keyboardDismissMode = .interactive
-        scrollsToTop = false
-        alwaysBounceVertical = true
-        backgroundColor = .clear
+@MainActor
+enum FeedScroll {
+    /// Расстояние до низа ленты. Отрицательное — контент короче экрана.
+    static func distanceFromBottom(_ scroll: UIScrollView) -> CGFloat {
+        let inset = scroll.adjustedContentInset
+        let maxY = scroll.contentSize.height - scroll.bounds.height + inset.bottom
+        return maxY - scroll.contentOffset.y
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    override func accessibilityElementCount() -> Int {
-        indexPathsForVisibleItems.count
+    static func isNearBottom(_ scroll: UIScrollView, slack: CGFloat = 64) -> Bool {
+        guard scroll.bounds.height > 1, scroll.contentSize.height > 1 else { return true }
+        return distanceFromBottom(scroll) < slack
     }
 
-    override func accessibilityElement(at index: Int) -> Any? {
-        let ordered = InvertedAccessibilityOrder.topToBottom(visibleFeedPaths())
-        guard ordered.indices.contains(index) else { return nil }
-        let path = ordered[index]
-        return cellForItem(at: IndexPath(item: path.item, section: path.section))
-    }
-
-    override func index(ofAccessibilityElement element: Any) -> Int {
-        let ordered = InvertedAccessibilityOrder.topToBottom(visibleFeedPaths())
-        guard let cell = element as? UIView else { return NSNotFound }
-        return ordered.firstIndex { path in
-            cellForItem(at: IndexPath(item: path.item, section: path.section)) === cell
-        } ?? NSNotFound
-    }
-
-    override func accessibilityScroll(_ direction: UIAccessibilityScrollDirection) -> Bool {
-        let page = bounds.height * 0.85
-        let delta: CGFloat
-        switch direction {
-        case .up:
-            delta = page
-        case .down:
-            delta = -page
-        default:
-            return super.accessibilityScroll(direction)
-        }
-        let minY = -adjustedContentInset.top
-        let maxY = max(minY, contentSize.height - bounds.height + adjustedContentInset.bottom)
-        let y = min(maxY, max(minY, contentOffset.y + delta))
-        guard abs(y - contentOffset.y) > 1 else { return false }
-        setContentOffset(CGPoint(x: contentOffset.x, y: y), animated: false)
-        UIAccessibility.post(notification: .layoutChanged, argument: nil)
-        return true
-    }
-
-    private func visibleFeedPaths() -> [FeedIndexPath] {
-        indexPathsForVisibleItems.map { FeedIndexPath(section: $0.section, item: $0.item) }
-    }
-}
-
-/// Индикатор рисуется в координатах контроллера, не внутри перевёрнутой коллекции.
-final class InvertedScrollThumb: UIView {
-    private let thumb = UIView()
-    private var fade: DispatchWorkItem?
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        isUserInteractionEnabled = false
-        isAccessibilityElement = false
-        accessibilityElementsHidden = true
-        backgroundColor = .clear
-        thumb.backgroundColor = UIColor.label.withAlphaComponent(0.35)
-        thumb.layer.cornerRadius = 1.5
-        addSubview(thumb)
-        alpha = 0
-    }
-
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    func sync(with scroll: UIScrollView, active: Bool) {
-        let frame = InvertedThumbFrame.make(
-            offset: Double(scroll.contentOffset.y),
-            content: Double(scroll.contentSize.height),
-            viewport: Double(scroll.bounds.height),
-            track: Double(bounds.height)
-        )
-        guard !frame.hidden else {
-            alpha = 0
-            thumb.frame = .zero
-            return
-        }
-        thumb.frame = CGRect(x: bounds.width - 5, y: frame.y, width: 3, height: frame.height)
-        guard active else { return }
-        fade?.cancel()
-        alpha = 1
-        let work = DispatchWorkItem { [weak self] in
-            UIView.animate(withDuration: 0.25) { self?.alpha = 0 }
-        }
-        fade = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: work)
+    static func pinToBottom(_ scroll: UIScrollView) {
+        guard scroll.bounds.height > 1 else { return }
+        let inset = scroll.adjustedContentInset
+        let y = scroll.contentSize.height - scroll.bounds.height + inset.bottom
+        scroll.contentOffset.y = max(-inset.top, y)
     }
 }
 
@@ -231,15 +137,14 @@ final class MeasuredLayoutCommit {
 
 @MainActor
 enum InvertedCollectionChrome {
-    /// Клавиатура и шапка уже сидят в safe area SwiftUI. Автоинсет у flip
-    /// приезжает не с той стороны и прячет новые сообщения под композером.
-    static func pinVisualBottomIfNeeded(
+    /// Клавиатура уже сжимает ленту через safe area SwiftUI.
+    static func pinBottomIfNeeded(
         _ collection: UICollectionView,
         nearBottom: Bool,
         heightChanged: Bool
     ) {
         guard nearBottom, heightChanged else { return }
-        collection.contentOffset.y = -collection.adjustedContentInset.top
+        FeedScroll.pinToBottom(collection)
     }
 
     static func compensateOffset(

@@ -4,11 +4,7 @@ import MaxlyDomain
 import MaxlyPresentation
 import MaxlyUI
 
-/// Лента на UICollectionView: recycling, высота каждой строки из кэша, перевёрнутая ось (новое у низа как index 0).
-///
-/// `transform = scaleY(-1)` на коллекции и ячейках: в data source новее сообщения первыми,
-/// визуально они у низа; вставка нового не сдвигает offset старых. Геометрию и «вниз»
-/// считаем в экранных координатах после transform.
+/// Лента на UICollectionView: старое сверху, новое снизу, у каждой строки своя высота.
 struct TranscriptCollectionFeed: UIViewControllerRepresentable {
     @Bindable var viewModel: ChatViewModel
     let rows: [TranscriptRow]
@@ -87,7 +83,8 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
                 heightCache: heightCache,
                 animate: animate,
                 header: headerKind(feed),
-                footerLoading: feed.isJumped
+                footerLoading: feed.isJumped,
+                preferBottom: feed.isOpening || feed.scrollRequest?.latest == true
             )
             if let request = feed.scrollRequest, request.token != lastRequestToken {
                 lastRequestToken = request.token
@@ -122,7 +119,6 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
         }
 
         func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
-            cell.transform = TranscriptCollectionController.invertTransform
             sampleGeometry(force: false)
         }
 
@@ -136,20 +132,19 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
             let y = scrollView.contentOffset.y
-            // После scaleY(-1) рост offset ведёт к визуальному верху (старое).
             if abs(y - lastOffsetY) > 1 {
-                scrollingTowardOlder = y > lastOffsetY
+                scrollingTowardOlder = y < lastOffsetY
                 lastOffsetY = y
             }
             reportBottom(scrollView)
             sampleGeometry(force: false)
             updateTopVisible()
             scheduleImagePrefetch(force: false)
-            controller?.noteScroll()
         }
 
         func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
             userDragging = true
+            controller?.releaseBottomPin()
             parent.onUserScroll(true, true)
         }
 
@@ -171,7 +166,6 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
             let state = parent.snapshot(row)
             let reduceMotion = parent.reduceMotion
             let outgoing = row.isOutgoing
-            cell.transform = TranscriptCollectionController.invertTransform
             cell.contentConfiguration = UIHostingConfiguration {
                 TranscriptBubble(
                     state: state,
@@ -237,10 +231,8 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
                 parent.onBottomDistance(distance, Double(viewport.height))
                 return
             }
-            let inset = scrollView.adjustedContentInset
-            // Inverted: «низ» ≈ маленький offset.
-            let distance = max(0, Double(scrollView.contentOffset.y + inset.top))
-            parent.onBottomDistance(distance, Double(scrollView.bounds.height - inset.top - inset.bottom))
+            let distance = max(0, Double(FeedScroll.distanceFromBottom(scrollView)))
+            parent.onBottomDistance(distance, Double(scrollView.bounds.height))
         }
 
         private func updateTopVisible() {
@@ -302,11 +294,10 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
 
 @MainActor
 final class TranscriptCollectionController: UIViewController {
-    /// После `scaleY(-1)` первая секция — у визуального низа, последняя — у верха.
-    static let newerSection = 0
+    /// Сверху история, снизу новые сообщения.
+    static let olderSection = 0
     static let rowsSection = 1
-    static let olderSection = 2
-    static let invertTransform = CGAffineTransform(scaleX: 1, y: -1)
+    static let newerSection = 2
 
     enum HeaderKind: Equatable {
         case none
@@ -325,10 +316,10 @@ final class TranscriptCollectionController: UIViewController {
     private var footerLoading = false
     private var feedInset: CGFloat = 8
     private weak var heightCache: BubbleHeightCache?
-    private let scrollThumb = InvertedScrollThumb()
     private var measuredChrome: [String: CGFloat] = [:]
     private var lastLayoutWidth: CGFloat = 0
     private var lastBoundsHeight: CGFloat = 0
+    private var pendingBottomPin = false
     private lazy var commit = MeasuredLayoutCommit { [weak self] batch in
         self?.applyMeasured(batch)
     }
@@ -348,12 +339,15 @@ final class TranscriptCollectionController: UIViewController {
         flow.minimumInteritemSpacing = 0
         flow.minimumLineSpacing = 0
         flow.estimatedItemSize = .zero
-        let collection = InvertedCollectionView(frame: view.bounds, collectionViewLayout: flow)
+        let collection = UICollectionView(frame: view.bounds, collectionViewLayout: flow)
         collection.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        collection.transform = Self.invertTransform
+        collection.backgroundColor = .clear
+        collection.alwaysBounceVertical = true
+        collection.keyboardDismissMode = .interactive
+        collection.contentInsetAdjustmentBehavior = .never
+        collection.insetsLayoutMarginsFromSafeArea = false
         collection.delegate = coordinator
         view.addSubview(collection)
-        view.addSubview(scrollThumb)
         collectionView = collection
         configureDataSource()
     }
@@ -361,25 +355,26 @@ final class TranscriptCollectionController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         guard let collectionView else { return }
-        let nearBottom = collectionView.contentOffset.y + collectionView.adjustedContentInset.top < 64
+        let nearBottom = FeedScroll.isNearBottom(collectionView)
         let heightChanged = lastBoundsHeight > 0 && abs(view.bounds.height - lastBoundsHeight) > 0.5
         lastBoundsHeight = view.bounds.height
         collectionView.frame = view.bounds
-        scrollThumb.frame = view.bounds
         if resetHeightsForWidth(view.bounds.width) {
             collectionView.collectionViewLayout.invalidateLayout()
         }
-        InvertedCollectionChrome.pinVisualBottomIfNeeded(
+        InvertedCollectionChrome.pinBottomIfNeeded(
             collectionView,
             nearBottom: nearBottom,
             heightChanged: heightChanged
         )
-        scrollThumb.sync(with: collectionView, active: false)
+        if pendingBottomPin, collectionView.bounds.height > 1, collectionView.contentSize.height > 1 {
+            FeedScroll.pinToBottom(collectionView)
+            pendingBottomPin = false
+        }
     }
 
-    func noteScroll() {
-        guard let collectionView else { return }
-        scrollThumb.sync(with: collectionView, active: true)
+    func releaseBottomPin() {
+        pendingBottomPin = false
     }
 
     func setRows(
@@ -388,41 +383,55 @@ final class TranscriptCollectionController: UIViewController {
         heightCache: BubbleHeightCache,
         animate: Bool,
         header: HeaderKind,
-        footerLoading: Bool
+        footerLoading: Bool,
+        preferBottom: Bool
     ) {
+        let collection = collectionView
+        let wasNearBottom = collection.map { FeedScroll.isNearBottom($0) } ?? false
+        let beforeHeight = collection?.contentSize.height ?? 0
+        let beforeOffset = collection?.contentOffset.y ?? 0
+        let beforeFirst = self.rows.first?.id
+        let hadRows = !self.rows.isEmpty
         self.rows = rows
         self.feedInset = feedInset
         self.heightCache = heightCache
         self.header = header
         self.footerLoading = footerLoading
         var snapshot = NSDiffableDataSourceSnapshot<Int, Item>()
-        snapshot.appendSections([Self.newerSection, Self.rowsSection, Self.olderSection])
-        // newerSection → визуальный низ: jump-loader или пустой слот.
-        if footerLoading {
-            snapshot.appendItems([.newer], toSection: Self.newerSection)
-        } else {
-            snapshot.appendItems([.chromeEmpty], toSection: Self.newerSection)
-        }
-        // В data source новее первыми (index 0 у визуального низа после invert).
-        snapshot.appendItems(rows.reversed().map { .row($0.id) }, toSection: Self.rowsSection)
-        // olderSection → визуальный верх.
+        snapshot.appendSections([Self.olderSection, Self.rowsSection, Self.newerSection])
         if header != .none {
             snapshot.appendItems([.older], toSection: Self.olderSection)
         } else {
             snapshot.appendItems([.chromeEmpty], toSection: Self.olderSection)
         }
-        dataSource.apply(snapshot, animatingDifferences: animate)
-        collectionView?.collectionViewLayout.invalidateLayout()
+        snapshot.appendItems(rows.map { .row($0.id) }, toSection: Self.rowsSection)
+        if footerLoading {
+            snapshot.appendItems([.newer], toSection: Self.newerSection)
+        } else {
+            snapshot.appendItems([.chromeEmpty], toSection: Self.newerSection)
+        }
+        dataSource.apply(snapshot, animatingDifferences: animate && hadRows)
+        let shouldPin = wasNearBottom || (preferBottom && !hadRows)
+        pendingBottomPin = shouldPin
+        guard let collection, collection.bounds.height > 1 else { return }
+        collection.collectionViewLayout.invalidateLayout()
+        collection.layoutIfNeeded()
+        let grew = collection.contentSize.height - beforeHeight
+        let prepended = hadRows && rows.first?.id != beforeFirst
+        if shouldPin {
+            FeedScroll.pinToBottom(collection)
+            pendingBottomPin = false
+        } else if prepended, grew > 1 {
+            collection.contentOffset.y = beforeOffset + grew
+        }
     }
 
     func displayIndex(for id: String) -> Int? {
-        guard let chrono = rows.firstIndex(where: { $0.id == id }) else { return nil }
-        return rows.count - 1 - chrono
+        rows.firstIndex(where: { $0.id == id })
     }
 
     func chronologicalIndex(display: Int) -> Int? {
-        guard rows.indices.contains(display) else { return nil }
-        return rows.count - 1 - display
+        rows.indices.contains(display) ? display : nil
     }
 
     func row(atDisplayIndex display: Int) -> TranscriptRow? {
@@ -453,12 +462,11 @@ final class TranscriptCollectionController: UIViewController {
     ) async -> Bool {
         guard let collectionView, let display = displayIndex(for: id) else { return false }
         let indexPath = IndexPath(item: display, section: Self.rowsSection)
-        // После invert .top в координатах коллекции ≈ визуальный низ.
         let position: UICollectionView.ScrollPosition
         if latest || anchor >= 0.85 {
-            position = .top
-        } else if anchor <= 0.15 {
             position = .bottom
+        } else if anchor <= 0.15 {
+            position = .top
         } else {
             position = .centeredVertically
         }
@@ -506,7 +514,7 @@ final class TranscriptCollectionController: UIViewController {
         default:
             let maxWidth = Double(min(520, itemWidth * MaxlyTheme.bubbleMax))
             let resolved = CollectionFeedLayout.height(
-                displayIndex: indexPath.item,
+                index: indexPath.item,
                 chronological: rows,
                 maxWidth: maxWidth,
                 cache: heightCache ?? BubbleHeightCache()
@@ -589,7 +597,6 @@ final class TranscriptCollectionController: UIViewController {
                 collectionView.contentOffset.y = offset + compensate
             }
         }
-        scrollThumb.sync(with: collectionView, active: false)
     }
 
     private func configureDataSource() {

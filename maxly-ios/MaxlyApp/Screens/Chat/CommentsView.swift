@@ -7,8 +7,7 @@ import MaxlyUI
 /// внизу поле ввода. Кнопка «Закрыть» в навигационной панели.
 /// В приватном режиме пост и комментарии закрыты, как пузыри чата, и открываются касанием.
 ///
-/// Лента — тот же UICollectionView-движок, что у чата (`CommentsCollectionFeed`: invert,
-/// кэш высот, prefetch картинок).
+/// Лента — тот же UICollectionView-движок, что у чата: старое сверху, новое снизу.
 struct CommentsView: View {
     @Bindable var model: CommentsViewModel
     let onClose: () -> Void

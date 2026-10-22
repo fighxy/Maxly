@@ -4,7 +4,7 @@ import MaxlyDomain
 import MaxlyPresentation
 import MaxlyUI
 
-/// Комментарии на том же движке, что и чат: UICollectionView + invert + кэш высот.
+/// Комментарии на том же движке, что и чат: старое сверху, новое снизу.
 struct CommentsCollectionFeed: UIViewControllerRepresentable {
     @Bindable var model: CommentsViewModel
     let width: CGFloat
@@ -58,7 +58,8 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
                 emptyText: feed.model.emptyText,
                 width: feed.width,
                 heightCache: heightCache,
-                animate: feed.atBottom.wrappedValue && feed.model.commentsChange.animatesTranscript
+                animate: feed.atBottom.wrappedValue && feed.model.commentsChange.animatesTranscript,
+                preferBottom: feed.atBottom.wrappedValue
             )
             schedulePrefetch(rows: rows, force: true)
         }
@@ -78,7 +79,6 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
         }
 
         func configure(_ cell: UICollectionViewCell, row: TranscriptRow) {
-            cell.transform = TranscriptCollectionController.invertTransform
             let model = parent.model
             let reveal = parent.reveal
             let reduceMotion = parent.reduceMotion
@@ -103,20 +103,22 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
         }
 
         func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
-            cell.transform = TranscriptCollectionController.invertTransform
             if indexPath.section == CommentsCollectionController.olderSection {
                 Task { await parent.model.loadOlder() }
             }
         }
 
+        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+            controller?.releaseBottomPin()
+        }
+
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
             let y = scrollView.contentOffset.y
             if abs(y - lastOffsetY) > 1 {
-                scrollingTowardOlder = y > lastOffsetY
+                scrollingTowardOlder = y < lastOffsetY
                 lastOffsetY = y
             }
             updateAtBottom(scrollView)
-            controller?.noteScroll()
             if let controller,
                let rows = controller.currentRows {
                 schedulePrefetch(rows: rows, force: false)
@@ -124,9 +126,7 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
         }
 
         private func updateAtBottom(_ scrollView: UIScrollView) {
-            // Inverted: низ ≈ маленький offset.
-            let inset = scrollView.adjustedContentInset
-            let distance = scrollView.contentOffset.y + inset.top
+            let distance = FeedScroll.distanceFromBottom(scrollView)
             let next = distance < (parent.atBottom.wrappedValue ? 64 : 24)
             if next != parent.atBottom.wrappedValue {
                 parent.atBottom.wrappedValue = next
@@ -247,9 +247,9 @@ private struct CommentsCollectionCell: View {
 
 @MainActor
 final class CommentsCollectionController: UIViewController {
-    static let newerSection = 0
+    static let olderSection = 0
     static let rowsSection = 1
-    static let olderSection = 2
+    static let newerSection = 2
 
     private(set) var collectionView: UICollectionView!
     weak var coordinator: CommentsCollectionFeed.Coordinator?
@@ -263,10 +263,10 @@ final class CommentsCollectionController: UIViewController {
     private var width: CGFloat = 0
     private weak var heightCache: BubbleHeightCache?
     private var sectionItems: [Int: [Item]] = [:]
-    private let scrollThumb = InvertedScrollThumb()
     private var measuredChrome: [String: CGFloat] = [:]
     private var lastLayoutWidth: CGFloat = 0
     private var lastBoundsHeight: CGFloat = 0
+    private var pendingBottomPin = false
     private lazy var commit = MeasuredLayoutCommit { [weak self] batch in
         self?.applyMeasured(batch)
     }
@@ -291,12 +291,15 @@ final class CommentsCollectionController: UIViewController {
         flow.minimumInteritemSpacing = 0
         flow.minimumLineSpacing = 0
         flow.estimatedItemSize = .zero
-        let collection = InvertedCollectionView(frame: view.bounds, collectionViewLayout: flow)
+        let collection = UICollectionView(frame: view.bounds, collectionViewLayout: flow)
         collection.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        collection.transform = TranscriptCollectionController.invertTransform
+        collection.backgroundColor = .clear
+        collection.alwaysBounceVertical = true
+        collection.keyboardDismissMode = .interactive
+        collection.contentInsetAdjustmentBehavior = .never
+        collection.insetsLayoutMarginsFromSafeArea = false
         collection.delegate = coordinator
         view.addSubview(collection)
-        view.addSubview(scrollThumb)
         collectionView = collection
         configureDataSource()
     }
@@ -304,25 +307,26 @@ final class CommentsCollectionController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         guard let collectionView else { return }
-        let nearBottom = collectionView.contentOffset.y + collectionView.adjustedContentInset.top < 64
+        let nearBottom = FeedScroll.isNearBottom(collectionView)
         let heightChanged = lastBoundsHeight > 0 && abs(view.bounds.height - lastBoundsHeight) > 0.5
         lastBoundsHeight = view.bounds.height
         collectionView.frame = view.bounds
-        scrollThumb.frame = view.bounds
         if resetHeightsForWidth(view.bounds.width) {
             collectionView.collectionViewLayout.invalidateLayout()
         }
-        InvertedCollectionChrome.pinVisualBottomIfNeeded(
+        InvertedCollectionChrome.pinBottomIfNeeded(
             collectionView,
             nearBottom: nearBottom,
             heightChanged: heightChanged
         )
-        scrollThumb.sync(with: collectionView, active: false)
+        if pendingBottomPin, collectionView.bounds.height > 1, collectionView.contentSize.height > 1 {
+            FeedScroll.pinToBottom(collectionView)
+            pendingBottomPin = false
+        }
     }
 
-    func noteScroll() {
-        guard let collectionView else { return }
-        scrollThumb.sync(with: collectionView, active: true)
+    func releaseBottomPin() {
+        pendingBottomPin = false
     }
 
     func setContent(
@@ -334,8 +338,15 @@ final class CommentsCollectionController: UIViewController {
         emptyText: String?,
         width: CGFloat,
         heightCache: BubbleHeightCache,
-        animate: Bool
+        animate: Bool,
+        preferBottom: Bool
     ) {
+        let collection = collectionView
+        let wasNearBottom = collection.map { FeedScroll.isNearBottom($0) } ?? preferBottom
+        let beforeHeight = collection?.contentSize.height ?? 0
+        let beforeOffset = collection?.contentOffset.y ?? 0
+        let beforeFirst = currentRows?.first?.id
+        let hadRows = !(currentRows ?? []).isEmpty
         self.post = post
         self.currentRows = rows
         self.state = state
@@ -349,25 +360,37 @@ final class CommentsCollectionController: UIViewController {
         case .loading, .failed:
             rowItems = [.status]
         case .loaded:
-            rowItems = rows.reversed().map { .row($0.id) }
+            rowItems = rows.map { .row($0.id) }
             if let emptyText, rows.isEmpty {
                 rowItems.append(.status)
             }
         }
         var older: [Item] = [.post]
-        if hasMore { older.insert(.older, at: 0) }
+        if hasMore { older.append(.older) }
         sectionItems = [
-            Self.newerSection: [.spacer],
-            Self.rowsSection: rowItems,
             Self.olderSection: older,
+            Self.rowsSection: rowItems,
+            Self.newerSection: [.spacer],
         ]
         var snapshot = NSDiffableDataSourceSnapshot<Int, Item>()
-        snapshot.appendSections([Self.newerSection, Self.rowsSection, Self.olderSection])
-        snapshot.appendItems(sectionItems[Self.newerSection] ?? [], toSection: Self.newerSection)
-        snapshot.appendItems(rowItems, toSection: Self.rowsSection)
+        snapshot.appendSections([Self.olderSection, Self.rowsSection, Self.newerSection])
         snapshot.appendItems(older, toSection: Self.olderSection)
-        dataSource.apply(snapshot, animatingDifferences: animate)
-        collectionView?.collectionViewLayout.invalidateLayout()
+        snapshot.appendItems(rowItems, toSection: Self.rowsSection)
+        snapshot.appendItems([.spacer], toSection: Self.newerSection)
+        dataSource.apply(snapshot, animatingDifferences: animate && hadRows)
+        let shouldPin = wasNearBottom || (preferBottom && !hadRows)
+        pendingBottomPin = shouldPin
+        guard let collection, collection.bounds.height > 1 else { return }
+        collection.collectionViewLayout.invalidateLayout()
+        collection.layoutIfNeeded()
+        let grew = collection.contentSize.height - beforeHeight
+        let prepended = hadRows && rows.first?.id != beforeFirst
+        if shouldPin {
+            FeedScroll.pinToBottom(collection)
+            pendingBottomPin = false
+        } else if prepended, grew > 1 {
+            collection.contentOffset.y = beforeOffset + grew
+        }
     }
 
     func sizeForItem(at indexPath: IndexPath, containerWidth: CGFloat) -> CGSize {
@@ -388,9 +411,9 @@ final class CommentsCollectionController: UIViewController {
             height = measuredChrome["post"] ?? estimatedPostHeight()
         case .row(let id):
             let chrono = currentRows ?? []
-            let display = chrono.firstIndex(where: { $0.id == id }).map { chrono.count - 1 - $0 } ?? indexPath.item
+            let index = chrono.firstIndex(where: { $0.id == id }) ?? indexPath.item
             let resolved = CollectionFeedLayout.height(
-                displayIndex: display,
+                index: index,
                 chronological: chrono,
                 maxWidth: Double(width * MaxlyTheme.bubbleMax),
                 cache: heightCache ?? BubbleHeightCache()
@@ -468,7 +491,6 @@ final class CommentsCollectionController: UIViewController {
                 collectionView.contentOffset.y = offset + compensate
             }
         }
-        scrollThumb.sync(with: collectionView, active: false)
     }
 
     private func configureDataSource() {
