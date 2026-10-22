@@ -30,15 +30,18 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     @MainActor
-    final class Coordinator: NSObject, UICollectionViewDelegate {
+    final class Coordinator: NSObject, UICollectionViewDelegateFlowLayout {
         var parent: CommentsCollectionFeed
         weak var controller: CommentsCollectionController?
         private var heightCache = BubbleHeightCache()
         private var lastOffsetY: CGFloat = 0
         private var scrollingTowardOlder = false
         private var lastPrefetchKey = ""
+        private let prewarmEpoch = PrewarmEpoch()
 
         init(_ parent: CommentsCollectionFeed) { self.parent = parent }
+
+        func cancelPrewarm() { _ = prewarmEpoch.next() }
 
         func apply(_ feed: CommentsCollectionFeed) {
             guard let controller else { return }
@@ -63,8 +66,11 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
         private func prewarm(_ rows: [TranscriptRow], width: CGFloat) {
             let maxWidth = Double(width * MaxlyTheme.bubbleMax)
             let cache = heightCache
+            let epoch = prewarmEpoch
+            let ticket = epoch.next()
             Task.detached(priority: .utility) {
                 for row in rows {
+                    if !epoch.matches(ticket) { return }
                     if cache[row.id] != nil { continue }
                     cache.store(id: row.id, height: BubbleHeightCache.estimate(row: row, maxWidth: maxWidth))
                 }
@@ -96,10 +102,6 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
             .minSize(width: 0, height: 0)
         }
 
-        func estimatedHeight(for row: TranscriptRow, width: CGFloat) -> CGFloat {
-            CGFloat(heightCache.estimated(for: row, maxWidth: Double(width * MaxlyTheme.bubbleMax)))
-        }
-
         func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
             cell.transform = TranscriptCollectionController.invertTransform
             if indexPath.section == CommentsCollectionController.olderSection {
@@ -114,6 +116,7 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
                 lastOffsetY = y
             }
             updateAtBottom(scrollView)
+            controller?.noteScroll()
             if let controller,
                let rows = controller.currentRows {
                 schedulePrefetch(rows: rows, force: false)
@@ -145,6 +148,31 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
                     plan.urls.map { ($0, TranscriptImagePrefetch.maxPixel) }
                 )
             }
+        }
+
+        func collectionView(
+            _ collectionView: UICollectionView,
+            layout collectionViewLayout: UICollectionViewLayout,
+            sizeForItemAt indexPath: IndexPath
+        ) -> CGSize {
+            controller?.sizeForItem(at: indexPath, containerWidth: collectionView.bounds.width)
+                ?? CGSize(width: max(1, collectionView.bounds.width), height: 44)
+        }
+
+        func collectionView(
+            _ collectionView: UICollectionView,
+            layout collectionViewLayout: UICollectionViewLayout,
+            minimumLineSpacingForSectionAt section: Int
+        ) -> CGFloat {
+            section == CommentsCollectionController.newerSection ? 0 : CGFloat(BubbleHeightCache.rowSpacing)
+        }
+
+        func collectionView(
+            _ collectionView: UICollectionView,
+            layout collectionViewLayout: UICollectionViewLayout,
+            insetForSectionAt section: Int
+        ) -> UIEdgeInsets {
+            CommentsCollectionController.sectionInset
         }
     }
 }
@@ -234,6 +262,18 @@ final class CommentsCollectionController: UIViewController {
     private var emptyText: String?
     private var width: CGFloat = 0
     private weak var heightCache: BubbleHeightCache?
+    private var sectionItems: [Int: [Item]] = [:]
+    private let scrollThumb = InvertedScrollThumb()
+    private var measuredChrome: [String: CGFloat] = [:]
+    private var lastLayoutWidth: CGFloat = 0
+    private var lastBoundsHeight: CGFloat = 0
+    private lazy var commit = MeasuredLayoutCommit { [weak self] batch in
+        self?.applyMeasured(batch)
+    }
+
+    static var sectionInset: UIEdgeInsets {
+        UIEdgeInsets(top: 4, left: MaxlyTheme.pad, bottom: 4, right: MaxlyTheme.pad)
+    }
 
     enum Item: Hashable {
         case post
@@ -246,21 +286,43 @@ final class CommentsCollectionController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .clear
-        let collection = UICollectionView(frame: view.bounds, collectionViewLayout: makeLayout())
+        let flow = UICollectionViewFlowLayout()
+        flow.scrollDirection = .vertical
+        flow.minimumInteritemSpacing = 0
+        flow.minimumLineSpacing = 0
+        flow.estimatedItemSize = .zero
+        let collection = InvertedCollectionView(frame: view.bounds, collectionViewLayout: flow)
         collection.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        collection.backgroundColor = .clear
-        collection.alwaysBounceVertical = true
-        collection.keyboardDismissMode = .interactive
-        collection.scrollsToTop = false
         collection.transform = TranscriptCollectionController.invertTransform
+        collection.delegate = coordinator
         view.addSubview(collection)
+        view.addSubview(scrollThumb)
         collectionView = collection
         configureDataSource()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        collectionView?.frame = view.bounds
+        guard let collectionView else { return }
+        let nearBottom = collectionView.contentOffset.y + collectionView.adjustedContentInset.top < 64
+        let heightChanged = lastBoundsHeight > 0 && abs(view.bounds.height - lastBoundsHeight) > 0.5
+        lastBoundsHeight = view.bounds.height
+        collectionView.frame = view.bounds
+        scrollThumb.frame = view.bounds
+        if resetHeightsForWidth(view.bounds.width) {
+            collectionView.collectionViewLayout.invalidateLayout()
+        }
+        InvertedCollectionChrome.pinVisualBottomIfNeeded(
+            collectionView,
+            nearBottom: nearBottom,
+            heightChanged: heightChanged
+        )
+        scrollThumb.sync(with: collectionView, active: false)
+    }
+
+    func noteScroll() {
+        guard let collectionView else { return }
+        scrollThumb.sync(with: collectionView, active: true)
     }
 
     func setContent(
@@ -282,59 +344,157 @@ final class CommentsCollectionController: UIViewController {
         self.emptyText = emptyText
         self.width = width
         self.heightCache = heightCache
-        var snapshot = NSDiffableDataSourceSnapshot<Int, Item>()
-        snapshot.appendSections([Self.newerSection, Self.rowsSection, Self.olderSection])
-        snapshot.appendItems([.spacer], toSection: Self.newerSection)
+        var rowItems: [Item]
         switch state {
         case .loading, .failed:
-            snapshot.appendItems([.status], toSection: Self.rowsSection)
+            rowItems = [.status]
         case .loaded:
-            snapshot.appendItems(rows.reversed().map { .row($0.id) }, toSection: Self.rowsSection)
+            rowItems = rows.reversed().map { .row($0.id) }
             if let emptyText, rows.isEmpty {
-                snapshot.appendItems([.status], toSection: Self.rowsSection)
+                rowItems.append(.status)
             }
         }
         var older: [Item] = [.post]
         if hasMore { older.insert(.older, at: 0) }
+        sectionItems = [
+            Self.newerSection: [.spacer],
+            Self.rowsSection: rowItems,
+            Self.olderSection: older,
+        ]
+        var snapshot = NSDiffableDataSourceSnapshot<Int, Item>()
+        snapshot.appendSections([Self.newerSection, Self.rowsSection, Self.olderSection])
+        snapshot.appendItems(sectionItems[Self.newerSection] ?? [], toSection: Self.newerSection)
+        snapshot.appendItems(rowItems, toSection: Self.rowsSection)
         snapshot.appendItems(older, toSection: Self.olderSection)
         dataSource.apply(snapshot, animatingDifferences: animate)
         collectionView?.collectionViewLayout.invalidateLayout()
     }
 
-    private func makeLayout() -> UICollectionViewCompositionalLayout {
-        UICollectionViewCompositionalLayout { [weak self] section, env in
-            guard let self else {
-                let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .estimated(44))
-                let item = NSCollectionLayoutItem(layoutSize: size)
-                return NSCollectionLayoutSection(group: .vertical(layoutSize: size, subitems: [item]))
-            }
-            let estimated: CGFloat = {
-                if let row = self.currentRows?.last {
-                    return self.coordinator?.estimatedHeight(for: row, width: env.container.effectiveContentSize.width) ?? 72
-                }
-                return 72
-            }()
-            let height: NSCollectionLayoutDimension = section == Self.newerSection
-                ? .absolute(1)
-                : .estimated(section == Self.olderSection ? 120 : estimated)
-            let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: height)
-            let item = NSCollectionLayoutItem(layoutSize: size)
-            let group = NSCollectionLayoutGroup.vertical(layoutSize: size, subitems: [item])
-            let layout = NSCollectionLayoutSection(group: group)
-            layout.interGroupSpacing = 2
-            layout.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: MaxlyTheme.pad, bottom: 4, trailing: MaxlyTheme.pad)
-            return layout
+    func sizeForItem(at indexPath: IndexPath, containerWidth: CGFloat) -> CGSize {
+        let insets = Self.sectionInset
+        let itemWidth = max(1, containerWidth - insets.left - insets.right)
+        guard let item = item(at: indexPath) else {
+            return CGSize(width: itemWidth, height: 44)
+        }
+        let height: CGFloat
+        switch item {
+        case .spacer:
+            height = 1
+        case .older:
+            height = measuredChrome["older"] ?? 36
+        case .status:
+            height = measuredChrome["status"] ?? 96
+        case .post:
+            height = measuredChrome["post"] ?? estimatedPostHeight()
+        case .row(let id):
+            let chrono = currentRows ?? []
+            let display = chrono.firstIndex(where: { $0.id == id }).map { chrono.count - 1 - $0 } ?? indexPath.item
+            let resolved = CollectionFeedLayout.height(
+                displayIndex: display,
+                chronological: chrono,
+                maxWidth: Double(width * MaxlyTheme.bubbleMax),
+                cache: heightCache ?? BubbleHeightCache()
+            )
+            height = max(1, CGFloat(resolved ?? 72))
+        }
+        return CGSize(width: itemWidth, height: max(1, height))
+    }
+
+    private func item(at indexPath: IndexPath) -> Item? {
+        guard let items = sectionItems[indexPath.section], items.indices.contains(indexPath.item) else { return nil }
+        return items[indexPath.item]
+    }
+
+    private func chromeItem(forKey key: String) -> Item? {
+        switch key {
+        case "older": return .older
+        case "post": return .post
+        case "status": return .status
+        default: return nil
         }
     }
 
+    private func estimatedPostHeight() -> CGFloat {
+        guard let post, let cache = heightCache,
+              let row = TranscriptLayout.rows([post], currentUserId: "").first else { return 180 }
+        // У одиночного поста есть разделитель дня — как «Начало обсуждения» в шапке.
+        return CGFloat(cache.estimated(for: row, maxWidth: Double(width * MaxlyTheme.bubbleMax))) + 10
+    }
+
+    private func resetHeightsForWidth(_ width: CGFloat) -> Bool {
+        guard lastLayoutWidth > 0, abs(width - lastLayoutWidth) > 0.5 else {
+            if lastLayoutWidth == 0 { lastLayoutWidth = width }
+            return false
+        }
+        lastLayoutWidth = width
+        coordinator?.cancelPrewarm()
+        heightCache?.removeAll()
+        measuredChrome.removeAll()
+        collectionView?.visibleCells.compactMap { $0 as? MeasuredHostingCell }.forEach { $0.resetMeasurement() }
+        return true
+    }
+
+    private func applyMeasured(_ batch: MeasuredLayoutCommit.Batch) {
+        guard let collectionView else { return }
+        let offset = collectionView.contentOffset.y
+        let dragging = collectionView.isDragging || collectionView.isDecelerating
+        var compensate: CGFloat = 0
+        for (id, height) in batch.rows {
+            let path = dataSource.indexPath(for: .row(id))
+            let attrs = path.flatMap { collectionView.layoutAttributesForItem(at: $0) }
+            compensate += InvertedCollectionChrome.compensateOffset(
+                collectionView,
+                attributes: attrs,
+                newHeight: CGFloat(height),
+                dragging: dragging
+            )
+            heightCache?.store(id: id, height: height)
+        }
+        for (key, height) in batch.chrome {
+            guard let item = chromeItem(forKey: key), let path = dataSource.indexPath(for: item) else { continue }
+            let attrs = collectionView.layoutAttributesForItem(at: path)
+            compensate += InvertedCollectionChrome.compensateOffset(
+                collectionView,
+                attributes: attrs,
+                newHeight: height,
+                dragging: dragging
+            )
+            measuredChrome[key] = height
+        }
+        UIView.performWithoutAnimation {
+            collectionView.collectionViewLayout.invalidateLayout()
+            collectionView.layoutIfNeeded()
+            if abs(compensate) >= 1 {
+                collectionView.contentOffset.y = offset + compensate
+            }
+        }
+        scrollThumb.sync(with: collectionView, active: false)
+    }
+
     private func configureDataSource() {
-        let rowRegistration = UICollectionView.CellRegistration<UICollectionViewCell, String> { [weak self] cell, _, id in
+        let rowRegistration = UICollectionView.CellRegistration<MeasuredHostingCell, String> { [weak self] cell, _, id in
             guard let self, let row = self.currentRows?.first(where: { $0.id == id }) else { return }
+            cell.onMeasuredHeight = { [weak self] height in
+                self?.commit.row(height, id: id, current: self?.heightCache?[id])
+            }
             self.coordinator?.configure(cell, row: row)
         }
-        let chromeRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { [weak self] cell, _, item in
+        let chromeRegistration = UICollectionView.CellRegistration<MeasuredHostingCell, Item> { [weak self] cell, _, item in
             guard let self else { return }
-            cell.transform = TranscriptCollectionController.invertTransform
+            let key: String?
+            switch item {
+            case .older: key = "older"
+            case .post: key = "post"
+            case .status: key = "status"
+            default: key = nil
+            }
+            if let key {
+                cell.onMeasuredHeight = { [weak self] height in
+                    self?.commit.chrome(height, id: key, current: self?.measuredChrome[key])
+                }
+            } else {
+                cell.onMeasuredHeight = nil
+            }
             cell.contentConfiguration = UIHostingConfiguration {
                 self.chrome(item)
             }
