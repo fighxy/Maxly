@@ -4,15 +4,14 @@ import Foundation
 ///
 /// Секция compositional layout с одним `.estimated` берёт высоту последнего
 /// пузыря и растягивает её на всю ленту — короткий текст и медиа прыгают.
-/// Flow layout спрашивает высоту по display-индексу (у invert 0 — самое новое).
+/// Flow layout спрашивает высоту по хронологическому индексу: 0 — самое старое.
 public enum CollectionFeedLayout {
     public static func height(
-        displayIndex: Int,
+        index: Int,
         chronological: [TranscriptRow],
         maxWidth: Double,
         cache: BubbleHeightCache
     ) -> Double? {
-        let index = chronological.count - 1 - displayIndex
         guard chronological.indices.contains(index) else { return nil }
         return cache.estimated(for: chronological[index], maxWidth: maxWidth)
     }
