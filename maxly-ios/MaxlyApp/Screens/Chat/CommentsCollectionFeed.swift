@@ -415,15 +415,9 @@ final class CommentsCollectionController: UIViewController {
     }
 
     private func estimatedPostHeight() -> CGFloat {
-        guard let post, let cache = heightCache else { return 180 }
-        let row = TranscriptRow(
-            message: post,
-            dayTitle: "Начало обсуждения",
-            group: .single,
-            showsAuthorName: false,
-            showsAuthorAvatar: false,
-            isOutgoing: false
-        )
+        guard let post, let cache = heightCache,
+              let row = TranscriptLayout.rows([post], currentUserId: "").first else { return 180 }
+        // У одиночного поста есть разделитель дня — как «Начало обсуждения» в шапке.
         return CGFloat(cache.estimated(for: row, maxWidth: Double(width * MaxlyTheme.bubbleMax))) + 10
     }
 
