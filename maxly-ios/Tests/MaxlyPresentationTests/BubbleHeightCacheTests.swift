@@ -34,7 +34,10 @@ struct BubbleHeightCacheTests {
         BubbleHeightCache.textHeightProvider = { _, _ in 99 }
         let short = BubbleHeightCache.estimate(row: row(text: "hi", day: nil), maxWidth: 280)
         let empty = BubbleHeightCache.estimate(row: row(text: "", day: nil), maxWidth: 280)
-        #expect(short >= empty + 99)
+        // Provider даёт высоту текста; padding сверху. Пустой ряд без текста берёт minTextBubble,
+        // поэтому нельзя сравнивать short с empty+99.
+        #expect(short == BubbleHeightCache.bubblePaddingY + 99)
+        #expect(short > empty)
     }
 
     private func row(text: String, day: String?) -> TranscriptRow {
