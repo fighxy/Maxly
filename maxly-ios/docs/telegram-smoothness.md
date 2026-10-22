@@ -4,44 +4,40 @@
 
 ## Слои
 
-| Слой | Суть | Статус в этой ветке |
+| Слой | Суть | Статус |
 |---|---|---|
-| **A. Движок ленты** | `UICollectionView` + recycling + кэш высот вместо `LazyVStack` | `TranscriptCollectionFeed` по умолчанию; откат: `UserDefaults` `maxly.transcript.feed` = `lazyStack` |
-| **B. Ужесточение рендера** | Decode-ahead картинок, кэш высот, реже геометрия на главном | Включено |
-| **C. Данные / сеть** | Prefetch истории за ~20 строк до верха (как Android `PAGE_TRIGGER`) | Включено |
-| **D. UX motion** | «Полёт» своего пузыря из поля ввода (`maxlyComposerFlight`) | Включено |
+| **A. Движок ленты** | `UICollectionView` + recycling + invert (`scaleY(-1)`, новое в index 0) | Дефолт `TranscriptFeedEngine.collection` |
+| **B. Рендер** | TextKit-высота текста, decode-ahead, сэмплер геометрии | Включено |
+| **C. История** | Prefetch за ~20 строк до верха | Включено |
+| **D. Motion** | `maxlyComposerFlight` | Включено |
+| **Prefetch по скроллу** | `TranscriptImagePrefetch` — окно + направление | Включено |
+| **Комментарии** | `CommentsCollectionFeed` на том же движке | Включено |
 
-## A — UICollectionView
+## A — UICollectionView (invert)
 
-`MaxlyApp/Screens/Chat/TranscriptCollectionFeed.swift` — `UICollectionView` + `UIHostingConfiguration` для `TranscriptBubble`.
+`TranscriptCollectionFeed` / `CommentsCollectionFeed`:
 
-- Diffable data source по id строки.
-- Оценка высоты из `BubbleHeightCache` (Presentation), уточнение после layout.
-- Видимые рамки и низ ленты — из UIKit (без per-row `onGeometryChange`).
-- Клавиатура: `keyboardDismissMode = .interactive`.
-- Команды прокрутки — через `scrollToItem`, тот же `TranscriptScrollController`.
+- Data source: новее сообщения первыми; `transform = scaleY(-1)` на коллекции и ячейках → визуально новое у низа.
+- Вставка нового не сдвигает offset старых ячеек.
+- Chrome: older-loader в секции у визуального верха, jump-newer — у низа.
+- Высоты: `BubbleHeightCache` + off-main prewarm; TextKit через `BubbleTextMeasurer`.
 
-Переключение: `UserDefaults` ключ `maxly.transcript.feed` → `collection` (дефолт) | `lazyStack` (откат).
+Откат ленты чата: `UserDefaults` `maxly.transcript.feed` = `lazyStack`.
 
-Регрессии на устройстве: открытие на unread, preload сверху, jump к цитате, follow bottom при новом, Reduce Motion, длинный чат 5k+.
+## B — Высота текста
 
-## B — Рендер
+`BubbleTextMeasurer.installAsHeightProvider()` в `AppContainer` → `BubbleHeightCache.textHeightProvider` (`NSString.boundingRect`, кегль `.body`).
 
-1. `ImagePipeline.prefetchDecoded` — байты + decode в `NSCache` под размер ячейки.
-2. `BubbleHeightCache` — эвристика высоты до показа (меньше blank overscroll у LazyVStack / быстрее layout у collection).
-3. `TranscriptGeometrySampler` — отметки прочтения и «вниз» не чаще кадра (~16 ms), а не на каждое `onGeometryChange`.
+## Prefetch картинок
 
-## C — История
+`TranscriptImagePrefetch.plan(visibleRange:scrollingTowardOlder:)` + `ImagePipeline.prefetchDecoded`. Чат вызывает при скролле и смене `transcriptVersion`; комментарии — при скролле.
 
-`HistoryPrefetch.shouldLoadOlder(visiblePrefix:trigger:)` — `trigger = 20`. Лента зовёт `loadOlder`, когда видна шапка **или** любая из первых 20 строк.
+## Комментарии
 
-## D — Motion
+`CommentsView` → `CommentsCollectionFeed` (пост + «Начало обсуждения» в older-секции, те же invert/prefetch/высоты).
 
-`AnyTransition.maxlyComposerFlight` — своё сообщение сильнее поднимается от composer (36 pt, scale 0.88). Исходящие вставки в ленте используют его; чужие — прежний `maxlyBubble`.
+## Дальше (если понадобится)
 
-## Дальше
-
-1. Off-main TextKit sizing вместо эвристик в `BubbleHeightCache`.
-2. Перевёрнутая лента (новое в index 0) после стабилизации collection.
-3. Prefetch decode по видимому окну + направлению скролла.
-4. Тот же движок для комментариев (`CommentsView`).
+1. Self-sizing item sizes по id из кэша в compositional layout (сейчас estimated от последнего пузыря).
+2. Prefetch decode строго по `indexPathsForVisibleItems` + velocity.
+3. Убрать LazyVStack-путь, когда collection стабилен на всех сценариях.

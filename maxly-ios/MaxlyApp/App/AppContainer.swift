@@ -160,6 +160,7 @@ final class AppContainer {
         appearance = AppearanceSettings(store: UserDefaultsAppearanceStore())
         // Шрифт — до первого кадра, иначе запуск мелькал бы системным.
         Typography.shared.apply(font: appearance.font, weight: appearance.fontWeight, textSize: appearance.textSize)
+        BubbleTextMeasurer.installAsHeightProvider()
         NavigationBarFonts.apply()
         privateMode = PrivateModeSettings(store: UserDefaultsPrivateModeStore())
         wallpapers = ChatWallpaperLibrary(store: Self.makeWallpaperStore())
