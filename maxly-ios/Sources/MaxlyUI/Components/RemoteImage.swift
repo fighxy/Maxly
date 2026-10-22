@@ -273,6 +273,33 @@ public actor ImagePipeline {
         }
     }
 
+    /// Prefetch с прогревом памяти: байты на диск и decode в `NSCache` под `maxPixel`.
+    /// Ячейка при появлении читает готовые пиксели без пика decode на главном пути показа.
+    public func prefetchDecoded(_ items: [(url: URL, maxPixel: Int)], maxConcurrent: Int = 4) async {
+        let started = generation
+        let wanted = items
+            .map { (url: $0.url, maxPixel: max(16, $0.maxPixel)) }
+            .filter { cached($0.url, maxPixel: $0.maxPixel) == nil }
+        guard !wanted.isEmpty else { return }
+        await withTaskGroup(of: Void.self) { group in
+            var running = 0
+            for item in wanted {
+                if running >= maxConcurrent {
+                    await group.next()
+                    running -= 1
+                }
+                group.addTask {
+                    _ = await self.image(for: item.url, maxPixel: item.maxPixel)
+                }
+                running += 1
+            }
+        }
+        guard generation == started else { return }
+        for item in wanted where !inFlight.keys.contains(where: { $0.url == item.url }) {
+            dataInFlight[item.url] = nil
+        }
+    }
+
     /// Байты читаются как картинка: только такие ложатся на диск.
     private static func isImage(_ data: Data) -> Bool {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return false }

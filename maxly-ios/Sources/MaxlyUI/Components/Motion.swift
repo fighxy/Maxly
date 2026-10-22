@@ -64,6 +64,20 @@ public extension AnyTransition {
         return .asymmetric(insertion: insertion, removal: removal)
     }
 
+    /// «Полёт» своего пузыря из поля ввода: сильнее подъём и рост, как у нативных мессенджеров.
+    /// Чужие и Reduce Motion — как `maxlyBubble`.
+    static func maxlyComposerFlight(outgoing: Bool, reduceMotion: Bool) -> AnyTransition {
+        guard outgoing, !reduceMotion else {
+            return .maxlyBubble(outgoing: outgoing, reduceMotion: reduceMotion)
+        }
+        let insertion = AnyTransition.opacity
+            .combined(with: .offset(y: 36))
+            .combined(with: .scale(scale: 0.88, anchor: .bottomTrailing))
+        let removal = AnyTransition.opacity
+            .combined(with: .scale(scale: 0.8, anchor: .bottomTrailing))
+        return .asymmetric(insertion: insertion, removal: removal)
+    }
+
     /// Бейджи, реакции, кнопки: появляются из точки и растворяются.
     static func maxlyPop(reduceMotion: Bool) -> AnyTransition {
         reduceMotion ? .opacity : .scale(scale: 0.5).combined(with: .opacity)
