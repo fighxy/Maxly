@@ -481,7 +481,7 @@ final class TranscriptCollectionController: UIViewController {
                 .controlSize(.small)
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
-                .onAppear { coordinator?.parent.onLoadNewer() }
+                .onAppear { self.coordinator?.parent.onLoadNewer() }
         case .row:
             EmptyView()
         }
