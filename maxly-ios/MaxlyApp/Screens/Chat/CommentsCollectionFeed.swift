@@ -403,7 +403,7 @@ final class CommentsCollectionController: UIViewController {
                         .font(.app(.subheadline))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                    Button("Повторить") { Task { await coordinator?.parent.model.reload() } }
+                    Button("Повторить") { Task { await self.coordinator?.parent.model.reload() } }
                         .buttonStyle(.bordered)
                 }
                 .frame(maxWidth: .infinity)
