@@ -16,6 +16,10 @@ import MaxlyUI
 /// и любое их изменение — голосовое пишет ход 10 раз в секунду — перерисовывало все
 /// видимые пузыри: лента подтормаживала. Теперь лента собирает для каждого пузыря его
 /// значения (`TranscriptBubble.Snapshot`), а пузырь сравнивается целиком (`equatable`).
+///
+/// Движок ленты: `TranscriptFeedEngine` — по умолчанию `UICollectionView`
+/// (`TranscriptCollectionFeed`), запасной путь — `LazyVStack`. План A–D:
+/// `docs/telegram-smoothness.md`.
 struct ChatTranscript: View {
     @Bindable var viewModel: ChatViewModel
     let chatType: ChatType
@@ -53,126 +57,32 @@ struct ChatTranscript: View {
     /// перерисовывает ленту, модель узнаёт только смену самого нового увиденного.
     @State private var reads = TranscriptReadTracker()
     @State private var diagnostics = TranscriptDiagnostics()
+    /// Наименьший индекс видимой строки — для prefetch истории до края (слой C).
+    @State private var nearTopPrefix: Int?
+    @State private var geometrySampler = TranscriptGeometrySampler()
+    @State private var heightCache = BubbleHeightCache()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.chatWallpaper) private var wallpaper
 
     static let feedInset: CGFloat = 8
     static let prefetchCount = 40
+    /// Декод картинок под пузырь (~ширина экрана × bubbleMax × 2× scale).
+    static let prefetchMaxPixel = 900
 
     var body: some View {
-        ScrollViewReader { proxy in
-            GeometryReader { geo in
-                ScrollView {
-                    LazyVStack(spacing: 2) {
-                        header(proxy)
-                        ForEach(viewModel.rows) { row in
-                            TranscriptBubble(
-                                state: state(for: row, width: geo.size.width),
-                                viewModel: viewModel,
-                                reveal: reveal,
-                                onAuthor: onAuthor
-                            )
-                            .equatable()
-                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
-                                let old = reads.rows[row.id]
-                                reads.rows[row.id] = frame
-                                reads.revision += 1
-                                reads.rowRevisions[row.id] = reads.revision
-                                measuredGeometry()
-                                // Only a size change follows new media; scrolling itself never issues a command.
-                                if old?.height != frame.height, !bottom.atBottom,
-                                   bottom.followsLatest, !userScrolling, !isOpening, scroll.request == nil {
-                                    requestLatest()
-                                }
-                                reportReads()
-                                if row.id == viewModel.rows.last?.id { recordScroll("last-row-geometry") }
-                            }
-                            .onDisappear {
-                                reads.rows[row.id] = nil
-                                reads.revision += 1
-                                reads.rowRevisions[row.id] = nil
-                                measuredGeometry()
-                                reportReads()
-                            }
-                            .id(row.id)
-                            .transition(.maxlyBubble(outgoing: row.isOutgoing, reduceMotion: reduceMotion))
-                        }
-                        newerLoader
-                    }
-                    .transaction { transaction in
-                        if isOpening || viewModel.isRestoringHistory {
-                            transaction.animation = nil
-                            transaction.disablesAnimations = true
-                        }
-                    }
-                    .scrollTargetLayout()
-                    .padding(.horizontal, Self.feedInset)
-                    .padding(.bottom, 8)
-                    .background { TranscriptScrollObserver(diagnostics: diagnostics) { distance, visible in
-                        var next = downButton
-                        if next.update(distance: distance, visibleHeight: visible) { downButton = next }
-                    }.frame(width: 0, height: 0) }
-                    // Новое снизу, удалённое, переставленное — плавно; первая страница и старая
-                    // история сверху — сразу, иначе лента дёргается. Правило в `CollectionChange`.
-                    .animation(
-                        bottom.atBottom && !viewModel.isRestoringHistory ? MaxlyMotion.transcript(viewModel.messagesChange, reduceMotion: reduceMotion) : nil,
-                        value: viewModel.transcriptVersion
-                    )
-                    // Серверное обогащение (реакции/счётчики) не запускает анимацию
-                    // всей ленты. Действия пользователя анимируются у своего пузыря.
+        GeometryReader { geo in
+            Group {
+                switch TranscriptFeedEngine.kind {
+                case .collection:
+                    collectionFeed(width: geo.size.width)
+                case .lazyStack:
+                    lazyStackFeed(width: geo.size.width)
                 }
-                // Рамка ленты и её безопасные отступы: под ними строки закрыты панелью
-                // навигации, полем ввода или клавиатурой (отметка прочтения).
-                .onGeometryChange(for: TranscriptReadViewport.self) { proxy in
-                    TranscriptReadViewport(
-                        frame: proxy.frame(in: .global),
-                        safeTop: proxy.safeAreaInsets.top,
-                        safeBottom: proxy.safeAreaInsets.bottom
-                    )
-                } action: { viewport in
-                    reads.viewport = viewport
-                    reads.revision += 1
-                    measuredGeometry()
-                    reportReads()
-                    recordScroll("viewport")
-                }
-                .coordinateSpace(name: "transcript-viewport")
-                .modifier(TranscriptInteractionTracking { moving, takeover in
-                    userScrolling = moving
-                    if takeover {
-                        scroll.cancel()
-                        bottom.userTookOver()
-                        openingTargetChosen = true
-                        isOpening = false
-                        recordScroll("scroll-cancel=user", immediate: true)
-                    }
-                    measuredGeometry()
-                })
-                .task(id: scroll.request?.token) {
-                    guard let request = scroll.request else { return }
-                    await execute(request, proxy: proxy)
-                }
-                .modifier(FloatingDayOverlay(model: viewModel, topVisible: headerVisible))
-                // Клавиатура уходит, когда ленту тянут вниз вслед за пальцем или просто касаются
-                // её: касание не мешает кнопкам пузырей, жест срабатывает вместе с ними.
-                .scrollDismissesKeyboard(.interactively)
-                // Касание ленты прячет клавиатуру. Без клавиатуры жест выключен, чтобы лента
-                // не ждала его при каждом касании.
-                .simultaneousGesture(TapGesture().onEnded { focus.wrappedValue = false }, including: focus.wrappedValue ? .all : .subviews)
-                .onChange(of: viewModel.transcriptVersion, initial: true) { _, _ in
-                    recordScroll("transcript-change", immediate: true)
-                    follow(proxy)
-                }
-                .onChange(of: viewModel.isRestoringHistory) { _, restoring in
-                    recordScroll("restoring-\(restoring)", immediate: true)
-                    guard !restoring else { return }
-                    if isOpening { openAtStart(proxy) }
-                }
-
-                .chatSystemEdgeEffectHidden()
-                // Лёгкий переход в фон под нижними кнопками. Раньше кнопки «вниз»: она рисуется поверх.
-                .overlay { ChatBottomBlur(controlsTop: bottomControlsTop, wallpaper: wallpaper, custom: customWallpaper, wallpaperFrame: wallpaperFrame) }
-                .overlay(alignment: .bottom) {
+            }
+            .chatSystemEdgeEffectHidden()
+            .overlay { ChatBottomBlur(controlsTop: bottomControlsTop, wallpaper: wallpaper, custom: customWallpaper, wallpaperFrame: wallpaperFrame) }
+            .overlay(alignment: .bottom) {
+                Group {
                     if viewModel.showsSavedPlaceholder {
                         SavedMessagesPlaceholder()
                             .padding(.horizontal, MaxlyTheme.pad + 8)
@@ -180,107 +90,302 @@ struct ChatTranscript: View {
                             .transition(.opacity)
                     }
                 }
-                .overlay {
-                    if viewModel.isJumping {
-                        ProgressView()
-                            .padding(14)
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
-                    }
+            }
+            .overlay {
+                if viewModel.isJumping {
+                    ProgressView()
+                        .padding(14)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
                 }
-                .overlay {
-                    if viewModel.messages.isEmpty && viewModel.isRestoringHistory {
-                        ProgressView("Загрузка сообщений…")
-                            .padding(16)
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-                    } else if viewModel.messages.isEmpty, let error = viewModel.historyError {
-                        VStack(spacing: 12) {
-                            Text(error.userMessage ?? "Не удалось загрузить сообщения").multilineTextAlignment(.center)
-                            Button("Повторить") { Task { await viewModel.loadLatest() } }
-                        }
+            }
+            .overlay {
+                if viewModel.messages.isEmpty && viewModel.isRestoringHistory {
+                    ProgressView("Загрузка сообщений…")
                         .padding(16)
                         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                } else if viewModel.messages.isEmpty, let error = viewModel.historyError {
+                    VStack(spacing: 12) {
+                        Text(error.userMessage ?? "Не удалось загрузить сообщения").multilineTextAlignment(.center)
+                        Button("Повторить") { Task { await viewModel.loadLatest() } }
+                    }
+                    .padding(16)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                }
+            }
+            .animation(MaxlyMotion.fade, value: viewModel.showsSavedPlaceholder)
+            .overlay(alignment: .bottomTrailing) {
+                Group {
+                    if !isOpening && !viewModel.messages.isEmpty && (downButton.shown || viewModel.isJumped) {
+                        ScrollDownButton(unseen: viewModel.unreadBelow) { goDown() }
+                            .padding(.trailing, ChatComposer.trailingInset(canWrite: canWrite))
+                            .padding(.bottom, 10)
+                            .transition(.maxlyPop(reduceMotion: reduceMotion))
                     }
                 }
-                .animation(MaxlyMotion.fade, value: viewModel.showsSavedPlaceholder)
-                .overlay(alignment: .bottomTrailing) {
-                    Group {
-                        if !isOpening && !viewModel.messages.isEmpty && (downButton.shown || viewModel.isJumped) {
-                            ScrollDownButton(unseen: viewModel.unreadBelow) { goDown(proxy) }
-                                // Ровно над правой нижней кнопкой: записью, отправкой или поиском канала.
-                                .padding(.trailing, ChatComposer.trailingInset(canWrite: canWrite))
-                                .padding(.bottom, 10)
-                                .transition(.maxlyPop(reduceMotion: reduceMotion))
-                        }
-                    }
-                    .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: downButton.shown)
-                    .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.unreadBelow)
+                .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: downButton.shown)
+                .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.unreadBelow)
+            }
+            .onChange(of: viewModel.scrollToken) { _, _ in perform(viewModel.scrollTarget) }
+            .onChange(of: bottomSignal) { _, _ in
+                noteBottomIfReached()
+                reportReads()
+            }
+            .onChange(of: isOpening) { _, opening in
+                if !opening { reportReads() }
+            }
+            .task(id: shouldPrefetchOlder) {
+                if shouldPrefetchOlder { await loadOlderFromTop() }
+            }
+            .onChange(of: headerBottom) { _, _ in measuredGeometry(); reportReads() }
+            .onChange(of: bottomControlsTop) { _, _ in
+                measuredGeometry()
+                if bottom.followsLatest, !userScrolling, !isOpening, scroll.request == nil { requestLatest() }
+                reportReads()
+            }
+            .onChange(of: keyboardTop) { _, _ in
+                measuredGeometry()
+                if bottom.followsLatest, !userScrolling, !isOpening, scroll.request == nil { requestLatest() }
+                reportReads()
+                recordScroll("keyboard", immediate: true)
+            }
+            .onAppear {
+                recordScroll("appear", immediate: true)
+                if isOpening {
+                    viewModel.consumeScroll()
+                    openAtStart()
+                } else { perform(viewModel.scrollTarget) }
+                reportReads()
+            }
+            .task {
+                for delay in [150, 350, 1000, 2000] {
+                    do { try await Task.sleep(for: .milliseconds(delay)) } catch { return }
+                    recordScroll("opening-settled", immediate: true)
                 }
-                .onChange(of: viewModel.scrollToken) { _, _ in perform(viewModel.scrollTarget, proxy: proxy) }
-                // Лента у низа или показался конец последнего сообщения: всё ниже прочитано глазами,
-                // даже если лента не прижата к низу вплотную (короткий чат, поле ввода опущено).
-                // Одно наблюдение на оба признака: каждое лишнее утяжеляет проверку типов `body`.
-                .onChange(of: bottomSignal) { _, _ in
-                    noteBottomIfReached()
-                    reportReads()
-                }
-                // Лента встала на место открытия: с этого момента увиденное читается.
-                .onChange(of: isOpening) { _, opening in
-                    if !opening { reportReads() }
-                }
-                .task(id: headerVisible && !isOpening && !viewModel.isRestoringHistory) {
-                    if headerVisible && !isOpening && !viewModel.isRestoringHistory { await loadOlderFromTop() }
-                }
-                .onChange(of: headerBottom) { _, _ in measuredGeometry(); reportReads() }
-                .onChange(of: bottomControlsTop) { _, _ in
-                    measuredGeometry()
-                    if bottom.followsLatest, !userScrolling, !isOpening, scroll.request == nil { requestLatest() }
-                    reportReads()
-                }
-                .onChange(of: keyboardTop) { _, _ in
-                    measuredGeometry()
-                    if bottom.followsLatest, !userScrolling, !isOpening, scroll.request == nil { requestLatest() }
-                    reportReads()
-                    recordScroll("keyboard", immediate: true)
-                }
-                .onAppear {
-                    recordScroll("appear", immediate: true)
-                    // Просьба прокрутки от прошлого захода к этому открытию не относится. Пришедшая,
-                    // пока лента была скрыта (профиль), выполняется сейчас: иначе она держала бы `follow`.
-                    if isOpening {
-                        viewModel.consumeScroll()
-                        openAtStart(proxy)
-                    } else { perform(viewModel.scrollTarget, proxy: proxy) }
-                    // Возврат на экран (из профиля): рамки могли не смениться, а модель забыла
-                    // увиденное — сообщаем его заново.
-                    reportReads()
-                }
-                .task {
-                    for delay in [150, 350, 1000, 2000] {
-                        do { try await Task.sleep(for: .milliseconds(delay)) } catch { return }
-                        recordScroll("opening-settled", immediate: true)
-                    }
-                }
-                .onDisappear {
-                    recordScroll("disappear", immediate: true)
-                    viewModel.savePlace(visiblePlace ?? reads.place?.id, atBottom: bottom.atBottom)
+            }
+            .onDisappear {
+                recordScroll("disappear", immediate: true)
+                viewModel.savePlace(visiblePlace ?? reads.place?.id, atBottom: bottom.atBottom)
+                scroll.cancel()
+                openingTargetChosen = false
+                isOpening = true
+                reads.reported = nil
+                nearTopPrefix = nil
+                heightCache.removeAll()
+            }
+            .onChange(of: geo.size.height) { _, _ in
+                guard bottom.followsLatest, !userScrolling, !isOpening else { return }
+                requestLatest()
+            }
+            .task(id: viewModel.transcriptVersion) {
+                let urls = Self.prefetchURLs(viewModel.messages.suffix(Self.prefetchCount))
+                guard !urls.isEmpty else { return }
+                await ImagePipeline.shared.prefetchDecoded(urls.map { ($0, Self.prefetchMaxPixel) })
+            }
+        }
+    }
+
+    /// Prefetch старой истории: шапка видна или среди видимых есть одна из первых 20 строк.
+    private var shouldPrefetchOlder: Bool {
+        HistoryPrefetch.shouldLoadOlder(
+            canLoadOlder: viewModel.canLoadOlder,
+            isLoadingOlder: viewModel.isLoadingOlder,
+            isRestoringHistory: viewModel.isRestoringHistory,
+            isOpening: isOpening,
+            headerVisible: headerVisible,
+            visiblePrefix: nearTopPrefix
+        )
+    }
+
+    private var nearTopActive: Bool {
+        nearTopPrefix.map { $0 < HistoryPrefetch.triggerRows } ?? false
+    }
+
+    @ViewBuilder
+    private func collectionFeed(width: CGFloat) -> some View {
+        TranscriptCollectionFeed(
+            viewModel: viewModel,
+            rows: viewModel.rows,
+            width: width,
+            reveal: reveal,
+            feedInset: Self.feedInset,
+            reduceMotion: reduceMotion,
+            animateInserts: bottom.atBottom && !viewModel.isRestoringHistory,
+            isOpening: isOpening,
+            isRestoringHistory: viewModel.isRestoringHistory,
+            scrollRequest: scroll.request,
+            canLoadOlder: viewModel.canLoadOlder,
+            isLoadingOlder: viewModel.isLoadingOlder,
+            isJumped: viewModel.isJumped,
+            emptyHint: viewModel.emptyHint,
+            showsChannelReady: viewModel.latestLoaded && viewModel.messages.isEmpty && !viewModel.isRestoringHistory
+                && viewModel.historyError == nil && !viewModel.showsSavedPlaceholder && chatType == .channel && canWrite,
+            showsEmpty: viewModel.latestLoaded && viewModel.messages.isEmpty && !viewModel.isRestoringHistory
+                && viewModel.historyError == nil && !viewModel.showsSavedPlaceholder,
+            snapshot: { state(for: $0, width: width) },
+            onAuthor: onAuthor,
+            onFrames: { frames, viewport, _ in
+                applyCollectionFrames(frames, viewport: viewport)
+            },
+            onBottomDistance: { distance, visible in
+                var next = downButton
+                if next.update(distance: distance, visibleHeight: visible) { downButton = next }
+            },
+            onUserScroll: { moving, takeover in
+                userScrolling = moving
+                if takeover {
                     scroll.cancel()
-                    openingTargetChosen = false
-                    isOpening = true
-                    // Следующий показ сообщит модели всё заново: прежнее увиденное она забыла.
-                    reads.reported = nil
+                    bottom.userTookOver()
+                    openingTargetChosen = true
+                    isOpening = false
+                    recordScroll("scroll-cancel=user", immediate: true)
                 }
-                .onChange(of: geo.size.height) { _, _ in
-                    // Resizing uses the same command owner; reading history never follows the bottom.
-                    guard bottom.followsLatest, !userScrolling, !isOpening else { return }
-                    requestLatest()
+                measuredGeometry()
+            },
+            onTopVisible: { headerVisible = $0 },
+            onNearTopPrefix: { nearTopPrefix = $0 },
+            onLoadNewer: { Task { await viewModel.loadNewer() } },
+            onScrollFinished: { token, confirmed in
+                guard scroll.finish(token) else { return }
+                isOpening = false
+                if !confirmed { bottom.beginReadingHistory() }
+                recordScroll(confirmed ? "scroll-confirmed" : "scroll-unconfirmed", immediate: true)
+                noteBottomIfReached()
+                reportReads()
+            }
+        )
+        .modifier(FloatingDayOverlay(model: viewModel, topVisible: headerVisible))
+        .simultaneousGesture(TapGesture().onEnded { focus.wrappedValue = false }, including: focus.wrappedValue ? .all : .subviews)
+        .onChange(of: viewModel.transcriptVersion, initial: true) { _, _ in
+            recordScroll("transcript-change", immediate: true)
+            followCollection()
+        }
+        .onChange(of: viewModel.isRestoringHistory) { _, restoring in
+            recordScroll("restoring-\(restoring)", immediate: true)
+            guard !restoring else { return }
+            if isOpening { openAtStart() }
+        }
+        .onAppear {
+            if isOpening { openAtStart() }
+        }
+    }
+
+    @ViewBuilder
+    private func lazyStackFeed(width: CGFloat) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 2) {
+                    header(proxy)
+                    ForEach(viewModel.rows) { row in
+                        let estimate = heightCache.estimated(
+                            for: row,
+                            maxWidth: Double(min(520, max(0, width - Self.feedInset * 2) * MaxlyTheme.bubbleMax))
+                        )
+                        TranscriptBubble(
+                            state: state(for: row, width: width),
+                            viewModel: viewModel,
+                            reveal: reveal,
+                            onAuthor: onAuthor
+                        )
+                        .equatable()
+                        .frame(minHeight: CGFloat(estimate), alignment: .top)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                            let old = reads.rows[row.id]
+                            reads.rows[row.id] = frame
+                            reads.revision += 1
+                            reads.rowRevisions[row.id] = reads.revision
+                            heightCache.store(id: row.id, height: Double(frame.height))
+                            sampleLazyGeometry(force: false) {
+                                refreshNearTopPrefix()
+                                measuredGeometry()
+                                if old?.height != frame.height, !bottom.atBottom,
+                                   bottom.followsLatest, !userScrolling, !isOpening, scroll.request == nil {
+                                    requestLatest()
+                                }
+                                reportReads()
+                                if row.id == viewModel.rows.last?.id { recordScroll("last-row-geometry") }
+                            }
+                        }
+                        .onDisappear {
+                            reads.rows[row.id] = nil
+                            reads.revision += 1
+                            reads.rowRevisions[row.id] = nil
+                            sampleLazyGeometry(force: true) {
+                                measuredGeometry()
+                                reportReads()
+                            }
+                        }
+                        .id(row.id)
+                        .transition(.maxlyComposerFlight(outgoing: row.isOutgoing, reduceMotion: reduceMotion))
+                    }
+                    newerLoader
                 }
-                // Картинки последних сообщений качаются заранее: пока лента
-                // докручивается, фото уже на диске и проявляются сразу.
-                .task(id: viewModel.transcriptVersion) {
-                    let urls = Self.prefetchURLs(viewModel.messages.suffix(Self.prefetchCount))
-                    guard !urls.isEmpty else { return }
-                    await ImagePipeline.shared.prefetch(urls)
+                .transaction { transaction in
+                    if isOpening || viewModel.isRestoringHistory {
+                        transaction.animation = nil
+                        transaction.disablesAnimations = true
+                    }
                 }
+                .scrollTargetLayout()
+                .padding(.horizontal, Self.feedInset)
+                .padding(.bottom, 8)
+                .background {
+                    TranscriptScrollObserver(diagnostics: diagnostics) { distance, visible in
+                        var next = downButton
+                        if next.update(distance: distance, visibleHeight: visible) { downButton = next }
+                    }
+                    .frame(width: 0, height: 0)
+                }
+                .animation(
+                    bottom.atBottom && !viewModel.isRestoringHistory
+                        ? MaxlyMotion.transcript(viewModel.messagesChange, reduceMotion: reduceMotion) : nil,
+                    value: viewModel.transcriptVersion
+                )
+            }
+            .onGeometryChange(for: TranscriptReadViewport.self) { proxy in
+                TranscriptReadViewport(
+                    frame: proxy.frame(in: .global),
+                    safeTop: proxy.safeAreaInsets.top,
+                    safeBottom: proxy.safeAreaInsets.bottom
+                )
+            } action: { viewport in
+                reads.viewport = viewport
+                reads.revision += 1
+                sampleLazyGeometry(force: false) {
+                    measuredGeometry()
+                    reportReads()
+                    recordScroll("viewport")
+                }
+            }
+            .coordinateSpace(name: "transcript-viewport")
+            .modifier(TranscriptInteractionTracking { moving, takeover in
+                userScrolling = moving
+                if takeover {
+                    scroll.cancel()
+                    bottom.userTookOver()
+                    openingTargetChosen = true
+                    isOpening = false
+                    recordScroll("scroll-cancel=user", immediate: true)
+                }
+                measuredGeometry()
+            })
+            .task(id: scroll.request?.token) {
+                guard let request = scroll.request else { return }
+                await execute(request, proxy: proxy)
+            }
+            .modifier(FloatingDayOverlay(model: viewModel, topVisible: headerVisible))
+            .scrollDismissesKeyboard(.interactively)
+            .simultaneousGesture(
+                TapGesture().onEnded { focus.wrappedValue = false },
+                including: focus.wrappedValue ? .all : .subviews
+            )
+            .onChange(of: viewModel.transcriptVersion, initial: true) { _, _ in
+                recordScroll("transcript-change", immediate: true)
+                follow(proxy)
+            }
+            .onChange(of: viewModel.isRestoringHistory) { _, restoring in
+                recordScroll("restoring-\(restoring)", immediate: true)
+                guard !restoring else { return }
+                if isOpening { openAtStart(proxy) }
             }
         }
     }
@@ -430,7 +535,7 @@ struct ChatTranscript: View {
     /// спрашивается снова через 3, 6 и 12 секунд: раньше лента молча вставала до новой прокрутки.
     private func loadOlderFromTop() async {
         var failures = 0
-        while headerVisible && !Task.isCancelled {
+        while (headerVisible || nearTopActive) && !Task.isCancelled {
             guard !viewModel.messages.isEmpty, !viewModel.isLoadingOlder,
                   !viewModel.isRestoringHistory, !isOpening, viewModel.canLoadOlder else { return }
             let oldest = viewModel.messages.first?.id
@@ -506,7 +611,7 @@ struct ChatTranscript: View {
     }
 
     /// Choose once per appearance: a later server response cannot replace a cache target.
-    private func openAtStart(_ proxy: ScrollViewProxy) {
+    private func openAtStart(_ proxy: ScrollViewProxy? = nil) {
         guard !openingTargetChosen, !viewModel.rows.isEmpty else { return }
         if viewModel.hasPendingOpen {
             if !viewModel.isRestoringHistory { viewModel.startPendingOpen() }
@@ -523,11 +628,22 @@ struct ChatTranscript: View {
             recordScroll("open-target=latest", immediate: true)
             requestLatest()
         }
+        _ = proxy
     }
 
     private func follow(_ proxy: ScrollViewProxy) {
         guard !viewModel.rows.isEmpty, viewModel.scrollTarget == nil else { return }
         if isOpening { openAtStart(proxy); return }
+        followShared()
+    }
+
+    private func followCollection() {
+        guard !viewModel.rows.isEmpty, viewModel.scrollTarget == nil else { return }
+        if isOpening { openAtStart(); return }
+        followShared()
+    }
+
+    private func followShared() {
         let preservesPlace: Bool
         switch viewModel.messagesChange {
         case .prepended, .reload, .trimmed: preservesPlace = true
@@ -543,17 +659,19 @@ struct ChatTranscript: View {
         }
         guard !viewModel.isJumped else { return }
         if case .appended(let count) = viewModel.messagesChange, count > 0 {
-            if bottom.followsLatest || viewModel.messages.suffix(count).contains(where: viewModel.isOutgoing) { requestLatest() }
+            if bottom.followsLatest || viewModel.messages.suffix(count).contains(where: viewModel.isOutgoing) {
+                requestLatest()
+            }
         }
     }
 
-    private func goDown(_ proxy: ScrollViewProxy) {
+    private func goDown() {
         if viewModel.returnFromJump() { return }
         recordScroll("scroll-target=latest", immediate: true)
         requestLatest()
     }
 
-    private func perform(_ target: ChatScrollTarget?, proxy: ScrollViewProxy) {
+    private func perform(_ target: ChatScrollTarget?) {
         guard let target else { return }
         viewModel.consumeScroll()
         openingTargetChosen = true
@@ -561,6 +679,47 @@ struct ChatTranscript: View {
         case .message(let id, _): requestHistory(id, anchor: 0.5)
         case .bottom: requestLatest()
         }
+    }
+
+    private func applyCollectionFrames(_ frames: [String: CGRect], viewport: CGRect) {
+        let oldHeights = Dictionary(uniqueKeysWithValues: reads.rows.map { ($0.key, $0.value.height) })
+        reads.rows = frames
+        reads.revision += 1
+        for (id, frame) in frames {
+            reads.rowRevisions[id] = reads.revision
+            heightCache.store(id: id, height: Double(frame.height))
+        }
+        for id in oldHeights.keys where frames[id] == nil {
+            reads.rowRevisions[id] = nil
+        }
+        reads.viewport = TranscriptReadViewport(frame: viewport, safeTop: 0, safeBottom: 0)
+        refreshNearTopPrefix()
+        measuredGeometry()
+        let heightChanged = frames.contains { id, frame in oldHeights[id] != frame.height }
+        if heightChanged, !bottom.atBottom, bottom.followsLatest, !userScrolling, !isOpening, scroll.request == nil {
+            requestLatest()
+        }
+        reportReads()
+    }
+
+    private func sampleLazyGeometry(force: Bool, _ work: () -> Void) {
+        let now = DispatchTime.now().uptimeNanoseconds
+        guard geometrySampler.shouldFire(nowNs: now, force: force) else { return }
+        work()
+    }
+
+    /// Минимальный индекс строки, пересекающей viewport — для `HistoryPrefetch`.
+    private func refreshNearTopPrefix() {
+        guard let viewport = reads.viewport else {
+            nearTopPrefix = nil
+            return
+        }
+        for (index, row) in viewModel.rows.enumerated() {
+            guard let frame = reads.rows[row.id], frame.intersects(viewport.frame) else { continue }
+            nearTopPrefix = index
+            return
+        }
+        nearTopPrefix = nil
     }
 
     /// The only writer of scroll position. No empty sentinel, UIKit offset writes or

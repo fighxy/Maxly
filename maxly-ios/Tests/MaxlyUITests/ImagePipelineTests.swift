@@ -84,4 +84,16 @@ struct ImagePipelineTests {
         #expect(pipeline.cached(url, maxPixel: 32) == nil)
         #expect(await pipeline.image(for: url, maxPixel: 32) == nil)
     }
+
+    @Test("prefetchDecoded кладёт пиксели в память")
+    func prefetchDecodedWarmsMemory() async throws {
+        let gate = ImageLoadGate(bytes: png)
+        let pipeline = ImagePipeline(dataLoader: { await gate.load($0) })
+        let url = try #require(URL(string: "https://example.invalid/prefetch-decoded.png"))
+        let task = Task { await pipeline.prefetchDecoded([(url, 32)]) }
+        #expect(await cacheEventually { await gate.calls == 1 })
+        await gate.release()
+        await task.value
+        #expect(pipeline.cached(url, maxPixel: 32) != nil)
+    }
 }
