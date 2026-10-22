@@ -26,6 +26,9 @@ public final class BubbleHeightCache: @unchecked Sendable {
     private var heights: [String: Double] = [:]
     private let lock = NSLock()
 
+    /// Точная высота текста (points). Ставит MaxlyUI `BubbleTextMeasurer.installAsHeightProvider`.
+    public static var textHeightProvider: (@Sendable (String, Double) -> Double)?
+
     public init() {}
 
     public subscript(id: String) -> Double? {
@@ -91,9 +94,13 @@ public final class BubbleHeightCache: @unchecked Sendable {
         }
         let text = message.text
         if !text.isEmpty {
-            let charsPerLine = max(12.0, maxWidth / 8.5)
-            let lines = max(1.0, ceil(Double(text.count) / charsPerLine))
-            height += lines * lineHeight
+            if let provider = textHeightProvider {
+                height += provider(text, maxWidth)
+            } else {
+                let charsPerLine = max(12.0, maxWidth / 8.5)
+                let lines = max(1.0, ceil(Double(text.count) / charsPerLine))
+                height += lines * lineHeight
+            }
         }
         if height <= bubblePaddingY {
             height += minTextBubble

@@ -177,9 +177,15 @@ struct ChatTranscript: View {
                 requestLatest()
             }
             .task(id: viewModel.transcriptVersion) {
-                let urls = Self.prefetchURLs(viewModel.messages.suffix(Self.prefetchCount))
-                guard !urls.isEmpty else { return }
-                await ImagePipeline.shared.prefetchDecoded(urls.map { ($0, Self.prefetchMaxPixel) })
+                let plan = TranscriptImagePrefetch.plan(
+                    messages: viewModel.messages,
+                    visibleRange: nil,
+                    scrollingTowardOlder: false
+                )
+                guard !plan.urls.isEmpty else { return }
+                await ImagePipeline.shared.prefetchDecoded(
+                    plan.urls.map { ($0, TranscriptImagePrefetch.maxPixel) }
+                )
             }
         }
     }
@@ -251,6 +257,13 @@ struct ChatTranscript: View {
                 recordScroll(confirmed ? "scroll-confirmed" : "scroll-unconfirmed", immediate: true)
                 noteBottomIfReached()
                 reportReads()
+            },
+            onPrefetchURLs: { urls in
+                Task {
+                    await ImagePipeline.shared.prefetchDecoded(
+                        urls.map { ($0, Self.prefetchMaxPixel) }
+                    )
+                }
             }
         )
         .modifier(FloatingDayOverlay(model: viewModel, topVisible: headerVisible))

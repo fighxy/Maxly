@@ -27,6 +27,16 @@ struct BubbleHeightCacheTests {
         #expect(cache.estimated(for: item, maxWidth: 300) == 120)
     }
 
+    @Test("textHeightProvider заменяет эвристику символов")
+    func textProvider() {
+        let previous = BubbleHeightCache.textHeightProvider
+        defer { BubbleHeightCache.textHeightProvider = previous }
+        BubbleHeightCache.textHeightProvider = { _, _ in 99 }
+        let short = BubbleHeightCache.estimate(row: row(text: "hi", day: nil), maxWidth: 280)
+        let empty = BubbleHeightCache.estimate(row: row(text: "", day: nil), maxWidth: 280)
+        #expect(short >= empty + 99)
+    }
+
     private func row(text: String, day: String?) -> TranscriptRow {
         TranscriptRow(
             message: Message(

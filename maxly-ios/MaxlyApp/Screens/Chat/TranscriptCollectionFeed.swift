@@ -4,11 +4,11 @@ import MaxlyDomain
 import MaxlyPresentation
 import MaxlyUI
 
-/// Лента на UICollectionView: recycling ячеек, оценка высоты, рамки из UIKit.
+/// Лента на UICollectionView: recycling, кэш высот, перевёрнутая ось (новое у низа как index 0).
 ///
-/// Ячейки — SwiftUI `TranscriptBubble` через `UIHostingConfiguration`. Команды прокрутки
-/// и геометрия для read marks / «вниз» идут через координатор, без per-row
-/// `onGeometryChange` у каждой строки.
+/// `transform = scaleY(-1)` на коллекции и ячейках: в data source новее сообщения первыми,
+/// визуально они у низа; вставка нового не сдвигает offset старых. Геометрию и «вниз»
+/// считаем в экранных координатах после transform.
 struct TranscriptCollectionFeed: UIViewControllerRepresentable {
     @Bindable var viewModel: ChatViewModel
     let rows: [TranscriptRow]
@@ -36,6 +36,7 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
     var onNearTopPrefix: (Int?) -> Void
     var onLoadNewer: () -> Void
     var onScrollFinished: (_ token: Int, _ confirmed: Bool) -> Void
+    var onPrefetchURLs: ([URL]) -> Void
 
     func makeUIViewController(context: Context) -> TranscriptCollectionController {
         let controller = TranscriptCollectionController()
@@ -53,7 +54,7 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     @MainActor
-    final class Coordinator: NSObject, UICollectionViewDelegate {
+    final class Coordinator: NSObject, UICollectionViewDelegate, UICollectionViewDataSourcePrefetching {
         var parent: TranscriptCollectionFeed
         weak var controller: TranscriptCollectionController?
         private var heightCache = BubbleHeightCache()
@@ -61,6 +62,10 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
         private var scrollTask: Task<Void, Never>?
         private var geometrySampler = TranscriptGeometrySampler()
         private var userDragging = false
+        private var lastOffsetY: CGFloat = 0
+        /// Палец / инерция к истории (визуальный верх = старое).
+        private var scrollingTowardOlder = false
+        private var lastPrefetchKey = ""
 
         init(_ parent: TranscriptCollectionFeed) {
             self.parent = parent
@@ -70,11 +75,14 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
             guard let controller else { return }
             controller.loadViewIfNeeded()
             controller.collectionView?.delegate = self
+            controller.collectionView?.prefetchDataSource = self
             let animate = feed.animateInserts && !feed.isOpening && !feed.isRestoringHistory && !feed.reduceMotion
+            prewarmHeights(feed.rows, width: feed.width, feedInset: feed.feedInset)
             controller.setRows(
                 feed.rows,
                 width: feed.width,
                 feedInset: feed.feedInset,
+                heightCache: heightCache,
                 animate: animate,
                 header: headerKind(feed),
                 footerLoading: feed.isJumped
@@ -85,6 +93,7 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
             } else if feed.scrollRequest == nil {
                 lastRequestToken = nil
             }
+            scheduleImagePrefetch(force: true)
         }
 
         private func headerKind(_ feed: TranscriptCollectionFeed) -> TranscriptCollectionController.HeaderKind {
@@ -95,22 +104,42 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
             return .none
         }
 
-        func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
-            sampleGeometry(force: false)
-            if indexPath.section == TranscriptCollectionController.rowsSection {
-                let prefix = indexPath.item
-                parent.onNearTopPrefix(prefix)
+        private func prewarmHeights(_ rows: [TranscriptRow], width: CGFloat, feedInset: CGFloat) {
+            let maxWidth = Double(min(520, max(0, width - feedInset * 2) * MaxlyTheme.bubbleMax))
+            let cache = heightCache
+            Task.detached(priority: .utility) {
+                for row in rows {
+                    if cache[row.id] != nil { continue }
+                    let height = BubbleHeightCache.estimate(row: row, maxWidth: maxWidth)
+                    cache.store(id: row.id, height: height)
+                }
             }
+        }
+
+        func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
+            cell.transform = TranscriptCollectionController.invertTransform
+            sampleGeometry(force: false)
         }
 
         func collectionView(_ collectionView: UICollectionView, didEndDisplaying cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
             sampleGeometry(force: false)
         }
 
+        func collectionView(_ collectionView: UICollectionView, prefetchItemsAt indexPaths: [IndexPath]) {
+            scheduleImagePrefetch(force: false)
+        }
+
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            let y = scrollView.contentOffset.y
+            // После scaleY(-1) рост offset ведёт к визуальному верху (старое).
+            if abs(y - lastOffsetY) > 1 {
+                scrollingTowardOlder = y > lastOffsetY
+                lastOffsetY = y
+            }
             reportBottom(scrollView)
             sampleGeometry(force: false)
-            updateTopVisible(scrollView)
+            updateTopVisible()
+            scheduleImagePrefetch(force: false)
         }
 
         func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
@@ -136,6 +165,7 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
             let state = parent.snapshot(row)
             let reduceMotion = parent.reduceMotion
             let outgoing = row.isOutgoing
+            cell.transform = TranscriptCollectionController.invertTransform
             cell.contentConfiguration = UIHostingConfiguration {
                 TranscriptBubble(
                     state: state,
@@ -155,10 +185,6 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
             return CGFloat(heightCache.estimated(for: row, maxWidth: Double(maxWidth)))
         }
 
-        func storeMeasuredHeight(id: String, height: CGFloat) {
-            heightCache.store(id: id, height: Double(height))
-        }
-
         private func runScroll(_ request: TranscriptScrollController.Request) {
             scrollTask?.cancel()
             scrollTask = Task { @MainActor [weak self] in
@@ -169,7 +195,6 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
                     id: request.id,
                     anchor: request.anchor,
                     latest: request.latest,
-                    token: request.token,
                     stillCurrent: { [weak self] in self?.parent.scrollRequest?.token == request.token }
                 )
                 guard !Task.isCancelled, parent.scrollRequest?.token == request.token else { return }
@@ -183,36 +208,65 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
             guard let controller, let collection = controller.collectionView else { return }
             let viewport = collection.convert(collection.bounds, to: nil)
             var frames: [String: CGRect] = [:]
+            var chronoIndices: [Int] = []
             let visibleRows = collection.indexPathsForVisibleItems
                 .filter { $0.section == TranscriptCollectionController.rowsSection }
             for indexPath in visibleRows {
-                guard indexPath.item < parent.rows.count,
-                      let cell = collection.cellForItem(at: indexPath) else { continue }
-                let id = parent.rows[indexPath.item].id
+                guard let row = controller.row(atDisplayIndex: indexPath.item),
+                      let cell = collection.cellForItem(at: indexPath),
+                      let chrono = controller.chronologicalIndex(display: indexPath.item)
+                else { continue }
                 let frame = cell.convert(cell.bounds, to: nil)
-                frames[id] = frame
-                storeMeasuredHeight(id: id, height: cell.bounds.height)
+                frames[row.id] = frame
+                heightCache.store(id: row.id, height: Double(cell.bounds.height))
+                chronoIndices.append(chrono)
             }
-            parent.onFrames(frames, viewport, collection.adjustedContentInset.top)
-            parent.onNearTopPrefix(visibleRows.map(\.item).min())
+            parent.onFrames(frames, viewport, 0)
+            parent.onNearTopPrefix(chronoIndices.min())
         }
 
         private func reportBottom(_ scrollView: UIScrollView) {
+            guard let controller, let collection = controller.collectionView else { return }
+            let viewport = collection.convert(collection.bounds, to: nil)
+            if let last = parent.rows.last,
+               let display = controller.displayIndex(for: last.id),
+               let cell = collection.cellForItem(at: IndexPath(item: display, section: TranscriptCollectionController.rowsSection)) {
+                let frame = cell.convert(cell.bounds, to: nil)
+                let distance = max(0, Double(viewport.maxY - frame.maxY))
+                parent.onBottomDistance(distance, Double(viewport.height))
+                return
+            }
             let inset = scrollView.adjustedContentInset
-            let distance = ScrollDownVisibility.distanceFromBottom(
-                contentHeight: Double(scrollView.contentSize.height),
-                offsetY: Double(scrollView.contentOffset.y),
-                viewportHeight: Double(scrollView.bounds.height),
-                insetTop: Double(inset.top),
-                insetBottom: Double(inset.bottom)
-            )
+            // Inverted: «низ» ≈ маленький offset.
+            let distance = max(0, Double(scrollView.contentOffset.y + inset.top))
             parent.onBottomDistance(distance, Double(scrollView.bounds.height - inset.top - inset.bottom))
         }
 
-        private func updateTopVisible(_ scrollView: UIScrollView) {
+        private func updateTopVisible() {
             guard let controller else { return }
-            // Загрузку старого ведёт `ChatTranscript.task(id: shouldPrefetchOlder)`, не каждый scroll.
-            parent.onTopVisible(controller.isOlderHeaderVisible)
+            parent.onTopVisible(controller.isOlderChromeVisibleOnScreen)
+        }
+
+        private func scheduleImagePrefetch(force: Bool) {
+            guard let controller else { return }
+            let visible = controller.collectionView?.indexPathsForVisibleItems
+                .filter { $0.section == TranscriptCollectionController.rowsSection }
+                .compactMap { controller.chronologicalIndex(display: $0.item) }
+                .sorted()
+            let range: Range<Int>? = {
+                guard let visible, let first = visible.first, let last = visible.last else { return nil }
+                return first..<(last + 1)
+            }()
+            let plan = TranscriptImagePrefetch.plan(
+                messages: parent.viewModel.messages,
+                visibleRange: range,
+                scrollingTowardOlder: scrollingTowardOlder
+            )
+            let key = plan.urls.map(\.absoluteString).joined(separator: "|")
+            guard force || key != lastPrefetchKey else { return }
+            lastPrefetchKey = key
+            guard !plan.urls.isEmpty else { return }
+            parent.onPrefetchURLs(plan.urls)
         }
     }
 }
@@ -221,9 +275,11 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
 
 @MainActor
 final class TranscriptCollectionController: UIViewController {
-    static let headerSection = 0
+    /// После `scaleY(-1)` первая секция — у визуального низа, последняя — у верха.
+    static let newerSection = 0
     static let rowsSection = 1
-    static let footerSection = 2
+    static let olderSection = 2
+    static let invertTransform = CGAffineTransform(scaleX: 1, y: -1)
 
     enum HeaderKind: Equatable {
         case none
@@ -236,16 +292,19 @@ final class TranscriptCollectionController: UIViewController {
     private(set) var collectionView: UICollectionView!
     weak var coordinator: TranscriptCollectionFeed.Coordinator?
     private var dataSource: UICollectionViewDiffableDataSource<Int, Item>!
+    /// Хронологический порядок (старое → новое), как в ViewModel.
     private var rows: [TranscriptRow] = []
     private var header: HeaderKind = .none
     private var footerLoading = false
     private var width: CGFloat = 0
     private var feedInset: CGFloat = 8
+    private weak var heightCache: BubbleHeightCache?
 
     enum Item: Hashable {
-        case header
+        case newer
         case row(String)
-        case footer
+        case older
+        case chromeEmpty
     }
 
     override func viewDidLoad() {
@@ -259,6 +318,7 @@ final class TranscriptCollectionController: UIViewController {
         collection.keyboardDismissMode = .interactive
         collection.scrollsToTop = false
         collection.contentInsetAdjustmentBehavior = .automatic
+        collection.transform = Self.invertTransform
         view.addSubview(collection)
         collectionView = collection
         configureDataSource()
@@ -273,6 +333,7 @@ final class TranscriptCollectionController: UIViewController {
         _ rows: [TranscriptRow],
         width: CGFloat,
         feedInset: CGFloat,
+        heightCache: BubbleHeightCache,
         animate: Bool,
         header: HeaderKind,
         footerLoading: Bool
@@ -280,48 +341,73 @@ final class TranscriptCollectionController: UIViewController {
         self.rows = rows
         self.width = width
         self.feedInset = feedInset
+        self.heightCache = heightCache
         self.header = header
         self.footerLoading = footerLoading
         var snapshot = NSDiffableDataSourceSnapshot<Int, Item>()
-        snapshot.appendSections([Self.headerSection, Self.rowsSection, Self.footerSection])
-        if header != .none { snapshot.appendItems([.header], toSection: Self.headerSection) }
-        snapshot.appendItems(rows.map { .row($0.id) }, toSection: Self.rowsSection)
-        if footerLoading { snapshot.appendItems([.footer], toSection: Self.footerSection) }
+        snapshot.appendSections([Self.newerSection, Self.rowsSection, Self.olderSection])
+        // newerSection → визуальный низ: jump-loader или пустой слот.
+        if footerLoading {
+            snapshot.appendItems([.newer], toSection: Self.newerSection)
+        } else {
+            snapshot.appendItems([.chromeEmpty], toSection: Self.newerSection)
+        }
+        // В data source новее первыми (index 0 у визуального низа после invert).
+        snapshot.appendItems(rows.reversed().map { .row($0.id) }, toSection: Self.rowsSection)
+        // olderSection → визуальный верх.
+        if header != .none {
+            snapshot.appendItems([.older], toSection: Self.olderSection)
+        } else {
+            snapshot.appendItems([.chromeEmpty], toSection: Self.olderSection)
+        }
         dataSource.apply(snapshot, animatingDifferences: animate)
         collectionView?.collectionViewLayout.invalidateLayout()
     }
 
-    var isOlderHeaderVisible: Bool {
-        guard header != .none,
-              case .olderLoader = header,
-              let collectionView,
-              let attributes = collectionView.layoutAttributesForItem(at: IndexPath(item: 0, section: Self.headerSection))
-        else { return false }
-        let frame = attributes.frame
-        let visible = CGRect(
-            x: collectionView.contentOffset.x,
-            y: collectionView.contentOffset.y,
-            width: collectionView.bounds.width,
-            height: 100 + collectionView.adjustedContentInset.top
-        )
-        return frame.maxY >= collectionView.contentOffset.y && frame.minY < visible.maxY
+    func displayIndex(for id: String) -> Int? {
+        guard let chrono = rows.firstIndex(where: { $0.id == id }) else { return nil }
+        return rows.count - 1 - chrono
+    }
+
+    func chronologicalIndex(display: Int) -> Int? {
+        guard rows.indices.contains(display) else { return nil }
+        return rows.count - 1 - display
+    }
+
+    func row(atDisplayIndex display: Int) -> TranscriptRow? {
+        guard let chrono = chronologicalIndex(display: display) else { return nil }
+        return rows[chrono]
+    }
+
+    var isOlderChromeVisibleOnScreen: Bool {
+        guard header != .none, case .olderLoader = header, let collectionView else { return false }
+        let indexPath = IndexPath(item: 0, section: Self.olderSection)
+        let frame: CGRect
+        if let cell = collectionView.cellForItem(at: indexPath) {
+            frame = cell.convert(cell.bounds, to: nil)
+        } else if let attributes = collectionView.layoutAttributesForItem(at: indexPath) {
+            frame = collectionView.convert(attributes.frame, to: nil)
+        } else {
+            return false
+        }
+        let viewport = collectionView.convert(collectionView.bounds, to: nil)
+        return frame.intersects(CGRect(x: viewport.minX, y: viewport.minY, width: viewport.width, height: 120))
     }
 
     func scrollTo(
         id: String,
         anchor: Double,
         latest: Bool,
-        token: Int,
         stillCurrent: @escaping () -> Bool
     ) async -> Bool {
-        guard let collectionView,
-              let index = rows.firstIndex(where: { $0.id == id }) else { return false }
-        let indexPath = IndexPath(item: index, section: Self.rowsSection)
+        guard let collectionView, let display = displayIndex(for: id) else { return false }
+        let indexPath = IndexPath(item: display, section: Self.rowsSection)
+        // После invert .top в координатах коллекции ≈ визуальный низ.
         let position: UICollectionView.ScrollPosition
         if latest || anchor >= 0.85 {
-            position = .bottom
-        } else if anchor <= 0.15 {
             position = .top
+        } else if anchor <= 0.15 {
+            position = .bottom
         } else {
             position = .centeredVertically
         }
@@ -352,49 +438,48 @@ final class TranscriptCollectionController: UIViewController {
 
     private func makeLayout() -> UICollectionViewCompositionalLayout {
         UICollectionViewCompositionalLayout { [weak self] sectionIndex, environment in
-            guard let self else {
-                return Self.fallbackSection()
-            }
-            let width = environment.container.effectiveContentSize.width
+            guard let self else { return Self.fallbackSection() }
             switch sectionIndex {
-            case Self.headerSection:
-                return self.headerSectionLayout(width: width)
-            case Self.footerSection:
-                return self.footerSectionLayout()
+            case Self.newerSection:
+                return self.fixedSection(height: self.footerLoading ? 40 : 1)
+            case Self.olderSection:
+                return self.olderSectionLayout()
             default:
-                return self.rowsSectionLayout(width: width)
+                return self.rowsSectionLayout(width: environment.container.effectiveContentSize.width)
             }
         }
     }
 
     private func rowsSectionLayout(width: CGFloat) -> NSCollectionLayoutSection {
+        let estimated: CGFloat = {
+            guard let first = rows.last, let cache = heightCache else { return 72 }
+            return max(36, coordinator?.estimatedHeight(for: first, width: width, feedInset: feedInset) ?? 72)
+        }()
         let itemSize = NSCollectionLayoutSize(
             widthDimension: .fractionalWidth(1),
-            heightDimension: .estimated(72)
+            heightDimension: .estimated(estimated)
         )
         let item = NSCollectionLayoutItem(layoutSize: itemSize)
         let group = NSCollectionLayoutGroup.vertical(layoutSize: itemSize, subitems: [item])
         let section = NSCollectionLayoutSection(group: group)
         section.interGroupSpacing = 2
-        section.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: feedInset, bottom: 8, trailing: feedInset)
+        section.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: feedInset, bottom: 0, trailing: feedInset)
         return section
     }
 
-    private func headerSectionLayout(width: CGFloat) -> NSCollectionLayoutSection {
+    private func olderSectionLayout() -> NSCollectionLayoutSection {
         let height: CGFloat
         switch header {
         case .none: height = 1
         case .olderLoader: height = 32
         case .hint, .channelReady, .empty: height = 200
         }
-        let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .estimated(height))
-        let item = NSCollectionLayoutItem(layoutSize: size)
-        let group = NSCollectionLayoutGroup.vertical(layoutSize: size, subitems: [item])
-        return NSCollectionLayoutSection(group: group)
+        return fixedSection(height: height, estimated: true)
     }
 
-    private func footerSectionLayout() -> NSCollectionLayoutSection {
-        let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .absolute(40))
+    private func fixedSection(height: CGFloat, estimated: Bool = false) -> NSCollectionLayoutSection {
+        let dim: NSCollectionLayoutDimension = estimated ? .estimated(height) : .absolute(max(1, height))
+        let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: dim)
         let item = NSCollectionLayoutItem(layoutSize: size)
         let group = NSCollectionLayoutGroup.vertical(layoutSize: size, subitems: [item])
         return NSCollectionLayoutSection(group: group)
@@ -414,6 +499,7 @@ final class TranscriptCollectionController: UIViewController {
         }
         let chromeRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { [weak self] cell, _, item in
             guard let self else { return }
+            cell.transform = Self.invertTransform
             cell.contentConfiguration = UIHostingConfiguration {
                 self.chromeView(for: item)
             }
@@ -424,7 +510,7 @@ final class TranscriptCollectionController: UIViewController {
             switch item {
             case .row(let id):
                 return collectionView.dequeueConfiguredReusableCell(using: rowRegistration, for: indexPath, item: id)
-            case .header, .footer:
+            case .newer, .older, .chromeEmpty:
                 return collectionView.dequeueConfiguredReusableCell(using: chromeRegistration, for: indexPath, item: item)
             }
         }
@@ -433,7 +519,15 @@ final class TranscriptCollectionController: UIViewController {
     @ViewBuilder
     private func chromeView(for item: Item) -> some View {
         switch item {
-        case .header:
+        case .chromeEmpty:
+            Color.clear.frame(height: 1)
+        case .newer:
+            ProgressView()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .onAppear { self.coordinator?.parent.onLoadNewer() }
+        case .older:
             switch header {
             case .none:
                 Color.clear.frame(height: 1)
@@ -476,12 +570,6 @@ final class TranscriptCollectionController: UIViewController {
                 .frame(maxWidth: .infinity)
                 .frame(height: 32)
             }
-        case .footer:
-            ProgressView()
-                .controlSize(.small)
-                .frame(maxWidth: .infinity)
-                .frame(height: 40)
-                .onAppear { self.coordinator?.parent.onLoadNewer() }
         case .row:
             EmptyView()
         }
