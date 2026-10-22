@@ -20,7 +20,9 @@
 - Data source: новее сообщения первыми; `transform = scaleY(-1)` на коллекции и ячейках → визуально новое у низа.
 - Вставка нового не сдвигает offset старых ячеек.
 - Chrome: older-loader в секции у визуального верха, jump-newer — у низа.
-- Высоты: `BubbleHeightCache` + off-main prewarm; TextKit через `BubbleTextMeasurer`.
+- Высоты: у каждой строки своя, `CollectionFeedLayout` + `BubbleHeightCache` (TextKit через `BubbleTextMeasurer`). Flow layout, не один `.estimated` на секцию.
+- Индикатор скролла рисуется снаружи flip. VoiceOver идёт сверху вниз. Клавиатура не добавляет автоинсет: низ держит offset 0.
+- Контекстное меню: у коллекции и ячейки по `scaleY(-1)`, в окне это identity. Пузырь по-прежнему `UIHostingConfiguration`.
 
 Откат ленты чата: `UserDefaults` `maxly.transcript.feed` = `lazyStack`.
 
@@ -38,6 +40,7 @@
 
 ## Дальше (если понадобится)
 
-1. Self-sizing item sizes по id из кэша в compositional layout (сейчас estimated от последнего пузыря).
+1. Полностью нативная отрисовка пузыря вместо `UIHostingConfiguration` в ячейке.
 2. Prefetch decode строго по `indexPathsForVisibleItems` + velocity.
 3. Убрать LazyVStack-путь, когда collection стабилен на всех сценариях.
+4. Проверка на устройстве: контекстное меню, выделение текста, VoiceOver по длинной истории.

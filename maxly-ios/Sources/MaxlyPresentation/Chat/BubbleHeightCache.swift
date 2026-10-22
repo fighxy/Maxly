@@ -4,8 +4,8 @@ import MaxlyDomain
 /// Оценка высоты строки ленты до раскладки SwiftUI/UIKit.
 ///
 /// Нативные мессенджеры кладут в UICollectionView уже посчитанный размер.
-/// Здесь — быстрая эвристика по содержимому: LazyVStack меньше «прыгает» при
-/// оценке, а collection feed задаёт `estimatedItemSize` до уточнения layout.
+/// Здесь — быстрая эвристика по содержимому. Collection feed берёт высоту
+/// каждой строки (`CollectionFeedLayout`), а не одну оценку на всю секцию.
 /// Класс: мутации из `@State` / UIKit-координатора без копирования словаря.
 public final class BubbleHeightCache: @unchecked Sendable {
     public static let rowSpacing: Double = 2
