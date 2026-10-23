@@ -19,7 +19,7 @@ import MaxlyUI
 ///
 /// Движок ленты: `TranscriptFeedEngine` — по умолчанию `UICollectionView`
 /// (`TranscriptCollectionFeed`), запасной путь — `LazyVStack`. План A–D:
-/// `docs/telegram-smoothness.md`.
+/// `docs/chat-smoothness.md`.
 struct ChatTranscript: View {
     @Bindable var viewModel: ChatViewModel
     let chatType: ChatType
@@ -212,13 +212,14 @@ struct ChatTranscript: View {
             viewModel: viewModel,
             rows: viewModel.rows,
             width: width,
-            reveal: reveal,
+            revealMode: reveal,
             feedInset: Self.feedInset,
             reduceMotion: reduceMotion,
-            animateInserts: bottom.atBottom && !viewModel.isRestoringHistory,
             isOpening: isOpening,
             isRestoringHistory: viewModel.isRestoringHistory,
             scrollRequest: scroll.request,
+            stickToBottom: stickToBottom,
+            reveal: revealTarget,
             canLoadOlder: viewModel.canLoadOlder,
             isLoadingOlder: viewModel.isLoadingOlder,
             isJumped: viewModel.isJumped,
@@ -249,6 +250,7 @@ struct ChatTranscript: View {
             },
             onTopVisible: { headerVisible = $0 },
             onNearTopPrefix: { nearTopPrefix = $0 },
+            onLoadOlder: { Task { await loadOlderFromTop() } },
             onLoadNewer: { Task { await viewModel.loadNewer() } },
             onScrollFinished: { token, confirmed in
                 guard scroll.finish(token) else { return }
@@ -650,10 +652,41 @@ struct ChatTranscript: View {
         followShared()
     }
 
+    /// Прилипать к последнему сообщению. Палец и открытие на непрочитанном это отменяют.
+    private var stickToBottom: Bool {
+        if userScrolling || isOpening || viewModel.isJumped { return false }
+        if let request = scroll.request { return request.latest }
+        return bottom.followsLatest
+    }
+
+    /// Куда встать в этом кадре. Команда прокрутки важнее, иначе — цель открытия.
+    private var revealTarget: TranscriptCollectionFeed.Reveal? {
+        if let request = scroll.request {
+            return .init(id: request.id, anchor: request.anchor, latest: request.latest)
+        }
+        guard isOpening, !openingTargetChosen, !viewModel.hasPendingOpen, !viewModel.rows.isEmpty else { return nil }
+        if let id = viewModel.unreadAnchorId {
+            return .init(id: id, anchor: 0.12, latest: false)
+        }
+        if let id = viewModel.restoredPlace {
+            return .init(id: id, anchor: 0, latest: false)
+        }
+        if let id = viewModel.rows.last?.id {
+            return .init(id: id, anchor: 1, latest: true)
+        }
+        return nil
+    }
+
     private func followCollection() {
         guard !viewModel.rows.isEmpty, viewModel.scrollTarget == nil else { return }
         if isOpening { openAtStart(); return }
-        followShared()
+        switch viewModel.messagesChange {
+        case .prepended, .trimmed, .reload:
+            // Снимок коллекции сам держит видимую строку. Вторая команда прокрутки её сдвигает.
+            return
+        default:
+            followShared()
+        }
     }
 
     private func followShared() {

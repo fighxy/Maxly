@@ -30,10 +30,13 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     @MainActor
-    final class Coordinator: NSObject, UICollectionViewDelegateFlowLayout {
+    final class Coordinator: NSObject, UICollectionViewDelegateFlowLayout, UICollectionViewDataSourcePrefetching {
         var parent: CommentsCollectionFeed
         weak var controller: CommentsCollectionController?
         private var heightCache = BubbleHeightCache()
+        private var prewarmKey = ""
+        private var shownRows: [String: TranscriptRow] = [:]
+        private var shownPost: Message?
         private var lastOffsetY: CGFloat = 0
         private var scrollingTowardOlder = false
         private var lastPrefetchKey = ""
@@ -41,15 +44,21 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
 
         init(_ parent: CommentsCollectionFeed) { self.parent = parent }
 
-        func cancelPrewarm() { _ = prewarmEpoch.next() }
+        func cancelPrewarm() {
+            prewarmKey = ""
+            _ = prewarmEpoch.next()
+        }
 
         func apply(_ feed: CommentsCollectionFeed) {
             guard let controller else { return }
             controller.loadViewIfNeeded()
             controller.collectionView?.delegate = self
+            controller.collectionView?.prefetchDataSource = self
+            var seen = Set<String>()
             let rows = TranscriptLayout.rows(feed.model.comments, currentUserId: feed.model.currentUserId)
+                .filter { seen.insert($0.id).inserted }
             prewarm(rows, width: feed.width)
-            controller.setContent(
+            let changed = controller.setContent(
                 post: feed.model.post,
                 rows: rows,
                 state: feed.model.state,
@@ -58,13 +67,24 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
                 emptyText: feed.model.emptyText,
                 width: feed.width,
                 heightCache: heightCache,
-                animate: feed.atBottom.wrappedValue && feed.model.commentsChange.animatesTranscript,
-                preferBottom: feed.atBottom.wrappedValue
+                stickToBottom: feed.atBottom.wrappedValue
             )
+            syncVisibleCells(rows: rows, post: feed.model.post)
+            if changed {
+                loadOlderIfLoaderVisible()
+            }
             schedulePrefetch(rows: rows, force: true)
         }
 
+        func loadOlderIfLoaderVisible() {
+            guard controller?.isOlderLoaderVisible == true else { return }
+            Task { await parent.model.loadOlder() }
+        }
+
         private func prewarm(_ rows: [TranscriptRow], width: CGFloat) {
+            let key = "\(Int(width.rounded())):\(rows.count):\(rows.first?.id ?? ""):\(rows.last?.id ?? "")"
+            guard key != prewarmKey else { return }
+            prewarmKey = key
             let maxWidth = Double(width * MaxlyTheme.bubbleMax)
             let cache = heightCache
             let epoch = prewarmEpoch
@@ -72,9 +92,37 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
             Task.detached(priority: .utility) {
                 for row in rows {
                     if !epoch.matches(ticket) { return }
-                    if cache[row.id] != nil { continue }
-                    cache.store(id: row.id, height: BubbleHeightCache.estimate(row: row, maxWidth: maxWidth))
+                    cache.storeIfAbsent(id: row.id, height: BubbleHeightCache.estimate(row: row, maxWidth: maxWidth))
                 }
+            }
+        }
+
+        private func syncVisibleCells(rows: [TranscriptRow], post: Message) {
+            guard let controller, let collection = controller.collectionView else { return }
+            let byID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
+            shownRows = shownRows.filter { byID[$0.key] != nil }
+            let interacting = FeedScroll.isInteracting(collection)
+            for indexPath in collection.indexPathsForVisibleItems where indexPath.section == CommentsCollectionController.rowsSection {
+                guard let item = controller.item(at: indexPath), case .row(let id) = item,
+                      let row = byID[id], let cell = collection.cellForItem(at: indexPath) else { continue }
+                guard shownRows[id] != row else { continue }
+                let hadShown = shownRows[id] != nil
+                shownRows[id] = row
+                // Палец держит место: содержимое обновляем, перемер — после отпускания.
+                if interacting, hadShown {
+                    controller.deferRemeasure(id)
+                    configure(cell, row: row)
+                    continue
+                }
+                if let measured = cell as? MeasuredHostingCell {
+                    measured.resetMeasurement()
+                    measured.setNeedsLayout()
+                }
+                configure(cell, row: row)
+            }
+            if shownPost != post {
+                shownPost = post
+                controller.reconfigurePost()
             }
         }
 
@@ -103,9 +151,13 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
         }
 
         func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
-            if indexPath.section == CommentsCollectionController.olderSection {
-                Task { await parent.model.loadOlder() }
-            }
+            guard controller?.isOlderLoader(indexPath) == true, controller?.acceptsOlderLoad == true else { return }
+            Task { await parent.model.loadOlder() }
+        }
+
+        func collectionView(_ collectionView: UICollectionView, prefetchItemsAt indexPaths: [IndexPath]) {
+            guard let rows = controller?.currentRows else { return }
+            schedulePrefetch(rows: rows, force: false)
         }
 
         func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
@@ -142,11 +194,21 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
             }
         }
 
+        private func visibleRowRange() -> Range<Int>? {
+            guard let collection = controller?.collectionView else { return nil }
+            let items = collection.indexPathsForVisibleItems
+                .filter { $0.section == CommentsCollectionController.rowsSection }
+                .map(\.item)
+                .sorted()
+            guard let first = items.first, let last = items.last else { return nil }
+            return first..<(last + 1)
+        }
+
         private func schedulePrefetch(rows: [TranscriptRow], force: Bool) {
             let messages = rows.map(\.message)
             let plan = TranscriptImagePrefetch.plan(
                 messages: messages,
-                visibleRange: nil,
+                visibleRange: visibleRowRange(),
                 scrollingTowardOlder: scrollingTowardOlder
             )
             let key = plan.urls.map(\.absoluteString).joined(separator: "|")
@@ -181,7 +243,9 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
             layout collectionViewLayout: UICollectionViewLayout,
             insetForSectionAt section: Int
         ) -> UIEdgeInsets {
-            CommentsCollectionController.sectionInset
+            // Нижняя секция пустая: её inset не должен добавлять щель под последним комментарием.
+            guard section != CommentsCollectionController.newerSection else { return .zero }
+            return CommentsCollectionController.sectionInset
         }
     }
 }
@@ -271,39 +335,56 @@ final class CommentsCollectionController: UIViewController {
     private var emptyText: String?
     private var width: CGFloat = 0
     private weak var heightCache: BubbleHeightCache?
-    private var sectionItems: [Int: [Item]] = [:]
     private var measuredChrome: [String: CGFloat] = [:]
     private var lastLayoutWidth: CGFloat = 0
     private var lastBoundsHeight: CGFloat = 0
     private var pendingBottomPin = false
+    /// Смещение, которое UIKit иногда сбрасывает в том же ходе раскладки.
+    private var holdOffset: CGFloat?
+    private var pendingSettle: PendingSettle?
+    /// Пока снимок ещё не встал на якорь, верхний загрузчик не должен тянуть историю.
+    private(set) var acceptsOlderLoad = false
+    private var userScrolling = false
+    private var deferredHeights: MeasuredLayoutCommit.Batch?
+    private var pendingRemeasure: Set<String> = []
     private lazy var commit = MeasuredLayoutCommit { [weak self] batch in
         self?.applyMeasured(batch)
+    }
+
+    private struct PendingSettle {
+        var anchor: FeedScroll.Anchor?
+        var stick: Bool
+        var beforeOffset: CGFloat
+        var beforeHeight: CGFloat
     }
 
     static var sectionInset: UIEdgeInsets {
         UIEdgeInsets(top: 4, left: MaxlyTheme.pad, bottom: 4, right: MaxlyTheme.pad)
     }
 
+    /// Идентификаторы уникальны на весь снимок. Пустая нижняя секция не получает заглушку.
     enum Item: Hashable {
         case post
         case row(String)
         case older
         case status
-        case spacer
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .clear
+        view.insetsLayoutMarginsFromSafeArea = false
         let flow = UICollectionViewFlowLayout()
         flow.scrollDirection = .vertical
         flow.minimumInteritemSpacing = 0
         flow.minimumLineSpacing = 0
+        // Явная высота каждой строки. `.estimated` берёт один размер на секцию.
         flow.estimatedItemSize = .zero
         let collection = UICollectionView(frame: view.bounds, collectionViewLayout: flow)
         collection.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         FeedScroll.install(collection)
         collection.delegate = coordinator
+        collection.prefetchDataSource = coordinator
         view.addSubview(collection)
         collectionView = collection
         configureDataSource()
@@ -312,6 +393,7 @@ final class CommentsCollectionController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         guard let collectionView else { return }
+        let interacting = FeedScroll.isInteracting(collectionView)
         let nearBottom = FeedScroll.isNearBottom(collectionView)
         let heightChanged = lastBoundsHeight > 0 && abs(view.bounds.height - lastBoundsHeight) > 0.5
         lastBoundsHeight = view.bounds.height
@@ -319,12 +401,36 @@ final class CommentsCollectionController: UIViewController {
         if resetHeightsForWidth(view.bounds.width) {
             collectionView.collectionViewLayout.invalidateLayout()
         }
-        InvertedCollectionChrome.pinBottomIfNeeded(
-            collectionView,
-            nearBottom: nearBottom,
-            heightChanged: heightChanged
-        )
-        if pendingBottomPin, collectionView.bounds.height > 1, collectionView.contentSize.height > 1 {
+        if let pending = pendingSettle, collectionView.bounds.height > 1 {
+            pendingSettle = nil
+            if interacting {
+                pendingBottomPin = false
+            } else {
+                applySettle(
+                    pending.anchor,
+                    stick: pending.stick,
+                    beforeOffset: pending.beforeOffset,
+                    beforeHeight: pending.beforeHeight,
+                    interacting: false
+                )
+            }
+            acceptsOlderLoad = true
+            if !interacting {
+                coordinator?.loadOlderIfLoaderVisible()
+            }
+        }
+        var held = false
+        if let hold = holdOffset {
+            holdOffset = nil
+            held = true
+            if !interacting, abs(collectionView.contentOffset.y - hold) > 0.5 {
+                collectionView.contentOffset.y = hold
+            }
+        }
+        guard !held, !interacting else { return }
+        let insetChanged = FeedScroll.applyShortInset(collectionView)
+        let shouldPin = (nearBottom || pendingBottomPin) && (heightChanged || insetChanged || pendingBottomPin)
+        if shouldPin {
             FeedScroll.pinToBottom(collectionView)
             pendingBottomPin = false
         }
@@ -332,10 +438,9 @@ final class CommentsCollectionController: UIViewController {
 
     func releaseBottomPin() {
         pendingBottomPin = false
+        pendingSettle = nil
+        holdOffset = nil
     }
-
-    private var userScrolling = false
-    private var deferredHeights: MeasuredLayoutCommit.Batch?
 
     func setUserScrolling(_ scrolling: Bool) {
         let was = userScrolling
@@ -343,14 +448,22 @@ final class CommentsCollectionController: UIViewController {
         if was, !scrolling { flushDeferredHeights() }
     }
 
-    override func viewSafeAreaInsetsDidChange() {
-        let wasNear = collectionView.map { FeedScroll.isNearBottom($0) } ?? false
-        let dragging = collectionView?.isDragging == true || collectionView?.isDecelerating == true
-        super.viewSafeAreaInsetsDidChange()
-        guard let collectionView, (wasNear || pendingBottomPin), !dragging else { return }
-        FeedScroll.pinToBottom(collectionView)
+    func deferRemeasure(_ id: String) {
+        pendingRemeasure.insert(id)
     }
 
+    override func viewSafeAreaInsetsDidChange() {
+        let wasNear = collectionView.map { FeedScroll.isNearBottom($0) } ?? false
+        let interacting = collectionView.map { FeedScroll.isInteracting($0) } ?? false
+        super.viewSafeAreaInsetsDidChange()
+        guard let collectionView, (wasNear || pendingBottomPin), !interacting else { return }
+        _ = FeedScroll.applyShortInset(collectionView)
+        FeedScroll.pinToBottom(collectionView)
+        pendingBottomPin = false
+    }
+
+    /// `true`, если состав ленты изменился и снимок применён.
+    @discardableResult
     func setContent(
         post: Message,
         rows: [TranscriptRow],
@@ -360,21 +473,40 @@ final class CommentsCollectionController: UIViewController {
         emptyText: String?,
         width: CGFloat,
         heightCache: BubbleHeightCache,
-        animate: Bool,
-        preferBottom: Bool
-    ) {
-        if currentRows == rows, self.post == post, self.state == state, self.hasMore == hasMore,
+        stickToBottom: Bool
+    ) -> Bool {
+        var seen = Set<String>()
+        let unique = rows.filter { seen.insert($0.id).inserted }
+        if currentRows == unique, self.post == post, self.state == state, self.hasMore == hasMore,
            self.isLoadingOlder == isLoadingOlder, self.emptyText == emptyText, abs(self.width - width) < 0.5 {
-            return
+            if pendingSettle != nil {
+                pendingSettle?.stick = stickToBottom
+                pendingBottomPin = stickToBottom
+            }
+            return false
         }
         let collection = collectionView
-        let wasNearBottom = collection.map { FeedScroll.isNearBottom($0) } ?? preferBottom
+        let interacting = collection.map { FeedScroll.isInteracting($0) } ?? false
+        let previousRows = currentRows ?? []
+        let anchor = collection.flatMap { view in
+            FeedScroll.captureAnchor(view) { path in
+                guard path.section == Self.rowsSection, previousRows.indices.contains(path.item) else { return nil }
+                return previousRows[path.item].id
+            }
+        }
         let beforeHeight = collection?.contentSize.height ?? 0
         let beforeOffset = collection?.contentOffset.y ?? 0
-        let beforeFirst = currentRows?.first?.id
-        let hadRows = !(currentRows ?? []).isEmpty
+        let previous = Dictionary(uniqueKeysWithValues: previousRows.map { ($0.id, $0) })
+        let chromeChanged = self.post != post || self.state != state || self.hasMore != hasMore
+            || self.isLoadingOlder != isLoadingOlder || self.emptyText != emptyText
+        for row in unique where previous[row.id] != row {
+            heightCache.remove(id: row.id)
+        }
+        if self.post != post {
+            measuredChrome["post"] = nil
+        }
         self.post = post
-        self.currentRows = rows
+        self.currentRows = unique
         self.state = state
         self.hasMore = hasMore
         self.isLoadingOlder = isLoadingOlder
@@ -386,37 +518,117 @@ final class CommentsCollectionController: UIViewController {
         case .loading, .failed:
             rowItems = [.status]
         case .loaded:
-            rowItems = rows.map { .row($0.id) }
-            if let emptyText, rows.isEmpty {
+            rowItems = unique.map { .row($0.id) }
+            if emptyText != nil, unique.isEmpty {
                 rowItems.append(.status)
             }
         }
         var older: [Item] = [.post]
         if hasMore { older.append(.older) }
-        sectionItems = [
-            Self.olderSection: older,
-            Self.rowsSection: rowItems,
-            Self.newerSection: [.spacer],
-        ]
+        acceptsOlderLoad = false
         var snapshot = NSDiffableDataSourceSnapshot<Int, Item>()
         snapshot.appendSections([Self.olderSection, Self.rowsSection, Self.newerSection])
         snapshot.appendItems(older, toSection: Self.olderSection)
         snapshot.appendItems(rowItems, toSection: Self.rowsSection)
-        snapshot.appendItems([.spacer], toSection: Self.newerSection)
-        dataSource.apply(snapshot, animatingDifferences: animate && hadRows)
-        let shouldPin = wasNearBottom || (preferBottom && !hadRows)
-        pendingBottomPin = shouldPin
-        guard let collection, collection.bounds.height > 1 else { return }
-        collection.collectionViewLayout.invalidateLayout()
-        collection.layoutIfNeeded()
-        let grew = collection.contentSize.height - beforeHeight
-        let prepended = hadRows && rows.first?.id != beforeFirst
-        if shouldPin {
-            FeedScroll.pinToBottom(collection)
-            pendingBottomPin = false
-        } else if prepended, grew > 1 {
-            collection.contentOffset.y = beforeOffset + grew
+        FeedScroll.performWithoutAnimation {
+            self.dataSource.apply(snapshot, animatingDifferences: false)
+            if chromeChanged {
+                var refresh = self.dataSource.snapshot()
+                let chrome = refresh.itemIdentifiers.filter {
+                    if case .row = $0 { return false }
+                    return true
+                }
+                if !chrome.isEmpty {
+                    refresh.reconfigureItems(chrome)
+                    self.dataSource.apply(refresh, animatingDifferences: false)
+                }
+            }
+            guard let collection else { return }
+            guard collection.bounds.height > 1 else {
+                self.pendingSettle = PendingSettle(
+                    anchor: anchor,
+                    stick: stickToBottom,
+                    beforeOffset: beforeOffset,
+                    beforeHeight: beforeHeight
+                )
+                self.pendingBottomPin = stickToBottom
+                return
+            }
+            collection.collectionViewLayout.invalidateLayout()
+            collection.layoutIfNeeded()
+            self.applySettle(
+                anchor,
+                stick: stickToBottom,
+                beforeOffset: beforeOffset,
+                beforeHeight: beforeHeight,
+                interacting: interacting
+            )
         }
+        if collectionView?.bounds.height ?? 0 > 1 {
+            acceptsOlderLoad = true
+        }
+        return true
+    }
+
+    func isOlderLoader(_ indexPath: IndexPath) -> Bool {
+        dataSource.itemIdentifier(for: indexPath) == .older
+    }
+
+    /// Загрузчик истории виден после якоря. Пост в той же секции сам по себе историю не тянет.
+    var isOlderLoaderVisible: Bool {
+        guard acceptsOlderLoad, hasMore, let collectionView,
+              let indexPath = dataSource.indexPath(for: .older),
+              let frame = collectionView.layoutAttributesForItem(at: indexPath)?.frame else { return false }
+        let visible = CGRect(
+            x: collectionView.contentOffset.x,
+            y: collectionView.contentOffset.y,
+            width: collectionView.bounds.width,
+            height: collectionView.bounds.height
+        )
+        return frame.intersects(visible)
+    }
+
+    func reconfigurePost() {
+        guard let collectionView, let path = dataSource.indexPath(for: .post) else { return }
+        if let cell = collectionView.cellForItem(at: path) as? MeasuredHostingCell {
+            cell.resetMeasurement()
+        }
+        var snapshot = dataSource.snapshot()
+        guard snapshot.itemIdentifiers.contains(.post) else { return }
+        snapshot.reconfigureItems([.post])
+        FeedScroll.performWithoutAnimation {
+            dataSource.apply(snapshot, animatingDifferences: false)
+        }
+    }
+
+    private func applySettle(
+        _ anchor: FeedScroll.Anchor?,
+        stick: Bool,
+        beforeOffset: CGFloat,
+        beforeHeight: CGFloat,
+        interacting: Bool
+    ) {
+        guard let collection = collectionView else { return }
+        let settled = FeedScroll.settle(
+            collection,
+            anchor: anchor,
+            reveal: nil,
+            stickToBottom: stick,
+            interacting: interacting,
+            rowFrame: { [weak self] id in self?.frame(for: id) }
+        )
+        if !settled, let fallback = FeedScroll.fallbackOffset(collection, beforeOffset: beforeOffset, beforeHeight: beforeHeight) {
+            collection.contentOffset.y = fallback
+        }
+        if !interacting {
+            holdOffset = collection.contentOffset.y
+        }
+        pendingBottomPin = false
+    }
+
+    private func frame(for id: String) -> CGRect? {
+        guard let collectionView, let index = currentRows?.firstIndex(where: { $0.id == id }) else { return nil }
+        return collectionView.layoutAttributesForItem(at: IndexPath(item: index, section: Self.rowsSection))?.frame
     }
 
     func sizeForItem(at indexPath: IndexPath, containerWidth: CGFloat) -> CGSize {
@@ -427,8 +639,6 @@ final class CommentsCollectionController: UIViewController {
         }
         let height: CGFloat
         switch item {
-        case .spacer:
-            height = 1
         case .older:
             height = measuredChrome["older"] ?? 36
         case .status:
@@ -449,9 +659,8 @@ final class CommentsCollectionController: UIViewController {
         return CGSize(width: itemWidth, height: max(1, height))
     }
 
-    private func item(at indexPath: IndexPath) -> Item? {
-        guard let items = sectionItems[indexPath.section], items.indices.contains(indexPath.item) else { return nil }
-        return items[indexPath.item]
+    func item(at indexPath: IndexPath) -> Item? {
+        dataSource.itemIdentifier(for: indexPath)
     }
 
     private func chromeItem(forKey key: String) -> Item? {
@@ -485,7 +694,7 @@ final class CommentsCollectionController: UIViewController {
 
     private func applyMeasured(_ batch: MeasuredLayoutCommit.Batch) {
         guard let collectionView else { return }
-        if userScrolling || collectionView.isDragging || collectionView.isDecelerating {
+        if userScrolling || FeedScroll.isInteracting(collectionView) {
             var rows = deferredHeights?.rows ?? [:]
             var chrome = deferredHeights?.chrome ?? [:]
             rows.merge(batch.rows) { _, new in new }
@@ -493,41 +702,54 @@ final class CommentsCollectionController: UIViewController {
             deferredHeights = .init(rows: rows, chrome: chrome)
             return
         }
+        let wasNearBottom = FeedScroll.isNearBottom(collectionView)
         let offset = collectionView.contentOffset.y
-        let dragging = collectionView.isDragging || collectionView.isDecelerating
         var compensate: CGFloat = 0
         for (id, height) in batch.rows {
             let path = dataSource.indexPath(for: .row(id))
             let attrs = path.flatMap { collectionView.layoutAttributesForItem(at: $0) }
-            compensate += InvertedCollectionChrome.compensateOffset(
+            compensate += FeedLayoutAdjust.compensateOffset(
                 collectionView,
                 attributes: attrs,
                 newHeight: CGFloat(height),
-                dragging: dragging
+                dragging: false
             )
             heightCache?.store(id: id, height: height)
         }
         for (key, height) in batch.chrome {
             guard let item = chromeItem(forKey: key), let path = dataSource.indexPath(for: item) else { continue }
             let attrs = collectionView.layoutAttributesForItem(at: path)
-            compensate += InvertedCollectionChrome.compensateOffset(
+            compensate += FeedLayoutAdjust.compensateOffset(
                 collectionView,
                 attributes: attrs,
                 newHeight: height,
-                dragging: dragging
+                dragging: false
             )
             measuredChrome[key] = height
         }
-        UIView.performWithoutAnimation {
+        FeedScroll.performWithoutAnimation {
             collectionView.collectionViewLayout.invalidateLayout()
             collectionView.layoutIfNeeded()
-            if abs(compensate) >= 1 {
+            if wasNearBottom {
+                _ = FeedScroll.applyShortInset(collectionView)
+                FeedScroll.pinToBottom(collectionView)
+            } else if abs(compensate) >= 1 {
                 collectionView.contentOffset.y = offset + compensate
             }
         }
     }
 
     private func flushDeferredHeights() {
+        let ids = pendingRemeasure
+        pendingRemeasure = []
+        if let collectionView, !ids.isEmpty {
+            for indexPath in collectionView.indexPathsForVisibleItems where indexPath.section == Self.rowsSection {
+                guard case .row(let id) = item(at: indexPath), ids.contains(id),
+                      let cell = collectionView.cellForItem(at: indexPath) as? MeasuredHostingCell else { continue }
+                cell.resetMeasurement()
+                cell.setNeedsLayout()
+            }
+        }
         guard let batch = deferredHeights else { return }
         deferredHeights = nil
         applyMeasured(batch)
@@ -575,8 +797,6 @@ final class CommentsCollectionController: UIViewController {
     @ViewBuilder
     private func chrome(_ item: Item) -> some View {
         switch item {
-        case .spacer:
-            Color.clear.frame(height: 1)
         case .post:
             if let post {
                 let reveal = coordinator?.parent.reveal

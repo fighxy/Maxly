@@ -4,18 +4,22 @@ import MaxlyDomain
 import MaxlyPresentation
 import MaxlyUI
 
-/// Лента на UICollectionView: старое сверху, новое снизу, у каждой строки своя высота.
+/// Лента на UICollectionView: старое сверху, новое снизу.
+/// Якорь и низ держатся `contentOffset` и `contentInset`. Слой не переворачивается.
 struct TranscriptCollectionFeed: UIViewControllerRepresentable {
+    typealias Reveal = FeedScroll.Reveal
+
     @Bindable var viewModel: ChatViewModel
     let rows: [TranscriptRow]
     let width: CGFloat
-    let reveal: PrivateModeReveal
+    let revealMode: PrivateModeReveal
     let feedInset: CGFloat
     let reduceMotion: Bool
-    let animateInserts: Bool
     let isOpening: Bool
     let isRestoringHistory: Bool
     let scrollRequest: TranscriptScrollController.Request?
+    let stickToBottom: Bool
+    let reveal: Reveal?
     let canLoadOlder: Bool
     let isLoadingOlder: Bool
     let isJumped: Bool
@@ -30,6 +34,7 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
     var onUserScroll: (_ moving: Bool, _ takeover: Bool) -> Void
     var onTopVisible: (Bool) -> Void
     var onNearTopPrefix: (Int?) -> Void
+    var onLoadOlder: () -> Void
     var onLoadNewer: () -> Void
     var onScrollFinished: (_ token: Int, _ confirmed: Bool) -> Void
     var onPrefetchURLs: ([URL]) -> Void
@@ -57,35 +62,39 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
         private var lastRequestToken: Int?
         private var scrollTask: Task<Void, Never>?
         private var geometrySampler = TranscriptGeometrySampler()
-        private var userDragging = false
         private var lastOffsetY: CGFloat = 0
-        /// Палец / инерция к истории (визуальный верх = старое).
+        /// Палец тянет к истории (визуальный верх = старое).
         private var scrollingTowardOlder = false
         private var lastPrefetchKey = ""
+        private var prewarmKey = ""
+        private var shownSnapshots: [String: TranscriptBubble.Snapshot] = [:]
         private let prewarmEpoch = PrewarmEpoch()
 
         init(_ parent: TranscriptCollectionFeed) {
             self.parent = parent
         }
 
-        func cancelPrewarm() { _ = prewarmEpoch.next() }
+        func cancelPrewarm() {
+            prewarmKey = ""
+            _ = prewarmEpoch.next()
+        }
 
         func apply(_ feed: TranscriptCollectionFeed) {
             guard let controller else { return }
             controller.loadViewIfNeeded()
             controller.collectionView?.delegate = self
             controller.collectionView?.prefetchDataSource = self
-            let animate = feed.animateInserts && !feed.isOpening && !feed.isRestoringHistory && !feed.reduceMotion
             prewarmHeights(feed.rows, width: feed.width, feedInset: feed.feedInset)
             controller.setRows(
                 feed.rows,
                 feedInset: feed.feedInset,
                 heightCache: heightCache,
-                animate: animate,
                 header: headerKind(feed),
                 footerLoading: feed.isJumped,
-                preferBottom: feed.isOpening || feed.scrollRequest?.latest == true
+                stickToBottom: feed.stickToBottom,
+                reveal: feed.reveal
             )
+            syncVisibleCells()
             if let request = feed.scrollRequest, request.token != lastRequestToken {
                 lastRequestToken = request.token
                 runScroll(request)
@@ -104,6 +113,9 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
         }
 
         private func prewarmHeights(_ rows: [TranscriptRow], width: CGFloat, feedInset: CGFloat) {
+            let key = "\(Int(width.rounded())):\(rows.count):\(rows.first?.id ?? ""):\(rows.last?.id ?? "")"
+            guard key != prewarmKey else { return }
+            prewarmKey = key
             let maxWidth = Double(min(520, max(0, width - feedInset * 2) * MaxlyTheme.bubbleMax))
             let cache = heightCache
             let epoch = prewarmEpoch
@@ -111,10 +123,37 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
             Task.detached(priority: .utility) {
                 for row in rows {
                     if !epoch.matches(ticket) { return }
-                    if cache[row.id] != nil { continue }
                     let height = BubbleHeightCache.estimate(row: row, maxWidth: maxWidth)
-                    cache.store(id: row.id, height: height)
+                    cache.storeIfAbsent(id: row.id, height: height)
                 }
+            }
+        }
+
+        /// Видимые пузыри обновляются по снимку. Идентификатор строки в diffable — id сообщения,
+        /// поэтому правка, реакция и ход голосового сами ячейку не пересоздают.
+        private func syncVisibleCells() {
+            guard let controller, let collection = controller.collectionView else { return }
+            let live = Set(parent.rows.map(\.id))
+            shownSnapshots = shownSnapshots.filter { live.contains($0.key) }
+            let interacting = FeedScroll.isInteracting(collection)
+            for indexPath in collection.indexPathsForVisibleItems where indexPath.section == TranscriptCollectionController.rowsSection {
+                guard let row = controller.row(atDisplayIndex: indexPath.item),
+                      let cell = collection.cellForItem(at: indexPath) else { continue }
+                let snap = parent.snapshot(row)
+                let previous = shownSnapshots[row.id]
+                guard previous != snap else { continue }
+                let layoutChanged = previous?.row != snap.row
+                if interacting, !layoutChanged { continue }
+                shownSnapshots[row.id] = snap
+                if layoutChanged {
+                    if interacting {
+                        controller.deferRemeasure(row.id)
+                    } else if let measured = cell as? MeasuredHostingCell {
+                        measured.resetMeasurement()
+                        measured.setNeedsLayout()
+                    }
+                }
+                configure(cell, row: row)
             }
         }
 
@@ -143,7 +182,6 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
         }
 
         func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
-            userDragging = true
             controller?.releaseBottomPin()
             controller?.setUserScrolling(true)
             parent.onUserScroll(true, true)
@@ -151,7 +189,6 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
 
         func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
             if !decelerate {
-                userDragging = false
                 controller?.setUserScrolling(false)
                 parent.onUserScroll(false, false)
                 sampleGeometry(force: true)
@@ -159,7 +196,6 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
         }
 
         func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
-            userDragging = false
             controller?.setUserScrolling(false)
             parent.onUserScroll(false, false)
             sampleGeometry(force: true)
@@ -167,17 +203,16 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
 
         func configure(_ cell: UICollectionViewCell, row: TranscriptRow) {
             let state = parent.snapshot(row)
-            let reduceMotion = parent.reduceMotion
-            let outgoing = row.isOutgoing
+            shownSnapshots[row.id] = state
+            let revealMode = parent.revealMode
             cell.contentConfiguration = UIHostingConfiguration {
                 TranscriptBubble(
                     state: state,
                     viewModel: parent.viewModel,
-                    reveal: parent.reveal,
+                    reveal: revealMode,
                     onAuthor: parent.onAuthor
                 )
                 .equatable()
-                .transition(.maxlyComposerFlight(outgoing: outgoing, reduceMotion: reduceMotion))
             }
             .margins(.all, 0)
             .minSize(width: 0, height: 0)
@@ -291,12 +326,11 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
     }
 }
 
-
 // MARK: - Controller
 
 @MainActor
 final class TranscriptCollectionController: UIViewController {
-    /// Сверху история, снизу новые сообщения.
+    /// Сверху история, снизу новые сообщения. Секции не переворачиваются.
     static let olderSection = 0
     static let rowsSection = 1
     static let newerSection = 2
@@ -322,24 +356,44 @@ final class TranscriptCollectionController: UIViewController {
     private var lastLayoutWidth: CGFloat = 0
     private var lastBoundsHeight: CGFloat = 0
     private var pendingBottomPin = false
+    /// Смещение, которое UIKit иногда сбрасывает в том же ходе раскладки.
+    private var holdOffset: CGFloat?
+    private var pendingSettle: PendingSettle?
+    private var userScrolling = false
+    private var deferredHeights: MeasuredLayoutCommit.Batch?
+    private var pendingRemeasure: Set<String> = []
     private lazy var commit = MeasuredLayoutCommit { [weak self] batch in
         self?.applyMeasured(batch)
     }
 
+    /// Идентификаторы уникальны на весь снимок. Пустая секция не получает вторую заглушку:
+    /// один и тот же item в двух секциях роняет diffable data source.
     enum Item: Hashable {
-        case newer
         case row(String)
-        case older
-        case chromeEmpty
+        case olderHint(String)
+        case olderChannel
+        case olderEmpty
+        case olderLoader
+        case newer
+    }
+
+    private struct PendingSettle {
+        var anchor: FeedScroll.Anchor?
+        var reveal: FeedScroll.Reveal?
+        var stick: Bool
+        var beforeOffset: CGFloat
+        var beforeHeight: CGFloat
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .clear
+        view.insetsLayoutMarginsFromSafeArea = false
         let flow = UICollectionViewFlowLayout()
         flow.scrollDirection = .vertical
         flow.minimumInteritemSpacing = 0
         flow.minimumLineSpacing = 0
+        // Явная высота каждой строки. `.estimated` / self-sizing берёт один размер на секцию.
         flow.estimatedItemSize = .zero
         let collection = UICollectionView(frame: view.bounds, collectionViewLayout: flow)
         collection.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -353,6 +407,7 @@ final class TranscriptCollectionController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         guard let collectionView else { return }
+        let interacting = FeedScroll.isInteracting(collectionView)
         let nearBottom = FeedScroll.isNearBottom(collectionView)
         let heightChanged = lastBoundsHeight > 0 && abs(view.bounds.height - lastBoundsHeight) > 0.5
         lastBoundsHeight = view.bounds.height
@@ -360,12 +415,33 @@ final class TranscriptCollectionController: UIViewController {
         if resetHeightsForWidth(view.bounds.width) {
             collectionView.collectionViewLayout.invalidateLayout()
         }
-        InvertedCollectionChrome.pinBottomIfNeeded(
-            collectionView,
-            nearBottom: nearBottom,
-            heightChanged: heightChanged
-        )
-        if pendingBottomPin, collectionView.bounds.height > 1, collectionView.contentSize.height > 1 {
+        if let pending = pendingSettle, collectionView.bounds.height > 1 {
+            pendingSettle = nil
+            if interacting {
+                pendingBottomPin = false
+            } else {
+                applySettle(
+                    pending.anchor,
+                    reveal: pending.reveal,
+                    stick: pending.stick,
+                    beforeOffset: pending.beforeOffset,
+                    beforeHeight: pending.beforeHeight,
+                    interacting: false
+                )
+            }
+        }
+        var held = false
+        if let hold = holdOffset {
+            holdOffset = nil
+            held = true
+            if !interacting, abs(collectionView.contentOffset.y - hold) > 0.5 {
+                collectionView.contentOffset.y = hold
+            }
+        }
+        guard !held, !interacting else { return }
+        let insetChanged = FeedScroll.applyShortInset(collectionView)
+        let shouldPin = (nearBottom || pendingBottomPin) && (heightChanged || insetChanged || pendingBottomPin)
+        if shouldPin {
             FeedScroll.pinToBottom(collectionView)
             pendingBottomPin = false
         }
@@ -373,10 +449,9 @@ final class TranscriptCollectionController: UIViewController {
 
     func releaseBottomPin() {
         pendingBottomPin = false
+        pendingSettle = nil
+        holdOffset = nil
     }
-
-    private var userScrolling = false
-    private var deferredHeights: MeasuredLayoutCommit.Batch?
 
     func setUserScrolling(_ scrolling: Bool) {
         let was = userScrolling
@@ -384,63 +459,141 @@ final class TranscriptCollectionController: UIViewController {
         if was, !scrolling { flushDeferredHeights() }
     }
 
+    func deferRemeasure(_ id: String) {
+        pendingRemeasure.insert(id)
+    }
+
     override func viewSafeAreaInsetsDidChange() {
         let wasNear = collectionView.map { FeedScroll.isNearBottom($0) } ?? false
-        let dragging = collectionView?.isDragging == true || collectionView?.isDecelerating == true
+        let interacting = collectionView.map { FeedScroll.isInteracting($0) } ?? false
         super.viewSafeAreaInsetsDidChange()
-        guard let collectionView, (wasNear || pendingBottomPin), !dragging else { return }
+        guard let collectionView, (wasNear || pendingBottomPin), !interacting else { return }
+        _ = FeedScroll.applyShortInset(collectionView)
         FeedScroll.pinToBottom(collectionView)
+        pendingBottomPin = false
     }
 
     func setRows(
         _ rows: [TranscriptRow],
         feedInset: CGFloat,
         heightCache: BubbleHeightCache,
-        animate: Bool,
         header: HeaderKind,
         footerLoading: Bool,
-        preferBottom: Bool
+        stickToBottom: Bool,
+        reveal: FeedScroll.Reveal?
     ) {
-        if self.rows == rows, self.header == header, self.footerLoading == footerLoading, abs(self.feedInset - feedInset) < 0.5 {
+        var seen = Set<String>()
+        let unique = rows.filter { seen.insert($0.id).inserted }
+        if self.rows == unique, self.header == header, self.footerLoading == footerLoading, abs(self.feedInset - feedInset) < 0.5 {
+            // Первый кадр ещё без размера: цель открытия могла уточниться, снимок тот же.
+            if pendingSettle != nil {
+                pendingSettle?.reveal = reveal
+                pendingSettle?.stick = stickToBottom
+                pendingBottomPin = stickToBottom || reveal?.latest == true
+            }
             return
         }
         let collection = collectionView
-        let wasNearBottom = collection.map { FeedScroll.isNearBottom($0) } ?? false
+        let interacting = collection.map { FeedScroll.isInteracting($0) } ?? false
+        let anchor = collection.flatMap { view in
+            FeedScroll.captureAnchor(view) { path in
+                guard path.section == Self.rowsSection, self.rows.indices.contains(path.item) else { return nil }
+                return self.rows[path.item].id
+            }
+        }
         let beforeHeight = collection?.contentSize.height ?? 0
         let beforeOffset = collection?.contentOffset.y ?? 0
-        let beforeFirst = self.rows.first?.id
-        let hadRows = !self.rows.isEmpty
-        self.rows = rows
+        let previous = Dictionary(uniqueKeysWithValues: self.rows.map { ($0.id, $0) })
+        let previousHeader = self.header
+        let previousFooter = self.footerLoading
+        for row in unique where previous[row.id] != row {
+            heightCache.remove(id: row.id)
+        }
+        self.rows = unique
         self.feedInset = feedInset
         self.heightCache = heightCache
         self.header = header
         self.footerLoading = footerLoading
         var snapshot = NSDiffableDataSourceSnapshot<Int, Item>()
         snapshot.appendSections([Self.olderSection, Self.rowsSection, Self.newerSection])
-        if header != .none {
-            snapshot.appendItems([.older], toSection: Self.olderSection)
-        } else {
-            snapshot.appendItems([.chromeEmpty], toSection: Self.olderSection)
+        if let older = olderItem(for: header) {
+            snapshot.appendItems([older], toSection: Self.olderSection)
         }
-        snapshot.appendItems(rows.map { .row($0.id) }, toSection: Self.rowsSection)
+        snapshot.appendItems(unique.map { .row($0.id) }, toSection: Self.rowsSection)
         if footerLoading {
             snapshot.appendItems([.newer], toSection: Self.newerSection)
-        } else {
-            snapshot.appendItems([.chromeEmpty], toSection: Self.newerSection)
         }
-        dataSource.apply(snapshot, animatingDifferences: animate && hadRows)
-        let shouldPin = wasNearBottom || (preferBottom && !hadRows)
-        pendingBottomPin = shouldPin
-        guard let collection, collection.bounds.height > 1 else { return }
-        collection.collectionViewLayout.invalidateLayout()
-        collection.layoutIfNeeded()
-        let grew = collection.contentSize.height - beforeHeight
-        let prepended = hadRows && rows.first?.id != beforeFirst
-        if shouldPin {
-            FeedScroll.pinToBottom(collection)
-            pendingBottomPin = false
-        } else if prepended, grew > 1 {
-            collection.contentOffset.y = beforeOffset + grew
+        FeedScroll.performWithoutAnimation {
+            self.dataSource.apply(snapshot, animatingDifferences: false)
+            if previousHeader != header || previousFooter != footerLoading {
+                var refresh = self.dataSource.snapshot()
+                let chrome = refresh.itemIdentifiers.filter {
+                    if case .row = $0 { return false }
+                    return true
+                }
+                if !chrome.isEmpty {
+                    refresh.reconfigureItems(chrome)
+                    self.dataSource.apply(refresh, animatingDifferences: false)
+                }
+            }
+            guard let collection else { return }
+            guard collection.bounds.height > 1 else {
+                self.pendingSettle = PendingSettle(
+                    anchor: anchor,
+                    reveal: reveal,
+                    stick: stickToBottom,
+                    beforeOffset: beforeOffset,
+                    beforeHeight: beforeHeight
+                )
+                self.pendingBottomPin = stickToBottom || reveal?.latest == true
+                return
+            }
+            collection.collectionViewLayout.invalidateLayout()
+            collection.layoutIfNeeded()
+            self.applySettle(
+                anchor,
+                reveal: reveal,
+                stick: stickToBottom,
+                beforeOffset: beforeOffset,
+                beforeHeight: beforeHeight,
+                interacting: interacting
+            )
+        }
+    }
+
+    private func applySettle(
+        _ anchor: FeedScroll.Anchor?,
+        reveal: FeedScroll.Reveal?,
+        stick: Bool,
+        beforeOffset: CGFloat,
+        beforeHeight: CGFloat,
+        interacting: Bool
+    ) {
+        guard let collection = collectionView else { return }
+        let settled = FeedScroll.settle(
+            collection,
+            anchor: anchor,
+            reveal: reveal,
+            stickToBottom: stick,
+            interacting: interacting,
+            rowFrame: { [weak self] id in self?.frame(for: id) }
+        )
+        if !settled, let fallback = FeedScroll.fallbackOffset(collection, beforeOffset: beforeOffset, beforeHeight: beforeHeight) {
+            collection.contentOffset.y = fallback
+        }
+        if !interacting {
+            holdOffset = collection.contentOffset.y
+        }
+        pendingBottomPin = false
+    }
+
+    private func olderItem(for header: HeaderKind) -> Item? {
+        switch header {
+        case .none: return nil
+        case .hint(let text): return .olderHint(text)
+        case .channelReady: return .olderChannel
+        case .empty: return .olderEmpty
+        case .olderLoader: return .olderLoader
         }
     }
 
@@ -453,13 +606,18 @@ final class TranscriptCollectionController: UIViewController {
     }
 
     func row(atDisplayIndex display: Int) -> TranscriptRow? {
-        guard let chrono = chronologicalIndex(display: display) else { return nil }
-        return rows[chrono]
+        guard rows.indices.contains(display) else { return nil }
+        return rows[display]
+    }
+
+    func frame(for id: String) -> CGRect? {
+        guard let collectionView, let index = displayIndex(for: id) else { return nil }
+        return collectionView.layoutAttributesForItem(at: IndexPath(item: index, section: Self.rowsSection))?.frame
     }
 
     var isOlderChromeVisibleOnScreen: Bool {
-        guard header != .none, case .olderLoader = header, let collectionView else { return false }
-        let indexPath = IndexPath(item: 0, section: Self.olderSection)
+        guard case .olderLoader = header, let collectionView,
+              let indexPath = dataSource.indexPath(for: .olderLoader) else { return false }
         let frame: CGRect
         if let cell = collectionView.cellForItem(at: indexPath) {
             frame = cell.convert(cell.bounds, to: nil)
@@ -478,22 +636,38 @@ final class TranscriptCollectionController: UIViewController {
         latest: Bool,
         stillCurrent: @escaping () -> Bool
     ) async -> Bool {
-        guard let collectionView, let display = displayIndex(for: id) else { return false }
-        let indexPath = IndexPath(item: display, section: Self.rowsSection)
-        let position: UICollectionView.ScrollPosition
-        if latest || anchor >= 0.85 {
-            position = .bottom
-        } else if anchor <= 0.15 {
-            position = .top
-        } else {
-            position = .centeredVertically
+        guard let collectionView, displayIndex(for: id) != nil else { return false }
+        let reveal = FeedScroll.Reveal(id: id, anchor: anchor, latest: latest)
+        FeedScroll.performWithoutAnimation {
+            collectionView.layoutIfNeeded()
+            _ = FeedScroll.settle(
+                collectionView,
+                anchor: nil,
+                reveal: reveal,
+                stickToBottom: latest,
+                interacting: FeedScroll.isInteracting(collectionView),
+                rowFrame: { [weak self] rowID in self?.frame(for: rowID) }
+            )
         }
-        collectionView.scrollToItem(at: indexPath, at: position, animated: false)
+        let indexPath = IndexPath(item: displayIndex(for: id) ?? 0, section: Self.rowsSection)
         var settled = 0
         for _ in 0..<24 {
             try? await Task.sleep(for: .milliseconds(60))
             guard stillCurrent() else { return false }
-            guard let cell = collectionView.cellForItem(at: indexPath) else { continue }
+            if FeedScroll.isInteracting(collectionView) { return false }
+            guard let cell = collectionView.cellForItem(at: indexPath) else {
+                FeedScroll.performWithoutAnimation {
+                    _ = FeedScroll.settle(
+                        collectionView,
+                        anchor: nil,
+                        reveal: reveal,
+                        stickToBottom: latest,
+                        interacting: false,
+                        rowFrame: { [weak self] rowID in self?.frame(for: rowID) }
+                    )
+                }
+                continue
+            }
             let row = cell.convert(cell.bounds, to: nil)
             let viewport = collectionView.convert(collectionView.bounds, to: nil)
             let reached = latest && id == rows.last?.id
@@ -507,7 +681,16 @@ final class TranscriptCollectionController: UIViewController {
             settled = reached ? settled + 1 : 0
             if settled >= 2 { return true }
             if !reached {
-                collectionView.scrollToItem(at: indexPath, at: position, animated: false)
+                FeedScroll.performWithoutAnimation {
+                    _ = FeedScroll.settle(
+                        collectionView,
+                        anchor: nil,
+                        reveal: reveal,
+                        stickToBottom: latest,
+                        interacting: false,
+                        rowFrame: { [weak self] rowID in self?.frame(for: rowID) }
+                    )
+                }
             }
         }
         return false
@@ -522,14 +705,18 @@ final class TranscriptCollectionController: UIViewController {
         let width = max(1, containerWidth)
         let insets = inset(for: indexPath.section)
         let itemWidth = max(1, width - insets.left - insets.right)
+        guard let item = dataSource.itemIdentifier(for: indexPath) else {
+            return CGSize(width: itemWidth, height: 44)
+        }
         let height: CGFloat
-        switch indexPath.section {
-        case Self.newerSection:
-            let key = footerLoading ? "newer" : nil
-            height = key.flatMap { measuredChrome[$0] } ?? (footerLoading ? 40 : 1)
-        case Self.olderSection:
-            height = olderChromeKey.flatMap { measuredChrome[$0] } ?? olderChromeHeight
-        default:
+        switch item {
+        case .newer:
+            height = measuredChrome["newer"] ?? 40
+        case .olderLoader:
+            height = measuredChrome["older-loader"] ?? 44
+        case .olderHint, .olderChannel, .olderEmpty:
+            height = olderChromeKey.flatMap { measuredChrome[$0] } ?? 220
+        case .row:
             let maxWidth = Double(min(520, itemWidth * MaxlyTheme.bubbleMax))
             let resolved = CollectionFeedLayout.height(
                 index: indexPath.item,
@@ -540,14 +727,6 @@ final class TranscriptCollectionController: UIViewController {
             height = max(1, CGFloat(resolved ?? 72))
         }
         return CGSize(width: itemWidth, height: max(1, height))
-    }
-
-    private var olderChromeHeight: CGFloat {
-        switch header {
-        case .none: return 1
-        case .olderLoader: return 32
-        case .hint, .channelReady, .empty: return 220
-        }
     }
 
     private var olderChromeKey: String? {
@@ -561,9 +740,21 @@ final class TranscriptCollectionController: UIViewController {
     }
 
     private func indexPath(forChromeKey key: String) -> IndexPath? {
-        if key == "newer" { return dataSource.indexPath(for: .newer) }
-        if key.hasPrefix("older"), header != .none { return dataSource.indexPath(for: .older) }
-        return nil
+        switch key {
+        case "newer":
+            return dataSource.indexPath(for: .newer)
+        case "older-loader":
+            return dataSource.indexPath(for: .olderLoader)
+        case "older-channel":
+            return dataSource.indexPath(for: .olderChannel)
+        case "older-empty":
+            return dataSource.indexPath(for: .olderEmpty)
+        case "older-hint":
+            if case .hint(let text) = header { return dataSource.indexPath(for: .olderHint(text)) }
+            return nil
+        default:
+            return nil
+        }
     }
 
     private func resetHeightsForWidth(_ width: CGFloat) -> Bool {
@@ -581,7 +772,7 @@ final class TranscriptCollectionController: UIViewController {
 
     private func applyMeasured(_ batch: MeasuredLayoutCommit.Batch) {
         guard let collectionView else { return }
-        if userScrolling || collectionView.isDragging || collectionView.isDecelerating {
+        if userScrolling || FeedScroll.isInteracting(collectionView) {
             var rows = deferredHeights?.rows ?? [:]
             var chrome = deferredHeights?.chrome ?? [:]
             rows.merge(batch.rows) { _, new in new }
@@ -589,17 +780,17 @@ final class TranscriptCollectionController: UIViewController {
             deferredHeights = .init(rows: rows, chrome: chrome)
             return
         }
+        let wasNearBottom = FeedScroll.isNearBottom(collectionView)
         let offset = collectionView.contentOffset.y
-        let dragging = collectionView.isDragging || collectionView.isDecelerating
         var compensate: CGFloat = 0
         for (id, height) in batch.rows {
             let path = dataSource.indexPath(for: .row(id))
             let attrs = path.flatMap { collectionView.layoutAttributesForItem(at: $0) }
-            compensate += InvertedCollectionChrome.compensateOffset(
+            compensate += FeedLayoutAdjust.compensateOffset(
                 collectionView,
                 attributes: attrs,
                 newHeight: CGFloat(height),
-                dragging: dragging
+                dragging: false
             )
             heightCache?.store(id: id, height: height)
         }
@@ -608,24 +799,37 @@ final class TranscriptCollectionController: UIViewController {
             let isOlder = olderChromeKey.map { $0 == key } ?? false
             guard isNewer || isOlder else { continue }
             let attrs = indexPath(forChromeKey: key).flatMap { collectionView.layoutAttributesForItem(at: $0) }
-            compensate += InvertedCollectionChrome.compensateOffset(
+            compensate += FeedLayoutAdjust.compensateOffset(
                 collectionView,
                 attributes: attrs,
                 newHeight: height,
-                dragging: dragging
+                dragging: false
             )
             measuredChrome[key] = height
         }
-        UIView.performWithoutAnimation {
+        FeedScroll.performWithoutAnimation {
             collectionView.collectionViewLayout.invalidateLayout()
             collectionView.layoutIfNeeded()
-            if abs(compensate) >= 1 {
+            if wasNearBottom {
+                _ = FeedScroll.applyShortInset(collectionView)
+                FeedScroll.pinToBottom(collectionView)
+            } else if abs(compensate) >= 1 {
                 collectionView.contentOffset.y = offset + compensate
             }
         }
     }
 
     private func flushDeferredHeights() {
+        let ids = pendingRemeasure
+        pendingRemeasure = []
+        if let collectionView, !ids.isEmpty {
+            for indexPath in collectionView.indexPathsForVisibleItems where indexPath.section == Self.rowsSection {
+                guard let row = row(atDisplayIndex: indexPath.item), ids.contains(row.id),
+                      let cell = collectionView.cellForItem(at: indexPath) as? MeasuredHostingCell else { continue }
+                cell.resetMeasurement()
+                cell.setNeedsLayout()
+            }
+        }
         guard let batch = deferredHeights else { return }
         deferredHeights = nil
         applyMeasured(batch)
@@ -641,12 +845,7 @@ final class TranscriptCollectionController: UIViewController {
         }
         let chromeRegistration = UICollectionView.CellRegistration<MeasuredHostingCell, Item> { [weak self] cell, _, item in
             guard let self else { return }
-            let key: String?
-            switch item {
-            case .newer: key = "newer"
-            case .older: key = self.olderChromeKey
-            default: key = nil
-            }
+            let key = self.chromeKey(for: item)
             if let key {
                 cell.onMeasuredHeight = { [weak self] height in
                     self?.commit.chrome(height, id: key, current: self?.measuredChrome[key])
@@ -664,68 +863,88 @@ final class TranscriptCollectionController: UIViewController {
             switch item {
             case .row(let id):
                 return collectionView.dequeueConfiguredReusableCell(using: rowRegistration, for: indexPath, item: id)
-            case .newer, .older, .chromeEmpty:
+            case .newer, .olderHint, .olderChannel, .olderEmpty, .olderLoader:
                 return collectionView.dequeueConfiguredReusableCell(using: chromeRegistration, for: indexPath, item: item)
             }
+        }
+    }
+
+    private func chromeKey(for item: Item) -> String? {
+        switch item {
+        case .newer: return "newer"
+        case .olderLoader: return "older-loader"
+        case .olderHint: return "older-hint"
+        case .olderChannel: return "older-channel"
+        case .olderEmpty: return "older-empty"
+        case .row: return nil
         }
     }
 
     @ViewBuilder
     private func chromeView(for item: Item) -> some View {
         switch item {
-        case .chromeEmpty:
-            Color.clear.frame(height: 1)
+        case .row:
+            EmptyView()
         case .newer:
             ProgressView()
                 .controlSize(.small)
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
                 .onAppear { self.coordinator?.parent.onLoadNewer() }
-        case .older:
-            switch header {
-            case .none:
-                Color.clear.frame(height: 1)
-            case .hint(let text):
-                VStack(spacing: 12) {
-                    MaxlyMark(size: 56).foregroundStyle(.tertiary)
-                    Text(text)
-                        .font(.app(.subheadline))
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.horizontal, 24)
-                .padding(.top, 80)
-            case .channelReady:
-                VStack(spacing: 10) {
-                    Image(systemName: "megaphone.fill")
-                        .font(.system(size: 28))
-                        .foregroundStyle(.white)
-                        .frame(width: 72, height: 72)
-                        .background(Color.maxlyAccent, in: Circle())
-                    Text("Канал готов").font(.app(.headline))
-                    Text("Добавляйте посты и приглашайте подписчиков")
-                        .font(.app(.subheadline))
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 22)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                .padding(.horizontal, 32)
-                .padding(.top, 80)
-            case .empty:
-                Text("Здесь пока нет сообщений")
+        case .olderHint(let text):
+            VStack(spacing: 12) {
+                MaxlyMark(size: 56).foregroundStyle(.tertiary)
+                Text(text)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.secondary)
-                    .padding(24)
-            case .olderLoader(let loading):
-                ZStack {
-                    if loading { ProgressView().controlSize(.small) }
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 32)
+                    .multilineTextAlignment(.center)
             }
-        case .row:
-            EmptyView()
+            .padding(.horizontal, 24)
+            .padding(.top, 80)
+        case .olderChannel:
+            VStack(spacing: 10) {
+                Image(systemName: "megaphone.fill")
+                    .font(.system(size: 28))
+                    .foregroundStyle(.white)
+                    .frame(width: 72, height: 72)
+                    .background(Color.maxlyAccent, in: Circle())
+                Text("Канал готов").font(.app(.headline))
+                Text("Добавляйте посты и приглашайте подписчиков")
+                    .font(.app(.subheadline))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 22)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .padding(.horizontal, 32)
+            .padding(.top, 80)
+        case .olderEmpty:
+            Text("Здесь пока нет сообщений")
+                .foregroundStyle(.secondary)
+                .padding(24)
+        case .olderLoader:
+            olderLoader
         }
+    }
+
+    @ViewBuilder
+    private var olderLoader: some View {
+        let loading: Bool = {
+            if case .olderLoader(let value) = header { return value }
+            return false
+        }()
+        ZStack {
+            if loading {
+                ProgressView().controlSize(.small)
+            } else {
+                Button("Загрузить предыдущие сообщения") {
+                    self.coordinator?.parent.onLoadOlder()
+                }
+                .font(.app(.caption))
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 44)
     }
 }
