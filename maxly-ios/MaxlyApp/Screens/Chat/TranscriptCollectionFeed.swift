@@ -210,6 +210,12 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
             let state = parent.snapshot(row)
             shownSnapshots[row.id] = state
             let revealMode = parent.revealMode
+            let report: (CGFloat) -> Void = { [weak cell] height in
+                (cell as? MeasuredHostingCell)?.onMeasuredHeight?(height)
+            }
+            if let measured = cell as? MeasuredHostingCell {
+                measured.usesIntrinsicHeight = true
+            }
             cell.contentConfiguration = UIHostingConfiguration {
                 TranscriptBubble(
                     state: state,
@@ -218,6 +224,9 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
                     onAuthor: parent.onAuthor
                 )
                 .equatable()
+                .fixedSize(horizontal: false, vertical: true)
+                .background(FeedContentHeightReader(onHeight: report))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
             .margins(.all, 0)
             .minSize(width: 0, height: 0)

@@ -58,18 +58,18 @@ struct CollectionFeedLayoutTests {
 
     @Test("Полный зазор шапки и поля, короткая лента садится на поле ввода")
     func chromeInsetsClearHeaderAndComposer() {
-        // Перекрытие шапки 100 и поля 120: минимум сверху 106, снизу 130.
-        // Видимая высота 564, контент 200, запас сверху 364, итог 470.
+        // Перекрытие шапки 100 и поля 120: минимум сверху 106, снизу 140.
+        // Видимая высота 554, контент 200, запас сверху 354, итог 460.
         let short = FeedOffset.chromeInsets(
             boundsHeight: 800, contentHeight: 200, headerOverlap: 100, composerOverlap: 120
         )
-        #expect(short.top == 470)
-        #expect(short.bottom == 130)
+        #expect(short.top == 460)
+        #expect(short.bottom == 140)
         let long = FeedOffset.chromeInsets(
             boundsHeight: 800, contentHeight: 2000, headerOverlap: 100, composerOverlap: 120
         )
         #expect(long.top == 106)
-        #expect(long.bottom == 130)
+        #expect(long.bottom == 140)
         let empty = FeedOffset.chromeInsets(
             boundsHeight: 800, contentHeight: 0, headerOverlap: 0, composerOverlap: 0
         )
@@ -79,9 +79,9 @@ struct CollectionFeedLayoutTests {
             boundsHeight: 844, contentHeight: 5000, headerOverlap: 101, composerOverlap: 78
         )
         #expect(fullBleed.top == 107)
-        #expect(fullBleed.bottom == 88)
-        #expect(FeedOffset.contentFits(contentHeight: 200, boundsHeight: 800, insetTop: 470, insetBottom: 130))
-        #expect(!FeedOffset.contentFits(contentHeight: 2000, boundsHeight: 800, insetTop: 106, insetBottom: 130))
+        #expect(fullBleed.bottom == 98)
+        #expect(FeedOffset.contentFits(contentHeight: 200, boundsHeight: 800, insetTop: 460, insetBottom: 140))
+        #expect(!FeedOffset.contentFits(contentHeight: 2000, boundsHeight: 800, insetTop: 106, insetBottom: 140))
     }
 
     @Test("Неизмеренные края не удваивают safe area")
