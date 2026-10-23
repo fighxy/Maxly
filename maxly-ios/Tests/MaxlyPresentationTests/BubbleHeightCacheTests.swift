@@ -60,13 +60,13 @@ struct BubbleHeightCacheTests {
         #expect(polled - plain == BubbleHeightCache.pollTitle + 2 * BubbleHeightCache.pollAnswer + BubbleHeightCache.pollFooter)
     }
 
-    @Test("textHeightProvider заменяет эвристику символов")
+    @Test("Измеритель текста заменяет эвристику символов")
     func textProvider() {
-        let previous = BubbleHeightCache.textHeightProvider
-        defer { BubbleHeightCache.textHeightProvider = previous }
-        BubbleHeightCache.textHeightProvider = { _, _ in 99 }
-        let short = BubbleHeightCache.estimate(row: row(text: "hi", day: nil), maxWidth: 280)
-        let empty = BubbleHeightCache.estimate(row: row(text: "", day: nil), maxWidth: 280)
+        // Измеритель передаётся в вызов, а не через общий `textHeightProvider`: тесты набора идут
+        // параллельно, и подмена общего значения меняла оценку в соседнем тесте.
+        let measure: @Sendable (String, Double) -> Double = { _, _ in 99 }
+        let short = BubbleHeightCache.estimate(row: row(text: "hi", day: nil), maxWidth: 280, textHeight: measure)
+        let empty = BubbleHeightCache.estimate(row: row(text: "", day: nil), maxWidth: 280, textHeight: measure)
         // Provider даёт высоту текста; padding сверху. Пустой ряд без текста берёт minTextBubble,
         // поэтому нельзя сравнивать short с empty+99.
         #expect(short == BubbleHeightCache.bubblePaddingY + 99)
