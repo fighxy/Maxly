@@ -24,6 +24,13 @@ public struct ChatAvatarView: View {
             // Размытие до обрезки: край круга остаётся ровным.
             .blur(radius: blursPhoto ? size * PrivateModeBlur.avatar : 0)
             .clipShape(Circle())
+            // Тонкий круглый край у фото: светлый логотип или снимок не сливаются с фоном и
+            // стеклом, очертание аватара видно всегда.
+            .overlay {
+                if case .photo = shown.kind {
+                    Circle().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                }
+            }
             .overlay(alignment: .bottomTrailing) {
                 // Точка «в сети» выдаёт, что чат личный и собеседник рядом.
                 if isOnline, !privateMode.isMasked {

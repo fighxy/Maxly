@@ -929,7 +929,8 @@ struct ChatView: View {
     @ViewBuilder
     private var headerAvatar: some View {
         if let profile {
-            ChatHeaderAvatar(viewModel: profile, size: 44, reservesRingSpace: true)
+            // Место под кольцо — только когда есть истории: иначе аватар заполняет круг целиком.
+            ChatHeaderAvatar(viewModel: profile, size: 44, reservesRingSpace: hasStoryRing)
         } else if viewModel.isSavedMessages {
             ChatAvatarView(avatar: ChatAvatar(kind: .savedMessages, colorIndex: 0), size: 36)
                 .frame(width: 44, height: 44)
@@ -937,9 +938,15 @@ struct ChatView: View {
             StoryRingAvatar(
                 avatar: ChatAvatar(kind: .initials(ChatAvatar.initials(for: headerTitle)),
                                    colorIndex: ChatAvatar.colorIndex(for: viewModel.peerId ?? viewModel.chatId)),
-                ring: nil, size: 44, reservesRingSpace: true
+                ring: nil, size: 44
             )
         }
+    }
+
+    /// У собеседника есть истории: аватар в шапке в кольце.
+    private var hasStoryRing: Bool {
+        guard let owner = storyOwner else { return false }
+        return stories?.ring(of: owner, kind: storyKind) != nil
     }
 
     /// Владелец колец в шапке. В приватном режиме колец нет.
