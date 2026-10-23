@@ -83,6 +83,16 @@ enum FeedScroll {
         let y = scroll.contentSize.height - scroll.bounds.height + inset.bottom
         scroll.contentOffset.y = max(-inset.top, y)
     }
+
+    /// Шапка и поле ввода приходят как safe area. Лента их учитывает, плюс небольшой зазор,
+    /// чтобы первое и последнее сообщение не прилипали к краям.
+    static func install(_ collection: UICollectionView) {
+        collection.backgroundColor = .clear
+        collection.alwaysBounceVertical = true
+        collection.keyboardDismissMode = .interactive
+        collection.contentInsetAdjustmentBehavior = .automatic
+        collection.contentInset = UIEdgeInsets(top: 6, left: 0, bottom: 10, right: 0)
+    }
 }
 
 /// Пачка поправок высоты на следующий ход, чтобы не звать invalidate из layoutSubviews.

@@ -110,6 +110,15 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
 
         func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
             controller?.releaseBottomPin()
+            controller?.setUserScrolling(true)
+        }
+
+        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+            if !decelerate { controller?.setUserScrolling(false) }
+        }
+
+        func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+            controller?.setUserScrolling(false)
         }
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -293,11 +302,7 @@ final class CommentsCollectionController: UIViewController {
         flow.estimatedItemSize = .zero
         let collection = UICollectionView(frame: view.bounds, collectionViewLayout: flow)
         collection.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        collection.backgroundColor = .clear
-        collection.alwaysBounceVertical = true
-        collection.keyboardDismissMode = .interactive
-        collection.contentInsetAdjustmentBehavior = .never
-        collection.insetsLayoutMarginsFromSafeArea = false
+        FeedScroll.install(collection)
         collection.delegate = coordinator
         view.addSubview(collection)
         collectionView = collection
@@ -329,6 +334,23 @@ final class CommentsCollectionController: UIViewController {
         pendingBottomPin = false
     }
 
+    private var userScrolling = false
+    private var deferredHeights: MeasuredLayoutCommit.Batch?
+
+    func setUserScrolling(_ scrolling: Bool) {
+        let was = userScrolling
+        userScrolling = scrolling
+        if was, !scrolling { flushDeferredHeights() }
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        let wasNear = collectionView.map { FeedScroll.isNearBottom($0) } ?? false
+        let dragging = collectionView?.isDragging == true || collectionView?.isDecelerating == true
+        super.viewSafeAreaInsetsDidChange()
+        guard let collectionView, (wasNear || pendingBottomPin), !dragging else { return }
+        FeedScroll.pinToBottom(collectionView)
+    }
+
     func setContent(
         post: Message,
         rows: [TranscriptRow],
@@ -341,6 +363,10 @@ final class CommentsCollectionController: UIViewController {
         animate: Bool,
         preferBottom: Bool
     ) {
+        if currentRows == rows, self.post == post, self.state == state, self.hasMore == hasMore,
+           self.isLoadingOlder == isLoadingOlder, self.emptyText == emptyText, abs(self.width - width) < 0.5 {
+            return
+        }
         let collection = collectionView
         let wasNearBottom = collection.map { FeedScroll.isNearBottom($0) } ?? preferBottom
         let beforeHeight = collection?.contentSize.height ?? 0
@@ -459,6 +485,14 @@ final class CommentsCollectionController: UIViewController {
 
     private func applyMeasured(_ batch: MeasuredLayoutCommit.Batch) {
         guard let collectionView else { return }
+        if userScrolling || collectionView.isDragging || collectionView.isDecelerating {
+            var rows = deferredHeights?.rows ?? [:]
+            var chrome = deferredHeights?.chrome ?? [:]
+            rows.merge(batch.rows) { _, new in new }
+            chrome.merge(batch.chrome) { _, new in new }
+            deferredHeights = .init(rows: rows, chrome: chrome)
+            return
+        }
         let offset = collectionView.contentOffset.y
         let dragging = collectionView.isDragging || collectionView.isDecelerating
         var compensate: CGFloat = 0
@@ -491,6 +525,12 @@ final class CommentsCollectionController: UIViewController {
                 collectionView.contentOffset.y = offset + compensate
             }
         }
+    }
+
+    private func flushDeferredHeights() {
+        guard let batch = deferredHeights else { return }
+        deferredHeights = nil
+        applyMeasured(batch)
     }
 
     private func configureDataSource() {
