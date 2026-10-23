@@ -198,6 +198,10 @@ final class FeedCollectionController: UIViewController, UICollectionViewDelegate
             }
         }
         guard ready else { return }
+        // Команда (кнопка «вниз», переход к цитате или закрепу) важнее инерции: лента, которая
+        // ещё катится после отпущенного пальца, останавливается и встаёт по команде. Раньше
+        // команда ждала конца инерции и терялась. Палец на ленте по-прежнему главнее.
+        if forcePosition { stopMomentum() }
         // Новое сообщение у низа и кнопка «вниз» с недалёкого места — плавно, остальное — сразу.
         let near = bottomDistance.distance < bottomDistance.visible * 1.5
         let animate = animatesAppend && hasSettled && follow == .bottom && !FeedScroll.isInteracting(collectionView)
@@ -664,6 +668,17 @@ final class FeedCollectionController: UIViewController, UICollectionViewDelegate
             if measure(id) { moved = true }
         }
         if moved { scheduleRelayout() }
+    }
+
+    /// Остановить прокрутку по инерции, если палец уже отпущен.
+    private func stopMomentum() {
+        guard let collectionView, collectionView.isDecelerating, !collectionView.isTracking else { return }
+        collectionView.setContentOffset(collectionView.contentOffset, animated: false)
+        // Конец инерции экран узнаёт после хода обновления SwiftUI, а не внутри него.
+        Task { @MainActor [weak self] in
+            guard let self, let collectionView = self.collectionView, !FeedScroll.isInteracting(collectionView) else { return }
+            self.source?.feedUserScrolling(false, takeover: false)
+        }
     }
 
     // MARK: UIScrollViewDelegate
