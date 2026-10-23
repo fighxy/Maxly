@@ -27,6 +27,8 @@ struct MediaMosaic: View {
     @Environment(\.displayScale) private var displayScale
     @Environment(\.imageURLSizing) private var imageURLSizing
     @Environment(\.gifAutoplay) private var gifAutoplay
+    /// Замер высоты вне экрана: та же раскладка, без регистрации рамок и без плееров.
+    @Environment(\.isFeedSizing) private var isSizing
 
     var body: some View {
         let visuals = attachments.filter(\.isVisual)
@@ -77,7 +79,7 @@ struct MediaMosaic: View {
             #if canImport(UIKit)
             // Гифка: ролик без звука поверх картинки, только когда автовоспроизведение
             // разрешено. Видимость решает сам плеер (окно), картинка остаётся запасной.
-            if let photo = item.photo, photo.isGif, let mp4 = photo.mp4URL,
+            if !isSizing, let photo = item.photo, photo.isGif, let mp4 = photo.mp4URL,
                GifAutoplayPolicy.shouldPlay(allowed: gifAutoplay, hasVideo: true, visible: true) {
                 GifLoopView(url: mp4)
                     .frame(width: width, height: height)
@@ -85,8 +87,10 @@ struct MediaMosaic: View {
             }
             #endif
             if round, let roundPlayer {
-                roundPlayer
-                    .frame(width: width, height: height)
+                Group {
+                    if isSizing { Color.clear } else { roundPlayer }
+                }
+                .frame(width: width, height: height)
             } else if item.video != nil {
                 videoBadge(loading: loadingId == item.id)
             } else if loadingId == item.id {
@@ -102,10 +106,14 @@ struct MediaMosaic: View {
         // Где плитка на экране: отсюда вылетает просмотр и сюда возвращается. Кружок играет
         // в ленте и в просмотр не открывается.
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
-            guard !round else { return }
+            guard !round, !isSizing else { return }
             registry.update(item.id, .init(frame: frame, url: url, maxPixel: decode, cornerRadius: cornerRadius))
         }
-        .onDisappear { registry.remove(item.id) }
+        .onDisappear {
+            // Строка замера уходит, а настоящая плитка остаётся на экране: её рамку не трогаем.
+            guard !isSizing else { return }
+            registry.remove(item.id)
+        }
         // Плитка открыта в просмотре: на её месте пусто, как в Telegram.
         .opacity(registry.hiddenId == item.id ? 0 : 1)
         // Подписи поверх маски: у кружка углы квадрата вне круга, и маска их срезала бы.

@@ -138,4 +138,42 @@ struct ChatContentFormatTests {
         #expect(ten.width == 300)
         #expect(ten.tiles.count == 10)
     }
+
+    @Test("Каждый кадр альбома сохраняет свою пропорцию: документ, скан, страницы, портрет и два кадра")
+    func albumTilesKeepAspect() {
+        let cases: [[Double]] = [
+            [0.71], [2.4], [0.71, 0.71], [0.71, 0.71, 0.71], [0.6, 1.4, 1.3], [0.75, 0.8, 1.2],
+            [0.71, 0.71, 0.71, 0.71], Array(repeating: 0.71, count: 6), [1.6, 0.7, 1.0, 1.3, 0.8],
+        ]
+        for aspects in cases {
+            let layout = ChatContentFormat.album(aspects: aspects, maxWidth: 300)
+            #expect(layout.tiles.count == aspects.count)
+            #expect(layout.width <= 300.01)
+            for tile in layout.tiles {
+                let drawn = tile.width / tile.height
+                // Подгонка к краю пластины — не больше точки, это доля процента.
+                #expect(abs(drawn - aspects[tile.index]) / aspects[tile.index] < 0.03, "\(aspects) кадр \(tile.index)")
+            }
+            // Кадры не перекрывают друг друга и не выходят за пластину.
+            for tile in layout.tiles {
+                #expect(tile.x >= -0.01 && tile.x + tile.width <= layout.width + 0.01)
+                #expect(tile.y >= -0.01 && tile.y + tile.height <= layout.height + 0.01)
+            }
+        }
+        // Портретный первый кадр слева, правая колонка той же высоты.
+        let trio = ChatContentFormat.album(aspects: [0.6, 1.4, 1.3], maxWidth: 300)
+        let left = trio.tiles.first { $0.index == 0 }!
+        #expect(left.x == 0 && left.y == 0)
+        #expect(abs(left.height - trio.height) < 0.6)
+    }
+
+    @Test("Одиночный кадр у подписи: весь кадр в пределах, бока не срезаны")
+    func fullWidthTileFits() {
+        let page = ChatContentFormat.fullWidthTile(aspect: 0.7, width: 280, maxHeight: 360)
+        #expect(page.height <= 360.01)
+        #expect(abs(page.width / page.height - 0.7) < 0.01)
+        let scan = ChatContentFormat.fullWidthTile(aspect: 3.2, width: 280)
+        #expect(scan.width <= 280.01)
+        #expect(abs(scan.width / scan.height - 3.2) < 0.01)
+    }
 }

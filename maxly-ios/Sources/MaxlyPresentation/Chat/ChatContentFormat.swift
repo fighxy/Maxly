@@ -417,8 +417,8 @@ public enum ChatContentFormat {
         // Большому альбому можно быть выше: иначе он сужается под предел высоты.
         let limit = max(1, ratios.count >= 7 ? maxHeight * 1.35 : maxHeight)
         let placed: [Placed]
-        if ratios.count == 3, ratios[0] < 1.15 {
-            placed = portraitTrio(ratios, width: width, gap: space)
+        if ratios.count == 3, ratios[0] < 1.15, let trio = portraitTrio(ratios, width: width, gap: space) {
+            placed = trio
         } else if ratios.count >= 4 {
             placed = pack(balancedRows(ratios, width: width, gap: space, maxHeight: limit), aspects: ratios, width: width, gap: space)
         } else {
@@ -543,9 +543,14 @@ public enum ChatContentFormat {
         return (height, aspects.map { height * $0 })
     }
 
-    /// Узкий первый кадр стоит слева, два остальных делят правую колонку.
-    private static func portraitTrio(_ aspects: [Double], width: Double, gap: Double) -> [Placed] {
-        let leftWidth = (width - gap) * 0.64
+    /// Узкий первый кадр стоит слева, два остальных делят правую колонку. Ширина левой колонки
+    /// подбирается так, чтобы у всех трёх кадров осталась своя пропорция: высота левого равна
+    /// высоте правой колонки. Иначе кадр вписывался бы с пустыми полосами по бокам. Слишком узкая
+    /// или широкая левая колонка — `nil`, альбом раскладывается рядами.
+    private static func portraitTrio(_ aspects: [Double], width: Double, gap: Double) -> [Placed]? {
+        let rightSum = 1 / aspects[1] + 1 / aspects[2]
+        let leftWidth = ((width - gap) * rightSum + gap) / (1 / aspects[0] + rightSum)
+        guard leftWidth.isFinite, leftWidth >= width * 0.35, leftWidth <= width * 0.75 else { return nil }
         let rightWidth = width - gap - leftWidth
         let top = rightWidth / aspects[1]
         let bottom = rightWidth / aspects[2]
