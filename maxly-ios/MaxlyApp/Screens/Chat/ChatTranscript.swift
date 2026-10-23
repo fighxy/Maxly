@@ -285,6 +285,10 @@ struct ChatTranscript: View {
                 }
             }
         )
+        // Лента на весь экран, под стеклом шапки и поля ввода: сообщения уходят под них, а не
+        // обрезаются по краю. Место для чтения задают зазоры ленты (`FeedScroll.chromeInsets`):
+        // перекрытие шапки и поля ввода. Клавиатуру лента не перекрывает.
+        .ignoresSafeArea(.container, edges: .vertical)
         .modifier(FloatingDayOverlay(model: viewModel, topVisible: headerVisible, topPadding: dayPillTop))
         .simultaneousGesture(TapGesture().onEnded { focus.wrappedValue = false }, including: focus.wrappedValue ? .all : .subviews)
         .onChange(of: viewModel.transcriptVersion, initial: true) { _, _ in

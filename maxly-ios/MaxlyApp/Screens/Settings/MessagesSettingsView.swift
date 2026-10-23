@@ -34,7 +34,7 @@ struct MessagesSettingsView: View {
             Section {
                 Toggle("Поиск GIF (gifka.me)", isOn: $gifkaSearch)
             } footer: {
-                Text("Поиск гифок и стикеров во вложениях идёт через сервис gifka.me: текст запроса и ваш IP-адрес уходят на его сервер. Гифки: gifka.me.")
+                Text("Поиск гифок и стикеров в разделе «GIF» панели эмодзи идёт через сервис gifka.me: текст запроса и ваш IP-адрес уходят на его сервер. Гифки: gifka.me.")
             }
         }
         .navigationTitle("Сообщения")

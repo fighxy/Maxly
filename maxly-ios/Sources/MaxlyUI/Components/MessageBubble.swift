@@ -666,6 +666,9 @@ public struct MessageBubble: View {
             }
             if hasText {
                 textBody
+                if layout.metadata == .text {
+                    textMeta
+                }
             }
             if let preview = message.content.linkPreview {
                 LinkPreviewCard(preview: preview, outgoing: isOutgoing, textColor: textColor)
@@ -749,27 +752,34 @@ public struct MessageBubble: View {
 
     // MARK: Текст
 
-    /// Текст с временем в правом нижнем углу: под время в конце текста оставлено невидимое место,
-    /// чтобы короткая строка не переносила его на отдельную строку.
+    /// Текст: под время в конце текста оставлено невидимое место, чтобы короткая строка не
+    /// переносила его на отдельную строку. Само время — `textMeta` в углу колонки.
     private var textBody: some View {
-        ZStack(alignment: .bottomTrailing) {
-            MessageTextView(
-                text: message.displayText,
-                spans: message.content.formatting ?? [],
-                outgoing: isOutgoing,
-                trailingSpace: layout.metadata == .text ? metaReserve : nil
-            )
-            // Без системного выделения: долгое нажатие открывает меню сообщения, а системная
-            // плашка «Скопировать / Поделиться» проскакивала поверх него. Копирование — в меню.
-            if layout.metadata == .text {
-                meta
-            }
-        }
-        // Рядом с медиа, голосовым или файлом пузырь уже широкий: время уходит к его правому краю.
-        .frame(maxWidth: stretchesText ? .infinity : nil, alignment: .leading)
+        // Без системного выделения: долгое нажатие открывает меню сообщения, а системная
+        // плашка «Скопировать / Поделиться» проскакивала поверх него. Копирование — в меню.
+        MessageTextView(
+            text: message.displayText,
+            spans: message.content.formatting ?? [],
+            outgoing: isOutgoing,
+            trailingSpace: layout.metadata == .text ? metaReserve : nil
+        )
         .padding(.horizontal, 12)
         .padding(.top, hasHeader || !visuals.isEmpty ? 5 : 7)
-        .padding(.bottom, reactionsInside ? 4 : 6)
+        .padding(.bottom, textBottomPadding)
+    }
+
+    /// Время в правом нижнем углу текста, у правого края пузыря: на последней строке, в
+    /// оставленном под него месте. Ширину пузыря не задаёт — текст меряется по своей ширине,
+    /// и пузырь с цитатой или голосовым не растягивается на всю ленту из-за текста.
+    private var textMeta: some View {
+        meta
+            .padding(.trailing, 12)
+            .padding(.bottom, textBottomPadding)
+            .bubbleCorner()
+    }
+
+    private var textBottomPadding: CGFloat {
+        reactionsInside ? 4 : 6
     }
 
     // MARK: Реакции в пузыре
@@ -961,17 +971,6 @@ public struct MessageBubble: View {
 
     private var hasText: Bool {
         layout.hasText
-    }
-
-    private var stretchesText: Bool {
-        !visuals.isEmpty || !message.content.voices.isEmpty || !message.content.files.isEmpty
-            || !message.content.contacts.isEmpty || !message.content.calls.isEmpty || showsComments
-            // Цитата, пересылка, имя автора, опрос или превью ссылки тоже могут быть шире
-            // текста: тогда время стоит в правом нижнем углу пузыря, а не после короткой строки.
-            // Ширину пузыря это не меняет: колонка меряет текст по его естественной ширине.
-            || message.content.reply != nil || message.content.forward != nil
-            || message.content.poll != nil || message.content.linkPreview != nil
-            || (showsAuthorName && !authorTitle.isEmpty)
     }
 
     private var hasHeader: Bool {

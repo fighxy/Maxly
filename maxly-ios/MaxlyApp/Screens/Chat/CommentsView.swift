@@ -45,6 +45,8 @@ struct CommentsView: View {
                     onBlockAuthor: onBlockAuthor,
                     onBlockNotice: { blockNotice = $0 }
                 )
+                // Под стеклом шапки и поля ввода, как лента чата: края не срезают комментарии.
+                .ignoresSafeArea(.container, edges: .vertical)
                 .refreshable { await model.reload() }
             }
             .background(Color.maxlyChatBackground.ignoresSafeArea())

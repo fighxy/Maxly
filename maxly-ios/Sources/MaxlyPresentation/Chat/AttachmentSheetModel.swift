@@ -8,14 +8,13 @@ import MaxlyDomain
 @Observable
 public final class AttachmentSheetModel {
     public enum Tab: String, CaseIterable, Identifiable, Sendable {
-        case gallery, gif, file, location, poll, contact
+        case gallery, file, location, poll, contact
 
         public var id: String { rawValue }
 
         public var title: String {
             switch self {
             case .gallery: "Галерея"
-            case .gif: "GIF"
             case .file: "Файл"
             case .location: "Геопозиция"
             case .poll: "Опрос"
@@ -26,7 +25,6 @@ public final class AttachmentSheetModel {
         public var systemImage: String {
             switch self {
             case .gallery: "photo.on.rectangle"
-            case .gif: "face.smiling"
             case .file: "doc"
             case .location: "location"
             case .poll: "chart.bar.xaxis"
@@ -34,13 +32,17 @@ public final class AttachmentSheetModel {
             }
         }
 
-        /// Вкладки, которых пока нет: экран показывает «Скоро».
+        /// Вкладки, которых пока нет, в листе не показываются.
         public var isAvailable: Bool {
             switch self {
-            case .gallery, .gif, .file, .contact: true
+            case .gallery, .file, .contact: true
             case .location, .poll: false
             }
         }
+
+        /// Вкладки листа вложений: только то, что уже работает. GIF и стикеры — в панели
+        /// на месте клавиатуры, рядом с эмодзи.
+        public static var shown: [Tab] { allCases.filter(\.isAvailable) }
     }
 
     /// Больше за раз не выбрать: иначе сообщений выйдет слишком много.

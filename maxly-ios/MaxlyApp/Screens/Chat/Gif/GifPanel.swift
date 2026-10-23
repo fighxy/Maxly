@@ -4,62 +4,40 @@ import MaxlyDomain
 import MaxlyPresentation
 import MaxlyUI
 
-/// Вкладка «GIF» листа вложений: свои стикеры MAX и поиск gifka.me (гифки и стикеры).
-/// Найденное в gifka.me уходит файлом GIF через обычную загрузку фото.
+/// Раздел «GIF» панели на месте клавиатуры: поиск гифок и стикеров gifka.me. Стикеры MAX —
+/// в соседнем разделе «Стикеры». Найденное уходит файлом GIF через обычную загрузку фото.
+/// Выдача и запрос живут в `GifPanelModel` экрана чата и не сбрасываются при закрытии панели.
 struct GifPanel: View {
-    enum Tab: String, CaseIterable, Identifiable {
-        case maxStickers, gifs, gifkaStickers
-        var id: String { rawValue }
-        var title: String {
-            switch self {
-            case .maxStickers: "Стикеры MAX"
-            case .gifs: "GIF"
-            case .gifkaStickers: "Стикеры"
-            }
-        }
-    }
-
-    var stickerPanel: StickerPanelModel?
-    let onPickGifka: (GifkaMedia, GifkaClient) -> Void
-    let onSticker: (Sticker) -> Void
+    @Bindable var model: GifPanelModel
+    /// Гифку можно отправить: чат ставит её в очередь отправки.
+    let onPick: (GifkaMedia, GifkaClient) -> Void
 
     @AppStorage(GifkaSettings.enabledKey) private var searchEnabled = false
-    @State private var tab: Tab = .gifs
-    @State private var gifs: GifSearchModel
-    @State private var gifkaStickers: GifSearchModel
+    @FocusState private var fieldFocused: Bool
     @State private var failure: String?
     /// Ответ на жалобу: «Жалоба отправлена» или ошибка.
     @State private var reportNotice: String?
-    /// Показы, выбор и отправка для gifka.me (`POST /v1/pingback`); без ключа `nil`.
-    @State private var pingback: GifkaPingback?
-
-    init(stickerPanel: StickerPanelModel?, onPickGifka: @escaping (GifkaMedia, GifkaClient) -> Void, onSticker: @escaping (Sticker) -> Void) {
-        self.stickerPanel = stickerPanel
-        self.onPickGifka = onPickGifka
-        self.onSticker = onSticker
-        let client = GifkaClient(apiKey: GifkaSettings.apiKey)
-        _pingback = State(initialValue: GifkaPingback(client: client))
-        _gifs = State(initialValue: GifSearchModel(type: .gif, client: client))
-        _gifkaStickers = State(initialValue: GifSearchModel(type: .sticker, client: client))
-    }
 
     var body: some View {
         VStack(spacing: 8) {
-            Picker("Раздел", selection: $tab) {
-                ForEach(Tab.allCases) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 12)
-            Group {
-                switch tab {
-                case .maxStickers: maxStickers
-                case .gifs: gifkaPane(gifs)
-                case .gifkaStickers: gifkaPane(gifkaStickers)
+            if searchEnabled {
+                searchField
+                Picker("Раздел", selection: $model.section) {
+                    ForEach(GifPanelModel.Section.allCases) { Text($0.title).tag($0) }
                 }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 12)
+                GifkaResults(
+                    model: model.active,
+                    pingback: model.pingback,
+                    onReport: GifkaSettings.reportsEnabled ? { media, reason in report(media, reason: reason) } : nil
+                ) { media in send(media) }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                disabledNotice
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(.top, 4)
+        .padding(.top, 8)
         .alert("Нельзя отправить", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
             Button("OK", role: .cancel) { failure = nil }
         } message: {
@@ -68,55 +46,59 @@ struct GifPanel: View {
         .alert(reportNotice ?? "", isPresented: Binding(get: { reportNotice != nil }, set: { if !$0 { reportNotice = nil } })) {
             Button("OK", role: .cancel) { reportNotice = nil }
         }
-        .onDisappear {
-            let pingback = pingback
-            Task { await pingback?.flush() }
-        }
+        .onAppear { if searchEnabled { model.appear() } }
+        .onChange(of: searchEnabled) { _, enabled in if enabled { model.appear() } }
+        .onChange(of: fieldFocused) { _, focused in model.isSearching = focused }
+        .onDisappear { model.disappear() }
     }
 
-    // MARK: Стикеры MAX
-
-    @ViewBuilder
-    private var maxStickers: some View {
-        if let model = stickerPanel {
-            MaxStickerGrid(model: model, onSticker: onSticker)
-        } else {
-            note("Стикеры недоступны в этом чате")
-        }
-    }
-
-    // MARK: gifka.me
-
-    @ViewBuilder
-    private func gifkaPane(_ model: GifSearchModel) -> some View {
-        if !searchEnabled {
-            VStack(spacing: 12) {
-                Text("Поиск GIF выключен")
-                    .font(.app(.headline))
-                Text("Поиск идёт через gifka.me: текст запроса и ваш IP-адрес уходят на их сервер.")
-                    .font(.app(.subheadline))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                Button("Включить поиск") { searchEnabled = true }
-                    .buttonStyle(.borderedProminent)
-                Text("Позже его можно выключить в «Настройки → Сообщения».")
-                    .font(.app(.footnote))
-                    .foregroundStyle(.secondary)
+    /// Один запрос на оба раздела: переключение «GIF | Стикеры» ищет то же самое.
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField(model.section == .gifs ? "Поиск GIF" : "Поиск стикеров", text: $model.query)
+                .focused($fieldFocused)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .onSubmit { fieldFocused = false }
+            if !model.query.isEmpty {
+                Button { model.query = "" } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Очистить")
             }
-            .padding(24)
-        } else {
-            GifkaResults(
-                model: model,
-                pingback: pingback,
-                onReport: GifkaSettings.reportsEnabled ? { media, reason in report(media, reason: reason, client: model.client) } : nil
-            ) { media in send(media, client: model.client) }
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.horizontal, 12)
     }
 
-    /// В сетке только лёгкие превью; файл GIF качает чат уже после выбора (лист закрыт,
-    /// внизу видна загрузка с отменой).
-    private func send(_ media: GifkaMedia, client: GifkaClient) {
-        let pingback = pingback
+    private var disabledNotice: some View {
+        VStack(spacing: 12) {
+            Text("Поиск GIF выключен")
+                .font(.app(.headline))
+            Text("Поиск идёт через gifka.me: текст запроса и ваш IP-адрес уходят на их сервер.")
+                .font(.app(.subheadline))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button("Включить поиск") { searchEnabled = true }
+                .buttonStyle(.borderedProminent)
+            Text("Позже его можно выключить в «Настройки → Сообщения».")
+                .font(.app(.footnote))
+                .foregroundStyle(.secondary)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// В сетке только лёгкие превью; файл GIF качает очередь отправки уже после выбора
+    /// (над полем ввода видна загрузка с отменой).
+    private func send(_ media: GifkaMedia) {
+        let client = model.client
+        let pingback = model.pingback
         Task { await pingback?.click(media.id) }
         guard media.canSendGIF(hasKey: client.hasKey) else {
             failure = client.hasKey
@@ -124,90 +106,79 @@ struct GifPanel: View {
                 : "Отправка найденных GIF требует ключа API gifka.me в сборке. Поиск и просмотр работают без него."
             return
         }
-        onPickGifka(media, client)
+        onPick(media, client)
     }
 
-    private func report(_ media: GifkaMedia, reason: GifkaReportReason, client: GifkaClient) {
+    private func report(_ media: GifkaMedia, reason: GifkaReportReason) {
+        let client = model.client
         Task {
             do {
                 try await client.report(media.id, reason: reason)
                 reportNotice = "Жалоба отправлена"
             } catch {
-                reportNotice = "Не удалось отправить жалобу: \(error.localizedDescription)"
+                reportNotice = "Не удалось отправить жалобу: \(GifkaSettings.message(error))"
             }
         }
     }
-
-    private func note(_ text: String) -> some View {
-        Text(text)
-            .font(.app(.subheadline))
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
 }
 
-/// Поле поиска, сетка выдачи и подпись «Гифки: gifka.me».
+/// Сетка выдачи, подгрузка страниц и подпись «Гифки: gifka.me».
 private struct GifkaResults: View {
-    @Bindable var model: GifSearchModel
+    let model: GifSearchModel
     let pingback: GifkaPingback?
     /// `nil` — жалобы выключены флагом.
     let onReport: ((GifkaMedia, GifkaReportReason) -> Void)?
     let onPick: (GifkaMedia) -> Void
 
     var body: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField(model.type == .gif ? "Поиск GIF" : "Поиск стикеров", text: $model.query)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.search)
-                if !model.query.isEmpty {
-                    Button { model.query = "" } label: {
-                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Очистить")
+        ScrollView {
+            if let failure = model.failure, model.items.isEmpty {
+                VStack(spacing: 8) {
+                    Text(failure)
+                        .font(.app(.subheadline))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button("Повторить") { model.retry() }
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 24)
+            } else if model.items.isEmpty, !model.loading {
+                Text(model.query.isEmpty ? "Пока пусто" : "Ничего не нашлось")
+                    .font(.app(.subheadline))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 24)
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: model.type == .gif ? 2 : 4), spacing: 3) {
+                ForEach(model.items) { media in
+                    GifkaCell(media: media, onReport: onReport.map { report in { report(media, $0) } }) { onPick(media) }
+                        .onAppear {
+                            let pingback = pingback
+                            Task { await pingback?.views([media.id]) }
+                            if media.id == model.items.last?.id { model.loadMore() }
+                        }
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .padding(.horizontal, 12)
-            ScrollView {
-                if let failure = model.failure, model.items.isEmpty {
-                    VStack(spacing: 8) {
-                        Text(failure).font(.app(.subheadline)).foregroundStyle(.secondary)
-                        Button("Повторить") { model.retry() }
-                    }
-                    .padding(.top, 40)
-                } else if model.items.isEmpty, !model.loading {
-                    Text("Ничего не нашлось").font(.app(.subheadline)).foregroundStyle(.secondary).padding(.top, 40)
-                }
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: model.type == .gif ? 2 : 4), spacing: 3) {
-                    ForEach(model.items) { media in
-                        GifkaCell(media: media, onReport: onReport.map { report in { report(media, $0) } }) { onPick(media) }
-                            .onAppear {
-                                let pingback = pingback
-                                Task { await pingback?.views([media.id]) }
-                                if media.id == model.items.last?.id { model.loadMore() }
-                            }
-                    }
-                }
-                .padding(.horizontal, 6)
-                if model.loading { ProgressView().padding() }
-                // Подпись со ссылкой на сайт, которую требуют условия API.
-                Link(destination: GifkaSettings.siteURL) {
-                    Text("Гифки: ").foregroundStyle(.secondary) + Text("gifka.me").underline()
-                }
-                .font(.app(.footnote))
-                .accessibilityHint("Открывает сайт gifka.me")
-                    .padding(.vertical, 10)
-                    .padding(.bottom, 70)
+            .padding(.horizontal, 6)
+            if model.loading {
+                ProgressView().padding()
+            } else if let failure = model.failure, !model.items.isEmpty {
+                // Следующая страница не пришла: выдача остаётся, внизу — «Повторить».
+                Button("Повторить") { model.loadMore(retrying: true) }
+                    .font(.app(.subheadline))
+                    .accessibilityHint(failure)
+                    .padding()
             }
-            .scrollDismissesKeyboard(.immediately)
+            // Подпись со ссылкой на сайт, которую требуют условия API.
+            Link(destination: GifkaSettings.siteURL) {
+                Text("Гифки: ").foregroundStyle(.secondary) + Text("gifka.me").underline()
+            }
+            .font(.app(.footnote))
+            .accessibilityHint("Открывает сайт gifka.me")
+            .padding(.vertical, 10)
         }
-        .onAppear { model.start() }
+        .scrollDismissesKeyboard(.immediately)
+        // Другой раздел — своя прокрутка с начала.
+        .id(ObjectIdentifier(model))
     }
 }
 
@@ -216,6 +187,8 @@ private struct GifkaCell: View {
     let media: GifkaMedia
     var onReport: ((GifkaReportReason) -> Void)?
     let onTap: () -> Void
+    /// «Автовоспроизведение GIF» из настроек: без него в сетке стоит первый кадр.
+    @Environment(\.gifAutoplay) private var gifAutoplay
 
     var body: some View {
         if let onReport {
@@ -240,7 +213,8 @@ private struct GifkaCell: View {
                     Color.secondary.opacity(0.12)
                 }
                 .scaledToFill()
-                if media.kind == .gif, let mp4 = media.previewMP4() {
+                if media.kind == .gif, let mp4 = media.previewMP4(),
+                   GifAutoplayPolicy.shouldPlay(allowed: gifAutoplay, hasVideo: true, visible: true) {
                     GifLoopView(url: mp4.url)
                 }
             }
@@ -254,88 +228,12 @@ private struct GifkaCell: View {
     }
 }
 
-/// Наборы стикеров MAX аккаунта: отправляются настоящими стикерами.
-private struct MaxStickerGrid: View {
-    @Bindable var model: StickerPanelModel
-    let onSticker: (Sticker) -> Void
-
-    var body: some View {
-        Group {
-            if model.stickerSections.isEmpty {
-                VStack(spacing: 8) {
-                    if model.isLoading {
-                        ProgressView()
-                    } else if let failure = model.failure {
-                        Text(failure).font(.app(.subheadline)).foregroundStyle(.secondary)
-                        Button("Повторить") { model.retry() }
-                    } else {
-                        Text("Стикеров пока нет").font(.app(.subheadline)).foregroundStyle(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 5), spacing: 4) {
-                        ForEach(model.stickerSections) { section in
-                            Section {
-                                ForEach(section.stickerIds, id: \.self) { id in
-                                    cell(model.stickers[id])
-                                }
-                            } header: {
-                                Text(section.title.uppercased())
-                                    .font(.app(size: 12, .semibold))
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.top, 8)
-                                    .onAppear { model.loadStickers(of: section) }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.bottom, 80)
-                }
-            }
-        }
-        .onAppear { model.prepare() }
-    }
-
-    @ViewBuilder
-    private func cell(_ sticker: Sticker?) -> some View {
-        if let sticker {
-            Button {
-                onSticker(sticker)
-                model.noteSticker(sticker)
-            } label: {
-                AnimatedSticker(lottieURL: sticker.url == nil ? sticker.lottieURL : nil, stillURL: sticker.url, size: 60, playing: false) {
-                    RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.1))
-                }
-                .frame(maxWidth: .infinity)
-                .aspectRatio(1, contentMode: .fit)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(sticker.tags.first.map { "Стикер \($0)" } ?? "Стикер")
-        } else {
-            RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.1)).aspectRatio(1, contentMode: .fit)
-        }
-    }
-}
-
-/// Гифка, которая качается и уходит после выбора. Если не ушла — строка остаётся
-/// с ошибкой и кнопкой «Повторить».
-struct GifDownload {
-    let id: UUID
-    let media: GifkaMedia
-    let client: GifkaClient
-    var task: Task<Void, Never>?
-    var failure: String?
-
-    var title: String { media.title }
-}
-
 /// Строка над полем ввода: «Загружаем GIF…» с отменой, пока файл не ушёл, или ошибка с «Повторить».
+/// Справа от заголовка — сколько гифок ждут за текущей.
 struct GifDownloadBar: View {
     let title: String
     var failure: String?
+    var waiting = 0
     var onRetry: () -> Void = {}
     let onCancel: () -> Void
 
@@ -349,7 +247,12 @@ struct GifDownloadBar: View {
                     .foregroundStyle(.red)
             }
             VStack(alignment: .leading, spacing: 1) {
-                Text(failure == nil ? "Загружаем GIF…" : "GIF не отправилась").font(.app(.subheadline, .semibold))
+                HStack(spacing: 4) {
+                    Text(failure == nil ? "Загружаем GIF…" : "GIF не отправилась").font(.app(.subheadline, .semibold))
+                    if waiting > 0 {
+                        Text("· ещё \(waiting)").font(.app(.subheadline)).foregroundStyle(.secondary)
+                    }
+                }
                 if let failure {
                     Text(failure).font(.app(.caption)).foregroundStyle(.secondary).lineLimit(2)
                 } else if !title.isEmpty {
