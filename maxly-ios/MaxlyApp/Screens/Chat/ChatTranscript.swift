@@ -63,6 +63,15 @@ struct ChatTranscript: View {
     @State private var heightCache = BubbleHeightCache()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.chatWallpaper) private var wallpaper
+    // Окружение пузырей для ячеек ленты: через границу UIKit оно само не проходит.
+    @Environment(\.privateMode) private var privateMode
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.animojiCatalog) private var animojiCatalog
+    @Environment(\.reactionBurst) private var reactionBurst
+    @Environment(\.messageMenuPresenter) private var messageMenuPresenter
+    @Environment(\.chatHasPhotoWallpaper) private var chatHasPhotoWallpaper
+    @Environment(\.imageURLSizing) private var imageURLSizing
+    @Environment(\.gifAutoplay) private var gifAutoplay
 
     static let feedInset: CGFloat = 8
     static let prefetchCount = 40
@@ -208,31 +217,32 @@ struct ChatTranscript: View {
 
     @ViewBuilder
     private func collectionFeed(width: CGFloat, dayPillTop: CGFloat) -> some View {
+        let style = layoutStyle(width: width)
         TranscriptCollectionFeed(
             viewModel: viewModel,
             rows: viewModel.rows,
-            width: width,
             revealMode: reveal,
             feedInset: Self.feedInset,
             reduceMotion: reduceMotion,
-            isOpening: isOpening,
-            isRestoringHistory: viewModel.isRestoringHistory,
             scrollRequest: scroll.request,
             stickToBottom: stickToBottom,
             reveal: revealTarget,
-            canLoadOlder: viewModel.canLoadOlder,
-            isLoadingOlder: viewModel.isLoadingOlder,
+            header: headerKind,
             isJumped: viewModel.isJumped,
-            emptyHint: viewModel.emptyHint,
-            showsChannelReady: viewModel.latestLoaded && viewModel.messages.isEmpty && !viewModel.isRestoringHistory
-                && viewModel.historyError == nil && !viewModel.showsSavedPlaceholder && chatType == .channel && canWrite,
-            showsEmpty: viewModel.latestLoaded && viewModel.messages.isEmpty && !viewModel.isRestoringHistory
-                && viewModel.historyError == nil && !viewModel.showsSavedPlaceholder,
             headerBottom: headerBottom,
             composerTop: composerCover,
+            environment: feedEnvironment,
             snapshot: { state(for: $0, width: width) },
+            layoutKey: { layoutKey(for: $0, style: style) },
+            estimate: { row, rowWidth in
+                CGFloat(BubbleHeightCache.estimate(
+                    row: row,
+                    maxWidth: Double(Self.bubbleMaxWidth(rowWidth: rowWidth)),
+                    reservesAvatar: style.showsAuthors
+                ))
+            },
             onAuthor: onAuthor,
-            onFrames: { frames, viewport, _ in
+            onFrames: { frames, viewport in
                 applyCollectionFrames(frames, viewport: viewport)
             },
             onBottomDistance: { distance, visible in
@@ -250,8 +260,12 @@ struct ChatTranscript: View {
                 }
                 measuredGeometry()
             },
-            onTopVisible: { headerVisible = $0 },
-            onNearTopPrefix: { nearTopPrefix = $0 },
+            onTopVisible: { visible in
+                if headerVisible != visible { headerVisible = visible }
+            },
+            onNearTopPrefix: { prefix in
+                if nearTopPrefix != prefix { nearTopPrefix = prefix }
+            },
             onLoadOlder: { Task { await loadOlderFromTop() } },
             onLoadNewer: { Task { await viewModel.loadNewer() } },
             onScrollFinished: { token, confirmed in
@@ -259,6 +273,7 @@ struct ChatTranscript: View {
                 isOpening = false
                 if !confirmed { bottom.beginReadingHistory() }
                 recordScroll(confirmed ? "scroll-confirmed" : "scroll-unconfirmed", immediate: true)
+                measuredGeometry()
                 noteBottomIfReached()
                 reportReads()
             },
@@ -284,6 +299,66 @@ struct ChatTranscript: View {
         .onAppear {
             if isOpening { openAtStart() }
         }
+    }
+
+    /// Служебная строка над сообщениями ленты на UICollectionView.
+    private var headerKind: TranscriptCollectionFeed.HeaderKind {
+        if let hint = viewModel.emptyHint { return .hint(hint) }
+        let empty = viewModel.latestLoaded && viewModel.messages.isEmpty && !viewModel.isRestoringHistory
+            && viewModel.historyError == nil && !viewModel.showsSavedPlaceholder
+        if empty { return chatType == .channel && canWrite ? .channelReady : .empty }
+        if !viewModel.messages.isEmpty && viewModel.canLoadOlder { return .olderLoader(loading: viewModel.isLoadingOlder) }
+        return .none
+    }
+
+    private var feedEnvironment: FeedEnvironment {
+        FeedEnvironment(
+            privateMode: privateMode,
+            dynamicTypeSize: dynamicTypeSize,
+            animojiCatalog: animojiCatalog,
+            reactionBurst: reactionBurst,
+            messageMenuPresenter: messageMenuPresenter,
+            chatWallpaper: wallpaper,
+            chatHasPhotoWallpaper: chatHasPhotoWallpaper,
+            imageURLSizing: imageURLSizing,
+            gifAutoplay: gifAutoplay
+        )
+    }
+
+    /// Ширина колонки пузыря по ширине строки ленты (лента без полей по краям).
+    static func bubbleMaxWidth(rowWidth: CGFloat) -> CGFloat {
+        min(520, max(0, rowWidth) * MaxlyTheme.bubbleMax)
+    }
+
+    /// Общее для всех строк, от чего зависит высота: ширина, шрифт и размер текста, вид чата,
+    /// приватный режим, режим выбора.
+    private func layoutStyle(width: CGFloat) -> TranscriptLayoutStyle {
+        let typography = Typography.shared
+        return TranscriptLayoutStyle(
+            maxWidth: Self.bubbleMaxWidth(rowWidth: width - Self.feedInset * 2),
+            showsAuthors: chatType == .group,
+            allowsComments: chatType == .channel && commentsEnabled == true,
+            isSelecting: viewModel.selection.isActive,
+            privateMode: privateMode,
+            dynamicTypeSize: dynamicTypeSize,
+            font: typography.font,
+            fontWeight: typography.weight,
+            textSize: typography.textSize,
+            animojiCount: animojiCatalog.count
+        )
+    }
+
+    private func layoutKey(for row: TranscriptRow, style: TranscriptLayoutStyle) -> FeedLayoutKey {
+        let message = row.message
+        let voice = message.content.voices.first
+        let round = viewModel.roundPlayback.map { playback in message.content.visuals.contains { $0.id == playback.id } } ?? false
+        return FeedLayoutKey(TranscriptRowLayoutKey(
+            row: row,
+            style: style,
+            isRevealed: reveal.isRevealed(message.id),
+            transcript: voice.map { viewModel.transcriptPhase(for: $0) } ?? .collapsed,
+            roundPlaying: round
+        ))
     }
 
     @ViewBuilder
@@ -850,7 +925,7 @@ struct ChatTranscript: View {
         }
         return TranscriptBubble.Snapshot(
             row: row,
-            maxWidth: min(520, max(0, width - Self.feedInset * 2) * MaxlyTheme.bubbleMax),
+            maxWidth: Self.bubbleMaxWidth(rowWidth: width - Self.feedInset * 2),
             showsAuthorName: showsAuthors && row.showsAuthorName,
             showsAuthorAvatar: showsAuthors && row.showsAuthorAvatar,
             reservesAvatar: showsAuthors,

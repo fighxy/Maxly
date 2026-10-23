@@ -211,3 +211,35 @@ struct TranscriptBubble: View, Equatable {
         )
     }
 }
+
+/// Общее для всех строк ленты, от чего зависит высота пузыря.
+struct TranscriptLayoutStyle: Equatable {
+    /// Ширина колонки пузыря (`Snapshot.maxWidth`).
+    var maxWidth: CGFloat
+    /// Группа: имена и аватары авторов.
+    var showsAuthors: Bool
+    /// Пост канала: строка комментариев под ним.
+    var allowsComments: Bool
+    /// Режим выбора: слева от пузыря отметка, сам пузырь уже.
+    var isSelecting: Bool
+    var privateMode: PrivateModeDisplay
+    var dynamicTypeSize: DynamicTypeSize
+    var font: AppFont
+    var fontWeight: Int
+    var textSize: TextSizeStep
+    /// Анимодзи чата пришли: крупное эмодзи рисуется анимацией своего размера.
+    var animojiCount: Int
+}
+
+/// Отпечаток высоты строки ленты: строка с соседями и всё из `Snapshot`, что меняет раскладку.
+/// Ход голосового, загрузка, подсветка и пункты меню сюда не входят — высоту они не меняют.
+struct TranscriptRowLayoutKey: Equatable {
+    var row: TranscriptRow
+    var style: TranscriptLayoutStyle
+    /// Открыт касанием в приватном режиме: вместо заглушки настоящее сообщение.
+    var isRevealed: Bool
+    /// Расшифровка голосового раскрыта.
+    var transcript: TranscriptPhase
+    /// Кружок играет и крупнее.
+    var roundPlaying: Bool
+}

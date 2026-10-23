@@ -21,6 +21,10 @@ struct CommentsView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.privateMode) private var privateMode
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    // Окружение пузырей для ячеек ленты: через границу UIKit оно само не проходит.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.imageURLSizing) private var imageURLSizing
+    @Environment(\.gifAutoplay) private var gifAutoplay
 
     var body: some View {
         NavigationStack {
@@ -32,6 +36,12 @@ struct CommentsView: View {
                     reduceMotion: reduceMotion,
                     atBottom: $atBottom,
                     composerTop: composerTop > 0 ? composerTop : nil,
+                    environment: FeedEnvironment(
+                        privateMode: privateMode,
+                        dynamicTypeSize: dynamicTypeSize,
+                        imageURLSizing: imageURLSizing,
+                        gifAutoplay: gifAutoplay
+                    ),
                     onBlockAuthor: onBlockAuthor,
                     onBlockNotice: { blockNotice = $0 }
                 )
