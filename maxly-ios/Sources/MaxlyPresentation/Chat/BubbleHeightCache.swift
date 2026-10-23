@@ -95,12 +95,16 @@ public final class BubbleHeightCache: @unchecked Sendable {
             return total + service
         }
         if row.showsAuthorName { total += authorName }
-        total += contentHeight(row.message, maxWidth: max(1, maxWidth))
+        // Аватар, поля пузыря и время уже ширины, чем `maxWidth`: иначе оценка в одну строку,
+        // а на экране текст переносится и нижняя строка обрезается.
+        let gutter = row.isOutgoing ? 0.0 : 46.0
+        let textWidth = max(40, maxWidth - 28 - 64 - gutter)
+        total += contentHeight(row.message, maxWidth: max(1, maxWidth), textWidth: textWidth)
         if !row.message.content.reactions.isEmpty { total += reactionRow }
         return max(total, minTextBubble)
     }
 
-    private static func contentHeight(_ message: Message, maxWidth: Double) -> Double {
+    private static func contentHeight(_ message: Message, maxWidth: Double, textWidth: Double) -> Double {
         let content = message.content
         var height = bubblePaddingY
         if !content.visuals.isEmpty {
@@ -135,14 +139,15 @@ public final class BubbleHeightCache: @unchecked Sendable {
         if content.comments != nil { height += commentsFooter }
         let text = message.displayText
         if !text.isEmpty {
-            let textWidth = max(40, maxWidth - textHorizontalChrome)
+            let measuredWidth = max(40, textWidth)
             if let provider = textHeightProvider {
-                height += provider(text, textWidth)
+                height += provider(text, measuredWidth)
             } else {
-                let charsPerLine = max(12.0, textWidth / 8.5)
+                let charsPerLine = max(12.0, measuredWidth / 8.5)
                 let lines = max(1.0, ceil(Double(text.count) / charsPerLine))
                 height += lines * lineHeight
             }
+            height += 4
         }
         if height <= bubblePaddingY {
             height += minTextBubble

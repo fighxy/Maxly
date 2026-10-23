@@ -69,7 +69,7 @@ struct MediaMosaic: View {
         // Не `Button`: кнопка ловит касание в начале прокрутки и подсвечивается, а жест
         // касания срабатывает только на короткое нажатие без движения.
         return ZStack {
-            RemoteImage(url: url, maxPixel: decode) {
+            RemoteImage(url: url, maxPixel: decode, fillsFrame: false) {
                 placeholder(item)
             }
             .frame(width: width, height: height)
