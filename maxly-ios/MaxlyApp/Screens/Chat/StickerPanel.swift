@@ -14,7 +14,9 @@ struct StickerPanel: View {
     let onEmoji: (EmojiItem) -> Void
     let onBackspace: () -> Void
     let onSticker: (Sticker) -> Void
-    /// Выбрана гифка или стикер gifka.me: чат сам качает файл и отправляет его.
+    /// Поиск gifka.me раздела «GIF»: живёт с экраном чата, а не с панелью.
+    let gifPanel: GifPanelModel
+    /// Выбрана гифка или стикер gifka.me: чат ставит файл в очередь отправки.
     let onPickGifka: (GifkaMedia, GifkaClient) -> Void
 
     @State private var currentEmoji: String?
@@ -27,7 +29,7 @@ struct StickerPanel: View {
                 switch model.mode {
                 case .emoji: emojiPane
                 case .stickers: stickerPane
-                case .gifs: GifPanel(onPickGifka: onPickGifka)
+                case .gifs: GifPanel(model: gifPanel, onPick: onPickGifka)
                 }
             }
             .frame(maxHeight: .infinity)
@@ -202,7 +204,7 @@ struct StickerPanel: View {
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.26)) { proxy.scrollTo(id, anchor: .top) }
     }
 
-    /// «Эмодзи | Стикеры» по центру, «стереть» справа (только у эмодзи).
+    /// «Эмодзи | Стикеры | GIF» по центру, «стереть» справа (только у эмодзи).
     private var bottomBar: some View {
         ZStack {
             HStack(spacing: 2) {

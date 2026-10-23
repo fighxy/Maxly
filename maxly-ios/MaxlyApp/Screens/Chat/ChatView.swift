@@ -72,8 +72,10 @@ struct ChatView: View {
     @State private var profileShown = false
     @State private var forwardList: [ChatListItem] = []
     @State private var attachmentsShown = false
-    /// Гифка gifka.me качается и уходит после выбора: строка над полем ввода с отменой или «Повторить».
-    @State private var gifDownload: GifDownload?
+    /// Гифки gifka.me качаются и уходят по очереди: строка над полем ввода с отменой или «Повторить».
+    @State private var gifQueue = GifSendQueue()
+    /// Поиск раздела «GIF» панели: запрос и выдача остаются, пока открыт чат.
+    @State private var gifPanel = GifPanelModel()
     /// Снимки с кнопки камеры в поле ввода (`CameraCaptureFlow`).
     @State private var cameraFlowShown = false
     /// Меню долгого нажатия на сообщение, как в WhatsApp (`MessageMenuHost`).
@@ -276,6 +278,9 @@ struct ChatView: View {
                 composerControls
             }
         }
+        // Строка отправки GIF выезжает и уходит; панель сжимается под поиск вместе с клавиатурой.
+        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: gifQueue.current?.id)
+        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: gifPanel.isSearching)
         // Без клавиатуры и панели капсулы опускаются в нижний отступ экрана:
         // над полоской «домой» и так остаётся место.
         .padding(.bottom, lowersControls ? -Self.controlsLowering : 0)
@@ -286,15 +291,14 @@ struct ChatView: View {
     /// Поле ввода и панель стикеров.
     @ViewBuilder
     private var composerControls: some View {
-        if let gifDownload {
+        if let gif = gifQueue.current {
             GifDownloadBar(
-                title: gifDownload.title,
-                failure: gifDownload.failure,
-                onRetry: { downloadGif(gifDownload.media, client: gifDownload.client) }
-            ) {
-                gifDownload.task?.cancel()
-                self.gifDownload = nil
-            }
+                title: gif.media.title,
+                failure: gif.failure,
+                waiting: gifQueue.waiting,
+                onRetry: { gifQueue.retry() },
+                onCancel: { gifQueue.dismissCurrent() }
+            )
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
         ChatComposer(
@@ -316,17 +320,27 @@ struct ChatView: View {
         if panelShown, writable, let stickerPanel {
             StickerPanel(
                 model: stickerPanel,
-                height: keyboardHeight,
+                height: stickerPanelHeight,
                 onEmoji: { viewModel.insertEmoji($0.emoji, animated: $0.animated) },
                 onBackspace: { viewModel.deleteBackward() },
                 onSticker: { sticker in Task { await viewModel.sendSticker(sticker) } },
-                onPickGifka: { media, client in downloadGif(media, client: client) }
+                gifPanel: gifPanel,
+                onPickGifka: { media, client in sendGif(media, client: client) }
             )
             .transition(.move(edge: .bottom))
         }
     }
 
     private var muted: Bool { mutedNow?() ?? isMuted }
+
+    /// Панель стоит на месте клавиатуры. Пока ищут GIF, клавиатура открыта под ней: панель
+    /// сжимается до поля поиска и ряда выдачи, чтобы лента осталась видна.
+    private var stickerPanelHeight: CGFloat {
+        gifPanel.isSearching ? min(keyboardHeight, Self.gifSearchPanelHeight) : keyboardHeight
+    }
+
+    /// Поле поиска, разделы, ряд выдачи и переключатель панели.
+    static let gifSearchPanelHeight: CGFloat = 260
 
     /// На сколько нижние капсулы заходят в нижний отступ экрана.
     static let controlsLowering: CGFloat = 14
@@ -663,35 +677,14 @@ struct ChatView: View {
         }
     }
 
-    /// Качает файл GIF выбранной гифки и отправляет его как фото. Дальше пузырь
-    /// показывает обычную загрузку с кольцом и отменой. Если скачать или отправить
-    /// не вышло, строка над полем ввода остаётся с ошибкой и «Повторить».
-    private func downloadGif(_ media: GifkaMedia, client: GifkaClient) {
-        gifDownload?.task?.cancel()
-        let id = UUID()
-        let task = Task { @MainActor in
-            do {
-                let data = try await client.downloadGIF(media)
-                try Task.checkCancellation()
-                let draft = try MediaExporter.draft(gifData: data)
-                guard gifDownload?.id == id else { return }
-                guard await viewModel.sendAttachments([draft], caption: "") else {
-                    if gifDownload?.id == id { gifDownload?.failure = "Не удалось отправить сообщение"; gifDownload?.task = nil }
-                    return
-                }
-                if gifDownload?.id == id { gifDownload = nil }
-                // Событие отправки для gifka.me: только id медиа.
-                Task.detached { await client.pingback([GifkaEvent(mediaId: media.id, kind: .send)]) }
-            } catch is CancellationError {
-            } catch let error as URLError where error.code == .cancelled {
-            } catch {
-                if gifDownload?.id == id {
-                    gifDownload?.failure = error.localizedDescription
-                    gifDownload?.task = nil
-                }
-            }
+    /// Ставит выбранную гифку в очередь: файл GIF качается и уходит фото, дальше пузырь
+    /// показывает обычную загрузку с кольцом и отменой. Если скачать или отправить не вышло,
+    /// строка над полем ввода остаётся с ошибкой и «Повторить».
+    private func sendGif(_ media: GifkaMedia, client: GifkaClient) {
+        let viewModel = viewModel
+        gifQueue.enqueue(media, client: client) { draft in
+            await viewModel.sendAttachments([draft], caption: "")
         }
-        gifDownload = GifDownload(id: id, media: media, client: client, task: task)
     }
 
     private var attachmentSheet: some View {
