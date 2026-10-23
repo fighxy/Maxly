@@ -145,12 +145,14 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
         func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
             userDragging = true
             controller?.releaseBottomPin()
+            controller?.setUserScrolling(true)
             parent.onUserScroll(true, true)
         }
 
         func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
             if !decelerate {
                 userDragging = false
+                controller?.setUserScrolling(false)
                 parent.onUserScroll(false, false)
                 sampleGeometry(force: true)
             }
@@ -158,6 +160,7 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
 
         func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
             userDragging = false
+            controller?.setUserScrolling(false)
             parent.onUserScroll(false, false)
             sampleGeometry(force: true)
         }
@@ -213,7 +216,6 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
                 else { continue }
                 let frame = cell.convert(cell.bounds, to: nil)
                 frames[row.id] = frame
-                heightCache.store(id: row.id, height: Double(cell.bounds.height))
                 chronoIndices.append(chrono)
             }
             parent.onFrames(frames, viewport, 0)
@@ -341,11 +343,7 @@ final class TranscriptCollectionController: UIViewController {
         flow.estimatedItemSize = .zero
         let collection = UICollectionView(frame: view.bounds, collectionViewLayout: flow)
         collection.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        collection.backgroundColor = .clear
-        collection.alwaysBounceVertical = true
-        collection.keyboardDismissMode = .interactive
-        collection.contentInsetAdjustmentBehavior = .never
-        collection.insetsLayoutMarginsFromSafeArea = false
+        FeedScroll.install(collection)
         collection.delegate = coordinator
         view.addSubview(collection)
         collectionView = collection
@@ -377,6 +375,23 @@ final class TranscriptCollectionController: UIViewController {
         pendingBottomPin = false
     }
 
+    private var userScrolling = false
+    private var deferredHeights: MeasuredLayoutCommit.Batch?
+
+    func setUserScrolling(_ scrolling: Bool) {
+        let was = userScrolling
+        userScrolling = scrolling
+        if was, !scrolling { flushDeferredHeights() }
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        let wasNear = collectionView.map { FeedScroll.isNearBottom($0) } ?? false
+        let dragging = collectionView?.isDragging == true || collectionView?.isDecelerating == true
+        super.viewSafeAreaInsetsDidChange()
+        guard let collectionView, (wasNear || pendingBottomPin), !dragging else { return }
+        FeedScroll.pinToBottom(collectionView)
+    }
+
     func setRows(
         _ rows: [TranscriptRow],
         feedInset: CGFloat,
@@ -386,6 +401,9 @@ final class TranscriptCollectionController: UIViewController {
         footerLoading: Bool,
         preferBottom: Bool
     ) {
+        if self.rows == rows, self.header == header, self.footerLoading == footerLoading, abs(self.feedInset - feedInset) < 0.5 {
+            return
+        }
         let collection = collectionView
         let wasNearBottom = collection.map { FeedScroll.isNearBottom($0) } ?? false
         let beforeHeight = collection?.contentSize.height ?? 0
@@ -563,6 +581,14 @@ final class TranscriptCollectionController: UIViewController {
 
     private func applyMeasured(_ batch: MeasuredLayoutCommit.Batch) {
         guard let collectionView else { return }
+        if userScrolling || collectionView.isDragging || collectionView.isDecelerating {
+            var rows = deferredHeights?.rows ?? [:]
+            var chrome = deferredHeights?.chrome ?? [:]
+            rows.merge(batch.rows) { _, new in new }
+            chrome.merge(batch.chrome) { _, new in new }
+            deferredHeights = .init(rows: rows, chrome: chrome)
+            return
+        }
         let offset = collectionView.contentOffset.y
         let dragging = collectionView.isDragging || collectionView.isDecelerating
         var compensate: CGFloat = 0
@@ -597,6 +623,12 @@ final class TranscriptCollectionController: UIViewController {
                 collectionView.contentOffset.y = offset + compensate
             }
         }
+    }
+
+    private func flushDeferredHeights() {
+        guard let batch = deferredHeights else { return }
+        deferredHeights = nil
+        applyMeasured(batch)
     }
 
     private func configureDataSource() {
