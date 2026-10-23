@@ -270,7 +270,7 @@ struct ChatTranscript: View {
                 }
             }
         )
-        .ignoresSafeArea()
+        .ignoresSafeArea(edges: .top)
         .modifier(FloatingDayOverlay(model: viewModel, topVisible: headerVisible, topPadding: dayPillTop))
         .simultaneousGesture(TapGesture().onEnded { focus.wrappedValue = false }, including: focus.wrappedValue ? .all : .subviews)
         .onChange(of: viewModel.transcriptVersion, initial: true) { _, _ in
@@ -740,9 +740,8 @@ struct ChatTranscript: View {
         let oldHeights = Dictionary(uniqueKeysWithValues: reads.rows.map { ($0.key, $0.value.height) })
         reads.rows = frames
         reads.revision += 1
-        for (id, frame) in frames {
+        for (id, _) in frames {
             reads.rowRevisions[id] = reads.revision
-            heightCache.store(id: id, height: Double(frame.height))
         }
         for id in oldHeights.keys where frames[id] == nil {
             reads.rowRevisions[id] = nil
