@@ -33,7 +33,10 @@ public final class ChatViewModel {
     /// «вниз» ведёт к живой ленте.
     public var isJumped: Bool { window.map { !$0.joined } ?? false }
     /// Раньше могут быть сообщения: верх ленты догружает их сам.
-    public var canLoadOlder: Bool { window.map { !$0.reachedOldest } ?? true }
+    public var canLoadOlder: Bool { window.map { !$0.reachedOldest } ?? !liveReachedOldest }
+    /// Живая лента дошла до начала истории: страница старше не принесла ничего нового. Без
+    /// этого короткий чат спрашивал старое снова и снова, пока строка загрузки видна.
+    private var liveReachedOldest = false
     /// Идёт загрузка окна вокруг далёкого сообщения.
     public private(set) var isJumping = false
     /// Последняя страница старого не пришла (пауза сервера, сеть): экран повторит её сам.
@@ -851,7 +854,8 @@ public final class ChatViewModel {
         defer { if generation == loadGeneration { isLoadingOlder = false } }
         stickToBottom = false
         do {
-            try await repository.loadOlder(chatId: chatId)
+            let grew = try await repository.loadOlder(chatId: chatId)
+            if !grew, generation == loadGeneration { liveReachedOldest = true }
         } catch {
             guard generation == loadGeneration, !Task.isCancelled else { return }
             olderFailed = true

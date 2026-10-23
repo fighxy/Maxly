@@ -455,16 +455,28 @@ struct ChatView: View {
         // Поиск, опрос, отложенная отправка и звонки — в профиле чата: справа в шапке
         // только аватар.
         // Слот существует с первого кадра: загрузка профиля не перестраивает toolbar.
-        ToolbarItem(placement: .topBarTrailing) {
-            Button(action: openAvatar) {
-                headerAvatar
-                    .frame(width: 44, height: 44)
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Профиль")
-            .transaction { $0.animation = nil }
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            // Общая подложка панели под своим видом — капсула шире высоты, и круглый аватар
+            // сидел в овале. Подложку рисует сам аватар: стеклянный круг его размера.
+            ToolbarItem(placement: .topBarTrailing) { avatarButton }
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .topBarTrailing) { avatarButton }
         }
+        #else
+        ToolbarItem(placement: .topBarTrailing) { avatarButton }
+        #endif
+    }
+
+    private var avatarButton: some View {
+        Button(action: openAvatar) {
+            headerAvatar
+                .maxlyGlassCircle(size: 44)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Профиль")
+        .transaction { $0.animation = nil }
     }
 
     /// Касание аватара в шапке: истории собеседника, если есть, иначе профиль.

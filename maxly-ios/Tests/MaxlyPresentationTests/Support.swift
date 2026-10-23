@@ -377,7 +377,13 @@ actor FakeMessageRepository: MessageRepository {
     nonisolated func emit(_ messages: [Message]) { feed.continuation.yield(messages) }
     /// Сколько раз окно ленты расширяли на страницу.
     private(set) var olderLoads = 0
-    func loadOlder(chatId: String) async throws(MaxlyError) { olderLoads += 1 }
+    /// Принесла ли страница старше что-то новое; `false` — начало истории.
+    private var olderGrows = true
+    func setOlderGrows(_ grows: Bool) { olderGrows = grows }
+    func loadOlder(chatId: String) async throws(MaxlyError) -> Bool {
+        olderLoads += 1
+        return olderGrows
+    }
     /// Страницы `loadMore` по очереди; кончились — пусто.
     private var morePages: [[Message]] = []
     func queueMore(_ page: [Message]) { morePages.append(page) }

@@ -54,6 +54,10 @@ final class FeedHostingCell: UICollectionViewCell {
         backgroundColor = .clear
         clipsToBounds = true
         contentView.clipsToBounds = true
+        // Лента заходит под шапку и полоску «домой»: поля ячейки не зависят от safe area экрана,
+        // иначе строка у края сдвигалась на её величину (SwiftUI-часть — в `configure`).
+        insetsLayoutMarginsFromSafeArea = false
+        contentView.insetsLayoutMarginsFromSafeArea = false
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }

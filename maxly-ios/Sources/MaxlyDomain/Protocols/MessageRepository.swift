@@ -12,7 +12,9 @@ public protocol MessageRepository: Sendable {
     /// сплошная история. `nil` — сервер не ответил.
     func sharedMedia(chatId: String, types: [SharedAttachType], anchorId: String, forward: Int, backward: Int) async -> [Message]?
     /// Расширить окно на страницу, при необходимости догрузив историю с сервера.
-    func loadOlder(chatId: String) async throws(MaxlyError)
+    /// `false` — старше показанного ничего нет ни в кэше, ни на сервере: начало истории.
+    @discardableResult
+    func loadOlder(chatId: String) async throws(MaxlyError) -> Bool
     /// Сплошная страница истории с сервера вокруг сообщения `messageId` (серверный id) или,
     /// если задан `at`, вокруг этого момента: до `forward` новее и до `backward` старше, от
     /// старых к новым. Для перехода к сообщению далеко за окном ленты (цитата, закреп, поиск) и

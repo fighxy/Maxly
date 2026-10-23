@@ -564,6 +564,10 @@ final class FeedCollectionController: UIViewController, UICollectionViewDelegate
                 .fixedSize(horizontal: false, vertical: true)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { report($0) }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                // Лента заходит под шапку и полоску «домой», и ячейка у края получает safe area.
+                // Без этого SwiftUI сдвигал пузырь на её величину: низ обрезался краем ячейки,
+                // а пузырь ездил, пока строка проезжала край. Замер (`FeedSizer`) идёт без safe area.
+                .ignoresSafeArea()
         }
         .margins(.all, 0)
         .minSize(width: 0, height: 0)

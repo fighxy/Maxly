@@ -11,7 +11,7 @@ private actor ReaderMessages: MessageRepository {
     private(set) var calls: [String] = []
 
     nonisolated func messages(chatId: String) -> AsyncStream<[Message]> { AsyncStream { _ in } }
-    func loadOlder(chatId: String) async throws(MaxlyError) {}
+    func loadOlder(chatId: String) async throws(MaxlyError) -> Bool { false }
     func loadMore(chatId: String, before: Date?) async throws(MaxlyError) -> [Message] { [] }
     func fetchLatest(chatId: String) async throws(MaxlyError) {}
     func send(text: String, chatId: String, replyTo: String?) async throws(MaxlyError) {}

@@ -29,7 +29,7 @@ private actor SelectionMessages: MessageRepository {
     }
 
     nonisolated func messages(chatId: String) -> AsyncStream<[Message]> { AsyncStream { $0.finish() } }
-    func loadOlder(chatId: String) async throws(MaxlyError) {}
+    func loadOlder(chatId: String) async throws(MaxlyError) -> Bool { false }
     func loadMore(chatId: String, before: Date?) async throws(MaxlyError) -> [Message] { [] }
     func fetchLatest(chatId: String) async throws(MaxlyError) {}
     func retry(messageId: String) async throws(MaxlyError) {}
