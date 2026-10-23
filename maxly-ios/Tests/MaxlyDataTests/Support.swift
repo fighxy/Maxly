@@ -150,10 +150,14 @@ actor FakeMaxAPI: MaxAPI {
     var readReplies: [CoreReadMark?] = []
 
     func set(readReplies: [CoreReadMark?]) { self.readReplies = readReplies }
+    /// Отказ сервера на отметку прочтения; `nil` — отметки принимаются.
+    var readMarkError: MaxAPIError?
+    func set(readMarkError: MaxAPIError?) { self.readMarkError = readMarkError }
 
     func markRead(chatId: String, messageId: String?, at mark: Int64) async -> Result<CoreReadMark?, MaxAPIError> {
         markReadCalls.append(chatId)
         readMarks.append(mark)
+        if let readMarkError { return .failure(readMarkError) }
         return .success(readReplies.isEmpty ? nil : readReplies.removeFirst())
     }
 

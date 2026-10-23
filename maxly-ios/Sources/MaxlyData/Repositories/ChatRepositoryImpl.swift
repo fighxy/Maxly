@@ -44,6 +44,9 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     /// Свои отметки прочтения (мс): ответы сервера на отметки, пуши с других устройств и
     /// местная отметка ядра. Запоздавший ответ на более старую отметку не применяется.
     private nonisolated let readMarkBook = OwnReadMarkBook()
+    /// Чаты без своей строки в базе, где сервер отклонил отметку (канал без подписки): до
+    /// следующего запуска отметки в них не уходят, иначе каждый кандидат повторял бы отказ.
+    private var unmarkable: Set<String> = []
 
     /// Закреплённые чаты сервера сверху вниз, как их прислало ядро (`nil`, пока неизвестны).
     /// В списке могут быть чаты, которых ещё нет в базе: строка получит место, когда появится.
@@ -324,6 +327,7 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     public func removeAll() throws(MaxlyError) {
         generation += 1
         readMarkBook.removeAll()
+        unmarkable.removeAll()
         muteToggles.removeAll()
         muteExpiries.values.forEach { $0.task.cancel() }
         muteExpiries.removeAll()
@@ -370,11 +374,13 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
     public func markRead(chatId: String, messageId: String, at mark: Int64) async throws(MaxlyError) {
         let lastBefore: String?
         let known = readMarkBook.known(chatId)
+        let row: SDChat?
         do {
-            guard let chat = try chat(id: chatId) else {
-                DiagnosticEvent.event("read-mark", ["stage": "skip-no-chat", "chat": DiagnosticEvent.id(chatId)])
-                return
-            }
+            row = try chat(id: chatId)
+        } catch {
+            throw .storageError
+        }
+        if let chat = row {
             // Местный счётчик может быть уже нулевым (его обнулила синхронизация списка или
             // пуш), а сервер о прочтении ещё не знает: тогда отправитель не увидит отметку.
             // Не уходит только отметка, которую сервер уже подтвердил.
@@ -386,12 +392,24 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
             lastBefore = chat.lastMessageId
             if mark >= ReadMarks.readTime(lastMessageAt: chat.lastMessageAt, updatedAt: chat.updatedAt) {
                 chat.unreadCount = 0
-                try modelContext.save()
+                do {
+                    try modelContext.save()
+                } catch {
+                    throw .storageError
+                }
                 notify()
             }
-        } catch {
-            throw .storageError
+        } else {
+            // Строки чата в базе нет (канал ниже загруженной части списка, чат по ссылке), но
+            // ядро его знает: отметка уходит, иначе такой чат не читался на сервере никогда.
+            guard !unmarkable.contains(chatId), mark > known else {
+                DiagnosticEvent.event("read-mark", ["stage": "skip-no-chat", "chat": DiagnosticEvent.id(chatId),
+                    "mark": String(mark), "known": String(known)])
+                return
+            }
+            lastBefore = nil
         }
+        let hasRow = row != nil
         let started = generation
         let reply: CoreReadMark?
         DiagnosticEvent.event("read-mark", ["stage": "send", "chat": DiagnosticEvent.id(chatId),
@@ -404,6 +422,13 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
         case .failure(let error):
             DiagnosticEvent.event("read-mark", ["stage": "error", "chat": DiagnosticEvent.id(chatId), "mark": String(mark),
                 "error": String(describing: error)])
+            // Отказ сервера по существу, а не сеть и не пауза после too.many.requests.
+            if !hasRow, !error.maxlyError.isRateLimit {
+                switch error {
+                case .server, .rejected: unmarkable.insert(chatId)
+                default: break
+                }
+            }
             throw error.maxlyError
         }
         guard let reply, started == generation else { return }
