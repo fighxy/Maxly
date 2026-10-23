@@ -2,7 +2,7 @@ import Foundation
 
 /// Какой движок рисует ленту чата.
 ///
-/// `.collection` — UICollectionView + recycling (цель «как Telegram»).
+/// `.collection` — UICollectionView, старое сверху, новое снизу.
 /// `.lazyStack` — прежний SwiftUI ScrollView/LazyVStack (запасной путь).
 enum TranscriptFeedEngine {
     enum Kind: String, Sendable {

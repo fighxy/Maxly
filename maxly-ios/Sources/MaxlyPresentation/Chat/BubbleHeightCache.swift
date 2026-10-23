@@ -22,6 +22,18 @@ public final class BubbleHeightCache: @unchecked Sendable {
     public static let sticker: Double = 160
     public static let reactionRow: Double = 28
     public static let service: Double = 32
+    public static let reply: Double = 52
+    public static let forward: Double = 36
+    public static let pollTitle: Double = 28
+    public static let pollAnswer: Double = 40
+    public static let pollFooter: Double = 24
+    public static let linkPreview: Double = 88
+    public static let contactCard: Double = 72
+    public static let callRow: Double = 64
+    public static let keyboardRow: Double = 44
+    public static let commentsFooter: Double = 36
+    /// Горизонтальные поля текста и место под время, чтобы перенос не занижал высоту.
+    public static let textHorizontalChrome: Double = 36
 
     private var heights: [String: Double] = [:]
     private let lock = NSLock()
@@ -53,6 +65,18 @@ public final class BubbleHeightCache: @unchecked Sendable {
         guard height.isFinite, height > 0 else { return }
         lock.lock(); defer { lock.unlock() }
         heights[id] = height
+    }
+
+    /// Оценка до раскладки. Не затирает высоту, которую уже замерила ячейка.
+    public func storeIfAbsent(id: String, height: Double) {
+        guard height.isFinite, height > 0 else { return }
+        lock.lock(); defer { lock.unlock() }
+        if heights[id] == nil { heights[id] = height }
+    }
+
+    public func remove(id: String) {
+        lock.lock(); defer { lock.unlock() }
+        heights[id] = nil
     }
 
     public func estimated(for row: TranscriptRow, maxWidth: Double) -> Double {
@@ -93,12 +117,29 @@ public final class BubbleHeightCache: @unchecked Sendable {
         if content.sticker != nil {
             height += sticker
         }
-        let text = message.text
+        if !content.contacts.isEmpty {
+            height += Double(content.contacts.count) * contactCard
+        }
+        if !content.calls.isEmpty {
+            height += Double(content.calls.count) * callRow
+        }
+        if let poll = content.poll {
+            height += pollTitle + Double(max(1, poll.answers.count)) * pollAnswer + pollFooter
+        }
+        if content.reply != nil { height += reply }
+        if content.forward != nil { height += forward }
+        if content.linkPreview != nil { height += linkPreview }
+        if let rows = content.keyboard?.rows, !rows.isEmpty {
+            height += Double(rows.count) * keyboardRow
+        }
+        if content.comments != nil { height += commentsFooter }
+        let text = message.displayText
         if !text.isEmpty {
+            let textWidth = max(40, maxWidth - textHorizontalChrome)
             if let provider = textHeightProvider {
-                height += provider(text, maxWidth)
+                height += provider(text, textWidth)
             } else {
-                let charsPerLine = max(12.0, maxWidth / 8.5)
+                let charsPerLine = max(12.0, textWidth / 8.5)
                 let lines = max(1.0, ceil(Double(text.count) / charsPerLine))
                 height += lines * lineHeight
             }
