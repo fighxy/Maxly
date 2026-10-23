@@ -19,9 +19,24 @@ public enum CollectionFeedLayout {
 
 /// Смещение ленты сверху вниз. Новые сообщения внизу, история сверху.
 /// Палец и подгрузка держат видимую строку через `contentOffset`, без переворота слоя.
+/// Верхний и нижний `contentInset` ленты. Это уже полный зазор: safe area сюда не прибавляется.
+public struct FeedChromeInsets: Equatable, Sendable {
+    public var top: Double
+    public var bottom: Double
+
+    public init(top: Double, bottom: Double) {
+        self.top = top
+        self.bottom = bottom
+    }
+}
+
 public enum FeedOffset {
     public static let baseTopInset: Double = 6
     public static let baseBottomInset: Double = 10
+    /// Высота inline-шапки под статус-баром, пока низ шапки ещё не измерен.
+    public static let fallbackNavigationBar: Double = 54
+    /// Высота поля ввода над индикатором «домой», пока его верх ещё не измерен.
+    public static let fallbackComposer: Double = 44
 
     /// Рост строки, которая целиком выше viewport, сдвигает видимые строки вниз.
     /// К смещению прибавляется дельта. Строка, которая ещё пересекает viewport,
@@ -58,20 +73,75 @@ public enum FeedOffset {
         return clamped(rowPoint - viewPoint, min: minOffset, max: maxOffset)
     }
 
-    /// Верхний content inset. Короткая лента получает запас сверху и садится на поле ввода.
-    /// Длинная оставляет только базовый зазор.
-    public static func shortTopInset(
-        boundsHeight: Double,
-        safeTop: Double,
-        safeBottom: Double,
-        contentHeight: Double,
-        baseTop: Double = baseTopInset,
-        baseBottom: Double = baseBottomInset
+    /// Шапка, пока её низ не измерен. Safe area, в которой уже есть панель навигации, не дополняется второй.
+    public static func unresolvedHeader(safeTop: Double, windowTop: Double) -> Double {
+        let safe = nonNegative(safeTop)
+        let window = nonNegative(windowTop)
+        if safe > 0, safe >= window + fallbackNavigationBar * 0.5 { return safe }
+        return max(safe, window) + fallbackNavigationBar
+    }
+
+    /// Поле ввода, пока его верх не измерен. Большой нижний safe area уже включает поле ввода.
+    public static func unresolvedComposer(safeBottom: Double, windowBottom: Double) -> Double {
+        let safe = nonNegative(safeBottom)
+        let window = nonNegative(windowBottom)
+        if safe > window + fallbackComposer * 0.5 { return safe }
+        return max(safe, window) + fallbackComposer
+    }
+
+    /// Насколько шапка перекрывает саму ленту. Лента, уже стоящая ниже шапки, не получает второй верхний зазор.
+    public static func headerOverlap(
+        frameMinY: Double,
+        frameMaxY: Double,
+        headerBottom: Double?,
+        unresolved: Double
     ) -> Double {
-        guard boundsHeight > 1, contentHeight > 1,
-              [safeTop, safeBottom, baseTop, baseBottom].allSatisfy(\.isFinite) else { return baseTop }
-        let available = boundsHeight - safeTop - safeBottom - baseTop - baseBottom
-        return baseTop + max(0, available - contentHeight)
+        guard frameMaxY.isFinite, frameMinY.isFinite, frameMaxY > frameMinY else { return nonNegative(unresolved) }
+        if let headerBottom, headerBottom.isFinite, headerBottom > 0 {
+            return max(0, min(frameMaxY, headerBottom) - frameMinY)
+        }
+        return max(0, nonNegative(unresolved) - max(0, frameMinY))
+    }
+
+    /// Насколько поле ввода перекрывает ленту. Лента, уже кончающаяся у поля, не получает второй нижний зазор.
+    public static func composerOverlap(
+        frameMinY: Double,
+        frameMaxY: Double,
+        frameReachesScreenBottom: Bool,
+        composerTop: Double?,
+        unresolved: Double
+    ) -> Double {
+        guard frameMaxY.isFinite, frameMinY.isFinite, frameMaxY > frameMinY else { return nonNegative(unresolved) }
+        if let composerTop, composerTop.isFinite, composerTop > 0 {
+            return max(0, frameMaxY - max(frameMinY, composerTop))
+        }
+        return frameReachesScreenBottom ? nonNegative(unresolved) : 0
+    }
+
+    /// Полный content inset. Короткая лента получает запас сверху и садится на поле ввода.
+    /// Длинная оставляет перекрытие шапки и поля плюс небольшой зазор. Safe area повторно не входит.
+    public static func chromeInsets(
+        boundsHeight: Double,
+        contentHeight: Double,
+        headerOverlap: Double,
+        composerOverlap: Double,
+        topPadding: Double = baseTopInset,
+        bottomPadding: Double = baseBottomInset
+    ) -> FeedChromeInsets {
+        let minimumTop = nonNegative(headerOverlap) + nonNegative(topPadding)
+        let bottom = nonNegative(composerOverlap) + nonNegative(bottomPadding)
+        guard boundsHeight > 1, contentHeight > 1, boundsHeight.isFinite, contentHeight.isFinite else {
+            return FeedChromeInsets(top: minimumTop, bottom: bottom)
+        }
+        let visible = boundsHeight - minimumTop - bottom
+        let extra = max(0, visible - contentHeight)
+        return FeedChromeInsets(top: minimumTop + extra, bottom: bottom)
+    }
+
+    /// Расстояние от низа строки до читаемого низа (выше поля ввода).
+    public static func distanceAboveCover(rowMaxY: Double, viewportMaxY: Double, cover: Double) -> Double {
+        guard rowMaxY.isFinite, viewportMaxY.isFinite else { return 0 }
+        return max(0, viewportMaxY - nonNegative(cover) - rowMaxY)
     }
 
     public static func contentFits(
@@ -82,6 +152,11 @@ public enum FeedOffset {
     ) -> Bool {
         guard boundsHeight > 1, contentHeight > 1 else { return false }
         return contentHeight <= boundsHeight - insetTop - insetBottom + 1
+    }
+
+    static func nonNegative(_ value: Double) -> Double {
+        guard value.isFinite else { return 0 }
+        return max(0, value)
     }
 }
 

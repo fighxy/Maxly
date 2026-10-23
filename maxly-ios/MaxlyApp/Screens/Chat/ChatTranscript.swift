@@ -74,7 +74,7 @@ struct ChatTranscript: View {
             Group {
                 switch TranscriptFeedEngine.kind {
                 case .collection:
-                    collectionFeed(width: geo.size.width)
+                    collectionFeed(width: geo.size.width, dayPillTop: geo.safeAreaInsets.top + 8)
                 case .lazyStack:
                     lazyStackFeed(width: geo.size.width)
                 }
@@ -207,7 +207,7 @@ struct ChatTranscript: View {
     }
 
     @ViewBuilder
-    private func collectionFeed(width: CGFloat) -> some View {
+    private func collectionFeed(width: CGFloat, dayPillTop: CGFloat) -> some View {
         TranscriptCollectionFeed(
             viewModel: viewModel,
             rows: viewModel.rows,
@@ -228,6 +228,8 @@ struct ChatTranscript: View {
                 && viewModel.historyError == nil && !viewModel.showsSavedPlaceholder && chatType == .channel && canWrite,
             showsEmpty: viewModel.latestLoaded && viewModel.messages.isEmpty && !viewModel.isRestoringHistory
                 && viewModel.historyError == nil && !viewModel.showsSavedPlaceholder,
+            headerBottom: headerBottom,
+            composerTop: composerCover,
             snapshot: { state(for: $0, width: width) },
             onAuthor: onAuthor,
             onFrames: { frames, viewport, _ in
@@ -268,7 +270,8 @@ struct ChatTranscript: View {
                 }
             }
         )
-        .modifier(FloatingDayOverlay(model: viewModel, topVisible: headerVisible))
+        .ignoresSafeArea()
+        .modifier(FloatingDayOverlay(model: viewModel, topVisible: headerVisible, topPadding: dayPillTop))
         .simultaneousGesture(TapGesture().onEnded { focus.wrappedValue = false }, including: focus.wrappedValue ? .all : .subviews)
         .onChange(of: viewModel.transcriptVersion, initial: true) { _, _ in
             recordScroll("transcript-change", immediate: true)
@@ -572,6 +575,12 @@ struct ChatTranscript: View {
 
     /// Метка низа ленты: видна — значит, пользователь внизу (iOS 17).
     // MARK: Прокрутка
+
+    /// Верх клавиатуры, если она выше поля ввода: им закрыт низ ленты.
+    private var composerCover: CGFloat? {
+        let candidates = [bottomControlsTop > 0 ? bottomControlsTop : nil, keyboardTop].compactMap { $0 }
+        return candidates.min()
+    }
 
     private var visiblePlace: String? {
         guard let area = visibleArea else { return nil }
@@ -1107,6 +1116,8 @@ private struct FloatingDayOverlay: ViewModifier {
     let model: ChatViewModel
     /// Верх ленты на экране («Загрузить предыдущие»): плашка легла бы на кнопку.
     let topVisible: Bool
+    /// Отступ от верха ленты. Лента чата рисуется под шапкой, и плашка должна начинаться ниже неё.
+    var topPadding: CGFloat = 8
     @State private var topRowId: String?
     @State private var scrolling = false
     @State private var shown = false
@@ -1130,7 +1141,7 @@ private struct FloatingDayOverlay: ViewModifier {
                                 .transition(.opacity)
                         }
                     }
-                    .padding(.top, 8)
+                    .padding(.top, topPadding)
                     .allowsHitTesting(false)
                     .animation(MaxlyMotion.fade, value: shown)
                 }

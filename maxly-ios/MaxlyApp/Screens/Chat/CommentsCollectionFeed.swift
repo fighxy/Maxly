@@ -11,6 +11,8 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
     let reveal: PrivateModeReveal
     let reduceMotion: Bool
     let atBottom: Binding<Bool>
+    /// Верх поля ввода в глобальных координатах. `nil` — ещё не измерен, лента берёт safe area окна.
+    let composerTop: CGFloat?
     var onBlockAuthor: ((Message) async throws -> Void)?
     var onBlockNotice: (String) -> Void
 
@@ -54,6 +56,7 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
             controller.loadViewIfNeeded()
             controller.collectionView?.delegate = self
             controller.collectionView?.prefetchDataSource = self
+            controller.setChrome(headerBottom: nil, composerTop: feed.composerTop)
             var seen = Set<String>()
             let rows = TranscriptLayout.rows(feed.model.comments, currentUserId: feed.model.currentUserId)
                 .filter { seen.insert($0.id).inserted }
@@ -358,6 +361,13 @@ final class CommentsCollectionController: UIViewController {
         var beforeHeight: CGFloat
     }
 
+    /// Верх поля ввода. Шапка комментариев не измеряется отдельно: её даёт safe area окна.
+    private var composerTop: CGFloat?
+    /// Палец уже сдвигал ленту: смещение 0 после этого — настоящее место, а не сброс UIKit.
+    private var userDidScroll = false
+    /// Новые комментарии держат низ, пока палец не забрал ленту.
+    private var followsBottom = false
+
     static var sectionInset: UIEdgeInsets {
         UIEdgeInsets(top: 4, left: MaxlyTheme.pad, bottom: 4, right: MaxlyTheme.pad)
     }
@@ -373,6 +383,7 @@ final class CommentsCollectionController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .clear
+        view.clipsToBounds = false
         view.insetsLayoutMarginsFromSafeArea = false
         let flow = UICollectionViewFlowLayout()
         flow.scrollDirection = .vertical
@@ -401,6 +412,12 @@ final class CommentsCollectionController: UIViewController {
         if resetHeightsForWidth(view.bounds.width) {
             collectionView.collectionViewLayout.invalidateLayout()
         }
+        let insetChanged = !interacting && FeedScroll.applyChrome(
+            collectionView,
+            headerBottom: nil,
+            composerTop: composerTop
+        )
+        if insetChanged { holdOffset = nil }
         if let pending = pendingSettle, collectionView.bounds.height > 1 {
             pendingSettle = nil
             if interacting {
@@ -427,25 +444,61 @@ final class CommentsCollectionController: UIViewController {
                 collectionView.contentOffset.y = hold
             }
         }
-        guard !held, !interacting else { return }
-        let insetChanged = FeedScroll.applyShortInset(collectionView)
-        let shouldPin = (nearBottom || pendingBottomPin) && (heightChanged || insetChanged || pendingBottomPin)
+        guard !interacting else { return }
+        let zeroed = !userDidScroll && abs(collectionView.contentOffset.y) < 1 && collectionView.contentInset.top > 1
+        let shouldPin = (!held && (nearBottom || pendingBottomPin) && (heightChanged || insetChanged || pendingBottomPin))
+            || (zeroed && (followsBottom || pendingBottomPin))
         if shouldPin {
             FeedScroll.pinToBottom(collectionView)
             pendingBottomPin = false
+        } else if zeroed, !held {
+            collectionView.contentOffset.y = -collectionView.contentInset.top
         }
     }
 
     func releaseBottomPin() {
+        userDidScroll = true
+        followsBottom = false
         pendingBottomPin = false
         pendingSettle = nil
         holdOffset = nil
     }
 
+    func setChrome(headerBottom: CGFloat?, composerTop: CGFloat?) {
+        guard self.composerTop != composerTop else { return }
+        self.composerTop = composerTop
+        guard let collectionView, collectionView.bounds.height > 1,
+              !FeedScroll.isInteracting(collectionView) else { return }
+        let near = FeedScroll.isNearBottom(collectionView) || pendingBottomPin
+        if FeedScroll.applyChrome(
+            collectionView,
+            headerBottom: headerBottom,
+            composerTop: composerTop
+        ), near {
+            FeedScroll.pinToBottom(collectionView)
+            pendingBottomPin = false
+        }
+    }
+
     func setUserScrolling(_ scrolling: Bool) {
         let was = userScrolling
         userScrolling = scrolling
-        if was, !scrolling { flushDeferredHeights() }
+        if scrolling {
+            userDidScroll = true
+            followsBottom = false
+        }
+        guard was, !scrolling else { return }
+        flushDeferredHeights()
+        guard let collectionView, !FeedScroll.isInteracting(collectionView) else { return }
+        let near = FeedScroll.isNearBottom(collectionView) || pendingBottomPin
+        if FeedScroll.applyChrome(
+            collectionView,
+            headerBottom: nil,
+            composerTop: composerTop
+        ), near {
+            FeedScroll.pinToBottom(collectionView)
+            pendingBottomPin = false
+        }
     }
 
     func deferRemeasure(_ id: String) {
@@ -456,10 +509,16 @@ final class CommentsCollectionController: UIViewController {
         let wasNear = collectionView.map { FeedScroll.isNearBottom($0) } ?? false
         let interacting = collectionView.map { FeedScroll.isInteracting($0) } ?? false
         super.viewSafeAreaInsetsDidChange()
-        guard let collectionView, (wasNear || pendingBottomPin), !interacting else { return }
-        _ = FeedScroll.applyShortInset(collectionView)
-        FeedScroll.pinToBottom(collectionView)
-        pendingBottomPin = false
+        guard let collectionView, collectionView.bounds.height > 1, !interacting else { return }
+        let changed = FeedScroll.applyChrome(
+            collectionView,
+            headerBottom: nil,
+            composerTop: composerTop
+        )
+        if changed, wasNear || pendingBottomPin {
+            FeedScroll.pinToBottom(collectionView)
+            pendingBottomPin = false
+        }
     }
 
     /// `true`, если состав ленты изменился и снимок применён.
@@ -483,6 +542,7 @@ final class CommentsCollectionController: UIViewController {
                 pendingSettle?.stick = stickToBottom
                 pendingBottomPin = stickToBottom
             }
+            if !userDidScroll { followsBottom = stickToBottom }
             return false
         }
         let collection = collectionView
@@ -496,6 +556,7 @@ final class CommentsCollectionController: UIViewController {
         }
         let beforeHeight = collection?.contentSize.height ?? 0
         let beforeOffset = collection?.contentOffset.y ?? 0
+        if !userDidScroll { followsBottom = stickToBottom }
         let previous = Dictionary(uniqueKeysWithValues: previousRows.map { ($0.id, $0) })
         let chromeChanged = self.post != post || self.state != state || self.hasMore != hasMore
             || self.isLoadingOlder != isLoadingOlder || self.emptyText != emptyText
@@ -615,6 +676,8 @@ final class CommentsCollectionController: UIViewController {
             reveal: nil,
             stickToBottom: stick,
             interacting: interacting,
+            headerBottom: nil,
+            composerTop: composerTop,
             rowFrame: { [weak self] id in self?.frame(for: id) }
         )
         if !settled, let fallback = FeedScroll.fallbackOffset(collection, beforeOffset: beforeOffset, beforeHeight: beforeHeight) {
@@ -731,7 +794,11 @@ final class CommentsCollectionController: UIViewController {
             collectionView.collectionViewLayout.invalidateLayout()
             collectionView.layoutIfNeeded()
             if wasNearBottom {
-                _ = FeedScroll.applyShortInset(collectionView)
+                _ = FeedScroll.applyChrome(
+                    collectionView,
+                    headerBottom: nil,
+                    composerTop: composerTop
+                )
                 FeedScroll.pinToBottom(collectionView)
             } else if abs(compensate) >= 1 {
                 collectionView.contentOffset.y = offset + compensate

@@ -26,6 +26,10 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
     let emptyHint: String?
     let showsChannelReady: Bool
     let showsEmpty: Bool
+    /// Низ шапки в глобальных координатах. `nil` — ещё не измерен, лента берёт safe area окна.
+    let headerBottom: CGFloat?
+    /// Верх поля ввода или клавиатуры в глобальных координатах. `nil` — ещё не измерен.
+    let composerTop: CGFloat?
 
     var snapshot: (TranscriptRow) -> TranscriptBubble.Snapshot
     var onAuthor: (Message) -> Void
@@ -84,6 +88,7 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
             controller.loadViewIfNeeded()
             controller.collectionView?.delegate = self
             controller.collectionView?.prefetchDataSource = self
+            controller.setChrome(headerBottom: feed.headerBottom, composerTop: feed.composerTop)
             prewarmHeights(feed.rows, width: feed.width, feedInset: feed.feedInset)
             controller.setRows(
                 feed.rows,
@@ -238,8 +243,8 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
         private func sampleGeometry(force: Bool) {
             let now = DispatchTime.now().uptimeNanoseconds
             guard geometrySampler.shouldFire(nowNs: now, force: force) else { return }
-            guard let controller, let collection = controller.collectionView else { return }
-            let viewport = collection.convert(collection.bounds, to: nil)
+            guard let controller, let collection = controller.collectionView,
+                  let viewport = FeedScroll.windowFrame(collection) else { return }
             var frames: [String: CGRect] = [:]
             var chronoIndices: [Int] = []
             let visibleRows = collection.indexPathsForVisibleItems
@@ -259,17 +264,23 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
 
         private func reportBottom(_ scrollView: UIScrollView) {
             guard let controller, let collection = controller.collectionView else { return }
-            let viewport = collection.convert(collection.bounds, to: nil)
-            if let last = parent.rows.last,
+            let inset = collection.adjustedContentInset
+            let readableHeight = max(0, collection.bounds.height - inset.top - inset.bottom)
+            if let viewport = FeedScroll.windowFrame(collection),
+               let last = parent.rows.last,
                let display = controller.displayIndex(for: last.id),
                let cell = collection.cellForItem(at: IndexPath(item: display, section: TranscriptCollectionController.rowsSection)) {
                 let frame = cell.convert(cell.bounds, to: nil)
-                let distance = max(0, Double(viewport.maxY - frame.maxY))
-                parent.onBottomDistance(distance, Double(viewport.height))
+                let distance = FeedOffset.distanceAboveCover(
+                    rowMaxY: Double(frame.maxY),
+                    viewportMaxY: Double(viewport.maxY),
+                    cover: Double(inset.bottom)
+                )
+                parent.onBottomDistance(distance, Double(readableHeight))
                 return
             }
             let distance = max(0, Double(FeedScroll.distanceFromBottom(scrollView)))
-            parent.onBottomDistance(distance, Double(scrollView.bounds.height))
+            parent.onBottomDistance(distance, Double(readableHeight))
         }
 
         private func updateTopVisible() {
@@ -385,9 +396,18 @@ final class TranscriptCollectionController: UIViewController {
         var beforeHeight: CGFloat
     }
 
+    /// Низ шапки и верх поля ввода в глобальных координатах. `nil` — ещё не измерены.
+    private var headerBottom: CGFloat?
+    private var composerTop: CGFloat?
+    /// Палец уже сдвигал ленту: смещение 0 после этого — настоящее место, а не сброс UIKit.
+    private var userDidScroll = false
+    /// Открытие или новое сообщение держит низ, пока палец не забрал ленту.
+    private var followsBottom = false
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .clear
+        view.clipsToBounds = false
         view.insetsLayoutMarginsFromSafeArea = false
         let flow = UICollectionViewFlowLayout()
         flow.scrollDirection = .vertical
@@ -415,6 +435,12 @@ final class TranscriptCollectionController: UIViewController {
         if resetHeightsForWidth(view.bounds.width) {
             collectionView.collectionViewLayout.invalidateLayout()
         }
+        let insetChanged = !interacting && FeedScroll.applyChrome(
+            collectionView,
+            headerBottom: headerBottom,
+            composerTop: composerTop
+        )
+        if insetChanged { holdOffset = nil }
         if let pending = pendingSettle, collectionView.bounds.height > 1 {
             pendingSettle = nil
             if interacting {
@@ -438,25 +464,62 @@ final class TranscriptCollectionController: UIViewController {
                 collectionView.contentOffset.y = hold
             }
         }
-        guard !held, !interacting else { return }
-        let insetChanged = FeedScroll.applyShortInset(collectionView)
-        let shouldPin = (nearBottom || pendingBottomPin) && (heightChanged || insetChanged || pendingBottomPin)
+        guard !interacting else { return }
+        let zeroed = !userDidScroll && abs(collectionView.contentOffset.y) < 1 && collectionView.contentInset.top > 1
+        let shouldPin = (!held && (nearBottom || pendingBottomPin) && (heightChanged || insetChanged || pendingBottomPin))
+            || (zeroed && (followsBottom || pendingBottomPin))
         if shouldPin {
             FeedScroll.pinToBottom(collectionView)
             pendingBottomPin = false
+        } else if zeroed, !held {
+            collectionView.contentOffset.y = -collectionView.contentInset.top
         }
     }
 
     func releaseBottomPin() {
+        userDidScroll = true
+        followsBottom = false
         pendingBottomPin = false
         pendingSettle = nil
         holdOffset = nil
     }
 
+    func setChrome(headerBottom: CGFloat?, composerTop: CGFloat?) {
+        guard self.headerBottom != headerBottom || self.composerTop != composerTop else { return }
+        self.headerBottom = headerBottom
+        self.composerTop = composerTop
+        guard let collectionView, collectionView.bounds.height > 1,
+              !FeedScroll.isInteracting(collectionView) else { return }
+        let near = FeedScroll.isNearBottom(collectionView) || pendingBottomPin
+        if FeedScroll.applyChrome(
+            collectionView,
+            headerBottom: headerBottom,
+            composerTop: composerTop
+        ), near {
+            FeedScroll.pinToBottom(collectionView)
+            pendingBottomPin = false
+        }
+    }
+
     func setUserScrolling(_ scrolling: Bool) {
         let was = userScrolling
         userScrolling = scrolling
-        if was, !scrolling { flushDeferredHeights() }
+        if scrolling {
+            userDidScroll = true
+            followsBottom = false
+        }
+        guard was, !scrolling else { return }
+        flushDeferredHeights()
+        guard let collectionView, !FeedScroll.isInteracting(collectionView) else { return }
+        let near = FeedScroll.isNearBottom(collectionView) || pendingBottomPin
+        if FeedScroll.applyChrome(
+            collectionView,
+            headerBottom: headerBottom,
+            composerTop: composerTop
+        ), near {
+            FeedScroll.pinToBottom(collectionView)
+            pendingBottomPin = false
+        }
     }
 
     func deferRemeasure(_ id: String) {
@@ -467,10 +530,16 @@ final class TranscriptCollectionController: UIViewController {
         let wasNear = collectionView.map { FeedScroll.isNearBottom($0) } ?? false
         let interacting = collectionView.map { FeedScroll.isInteracting($0) } ?? false
         super.viewSafeAreaInsetsDidChange()
-        guard let collectionView, (wasNear || pendingBottomPin), !interacting else { return }
-        _ = FeedScroll.applyShortInset(collectionView)
-        FeedScroll.pinToBottom(collectionView)
-        pendingBottomPin = false
+        guard let collectionView, collectionView.bounds.height > 1, !interacting else { return }
+        let changed = FeedScroll.applyChrome(
+            collectionView,
+            headerBottom: headerBottom,
+            composerTop: composerTop
+        )
+        if changed, wasNear || pendingBottomPin {
+            FeedScroll.pinToBottom(collectionView)
+            pendingBottomPin = false
+        }
     }
 
     func setRows(
@@ -491,6 +560,7 @@ final class TranscriptCollectionController: UIViewController {
                 pendingSettle?.stick = stickToBottom
                 pendingBottomPin = stickToBottom || reveal?.latest == true
             }
+            if !userDidScroll { followsBottom = stickToBottom || reveal?.latest == true }
             return
         }
         let collection = collectionView
@@ -503,6 +573,7 @@ final class TranscriptCollectionController: UIViewController {
         }
         let beforeHeight = collection?.contentSize.height ?? 0
         let beforeOffset = collection?.contentOffset.y ?? 0
+        if !userDidScroll { followsBottom = stickToBottom || reveal?.latest == true }
         let previous = Dictionary(uniqueKeysWithValues: self.rows.map { ($0.id, $0) })
         let previousHeader = self.header
         let previousFooter = self.footerLoading
@@ -576,6 +647,8 @@ final class TranscriptCollectionController: UIViewController {
             reveal: reveal,
             stickToBottom: stick,
             interacting: interacting,
+            headerBottom: headerBottom,
+            composerTop: composerTop,
             rowFrame: { [weak self] id in self?.frame(for: id) }
         )
         if !settled, let fallback = FeedScroll.fallbackOffset(collection, beforeOffset: beforeOffset, beforeHeight: beforeHeight) {
@@ -617,7 +690,8 @@ final class TranscriptCollectionController: UIViewController {
 
     var isOlderChromeVisibleOnScreen: Bool {
         guard case .olderLoader = header, let collectionView,
-              let indexPath = dataSource.indexPath(for: .olderLoader) else { return false }
+              let indexPath = dataSource.indexPath(for: .olderLoader),
+              let viewport = FeedScroll.windowFrame(collectionView) else { return false }
         let frame: CGRect
         if let cell = collectionView.cellForItem(at: indexPath) {
             frame = cell.convert(cell.bounds, to: nil)
@@ -626,8 +700,8 @@ final class TranscriptCollectionController: UIViewController {
         } else {
             return false
         }
-        let viewport = collectionView.convert(collectionView.bounds, to: nil)
-        return frame.intersects(CGRect(x: viewport.minX, y: viewport.minY, width: viewport.width, height: 120))
+        let readableTop = viewport.minY + collectionView.adjustedContentInset.top
+        return frame.intersects(CGRect(x: viewport.minX, y: readableTop, width: viewport.width, height: 120))
     }
 
     func scrollTo(
@@ -646,6 +720,8 @@ final class TranscriptCollectionController: UIViewController {
                 reveal: reveal,
                 stickToBottom: latest,
                 interacting: FeedScroll.isInteracting(collectionView),
+                headerBottom: headerBottom,
+                composerTop: composerTop,
                 rowFrame: { [weak self] rowID in self?.frame(for: rowID) }
             )
         }
@@ -663,20 +739,23 @@ final class TranscriptCollectionController: UIViewController {
                         reveal: reveal,
                         stickToBottom: latest,
                         interacting: false,
+                        headerBottom: headerBottom,
+                        composerTop: composerTop,
                         rowFrame: { [weak self] rowID in self?.frame(for: rowID) }
                     )
                 }
                 continue
             }
             let row = cell.convert(cell.bounds, to: nil)
-            let viewport = collectionView.convert(collectionView.bounds, to: nil)
+            guard let viewport = FeedScroll.windowFrame(collectionView) else { continue }
+            let inset = collectionView.adjustedContentInset
             let reached = latest && id == rows.last?.id
                 || TranscriptScrollController.reached(
                     anchor: anchor,
                     rowMin: Double(row.minY),
                     rowMax: Double(row.maxY),
-                    viewportMin: Double(viewport.minY),
-                    viewportMax: Double(viewport.maxY)
+                    viewportMin: Double(viewport.minY + inset.top),
+                    viewportMax: Double(viewport.maxY - inset.bottom)
                 )
             settled = reached ? settled + 1 : 0
             if settled >= 2 { return true }
@@ -688,6 +767,8 @@ final class TranscriptCollectionController: UIViewController {
                         reveal: reveal,
                         stickToBottom: latest,
                         interacting: false,
+                        headerBottom: headerBottom,
+                        composerTop: composerTop,
                         rowFrame: { [weak self] rowID in self?.frame(for: rowID) }
                     )
                 }
@@ -811,7 +892,11 @@ final class TranscriptCollectionController: UIViewController {
             collectionView.collectionViewLayout.invalidateLayout()
             collectionView.layoutIfNeeded()
             if wasNearBottom {
-                _ = FeedScroll.applyShortInset(collectionView)
+                _ = FeedScroll.applyChrome(
+                    collectionView,
+                    headerBottom: headerBottom,
+                    composerTop: composerTop
+                )
                 FeedScroll.pinToBottom(collectionView)
             } else if abs(compensate) >= 1 {
                 collectionView.contentOffset.y = offset + compensate

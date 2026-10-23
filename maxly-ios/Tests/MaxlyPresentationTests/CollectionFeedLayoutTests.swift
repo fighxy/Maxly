@@ -56,16 +56,74 @@ struct CollectionFeedLayoutTests {
         #expect(clamped == 40)
     }
 
-    @Test("Короткая лента получает запас сверху, длинная — только базовый зазор")
-    func shortTranscriptSitsOnComposer() {
-        let short = FeedOffset.shortTopInset(boundsHeight: 800, safeTop: 100, safeBottom: 120, contentHeight: 200)
-        #expect(short == 370)
-        let long = FeedOffset.shortTopInset(boundsHeight: 800, safeTop: 100, safeBottom: 120, contentHeight: 2000)
-        #expect(long == FeedOffset.baseTopInset)
-        let empty = FeedOffset.shortTopInset(boundsHeight: 800, safeTop: 0, safeBottom: 0, contentHeight: 0)
-        #expect(empty == FeedOffset.baseTopInset)
+    @Test("Полный зазор шапки и поля, короткая лента садится на поле ввода")
+    func chromeInsetsClearHeaderAndComposer() {
+        // Перекрытие шапки 100 и поля 120: минимум сверху 106, снизу 130.
+        // Видимая высота 564, контент 200, запас сверху 364, итог 470.
+        let short = FeedOffset.chromeInsets(
+            boundsHeight: 800, contentHeight: 200, headerOverlap: 100, composerOverlap: 120
+        )
+        #expect(short.top == 470)
+        #expect(short.bottom == 130)
+        let long = FeedOffset.chromeInsets(
+            boundsHeight: 800, contentHeight: 2000, headerOverlap: 100, composerOverlap: 120
+        )
+        #expect(long.top == 106)
+        #expect(long.bottom == 130)
+        let empty = FeedOffset.chromeInsets(
+            boundsHeight: 800, contentHeight: 0, headerOverlap: 0, composerOverlap: 0
+        )
+        #expect(empty.top == FeedOffset.baseTopInset)
+        #expect(empty.bottom == FeedOffset.baseBottomInset)
+        let fullBleed = FeedOffset.chromeInsets(
+            boundsHeight: 844, contentHeight: 5000, headerOverlap: 101, composerOverlap: 78
+        )
+        #expect(fullBleed.top == 107)
+        #expect(fullBleed.bottom == 88)
         #expect(FeedOffset.contentFits(contentHeight: 200, boundsHeight: 800, insetTop: 470, insetBottom: 130))
         #expect(!FeedOffset.contentFits(contentHeight: 2000, boundsHeight: 800, insetTop: 106, insetBottom: 130))
+    }
+
+    @Test("Неизмеренные края не удваивают safe area")
+    func unresolvedChromeDoesNotDoubleCount() {
+        #expect(FeedOffset.unresolvedHeader(safeTop: 0, windowTop: 47) == 101)
+        #expect(FeedOffset.unresolvedHeader(safeTop: 101, windowTop: 47) == 101)
+        #expect(FeedOffset.unresolvedHeader(safeTop: 47, windowTop: 47) == 101)
+        #expect(FeedOffset.unresolvedComposer(safeBottom: 0, windowBottom: 34) == 78)
+        #expect(FeedOffset.unresolvedComposer(safeBottom: 34, windowBottom: 34) == 78)
+        #expect(FeedOffset.unresolvedComposer(safeBottom: 78, windowBottom: 34) == 78)
+        #expect(FeedOffset.unresolvedComposer(safeBottom: 90, windowBottom: 34) == 90)
+    }
+
+    @Test("Перекрытие только там, где шапка и поле закрывают саму ленту")
+    func overlapMatchesTheCollectionFrame() {
+        #expect(FeedOffset.headerOverlap(frameMinY: 0, frameMaxY: 844, headerBottom: nil, unresolved: 101) == 101)
+        #expect(FeedOffset.headerOverlap(frameMinY: 101, frameMaxY: 766, headerBottom: nil, unresolved: 101) == 0)
+        #expect(FeedOffset.headerOverlap(frameMinY: 101, frameMaxY: 766, headerBottom: 155, unresolved: 101) == 54)
+        #expect(FeedOffset.composerOverlap(
+            frameMinY: 0, frameMaxY: 844, frameReachesScreenBottom: true, composerTop: 766, unresolved: 78
+        ) == 78)
+        #expect(FeedOffset.composerOverlap(
+            frameMinY: 101, frameMaxY: 766, frameReachesScreenBottom: false, composerTop: 766, unresolved: 78
+        ) == 0)
+        #expect(FeedOffset.composerOverlap(
+            frameMinY: 0, frameMaxY: 844, frameReachesScreenBottom: true, composerTop: nil, unresolved: 78
+        ) == 78)
+        #expect(FeedOffset.composerOverlap(
+            frameMinY: 101, frameMaxY: 766, frameReachesScreenBottom: false, composerTop: nil, unresolved: 78
+        ) == 0)
+        let shrunk = FeedOffset.chromeInsets(
+            boundsHeight: 665, contentHeight: 5000, headerOverlap: 0, composerOverlap: 0
+        )
+        #expect(shrunk.top == FeedOffset.baseTopInset)
+        #expect(shrunk.bottom == FeedOffset.baseBottomInset)
+    }
+
+    @Test("Расстояние до читаемого низа вычитает перекрытие поля")
+    func distanceAboveCoverSubtractsTheComposer() {
+        #expect(FeedOffset.distanceAboveCover(rowMaxY: 756, viewportMaxY: 844, cover: 88) == 0)
+        #expect(FeedOffset.distanceAboveCover(rowMaxY: 700, viewportMaxY: 844, cover: 88) == 56)
+        #expect(FeedOffset.distanceAboveCover(rowMaxY: 756, viewportMaxY: 766, cover: 10) == 0)
     }
 
     @Test("Палец держит якорь, низ — только без пальца, история важнее прилипания")
