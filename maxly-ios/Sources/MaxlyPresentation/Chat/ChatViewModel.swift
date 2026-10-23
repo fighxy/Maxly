@@ -67,6 +67,7 @@ public final class ChatViewModel {
             // Разделитель встал после отметки «долистал»: непрочитанные под ним снова считаются.
             if let anchor = unreadAnchorId, let seen = seenUpTo, let before = readBefore(anchor), before < seen {
                 seenUpTo = before
+                readProgress.noteReadAtOpen(ReadMark.time(of: before))
             }
             settleSeen()
             recountUnreadBelow()
@@ -221,10 +222,8 @@ public final class ChatViewModel {
     @ObservationIgnored private(set) var readMarks: ReadMarkScheduler?
     /// Экран чата на виду: открыт и приложение активно. Только тогда отметки уходят.
     @ObservationIgnored private var readScreenActive = false
-    /// Лента у низа живой ленты: читается последнее сообщение.
-    @ObservationIgnored private var readFollowing = false
-    /// Время самого нового увиденного сообщения за этот показ экрана (мс).
-    @ObservationIgnored private var seenReadMs: Int64 = 0
+    /// Что прочитано: порог открытия, увиденное за показ и «у низа» (`ReadProgress`).
+    @ObservationIgnored private var readProgress = ReadProgress()
     /// Чат помечают непрочитанным: отметки не уходят до следующего открытия.
     @ObservationIgnored private var markingUnread = false
 
@@ -410,6 +409,7 @@ public final class ChatViewModel {
         openReadMark = max(ownReadMark, 0)
         markingUnread = false
         readMarks?.reset()
+        readProgress.open(position: openReadMark)
         returnStack = []
         seenUpTo = nil
         if window != nil { setWindow(nil) }
@@ -1352,13 +1352,10 @@ public final class ChatViewModel {
     /// (`ReadVisibility.newestSeen`); `atBottom` — лента у низа живой ленты и следует за новыми.
     /// Чат читается до самого нового увиденного сообщения.
     public func noteVisible(newestSeen id: String?, atBottom: Bool) {
-        readFollowing = atBottom && !isJumped
-        if let id, let message = Self.find(id, in: messages) {
-            seenReadMs = max(seenReadMs, ReadMark.time(of: message))
-        }
-        if readFollowing, let last = messages.last {
-            seenReadMs = max(seenReadMs, ReadMark.time(of: last))
-        }
+        let following = atBottom && !isJumped
+        var seen = id.flatMap { Self.find($0, in: messages) }.map { ReadMark.time(of: $0) }
+        if following, let last = messages.last { seen = max(seen ?? 0, ReadMark.time(of: last)) }
+        readProgress.see(seen, following: following)
         proposeReadMark()
     }
 
@@ -1378,12 +1375,12 @@ public final class ChatViewModel {
     /// увиденное этого показа забыто — следующий показ сообщит своё.
     public func endReadSession() {
         setScreenActive(false)
-        readFollowing = false
-        seenReadMs = 0
+        readProgress.endShowing()
     }
 
-    /// Кандидат в отметку: у низа — последнее сообщение живой ленты, иначе самое новое
-    /// увиденное. Когда отметка уйдёт, решает `ReadMarkScheduler`.
+    /// Кандидат в отметку (`ReadProgress.candidate`): у низа — последнее чужое сообщение живой
+    /// ленты, иначе самое новое увиденное, и только новее прочитанного при открытии. Когда
+    /// отметка уйдёт, решает `ReadMarkScheduler`.
     private func proposeReadMark() {
         guard readScreenActive, !markingUnread, chats != nil, let readMarks else {
             if !readScreenActive || markingUnread {
@@ -1392,16 +1389,16 @@ public final class ChatViewModel {
             }
             return
         }
-        for message in (readFollowing ? live : messages).reversed() {
-            guard let mark = ReadMark(message: message), readFollowing || mark.time <= seenReadMs else { continue }
-            if mark.isNewer(than: readMarks.sent), mark.isNewer(than: readMarks.pending) {
-                DiagnosticEvent.event("read-mark", ["stage": "propose", "chat": DiagnosticEvent.id(chatId),
-                    "message": DiagnosticEvent.id(mark.messageId), "mark": String(mark.time),
-                    "following": String(readFollowing), "seen": String(seenReadMs)])
-            }
-            readMarks.propose(mark)
-            return
+        let me = currentUserId
+        let candidate = readProgress.candidate(shown: messages, live: live) { !me.isEmpty && $0.authorId == me }
+        guard let mark = candidate else { return }
+        if mark.isNewer(than: readMarks.sent), mark.isNewer(than: readMarks.pending) {
+            DiagnosticEvent.event("read-mark", ["stage": "propose", "chat": DiagnosticEvent.id(chatId),
+                "message": DiagnosticEvent.id(mark.messageId), "mark": String(mark.time),
+                "following": String(readProgress.following), "seen": String(readProgress.seen),
+                "floor": String(readProgress.floor)])
         }
+        readMarks.propose(mark)
     }
 
     /// Отметка уходит через ядро (`markReadAt`): при скрытых отметках о прочтении оно читает
@@ -1536,6 +1533,8 @@ public final class ChatViewModel {
         } else {
             return
         }
+        // Всё до этого места было прочитано ещё до открытия: отметка о нём не нужна.
+        if let seenUpTo { readProgress.noteReadAtOpen(ReadMark.time(of: seenUpTo)) }
         recountUnreadBelow()
     }
 

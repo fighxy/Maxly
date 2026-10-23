@@ -99,7 +99,12 @@ public final class ReadMarkScheduler {
 public extension ReadMark {
     /// Время сообщения в мс, как его хранит сервер.
     static func time(of message: Message) -> Int64 {
-        Int64((message.timestamp.timeIntervalSince1970 * 1000).rounded())
+        time(of: message.timestamp)
+    }
+
+    /// Момент в мс, как время сообщения на сервере.
+    static func time(of date: Date) -> Int64 {
+        Int64((date.timeIntervalSince1970 * 1000).rounded())
     }
 
     /// Отметка до этого сообщения. Только у сообщения, которое есть на сервере: отправлено и
