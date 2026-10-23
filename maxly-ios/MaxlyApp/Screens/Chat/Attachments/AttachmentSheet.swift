@@ -7,17 +7,13 @@ import MaxlyDomain
 import MaxlyPresentation
 import MaxlyUI
 
-/// Лист вложений: галерея с камерой и номерами выбора, файл, контакт; геопозиция и опрос — позже.
+/// Лист вложений: галерея с камерой и номерами выбора, файл, контакт. Геопозиция и опрос
+/// появятся, когда будут готовы; GIF и стикеры — в панели на месте клавиатуры.
 /// Внизу плавающая панель вкладок, при выборе вместо неё подпись и кнопка отправки.
 struct AttachmentSheet: View {
     var contactList: (() -> AsyncStream<[Contact]>)?
     let onSend: ([AttachmentDraft], String) -> Void
     let onClose: () -> Void
-    /// Стикеры MAX для вкладки «GIF»; `nil` — вкладка показывает только gifka.me.
-    var stickerPanel: StickerPanelModel? = nil
-    var onSticker: ((Sticker) -> Void)? = nil
-    /// Выбрана гифка gifka.me: чат закрывает лист и сам качает файл.
-    var onPickGifka: ((GifkaMedia, GifkaClient) -> Void)? = nil
 
     @State private var model = AttachmentSheetModel()
     @State private var library = PhotoLibrary()
@@ -161,12 +157,6 @@ struct AttachmentSheet: View {
     private var content: some View {
         switch model.tab {
         case .gallery: gallery
-        case .gif:
-            GifPanel(
-                stickerPanel: stickerPanel,
-                onPickGifka: { media, client in onPickGifka?(media, client) },
-                onSticker: { sticker in onSticker?(sticker) }
-            )
         case .file: filePane
         case .contact: contactPane
         case .location, .poll: soon(model.tab)
@@ -372,7 +362,7 @@ struct AttachmentSheet: View {
 
     private var tabBar: some View {
         HStack(spacing: 0) {
-            ForEach(AttachmentSheetModel.Tab.allCases) { tab in
+            ForEach(AttachmentSheetModel.Tab.shown) { tab in
                 Button {
                     withAnimation(MaxlyMotion.quick(reduceMotion: reduceMotion)) { model.tab = tab }
                 } label: {

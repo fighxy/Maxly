@@ -1,18 +1,21 @@
 import SwiftUI
 import UIKit
+import MaxlyData
 import MaxlyDomain
 import MaxlyPresentation
 import MaxlyUI
 
 /// Панель эмодзи и стикеров на месте клавиатуры: сверху полоса
 /// разделов (нажатие прокручивает к разделу, текущий подсвечен), сетка с заголовками,
-/// снизу переключатель «Эмодзи | Стикеры» и «стереть».
+/// снизу переключатель «Эмодзи | Стикеры | GIF» и «стереть».
 struct StickerPanel: View {
     @Bindable var model: StickerPanelModel
     let height: CGFloat
     let onEmoji: (EmojiItem) -> Void
     let onBackspace: () -> Void
     let onSticker: (Sticker) -> Void
+    /// Выбрана гифка или стикер gifka.me: чат сам качает файл и отправляет его.
+    let onPickGifka: (GifkaMedia, GifkaClient) -> Void
 
     @State private var currentEmoji: String?
     @State private var currentStickers: String?
@@ -24,6 +27,7 @@ struct StickerPanel: View {
                 switch model.mode {
                 case .emoji: emojiPane
                 case .stickers: stickerPane
+                case .gifs: GifPanel(onPickGifka: onPickGifka)
                 }
             }
             .frame(maxHeight: .infinity)
@@ -204,6 +208,7 @@ struct StickerPanel: View {
             HStack(spacing: 2) {
                 modeButton("Эмодзи", mode: .emoji)
                 modeButton("Стикеры", mode: .stickers)
+                modeButton("GIF", mode: .gifs)
             }
             .padding(3)
             .background(Color.primary.opacity(0.07), in: Capsule())

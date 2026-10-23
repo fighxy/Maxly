@@ -57,7 +57,8 @@ public struct StickerSection: Identifiable, Hashable, Sendable {
 @MainActor
 @Observable
 public final class StickerPanelModel {
-    public enum Mode: String, Sendable { case emoji, stickers }
+    /// Раздел панели на месте клавиатуры: эмодзи, стикеры MAX, поиск GIF и стикеров gifka.me.
+    public enum Mode: String, Sendable { case emoji, stickers, gifs }
 
     public var mode: Mode = .emoji
     public private(set) var emojiSections: [EmojiSection] = []

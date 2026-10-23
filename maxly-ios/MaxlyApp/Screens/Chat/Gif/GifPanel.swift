@@ -4,24 +4,21 @@ import MaxlyDomain
 import MaxlyPresentation
 import MaxlyUI
 
-/// Вкладка «GIF» листа вложений: свои стикеры MAX и поиск gifka.me (гифки и стикеры).
-/// Найденное в gifka.me уходит файлом GIF через обычную загрузку фото.
+/// Раздел «GIF» панели на месте клавиатуры: поиск гифок и стикеров gifka.me. Стикеры MAX —
+/// в соседнем разделе «Стикеры». Найденное уходит файлом GIF через обычную загрузку фото.
 struct GifPanel: View {
     enum Tab: String, CaseIterable, Identifiable {
-        case maxStickers, gifs, gifkaStickers
+        case gifs, gifkaStickers
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .maxStickers: "Стикеры MAX"
             case .gifs: "GIF"
-            case .gifkaStickers: "Стикеры"
+            case .gifkaStickers: "Стикеры gifka.me"
             }
         }
     }
 
-    var stickerPanel: StickerPanelModel?
     let onPickGifka: (GifkaMedia, GifkaClient) -> Void
-    let onSticker: (Sticker) -> Void
 
     @AppStorage(GifkaSettings.enabledKey) private var searchEnabled = false
     @State private var tab: Tab = .gifs
@@ -33,10 +30,8 @@ struct GifPanel: View {
     /// Показы, выбор и отправка для gifka.me (`POST /v1/pingback`); без ключа `nil`.
     @State private var pingback: GifkaPingback?
 
-    init(stickerPanel: StickerPanelModel?, onPickGifka: @escaping (GifkaMedia, GifkaClient) -> Void, onSticker: @escaping (Sticker) -> Void) {
-        self.stickerPanel = stickerPanel
+    init(onPickGifka: @escaping (GifkaMedia, GifkaClient) -> Void) {
         self.onPickGifka = onPickGifka
-        self.onSticker = onSticker
         let client = GifkaClient(apiKey: GifkaSettings.apiKey)
         _pingback = State(initialValue: GifkaPingback(client: client))
         _gifs = State(initialValue: GifSearchModel(type: .gif, client: client))
@@ -52,7 +47,6 @@ struct GifPanel: View {
             .padding(.horizontal, 12)
             Group {
                 switch tab {
-                case .maxStickers: maxStickers
                 case .gifs: gifkaPane(gifs)
                 case .gifkaStickers: gifkaPane(gifkaStickers)
                 }
@@ -71,17 +65,6 @@ struct GifPanel: View {
         .onDisappear {
             let pingback = pingback
             Task { await pingback?.flush() }
-        }
-    }
-
-    // MARK: Стикеры MAX
-
-    @ViewBuilder
-    private var maxStickers: some View {
-        if let model = stickerPanel {
-            MaxStickerGrid(model: model, onSticker: onSticker)
-        } else {
-            note("Стикеры недоступны в этом чате")
         }
     }
 
@@ -251,72 +234,6 @@ private struct GifkaCell: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(media.title.isEmpty ? (media.kind == .gif ? "GIF" : "Стикер") : media.title)
-    }
-}
-
-/// Наборы стикеров MAX аккаунта: отправляются настоящими стикерами.
-private struct MaxStickerGrid: View {
-    @Bindable var model: StickerPanelModel
-    let onSticker: (Sticker) -> Void
-
-    var body: some View {
-        Group {
-            if model.stickerSections.isEmpty {
-                VStack(spacing: 8) {
-                    if model.isLoading {
-                        ProgressView()
-                    } else if let failure = model.failure {
-                        Text(failure).font(.app(.subheadline)).foregroundStyle(.secondary)
-                        Button("Повторить") { model.retry() }
-                    } else {
-                        Text("Стикеров пока нет").font(.app(.subheadline)).foregroundStyle(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 5), spacing: 4) {
-                        ForEach(model.stickerSections) { section in
-                            Section {
-                                ForEach(section.stickerIds, id: \.self) { id in
-                                    cell(model.stickers[id])
-                                }
-                            } header: {
-                                Text(section.title.uppercased())
-                                    .font(.app(size: 12, .semibold))
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.top, 8)
-                                    .onAppear { model.loadStickers(of: section) }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.bottom, 80)
-                }
-            }
-        }
-        .onAppear { model.prepare() }
-    }
-
-    @ViewBuilder
-    private func cell(_ sticker: Sticker?) -> some View {
-        if let sticker {
-            Button {
-                onSticker(sticker)
-                model.noteSticker(sticker)
-            } label: {
-                AnimatedSticker(lottieURL: sticker.url == nil ? sticker.lottieURL : nil, stillURL: sticker.url, size: 60, playing: false) {
-                    RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.1))
-                }
-                .frame(maxWidth: .infinity)
-                .aspectRatio(1, contentMode: .fit)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(sticker.tags.first.map { "Стикер \($0)" } ?? "Стикер")
-        } else {
-            RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.1)).aspectRatio(1, contentMode: .fit)
-        }
     }
 }
 

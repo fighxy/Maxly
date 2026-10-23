@@ -319,7 +319,8 @@ struct ChatView: View {
                 height: keyboardHeight,
                 onEmoji: { viewModel.insertEmoji($0.emoji, animated: $0.animated) },
                 onBackspace: { viewModel.deleteBackward() },
-                onSticker: { sticker in Task { await viewModel.sendSticker(sticker) } }
+                onSticker: { sticker in Task { await viewModel.sendSticker(sticker) } },
+                onPickGifka: { media, client in downloadGif(media, client: client) }
             )
             .transition(.move(edge: .bottom))
         }
@@ -700,16 +701,7 @@ struct ChatView: View {
                 attachmentsShown = false
                 Task { await viewModel.sendAttachments(drafts, caption: caption) }
             },
-            onClose: { attachmentsShown = false },
-            stickerPanel: stickerPanel,
-            onSticker: { sticker in
-                attachmentsShown = false
-                Task { await viewModel.sendSticker(sticker) }
-            },
-            onPickGifka: { media, client in
-                attachmentsShown = false
-                downloadGif(media, client: client)
-            }
+            onClose: { attachmentsShown = false }
         )
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
