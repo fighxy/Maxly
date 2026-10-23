@@ -106,11 +106,15 @@ struct ReadMarkFlowTests {
         model.endReadSession()
         await pass(1_000, model)
         #expect(await sent.isEmpty)
-        // Новый показ экрана сообщает своё.
+        // Новый показ экрана сообщает своё. Над разделителем (2 и старше) прочитано ещё до
+        // открытия — отметка о нём не уходит.
         model.setScreenActive(true)
         model.noteVisible(newestSeen: "2", atBottom: false)
+        await pass(500, model)
+        #expect(await sent.isEmpty)
+        model.noteVisible(newestSeen: "3", atBottom: false)
         await pass(200, model)
-        #expect(await eventually { await sent == ["c:2@2000"] })
+        #expect(await eventually { await sent == ["c:3@3000"] })
         model.deactivate()
     }
 
@@ -204,6 +208,30 @@ struct ReadMarkFlowTests {
         model.noteVisible(newestSeen: "4", atBottom: false)
         await pass(200, model)
         #expect(await eventually { await sent == ["c:4@4000"] })
+        model.deactivate()
+    }
+
+    @Test("Прочитанный чат: открытие у низа ничего не шлёт, новое чужое читается")
+    func readChatSendsNothingOnOpen() async {
+        let model = await opened(unread: 0)
+        model.noteVisible(newestSeen: "5", atBottom: true)
+        await pass(1_000, model)
+        #expect(await sent.isEmpty)
+        repository.emit((1...6).map { message($0) })
+        _ = await eventually { model.messages.count == 6 }
+        await pass(200, model)
+        #expect(await eventually { await sent == ["c:6@6000"] })
+        model.deactivate()
+    }
+
+    @Test("Своё сообщение у низа отметку не шлёт")
+    func ownMessageSendsNothing() async {
+        let model = await opened(unread: 0)
+        model.noteVisible(newestSeen: "5", atBottom: true)
+        repository.emit((1...5).map { message($0) } + [message(6, author: "me")])
+        _ = await eventually { model.messages.count == 6 }
+        await pass(1_000, model)
+        #expect(await sent.isEmpty)
         model.deactivate()
     }
 
