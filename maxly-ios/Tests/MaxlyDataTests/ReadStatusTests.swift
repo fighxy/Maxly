@@ -208,8 +208,20 @@ struct ScreenReadMarkTests {
         try await chats.markRead(chatId: "c1", messageId: "m99", at: 100_000)
         #expect(await api.readMarks == [100_000])
         try await chats.markRead(chatId: "c1", messageId: "m99", at: 100_000)
-        try await chats.markRead(chatId: "unknown", messageId: "m1", at: 100_000)
         #expect(await api.readMarks == [100_000])
+    }
+
+    @Test("Чата нет в базе списка — отметка всё равно уходит; отказ сервера больше не повторяется")
+    func chatWithoutRow() async throws {
+        let (chats, api) = try makeRepository()
+        try await chats.markRead(chatId: "channel", messageId: "m1", at: 100_000)
+        #expect(await api.markReadCalls == ["channel"])
+        await api.set(readMarkError: .server(code: "chat.not.found", text: nil))
+        await #expect(throws: MaxlyError.self) {
+            try await chats.markRead(chatId: "other", messageId: "m1", at: 100_000)
+        }
+        try await chats.markRead(chatId: "other", messageId: "m2", at: 200_000)
+        #expect(await api.markReadCalls == ["channel", "other"])
     }
 }
 
