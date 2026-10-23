@@ -74,7 +74,7 @@ struct ChatTranscript: View {
             Group {
                 switch TranscriptFeedEngine.kind {
                 case .collection:
-                    collectionFeed(width: geo.size.width, dayPillTop: geo.safeAreaInsets.top + 8)
+                    collectionFeed(width: geo.size.width, dayPillTop: 8)
                 case .lazyStack:
                     lazyStackFeed(width: geo.size.width)
                 }
@@ -270,7 +270,6 @@ struct ChatTranscript: View {
                 }
             }
         )
-        .ignoresSafeArea(edges: .top)
         .modifier(FloatingDayOverlay(model: viewModel, topVisible: headerVisible, topPadding: dayPillTop))
         .simultaneousGesture(TapGesture().onEnded { focus.wrappedValue = false }, including: focus.wrappedValue ? .all : .subviews)
         .onChange(of: viewModel.transcriptVersion, initial: true) { _, _ in

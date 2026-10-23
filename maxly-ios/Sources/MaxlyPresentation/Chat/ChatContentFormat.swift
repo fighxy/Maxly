@@ -292,24 +292,16 @@ public enum ChatContentFormat {
         return raw.map { min(max($0 / peak, 0.12), 1) }
     }
 
-    /// Рамка одного кадра: широкие не становятся лентой, высокие не уезжают за экран.
+    /// Рамка одного кадра. Картинка целиком внутри предела: высокая становится уже,
+    /// широкая — ниже. Пропорцию не подменяем, иначе края фото обрезаются.
     public static func frame(pixelWidth: Int?, pixelHeight: Int?, maxWidth: Double, maxHeight: Double = 420) -> ContentFrame {
-        let widthLimit = max(120, maxWidth)
-        let pixelsWide = Double(pixelWidth ?? 0)
-        let pixelsHigh = Double(pixelHeight ?? 0)
-        let ratio: Double
-        if pixelsWide > 0, pixelsHigh > 0 {
-            ratio = min(max(pixelsWide / pixelsHigh, 0.45), 1.91)
-        } else {
-            ratio = 1
-        }
-        var width = widthLimit
-        var height = width / ratio
-        if height > maxHeight {
-            height = maxHeight
-            width = height * ratio
-        }
-        return ContentFrame(width: width, height: height)
+        let fitted = fittedMedia(aspect: {
+            let pixelsWide = Double(pixelWidth ?? 0)
+            let pixelsHigh = Double(pixelHeight ?? 0)
+            guard pixelsWide > 0, pixelsHigh > 0 else { return 1 }
+            return pixelsWide / pixelsHigh
+        }(), maxWidth: max(1, maxWidth), maxHeight: max(1, maxHeight))
+        return ContentFrame(width: fitted.width, height: fitted.height)
     }
 
     /// Размер файла: байты, затем КБ, МБ и ГБ. Дробь одна и с запятой, чтобы подпись не зависела от локали.
@@ -393,21 +385,34 @@ public enum ChatContentFormat {
         }
     }
 
-    /// Один кадр во всю ширину пузыря (у фото с подписью): высота по пропорции в пределах
-    /// `minHeight…maxHeight`, лишнее обрезается, а не сужает кадр.
+    /// Один кадр у подписи. Влезает в ширину пузыря и в `maxHeight`, пропорция фото сохраняется:
+    /// высокая страница становится уже, а не обрезается слева и справа.
     public static func fullWidthTile(aspect: Double, width: Double, minHeight: Double = 120, maxHeight: Double = 360) -> AlbumLayout {
-        let ratio = clampedAspect(aspect)
-        let w = max(1, width)
-        let h = min(max(w / ratio, minHeight), maxHeight)
+        let ratio = aspect.isFinite && aspect > 0 ? aspect : 1
+        var fitted = fittedMedia(aspect: ratio, maxWidth: max(1, width), maxHeight: max(1, maxHeight))
+        if fitted.height < minHeight {
+            let grownWidth = minHeight * ratio
+            if grownWidth <= max(1, width) {
+                fitted = (grownWidth, minHeight)
+            }
+        }
         let corners = AlbumCorners(topLeft: true, topRight: true, bottomLeft: true, bottomRight: true)
-        return AlbumLayout(width: w, height: h, gap: 0, tiles: [AlbumTile(index: 0, x: 0, y: 0, width: w, height: h, corners: corners)])
+        return AlbumLayout(
+            width: fitted.width,
+            height: fitted.height,
+            gap: 0,
+            tiles: [AlbumTile(index: 0, x: 0, y: 0, width: fitted.width, height: fitted.height, corners: corners)]
+        )
     }
 
     /// Альбом: пропорции кадров собираются в ряды, внешние углы скругляются, внутренние остаются прямыми.
     public static func album(aspects: [Double], maxWidth: Double, maxHeight: Double = 360, gap: Double = 2) -> AlbumLayout {
         let width = max(1, maxWidth)
         let space = max(0, gap)
-        let ratios = aspects.map(clampedAspect)
+        let ratios = aspects.map { value in
+            let ratio = value.isFinite && value > 0 ? value : 1
+            return ratio
+        }
         guard !ratios.isEmpty else { return AlbumLayout(width: 0, height: 0, gap: space, tiles: []) }
         // Большому альбому можно быть выше: иначе он сужается под предел высоты.
         let limit = max(1, ratios.count >= 7 ? maxHeight * 1.35 : maxHeight)
@@ -464,9 +469,18 @@ public enum ChatContentFormat {
         !lhs.isEmpty && lhs == rhs
     }
 
-    private static func clampedAspect(_ value: Double) -> Double {
-        let ratio = value.isFinite && value > 0 ? value : 1
-        return min(max(ratio, 0.45), 2.2)
+    /// Весь кадр внутри прямоугольника. Стороны не обрезаются: лишняя высота сужает ширину.
+    static func fittedMedia(aspect: Double, maxWidth: Double, maxHeight: Double) -> (width: Double, height: Double) {
+        let ratio = aspect.isFinite && aspect > 0 ? aspect : 1
+        let widthLimit = max(1, maxWidth)
+        let heightLimit = max(1, maxHeight)
+        var width = widthLimit
+        var height = width / ratio
+        if height > heightLimit {
+            height = heightLimit
+            width = max(1, height * ratio)
+        }
+        return (width, height)
     }
 
     private static func rowCounts(_ aspects: [Double]) -> [Int] {

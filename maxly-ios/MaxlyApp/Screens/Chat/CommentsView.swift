@@ -35,7 +35,6 @@ struct CommentsView: View {
                     onBlockAuthor: onBlockAuthor,
                     onBlockNotice: { blockNotice = $0 }
                 )
-                .ignoresSafeArea(edges: .top)
                 .refreshable { await model.reload() }
             }
             .background(Color.maxlyChatBackground.ignoresSafeArea())

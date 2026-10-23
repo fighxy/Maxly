@@ -226,7 +226,7 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
                 .equatable()
                 .fixedSize(horizontal: false, vertical: true)
                 .background(FeedContentHeightReader(onHeight: report))
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .frame(maxWidth: .infinity, alignment: .top)
             }
             .margins(.all, 0)
             .minSize(width: 0, height: 0)

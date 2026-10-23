@@ -40,19 +40,20 @@ struct ChatContentFormatTests {
         #expect(abs(bars[2] - 0.2) < 0.0001)
     }
 
-    @Test("Кадр не растягивается в ленту и не выше предела")
+    @Test("Кадр целиком внутри предела и не обрезает пропорцию")
     func frame() {
         let square = ChatContentFormat.frame(pixelWidth: nil, pixelHeight: nil, maxWidth: 300)
         #expect(square.width == 300)
         #expect(square.height == 300)
 
-        let wide = ChatContentFormat.frame(pixelWidth: 4000, pixelHeight: 100, maxWidth: 300)
+        let wide = ChatContentFormat.frame(pixelWidth: 4000, pixelHeight: 1000, maxWidth: 300)
         #expect(wide.width == 300)
-        #expect(abs(wide.height - 300 / 1.91) < 0.01)
+        #expect(abs(wide.height - 75) < 0.01)
+        #expect(abs(wide.width / wide.height - 4) < 0.01)
 
         let tall = ChatContentFormat.frame(pixelWidth: 100, pixelHeight: 4000, maxWidth: 300)
         #expect(tall.height == 420)
-        #expect(abs(tall.width - 420 * 0.45) < 0.01)
+        #expect(abs(tall.width - 420 * 100 / 4000) < 0.01)
 
         let photo = ChatContentFormat.frame(pixelWidth: 800, pixelHeight: 600, maxWidth: 300)
         #expect(photo.width == 300)
@@ -123,6 +124,9 @@ struct ChatContentFormatTests {
     func balancedAlbumRows() {
         // Шесть сканов таблиц 2.2:1 — по три в ряд были полоски по 45 точек.
         #expect(ChatContentFormat.balancedRows(Array(repeating: 2.2, count: 6), width: 300, gap: 2, maxHeight: 360) == [2, 2, 2])
+        let page = ChatContentFormat.album(aspects: [0.72], maxWidth: 300, maxHeight: 360)
+        #expect(page.height <= 360.01)
+        #expect(abs(page.tiles[0].width / page.tiles[0].height - 0.72) < 0.02)
         let scans = ChatContentFormat.album(aspects: Array(repeating: 2.2, count: 6), maxWidth: 300)
         #expect(scans.width == 300)
         #expect(scans.tiles.allSatisfy { $0.height >= 60 })

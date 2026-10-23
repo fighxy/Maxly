@@ -155,7 +155,7 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
                 )
                 .fixedSize(horizontal: false, vertical: true)
                 .background(FeedContentHeightReader(onHeight: report))
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .frame(maxWidth: .infinity, alignment: .top)
                 .transition(.maxlyComposerFlight(outgoing: outgoing, reduceMotion: reduceMotion))
             }
             .margins(.all, 0)

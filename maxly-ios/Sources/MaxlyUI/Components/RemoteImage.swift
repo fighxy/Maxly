@@ -341,6 +341,8 @@ public struct RemoteImage<Placeholder: View>: View {
     private let url: URL?
     private let pipeline: ImagePipeline
     private let maxPixel: Int
+    /// `false` — вся картинка внутри рамки. `true` — заполнить рамку, лишнее обрезается (аватар).
+    private let fillsFrame: Bool
     private let placeholder: Placeholder
     @State private var loaded: DecodedImage?
     @State private var loadedRequest: ImageRequest?
@@ -348,10 +350,11 @@ public struct RemoteImage<Placeholder: View>: View {
     @State private var settled = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(url: URL?, maxPixel: Int = ImagePipeline.fullSize, pipeline: ImagePipeline = .shared, @ViewBuilder placeholder: () -> Placeholder) {
+    public init(url: URL?, maxPixel: Int = ImagePipeline.fullSize, pipeline: ImagePipeline = .shared, fillsFrame: Bool = true, @ViewBuilder placeholder: () -> Placeholder) {
         self.url = url
         self.pipeline = pipeline
         self.maxPixel = max(16, maxPixel)
+        self.fillsFrame = fillsFrame
         self.placeholder = placeholder()
     }
 
@@ -367,7 +370,7 @@ public struct RemoteImage<Placeholder: View>: View {
             if let image {
                 image
                     .resizable()
-                    .scaledToFill()
+                    .aspectRatio(contentMode: fillsFrame ? .fill : .fit)
                     .transition(.opacity)
             }
         }
