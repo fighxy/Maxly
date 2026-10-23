@@ -164,12 +164,17 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     }
 
     /// Расширяет окно на одну страницу, при необходимости догружая историю с сервера.
-    public func loadOlder(chatId: String) async throws(MaxlyError) {
+    /// Сервер может вернуть страницу без новых сообщений (то же крайнее сообщение): тогда окно
+    /// не растёт, подписчики не дёргаются, а ответ `false` говорит, что история кончилась.
+    @discardableResult
+    public func loadOlder(chatId: String) async throws(MaxlyError) -> Bool {
         let shown = windows[chatId] ?? Self.pageSize
         let window = (try? fetchPage(chatId: chatId, before: nil, limit: shown)) ?? []
-        _ = try await loadMore(chatId: chatId, before: window.last?.timestamp, requiresSuccess: true)
+        let older = try await loadMore(chatId: chatId, before: window.last?.timestamp, requiresSuccess: true)
+        guard !older.isEmpty else { return false }
         windows[chatId] = shown + Self.pageSize
         notify(chatId: chatId)
+        return true
     }
 
     /// Оптимистичная отправка: сообщение сразу попадает в базу со статусом `sending`

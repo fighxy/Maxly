@@ -218,6 +218,20 @@ struct ChatPositionTests {
         #expect(await repository.olderLoads == 1)
     }
 
+    @Test("Страница старше без новых сообщений — начало истории: верх ленты больше не спрашивает")
+    func reachOldestLive() async {
+        let repository = FakeMessageRepository()
+        let model = await opened(repository, feed: messages(1...3))
+        #expect(model.canLoadOlder)
+        await model.loadOlder()
+        #expect(model.canLoadOlder)
+        await repository.setOlderGrows(false)
+        await model.loadOlder()
+        #expect(!model.canLoadOlder)
+        #expect(await repository.olderLoads == 2)
+        model.deactivate()
+    }
+
     @Test("Из общего поиска: чат открывается на найденном сообщении, открытый — переходит сразу")
     func openAtFound() async {
         let repository = FakeMessageRepository()
