@@ -32,7 +32,7 @@ public struct FeedChromeInsets: Equatable, Sendable {
 
 public enum FeedOffset {
     public static let baseTopInset: Double = 6
-    public static let baseBottomInset: Double = 10
+    public static let baseBottomInset: Double = 20
     /// Высота inline-шапки под статус-баром, пока низ шапки ещё не измерен.
     public static let fallbackNavigationBar: Double = 54
     /// Высота поля ввода над индикатором «домой», пока его верх ещё не измерен.

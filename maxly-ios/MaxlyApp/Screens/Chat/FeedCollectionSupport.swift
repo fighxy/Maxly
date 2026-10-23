@@ -1,4 +1,5 @@
 import QuartzCore
+import SwiftUI
 import UIKit
 import MaxlyPresentation
 
@@ -19,10 +20,28 @@ final class PrewarmEpoch: @unchecked Sendable {
     }
 }
 
+/// Высота самого пузыря, а не рамки ячейки. Ячейка предлагает свою высоту, и замер
+/// `systemLayoutSizeFitting` повторяет её: короткая оценка тогда навсегда обрезает пузырь,
+/// а сосед рисуется поверх обрезанного края.
+struct FeedContentHeightReader: View {
+    var onHeight: (CGFloat) -> Void
+
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .onChange(of: proxy.size.height, initial: true) { _, height in
+                    onHeight(height)
+                }
+        }
+    }
+}
+
 /// Ячейка UIHostingConfiguration. Высота для ленты уже посчитана; здесь только поправка,
 /// если SwiftUI оказался выше или ниже оценки. Содержимое не рисуется поверх соседа.
 final class MeasuredHostingCell: UICollectionViewCell {
     var onMeasuredHeight: ((CGFloat) -> Void)?
+    /// Строка сообщает свою высоту из SwiftUI. Повторный замер по рамке ячейки её затирает.
+    var usesIntrinsicHeight = false
     private var attempts = 0
     private var candidate: CGFloat = 0
     private var reported: CGFloat = 0
@@ -41,6 +60,7 @@ final class MeasuredHostingCell: UICollectionViewCell {
         super.prepareForReuse()
         resetMeasurement()
         onMeasuredHeight = nil
+        usesIntrinsicHeight = false
     }
 
     func resetMeasurement() {
@@ -51,7 +71,9 @@ final class MeasuredHostingCell: UICollectionViewCell {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        guard !measuring, attempts < 5, bounds.width > 1, onMeasuredHeight != nil else { return }
+        clipsToBounds = true
+        contentView.clipsToBounds = true
+        guard !usesIntrinsicHeight, !measuring, attempts < 5, bounds.width > 1, onMeasuredHeight != nil else { return }
         measuring = true
         let fitted = contentView.systemLayoutSizeFitting(
             CGSize(width: bounds.width, height: UIView.layoutFittingCompressedSize.height),

@@ -137,6 +137,12 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
             let onBlock = parent.onBlockAuthor
             let onNotice = parent.onBlockNotice
             let outgoing = row.isOutgoing
+            let report: (CGFloat) -> Void = { [weak cell] height in
+                (cell as? MeasuredHostingCell)?.onMeasuredHeight?(height)
+            }
+            if let measured = cell as? MeasuredHostingCell {
+                measured.usesIntrinsicHeight = true
+            }
             cell.contentConfiguration = UIHostingConfiguration {
                 CommentsCollectionCell(
                     row: row,
@@ -147,6 +153,9 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
                     onBlockAuthor: onBlock,
                     onBlockNotice: onNotice
                 )
+                .fixedSize(horizontal: false, vertical: true)
+                .background(FeedContentHeightReader(onHeight: report))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .transition(.maxlyComposerFlight(outgoing: outgoing, reduceMotion: reduceMotion))
             }
             .margins(.all, 0)
