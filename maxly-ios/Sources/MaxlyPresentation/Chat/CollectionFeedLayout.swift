@@ -1,22 +1,5 @@
 import Foundation
 
-/// Высоты ячеек ленты: у каждой строки своя, из кэша или оценки.
-///
-/// Секция compositional layout с одним `.estimated` берёт высоту последнего
-/// пузыря и растягивает её на всю ленту — короткий текст и медиа прыгают.
-/// Flow layout спрашивает высоту по индексу сверху вниз: 0 — самое старое.
-public enum CollectionFeedLayout {
-    public static func height(
-        index: Int,
-        chronological: [TranscriptRow],
-        maxWidth: Double,
-        cache: BubbleHeightCache
-    ) -> Double? {
-        guard chronological.indices.contains(index) else { return nil }
-        return cache.estimated(for: chronological[index], maxWidth: maxWidth)
-    }
-}
-
 /// Смещение ленты сверху вниз. Новые сообщения внизу, история сверху.
 /// Палец и подгрузка держат видимую строку через `contentOffset`, без переворота слоя.
 /// Верхний и нижний `contentInset` ленты. Это уже полный зазор: safe area сюда не прибавляется.
@@ -136,6 +119,18 @@ public enum FeedOffset {
         let visible = boundsHeight - minimumTop - bottom
         let extra = max(0, visible - contentHeight)
         return FeedChromeInsets(top: minimumTop + extra, bottom: bottom)
+    }
+
+    /// Наименьшее и наибольшее смещение ленты. Короткая лента не прокручивается: оба — у верха.
+    public static func offsetRange(contentHeight: Double, boundsHeight: Double, insetTop: Double, insetBottom: Double) -> ClosedRange<Double> {
+        let minOffset = -nonNegative(insetTop)
+        let maxOffset = max(minOffset, nonNegative(contentHeight) + nonNegative(insetBottom) - nonNegative(boundsHeight))
+        return minOffset...maxOffset
+    }
+
+    /// Смещение, при котором последняя строка стоит у нижнего края (над полем ввода).
+    public static func bottomOffset(contentHeight: Double, boundsHeight: Double, insetTop: Double, insetBottom: Double) -> Double {
+        offsetRange(contentHeight: contentHeight, boundsHeight: boundsHeight, insetTop: insetTop, insetBottom: insetBottom).upperBound
     }
 
     /// Расстояние от низа строки до читаемого низа (выше поля ввода).

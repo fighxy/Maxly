@@ -1,12 +1,12 @@
 import Foundation
 import MaxlyDomain
 
-/// Оценка высоты строки ленты до раскладки SwiftUI/UIKit.
+/// Оценка высоты строки ленты по содержимому, до раскладки SwiftUI/UIKit.
 ///
-/// Нативные мессенджеры кладут в UICollectionView уже посчитанный размер.
-/// Здесь — быстрая эвристика по содержимому. Collection feed берёт высоту
-/// каждой строки (`CollectionFeedLayout`), а не одну оценку на всю секцию.
-/// Класс: мутации из `@State` / UIKit-координатора без копирования словаря.
+/// Лента на UICollectionView берёт оценку только для строк далеко от экрана
+/// (`FeedHeightStore`): строки у экрана меряются точно до показа. Хранилище высот здесь —
+/// для запасного пути `LazyVStack`.
+/// Класс: мутации из `@State` без копирования словаря.
 public final class BubbleHeightCache: @unchecked Sendable {
     public static let rowSpacing: Double = 2
     public static let daySeparator: Double = 28
@@ -32,8 +32,6 @@ public final class BubbleHeightCache: @unchecked Sendable {
     public static let callRow: Double = 64
     public static let keyboardRow: Double = 44
     public static let commentsFooter: Double = 36
-    /// Горизонтальные поля текста и место под время, чтобы перенос не занижал высоту.
-    public static let textHorizontalChrome: Double = 36
 
     private var heights: [String: Double] = [:]
     private let lock = NSLock()
@@ -87,7 +85,15 @@ public final class BubbleHeightCache: @unchecked Sendable {
         return Self.estimate(row: row, maxWidth: maxWidth)
     }
 
-    public static func estimate(row: TranscriptRow, maxWidth: Double) -> Double {
+    /// Оценка строки ленты по содержимому. `maxWidth` — ширина колонки пузыря (`TranscriptBubble`
+    /// `maxWidth`), `reservesAvatar` — в группе слева место под аватар входящих.
+    /// `textHeight` — высота текста по ширине строки; по умолчанию TextKit из MaxlyUI.
+    public static func estimate(
+        row: TranscriptRow,
+        maxWidth: Double,
+        reservesAvatar: Bool = false,
+        textHeight: (@Sendable (String, Double) -> Double)? = textHeightProvider
+    ) -> Double {
         var total = 0.0
         if row.dayTitle != nil { total += daySeparator }
         if row.startsUnread { total += unreadSeparator }
@@ -95,23 +101,32 @@ public final class BubbleHeightCache: @unchecked Sendable {
             return total + service
         }
         if row.showsAuthorName { total += authorName }
-        // Аватар, поля пузыря и время уже ширины, чем `maxWidth`: иначе оценка в одну строку,
-        // а на экране текст переносится и нижняя строка обрезается.
-        let gutter = row.isOutgoing ? 0.0 : 46.0
-        let textWidth = max(40, maxWidth - 28 - 64 - gutter)
-        total += contentHeight(row.message, maxWidth: max(1, maxWidth), textWidth: textWidth)
+        let bubbleWidth = BubbleMetrics.bubbleWidth(
+            maxWidth: max(1, maxWidth),
+            reservesAvatar: reservesAvatar && !row.isOutgoing
+        )
+        total += contentHeight(
+            row.message,
+            bubbleWidth: bubbleWidth,
+            outgoing: row.isOutgoing,
+            showsAuthorName: row.showsAuthorName,
+            textHeight: textHeight
+        )
         if !row.message.content.reactions.isEmpty { total += reactionRow }
         return max(total, minTextBubble)
     }
 
-    private static func contentHeight(_ message: Message, maxWidth: Double, textWidth: Double) -> Double {
+    private static func contentHeight(
+        _ message: Message,
+        bubbleWidth: Double,
+        outgoing: Bool,
+        showsAuthorName: Bool,
+        textHeight: (@Sendable (String, Double) -> Double)?
+    ) -> Double {
         let content = message.content
+        let layout = MessageBubbleLayout(message: message, showsAuthorName: showsAuthorName, showsComments: content.comments != nil)
         var height = bubblePaddingY
-        if !content.visuals.isEmpty {
-            let columns = min(2, content.visuals.count)
-            let rows = Int(ceil(Double(content.visuals.count) / Double(columns)))
-            height += Double(rows) * mediaTile
-        }
+        height += mediaHeight(content, bubbleWidth: bubbleWidth, hasFill: layout.hasFill)
         if !content.voices.isEmpty {
             height += Double(content.voices.count) * voice
         }
@@ -139,12 +154,15 @@ public final class BubbleHeightCache: @unchecked Sendable {
         if content.comments != nil { height += commentsFooter }
         let text = message.displayText
         if !text.isEmpty {
-            let measuredWidth = max(40, textWidth)
-            if let provider = textHeightProvider {
-                height += provider(text, measuredWidth)
+            // Время с галочками стоит в конце последней строки: если строка полная, оно
+            // переносит её. Место под время меряется вместе с текстом, как его резервирует пузырь.
+            let reserve = layout.metadata == .text ? BubbleMetrics.timeReserve(outgoing: outgoing) : ""
+            let width = BubbleMetrics.textWidth(bubbleWidth: bubbleWidth)
+            if let textHeight {
+                height += textHeight(text + reserve, width)
             } else {
-                let charsPerLine = max(12.0, measuredWidth / 8.5)
-                let lines = max(1.0, ceil(Double(text.count) / charsPerLine))
+                let charsPerLine = max(12.0, width / 8.5)
+                let lines = max(1.0, ceil(Double(text.count + reserve.count) / charsPerLine))
                 height += lines * lineHeight
             }
         }
@@ -152,5 +170,65 @@ public final class BubbleHeightCache: @unchecked Sendable {
             height += minTextBubble
         }
         return height
+    }
+
+    /// Фото и видео той же раскладкой, что рисует пузырь (`MediaMosaic`): одиночный кадр у
+    /// подписи во всю ширину, иначе альбом рядами, кружок своим диаметром.
+    static func mediaHeight(_ content: MessageContent, bubbleWidth: Double, hasFill: Bool) -> Double {
+        let visuals = content.visuals
+        guard !visuals.isEmpty else { return 0 }
+        let inset = hasFill ? BubbleMetrics.mediaInset : 0
+        let width = max(1, bubbleWidth - inset * 2)
+        let round = visuals.count == 1 && visuals[0].video?.isRound == true
+        let aspects = visuals.map(BubbleMetrics.aspect)
+        let album: AlbumLayout
+        if hasFill, visuals.count == 1, !round {
+            album = ChatContentFormat.fullWidthTile(aspect: aspects[0], width: width)
+        } else {
+            album = ChatContentFormat.album(
+                aspects: aspects,
+                maxWidth: round ? min(width, BubbleMetrics.roundSide) : width,
+                maxHeight: hasFill && !round ? 620 : 360
+            )
+        }
+        return album.height + inset * 2
+    }
+}
+
+/// Размеры пузыря, от которых зависит перенос текста и ширина медиа. Те же числа, что у
+/// `MessageBubble`: колонка пузыря уже `maxWidth` на аватар в группе, текст — на поля пузыря.
+public enum BubbleMetrics {
+    public static let avatarSize: Double = 34
+    public static let avatarSpacing: Double = 6
+    public static let minBubbleWidth: Double = 140
+    /// Поле текста слева и справа внутри пузыря.
+    public static let textInset: Double = 12
+    /// Отступ медиа от края пузыря с подложкой.
+    public static let mediaInset: Double = 3
+    /// Диаметр кружка в ленте.
+    public static let roundSide: Double = 220
+
+    /// Ширина колонки пузыря. Во входящих группы слева место под аватар автора.
+    public static func bubbleWidth(maxWidth: Double, reservesAvatar: Bool) -> Double {
+        max(minBubbleWidth, maxWidth - (reservesAvatar ? avatarSize + avatarSpacing : 0))
+    }
+
+    /// Ширина строки текста: колонка пузыря без его полей.
+    public static func textWidth(bubbleWidth: Double) -> Double {
+        max(40, bubbleWidth - textInset * 2)
+    }
+
+    /// Знаки того же объёма, что место под время и галочки в конце текста: перенос строки
+    /// при оценке совпадает с тем, что нарисует пузырь.
+    public static func timeReserve(outgoing: Bool) -> String {
+        outgoing ? "\u{00A0}0000000" : "\u{00A0}00000"
+    }
+
+    /// Пропорция кадра по размерам из сервера; неизвестные — квадрат, кружок — всегда квадрат.
+    public static func aspect(_ item: ChatAttachment) -> Double {
+        if item.video?.isRound == true { return 1 }
+        let pixels = item.photo.map { ($0.width, $0.height) } ?? item.video.map { ($0.width, $0.height) }
+        guard let width = pixels?.0, let height = pixels?.1, width > 0, height > 0 else { return 1 }
+        return Double(width) / Double(height)
     }
 }

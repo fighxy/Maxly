@@ -5,32 +5,6 @@ import MaxlyDomain
 
 @Suite("Раскладка высот ленты")
 struct CollectionFeedLayoutTests {
-    @Test("Соседние строки не делят одну высоту")
-    func perRowHeights() {
-        let short = row(text: "hi")
-        let long = row(text: String(repeating: "слово ", count: 40))
-        let rows = [short, long]
-        let cache = BubbleHeightCache()
-        let older = CollectionFeedLayout.height(index: 0, chronological: rows, maxWidth: 280, cache: cache)
-        let newest = CollectionFeedLayout.height(index: 1, chronological: rows, maxWidth: 280, cache: cache)
-        #expect(newest != nil)
-        #expect(older != nil)
-        #expect(newest! > older!)
-    }
-
-    @Test("Записанная высота не подменяет соседа")
-    func storedHeightStaysOnItsRow() {
-        let short = row(text: "hi")
-        let long = row(text: String(repeating: "слово ", count: 20))
-        let rows = [short, long]
-        let cache = BubbleHeightCache()
-        cache.store(id: short.id, height: 400)
-        let older = CollectionFeedLayout.height(index: 0, chronological: rows, maxWidth: 280, cache: cache)
-        let newest = CollectionFeedLayout.height(index: 1, chronological: rows, maxWidth: 280, cache: cache)
-        #expect(older == 400)
-        #expect(newest != 400)
-    }
-
     @Test("Рост строки выше экрана сдвигает offset, рост в кадре — нет")
     func offsetCompensation() {
         #expect(FeedOffset.compensation(itemMaxY: 40, viewportOffset: 100, heightDelta: 12) == 12)
@@ -138,22 +112,13 @@ struct CollectionFeedLayoutTests {
         #expect(FeedSettle.plan(interacting: false, contentFits: false, stickToBottom: false, hasHistoryReveal: false, pinToLatest: false, hasAnchor: false) == .keep)
     }
 
-    private func row(text: String) -> TranscriptRow {
-        TranscriptRow(
-            message: Message(
-                id: "m-\(text.count)",
-                chatId: "c1",
-                authorId: "u1",
-                text: text,
-                timestamp: Date(timeIntervalSince1970: 1_700_000_000),
-                status: .sent,
-                authorName: "A"
-            ),
-            dayTitle: nil,
-            group: .single,
-            showsAuthorName: false,
-            showsAuthorAvatar: false,
-            isOutgoing: true
-        )
+    @Test("Низ ленты: последняя строка у края, короткая лента не уезжает выше верха")
+    func bottomOffset() {
+        // Контент 2000, экран 800, сверху 106, снизу 140: низ при 2000 + 140 - 800.
+        #expect(FeedOffset.bottomOffset(contentHeight: 2000, boundsHeight: 800, insetTop: 106, insetBottom: 140) == 1340)
+        // Короткая лента: прокручивать некуда, смещение у верха.
+        #expect(FeedOffset.bottomOffset(contentHeight: 200, boundsHeight: 800, insetTop: 460, insetBottom: 140) == -460)
+        let range = FeedOffset.offsetRange(contentHeight: 2000, boundsHeight: 800, insetTop: 106, insetBottom: 140)
+        #expect(range == -106...1340)
     }
 }
