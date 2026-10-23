@@ -16,6 +16,8 @@ struct CommentsView: View {
     @State private var blockNotice: String?
     @State private var reveal = PrivateModeReveal()
     @State private var atBottom = true
+    /// Верх поля ввода в глобальных координатах. `0` — ещё не измерен.
+    @State private var composerTop: CGFloat = 0
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.privateMode) private var privateMode
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -29,9 +31,11 @@ struct CommentsView: View {
                     reveal: reveal,
                     reduceMotion: reduceMotion,
                     atBottom: $atBottom,
+                    composerTop: composerTop > 0 ? composerTop : nil,
                     onBlockAuthor: onBlockAuthor,
                     onBlockNotice: { blockNotice = $0 }
                 )
+                .ignoresSafeArea()
                 .refreshable { await model.reload() }
             }
             .background(Color.maxlyChatBackground.ignoresSafeArea())
@@ -96,5 +100,6 @@ struct CommentsView: View {
         .padding(.horizontal, MaxlyTheme.pad)
         .padding(.top, 6)
         .padding(.bottom, 8)
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { composerTop = $0 }
     }
 }

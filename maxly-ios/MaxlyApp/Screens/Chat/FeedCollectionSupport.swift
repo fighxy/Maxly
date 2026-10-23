@@ -132,19 +132,92 @@ enum FeedScroll {
         return nil
     }
 
+    /// Рамка ленты в окне. Вне окна `convert` возвращает bounds, и смещение −6 выглядит как верх экрана.
+    static func windowFrame(_ view: UIView) -> CGRect? {
+        guard view.window != nil else { return nil }
+        return view.convert(view.bounds, to: nil)
+    }
+
+    struct WindowChrome {
+        var safeTop: CGFloat
+        var safeBottom: CGFloat
+        var height: CGFloat
+    }
+
+    static func windowChrome() -> WindowChrome {
+        let window = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first { $0.isKeyWindow }
+        let safe = window?.safeAreaInsets ?? .zero
+        return WindowChrome(safeTop: safe.top, safeBottom: safe.bottom, height: window?.bounds.height ?? 0)
+    }
+
+    /// Полный content inset шапки и поля ввода. `.never`: safe area не прибавляется второй раз.
+    /// У верхнего края смещение остаётся на новом inset, иначе первый кадр показывает сообщения под шапкой.
     @discardableResult
-    static func applyShortInset(_ collection: UICollectionView) -> Bool {
-        let top = CGFloat(FeedOffset.shortTopInset(
+    static func applyChrome(
+        _ collection: UICollectionView,
+        headerBottom: CGFloat?,
+        composerTop: CGFloat?
+    ) -> Bool {
+        collection.contentInsetAdjustmentBehavior = .never
+        collection.automaticallyAdjustsScrollIndicatorInsets = false
+        hideSystemEdgeEffects(collection)
+        let window = windowChrome()
+        let safe = collection.safeAreaInsets
+        let unresolvedHeader = FeedOffset.unresolvedHeader(
+            safeTop: Double(safe.top),
+            windowTop: Double(window.safeTop)
+        )
+        let unresolvedComposer = FeedOffset.unresolvedComposer(
+            safeBottom: Double(safe.bottom),
+            windowBottom: Double(window.safeBottom)
+        )
+        let headerOverlap: Double
+        let composerOverlap: Double
+        if let frame = windowFrame(collection), frame.height > 1, window.height > 1 {
+            headerOverlap = FeedOffset.headerOverlap(
+                frameMinY: Double(frame.minY),
+                frameMaxY: Double(frame.maxY),
+                headerBottom: headerBottom.map(Double.init),
+                unresolved: unresolvedHeader
+            )
+            composerOverlap = FeedOffset.composerOverlap(
+                frameMinY: Double(frame.minY),
+                frameMaxY: Double(frame.maxY),
+                frameReachesScreenBottom: frame.maxY >= window.height - 1,
+                composerTop: composerTop.map(Double.init),
+                unresolved: unresolvedComposer
+            )
+        } else {
+            headerOverlap = unresolvedHeader
+            composerOverlap = unresolvedComposer
+        }
+        let resolved = FeedOffset.chromeInsets(
             boundsHeight: Double(collection.bounds.height),
-            safeTop: Double(collection.safeAreaInsets.top),
-            safeBottom: Double(collection.safeAreaInsets.bottom),
-            contentHeight: Double(collection.contentSize.height)
-        ))
-        guard abs(collection.contentInset.top - top) > 0.5 else { return false }
-        var inset = collection.contentInset
-        inset.top = top
-        inset.bottom = CGFloat(FeedOffset.baseBottomInset)
-        collection.contentInset = inset
+            contentHeight: Double(collection.contentSize.height),
+            headerOverlap: headerOverlap,
+            composerOverlap: composerOverlap
+        )
+        let top = CGFloat(resolved.top)
+        let bottom = CGFloat(resolved.bottom)
+        let oldTop = collection.contentInset.top
+        let oldBottom = collection.contentInset.bottom
+        guard abs(oldTop - top) > 0.5 || abs(oldBottom - bottom) > 0.5 else { return false }
+        let restingAtTop = abs(collection.contentOffset.y + oldTop) < 1
+            || (collection.contentSize.height < 1 && abs(collection.contentOffset.y) < 1)
+            || (abs(collection.contentOffset.y) < 1 && oldTop < 1)
+        performWithoutAnimation {
+            collection.contentInset = UIEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
+            var indicator = collection.verticalScrollIndicatorInsets
+            indicator.top = top
+            indicator.bottom = bottom
+            collection.verticalScrollIndicatorInsets = indicator
+            if restingAtTop {
+                collection.contentOffset.y = -top
+            }
+        }
         return true
     }
 
@@ -166,9 +239,11 @@ enum FeedScroll {
         reveal: Reveal?,
         stickToBottom: Bool,
         interacting: Bool,
+        headerBottom: CGFloat? = nil,
+        composerTop: CGFloat? = nil,
         rowFrame: (String) -> CGRect?
     ) -> Bool {
-        if !interacting, applyShortInset(collection) {
+        if !interacting, applyChrome(collection, headerBottom: headerBottom, composerTop: composerTop) {
             collection.layoutIfNeeded()
         }
         let plan = FeedSettle.plan(
@@ -241,22 +316,43 @@ enum FeedScroll {
         ))
     }
 
-    /// Шапка и поле ввода приходят как safe area SwiftUI. Лента их учитывает один раз
-    /// и добавляет небольшой зазор, чтобы первое и последнее сообщение не прилипали к краям.
+    /// Лента на весь экран, под полупрозрачной шапкой и полем ввода.
+    /// `contentInsetAdjustmentBehavior = .never`: зазор задаётся вручную и не суммируется с safe area.
+    /// Стартовый inset берётся из окна, чтобы первый кадр не был с зазором в 6 pt под шапкой.
     static func install(_ collection: UICollectionView) {
         collection.backgroundColor = .clear
+        collection.clipsToBounds = true
         collection.alwaysBounceVertical = true
         collection.keyboardDismissMode = .interactive
-        collection.contentInsetAdjustmentBehavior = .automatic
+        collection.scrollsToTop = false
+        collection.contentInsetAdjustmentBehavior = .never
         collection.insetsLayoutMarginsFromSafeArea = false
-        collection.contentInset = UIEdgeInsets(
-            top: CGFloat(FeedOffset.baseTopInset),
-            left: 0,
-            bottom: CGFloat(FeedOffset.baseBottomInset),
-            right: 0
+        collection.automaticallyAdjustsScrollIndicatorInsets = false
+        hideSystemEdgeEffects(collection)
+        let window = windowChrome()
+        let seed = FeedOffset.chromeInsets(
+            boundsHeight: 0,
+            contentHeight: 0,
+            headerOverlap: FeedOffset.unresolvedHeader(safeTop: 0, windowTop: Double(window.safeTop)),
+            composerOverlap: FeedOffset.unresolvedComposer(safeBottom: 0, windowBottom: Double(window.safeBottom))
         )
+        let top = CGFloat(seed.top)
+        let bottom = CGFloat(seed.bottom)
+        collection.contentInset = UIEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
+        collection.verticalScrollIndicatorInsets = UIEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
+        collection.contentOffset = CGPoint(x: 0, y: -top)
         if let flow = collection.collectionViewLayout as? UICollectionViewFlowLayout {
             flow.sectionInsetReference = .fromContentInset
+        }
+    }
+
+    /// Системный край прокрутки на новых iOS затемняет верх и низ ленты поверх своего размытия.
+    static func hideSystemEdgeEffects(_ collection: UIScrollView) {
+        if #available(iOS 26.0, *) {
+            collection.topEdgeEffect.isHidden = true
+            collection.bottomEdgeEffect.isHidden = true
+            collection.leftEdgeEffect.isHidden = true
+            collection.rightEdgeEffect.isHidden = true
         }
     }
 
@@ -321,15 +417,17 @@ final class MeasuredLayoutCommit {
 
 @MainActor
 enum FeedLayoutAdjust {
-    /// Клавиатура и поле ввода уже сидят в safe area. Если читатель у низа и палец не держит ленту,
+    /// Поле ввода и клавиатура уже в content inset. Если читатель у низа и палец не держит ленту,
     /// низ остаётся у последнего сообщения.
     static func pinBottomIfNeeded(
         _ collection: UICollectionView,
         nearBottom: Bool,
-        heightChanged: Bool
+        heightChanged: Bool,
+        headerBottom: CGFloat? = nil,
+        composerTop: CGFloat? = nil
     ) {
         guard nearBottom, heightChanged, !FeedScroll.isInteracting(collection) else { return }
-        _ = FeedScroll.applyShortInset(collection)
+        _ = FeedScroll.applyChrome(collection, headerBottom: headerBottom, composerTop: composerTop)
         FeedScroll.pinToBottom(collection)
     }
 
