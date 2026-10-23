@@ -79,6 +79,8 @@ final class FeedCollectionController: UIViewController, UICollectionViewDelegate
     static let bottomSection = 2
 
     weak var source: (any FeedCollectionSource)?
+    /// Сколько раз настраивались ячейки: номер настройки в отчёте о высоте (`configure`).
+    private var configurations = 0
     /// Расстояние между строками сообщений.
     var rowSpacing: CGFloat = 2
     /// Новое сообщение у низа въезжает плавно; с «Уменьшением движения» — сразу.
@@ -198,6 +200,10 @@ final class FeedCollectionController: UIViewController, UICollectionViewDelegate
             }
         }
         guard ready else { return }
+        // Команда (кнопка «вниз», переход к цитате или закрепу) важнее инерции: лента, которая
+        // ещё катится после отпущенного пальца, останавливается и встаёт по команде. Раньше
+        // команда ждала конца инерции и терялась. Палец на ленте по-прежнему главнее.
+        if forcePosition { stopMomentum() }
         // Новое сообщение у низа и кнопка «вниз» с недалёкого места — плавно, остальное — сразу.
         let near = bottomDistance.distance < bottomDistance.visible * 1.5
         let animate = animatesAppend && hasSettled && follow == .bottom && !FeedScroll.isInteracting(collectionView)
@@ -558,16 +564,25 @@ final class FeedCollectionController: UIViewController, UICollectionViewDelegate
             guard let self, let cell, cell.itemID == id else { return }
             self.observed(height, for: id)
         }
+        // Номер настройки ячейки входит в отчёт о высоте: после переиспользования или новой
+        // настройки (реакции, просмотры) строка сообщает высоту заново, даже если она та же, что
+        // у прежнего содержимого. Иначе отчёт не приходил, и строка с заниженной высотой так и
+        // оставалась обрезанной.
+        configurations &+= 1
+        let pass = configurations
         cell.contentConfiguration = UIHostingConfiguration {
-            view
-                .modifier(FeedEnvironmentModifier(environment: environment, sizing: false))
-                .fixedSize(horizontal: false, vertical: true)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { report($0) }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                // Лента заходит под шапку и полоску «домой», и ячейка у края получает safe area.
-                // Без этого SwiftUI сдвигал пузырь на её величину: низ обрезался краем ячейки,
-                // а пузырь ездил, пока строка проезжала край. Замер (`FeedSizer`) идёт без safe area.
-                .ignoresSafeArea()
+            FeedCellLayout {
+                view
+                    .modifier(FeedEnvironmentModifier(environment: environment, sizing: false))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .onGeometryChange(for: FeedCellHeight.self) { FeedCellHeight(pass: pass, height: $0.size.height) } action: {
+                        report($0.height)
+                    }
+            }
+            // Лента заходит под шапку и полоску «домой», и ячейка у края получает safe area.
+            // Без этого SwiftUI сдвигал пузырь на её величину: низ обрезался краем ячейки,
+            // а пузырь ездил, пока строка проезжала край. Замер (`FeedSizer`) идёт без safe area.
+            .ignoresSafeArea()
         }
         .margins(.all, 0)
         .minSize(width: 0, height: 0)
@@ -664,6 +679,17 @@ final class FeedCollectionController: UIViewController, UICollectionViewDelegate
             if measure(id) { moved = true }
         }
         if moved { scheduleRelayout() }
+    }
+
+    /// Остановить прокрутку по инерции, если палец уже отпущен.
+    private func stopMomentum() {
+        guard let collectionView, collectionView.isDecelerating, !collectionView.isTracking else { return }
+        collectionView.setContentOffset(collectionView.contentOffset, animated: false)
+        // Конец инерции экран узнаёт после хода обновления SwiftUI, а не внутри него.
+        Task { @MainActor [weak self] in
+            guard let self, let collectionView = self.collectionView, !FeedScroll.isInteracting(collectionView) else { return }
+            self.source?.feedUserScrolling(false, takeover: false)
+        }
     }
 
     // MARK: UIScrollViewDelegate

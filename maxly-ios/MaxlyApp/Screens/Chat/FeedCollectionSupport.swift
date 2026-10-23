@@ -68,6 +68,35 @@ final class FeedHostingCell: UICollectionViewCell {
     }
 }
 
+/// Высота строки в отчёте ячейки и номер настройки, при которой она снята.
+struct FeedCellHeight: Equatable {
+    var pass: Int
+    var height: CGFloat
+}
+
+/// Содержимое ячейки ленты: во всю ширину, своей высоты и прижато к верху. Пока лента не
+/// переложила строку под настоящую высоту, лишнее обрезается снизу. Обычная рамка с
+/// `maxHeight: .infinity` при содержимом выше ячейки становилась выше неё, и хост ячейки
+/// ставил её по центру — у пузыря срезался верх.
+struct FeedCellLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? subviews.first?.sizeThatFits(.unspecified).width ?? 0
+        let height = proposal.height
+            ?? subviews.first?.sizeThatFits(ProposedViewSize(width: width, height: nil)).height ?? 0
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for subview in subviews {
+            subview.place(
+                at: CGPoint(x: bounds.minX, y: bounds.minY),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(width: bounds.width, height: nil)
+            )
+        }
+    }
+}
+
 /// Замер высоты SwiftUI-строки вне экрана — тем же видом и окружением, что у ячейки, при
 /// ширине ячейки. Так высота известна до показа: пузырь не обрезается и не наползает на соседа,
 /// а лента не прыгает, когда строка появляется.

@@ -925,20 +925,24 @@ struct ChatView: View {
 
     @ViewBuilder
     private var headerAvatar: some View {
+        let size = Self.headerAvatarSize
         if let profile {
             // Место под кольцо — только когда есть истории: иначе аватар заполняет круг целиком.
-            ChatHeaderAvatar(viewModel: profile, size: 44, reservesRingSpace: hasStoryRing)
+            ChatHeaderAvatar(viewModel: profile, size: size, reservesRingSpace: hasStoryRing)
         } else if viewModel.isSavedMessages {
-            ChatAvatarView(avatar: ChatAvatar(kind: .savedMessages, colorIndex: 0), size: 36)
-                .frame(width: 44, height: 44)
+            ChatAvatarView(avatar: ChatAvatar(kind: .savedMessages, colorIndex: 0), size: size)
         } else {
             StoryRingAvatar(
                 avatar: ChatAvatar(kind: .initials(ChatAvatar.initials(for: headerTitle)),
                                    colorIndex: ChatAvatar.colorIndex(for: viewModel.peerId ?? viewModel.chatId)),
-                ring: nil, size: 44
+                ring: nil, size: size
             )
         }
     }
+
+    /// Аватар меньше стеклянного круга 44 pt: по краю виден стеклянный ободок, как у кнопки
+    /// «назад». Аватар во весь круг закрывал стекло целиком.
+    static let headerAvatarSize: CGFloat = 38
 
     /// У собеседника есть истории: аватар в шапке в кольце.
     private var hasStoryRing: Bool {
