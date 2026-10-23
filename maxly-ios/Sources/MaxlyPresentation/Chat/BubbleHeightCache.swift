@@ -147,7 +147,6 @@ public final class BubbleHeightCache: @unchecked Sendable {
                 let lines = max(1.0, ceil(Double(text.count) / charsPerLine))
                 height += lines * lineHeight
             }
-            height += 4
         }
         if height <= bubblePaddingY {
             height += minTextBubble
