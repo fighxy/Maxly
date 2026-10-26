@@ -1214,9 +1214,9 @@ private struct ProfileChatCovers: ViewModifier {
 
     func body(content: Content) -> some View {
         if let chat {
-            @Bindable var model = chat
+            @Bindable var attachments = chat.attachments
             content
-                .mediaViewerCover(item: $model.attachments.viewer) { request in
+                .mediaViewerCover(item: $attachments.viewer) { request in
                     MediaViewer(
                         request: request,
                         download: { await chat.attachments.downloadVideo($0, progress: $1) },
@@ -1227,7 +1227,7 @@ private struct ProfileChatCovers: ViewModifier {
                     ) { chat.attachments.viewer = nil }
                         .fileExportSheet(chat.attachments, fromViewer: true)
                 }
-                .fullScreenCover(item: $model.attachments.openedFile) { file in
+                .fullScreenCover(item: $attachments.openedFile) { file in
                     FileQuickLook(url: file.url, title: file.name) { chat.attachments.openedFile = nil }
                 }
         } else {
