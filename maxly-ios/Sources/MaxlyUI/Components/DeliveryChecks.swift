@@ -6,6 +6,7 @@ import SwiftUI
 public struct DeliveryChecks: View {
     private let read: Bool
     private let lineWidth: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public static let size = CGSize(width: 16, height: 10)
 
@@ -23,11 +24,12 @@ public struct DeliveryChecks: View {
                 .offset(x: read ? 0 : 2.5)
             if read {
                 // У второй галочки виден только длинный штрих: короткий прячется за первой.
+                // Маска прорисовки — до сдвига: иначе она осталась бы на месте, а галочка уехала.
                 CheckShape(full: false)
                     .stroke(style: style)
                     .frame(width: 11, height: Self.size.height)
+                    .transition(.maxlyCheckDraw(reduceMotion: reduceMotion))
                     .offset(x: 5)
-                    .transition(.opacity.combined(with: .scale(scale: 0.6, anchor: .bottomLeading)))
             }
         }
         .frame(width: Self.size.width, height: Self.size.height, alignment: .leading)
@@ -53,5 +55,29 @@ struct CheckShape: Shape {
         }
         path.addLine(to: CGPoint(x: inset.maxX, y: inset.minY))
         return path
+    }
+}
+
+/// Галочка прорисовывается слева направо: маска растягивается от левого края. Масштаб маски —
+/// анимируемый эффект отрисовки, поэтому переход плавный без своей интерполяции.
+private struct CheckReveal: ViewModifier {
+    var progress: CGFloat
+
+    func body(content: Content) -> some View {
+        content.mask {
+            Rectangle().scaleEffect(x: max(progress, 0.001), y: 1, anchor: .leading)
+        }
+    }
+}
+
+public extension AnyTransition {
+    /// Появление галочки доставки: она прорисовывается слева направо. Уходит растворением.
+    /// С «Уменьшением движения» — только растворение.
+    static func maxlyCheckDraw(reduceMotion: Bool) -> AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        return .asymmetric(
+            insertion: .modifier(active: CheckReveal(progress: 0), identity: CheckReveal(progress: 1)),
+            removal: .opacity
+        )
     }
 }
