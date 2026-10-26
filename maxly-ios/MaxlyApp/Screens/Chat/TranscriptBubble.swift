@@ -171,7 +171,7 @@ struct TranscriptBubble: View, Equatable {
                 { Task { await viewModel.reactions.toggle(messageId: message.id, emoji: emoji) } }
             } : nil,
             onPin: message.status == .sent && Int64(message.id) != nil && !message.content.isService
-                ? { viewModel.requestPin(message) }
+                ? { viewModel.pins.request(message) }
                 : nil,
             onMarkUnread: viewModel.canMarkUnread(message) ? { viewModel.requestMarkUnread(message) } : nil,
             onInfo: state.showsInfo ? { [chatType = state.chatType] in viewModel.showMessageInfo(message, chatType: chatType) } : nil,

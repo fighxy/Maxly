@@ -203,7 +203,7 @@ struct ChatView: View {
         }
         .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: rules.strangerBar)
         .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: nowPlaying?.track != nil)
-        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.bannerPin?.id)
+        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.pins.banner?.id)
         // Низ шапки с плашками: выше него лента закрыта, сообщение там не прочитано.
         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { headerBottom = $0 }
     }
@@ -213,7 +213,7 @@ struct ChatView: View {
     @ViewBuilder
     private var topDock: some View {
         let playing = nowPlaying?.track != nil
-        let pinned = viewModel.bannerPin
+        let pinned = viewModel.pins.banner
         if playing || pinned != nil {
             TopDock {
                 if let nowPlaying, playing {
@@ -520,12 +520,12 @@ struct ChatView: View {
                     Task { await viewModel.polls.send(title: title, answers: answers) }
                 }
             }
-            .sheet(isPresented: $viewModel.pinListShown) { pinList }
+            .sheet(isPresented: $viewModel.pins.listShown) { pinList }
             .confirmationDialog("Закрепить сообщение", isPresented: pinPromptShown, titleVisibility: .visible) {
                 pinPromptButtons
             }
             .confirmationDialog("Открепить сообщение?", isPresented: $unpinAsked, titleVisibility: .visible) {
-                Button("Открепить", role: .destructive) { Task { await viewModel.unpin() } }
+                Button("Открепить", role: .destructive) { Task { await viewModel.pins.unpin() } }
                 Button("Отмена", role: .cancel) {}
             }
             .sheet(isPresented: $scheduleShown) { ScheduleMessageSheet(viewModel: viewModel) }
@@ -1025,8 +1025,8 @@ struct ChatView: View {
 
     private var pinPromptShown: Binding<Bool> {
         Binding(
-            get: { viewModel.pinPrompt != nil },
-            set: { if !$0 { viewModel.pinPrompt = nil } }
+            get: { viewModel.pins.prompt != nil },
+            set: { if !$0 { viewModel.pins.prompt = nil } }
         )
     }
 
@@ -1034,13 +1034,13 @@ struct ChatView: View {
     private var pinPromptButtons: some View {
         switch rules.pinOptions {
         case .dialog:
-            Button("Только у меня") { Task { await viewModel.confirmPin(forMe: true, notify: true) } }
-            Button("Закрепить") { Task { await viewModel.confirmPin(forMe: false, notify: true) } }
+            Button("Только у меня") { Task { await viewModel.pins.confirm(forMe: true, notify: true) } }
+            Button("Закрепить") { Task { await viewModel.pins.confirm(forMe: false, notify: true) } }
         case .group:
-            Button("Уведомить участников") { Task { await viewModel.confirmPin(forMe: false, notify: true) } }
-            Button("Закрепить без уведомления") { Task { await viewModel.confirmPin(forMe: false, notify: false) } }
+            Button("Уведомить участников") { Task { await viewModel.pins.confirm(forMe: false, notify: true) } }
+            Button("Закрепить без уведомления") { Task { await viewModel.pins.confirm(forMe: false, notify: false) } }
         case .channel:
-            Button("Закрепить") { Task { await viewModel.confirmPin(forMe: false, notify: true) } }
+            Button("Закрепить") { Task { await viewModel.pins.confirm(forMe: false, notify: true) } }
         }
         Button("Отмена", role: .cancel) {}
     }
@@ -1048,13 +1048,13 @@ struct ChatView: View {
     private var pinList: some View {
         NavigationStack {
             List {
-                if viewModel.pinBar.pins.isEmpty {
+                if viewModel.pins.list.pins.isEmpty {
                     Text("Закрепов нет")
                         .foregroundStyle(.secondary)
                 }
-                ForEach(viewModel.pinBar.pins, id: \.messageId) { pin in
+                ForEach(viewModel.pins.list.pins, id: \.messageId) { pin in
                     Button {
-                        viewModel.pinListShown = false
+                        viewModel.pins.listShown = false
                         viewModel.focusReply(pin.messageId)
                     } label: {
                         Text(pin.text)
@@ -1063,7 +1063,7 @@ struct ChatView: View {
                     }
                     .swipeActions {
                         Button("Снять", role: .destructive) {
-                            Task { await viewModel.unpin(messageId: pin.messageId) }
+                            Task { await viewModel.pins.unpin(messageId: pin.messageId) }
                         }
                     }
                 }
@@ -1072,11 +1072,11 @@ struct ChatView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Закрыть") { viewModel.pinListShown = false }
+                    Button("Закрыть") { viewModel.pins.listShown = false }
                 }
-                if viewModel.pinBar.pins.count > 1 {
+                if viewModel.pins.list.pins.count > 1 {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Снять все") { Task { await viewModel.unpinAll() } }
+                        Button("Снять все") { Task { await viewModel.pins.unpinAll() } }
                     }
                 }
             }
@@ -1086,7 +1086,7 @@ struct ChatView: View {
     private func pinBanner(id: String, text: String, counter: String?) -> some View {
         HStack(spacing: 10) {
             Button {
-                viewModel.cyclePin()
+                viewModel.pins.cycle()
             } label: {
                 HStack(spacing: 10) {
                     Capsule()
@@ -1107,9 +1107,9 @@ struct ChatView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            if viewModel.pinBar.pins.count > 1 {
+            if viewModel.pins.list.pins.count > 1 {
                 Button {
-                    viewModel.pinListShown = true
+                    viewModel.pins.listShown = true
                 } label: {
                     Image(systemName: "list.bullet")
                         .font(.system(size: 16, weight: .medium))
