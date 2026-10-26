@@ -70,6 +70,10 @@ struct ChatView: View {
     @Environment(\.openURL) private var openURL
     @State private var profile: ChatProfileViewModel?
     @State private var profileShown = false
+    /// Плашку незнакомца закрыли крестиком в этом чате (`StrangerBarDismissals`).
+    @State private var strangerBarDismissed = false
+    /// Открыто подтверждение «Заблокировать» из плашки незнакомца.
+    @State private var strangerBlockAsked = false
     @State private var forwardList: [ChatListItem] = []
     @State private var attachmentsShown = false
     /// Гифки gifka.me качаются и уходят по очереди: строка над полем ввода с отменой или «Повторить».
@@ -78,7 +82,7 @@ struct ChatView: View {
     @State private var gifPanel = GifPanelModel()
     /// Снимки с кнопки камеры в поле ввода (`CameraCaptureFlow`).
     @State private var cameraFlowShown = false
-    /// Меню долгого нажатия на сообщение, как в WhatsApp (`MessageMenuHost`).
+    /// Меню долгого нажатия на сообщение (`MessageMenuHost`).
     @State private var messageMenu = MessageMenuPresenter()
     @State private var panelShown = false
     /// Высота последней клавиатуры без нижнего отступа: панель встаёт на её место.
@@ -142,9 +146,7 @@ struct ChatView: View {
     private var transcriptLayer: some View {
         ChatTranscript(
             viewModel: viewModel,
-            chatType: kind,
-            commentsEnabled: comments,
-            canWrite: writable,
+            rules: rules,
             reveal: reveal,
             focus: $composerFocused,
             bottomControlsTop: bottomControlsTop,
@@ -221,15 +223,21 @@ struct ChatView: View {
     private var topBanners: some View {
         VStack(spacing: 6) {
             topDock
-            if privateMode.isMasked { privateModeBanner }
+            if privateMode.isMasked {
+                privateModeBanner
+            } else if let bar = rules.strangerBar {
+                strangerBanner(bar)
+                    .transition(.maxlyBar(edge: .top, reduceMotion: reduceMotion))
+            }
         }
+        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: rules.strangerBar)
         .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: nowPlaying?.track != nil)
         .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.bannerPin?.id)
         // Низ шапки с плашками: выше него лента закрыта, сообщение там не прочитано.
         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { headerBottom = $0 }
     }
 
-    /// Карточка под шапкой, как в Telegram: сверху плеер голосового, под ним закреп. Без
+    /// Карточка под шапкой: сверху плеер голосового, под ним закреп. Без
     /// закрепа плеер висит один чуть ниже шапки.
     @ViewBuilder
     private var topDock: some View {
@@ -307,17 +315,16 @@ struct ChatView: View {
             focus: $composerFocused,
             attachmentsShown: $attachmentsShown,
             panelShown: $panelShown,
-            canWrite: writable,
+            bottomBar: rules.bottomBar,
             showsReadOnlyBar: canWrite != nil || profile?.profile != nil,
-            chatType: kind,
             isMuted: muted,
             // Звук чата вне списка не переключить: его нет среди чатов аккаунта.
             onToggleMute: canWrite == nil ? nil : onToggleMute,
             onOpenApp: openAppAction,
-            join: joinAction,
-            onSearch: kind == .channel && onToggleMute != nil && canWrite != nil ? { searchShown = true } : nil
+            action: bottomAction,
+            onSearch: rules.searchInBottomBar ? { searchShown = true } : nil
         )
-        if panelShown, writable, let stickerPanel {
+        if panelShown, rules.bottomBar == .composer, let stickerPanel {
             StickerPanel(
                 model: stickerPanel,
                 height: stickerPanelHeight,
@@ -395,6 +402,9 @@ struct ChatView: View {
                 // Возврат из профиля тоже запускает эту задачу: свежую карточку не перезапрашиваем.
                 await profile?.loadIfStale()
                 viewModel.notePeer(profile?.shown.peerId, isBot: profile?.shown.kind == .bot)
+                strangerBarDismissed = StrangerBarDismissals.contains(chatId: viewModel.chatId, account: viewModel.currentUserId)
+                // Не из контактов: плашке нужно знать, не в чёрном ли списке человек.
+                if profile?.contactAction == .add { await profile?.loadExtras() }
                 await stories?.loadRing(storyOwner, kind: storyKind)
                 // Общие медиа из кэша — заранее, чтобы профиль открылся с ними. Пауза: сначала лента.
                 try? await Task.sleep(for: .seconds(1))
@@ -914,7 +924,7 @@ struct ChatView: View {
     }
 
     private func deleteForEveryoneButton(_ message: Message) -> some View {
-        Button(kind == .private ? "Удалить у меня и у собеседника" : "Удалить у всех", role: .destructive) {
+        Button(rules.deleteForAllTitle, role: .destructive) {
             Task { await viewModel.confirmDelete(message, forEveryone: true) }
         }
     }
@@ -969,7 +979,7 @@ struct ChatView: View {
     }
 
     private func openParticipant(_ message: Message) {
-        guard kind == .group, makeParticipantProfile != nil,
+        guard rules.showsAuthors, makeParticipantProfile != nil,
               let dialog = DialogDraft.with(peerId: message.authorId, me: viewModel.currentUserId,
                   title: message.authorName, avatarURL: message.authorAvatarURL) else { return }
         composerFocused = false
@@ -990,19 +1000,42 @@ struct ChatView: View {
         return { [viewModel] in viewModel.openBotApp(botId: botId, title: appTitle) }
     }
 
-    /// Канал или группа вне списка (открыты из поиска) с публичной ссылкой: вместо плашки
-    /// «Подписаться» или «Вступить».
-    private var joinAction: ChatComposer.Join? {
-        guard canWrite == nil, let card = profile?.profile, let link = card.linkURL?.absoluteString else { return nil }
-        let label: String
-        switch card.kind {
-        case .channel: label = "Подписаться"
-        case .group: label = "Вступить"
-        case .user, .bot, .saved: return nil
+    /// Кнопка вместо поля ввода: «Подписаться» / «Вступить» у канала или группы вне списка
+    /// (по публичной ссылке), «Начать» в пустом диалоге с ботом.
+    private var bottomAction: ChatComposer.Action? {
+        switch rules.bottomBar {
+        case .join:
+            guard let link = profile?.profile?.linkURL?.absoluteString else { return nil }
+            return ChatComposer.Action(busy: viewModel.joining) { [viewModel] in
+                Task { await viewModel.join(link: link) }
+            }
+        case .startBot:
+            guard let profile else { return nil }
+            return ChatComposer.Action(busy: profile.isActing) { [viewModel] in
+                Task {
+                    guard await !profile.startBot() else { return }
+                    viewModel.announce(profile.actionNotice ?? "Не удалось запустить бота")
+                }
+            }
+        case .composer, .channelControls, .readOnly:
+            return nil
         }
-        return ChatComposer.Join(label: label, busy: viewModel.joining) { [viewModel] in
-            Task { await viewModel.join(link: link) }
-        }
+    }
+
+    /// Что показывать в этом виде чата: поле ввода или плашка внизу, авторы, комментарии,
+    /// «@», плашка незнакомца, варианты закрепа и удаления (`ChatScreenRules`).
+    private var rules: ChatScreenRules {
+        let card = profile?.profile
+        var input = ChatScreenRules.Input(listedType: chatType, canWrite: canWrite, card: card?.kind)
+        input.hasJoinLink = card?.linkURL != nil
+        input.canToggleMute = canWrite != nil && onToggleMute != nil
+        input.commentsEnabled = comments
+        input.historyEmpty = viewModel.isHistoryEmpty
+        input.contactAddable = profile?.contactAction == .add
+        input.peerBlocked = profile?.isBlocked
+        input.hasOwnMessages = viewModel.hasOwnMessages
+        input.strangerBarDismissed = strangerBarDismissed
+        return ChatScreenRules(input)
     }
 
     /// Родные комментарии канала: флаг из списка чатов, а если список не знает (канал из поиска
@@ -1019,25 +1052,10 @@ struct ChatView: View {
     }
 
     /// Тип чата для ленты и поля ввода: из списка, а для чата вне списка — из карточки.
-    private var kind: ChatType {
-        guard canWrite == nil, let card = profile?.profile else { return chatType }
-        switch card.kind {
-        case .channel: return .channel
-        case .group: return .group
-        case .user, .bot, .saved: return .private
-        }
-    }
+    private var kind: ChatType { rules.kind }
 
-    /// Поле ввода только там, где можно писать. Чат вне списка (канал из поиска, группа по
-    /// ссылке до вступления) — только личный диалог, бот или «Избранное», и только когда
-    /// карточка уже пришла: иначе поле мелькнуло бы и пропало.
-    private var writable: Bool {
-        if let canWrite { return canWrite }
-        switch profile?.profile?.kind {
-        case .user?, .bot?, .saved?: return true
-        case .group?, .channel?, nil: return false
-        }
-    }
+    /// Можно ли писать (`ChatScreenRules.writable`): «печатает» и правила выбора.
+    private var writable: Bool { rules.writable }
 
     /// Профиль, открытый из чата: звук, общие медиа и действия, которые раньше были в меню шапки.
     private func profileContext(for card: ChatProfileViewModel) -> ChatProfileContext {
@@ -1054,11 +1072,11 @@ struct ChatView: View {
         context.onShowMessageId = { showInChat($0) }
         context.list = listed ? listActions : nil
         context.shareTargets = forwardTargets
-        if listed, card.shown.kind == .channel || card.shown.kind == .group {
+        if rules.canLeave {
             context.onLeave = onLeave
         }
-        if let join = joinAction {
-            context.join = (label: join.label, run: join.action)
+        if case .join(let label) = rules.bottomBar, let action = bottomAction {
+            context.join = (label: label, run: action.run)
         }
         if let onOpenChat {
             context.onOpenChat = { id in
@@ -1077,7 +1095,7 @@ struct ChatView: View {
             context.onPoll = { closeProfile { pollShown = true } }
             context.onSchedule = { closeProfile { scheduleShown = true } }
         }
-        if kind == .private, let peerId = viewModel.peerId, card.shown.kind == .user, let onCall {
+        if rules.canCall, let peerId = viewModel.peerId, let onCall {
             let peer = CallCenter.Peer(id: peerId, name: card.shown.title, avatarURL: card.shown.avatarURL)
             context.onCall = { video in
                 profileShown = false
@@ -1130,13 +1148,14 @@ struct ChatView: View {
 
     @ViewBuilder
     private var pinPromptButtons: some View {
-        if kind == .private {
+        switch rules.pinOptions {
+        case .dialog:
             Button("Только у меня") { Task { await viewModel.confirmPin(forMe: true, notify: true) } }
             Button("Закрепить") { Task { await viewModel.confirmPin(forMe: false, notify: true) } }
-        } else if kind == .group {
+        case .group:
             Button("Уведомить участников") { Task { await viewModel.confirmPin(forMe: false, notify: true) } }
             Button("Закрепить без уведомления") { Task { await viewModel.confirmPin(forMe: false, notify: false) } }
-        } else {
+        case .channel:
             Button("Закрепить") { Task { await viewModel.confirmPin(forMe: false, notify: true) } }
         }
         Button("Отмена", role: .cancel) {}
@@ -1234,6 +1253,77 @@ struct ChatView: View {
         .accessibilityLabel("Закреплено: \(text)")
     }
 
+    /// Диалог с человеком не из контактов: «Добавить в контакты», пока сам ему не писал —
+    /// ещё «Заблокировать», и крестик. Плашка уходит, когда человек в контактах, заблокирован
+    /// или её закрыли.
+    private func strangerBanner(_ bar: ChatScreenRules.StrangerBar) -> some View {
+        HStack(spacing: 0) {
+            Button {
+                Task { await addStranger() }
+            } label: {
+                Text("Добавить в контакты")
+                    .frame(maxWidth: .infinity, minHeight: 40)
+                    .contentShape(Rectangle())
+            }
+            .foregroundStyle(Color.maxlyAccent)
+            if bar.offersBlock {
+                Divider().frame(height: 20)
+                Button {
+                    strangerBlockAsked = true
+                } label: {
+                    Text("Заблокировать")
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                        .contentShape(Rectangle())
+                }
+                .foregroundStyle(.red)
+            }
+            Button {
+                dismissStranger()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 40, height: 40)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Скрыть")
+        }
+        .buttonStyle(.plain)
+        .font(.app(.subheadline, .semibold))
+        .disabled(profile?.isChangingContact == true || profile?.isActing == true)
+        .padding(.leading, 6)
+        .maxlyGlassCapsule(interactive: false)
+        .padding(.horizontal, MaxlyTheme.pad)
+        .padding(.top, 6)
+        .confirmationDialog("Заблокировать \(headerTitle)?", isPresented: $strangerBlockAsked, titleVisibility: .visible) {
+            Button("Заблокировать", role: .destructive) { Task { await blockStranger() } }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("Этот человек не сможет писать вам и звонить.")
+        }
+    }
+
+    private func addStranger() async {
+        guard let profile else { return }
+        if await profile.addToContacts() {
+            viewModel.announce("Контакт добавлен")
+        } else if let error = profile.contactError {
+            viewModel.announce(error)
+            profile.dismissContactError()
+        }
+    }
+
+    private func blockStranger() async {
+        guard let profile, profile.isBlocked != true else { return }
+        await profile.toggleBlocked()
+        if let notice = profile.actionNotice { viewModel.announce(notice) }
+    }
+
+    private func dismissStranger() {
+        StrangerBarDismissals.insert(chatId: viewModel.chatId, account: viewModel.currentUserId)
+        withAnimation(MaxlyMotion.quick(reduceMotion: reduceMotion)) { strangerBarDismissed = true }
+    }
+
     private var privateModeBanner: some View {
         MaxlyGlassGroup(spacing: 6) {
             VStack(spacing: 6) {
@@ -1299,7 +1389,7 @@ struct ChatView: View {
     private func noteSelectionContext() {
         let selection = viewModel.selection
         selection.chatType = kind
-        selection.isAdmin = kind == .channel && writable
+        selection.isAdmin = rules.isChannelAdmin
         selection.peerName = kind == .private ? headerTitle : nil
     }
 
@@ -1312,6 +1402,23 @@ struct ChatView: View {
 
     /// В канале с комментариями счётчики постов спрашиваются у сервера, когда лента меняется.
     private var wantsCommentCounts: Bool {
-        kind == .channel && comments == true
+        rules.allowsComments
+    }
+}
+
+/// Закрытые крестиком плашки незнакомца: по чатам, своя для каждого аккаунта. Настройка
+/// устройства: после переустановки плашка вернётся.
+enum StrangerBarDismissals {
+    private static func key(_ account: String) -> String { "maxly.chat.strangerBarDismissed.\(account)" }
+
+    static func contains(chatId: String, account: String) -> Bool {
+        (UserDefaults.standard.stringArray(forKey: key(account)) ?? []).contains(chatId)
+    }
+
+    static func insert(chatId: String, account: String) {
+        var ids = UserDefaults.standard.stringArray(forKey: key(account)) ?? []
+        guard !ids.contains(chatId) else { return }
+        ids.append(chatId)
+        UserDefaults.standard.set(ids, forKey: key(account))
     }
 }

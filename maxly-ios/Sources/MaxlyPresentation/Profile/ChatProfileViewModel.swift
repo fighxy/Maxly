@@ -581,6 +581,21 @@ public final class ChatProfileViewModel {
         }
     }
 
+    /// «Начать» в пустом диалоге с ботом (экран чата): ядро шлёт `botStarted`, бот отвечает в
+    /// чат. `false` — бота нет или сервер отказал; текст ошибки в `actionNotice`.
+    public func startBot() async -> Bool {
+        guard let actions, shown.kind == .bot, !isActing else { return false }
+        isActing = true
+        defer { isActing = false }
+        do {
+            try await actions.startBot(chatId: chatId)
+            return true
+        } catch {
+            announce(error.userMessage ?? "Не удалось запустить бота")
+            return false
+        }
+    }
+
     /// Заблокировать или разблокировать собеседника.
     public func toggleBlocked() async {
         guard let actions, let person = personId, !isActing else { return }

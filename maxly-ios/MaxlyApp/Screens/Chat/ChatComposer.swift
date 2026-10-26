@@ -3,7 +3,7 @@ import MaxlyDomain
 import MaxlyPresentation
 import MaxlyUI
 
-/// Поле ввода чата, как в WhatsApp: ошибка и подсказки над ним, правка и ответ, «+» слева,
+/// Поле ввода чата: ошибка и подсказки над ним, правка и ответ, «+» слева,
 /// поле со смайликом, справа камера (нажатие — снимок, удержание — кружок) и микрофон
 /// (удержание — голосовое), с текстом — отправка. Вынесено из `ChatView`: поле перерисовывается
 /// при наборе текста, а лента в это время не трогается.
@@ -14,25 +14,27 @@ struct ChatComposer: View {
     @Binding var attachmentsShown: Bool
     /// Панель эмодзи и стикеров на месте клавиатуры.
     @Binding var panelShown: Bool
-    let canWrite: Bool
+    /// Что стоит внизу: поле ввода, «Начать» у бота, «Подписаться» / «Вступить», кнопки
+    /// подписчика канала или пояснение (`ChatScreenRules.bottomBar`).
+    let bottomBar: ChatScreenRules.BottomBar
     /// Плашка вместо поля ввода. Нет, пока не ясно, можно ли писать (чат вне списка ждёт карточку).
     var showsReadOnlyBar = true
-    let chatType: ChatType
     let isMuted: Bool
     let onToggleMute: (() -> Void)?
     /// «Открыть приложение» бота с мини-приложением. `nil` — кнопки нет.
     var onOpenApp: (() -> Void)? = nil
-    /// «Подписаться» или «Вступить» вместо плашки у канала или группы вне списка.
-    var join: Join? = nil
+    /// Кнопка «Подписаться», «Вступить» или «Начать» по центру вместо поля ввода.
+    var action: Action? = nil
     /// Поиск по каналу. Стоит справа от кнопки звука.
     var onSearch: (() -> Void)? = nil
-    /// Высота кнопок звука и поиска в канале: круг и капсула одной линии.
 
-    struct Join {
-        let label: String
+    /// Кнопка-капсула вместо поля ввода и её действие.
+    struct Action {
         let busy: Bool
-        let action: () -> Void
+        let run: () -> Void
     }
+
+    private var canWrite: Bool { bottomBar == .composer }
     /// Отступ поля ввода от краёв.
     static let inset: CGFloat = 12
 
@@ -278,32 +280,21 @@ struct ChatComposer: View {
         .accessibilityLabel(viewModel.editTarget == nil ? "Отправить" : "Сохранить правку")
     }
 
-    /// Писать нельзя: вне списка — «Подписаться» или «Вступить», в канале — кнопка звука,
-    /// в остальных — пояснение. Кнопки — небольшие капсулы по центру, не во всю ширину.
+    /// Вместо поля ввода: у бота — «Начать», вне списка — «Подписаться» или «Вступить», у
+    /// подписчика канала — кнопка звука, в остальных — пояснение. Кнопки — небольшие капсулы
+    /// по центру, не во всю ширину.
     @ViewBuilder
     private var readOnlyBar: some View {
-        if let join {
-            Button(action: join.action) {
-                ZStack {
-                    Text(join.label)
-                        .font(.app(.subheadline, .semibold))
-                        .opacity(join.busy ? 0 : 1)
-                    if join.busy { ProgressView().controlSize(.small) }
-                }
-                .padding(.horizontal, 22)
-                .frame(minHeight: 38)
-                .contentShape(Capsule())
+        switch bottomBar {
+        case .startBot:
+            if let action { capsuleButton("Начать", action) }
+        case .join(let label):
+            if let action { capsuleButton(label, action) }
+        case .channelControls:
+            if let onToggleMute {
+                ChannelReadOnlyControls(isMuted: isMuted, onToggleMute: onToggleMute, onSearch: onSearch)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.maxlyAccent)
-            .maxlyGlassCapsule()
-            .disabled(join.busy)
-            .frame(maxWidth: .infinity)
-            .accessibilityLabel(join.label)
-        } else if chatType == .channel, let onToggleMute {
-            ChannelReadOnlyControls(isMuted: isMuted, onToggleMute: onToggleMute, onSearch: onSearch)
-
-        } else {
+        case .readOnly:
             Text("Писать в этот чат нельзя")
                 .font(.app(.footnote))
                 .foregroundStyle(.secondary)
@@ -311,7 +302,29 @@ struct ChatComposer: View {
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .padding(.horizontal, 12)
                 .maxlyGlassCapsule()
+        case .composer:
+            EmptyView()
         }
+    }
+
+    private func capsuleButton(_ label: String, _ action: Action) -> some View {
+        Button(action: action.run) {
+            ZStack {
+                Text(label)
+                    .font(.app(.subheadline, .semibold))
+                    .opacity(action.busy ? 0 : 1)
+                if action.busy { ProgressView().controlSize(.small) }
+            }
+            .padding(.horizontal, 22)
+            .frame(minHeight: 38)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.maxlyAccent)
+        .maxlyGlassCapsule()
+        .disabled(action.busy)
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel(label)
     }
 
     private func editBar(_ message: Message) -> some View {

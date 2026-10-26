@@ -22,8 +22,14 @@ public final class ChatViewModel {
             applyPinState()
             settleSeen()
             recountUnreadBelow()
+            refreshHistoryFlags()
         }
     }
+    /// История сверена с сервером и пуста: в пустом диалоге с ботом внизу «Начать». Отдельный
+    /// флаг, чтобы экран не перерисовывался целиком на каждое новое сообщение.
+    public private(set) var isHistoryEmpty = false
+    /// В ленте есть свои сообщения: плашка незнакомца больше не предлагает «Заблокировать».
+    public private(set) var hasOwnMessages = false
     /// Живая лента из репозитория: последние сообщения чата подряд. Лента показывает её или
     /// окно вокруг далёкого сообщения (`window`).
     @ObservationIgnored private var live: [Message] = []
@@ -52,6 +58,11 @@ public final class ChatViewModel {
     @ObservationIgnored private var seenUpTo: Date?
     /// Непрочитанные ниже экрана: число на кнопке «вниз».
     public private(set) var unreadBelow = 0
+    /// Непрочитанные упоминания себя (id сообщений от старых к новым): кнопка «@» в группе.
+    /// Те же правила, что у `unreadBelow`: чужие сообщения живой ленты ниже отметки «долистал».
+    public private(set) var unreadMentions: [String] = []
+    /// Упоминания, к которым уже перешли кнопкой «@» за этот заход.
+    @ObservationIgnored private var visitedMentions: Set<String> = []
     /// Сообщение у низа экрана, когда читатель ушёл из чата посреди истории.
     @ObservationIgnored private var savedPlace: String?
     /// Сообщение, на котором открывают чат (`openAt`), пока экран не встал.
@@ -368,7 +379,10 @@ public final class ChatViewModel {
 
     /// Свежая история загружена хотя бы раз: пустая лента — действительно пустой чат.
     public private(set) var latestLoaded = false {
-        didSet { if latestLoaded, !oldValue { placeUnreadAnchor() } }
+        didSet {
+            if latestLoaded, !oldValue { placeUnreadAnchor() }
+            refreshHistoryFlags()
+        }
     }
     /// Адрес, который экран должен открыть: ответ бота на кнопку или кнопка-ссылка.
     public var openURLRequest: URL?
@@ -378,14 +392,19 @@ public final class ChatViewModel {
     public private(set) var pressingButton: String?
     /// Кэш и серверная сверка при каждом открытии не являются live-вставками.
     public private(set) var isRestoringHistory = false {
-        didSet { if !isRestoringHistory { settleSeen() } }
+        didSet {
+            if !isRestoringHistory { settleSeen() }
+            refreshHistoryFlags()
+        }
     }
     @ObservationIgnored private var watchGeneration = 0
     @ObservationIgnored private var loadGeneration = 0
     @ObservationIgnored private var latestRetry: Task<Void, Never>?
     public private(set) var isLoadingLatest = false
     public private(set) var isLoadingOlder = false
-    public private(set) var historyError: MaxlyError?
+    public private(set) var historyError: MaxlyError? {
+        didSet { refreshHistoryFlags() }
+    }
 
     /// Пустое «Избранное»: вместо ленты плашка о том, что это за чат.
     public var showsSavedPlaceholder: Bool {
@@ -412,6 +431,7 @@ public final class ChatViewModel {
         readProgress.open(position: openReadMark)
         returnStack = []
         seenUpTo = nil
+        visitedMentions = []
         if window != nil { setWindow(nil) }
         unreadAnchorId = nil
         placeUnreadAnchor()
@@ -1544,15 +1564,41 @@ public final class ChatViewModel {
         recountUnreadBelow()
     }
 
-    /// Чужие сообщения живой ленты новее отметки «долистал».
+    /// Чужие сообщения живой ленты новее отметки «долистал» и упоминания себя среди них.
     private func recountUnreadBelow() {
         var count = 0
+        var mentions: [String] = []
         if let seen = seenUpTo {
             for message in live where message.timestamp > seen && !isOutgoing(message) && !message.content.isService {
                 count += 1
+                if mentionsMe(message), !visitedMentions.contains(message.id) { mentions.append(message.id) }
             }
         }
         if count != unreadBelow { unreadBelow = count }
+        if mentions != unreadMentions { unreadMentions = mentions }
+    }
+
+    /// Флаги ленты для экрана; меняются, только когда меняется их значение.
+    private func refreshHistoryFlags() {
+        let empty = latestLoaded && messages.isEmpty && !isRestoringHistory && historyError == nil
+        if empty != isHistoryEmpty { isHistoryEmpty = empty }
+        let own = messages.contains { isOutgoing($0) }
+        if own != hasOwnMessages { hasOwnMessages = own }
+    }
+
+    /// В тексте сообщения упомянут этот аккаунт (`USER_MENTION` со своим id).
+    private func mentionsMe(_ message: Message) -> Bool {
+        guard !currentUserId.isEmpty else { return false }
+        return message.content.formatting?.contains { $0.kind == .mention && $0.userId == currentUserId } == true
+    }
+
+    /// Кнопка «@»: лента едет к самому старому непрочитанному упоминанию и подсвечивает его.
+    /// Оно сразу уходит из счётчика; остальные уходят, когда их долистали.
+    public func jumpToNextMention() {
+        guard let id = unreadMentions.first else { return }
+        visitedMentions.insert(id)
+        recountUnreadBelow()
+        focusReply(id)
     }
 
     /// Непрочитанных больше, чем чужих в окне ленты: окно растёт страницами, пока первое
