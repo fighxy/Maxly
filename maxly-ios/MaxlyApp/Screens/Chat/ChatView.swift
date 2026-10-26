@@ -136,21 +136,21 @@ struct ChatView: View {
         .overlay { ReactionEffectLayer(host: reactionBurst) }
         .environment(\.messageMenuPresenter, messageMenu)
         // Анимодзи в сообщениях.
-        .environment(\.animojiCatalog, viewModel.animoji)
+        .environment(\.animojiCatalog, viewModel.reactions.animoji)
         .environment(\.reactionBurst, reactionBurst)
-        .task(id: viewModel.reactionBurst?.id) {
-            reactionBurst.onShown = { [viewModel] id in viewModel.reactionBurstShown(id) }
-            reactionBurst.update(viewModel.reactionBurst)
-            guard let id = viewModel.reactionBurst?.id else { return }
+        .task(id: viewModel.reactions.burst?.id) {
+            reactionBurst.onShown = { [viewModel] id in viewModel.reactions.burstShown(id) }
+            reactionBurst.update(viewModel.reactions.burst)
+            guard let id = viewModel.reactions.burst?.id else { return }
             try? await Task.sleep(for: ReactionBurstHost.limit)
             guard !Task.isCancelled else { return }
             reactionBurst.expire(id)
         }
         // Анимации и эффекты быстрых реакций качаются заранее: по нажатию играют сразу.
-        .task(id: viewModel.animoji.count + viewModel.reactionEffects.count) {
-            let quick = ReactionPalette.quick(catalog: viewModel.reactionCatalog, mine: nil)
+        .task(id: viewModel.reactions.animoji.count + viewModel.reactions.effects.count) {
+            let quick = ReactionPalette.quick(catalog: viewModel.reactions.catalog, mine: nil)
             let urls = quick.flatMap { emoji in
-                [AnimojiText.lookup(catalog: viewModel.animoji, emoji: emoji), AnimojiText.lookup(catalog: viewModel.reactionEffects, emoji: emoji)].compactMap { $0 }
+                [AnimojiText.lookup(catalog: viewModel.reactions.animoji, emoji: emoji), AnimojiText.lookup(catalog: viewModel.reactions.effects, emoji: emoji)].compactMap { $0 }
             }
             for url in urls where LottieStore.shared.cached(url) == nil {
                 _ = await LottieStore.shared.animation(for: url)
@@ -505,12 +505,12 @@ struct ChatView: View {
                         .environment(\.chatHasPhotoWallpaper, false)
                 }
             }
-            .sheet(item: $viewModel.reactionPickerTarget) { message in
+            .sheet(item: $viewModel.reactions.pickerTarget) { message in
                 ReactionPicker(
-                    catalog: viewModel.reactionCatalog,
+                    catalog: viewModel.reactions.catalog,
                     mine: message.content.reactions.mine,
-                    onPick: { emoji in Task { await viewModel.pickReaction(emoji) } },
-                    onClose: { viewModel.reactionPickerTarget = nil }
+                    onPick: { emoji in Task { await viewModel.reactions.pick(emoji) } },
+                    onClose: { viewModel.reactions.pickerTarget = nil }
                 )
                 .environment(\.privateMode, .visible)
             }
@@ -551,9 +551,9 @@ struct ChatView: View {
                 )
                 .environment(\.privateMode, .visible)
             }
-            .sheet(item: $viewModel.reactionUsers) { model in
+            .sheet(item: $viewModel.reactions.users) { model in
                 // Открывается из открытого пузыря — значит, смотреть его хотят.
-                ReactionUsersView(model: model) { viewModel.reactionUsers = nil }
+                ReactionUsersView(model: model) { viewModel.reactions.users = nil }
                     .environment(\.privateMode, .visible)
             }
             .sheet(item: $viewModel.messageInfo) { model in
@@ -778,7 +778,7 @@ struct ChatView: View {
                     reveal.hideAll()
                 }
                 // Пуши реакций, пока приложение было в фоне, могли потеряться: сверить с сервером.
-                if phase == .active { Task { await viewModel.refreshReactions() } }
+                if phase == .active { Task { await viewModel.reactions.refresh() } }
             }
     }
 

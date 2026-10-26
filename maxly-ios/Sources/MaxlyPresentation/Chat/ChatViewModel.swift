@@ -182,26 +182,8 @@ public final class ChatViewModel {
     /// Диалог открыт из контактов, и на сервере его может ещё не быть: пустая история не
     /// ошибка, экран предлагает написать первое сообщение.
     public let isNewDialog: Bool
-    /// Каталог реакций сервера. Пуст, пока не загрузился: меню берёт запасной набор.
-    public private(set) var reactionCatalog: [String] = []
-    /// Анимодзи: эмодзи → Lottie (`AnimojiText`).
-    public private(set) var animoji: [String: URL] = [:]
-    /// Эффекты реакций: эмодзи → Lottie вокруг значка только что поставленной реакции.
-    public private(set) var reactionEffects: [String: URL] = [:]
-    /// Только что поставленная реакция: экран один раз играет её анимацию (`reactionBurstShown`).
-    public private(set) var reactionBurst: ReactionBurst?
-    @ObservationIgnored private var burstCounter = 0
-    /// Откуда взять каталог анимодзи (контейнер берёт его у стикеров). Задан — каталог грузится.
-    @ObservationIgnored public var loadAnimoji: (@Sendable () async -> AnimojiAssets)? {
-        didSet { requestAnimoji() }
-    }
-    /// Сообщение, для которого открыт полный выбор реакций.
-    public var reactionPickerTarget: Message?
-    /// Открытый список «Кто отреагировал».
-    public var reactionUsers: ReactionUsersViewModel?
     /// Открытые «Сведения» о сообщении.
     public var messageInfo: MessageInfoViewModel?
-    @ObservationIgnored private var catalogRequested = false
     /// Ход загрузки вложений своих сообщений: id сообщения → доля 0…1.
     public private(set) var uploadProgress: [String: Double] = [:]
     @ObservationIgnored private var progressWatch: Task<Void, Never>?
@@ -226,10 +208,7 @@ public final class ChatViewModel {
     @ObservationIgnored private let comments: (any CommentsRepository)?
     /// Посты, чьи счётчики уже спрошены: один запрос на пост за время жизни экрана.
     @ObservationIgnored private var askedCounts: Set<String> = []
-    /// Посты, чьи реакции уже спрошены отдельным запросом.
-    @ObservationIgnored private var askedReactions: Set<String> = []
-    /// После ошибки реакции и счётчики не спрашиваются до этого времени.
-    @ObservationIgnored private var reactionsRetryAt = Date.distantPast
+    /// После ошибки счётчики комментариев не спрашиваются до этого времени.
     @ObservationIgnored private var countsRetryAt = Date.distantPast
     @ObservationIgnored private let chats: (any ChatRepository)?
     @ObservationIgnored private var mentionDraft = MentionDraft()
@@ -268,6 +247,8 @@ public final class ChatViewModel {
     public let voices: VoicePlaybackModel
     /// Вложения: просмотр, кружки в ленте, файлы, сохранение.
     public let attachments: ChatMediaModel
+    /// Реакции: каталог, поставить и снять, выбор, «Кто отреагировал», анимация.
+    public let reactions: ChatReactionsModel
 
     public init(
         chatId: String,
@@ -298,6 +279,7 @@ public final class ChatViewModel {
         self.scheduled = ScheduledMessagesModel(chatId: chatId, repository: messages)
         self.voices = VoicePlaybackModel(chatId: chatId, currentUserId: currentUserId, repository: messages, media: media, voice: voice)
         self.attachments = ChatMediaModel(chatId: chatId, repository: messages, media: media, links: links, gallery: gallery)
+        self.reactions = ChatReactionsModel(chatId: chatId, repository: messages)
         selection.onNotice = { [weak self] text in self?.showNotice(text) }
         selection.onError = { [weak self] failure in self?.show(failure) }
         selection.onDeleted = { [weak self] ids in
@@ -319,6 +301,11 @@ public final class ChatViewModel {
         attachments.onWillPlayRound = { [weak self] in self?.voices.stop() }
         attachments.onNotice = { [weak self] text in self?.showNotice(text) }
         attachments.onError = { [weak self] failure in self?.show(failure) }
+        reactions.messages = { [weak self] in self?.messages ?? [] }
+        reactions.onError = { [weak self] failure in self?.show(failure) }
+        reactions.onSuccess = { [weak self] in
+            if case .rejected(ChatReactionsModel.failure)? = self?.error { self?.error = nil }
+        }
         scheduled.onNotice = { [weak self] text in self?.showNotice(text) }
         scheduled.onError = { [weak self] failure in self?.show(failure) }
     }
@@ -532,7 +519,7 @@ public final class ChatViewModel {
 
     public func activate() {
         guard watch == nil else { return }
-        loadReactionCatalog()
+        reactions.loadCatalog()
         startMessagesWatch()
         startPinWatch()
         scheduled.startWatch()
@@ -1050,63 +1037,6 @@ public final class ChatViewModel {
 
     // MARK: Реакции
 
-    /// Реакции ставятся на сообщения, уже принятые сервером.
-    public func canReact(_ message: Message) -> Bool {
-        message.status == .sent && message.serverId.flatMap { Int64($0) } != nil
-    }
-
-    /// Быстрый ряд меню сообщения: начало каталога, своя реакция всегда в нём.
-    public func quickReactions(for message: Message) -> [String] {
-        ReactionPalette.quick(catalog: reactionCatalog, mine: message.content.reactions.mine)
-    }
-
-    /// Поставить реакцию или снять свою. Лента меняется сразу, при отказе сервера
-    /// возвращается прежнее и показывается ошибка.
-    public func toggleReaction(messageId: String, emoji: String) async {
-        let mine = messages.first(where: { $0.id == messageId })?.content.reactions.mine
-        if mine != emoji {
-            // Поставили (не сняли) — значок реакции в плашке играет свою анимацию и эффект вокруг.
-            let body = AnimojiText.lookup(catalog: animoji, emoji: emoji)
-            let effect = AnimojiText.lookup(catalog: reactionEffects, emoji: emoji)
-            if body != nil || effect != nil {
-                burstCounter += 1
-                reactionBurst = ReactionBurst(messageId: messageId, emoji: emoji, lottieURL: body, effectURL: effect, id: burstCounter)
-            }
-        }
-        do {
-            try await repository.toggleReaction(messageId: messageId, emoji: emoji)
-            if case .rejected(Self.reactionFailure)? = error { error = nil }
-        } catch {
-            switch error {
-            case .cancelled:
-                return
-            case .rejected:
-                show(error)
-            default:
-                show(.rejected(Self.reactionFailure))
-            }
-        }
-    }
-
-    /// Выбрана реакция в полном списке.
-    public func pickReaction(_ emoji: String) async {
-        guard let target = reactionPickerTarget else { return }
-        reactionPickerTarget = nil
-        await toggleReaction(messageId: target.id, emoji: emoji)
-    }
-
-    public func showMoreReactions(_ message: Message) {
-        guard canReact(message) else { return }
-        loadReactionCatalog()
-        reactionPickerTarget = message
-    }
-
-    /// «Кто отреагировал»: есть в группах, если под сообщением есть реакции.
-    public func showReactionUsers(_ message: Message) {
-        guard canReact(message), !message.content.reactions.isEmpty else { return }
-        reactionUsers = ReactionUsersViewModel(message: message, repository: repository)
-    }
-
     /// «Сведения» о сообщении: у любого сообщения, принятого сервером (своего и чужого).
     /// Тип чата знает экран, модель ленты его не хранит.
     public func canShowInfo(_ message: Message) -> Bool {
@@ -1118,70 +1048,6 @@ public final class ChatViewModel {
         messageInfo = MessageInfoViewModel(message: message, chatType: chatType, isOwn: isOutgoing(message), repository: repository)
     }
 
-    /// Сверить реакции показанных сообщений с сервером: при возврате в приложение пуши
-    /// за время в фоне могли потеряться.
-    public func refreshReactions() async {
-        await repository.refreshReactions(chatId: chatId)
-        // После фона реакции постов канала спрашиваются заново.
-        askedReactions.removeAll()
-    }
-
-    /// Реакции показанных сообщений отдельным запросом (`MSG_GET_REACTIONS`): в истории канала
-    /// их нет, а своя реакция с другого устройства видна только в нём. Каждое сообщение
-    /// спрашивается один раз за открытие; своё переключение реакции не перезаписывается.
-    public func requestReactions(for posts: [Message]) {
-        guard Date() >= reactionsRetryAt else { return }
-        // Самые новые и не больше одной пачки: остальное спросит следующее обновление ленты.
-        let ids = Array(posts.compactMap { post -> String? in
-            guard post.status == .sent, let id = post.serverId, Int64(id) != nil, !askedReactions.contains(id) else { return nil }
-            return id
-        }.suffix(Self.reactionBatch))
-        guard !ids.isEmpty else { return }
-        askedReactions.formUnion(ids)
-        let chatId = chatId
-        let repository = repository
-        Task { [weak self] in
-            let ok = await repository.syncReactions(chatId: chatId, messageIds: ids)
-            guard let self, !ok else { return }
-            self.askedReactions.subtract(ids)
-            self.reactionsRetryAt = Date().addingTimeInterval(Self.retryAfterError)
-        }
-    }
-
-    /// Экран доиграл анимацию реакции `id`.
-    public func reactionBurstShown(_ id: Int) {
-        if reactionBurst?.id == id { reactionBurst = nil }
-    }
-
-    private func requestAnimoji() {
-        guard let loadAnimoji, animoji.isEmpty else { return }
-        Task { [weak self] in
-            let assets = await loadAnimoji()
-            guard let self, !assets.animoji.isEmpty || !assets.effects.isEmpty else { return }
-            self.animoji = assets.animoji
-            self.reactionEffects = assets.effects
-        }
-    }
-
-    private func loadReactionCatalog() {
-        guard !catalogRequested else { return }
-        catalogRequested = true
-        let repository = repository
-        Task { [weak self] in
-            let catalog = await repository.reactionCatalog()
-            guard let self else { return }
-            if catalog.isEmpty {
-                // Попробовать ещё раз при следующем открытии полного списка.
-                self.catalogRequested = false
-            } else {
-                self.reactionCatalog = catalog
-            }
-        }
-    }
-
-    static let reactionFailure = "Не удалось обновить реакцию"
-    /// Сообщений в одном запросе реакций.
-    static let reactionBatch = 100
     /// Пауза перед повтором реакций и счётчиков после ошибки сервера.
     static let retryAfterError: TimeInterval = 30
     /// Через сколько повторить сверку ленты после `too.many.requests`.
@@ -1618,7 +1484,7 @@ public final class ChatViewModel {
             post: post,
             currentUserId: currentUserId,
             comments: comments,
-            reactionCatalog: reactionCatalog
+            reactionCatalog: reactions.catalog
         )
         commentsModel = model
         return model

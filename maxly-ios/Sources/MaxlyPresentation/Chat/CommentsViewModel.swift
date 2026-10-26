@@ -204,7 +204,7 @@ public final class CommentsViewModel {
                 }
                 comments[current].content.reactions = update.applied(to: comments[current].content.reactions)
             }
-            if case .rejected(ChatViewModel.reactionFailure)? = self.error { self.error = nil }
+            if case .rejected(ChatReactionsModel.failure)? = self.error { self.error = nil }
         } catch {
             guard pendingReactions[commentId] == request else { return }
             pendingReactions[commentId] = nil
@@ -215,7 +215,7 @@ public final class CommentsViewModel {
             if case .rejected = error {
                 self.error = error
             } else {
-                self.error = .rejected(ChatViewModel.reactionFailure)
+                self.error = .rejected(ChatReactionsModel.failure)
             }
         }
     }
