@@ -505,7 +505,7 @@ struct ChatView: View {
                         .environment(\.chatHasPhotoWallpaper, false)
                 }
             }
-            .sheet(item: $viewModel.reactions.pickerTarget) { message in
+            .sheet(item: Bindable(viewModel.reactions).pickerTarget) { message in
                 ReactionPicker(
                     catalog: viewModel.reactions.catalog,
                     mine: message.content.reactions.mine,
@@ -520,7 +520,7 @@ struct ChatView: View {
                     Task { await viewModel.polls.send(title: title, answers: answers) }
                 }
             }
-            .sheet(isPresented: $viewModel.pins.listShown) { pinList }
+            .sheet(isPresented: Bindable(viewModel.pins).listShown) { pinList }
             .confirmationDialog("Закрепить сообщение", isPresented: pinPromptShown, titleVisibility: .visible) {
                 pinPromptButtons
             }
@@ -551,7 +551,7 @@ struct ChatView: View {
                 )
                 .environment(\.privateMode, .visible)
             }
-            .sheet(item: $viewModel.reactions.users) { model in
+            .sheet(item: Bindable(viewModel.reactions).users) { model in
                 // Открывается из открытого пузыря — значит, смотреть его хотят.
                 ReactionUsersView(model: model) { viewModel.reactions.users = nil }
                     .environment(\.privateMode, .visible)
