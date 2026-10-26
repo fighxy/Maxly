@@ -133,7 +133,7 @@ struct ChatViewModelTests {
             status: .sent,
             content: MessageContent(attachments: [.voice(voice)])
         )
-        model.toggleVoice(message)
-        #expect(await eventually { model.voicePhase(for: "a") == .failed })
+        model.voices.toggle(message)
+        #expect(await eventually { model.voices.phase(for: "a") == .failed })
     }
 }

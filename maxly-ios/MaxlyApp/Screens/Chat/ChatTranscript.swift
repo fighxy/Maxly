@@ -946,7 +946,7 @@ struct ChatTranscript: View {
             showsReactionUsers: rules.showsReactionUsers,
             isRevealed: reveal.isRevealed(message.id),
             highlighted: viewModel.highlightedId == message.id,
-            phase: message.content.voices.first.map { viewModel.voicePhase(for: $0.id) } ?? .idle,
+            phase: message.content.voices.first.map { viewModel.voices.phase(for: $0.id) } ?? .idle,
             loadingId: loading,
             commentCount: viewModel.commentCount(for: message),
             uploadProgress: viewModel.uploadFraction(of: message),

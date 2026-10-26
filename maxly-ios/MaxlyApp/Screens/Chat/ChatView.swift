@@ -649,7 +649,7 @@ struct ChatView: View {
             .onAppear {
                 onScreen = true
                 viewModel.setScreenActive(scenePhase == .active)
-                recording.onStart = { [viewModel] in viewModel.stopVoice() }
+                recording.onStart = { [viewModel] in viewModel.voices.stop() }
                 recording.onRecordingChange = { [viewModel] mode in
                     let kind: TypingKind?
                     switch mode {

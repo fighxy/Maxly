@@ -36,7 +36,8 @@ Liquid Glass для элементов управления. Изменения 
   отдельные виды со своим состоянием (`ChatComposeSheets.swift`).
 - `ChatViewModel` держит ленту и состояние экрана; отдельные части — во вложенных моделях:
   поиск (`search`, `ChatSearchModel`), опросы (`polls`, `ChatPollsModel`), отложенные
-  (`scheduled`, `ScheduledMessagesModel`), выбор сообщений (`selection`). Ошибки и
+  (`scheduled`, `ScheduledMessagesModel`), голосовые (`voices`, `VoicePlaybackModel`, он же владелец
+  полосы «играет голосовое»), выбор сообщений (`selection`). Ошибки и
   уведомления вложенных моделей показывает экран через `onError` / `onNotice`.
 - `ChatTranscript` отвечает за положение ленты и её размеры. `TranscriptBottomState`
   отличает чтение истории от следования за новыми сообщениями.

@@ -144,7 +144,7 @@ struct TranscriptBubble: View, Equatable {
             onReact: { emoji in Task { await viewModel.toggleReaction(messageId: message.id, emoji: emoji) } },
             onComments: { viewModel.openComments(message) },
             onOpen: { viewModel.presentMedia(message, startId: $0) },
-            onVoice: { viewModel.toggleVoice(message) },
+            onVoice: { viewModel.voices.toggle(message) },
             onFile: { viewModel.openFile(message, attachmentId: $0) },
             onFocusReply: { viewModel.focusReply($0, from: message.id) },
             onForward: { viewModel.requestForward(message) },
@@ -166,7 +166,7 @@ struct TranscriptBubble: View, Equatable {
             onTranscribe: state.canTranscribe ? {
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { viewModel.toggleTranscript(message) }
             } : nil,
-            onSeekVoice: { viewModel.seekVoice(message, to: $0) },
+            onSeekVoice: { viewModel.voices.seek(message, to: $0) },
             onDoubleTap: state.reacts ? state.quickReaction.map { emoji in
                 { Task { await viewModel.toggleReaction(messageId: message.id, emoji: emoji) } }
             } : nil,

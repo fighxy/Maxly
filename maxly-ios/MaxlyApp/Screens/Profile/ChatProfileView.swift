@@ -1137,9 +1137,9 @@ struct ChatProfileView: View {
     private func voiceList(_ items: [SharedMedia.Voice], chat: ChatViewModel) -> some View {
         LazyVStack(spacing: 0) {
             ForEach(items) { item in
-                let phase = chat.voicePhase(for: item.voice.id)
+                let phase = chat.voices.phase(for: item.voice.id)
                 Button {
-                    chat.toggleVoice(item.message)
+                    chat.voices.toggle(item.message)
                 } label: {
                     SharedRow {
                         Circle()
