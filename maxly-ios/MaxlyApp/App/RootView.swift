@@ -110,6 +110,25 @@ struct RootView: View {
     }
 }
 
+/// Сжатие нижней панели при прокрутке вниз (iOS 26, `tabBarMinimizeBehavior`). Сжатая панель
+/// показывает кнопку текущей вкладки; раскрывают её прокрутка вверх или нажатие. Раньше iOS 26
+/// панель не сжимается.
+private struct TabBarMinimize: ViewModifier {
+    let enabled: Bool
+
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            content.tabBarMinimizeBehavior(enabled ? .onScrollDown : .never)
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
+    }
+}
+
 /// Нижняя панель вкладок. На iOS 26 система рисует её плавающей стеклянной капсулой.
 struct MainTabView: View {
     @Bindable var container: AppContainer
@@ -130,6 +149,9 @@ struct MainTabView: View {
                     .badge(badge(for: tab))
             }
         }
+        // iOS 26: прокрутка списка чатов вниз сжимает панель до кнопки вкладки, прокрутка вверх
+        // или нажатие раскрывают её. Только во «Чатах» и только на iPhone.
+        .modifier(TabBarMinimize(enabled: router.tab == .chats && sizeClass != .regular))
         // Приватный режим: вид для строк и пузырей, а сама настройка — для кнопок-переключателей.
         .environment(\.privateMode, container.privateMode.display)
         .environment(container.privateMode)
