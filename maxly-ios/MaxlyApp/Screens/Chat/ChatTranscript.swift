@@ -231,6 +231,7 @@ struct ChatTranscript: View {
             revealMode: reveal,
             feedInset: Self.feedInset,
             reduceMotion: reduceMotion,
+            liveChanges: !viewModel.isRestoringHistory && !isOpening,
             scrollRequest: scroll.request,
             stickToBottom: stickToBottom,
             reveal: revealTarget,
