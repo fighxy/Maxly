@@ -17,13 +17,16 @@ public struct TranscriptRow: Identifiable, Equatable, Sendable {
     public var isOutgoing: Bool
     /// Над сообщением «Непрочитанные сообщения»: первое непрочитанное при открытии чата.
     public var startsUnread: Bool = false
+    /// Фото или видео сообщения, на которое этот ответ, если оно есть в ленте: миниатюра в цитате.
+    public var replyMedia: ChatAttachment? = nil
 
     public var id: String { message.id }
 }
 
 public enum TranscriptLayout {
     public static func rows(_ messages: [Message], currentUserId: String, unreadAnchorId: String? = nil, now: Date = Date()) -> [TranscriptRow] {
-        messages.indices.map { index in
+        let replied = repliedMedia(messages)
+        return messages.indices.map { index in
             let message = messages[index]
             let previous = index > 0 ? messages[index - 1] : nil
             let next = index + 1 < messages.count ? messages[index + 1] : nil
@@ -49,9 +52,24 @@ public enum TranscriptLayout {
                     && !message.authorName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                 showsAuthorAvatar: !service && !outgoing && !group.joinsNext,
                 isOutgoing: outgoing,
-                startsUnread: startsUnread
+                startsUnread: startsUnread,
+                replyMedia: message.content.reply.flatMap { replied[$0.messageId] }
             )
         }
+    }
+
+    /// Первое фото или видео сообщений, на которые в ленте есть ответы, по `id` и `serverId`.
+    /// Пусто, если ответов нет: ленту без них не перебираем второй раз.
+    static func repliedMedia(_ messages: [Message]) -> [String: ChatAttachment] {
+        let targets = Set(messages.compactMap { $0.content.reply?.messageId })
+        guard !targets.isEmpty else { return [:] }
+        var media: [String: ChatAttachment] = [:]
+        for message in messages {
+            guard let visual = message.content.visuals.first else { continue }
+            if targets.contains(message.id) { media[message.id] = visual }
+            if let serverId = message.serverId, targets.contains(serverId) { media[serverId] = visual }
+        }
+        return media
     }
 
     /// Первое непрочитанное по своей отметке прочтения `readMark` (мс, `OwnReadMark`): первое

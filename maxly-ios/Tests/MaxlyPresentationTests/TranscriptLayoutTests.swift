@@ -106,4 +106,31 @@ struct TranscriptLayoutTests {
         // Два непрочитанных — это «1» и «3»: событие не считается.
         #expect(TranscriptLayout.unreadAnchor(messages, unread: 2, currentUserId: "me", complete: true) == "1")
     }
+
+    @Test("Цитата ответа берёт фото исходного сообщения из ленты по id или серверному id")
+    func replyMedia() {
+        let photo = ChatAttachment.photo(PhotoContent(id: "p1", url: URL(string: "https://example.com/p1.jpg")))
+        let original = Message(
+            id: "local-1", serverId: "101", chatId: "c", authorId: "bob", text: "",
+            timestamp: Date(timeIntervalSince1970: 10), status: .sent,
+            content: MessageContent(attachments: [photo])
+        )
+        func reply(_ id: String, to target: String, kind: MessageReply.Kind) -> Message {
+            Message(
+                id: id, chatId: "c", authorId: "me", text: "ответ",
+                timestamp: Date(timeIntervalSince1970: 20), status: .sent,
+                content: MessageContent(reply: MessageReply(messageId: target, authorName: "Боб", preview: "Фото", kind: kind))
+            )
+        }
+        let rows = TranscriptLayout.rows(
+            [original, reply("2", to: "101", kind: .photo), reply("3", to: "local-1", kind: .photo), reply("4", to: "999", kind: .text)],
+            currentUserId: "me"
+        )
+        #expect(rows[0].replyMedia == nil)
+        #expect(rows[1].replyMedia == photo)
+        #expect(rows[2].replyMedia == photo)
+        // Исходного сообщения нет в ленте — миниатюры нет.
+        #expect(rows[3].replyMedia == nil)
+        #expect(TranscriptLayout.repliedMedia([original]).isEmpty)
+    }
 }

@@ -183,7 +183,8 @@ struct TranscriptBubble: View, Equatable {
             onAuthor: state.chatType == .group ? { onAuthor(message) } : nil,
             onSelect: state.selectable ? { [reduceMotion] in
                 withAnimation(MaxlyMotion.quick(reduceMotion: reduceMotion)) { viewModel.selection.begin(with: message) }
-            } : nil
+            } : nil,
+            replyMedia: state.row.replyMedia
         )
     }
 

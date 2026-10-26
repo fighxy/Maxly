@@ -78,6 +78,8 @@ public struct MessageBubble: View {
     private let onAuthor: (() -> Void)?
     /// «Выбрать»: режим выбора нескольких сообщений. `nil` — пункта нет.
     private let onSelect: (() -> Void)?
+    /// Фото или видео сообщения, на которое этот ответ: миниатюра в цитате. `nil` — без неё.
+    private let replyMedia: ChatAttachment?
 
     /// Копия пузыря в меню долгого нажатия: только сам пузырь, без жестов.
     private var isMenuPreview = false
@@ -95,6 +97,8 @@ public struct MessageBubble: View {
     @Environment(\.chatWallpaperHasImage) private var wallpaperHasImage
     /// Анимодзи чата: крупные эмодзи играют и без отметки сервера.
     @Environment(\.animojiCatalog) private var animojiCatalog
+    @Environment(\.displayScale) private var displayScale
+    @Environment(\.imageURLSizing) private var imageURLSizing
     private static let replyThreshold: CGFloat = 56
 
     private static let radius: CGFloat = 18
@@ -148,10 +152,12 @@ public struct MessageBubble: View {
         onCast: (([String]) -> Void)? = nil,
         onButton: ((InlineButton) -> Void)? = nil,
         onAuthor: (() -> Void)? = nil,
-        onSelect: (() -> Void)? = nil
+        onSelect: (() -> Void)? = nil,
+        replyMedia: ChatAttachment? = nil
     ) {
         self.onAuthor = onAuthor
         self.onSelect = onSelect
+        self.replyMedia = replyMedia
         self.message = message
         self.layout = MessageBubbleLayout(message: message, showsAuthorName: showsAuthorName, showsComments: allowsComments)
         self.isOutgoing = isOutgoing
@@ -248,10 +254,13 @@ public struct MessageBubble: View {
         .offset(x: swipe)
         .background(alignment: .trailing) { replyHint }
         .replySwipe(enabled: allowsReply, onChange: swipeChanged, onEnd: swipeEnded)
-        .padding(.top, group.joinsPrevious ? 0 : 4)
-        .background(highlighted ? Color.maxlyAccent.opacity(0.12) : Color.clear)
+        // Между пузырями серии 2 pt (`rowSpacing` ленты), между сериями — 8.
+        .padding(.top, group.joinsPrevious ? 0 : 6)
+        // Пузырь с подложкой вспыхивает сам (`BubbleFlash`); стикер и крупные эмодзи без
+        // подложки подсвечиваются полосой строки.
+        .background(highlighted && standalone != nil ? Color.maxlyAccent.opacity(0.12) : Color.clear)
         .animation(MaxlyMotion.fade, value: highlighted)
-        .messageMenu(enabled: menuPresenter != nil, onOpen: openMenu) {
+        .messageMenu(enabled: menuPresenter != nil, anchor: isOutgoing ? .trailing : .leading, onOpen: openMenu) {
             if allowsReactions {
                 reactionMenu
             }
@@ -693,12 +702,28 @@ public struct MessageBubble: View {
         .frame(minWidth: 64, alignment: .leading)
         .background(fill, in: shape)
         .clipShape(shape)
+        // Тень — под обрезанным пузырём, иначе форма срезала бы её.
+        .background { wallpaperShadow }
+        .overlay {
+            BubbleFlash(active: highlighted, shape: shape, tint: quoteTint)
+        }
         .overlay {
             if let uploadProgress {
                 UploadRing(progress: uploadProgress, onCancel: onCancelUpload)
             }
         }
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// На фото-обоях пузырь с подложкой отделён от пёстрого фона лёгкой тенью. На встроенных
+    /// обоях тени нет.
+    @ViewBuilder
+    private var wallpaperShadow: some View {
+        if wallpaperHasImage, hasFill {
+            shape
+                .fill(fill)
+                .shadow(color: .black.opacity(0.14), radius: 1.5, x: 0, y: 0.5)
+        }
     }
 
     @ViewBuilder
@@ -852,9 +877,12 @@ public struct MessageBubble: View {
             Image(systemName: "clock")
                 .font(.system(size: 10, weight: .semibold))
                 .frame(width: DeliveryChecks.size.width)
+                .transition(.opacity)
                 .accessibilityLabel("Отправляется")
         case .sent:
+            // Часы сменяются галочкой, которая прорисовывается; вторая галочка «прочитано» — тоже.
             DeliveryChecks(read: message.isRead)
+                .transition(.maxlyCheckDraw(reduceMotion: reduceMotion))
                 .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: message.isRead)
         case .failed:
             Image(systemName: "exclamationmark.circle.fill")
@@ -937,15 +965,25 @@ public struct MessageBubble: View {
             onFocusReply(reply.messageId)
         } label: {
             // Полоса — в overlay, чтобы её высота бралась из текста, а не растягивала цитату.
-            VStack(alignment: .leading, spacing: 1) {
-                Text(reply.authorName)
-                    .font(.app(.subheadline, .semibold))
-                    .foregroundStyle(quoteTint)
-                    .lineLimit(1)
-                Text(reply.preview)
-                    .font(.app(.subheadline))
-                    .lineLimit(1)
-                    .foregroundStyle(textColor.opacity(0.85))
+            HStack(spacing: 8) {
+                if let url = replyMedia.flatMap(replyThumbnailURL) {
+                    RemoteImage(url: url, maxPixel: Int(Self.replyThumbnail * 3)) {
+                        quoteTint.opacity(0.2)
+                    }
+                    .frame(width: Self.replyThumbnail, height: Self.replyThumbnail)
+                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    .accessibilityHidden(true)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(reply.authorName)
+                        .font(.app(.subheadline, .semibold))
+                        .foregroundStyle(quoteTint)
+                        .lineLimit(1)
+                    quotePreview(reply)
+                        .font(.app(.subheadline))
+                        .lineLimit(1)
+                        .foregroundStyle(textColor.opacity(0.85))
+                }
             }
             .padding(.leading, 11)
             .padding(.trailing, 8)
@@ -961,6 +999,32 @@ public struct MessageBubble: View {
             .fixedSize(horizontal: false, vertical: true)
         }
         .buttonStyle(.plain)
+    }
+
+    private static let replyThumbnail: CGFloat = 34
+
+    /// Текст цитаты; перед ним значок вида исходного сообщения, кроме текста.
+    private func quotePreview(_ reply: MessageReply) -> Text {
+        let symbol: String? = switch reply.kind {
+        case .voice: "mic.fill"
+        case .photo: "photo.fill"
+        case .video: "video.fill"
+        case .file: "doc.fill"
+        case .text: nil
+        }
+        guard let symbol else { return Text(reply.preview) }
+        return Text(Image(systemName: symbol)) + Text(verbatim: " ") + Text(reply.preview)
+    }
+
+    /// Миниатюра цитаты: фото — уменьшенным адресом ядра, видео — его обложкой.
+    private func replyThumbnailURL(_ item: ChatAttachment) -> URL? {
+        if let photo = item.photo, photo.localPath == nil {
+            return ImageURLRequests.url(
+                photo.url, shape: .square, pointSize: Self.replyThumbnail, scale: displayScale,
+                fullScreen: false, sizing: imageURLSizing
+            )
+        }
+        return item.photo?.displayURL ?? item.video?.displayURL
     }
 
     // MARK: Цвета
@@ -1186,12 +1250,77 @@ private struct MenuFrameReader: ViewModifier {
 extension View {
     /// Долгое нажатие: меню (`MessageMenuPresenter`) или системное меню.
     @ViewBuilder
-    func messageMenu<Items: View>(enabled: Bool, onOpen: @escaping () -> Void, @ViewBuilder items: () -> Items) -> some View {
+    func messageMenu<Items: View>(
+        enabled: Bool,
+        anchor: UnitPoint,
+        onOpen: @escaping () -> Void,
+        @ViewBuilder items: () -> Items
+    ) -> some View {
         if enabled {
-            simultaneousGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in onOpen() })
-                .accessibilityAction(named: Text("Действия"), onOpen)
+            modifier(MessageMenuPress(anchor: anchor, onOpen: onOpen))
         } else {
             contextMenu { items() }
         }
+    }
+}
+
+/// Пока палец держит пузырь, тот чуть сжимается от своего края, затем открывается меню.
+/// Сжатие начинается с задержкой: касание при прокрутке и короткое нажатие пузырь не сжимают.
+/// С «Уменьшением движения» пузырь не сжимается.
+private struct MessageMenuPress: ViewModifier {
+    let anchor: UnitPoint
+    let onOpen: () -> Void
+    @GestureState private var pressing = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(pressing && !reduceMotion ? 0.96 : 1, anchor: anchor)
+            .animation(
+                pressing ? .easeOut(duration: 0.3).delay(0.08) : MaxlyMotion.quick(reduceMotion: reduceMotion),
+                value: pressing
+            )
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.35)
+                    .updating($pressing) { value, state, _ in state = value }
+                    .onEnded { _ in onOpen() }
+            )
+            .accessibilityAction(named: Text("Действия"), onOpen)
+    }
+}
+
+/// Вспышка пузыря при переходе к нему (цитата, упоминание, закреп): заливка его формы дважды
+/// проявляется и гаснет за 1,2 с — столько держится подсветка (`ChatViewModel.focus`). Вспышка
+/// идёт и у ячейки, которая появилась уже подсвеченной. С «Уменьшением движения» — одно мягкое
+/// проявление без второго импульса.
+private struct BubbleFlash<S: Shape>: View {
+    let active: Bool
+    let shape: S
+    let tint: Color
+    @State private var pulses = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var peak: Double { reduceMotion ? 0.25 : 0.3 }
+    private var dip: Double { reduceMotion ? 0.25 : 0.1 }
+
+    var body: some View {
+        let peak = peak
+        let dip = dip
+        return shape
+            .fill(tint)
+            .keyframeAnimator(initialValue: 0.0, trigger: pulses) { content, opacity in
+                content.opacity(opacity)
+            } keyframes: { _ in
+                KeyframeTrack {
+                    LinearKeyframe(peak, duration: 0.15)
+                    LinearKeyframe(dip, duration: 0.3)
+                    LinearKeyframe(peak, duration: 0.2)
+                    LinearKeyframe(0, duration: 0.55)
+                }
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .onAppear { if active { pulses += 1 } }
+            .onChange(of: active) { _, now in if now { pulses += 1 } }
     }
 }
