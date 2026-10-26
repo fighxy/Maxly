@@ -31,6 +31,9 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
     let revealMode: PrivateModeReveal
     let feedInset: CGFloat
     let reduceMotion: Bool
+    /// Живое изменение ленты (не открытие и не восстановление истории): новые и удалённые
+    /// сообщения и выросший у низа пузырь двигаются плавно.
+    let liveChanges: Bool
     let scrollRequest: TranscriptScrollController.Request?
     let stickToBottom: Bool
     let reveal: Reveal?
@@ -95,13 +98,15 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
             guard let controller else { return }
             controller.loadViewIfNeeded()
             controller.animatesAppend = !feed.reduceMotion
+            controller.reduceMotion = feed.reduceMotion
             controller.rowSpacing = 2
             var byID: [String: TranscriptRow] = [:]
             var rows: [FeedEntry] = []
             rows.reserveCapacity(feed.rows.count)
             for row in feed.rows where byID[row.id] == nil {
                 byID[row.id] = row
-                rows.append(FeedEntry(id: .row(row.id), key: feed.layoutKey(row)))
+                let edge: FeedEdge = row.message.content.isService ? .center : row.isOutgoing ? .trailing : .leading
+                rows.append(FeedEntry(id: .row(row.id), key: feed.layoutKey(row), edge: edge))
             }
             rowsByID = byID
             shownSnapshots = shownSnapshots.filter { byID[$0.key] != nil }
@@ -122,7 +127,7 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
                 lastRequestToken = nil
             }
             controller.setChrome(headerBottom: feed.headerBottom, composerTop: feed.composerTop)
-            controller.update(content, follow: Self.follow(feed), forcePosition: newToken != nil)
+            controller.update(content, follow: Self.follow(feed), forcePosition: newToken != nil, live: feed.liveChanges)
             refreshVisible()
             if let token = newToken, let request = feed.scrollRequest {
                 // Лента ставит строку сразу, в этом же ходе: подтверждать нечего ждать.

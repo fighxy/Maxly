@@ -83,7 +83,7 @@ public struct MessageBubble: View {
 
     /// Копия пузыря в меню долгого нажатия: только сам пузырь, без жестов.
     private var isMenuPreview = false
-    /// Меню экрана чата как в WhatsApp; `nil` — системное контекстное меню.
+    /// Меню экрана чата; `nil` — системное контекстное меню.
     @Environment(\.messageMenuPresenter) private var menuPresenter
     /// Место пузыря на экране для меню. Ссылка, а не состояние: прокрутка его меняет каждый
     /// кадр, и пузырь не должен из-за этого перерисовываться.
@@ -324,7 +324,7 @@ public struct MessageBubble: View {
 
     // MARK: Меню долгого нажатия
 
-    /// Открыть меню как в WhatsApp: копия пузыря на его месте, реакции и пункты.
+    /// Открыть меню: копия пузыря на его месте, реакции и пункты.
     private func openMenu() {
         guard let menuPresenter, menuFrame.rect.width > 0 else { return }
         menuFrame.openedAt = Date()
@@ -344,7 +344,7 @@ public struct MessageBubble: View {
         ))
     }
 
-    /// Главные пункты, порядок как у WhatsApp.
+    /// Главные пункты в привычном порядке.
     private var primaryMenuActions: [MessageMenuAction] {
         var actions: [MessageMenuAction] = []
         if allowsReply { actions.append(MessageMenuAction("Ответить", systemImage: "arrowshape.turn.up.left", action: onReply)) }
@@ -1248,8 +1248,7 @@ private struct MenuFrameReader: ViewModifier {
 }
 
 extension View {
-    /// Долгое нажатие: меню (`MessageMenuPresenter`) или системное меню. `anchor` — край, к
-    /// которому пузырь сжимается, пока палец держит.
+    /// Долгое нажатие: меню (`MessageMenuPresenter`) или системное меню.
     @ViewBuilder
     func messageMenu<Items: View>(
         enabled: Bool,

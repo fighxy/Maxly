@@ -27,7 +27,7 @@ public struct MediaViewerChrome: Equatable, Sendable {
     }
 }
 
-/// Двойное касание у края ролика: −10 / +10 секунд, как в Telegram и YouTube. Касания
+/// Двойное касание у края ролика: −10 / +10 секунд, как в привычных плеерах. Касания
 /// подряд в пределах `window` складываются: третье — уже 20 секунд.
 public struct SeekTapAccumulator: Equatable, Sendable {
     public struct Seek: Equatable, Sendable {

@@ -24,6 +24,8 @@ enum FeedItemID: Hashable, Sendable {
 struct FeedEntry {
     var id: FeedItemID
     var key: FeedLayoutKey
+    /// Сторона, от которой строка въезжает и к которой уходит в анимированном снимке.
+    var edge: FeedEdge = .center
 }
 
 /// Что показывает лента: сверху вниз, старое сверху.
@@ -85,6 +87,10 @@ final class FeedCollectionController: UIViewController, UICollectionViewDelegate
     var rowSpacing: CGFloat = 2
     /// Новое сообщение у низа въезжает плавно; с «Уменьшением движения» — сразу.
     var animatesAppend = true
+    /// «Уменьшение движения»: новые и удалённые строки только растворяются.
+    var reduceMotion = false {
+        didSet { (collectionView?.collectionViewLayout as? FeedFlowLayout)?.reducesMotion = reduceMotion }
+    }
 
     private(set) var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Int, FeedItemID>!
@@ -108,6 +114,10 @@ final class FeedCollectionController: UIViewController, UICollectionViewDelegate
     private var animatingToBottom = false
     /// Перекладка из-за новых высот назначена на следующий ход.
     private var relayoutScheduled = false
+    /// Стороны строк прежнего снимка, пока применяется анимированный: по ним уходят удалённые.
+    private var edgesBefore: [FeedEdge] = []
+    /// Снимок, который применит анимация движения строк.
+    private var pendingSnapshot: NSDiffableDataSourceSnapshot<Int, FeedItemID>?
 
     // MARK: Жизненный цикл
 
@@ -116,7 +126,9 @@ final class FeedCollectionController: UIViewController, UICollectionViewDelegate
         view.backgroundColor = .clear
         view.clipsToBounds = false
         view.insetsLayoutMarginsFromSafeArea = false
-        let flow = UICollectionViewFlowLayout()
+        let flow = FeedFlowLayout()
+        flow.reducesMotion = reduceMotion
+        flow.edge = { [weak self] item, appearing in self?.edge(item: item, appearing: appearing) }
         flow.scrollDirection = .vertical
         flow.minimumInteritemSpacing = 0
         flow.minimumLineSpacing = 0
@@ -151,13 +163,16 @@ final class FeedCollectionController: UIViewController, UICollectionViewDelegate
     // MARK: Снимок
 
     /// Новое содержимое и куда встать. Строки у места, где лента встанет, меряются до показа.
-    func update(_ next: FeedContent, follow: FeedFollow, forcePosition: Bool = false) {
+    /// `live` — живое изменение (не открытие и не восстановление истории): новые и удалённые
+    /// строки и выросший у низа пузырь могут двигаться (`FeedMotionPlan`).
+    func update(_ next: FeedContent, follow: FeedFollow, forcePosition: Bool = false, live: Bool = false) {
         loadViewIfNeeded()
         let previous = content
         let previousFollow = self.follow
         self.follow = follow
         let ready = collectionView.bounds.width > 1 && collectionView.bounds.height > 1
         let anchor = ready ? captureAnchor() : nil
+        let visible = ready ? visibleRowIDs() : []
         let oldIDs = previous.all.map(\.id)
         let newIDs = next.all.map(\.id)
         var changed: [FeedItemID] = []
@@ -172,6 +187,14 @@ final class FeedCollectionController: UIViewController, UICollectionViewDelegate
             && next.rows.count > previous.rows.count
             && previous.rows.last.map { last in next.rows.contains { $0.id == last.id } } ?? false
             && next.rows.last?.id != previous.rows.last?.id
+        guard idsChanged || !changed.isEmpty || previousFollow != follow || forcePosition || !hasSettled else {
+            content = next
+            keys = nextKeys
+            return
+        }
+        let motion = ready
+            ? plannedMotion(previous: previous, next: next, changed: changed, visible: visible, live: live, commanded: forcePosition)
+            : .instant
         content = next
         keys = nextKeys
         rowIndex = Dictionary(uniqueKeysWithValues: next.rows.enumerated().compactMap { index, entry -> (String, Int)? in
@@ -181,22 +204,13 @@ final class FeedCollectionController: UIViewController, UICollectionViewDelegate
         if idsChanged {
             heights.retain(Set(newIDs.map(Self.storeID)))
         }
-        guard idsChanged || !changed.isEmpty || previousFollow != follow || forcePosition || !hasSettled else { return }
-        FeedScroll.performWithoutAnimation {
-            if idsChanged {
-                var snapshot = NSDiffableDataSourceSnapshot<Int, FeedItemID>()
-                snapshot.appendSections([Self.topSection, Self.rowsSection, Self.bottomSection])
-                snapshot.appendItems(next.top.map(\.id), toSection: Self.topSection)
-                snapshot.appendItems(next.rows.map(\.id), toSection: Self.rowsSection)
-                snapshot.appendItems(next.bottom.map(\.id), toSection: Self.bottomSection)
-                let present = Set(newIDs)
-                let reconfigure = changed.filter { present.contains($0) }
-                if !reconfigure.isEmpty { snapshot.reconfigureItems(reconfigure) }
-                dataSource.apply(snapshot, animatingDifferences: false)
-            } else if !changed.isEmpty {
-                var snapshot = dataSource.snapshot()
-                snapshot.reconfigureItems(changed)
-                dataSource.apply(snapshot, animatingDifferences: false)
+        let snapshot = nextSnapshot(next, idsChanged: idsChanged, changed: changed)
+        switch motion {
+        case .appear, .disappear:
+            if let snapshot { applyMoving(snapshot, previous: previous, motion: motion, anchor: anchor) }
+        case .instant, .resize:
+            if let snapshot {
+                FeedScroll.performWithoutAnimation { dataSource.apply(snapshot, animatingDifferences: false) }
             }
         }
         guard ready else { return }
@@ -204,11 +218,156 @@ final class FeedCollectionController: UIViewController, UICollectionViewDelegate
         // ещё катится после отпущенного пальца, останавливается и встаёт по команде. Раньше
         // команда ждала конца инерции и терялась. Палец на ленте по-прежнему главнее.
         if forcePosition { stopMomentum() }
+        switch motion {
+        case .disappear:
+            // Смещение уже поставлено в той же анимации, что и строки.
+            noteGeometry()
+            return
+        case .resize:
+            settleResized(anchor: anchor)
+            return
+        case .appear, .instant:
+            break
+        }
         // Новое сообщение у низа и кнопка «вниз» с недалёкого места — плавно, остальное — сразу.
         let near = bottomDistance.distance < bottomDistance.visible * 1.5
         let animate = animatesAppend && hasSettled && follow == .bottom && !FeedScroll.isInteracting(collectionView)
             && ((appendedAtBottom && wasAtBottom) || (previousFollow != .bottom && near))
         settle(anchor: anchor, animated: animate, stickIfAtBottom: false)
+    }
+
+    /// Снимок для нового содержимого: новый состав или перенастройка строк с новым отпечатком.
+    /// `nil` — менять нечего.
+    private func nextSnapshot(
+        _ next: FeedContent,
+        idsChanged: Bool,
+        changed: [FeedItemID]
+    ) -> NSDiffableDataSourceSnapshot<Int, FeedItemID>? {
+        if idsChanged {
+            var snapshot = NSDiffableDataSourceSnapshot<Int, FeedItemID>()
+            snapshot.appendSections([Self.topSection, Self.rowsSection, Self.bottomSection])
+            snapshot.appendItems(next.top.map(\.id), toSection: Self.topSection)
+            snapshot.appendItems(next.rows.map(\.id), toSection: Self.rowsSection)
+            snapshot.appendItems(next.bottom.map(\.id), toSection: Self.bottomSection)
+            let present = Set(next.all.map(\.id))
+            let reconfigure = changed.filter { present.contains($0) }
+            if !reconfigure.isEmpty { snapshot.reconfigureItems(reconfigure) }
+            return snapshot
+        }
+        guard !changed.isEmpty else { return nil }
+        var snapshot = dataSource.snapshot()
+        snapshot.reconfigureItems(changed)
+        return snapshot
+    }
+
+    // MARK: Движение строк
+
+    /// Как показать этот снимок (`FeedMotionPlan`). Считается до него: что было на экране и у низа.
+    private func plannedMotion(
+        previous: FeedContent,
+        next: FeedContent,
+        changed: [FeedItemID],
+        visible: Set<String>,
+        live: Bool,
+        commanded: Bool
+    ) -> FeedMotion {
+        let oldRows = previous.rows.compactMap(Self.rowID)
+        let newRows = next.rows.compactMap(Self.rowID)
+        let removed = Set(oldRows).subtracting(newRows)
+        let distance = bottomDistance
+        return FeedMotionPlan.motion(FeedMotionPlan.Input(
+            live: live,
+            settled: hasSettled,
+            interacting: FeedScroll.isInteracting(collectionView),
+            commanded: commanded,
+            change: CollectionChange.between(oldRows, newRows),
+            followsBottom: follow == .bottom,
+            atBottom: wasAtBottom,
+            nearBottom: distance.distance < distance.visible * 1.5,
+            removedVisible: !removed.isEmpty && removed.isSubset(of: visible),
+            resizedVisible: changed.contains { id in
+                if case .row(let rowID) = id { return visible.contains(rowID) }
+                return false
+            }
+        ))
+    }
+
+    /// Снимок с движением строк: новые въезжают, удалённые сжимаются (`FeedFlowLayout`).
+    /// Новые строки меряются до снимка, иначе они въехали бы с прикидкой высоты и
+    /// поправились посреди движения. При удалении смещение и зазоры ставятся в той же
+    /// анимации: строки выше удалённой съезжают вместе с лентой, а не прыгают. Въезд к новому
+    /// внизу — плавная прокрутка из `settle`, как и раньше.
+    private func applyMoving(
+        _ snapshot: NSDiffableDataSourceSnapshot<Int, FeedItemID>,
+        previous: FeedContent,
+        motion: FeedMotion,
+        anchor: Anchor?
+    ) {
+        let known = Set(previous.rows.map(\.id))
+        for entry in content.rows where !known.contains(entry.id) { measure(entry.id) }
+        edgesBefore = previous.rows.map(\.edge)
+        pendingSnapshot = snapshot
+        let stick = wasAtBottom
+        animateRows(duration: 0.34, bounce: 0.1) {
+            guard let snapshot = self.pendingSnapshot else { return }
+            self.pendingSnapshot = nil
+            self.dataSource.apply(snapshot, animatingDifferences: true)
+            guard motion == .disappear else { return }
+            self.collectionView.layoutIfNeeded()
+            _ = self.applyInsets()
+            self.position(anchor: anchor, animated: false, stickIfAtBottom: stick)
+        }
+        edgesBefore = []
+    }
+
+    /// Строка на экране у низа сменила высоту: раскладка едет плавно, лента держится низом.
+    private func settleResized(anchor: Anchor?) {
+        let stick = wasAtBottom
+        measureWindow(around: focusRow(anchor: anchor))
+        animateRows(duration: 0.22, bounce: 0) {
+            self.collectionView.collectionViewLayout.invalidateLayout()
+            self.collectionView.layoutIfNeeded()
+            _ = self.applyInsets()
+        }
+        position(anchor: anchor, animated: true, stickIfAtBottom: stick)
+        noteGeometry()
+    }
+
+    /// Пружина движения строк; с «Уменьшением движения» — короткое растворение.
+    private func animateRows(duration: TimeInterval, bounce: CGFloat, _ changes: @escaping () -> Void) {
+        if reduceMotion {
+            UIView.animate(
+                withDuration: 0.2,
+                delay: 0,
+                options: [.curveEaseInOut, .allowUserInteraction, .beginFromCurrentState],
+                animations: changes
+            )
+        } else {
+            UIView.animate(
+                springDuration: duration,
+                bounce: bounce,
+                initialSpringVelocity: 0,
+                delay: 0,
+                options: [.allowUserInteraction, .beginFromCurrentState],
+                animations: changes
+            )
+        }
+    }
+
+    /// Сторона строки сообщений для `FeedFlowLayout`: новые — по новому снимку, уходящие — по прежнему.
+    private func edge(item: Int, appearing: Bool) -> FeedEdge? {
+        if appearing {
+            return content.rows.indices.contains(item) ? content.rows[item].edge : nil
+        }
+        return edgesBefore.indices.contains(item) ? edgesBefore[item] : nil
+    }
+
+    /// Строки сообщений, ячейки которых сейчас на экране.
+    private func visibleRowIDs() -> Set<String> {
+        Set(collectionView.indexPathsForVisibleItems.compactMap { path -> String? in
+            guard path.section == Self.rowsSection, case .row(let id)? = dataSource.itemIdentifier(for: path) else { return nil }
+            return id
+        })
     }
 
     /// Низ шапки и верх поля ввода (или клавиатуры) в координатах окна; `nil` — ещё не измерены.

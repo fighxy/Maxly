@@ -114,7 +114,7 @@ struct MediaMosaic: View {
             guard !isSizing else { return }
             registry.remove(item.id)
         }
-        // Плитка открыта в просмотре: на её месте пусто, как в Telegram.
+        // Плитка открыта в просмотре: на её месте пусто.
         .opacity(registry.hiddenId == item.id ? 0 : 1)
         // Подписи поверх маски: у кружка углы квадрата вне круга, и маска их срезала бы.
         .overlay(alignment: round ? .bottomLeading : .topLeading) {

@@ -22,9 +22,8 @@ import MaxlyUI
 /// `docs/chat-smoothness.md`.
 struct ChatTranscript: View {
     @Bindable var viewModel: ChatViewModel
-    let chatType: ChatType
-    let commentsEnabled: Bool?
-    let canWrite: Bool
+    /// Что показывать в этом виде чата (`ChatScreenRules`).
+    let rules: ChatScreenRules
     let reveal: PrivateModeReveal
     var focus: FocusState<Bool>.Binding
     /// Верх нижних кнопок (поле ввода или плашка канала) в глобальных координатах: от него
@@ -123,16 +122,24 @@ struct ChatTranscript: View {
             }
             .animation(MaxlyMotion.fade, value: viewModel.showsSavedPlaceholder)
             .overlay(alignment: .bottomTrailing) {
-                Group {
+                VStack(spacing: 14) {
+                    // «@» над «вниз»: непрочитанные упоминания себя в группе.
+                    if !isOpening && rules.showsMentionsButton && !viewModel.unreadMentions.isEmpty {
+                        ChatJumpButton(content: .mention, count: viewModel.unreadMentions.count) {
+                            viewModel.jumpToNextMention()
+                        }
+                        .transition(.maxlyPop(reduceMotion: reduceMotion))
+                    }
                     if !isOpening && !viewModel.messages.isEmpty && (downButton.shown || viewModel.isJumped) {
-                        ScrollDownButton(unseen: viewModel.unreadBelow) { goDown() }
-                            .padding(.trailing, ChatComposer.trailingInset(canWrite: canWrite))
-                            .padding(.bottom, 10)
+                        ChatJumpButton(content: .down, count: viewModel.unreadBelow) { goDown() }
                             .transition(.maxlyPop(reduceMotion: reduceMotion))
                     }
                 }
+                .padding(.trailing, ChatComposer.trailingInset(canWrite: rules.bottomBar == .composer))
+                .padding(.bottom, 10)
                 .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: downButton.shown)
                 .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.unreadBelow)
+                .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.unreadMentions.count)
             }
             .onChange(of: viewModel.scrollToken) { _, _ in perform(viewModel.scrollTarget) }
             .onChange(of: bottomSignal) { _, _ in
@@ -224,6 +231,7 @@ struct ChatTranscript: View {
             revealMode: reveal,
             feedInset: Self.feedInset,
             reduceMotion: reduceMotion,
+            liveChanges: !viewModel.isRestoringHistory && !isOpening,
             scrollRequest: scroll.request,
             stickToBottom: stickToBottom,
             reveal: revealTarget,
@@ -310,7 +318,7 @@ struct ChatTranscript: View {
         if let hint = viewModel.emptyHint { return .hint(hint) }
         let empty = viewModel.latestLoaded && viewModel.messages.isEmpty && !viewModel.isRestoringHistory
             && viewModel.historyError == nil && !viewModel.showsSavedPlaceholder
-        if empty { return chatType == .channel && canWrite ? .channelReady : .empty }
+        if empty { return rules.showsChannelReady ? .channelReady : .empty }
         if !viewModel.messages.isEmpty && viewModel.canLoadOlder { return .olderLoader(loading: viewModel.isLoadingOlder) }
         return .none
     }
@@ -340,8 +348,8 @@ struct ChatTranscript: View {
         let typography = Typography.shared
         return TranscriptLayoutStyle(
             maxWidth: Self.bubbleMaxWidth(rowWidth: width - Self.feedInset * 2),
-            showsAuthors: chatType == .group,
-            allowsComments: chatType == .channel && commentsEnabled == true,
+            showsAuthors: rules.showsAuthors,
+            allowsComments: rules.allowsComments,
             isSelecting: viewModel.selection.isActive,
             privateMode: privateMode,
             dynamicTypeSize: dynamicTypeSize,
@@ -585,7 +593,7 @@ struct ChatTranscript: View {
             .padding(.horizontal, 24)
             .padding(.top, 80)
         } else if viewModel.latestLoaded && viewModel.messages.isEmpty && !viewModel.isRestoringHistory && viewModel.historyError == nil && !viewModel.showsSavedPlaceholder {
-            if chatType == .channel && canWrite {
+            if rules.showsChannelReady {
                 channelReady
             } else {
                 Text("Здесь пока нет сообщений")
@@ -919,7 +927,7 @@ struct ChatTranscript: View {
 
     private func state(for row: TranscriptRow, width: CGFloat) -> TranscriptBubble.Snapshot {
         let message = row.message
-        let showsAuthors = chatType == .group
+        let showsAuthors = rules.showsAuthors
         let reacts = viewModel.canReact(message)
         let loading = viewModel.loadingMediaId.flatMap { id in
             message.content.attachments.contains { $0.id == id } ? id : nil
@@ -934,8 +942,8 @@ struct ChatTranscript: View {
             showsAuthorAvatar: showsAuthors && row.showsAuthorAvatar,
             reservesAvatar: showsAuthors,
             allowsComments: allowsComments(message),
-            canWrite: canWrite,
-            showsReactionUsers: chatType == .group,
+            canWrite: rules.writable,
+            showsReactionUsers: rules.showsReactionUsers,
             isRevealed: reveal.isRevealed(message.id),
             highlighted: viewModel.highlightedId == message.id,
             phase: message.content.voices.first.map { viewModel.voicePhase(for: $0.id) } ?? .idle,
@@ -951,7 +959,7 @@ struct ChatTranscript: View {
             transcript: message.content.voices.first.map { viewModel.transcriptPhase(for: $0) } ?? .collapsed,
             canTranscribe: viewModel.canTranscribe(message),
             quickReaction: quickReaction,
-            chatType: chatType,
+            chatType: rules.kind,
             showsInfo: viewModel.canShowInfo(message),
             isSelecting: viewModel.selection.isActive,
             isSelected: viewModel.selection.isSelected(message.id),
@@ -963,7 +971,7 @@ struct ChatTranscript: View {
     /// (опция `COMMENTS: true`, как в Komet). Без опции их нет: обсуждение такого канала, если
     /// оно есть, ведёт бот кнопкой под постом.
     private func allowsComments(_ message: Message) -> Bool {
-        chatType == .channel && commentsEnabled == true
+        rules.allowsComments
     }
 
     /// Адреса фото, обложек видео и аватаров авторов: только сетевые, без повторов.
@@ -1008,20 +1016,26 @@ struct TranscriptReadReport: Equatable {
     var atBottom: Bool
 }
 
-/// Круглая кнопка «вниз» на стекле; число непрочитанных, пришедших сверху, — бейджем.
-private struct ScrollDownButton: View {
-    let unseen: Int
+/// Круглая кнопка перехода на стекле: «вниз» с числом непрочитанных ниже или «@» с числом
+/// непрочитанных упоминаний — бейджем.
+private struct ChatJumpButton: View {
+    enum Content {
+        case down
+        case mention
+    }
+
+    let content: Content
+    let count: Int
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: "chevron.down")
-                .font(.system(size: 17, weight: .semibold))
+            icon
                 .foregroundStyle(.primary)
                 .maxlyGlassCircle(size: ChatControlMetrics.diameter)
                 .overlay(alignment: .top) {
-                    if unseen > 0 {
-                        Text(unseen > 99 ? "99+" : "\(unseen)")
+                    if count > 0 {
+                        Text(count > 99 ? "99+" : "\(count)")
                             .font(.app(.caption2, .bold).monospacedDigit())
                             .foregroundStyle(Color.maxlyOnAccent)
                             .padding(.horizontal, 5)
@@ -1033,7 +1047,26 @@ private struct ScrollDownButton: View {
                 }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(unseen > 0 ? "Вниз, новых сообщений: \(unseen)" : "Вниз")
+        .accessibilityLabel(accessibilityText)
+    }
+
+    @ViewBuilder
+    private var icon: some View {
+        switch content {
+        case .down:
+            Image(systemName: "chevron.down")
+                .font(.system(size: 17, weight: .semibold))
+        case .mention:
+            Text(verbatim: "@")
+                .font(.system(size: 19, weight: .semibold))
+        }
+    }
+
+    private var accessibilityText: String {
+        switch content {
+        case .down: count > 0 ? "Вниз, новых сообщений: \(count)" : "Вниз"
+        case .mention: "Непрочитанные упоминания: \(count)"
+        }
     }
 }
 

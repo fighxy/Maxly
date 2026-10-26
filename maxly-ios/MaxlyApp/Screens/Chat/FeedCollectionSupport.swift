@@ -240,3 +240,83 @@ enum FeedScroll {
         CATransaction.commit()
     }
 }
+
+/// Сторона строки ленты: от неё строка въезжает и к ней уходит (`FeedFlowLayout`).
+enum FeedEdge: Hashable, Sendable {
+    /// Чужое сообщение.
+    case leading
+    /// Своё сообщение.
+    case trailing
+    /// Служебная строка: только растворение.
+    case center
+}
+
+/// Раскладка ленты: обычная вертикальная, плюс движение строк сообщений в анимированном снимке
+/// (docs/animations.md, правила 3 и 4). Своё новое сообщение поднимается от поля ввода и растёт
+/// от правого нижнего угла, чужое всплывает и растёт от левого, удалённое сжимается к своему
+/// краю и растворяется. С «Уменьшением движения» — только растворение. В снимке без анимации
+/// начальные и конечные атрибуты не видны.
+final class FeedFlowLayout: UICollectionViewFlowLayout {
+    /// Сторона строки сообщений по номеру: `appearing` — в новом снимке, иначе — в прежнем.
+    var edge: (_ item: Int, _ appearing: Bool) -> FeedEdge? = { _, _ in nil }
+    var reducesMotion = false
+    private var inserted: Set<IndexPath> = []
+    private var deleted: Set<IndexPath> = []
+
+    override func prepare(forCollectionViewUpdates updateItems: [UICollectionViewUpdateItem]) {
+        super.prepare(forCollectionViewUpdates: updateItems)
+        for update in updateItems {
+            switch update.updateAction {
+            case .insert:
+                if let path = update.indexPathAfterUpdate, path.item != NSNotFound { inserted.insert(path) }
+            case .delete:
+                if let path = update.indexPathBeforeUpdate, path.item != NSNotFound { deleted.insert(path) }
+            default:
+                break
+            }
+        }
+    }
+
+    override func finalizeCollectionViewUpdates() {
+        super.finalizeCollectionViewUpdates()
+        inserted.removeAll()
+        deleted.removeAll()
+    }
+
+    override func initialLayoutAttributesForAppearingItem(at itemIndexPath: IndexPath) -> UICollectionViewLayoutAttributes? {
+        let base = super.initialLayoutAttributesForAppearingItem(at: itemIndexPath)
+        guard inserted.contains(itemIndexPath) else { return base }
+        return moving(base ?? layoutAttributesForItem(at: itemIndexPath), at: itemIndexPath, appearing: true)
+    }
+
+    override func finalLayoutAttributesForDisappearingItem(at itemIndexPath: IndexPath) -> UICollectionViewLayoutAttributes? {
+        let base = super.finalLayoutAttributesForDisappearingItem(at: itemIndexPath)
+        guard deleted.contains(itemIndexPath) else { return base }
+        return moving(base, at: itemIndexPath, appearing: false)
+    }
+
+    /// Прозрачная строка, сдвинутая и уменьшенная от своего нижнего угла.
+    private func moving(
+        _ attributes: UICollectionViewLayoutAttributes?,
+        at path: IndexPath,
+        appearing: Bool
+    ) -> UICollectionViewLayoutAttributes? {
+        guard let copy = attributes?.copy() as? UICollectionViewLayoutAttributes else { return attributes }
+        copy.alpha = 0
+        guard !reducesMotion, path.section == FeedCollectionController.rowsSection,
+              let side = edge(path.item, appearing), side != .center else { return copy }
+        let outgoing = side == .trailing
+        // Те же величины, что у переходов `maxlyComposerFlight` и `maxlyBubble`.
+        let scale: CGFloat = appearing ? (outgoing ? 0.88 : 0.95) : 0.8
+        let rise: CGFloat = appearing ? (outgoing ? 36 : 14) : 0
+        let frame = copy.frame
+        let corner = CGPoint(x: outgoing ? frame.maxX : frame.minX, y: frame.maxY)
+        // Масштаб вокруг угла: ячейка масштабируется от центра, сдвиг возвращает угол на место.
+        copy.transform = CGAffineTransform(
+            translationX: (corner.x - frame.midX) * (1 - scale),
+            y: (corner.y - frame.midY) * (1 - scale) + rise
+        )
+        .scaledBy(x: scale, y: scale)
+        return copy
+    }
+}
