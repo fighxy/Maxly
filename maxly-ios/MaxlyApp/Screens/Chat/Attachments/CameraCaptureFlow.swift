@@ -6,7 +6,7 @@ import MaxlyDomain
 import MaxlyPresentation
 import MaxlyUI
 
-/// Снимки с камеры из кнопки камеры в поле ввода, как в WhatsApp.
+/// Снимки с камеры из кнопки камеры в поле ввода.
 ///
 /// Сразу открывается камера. После снимка — просмотр: снимок во весь экран, сверху
 /// «сохранить», «кадр», «текст» и «рисунок» (редактор фото; у видео — обрезка), снизу лента
@@ -275,7 +275,7 @@ struct CameraCaptureFlow: View {
         guard let index = shots.firstIndex(where: { $0.id == shot.id }) else { return }
         shots.remove(at: index)
         if shots.isEmpty {
-            // Удалили последний снимок: снова камера, как в WhatsApp.
+            // Удалили последний снимок: снова камера.
             cameraShown = true
         } else {
             selectedId = shots[min(index, shots.count - 1)].id

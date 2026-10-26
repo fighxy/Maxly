@@ -29,7 +29,7 @@ struct RecordButton: View {
                     .frame(width: 44, height: 44)
                     .background(Color.maxlyAccent, in: Circle())
             } else if mode == .voice {
-                // Микрофон — главная кнопка пустого поля, как в WhatsApp: залитый круг.
+                // Микрофон — главная кнопка пустого поля: залитый круг.
                 Image(systemName: "mic.fill")
                     .font(.system(size: 19, weight: .semibold))
                     .foregroundStyle(Color.maxlyOnAccent)

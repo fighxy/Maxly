@@ -52,7 +52,7 @@ extension View {
     }
 }
 
-/// Пункты меню вкладки папки (`FolderTabMenu`), как в Telegram: «Удалить» красным, «Изменить
+/// Пункты меню вкладки папки (`FolderTabMenu`): «Удалить» красным, «Изменить
 /// порядок» отдельной секцией внизу.
 struct FolderTabMenuItems: View {
     let entries: [FolderTabMenu.Entry]
