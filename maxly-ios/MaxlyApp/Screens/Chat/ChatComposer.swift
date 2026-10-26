@@ -3,10 +3,10 @@ import MaxlyDomain
 import MaxlyPresentation
 import MaxlyUI
 
-/// Поле ввода чата: ошибка и подсказки над ним, правка и ответ, «+» слева,
-/// поле со смайликом, справа камера (нажатие — снимок, удержание — кружок) и микрофон
-/// (удержание — голосовое), с текстом — отправка. Вынесено из `ChatView`: поле перерисовывается
-/// при наборе текста, а лента в это время не трогается.
+/// Поле ввода чата: ошибка и подсказки над ним, правка и ответ, «+» слева (у бота с
+/// мини-приложением в покое — «Открыть»), поле со смайликом, справа камера (нажатие — снимок,
+/// удержание — кружок) и микрофон (удержание — голосовое), с текстом — отправка. Вынесено из
+/// `ChatView`: поле перерисовывается при наборе текста, а лента в это время не трогается.
 struct ChatComposer: View {
     @Bindable var viewModel: ChatViewModel
     let recording: RecordingSession
@@ -21,7 +21,7 @@ struct ChatComposer: View {
     var showsReadOnlyBar = true
     let isMuted: Bool
     let onToggleMute: (() -> Void)?
-    /// «Открыть приложение» бота с мини-приложением. `nil` — кнопки нет.
+    /// «Открыть» мини-приложение бота слева от поля. `nil` — кнопки нет.
     var onOpenApp: (() -> Void)? = nil
     /// Кнопка «Подписаться», «Вступить» или «Начать» по центру вместо поля ввода.
     var action: Action? = nil
@@ -101,17 +101,6 @@ struct ChatComposer: View {
             } else if let reply = viewModel.replyTarget {
                 replyBar(reply)
             }
-            if let onOpenApp {
-                Button(action: onOpenApp) {
-                    Label("Открыть приложение", systemImage: "square.grid.2x2.fill")
-                        .font(.app(.body, .semibold))
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.maxlyAccent)
-                .maxlyGlassCapsule()
-            }
             if canWrite, viewModel.formatSelection != nil, !recording.isActive {
                 ComposerFormatBar(viewModel: viewModel)
                     .frame(maxWidth: .infinity)
@@ -142,7 +131,10 @@ struct ChatComposer: View {
                         RecordingBar(session: recording)
                             .transition(.opacity)
                     }
-                    if !recording.isActive {
+                    if showsAppButton, let onOpenApp {
+                        appButton(onOpenApp)
+                            .transition(.maxlyPop(reduceMotion: reduceMotion))
+                    } else if !recording.isActive {
                         Button {
                             focus.wrappedValue = false
                             attachmentsShown = true
@@ -195,6 +187,37 @@ struct ChatComposer: View {
         .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: recording.isActive)
         // Скрепка прячется при правке и возвращается после неё.
         .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.editTarget == nil)
+        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: showsAppButton)
+    }
+
+    /// «Открыть» мини-приложение бота стоит на месте «+», пока поле не в работе: не в фокусе,
+    /// без панели эмодзи, пустое, без правки, ответа и записи. Начали писать — на месте снова
+    /// «+», и поле получает ширину капсулы.
+    private var showsAppButton: Bool {
+        onOpenApp != nil
+            && !focus.wrappedValue
+            && !panelShown
+            && !recording.isActive
+            && viewModel.editTarget == nil
+            && viewModel.replyTarget == nil
+            && viewModel.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Капсула «Открыть» с заливкой акцентом, той же высоты, что круглые кнопки строки.
+    private func appButton(_ open: @escaping () -> Void) -> some View {
+        Button(action: open) {
+            Label("Открыть", systemImage: "square.grid.2x2.fill")
+                .labelStyle(.titleAndIcon)
+                .font(.app(.subheadline, .semibold))
+                .padding(.horizontal, 4)
+                .frame(height: 30)
+                .fixedSize()
+        }
+        .maxlyProminentButtonStyle()
+        .buttonBorderShape(.capsule)
+        .tint(Color.maxlyAccent)
+        .frame(height: 44)
+        .accessibilityLabel("Открыть приложение")
     }
 
     private func hintRow(_ titles: [String], onPick: @escaping (String) -> Void) -> some View {

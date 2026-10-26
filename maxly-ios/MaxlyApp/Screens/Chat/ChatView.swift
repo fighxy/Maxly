@@ -992,7 +992,7 @@ struct ChatView: View {
         profileShown = true
     }
 
-    /// Бот с мини-приложением: над полем ввода «Открыть приложение».
+    /// Бот с мини-приложением: слева от поля ввода «Открыть».
     private var openAppAction: (() -> Void)? {
         guard makeBotApp != nil, let card = profile?.profile, card.kind == .bot, card.hasWebApp,
               let botId = card.peerId else { return nil }
