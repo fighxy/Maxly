@@ -35,7 +35,7 @@ public struct MessageMenuRequest: Identifiable {
     public let onReact: (String) -> Void
     /// «+» в ряду реакций: полный выбор.
     public let onMoreReactions: (() -> Void)?
-    /// Главные пункты, как у WhatsApp: «Ответить», «Переслать», «Копировать», «Сведения», «Удалить».
+    /// Главные пункты: «Ответить», «Переслать», «Копировать», «Сведения», «Удалить».
     public let primary: [MessageMenuAction]
     /// Остальное — под «Ещё…».
     public let more: [MessageMenuAction]
@@ -44,7 +44,7 @@ public struct MessageMenuRequest: Identifiable {
 }
 
 /// Открытое меню сообщения. Экран чата кладёт его в окружение ленты: тогда пузыри по
-/// долгому нажатию открывают меню как в WhatsApp, а без него — системное контекстное меню.
+/// долгому нажатию открывают меню, а без него — системное контекстное меню.
 @MainActor
 @Observable
 public final class MessageMenuPresenter {
@@ -101,7 +101,7 @@ public struct MessageMenuHost: View {
     }
 }
 
-/// Меню сообщения как в WhatsApp: лента размыта и притемнена, пузырь поднят на своём месте
+/// Меню сообщения: лента размыта и притемнена, пузырь поднят на своём месте
 /// (или сдвинут, чтобы всё влезло), над ним ряд реакций с «+», под ним пункты и «Ещё…».
 /// Касание мимо закрывает меню.
 struct MessageMenuOverlay: View {

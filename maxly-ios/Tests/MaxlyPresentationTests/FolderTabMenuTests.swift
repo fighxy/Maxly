@@ -15,7 +15,7 @@ struct FolderTabMenuTests {
             .isEmpty)
     }
 
-    @Test("Своя папка в порядке Telegram, «Удалить» красным, порядок отдельно")
+    @Test("Своя папка: привычный порядок, «Удалить» красным, порядок отдельно")
     func ownFolder() {
         let entries = FolderTabMenu.entries(isAll: false, editable: true, hasUnread: true, allMuted: false, hasChats: true, folderCount: 3)
         #expect(entries.map(\.title) == ["Настроить папку", "Добавить чаты", "Прочитать все", "Выкл. уведомления", "Удалить", "Изменить порядок"])
