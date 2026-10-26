@@ -240,7 +240,7 @@ struct ChatProfileView: View {
                     sharingContact = false
                     guard let peer = viewModel.shown.peerId, let chat = context?.chat else { return }
                     let name = viewModel.title
-                    Task { await chat.shareContact(userId: peer, name: name, to: target) }
+                    Task { await chat.actions.shareContact(userId: peer, name: name, to: target) }
                 },
                 onCancel: { sharingContact = false },
                 heading: "Поделиться контактом"

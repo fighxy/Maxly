@@ -18,7 +18,7 @@ public final class ChatViewModel {
             if ids != oldIds { transcriptVersion &+= 1 }
             placeUnreadAnchor()
             rows = TranscriptLayout.rows(messages, currentUserId: currentUserId, unreadAnchorId: unreadAnchorId)
-            settleTranscripts()
+            transcripts.settle(in: messages)
             pins.applyState()
             settleSeen()
             recountUnreadBelow()
@@ -89,14 +89,6 @@ public final class ChatViewModel {
     /// Своя отметка прочтения при открытии (`OwnReadMark`, мс): разделитель встаёт над первым
     /// чужим сообщением новее неё. `0` — неизвестна, разделитель ставится по счётчику.
     @ObservationIgnored private var openReadMark: Int64 = 0
-    /// Голосовые (id вложения), чья расшифровка идёт: текст ещё не пришёл.
-    public private(set) var transcribing: Set<String> = []
-    /// Голосовые, у которых расшифровка раскрыта.
-    public private(set) var openTranscripts: Set<String> = []
-    /// Голосовые, чья расшифровка не удалась: ошибка раскрыта в пузыре до нажатия «^».
-    public private(set) var failedTranscripts: Set<String> = []
-    /// Столько ждём пуша с текстом, если сервер ответил «ещё расшифровываю».
-    static let transcriptWait: Duration = .seconds(60)
     /// Строки ленты с разделителями дней, склейкой и подписями автора (`TranscriptLayout`).
     public private(set) var rows: [TranscriptRow] = [] {
         didSet {
@@ -151,19 +143,9 @@ public final class ChatViewModel {
     public private(set) var scrollTarget: ChatScrollTarget?
     public private(set) var scrollToken = 0
     public private(set) var highlightedId: String?
-    /// Пост, чьи комментарии открыты в модальном окне.
-    public var openedComments: Message?
-    /// Число комментариев под постами канала (id поста на сервере → число).
-    public private(set) var commentCounts: [String: Int] = [:]
-    /// Сообщение, для которого открыт выбор «удалить у себя / у всех».
-    public var deletionCandidate: Message?
-    /// Варианты удаления открытого сообщения (`deletePlan` ядра, как у выбора нескольких).
-    public private(set) var deletionOptions: MessageSelectionRules.DeleteOptions?
     /// `edit-timeout` сервера в секундах; `nil` — неизвестен, срок правки не проверяется.
     @ObservationIgnored private var editTimeoutSeconds: Int?
     @ObservationIgnored private var rulesLoaded = false
-    /// Сообщение, для которого открыт выбор чата пересылки.
-    public var forwardCandidate: Message?
     /// Сообщение, с которого чат помечают непрочитанным: экран забирает его и закрывается.
     public var unreadMarkCandidate: Message?
     /// Короткое уведомление над полем ввода («Переслано»). Само пропадает.
@@ -194,11 +176,6 @@ public final class ChatViewModel {
 
     @ObservationIgnored private let repository: any MessageRepository
     @ObservationIgnored private let drafts: (any ChatDraftStore)?
-    @ObservationIgnored private let comments: (any CommentsRepository)?
-    /// Посты, чьи счётчики уже спрошены: один запрос на пост за время жизни экрана.
-    @ObservationIgnored private var askedCounts: Set<String> = []
-    /// После ошибки счётчики комментариев не спрашиваются до этого времени.
-    @ObservationIgnored private var countsRetryAt = Date.distantPast
     @ObservationIgnored private let chats: (any ChatRepository)?
     @ObservationIgnored private var mentionDraft = MentionDraft()
     @ObservationIgnored private var memberRows: [ChatMemberRef] = []
@@ -219,7 +196,6 @@ public final class ChatViewModel {
     @ObservationIgnored private var savedReply: String?
     /// Подписка на черновики, изменённые не из этого поля.
     @ObservationIgnored private var draftWatch: Task<Void, Never>?
-    @ObservationIgnored private var commentsModel: CommentsViewModel?
     /// Выбор нескольких сообщений: копирование, пересылка, удаление одним запросом.
     public let selection: MessageSelectionModel
     /// Поиск по сообщениям чата.
@@ -236,6 +212,12 @@ public final class ChatViewModel {
     public let reactions: ChatReactionsModel
     /// Закрепы в шапке: служебное сообщение, список 241, пуши.
     public let pins: ChatPinsModel
+    /// Расшифровка голосовых.
+    public let transcripts: TranscriptionModel
+    /// Комментарии к постам канала: окно и счётчики.
+    public let comments: ChatCommentsModel
+    /// Меню сообщения: удаление, пересылка, повтор отправки.
+    public let actions: MessageActionsModel
 
     public init(
         chatId: String,
@@ -258,7 +240,6 @@ public final class ChatViewModel {
         self.repository = messages
         self.drafts = drafts
         self.draftDelay = draftDelay
-        self.comments = comments
         self.chats = chats
         self.selection = MessageSelectionModel(chatId: chatId, currentUserId: currentUserId, repository: messages)
         self.search = ChatSearchModel(chatId: chatId, repository: messages)
@@ -268,6 +249,9 @@ public final class ChatViewModel {
         self.attachments = ChatMediaModel(chatId: chatId, repository: messages, media: media, links: links, gallery: gallery)
         self.reactions = ChatReactionsModel(chatId: chatId, repository: messages)
         self.pins = ChatPinsModel(chatId: chatId, repository: messages)
+        self.transcripts = TranscriptionModel(repository: messages)
+        self.comments = ChatCommentsModel(chatId: chatId, currentUserId: currentUserId, repository: comments, messages: messages)
+        self.actions = MessageActionsModel(chatId: chatId, repository: messages, selection: selection)
         selection.onNotice = { [weak self] text in self?.showNotice(text) }
         selection.onError = { [weak self] failure in self?.show(failure) }
         selection.onDeleted = { [weak self] ids in
@@ -300,6 +284,13 @@ public final class ChatViewModel {
         }
         scheduled.onNotice = { [weak self] text in self?.showNotice(text) }
         scheduled.onError = { [weak self] failure in self?.show(failure) }
+        self.comments.reactionCatalog = { [weak self] in self?.reactions.catalog ?? [] }
+        actions.onWillDelete = { [weak self] id in
+            if self?.replyTarget?.id == id { self?.replyTarget = nil }
+        }
+        actions.onSuccess = { [weak self] in self?.error = nil }
+        actions.onNotice = { [weak self] text in self?.showNotice(text) }
+        actions.onError = { [weak self] failure in self?.show(failure) }
     }
 
 
@@ -1025,8 +1016,6 @@ public final class ChatViewModel {
         messageInfo = MessageInfoViewModel(message: message, chatType: chatType, isOwn: isOutgoing(message), repository: repository)
     }
 
-    /// Пауза перед повтором реакций и счётчиков после ошибки сервера.
-    static let retryAfterError: TimeInterval = 30
     /// Через сколько повторить сверку ленты после `too.many.requests`.
     static let rateLimitRetry: Duration = .seconds(20)
     /// Сколько раз сам повторить свежую страницу после `too.many.requests` (паузы 1×, 2×, 4×).
@@ -1447,73 +1436,6 @@ public final class ChatViewModel {
         !isOutgoing(message) && !message.content.isService
     }
 
-    public func openComments(_ message: Message) {
-        guard comments != nil else { return }
-        openedComments = message
-    }
-
-    /// Модель окна комментариев открытого поста. Одна на пост, пока окно не закрыто.
-    public func commentsModel(for post: Message) -> CommentsViewModel? {
-        guard let comments else { return nil }
-        if let commentsModel, commentsModel.post.id == post.id { return commentsModel }
-        let model = CommentsViewModel(
-            chatId: chatId,
-            post: post,
-            currentUserId: currentUserId,
-            comments: comments,
-            reactionCatalog: reactions.catalog
-        )
-        commentsModel = model
-        return model
-    }
-
-    public func closeComments() {
-        let post = openedComments ?? commentsModel?.post
-        openedComments = nil
-        commentsModel = nil
-        // После обсуждения счётчик мог измениться: спросить заново.
-        if let post {
-            let id = post.serverId ?? post.id
-            askedCounts.remove(id)
-            requestCommentCounts(for: [post])
-        }
-    }
-
-    /// Число комментариев поста: ответ сервера, иначе счётчик из самого сообщения.
-    public func commentCount(for message: Message) -> Int? {
-        commentCounts[message.serverId ?? message.id] ?? message.content.comments?.count
-    }
-
-    /// Спросить счётчики комментариев у постов, которых ещё не спрашивали (пачками по 50).
-    public func requestCommentCounts(for posts: [Message]) {
-        guard let comments, Date() >= countsRetryAt else { return }
-        let ids = posts.compactMap { post -> String? in
-            let id = post.serverId ?? post.id
-            guard Int64(id) != nil, !askedCounts.contains(id) else { return nil }
-            return id
-        }
-        guard !ids.isEmpty else { return }
-        askedCounts.formUnion(ids)
-        let chatId = chatId
-        Task { [weak self] in
-            for start in stride(from: 0, to: ids.count, by: 50) {
-                let chunk = Array(ids[start..<min(start + 50, ids.count)])
-                do {
-                    let counts = try await comments.counts(chatId: chatId, postIds: chunk)
-                    guard let self else { return }
-                    self.commentCounts.merge(counts) { _, new in new }
-                    await self.repository.noteCommentCounts(chatId: chatId, counts: counts)
-                } catch {
-                    // Остальные пачки не уходят: сервер, скорее всего, ответит им too.many.requests.
-                    guard let self else { return }
-                    self.askedCounts.subtract(ids[start...])
-                    self.countsRetryAt = Date().addingTimeInterval(Self.retryAfterError)
-                    return
-                }
-            }
-        }
-    }
-
     /// Сохранённая история чата с вложениями и ссылками — для общих медиа профиля.
     public func sharedHistory() async -> [Message] {
         await repository.sharedHistory(chatId: chatId, limit: 3000)
@@ -1527,124 +1449,8 @@ public final class ChatViewModel {
         )
     }
 
-    // MARK: Расшифровка голосовых
-
-    /// Расшифровать можно голосовое, уже принятое сервером.
-    public func canTranscribe(_ message: Message) -> Bool {
-        guard let voice = message.content.voices.first else { return false }
-        if voice.transcript != nil { return true }
-        return message.status == .sent && message.serverId.flatMap { Int64($0) } != nil && Int64(voice.id) != nil
-    }
-
-    public func transcriptPhase(for voice: VoiceContent) -> TranscriptPhase {
-        if transcribing.contains(voice.id) { return .loading }
-        if failedTranscripts.contains(voice.id) { return .failed }
-        if openTranscripts.contains(voice.id), voice.transcript != nil { return .expanded }
-        return .collapsed
-    }
-
-    /// «→T»: раскрыть расшифровку (запросив её у сервера, если её ещё нет) или свернуть.
-    public func toggleTranscript(_ message: Message) {
-        guard let voice = message.content.voices.first, !transcribing.contains(voice.id) else { return }
-        // «^» у ошибки сворачивает её; следующее «→Т» спросит сервер заново.
-        if failedTranscripts.remove(voice.id) != nil { return }
-        if openTranscripts.contains(voice.id) {
-            openTranscripts.remove(voice.id)
-            return
-        }
-        if voice.transcript != nil {
-            openTranscripts.insert(voice.id)
-            return
-        }
-        guard canTranscribe(message) else { return }
-        let id = voice.id
-        transcribing.insert(id)
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                let ready = try await self.repository.transcribe(messageId: message.id, attachmentId: id)
-                if ready {
-                    // Текст уже в базе; снимок ленты с ним мог прийти раньше ответа.
-                    if self.transcribing.remove(id) != nil { self.openTranscripts.insert(id) }
-                    return
-                }
-                // Сервер ещё работает: текст придёт пушем (`settleTranscripts`).
-                try? await Task.sleep(for: Self.transcriptWait)
-                if self.transcribing.remove(id) != nil { self.failedTranscripts.insert(id) }
-            } catch {
-                // Ошибка — в самом пузыре, как в Komet, а не над полем ввода.
-                self.transcribing.remove(id)
-                if (error as? MaxlyError) != .cancelled { self.failedTranscripts.insert(id) }
-            }
-        }
-    }
-
-    /// Пришёл текст голосового, чья расшифровка шла: она раскрывается.
-    private func settleTranscripts() {
-        guard !transcribing.isEmpty else { return }
-        for message in messages {
-            for voice in message.content.voices where voice.transcript != nil && transcribing.contains(voice.id) {
-                transcribing.remove(voice.id)
-                openTranscripts.insert(voice.id)
-            }
-        }
-    }
-
-    // MARK: Удаление и пересылка
-
-    /// Меню сообщения → «Удалить»: варианты решает ядро (`deletePlan`), как и для выбора
-    /// нескольких. Нельзя удалить вовсе — плашка вместо диалога.
-    public func requestDelete(_ message: Message) {
-        Task { [weak self] in
-            guard let self else { return }
-            let options = await selection.deletePlan(for: [message])
-            guard options.canDelete || deletesWithoutChoice else {
-                showNotice("Это сообщение нельзя удалить")
-                return
-            }
-            deletionOptions = options
-            deletionCandidate = message
-        }
-    }
-
-    /// «Удалить у всех» — только для своих сообщений, уже принятых сервером.
-    /// «Избранное» принадлежит только аккаунту: сообщение удаляется на сервере целиком
-    /// (`forMe: false`), и пересланное, и отправленное с другого устройства. Удаление
-    /// «у себя» скрыло бы его лишь в этом клиенте.
-    public func deletesEverywhere(_ message: Message) -> Bool {
-        message.serverId.map { Int64($0) != nil } ?? false
-    }
-
-    /// Только «удалить у всех», без выбора (канал с правами).
-    public var deletionForcesEveryone: Bool { deletionOptions?.forcesForEveryone == true }
-
-    /// Вариант «удалить у всех» есть; `deletionPrefersEveryone` — он идёт первым.
-    public var deletionShowsEveryone: Bool { deletionOptions?.showsForEveryone == true }
-    public var deletionPrefersEveryone: Bool { deletionOptions?.forEveryoneByDefault == true }
-
-    /// Удаление из «Избранного»: собеседника нет, поэтому один вариант без выбора.
-    public var deletesWithoutChoice: Bool { chatId == Chat.savedMessagesId }
-
     /// Чат — «Избранное». Приватный режим оставляет ему настоящее название.
     public var isSavedMessages: Bool { chatId == Chat.savedMessagesId }
-
-    /// Удаление выбранного сообщения. Сообщение передаётся явно: диалог подтверждения
-    /// сбрасывает `deletionCandidate` раньше, чем срабатывает его кнопка.
-    public func confirmDelete(_ candidate: Message? = nil, forEveryone: Bool) async {
-        guard let message = candidate ?? deletionCandidate else { return }
-        deletionCandidate = nil
-        if replyTarget?.id == message.id { replyTarget = nil }
-        do {
-            try await repository.delete(messageIds: [message.id], chatId: chatId, forEveryone: forEveryone)
-            error = nil
-        } catch {
-            show(error)
-        }
-    }
-
-    public func requestForward(_ message: Message) {
-        forwardCandidate = message
-    }
 
     // MARK: Непрочитанное
 
@@ -1663,29 +1469,6 @@ public final class ChatViewModel {
         unreadMarkCandidate = message
     }
 
-    public func forward(to targetChatId: String) async {
-        guard let message = forwardCandidate else { return }
-        forwardCandidate = nil
-        do {
-            try await repository.forward(messageId: message.serverId ?? message.id, from: chatId, to: targetChatId)
-            error = nil
-            showNotice("Сообщение переслано")
-        } catch {
-            show(error)
-        }
-    }
-
-    /// «Поделиться контактом» из профиля: карточка `userId` уходит в чат `targetChatId`.
-    public func shareContact(userId: String, name: String, to targetChatId: String) async {
-        let card = AttachmentDraft(kind: .contact, contactId: userId, contactName: name)
-        do {
-            try await repository.sendAttachments([card], caption: "", chatId: targetChatId, replyTo: nil)
-            showNotice("Контакт отправлен")
-        } catch {
-            show(error)
-        }
-    }
-
     /// Своя роль в этой группе или канале: владельцу в профиле — «Удалить канал».
     public func ownRole() async -> ChatOwnRole {
         await repository.ownRole(chatId: chatId) ?? ChatOwnRole(isOwner: false, isAdmin: false)
@@ -1702,14 +1485,6 @@ public final class ChatViewModel {
             try? await Task.sleep(for: .seconds(2))
             guard let self, self.notice == text else { return }
             self.notice = nil
-        }
-    }
-
-    public func retry(id: String) async {
-        do {
-            try await repository.retry(messageId: id)
-        } catch {
-            show(error)
         }
     }
 
