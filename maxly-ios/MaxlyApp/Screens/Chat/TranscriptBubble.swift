@@ -143,9 +143,9 @@ struct TranscriptBubble: View, Equatable {
             onReply: { viewModel.beginReply(to: message) },
             onReact: { emoji in Task { await viewModel.toggleReaction(messageId: message.id, emoji: emoji) } },
             onComments: { viewModel.openComments(message) },
-            onOpen: { viewModel.presentMedia(message, startId: $0) },
+            onOpen: { viewModel.attachments.presentMedia(message, startId: $0) },
             onVoice: { viewModel.voices.toggle(message) },
-            onFile: { viewModel.openFile(message, attachmentId: $0) },
+            onFile: { viewModel.attachments.openFile(message, attachmentId: $0) },
             onFocusReply: { viewModel.focusReply($0, from: message.id) },
             onForward: { viewModel.requestForward(message) },
             onDelete: { viewModel.requestDelete(message) },
@@ -158,8 +158,8 @@ struct TranscriptBubble: View, Equatable {
             uploadProgress: state.uploadProgress,
             onCancelUpload: { Task { await viewModel.cancelUpload(message) } },
             roundPlayer: roundPlayer,
-            onSaveToPhotos: state.savesToPhotos ? { viewModel.save(message, to: .photos) } : nil,
-            onSaveToFiles: state.savesToFiles ? { viewModel.save(message, to: .files) } : nil,
+            onSaveToPhotos: state.savesToPhotos ? { viewModel.attachments.save(message, to: .photos) } : nil,
+            onSaveToFiles: state.savesToFiles ? { viewModel.attachments.save(message, to: .files) } : nil,
             transcript: state.transcript,
             // В одной анимации с лентой: пузырь растёт и сжимается, а соседние строки
             // сдвигаются плавно, а не скачком после него.
@@ -207,7 +207,7 @@ struct TranscriptBubble: View, Equatable {
         let viewModel = viewModel
         let id = playback.id
         return AnyView(
-            RoundVideoPlayer(url: playback.url) { viewModel.stopRound(id: id) }
+            RoundVideoPlayer(url: playback.url) { viewModel.attachments.stopRound(id: id) }
                 .id(playback)
         )
     }

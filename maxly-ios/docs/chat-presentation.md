@@ -37,7 +37,8 @@ Liquid Glass для элементов управления. Изменения 
 - `ChatViewModel` держит ленту и состояние экрана; отдельные части — во вложенных моделях:
   поиск (`search`, `ChatSearchModel`), опросы (`polls`, `ChatPollsModel`), отложенные
   (`scheduled`, `ScheduledMessagesModel`), голосовые (`voices`, `VoicePlaybackModel`, он же владелец
-  полосы «играет голосовое»), выбор сообщений (`selection`). Ошибки и
+  полосы «играет голосовое»), вложения (`attachments`, `ChatMediaModel`: просмотр, кружки в ленте,
+  файлы, сохранение), выбор сообщений (`selection`). Ошибки и
   уведомления вложенных моделей показывает экран через `onError` / `onNotice`.
 - `ChatTranscript` отвечает за положение ленты и её размеры. `TranscriptBottomState`
   отличает чтение истории от следования за новыми сообщениями.

@@ -86,9 +86,9 @@ struct ShareSheet: UIViewControllerRepresentable {
 }
 
 extension View {
-    /// Окно «Сохранить в Файлы» для экспорта модели чата. Чат и просмотр фото держат
+    /// Окно «Сохранить в Файлы» для экспорта вложений чата (`ChatMediaModel`). Чат и просмотр фото держат
     /// каждый своё окно (`fromViewer`): под открытым просмотром чат окно показать не может.
-    func fileExportSheet(_ model: ChatViewModel, fromViewer: Bool) -> some View {
+    func fileExportSheet(_ model: ChatMediaModel, fromViewer: Bool) -> some View {
         sheet(item: Binding(
             get: { model.fileExport.flatMap { $0.fromViewer == fromViewer ? $0 : nil } },
             set: { if $0 == nil, model.fileExport?.fromViewer == fromViewer { model.finishFileExport(saved: false) } }

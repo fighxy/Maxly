@@ -363,7 +363,7 @@ struct ChatTranscript: View {
     private func layoutKey(for row: TranscriptRow, style: TranscriptLayoutStyle) -> FeedLayoutKey {
         let message = row.message
         let voice = message.content.voices.first
-        let round = viewModel.roundPlayback.map { playback in message.content.visuals.contains { $0.id == playback.id } } ?? false
+        let round = viewModel.attachments.roundPlayback.map { playback in message.content.visuals.contains { $0.id == playback.id } } ?? false
         return FeedLayoutKey(TranscriptRowLayoutKey(
             row: row,
             style: style,
@@ -929,10 +929,10 @@ struct ChatTranscript: View {
         let message = row.message
         let showsAuthors = rules.showsAuthors
         let reacts = viewModel.canReact(message)
-        let loading = viewModel.loadingMediaId.flatMap { id in
+        let loading = viewModel.attachments.loadingMediaId.flatMap { id in
             message.content.attachments.contains { $0.id == id } ? id : nil
         }
-        let round = viewModel.roundPlayback.flatMap { playback in
+        let round = viewModel.attachments.roundPlayback.flatMap { playback in
             message.content.visuals.contains { $0.id == playback.id } ? playback : nil
         }
         return TranscriptBubble.Snapshot(
@@ -953,8 +953,8 @@ struct ChatTranscript: View {
             reacts: reacts,
             quickReactions: reacts ? viewModel.quickReactions(for: message) : [],
             canEdit: viewModel.canEdit(message),
-            savesToPhotos: viewModel.canSave(message, to: .photos),
-            savesToFiles: viewModel.canSave(message, to: .files),
+            savesToPhotos: viewModel.attachments.canSave(message, to: .photos),
+            savesToFiles: viewModel.attachments.canSave(message, to: .files),
             roundPlayback: round,
             transcript: message.content.voices.first.map { viewModel.transcriptPhase(for: $0) } ?? .collapsed,
             canTranscribe: viewModel.canTranscribe(message),

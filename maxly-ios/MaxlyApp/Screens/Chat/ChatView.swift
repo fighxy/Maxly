@@ -611,21 +611,21 @@ struct ChatView: View {
     /// Полноэкранный просмотр медиа и файлов, видеосообщение и жизненный цикл экрана.
     private var coversLayer: some View {
         sheetsLayer
-            .mediaViewerCover(item: unlessProfileShown($viewModel.viewer)) { request in
+            .mediaViewerCover(item: unlessProfileShown($viewModel.attachments.viewer)) { request in
                 MediaViewer(
                     request: request,
-                    download: { await viewModel.downloadVideo($0, progress: $1) },
+                    download: { await viewModel.attachments.downloadVideo($0, progress: $1) },
                     notice: viewModel.notice,
-                    isSaving: viewModel.isSaving,
-                    onSave: { viewModel.saveViewerSlide($0, to: $1) },
+                    isSaving: viewModel.attachments.isSaving,
+                    onSave: { viewModel.attachments.saveViewerSlide($0, to: $1) },
                     onShowInChat: showAction(request)
-                ) { viewModel.viewer = nil }
-                    .fileExportSheet(viewModel, fromViewer: true)
+                ) { viewModel.attachments.viewer = nil }
+                    .fileExportSheet(viewModel.attachments, fromViewer: true)
                     .environment(\.privateMode, .visible)
             }
-            .fileExportSheet(viewModel, fromViewer: false)
-            .fullScreenCover(item: unlessProfileShown($viewModel.openedFile)) { file in
-                FileQuickLook(url: file.url, title: file.name) { viewModel.openedFile = nil }
+            .fileExportSheet(viewModel.attachments, fromViewer: false)
+            .fullScreenCover(item: unlessProfileShown($viewModel.attachments.openedFile)) { file in
+                FileQuickLook(url: file.url, title: file.name) { viewModel.attachments.openedFile = nil }
                     .environment(\.privateMode, .visible)
             }
             .overlay {

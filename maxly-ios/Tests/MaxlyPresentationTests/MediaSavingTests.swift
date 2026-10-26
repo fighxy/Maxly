@@ -86,12 +86,12 @@ struct MediaSavingTests {
         let file = ChatAttachment.file(FileContent(id: "f", name: "doc.pdf", url: URL(string: "https://cdn.invalid/f")))
         let contact = ChatAttachment.contact(ContactContent(id: "k", userId: "1", name: "Иван"))
         let all = message([photo, voice, file, contact])
-        #expect(ChatViewModel.saveable(all, to: .photos).map(\.id) == ["p"])
-        #expect(ChatViewModel.saveable(all, to: .files).map(\.id) == ["p", "v", "f"])
+        #expect(ChatMediaModel.saveable(all, to: .photos).map(\.id) == ["p"])
+        #expect(ChatMediaModel.saveable(all, to: .files).map(\.id) == ["p", "v", "f"])
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository(), gallery: FakeGallery())
-        #expect(model.canSave(message([voice]), to: .photos) == false)
-        #expect(model.canSave(message([voice]), to: .files))
-        #expect(model.canSave(message([contact]), to: .files) == false)
+        #expect(model.attachments.canSave(message([voice]), to: .photos) == false)
+        #expect(model.attachments.canSave(message([voice]), to: .files))
+        #expect(model.attachments.canSave(message([contact]), to: .files) == false)
     }
 
     @Test("Фото с CDN без расширения уходит в «Фото» как PNG с понятным именем")
@@ -103,7 +103,7 @@ struct MediaSavingTests {
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository(), media: media, gallery: gallery)
         let photo = PhotoContent(id: "p1", url: URL(string: "https://i.invalid/i?r=abc"))
 
-        model.save(message([.photo(photo)]), to: .photos)
+        model.attachments.save(message([.photo(photo)]), to: .photos)
         #expect(await eventually { await gallery.saved.count == 1 })
         let file = try #require(await gallery.saved.first?.first)
         #expect(file.kind == .image)
@@ -112,7 +112,7 @@ struct MediaSavingTests {
         #expect(file.url.lastPathComponent == file.name)
         #expect(FileManager.default.fileExists(atPath: file.url.path))
         #expect(await eventually { model.notice == "Фото сохранено в «Фото»" })
-        #expect(model.isSaving == false)
+        #expect(model.attachments.isSaving == false)
     }
 
     @Test("Не JPG и не PNG (GIF, WebP, HEIC) перекодируется в JPG или PNG")
@@ -147,7 +147,7 @@ struct MediaSavingTests {
         let gallery = FakeGallery()
         await gallery.fail(with: .rejected("Нет доступа к «Фото»"))
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository(), media: FakeMediaFiles(directory: folder, bytes: Self.png), gallery: gallery)
-        model.save(message([.photo(PhotoContent(id: "p", url: URL(string: "https://i.invalid/p")))]), to: .photos)
+        model.attachments.save(message([.photo(PhotoContent(id: "p", url: URL(string: "https://i.invalid/p")))]), to: .photos)
         #expect(await eventually { model.notice == "Нет доступа к «Фото»" })
     }
 
@@ -161,13 +161,13 @@ struct MediaSavingTests {
             .file(FileContent(id: "f", name: "Отчёт.pdf", size: 12, url: URL(string: "https://cdn.invalid/f"))),
         ]
 
-        model.save(message(attachments), to: .files)
-        #expect(await eventually { model.fileExport != nil })
-        let export = try #require(model.fileExport)
+        model.attachments.save(message(attachments), to: .files)
+        #expect(await eventually { model.attachments.fileExport != nil })
+        let export = try #require(model.attachments.fileExport)
         #expect(export.fromViewer == false)
         #expect(export.files.map(\.url.lastPathComponent) == [export.files[0].name, "Отчёт.pdf"])
-        model.finishFileExport(saved: true)
-        #expect(model.fileExport == nil)
+        model.attachments.finishFileExport(saved: true)
+        #expect(model.attachments.fileExport == nil)
         #expect(model.notice == "Сохранено в «Файлы»: 2")
     }
 
@@ -176,10 +176,10 @@ struct MediaSavingTests {
         let folder = directory()
         defer { try? FileManager.default.removeItem(at: folder) }
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository(), media: FakeMediaFiles(directory: folder, bytes: Self.jpeg))
-        model.save(message([.voice(VoiceContent(id: "v", url: URL(string: "https://cdn.invalid/v.ogg")))]), to: .files)
-        #expect(await eventually { model.fileExport != nil })
-        model.finishFileExport(saved: false)
-        #expect(model.fileExport == nil)
+        model.attachments.save(message([.voice(VoiceContent(id: "v", url: URL(string: "https://cdn.invalid/v.ogg")))]), to: .files)
+        #expect(await eventually { model.attachments.fileExport != nil })
+        model.attachments.finishFileExport(saved: false)
+        #expect(model.attachments.fileExport == nil)
         #expect(model.notice == nil)
     }
 }
