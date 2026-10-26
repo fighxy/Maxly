@@ -13,7 +13,7 @@ struct ChatSearchSheet: View {
 
     var body: some View {
         NavigationStack {
-            List(model.searchHits, id: \.messageId) { hit in
+            List(model.search.hits, id: \.messageId) { hit in
                 Button { onSelect(hit) } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         PrivateText(hit.text.isEmpty ? "Сообщение" : hit.text, placeholder: PrivateModeMask.archivePreview)
@@ -39,25 +39,25 @@ struct ChatSearchSheet: View {
                 if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     ContentUnavailableView("Поиск сообщений", systemImage: "magnifyingglass", description: Text("Введите слово или фразу"))
                         .allowsHitTesting(false)
-                } else if model.searchBusy {
+                } else if model.search.busy {
                     ProgressView("Поиск…")
-                } else if let error = model.searchError {
+                } else if let error = model.search.error {
                     ContentUnavailableView {
                         Label("Поиск недоступен", systemImage: "wifi.exclamationmark")
                     } description: {
                         Text(error)
                     } actions: {
-                        Button("Повторить") { Task { await model.searchInChat(query) } }
+                        Button("Повторить") { Task { await model.search.search(query) } }
                     }
-                } else if model.searchHits.isEmpty {
+                } else if model.search.hits.isEmpty {
                     ContentUnavailableView.search(text: query).allowsHitTesting(false)
                 }
             }
-            .task(id: query) { await model.searchInChat(query, debounce: .milliseconds(300)) }
+            .task(id: query) { await model.search.search(query, debounce: .milliseconds(300)) }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { dismiss() } }
             }
         }
-        .onDisappear { model.resetSearch() }
+        .onDisappear { model.search.reset() }
     }
 }

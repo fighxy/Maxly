@@ -142,10 +142,6 @@ public final class ChatViewModel {
     public private(set) var mentionHints: [ChatMemberRef] = []
     /// Подсказки `/` для бота.
     public private(set) var commandHints: [BotCommandRef] = []
-    public private(set) var searchHits: [FoundMessage] = []
-    public private(set) var searchBusy = false
-    public private(set) var searchError: String?
-    @ObservationIgnored private var searchGeneration = 0
     public private(set) var error: MaxlyError?
     public private(set) var stickToBottom = true
     /// Цитата над полем ввода. Входит в черновик: черновик из одного ответа тоже сохраняется.
@@ -264,9 +260,6 @@ public final class ChatViewModel {
     @ObservationIgnored private var pinBaselineId: String?
     @ObservationIgnored private var pinHub: PinHub?
     @ObservationIgnored private var pinWatch: Task<Void, Never>?
-    @ObservationIgnored private var scheduledHub: ScheduledHub?
-    @ObservationIgnored private var scheduledWatch: Task<Void, Never>?
-    @ObservationIgnored private var pollRefresh: Task<Void, Never>?
     /// Собеседник личного чата: команды бота и сигнал звонка.
     @ObservationIgnored public var peerId: String?
     @ObservationIgnored public var peerIsBot = false
@@ -297,6 +290,12 @@ public final class ChatViewModel {
     @ObservationIgnored private var commentsModel: CommentsViewModel?
     /// Выбор нескольких сообщений: копирование, пересылка, удаление одним запросом.
     public let selection: MessageSelectionModel
+    /// Поиск по сообщениям чата.
+    public let search: ChatSearchModel
+    /// Голоса в опросах, новый опрос, сверка счёта.
+    public let polls: ChatPollsModel
+    /// Отложенные сообщения.
+    public let scheduled: ScheduledMessagesModel
 
     public init(
         chatId: String,
@@ -326,6 +325,9 @@ public final class ChatViewModel {
         self.gallery = gallery
         self.chats = chats
         self.selection = MessageSelectionModel(chatId: chatId, currentUserId: currentUserId, repository: messages)
+        self.search = ChatSearchModel(chatId: chatId, repository: messages)
+        self.polls = ChatPollsModel(chatId: chatId, repository: messages)
+        self.scheduled = ScheduledMessagesModel(chatId: chatId, repository: messages)
         selection.onNotice = { [weak self] text in self?.showNotice(text) }
         selection.onError = { [weak self] failure in self?.show(failure) }
         selection.onDeleted = { [weak self] ids in
@@ -335,6 +337,14 @@ public final class ChatViewModel {
         readMarks = ReadMarkScheduler(sleep: readMarkSleep) { [weak self] mark in
             await self?.sendReadMark(mark) ?? false
         }
+        polls.messages = { [weak self] in self?.messages ?? [] }
+        polls.beforeSend = { [weak self] in self?.returnToLiveForSending() }
+        polls.onSuccess = { [weak self] in self?.error = nil }
+        polls.onNotice = { [weak self] text in self?.showNotice(text) }
+        polls.onError = { [weak self] failure in self?.show(failure) }
+        scheduled.onScheduled = { [weak self] in self?.draft = "" }
+        scheduled.onNotice = { [weak self] text in self?.showNotice(text) }
+        scheduled.onError = { [weak self] failure in self?.show(failure) }
     }
 
     /// Пуши закрепов. База их не хранит, поэтому чат слушает их сам.
@@ -342,12 +352,6 @@ public final class ChatViewModel {
         pinHub = hub
     }
 
-    public func attachScheduled(_ hub: ScheduledHub?) {
-        scheduledHub = hub
-    }
-
-    /// Отложенные сообщения этого чата, по времени отправки.
-    public private(set) var scheduledItems: [FoundMessage] = []
 
     /// Шапка: текущий закреп и «2 из 5», когда их несколько.
     public var bannerPin: (id: String, text: String, counter: String?)? {
@@ -555,8 +559,8 @@ public final class ChatViewModel {
         loadReactionCatalog()
         startMessagesWatch()
         startPinWatch()
-        startScheduledWatch()
-        startPollRefresh()
+        scheduled.startWatch()
+        polls.startRefresh()
         let progress = repository.uploadProgress()
         let failures = repository.uploadFailures()
         failureWatch = Task { [weak self] in
@@ -653,10 +657,8 @@ public final class ChatViewModel {
         draftWatch = nil
         pinWatch?.cancel()
         pinWatch = nil
-        scheduledWatch?.cancel()
-        scheduledWatch = nil
-        pollRefresh?.cancel()
-        pollRefresh = nil
+        scheduled.stopWatch()
+        polls.stopRefresh()
         flushDraft()
     }
 
@@ -2575,194 +2577,6 @@ public final class ChatViewModel {
         bar.apply(action: push.action, messageId: push.messageId, text: text.trimmingCharacters(in: .whitespacesAndNewlines))
         pinBar = bar
         pinsFromList = true
-    }
-
-    /// Опросы, голос в которых сейчас в пути: повторное нажатие не шлёт второй голос.
-    public private(set) var votingPolls: Set<String> = []
-    /// Сервер ответил `poll.already.voted`: больше голос в этот опрос не шлём.
-    public private(set) var alreadyVotedPolls: Set<String> = []
-
-    /// Голос в опрос можно отправить сейчас.
-    public func canVote(in poll: PollContent) -> Bool {
-        poll.canVote && !votingPolls.contains(poll.id) && !alreadyVotedPolls.contains(poll.id)
-    }
-
-    public func vote(_ message: Message, answerId: String) async {
-        guard let poll = message.content.poll, !answerId.isEmpty,
-              let serverId = message.serverId ?? (Int64(message.id) != nil ? message.id : nil),
-              canVote(in: poll) else { return }
-        votingPolls.insert(poll.id)
-        defer { votingPolls.remove(poll.id) }
-        do {
-            let update = try await repository.votePoll(chatId: chatId, messageId: serverId, pollId: poll.id, answerId: answerId)
-            await repository.applyPollCounts(chatId: chatId, messageId: message.id, update: update)
-            error = nil
-        } catch {
-            await pollVoteFailed(error, message: message, serverId: serverId, pollId: poll.id)
-        }
-    }
-
-    /// `poll.already.voted`: голос уже засчитан. Без повтора — свежий опрос с сервера и результаты.
-    private func pollVoteFailed(_ failure: MaxlyError, message: Message, serverId: String, pollId: String) async {
-        guard failure.isPollAlreadyVoted else {
-            show(failure)
-            return
-        }
-        error = nil
-        alreadyVotedPolls.insert(pollId)
-        if let updates = try? await repository.refreshPolls(chatId: chatId, polls: [(serverId, pollId)]),
-           let update = updates.first(where: { $0.pollId == pollId || $0.pollId.isEmpty }) {
-            await repository.applyPollCounts(chatId: chatId, messageId: message.id, update: update)
-        }
-        showNotice(MaxlyError.server(code: MaxlyError.pollAlreadyVotedCode, text: nil).userMessage ?? "")
-    }
-
-    public func sendPoll(title: String, answers: [String]) async {
-        let options = answers.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        guard options.count >= 2 else {
-            show(.rejected("Нужно хотя бы два ответа"))
-            return
-        }
-        returnToLiveForSending()
-        do {
-            try await repository.sendPoll(chatId: chatId, title: title, answers: options)
-            showNotice("Опрос отправлен")
-        } catch {
-            show(error)
-        }
-    }
-
-    public func schedule(text: String, at date: Date) async {
-        do {
-            try await repository.schedule(chatId: chatId, text: text, sendAt: date)
-            draft = ""
-            showNotice("Сообщение запланировано")
-            await loadScheduled()
-        } catch {
-            show(error)
-        }
-    }
-
-    public func loadScheduled() async {
-        do {
-            let items = try await repository.scheduled(chatId: chatId)
-            scheduledItems = items.sorted { ($0.date ?? .distantFuture) < ($1.date ?? .distantFuture) }
-        } catch {
-            show(error)
-        }
-    }
-
-    public func editScheduled(_ item: FoundMessage, text: String, at date: Date) async {
-        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty else { return }
-        do {
-            _ = try await repository.editScheduled(chatId: chatId, messageId: item.messageId, text: body, sendAt: date)
-            showNotice("Отложенное изменено")
-            await loadScheduled()
-        } catch {
-            show(error)
-        }
-    }
-
-    public func cancelScheduled(_ item: FoundMessage) async {
-        do {
-            try await repository.cancelScheduled(chatId: chatId, messageIds: [item.messageId])
-            scheduledItems.removeAll { $0.messageId == item.messageId }
-            showNotice("Отложенное отменено")
-        } catch {
-            show(error)
-        }
-    }
-
-    /// Отправить отложенное сейчас: время отправки становится текущим.
-    public func sendScheduledNow(_ item: FoundMessage) async {
-        await editScheduled(item, text: item.text, at: Date())
-    }
-
-    public func castVotes(_ message: Message, answerIds: [String]) async {
-        let ids = answerIds.filter { !$0.isEmpty }
-        guard let poll = message.content.poll, !ids.isEmpty,
-              let serverId = message.serverId ?? (Int64(message.id) != nil ? message.id : nil),
-              canVote(in: poll) else { return }
-        votingPolls.insert(poll.id)
-        defer { votingPolls.remove(poll.id) }
-        do {
-            let update = try await repository.castVotes(chatId: chatId, messageId: serverId, pollId: poll.id, answerIds: ids)
-            await repository.applyPollCounts(chatId: chatId, messageId: message.id, update: update)
-            error = nil
-        } catch {
-            await pollVoteFailed(error, message: message, serverId: serverId, pollId: poll.id)
-        }
-    }
-
-    private func startScheduledWatch() {
-        scheduledWatch?.cancel()
-        guard let scheduledHub else { return }
-        let stream = scheduledHub.events()
-        scheduledWatch = Task { [weak self] in
-            for await push in stream {
-                guard let self, !Task.isCancelled, push.chatId == self.chatId else { continue }
-                await self.loadScheduled()
-            }
-        }
-    }
-
-    /// Опросы на экране. Пуша со счётом нет, поэтому спрашиваем редко.
-    private func startPollRefresh() {
-        pollRefresh?.cancel()
-        pollRefresh = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(20))
-                guard let self, !Task.isCancelled else { return }
-                await self.refreshVisiblePolls()
-            }
-        }
-    }
-
-    private func refreshVisiblePolls() async {
-        let polls: [(messageId: String, pollId: String)] = messages.compactMap { message in
-            guard let poll = message.content.poll else { return nil }
-            let id = message.serverId ?? (Int64(message.id) != nil ? message.id : nil)
-            guard let id else { return nil }
-            return (id, poll.id)
-        }
-        guard !polls.isEmpty else { return }
-        do {
-            let updates = try await repository.refreshPolls(chatId: chatId, polls: polls)
-            for update in updates {
-                guard let message = messages.first(where: { $0.content.poll?.id == update.pollId }) else { continue }
-                await repository.applyPollCounts(chatId: chatId, messageId: message.id, update: update)
-            }
-        } catch {
-            // Тихий повтор на следующем круге.
-        }
-    }
-
-    /// Закрытие/очистка поиска отменяет право старого ответа менять экран.
-    public func resetSearch() {
-        searchGeneration += 1
-        searchHits = []
-        searchBusy = false
-        searchError = nil
-    }
-
-    public func searchInChat(_ query: String, debounce: Duration = .zero) async {
-        resetSearch()
-        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !term.isEmpty, !Task.isCancelled else { return }
-        let generation = searchGeneration
-        searchBusy = true
-        defer { if generation == searchGeneration { searchBusy = false } }
-        do {
-            if debounce > .zero { try await Task.sleep(for: debounce) }
-            guard generation == searchGeneration, !Task.isCancelled else { return }
-            let hits = try await repository.searchInChat(chatId: chatId, query: term)
-            guard generation == searchGeneration, !Task.isCancelled else { return }
-            searchHits = hits
-        } catch {
-            guard generation == searchGeneration, !Task.isCancelled else { return }
-            searchError = (error as? MaxlyError)?.userMessage ?? "Не удалось выполнить поиск"
-        }
     }
 
     private func applyPinState() {

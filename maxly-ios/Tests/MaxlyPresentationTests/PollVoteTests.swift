@@ -56,7 +56,7 @@ struct PollVoteTests {
         let result = PollCountUpdate(pollId: "p", total: 1, votes: ["1": 1], myAnswerIds: ["1"])
         await repository.set(voteResult: .success(result))
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
-        await model.vote(pollMessage(openPoll), answerId: "1")
+        await model.polls.vote(pollMessage(openPoll), answerId: "1")
         #expect(await repository.applied == [result])
         #expect(model.errorMessage == nil)
     }
@@ -67,12 +67,12 @@ struct PollVoteTests {
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
         var voted = openPoll
         voted.myAnswerIds = ["1"]
-        #expect(!model.canVote(in: voted))
-        await model.vote(pollMessage(voted), answerId: "2")
-        await model.castVotes(pollMessage(voted), answerIds: ["2"])
+        #expect(!model.polls.canVote(in: voted))
+        await model.polls.vote(pollMessage(voted), answerId: "2")
+        await model.polls.castVotes(pollMessage(voted), answerIds: ["2"])
         #expect(await repository.votes.isEmpty)
         voted.revote = true
-        #expect(model.canVote(in: voted))
+        #expect(model.polls.canVote(in: voted))
     }
 
     @Test("poll.already.voted: без повтора, опрос обновляется, текст понятный")
@@ -82,14 +82,14 @@ struct PollVoteTests {
         let fresh = PollCountUpdate(pollId: "p", total: 3, votes: ["1": 2, "2": 1], myAnswerIds: ["2"])
         await repository.set(refreshed: [fresh])
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
-        await model.vote(pollMessage(openPoll), answerId: "1")
+        await model.polls.vote(pollMessage(openPoll), answerId: "1")
         #expect(await repository.votes == ["1"])
         #expect(await repository.refreshes == 1)
         #expect(await repository.applied == [fresh])
         #expect(model.errorMessage == nil)
         #expect(model.notice == "Вы уже проголосовали")
-        #expect(!model.canVote(in: openPoll))
-        await model.vote(pollMessage(openPoll), answerId: "1")
+        #expect(!model.polls.canVote(in: openPoll))
+        await model.polls.vote(pollMessage(openPoll), answerId: "1")
         #expect(await repository.votes == ["1"])
     }
 
@@ -99,9 +99,9 @@ struct PollVoteTests {
         let gate = Gate()
         await repository.set(gate: gate)
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
-        let first = Task { await model.vote(pollMessage(openPoll), answerId: "1") }
+        let first = Task { await model.polls.vote(pollMessage(openPoll), answerId: "1") }
         #expect(await eventually { await repository.votes.count == 1 })
-        await model.vote(pollMessage(openPoll), answerId: "1")
+        await model.polls.vote(pollMessage(openPoll), answerId: "1")
         await gate.open()
         await first.value
         #expect(await repository.votes == ["1"])
