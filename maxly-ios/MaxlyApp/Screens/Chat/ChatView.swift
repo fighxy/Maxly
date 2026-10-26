@@ -611,7 +611,7 @@ struct ChatView: View {
     /// Полноэкранный просмотр медиа и файлов, видеосообщение и жизненный цикл экрана.
     private var coversLayer: some View {
         sheetsLayer
-            .mediaViewerCover(item: unlessProfileShown($viewModel.attachments.viewer)) { request in
+            .mediaViewerCover(item: unlessProfileShown(Bindable(viewModel.attachments).viewer)) { request in
                 MediaViewer(
                     request: request,
                     download: { await viewModel.attachments.downloadVideo($0, progress: $1) },
@@ -624,7 +624,7 @@ struct ChatView: View {
                     .environment(\.privateMode, .visible)
             }
             .fileExportSheet(viewModel.attachments, fromViewer: false)
-            .fullScreenCover(item: unlessProfileShown($viewModel.attachments.openedFile)) { file in
+            .fullScreenCover(item: unlessProfileShown(Bindable(viewModel.attachments).openedFile)) { file in
                 FileQuickLook(url: file.url, title: file.name) { viewModel.attachments.openedFile = nil }
                     .environment(\.privateMode, .visible)
             }
