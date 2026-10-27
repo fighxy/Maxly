@@ -128,6 +128,7 @@ struct ChatView: View {
             wallpaperFrame: wallpaperFrame,
             customWallpaper: customWallpaper,
             quickReaction: quickReaction,
+            chatTitle: headerTitle,
             headerBottom: headerBottom,
             keyboardTop: keyboardTop,
             onAuthor: openParticipant

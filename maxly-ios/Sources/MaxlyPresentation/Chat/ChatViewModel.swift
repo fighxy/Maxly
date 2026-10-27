@@ -17,7 +17,7 @@ public final class ChatViewModel {
             if !isRestoringHistory, Self.contentChanged(from: oldValue, to: messages) { contentVersion &+= 1 }
             if ids != oldIds { transcriptVersion &+= 1 }
             placeUnreadAnchor()
-            rows = TranscriptLayout.rows(messages, currentUserId: currentUserId, unreadAnchorId: unreadAnchorId)
+            rebuildRows()
             transcripts.settle(in: messages)
             pins.applyState()
             settleSeen()
@@ -74,7 +74,7 @@ public final class ChatViewModel {
     public private(set) var unreadAnchorId: String? {
         didSet {
             guard unreadAnchorId != oldValue else { return }
-            rows = TranscriptLayout.rows(messages, currentUserId: currentUserId, unreadAnchorId: unreadAnchorId)
+            rebuildRows()
             // Разделитель встал после отметки «долистал»: непрочитанные под ним снова считаются.
             if let anchor = unreadAnchorId, let seen = seenUpTo, let before = readBefore(anchor), before < seen {
                 seenUpTo = before
@@ -136,7 +136,9 @@ public final class ChatViewModel {
     @ObservationIgnored private let chats: (any ChatRepository)?
     /// Собеседник личного чата: команды бота и сигнал звонка.
     @ObservationIgnored public var peerId: String?
-    @ObservationIgnored public var peerIsBot = false
+    @ObservationIgnored public var peerIsBot = false {
+        didSet { if peerIsBot != oldValue { rebuildRows() } }
+    }
     @ObservationIgnored private var watch: Task<Void, Never>?
     /// Поле ввода: черновик, разметка, ответ и правка, отправка, «я печатаю».
     public let composer: ComposerModel
@@ -1108,6 +1110,13 @@ public final class ChatViewModel {
 
     private func show(_ failure: MaxlyError) {
         if failure != .cancelled { error = failure }
+    }
+
+    /// Строки ленты из сообщений. В чате с ботом кнопки остаются только у его последнего меню.
+    private func rebuildRows() {
+        rows = TranscriptLayout.rows(
+            messages, currentUserId: currentUserId, unreadAnchorId: unreadAnchorId, latestKeyboardOnly: peerIsBot
+        )
     }
 
     /// Собеседник личного чата. Нужен командам бота и звонку.

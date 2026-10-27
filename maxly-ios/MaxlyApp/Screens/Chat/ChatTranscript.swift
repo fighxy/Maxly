@@ -34,6 +34,8 @@ struct ChatTranscript: View {
     var customWallpaper: CustomWallpaperBackdrop? = nil
     /// Эмодзи двойного нажатия. `nil` — быстрая реакция выключена.
     var quickReaction: String? = nil
+    /// Название чата: в канале оно же автор процитированного поста.
+    var chatTitle: String = ""
     /// Низ шапки (панель навигации и плашки под ней) в глобальных координатах: выше него
     /// сообщение не видно. `nil` — ещё не измерен.
     var headerBottom: CGFloat? = nil
@@ -618,8 +620,18 @@ struct ChatTranscript: View {
             showsInfo: viewModel.canShowInfo(message),
             isSelecting: viewModel.selection.isActive,
             isSelected: viewModel.selection.isSelected(message.id),
-            selectable: viewModel.selection.canSelect(message)
+            selectable: viewModel.selection.canSelect(message),
+            replyAuthor: replyAuthor(row)
         )
+    }
+
+    /// Автор цитаты. Ответ в канале — всегда на его же пост: подписан названием канала, как и
+    /// сам пост. Иначе автор из ленты, если исходное сообщение в ней есть.
+    private func replyAuthor(_ row: TranscriptRow) -> String? {
+        guard row.message.content.reply != nil else { return nil }
+        let title = chatTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        if rules.kind == .channel, !title.isEmpty { return title }
+        return row.replyAuthor
     }
 
     /// Кнопка комментариев — только под постами канала с включёнными родными комментариями

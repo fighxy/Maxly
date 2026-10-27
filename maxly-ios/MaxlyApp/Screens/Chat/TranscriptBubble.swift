@@ -47,6 +47,8 @@ struct TranscriptBubble: View, Equatable {
         var isSelected = false
         /// Пункт «Выбрать» и отметка в режиме выбора.
         var selectable = false
+        /// Автор цитаты: в канале — его название, иначе автор из ленты (`TranscriptRow.replyAuthor`).
+        var replyAuthor: String?
     }
 
     let state: Snapshot
@@ -184,7 +186,9 @@ struct TranscriptBubble: View, Equatable {
             onSelect: state.selectable ? { [reduceMotion] in
                 withAnimation(MaxlyMotion.quick(reduceMotion: reduceMotion)) { viewModel.selection.begin(with: message) }
             } : nil,
-            replyMedia: state.row.replyMedia
+            replyMedia: state.row.replyMedia,
+            replyAuthor: state.replyAuthor,
+            showsKeyboard: state.row.showsKeyboard
         )
     }
 

@@ -131,6 +131,67 @@ struct TranscriptLayoutTests {
         #expect(rows[2].replyMedia == photo)
         // Исходного сообщения нет в ленте — миниатюры нет.
         #expect(rows[3].replyMedia == nil)
-        #expect(TranscriptLayout.repliedMedia([original]).isEmpty)
+        #expect(TranscriptLayout.repliedMessages([original], currentUserId: "").isEmpty)
+    }
+
+    @Test("Автор цитаты берётся из ленты: «Вы» для своего, имя для чужого, без исходного — нет")
+    func replyAuthor() {
+        func reply(_ id: String, to target: String) -> Message {
+            Message(
+                id: id, chatId: "c", authorId: "bob", text: "ответ",
+                timestamp: Date(timeIntervalSince1970: 30), status: .sent,
+                content: MessageContent(reply: MessageReply(messageId: target, authorName: "Сообщение", preview: "текст", kind: .text))
+            )
+        }
+        let mine = Message(id: "local-1", serverId: "101", chatId: "c", authorId: "me", text: "моё",
+                           timestamp: Date(timeIntervalSince1970: 10), status: .sent)
+        let theirs = message("2", author: "bob", name: " Боб ", at: 20)
+        let nameless = message("3", author: "x", at: 21)
+        let rows = TranscriptLayout.rows(
+            [mine, theirs, nameless, reply("4", to: "101"), reply("5", to: "2"), reply("6", to: "3"), reply("7", to: "999")],
+            currentUserId: "me"
+        )
+        #expect(rows[3].replyAuthor == "Вы")
+        #expect(rows[4].replyAuthor == "Боб")
+        #expect(rows[5].replyAuthor == nil)
+        #expect(rows[6].replyAuthor == nil)
+    }
+
+    @Test("Чат с ботом: кнопки только у последнего меню каждого автора, без бота — у всех")
+    func latestKeyboardOnly() {
+        let keyboard = InlineKeyboard(callbackId: "k", rows: [[InlineButton(type: "CALLBACK", text: "Меню")]])
+        func menu(_ id: String, author: String, at seconds: TimeInterval) -> Message {
+            Message(id: id, chatId: "c", authorId: author, text: id, timestamp: Date(timeIntervalSince1970: seconds),
+                    status: .sent, content: MessageContent(keyboard: keyboard))
+        }
+        let messages = [
+            menu("1", author: "bot", at: 1),
+            message("2", author: "me", at: 2),
+            menu("3", author: "bot", at: 3),
+            message("4", author: "bot", at: 4),
+            menu("5", author: "other", at: 5),
+        ]
+        let bot = TranscriptLayout.rows(messages, currentUserId: "me", latestKeyboardOnly: true)
+        #expect(bot.map(\.showsKeyboard) == [false, true, true, true, true])
+        let plain = TranscriptLayout.rows(messages, currentUserId: "me")
+        #expect(plain.allSatisfy { $0.showsKeyboard })
+    }
+
+    @Test("Модель чата с ботом прячет прежние меню и пересчитывает строки, когда узнаёт бота")
+    @MainActor
+    func botDialogHidesOldMenus() async {
+        let keyboard = InlineKeyboard(callbackId: "k", rows: [[InlineButton(type: "CALLBACK", text: "Меню")]])
+        func menu(_ id: String, at seconds: TimeInterval) -> Message {
+            Message(id: id, chatId: "c", authorId: "bot", text: id, timestamp: Date(timeIntervalSince1970: seconds),
+                    status: .sent, content: MessageContent(keyboard: keyboard))
+        }
+        let repository = FakeMessageRepository()
+        let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
+        model.activate()
+        repository.emit([menu("1", at: 1), menu("2", at: 2)])
+        #expect(await eventually { model.rows.count == 2 })
+        #expect(model.rows.allSatisfy { $0.showsKeyboard })
+        model.notePeer("bot", isBot: true)
+        #expect(model.rows.map(\.showsKeyboard) == [false, true])
     }
 }

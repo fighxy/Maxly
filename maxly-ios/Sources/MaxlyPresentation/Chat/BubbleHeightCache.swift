@@ -110,6 +110,7 @@ public final class BubbleHeightCache: @unchecked Sendable {
             bubbleWidth: bubbleWidth,
             outgoing: row.isOutgoing,
             showsAuthorName: row.showsAuthorName,
+            showsKeyboard: row.showsKeyboard,
             textHeight: textHeight
         )
         if !row.message.content.reactions.isEmpty { total += reactionRow }
@@ -121,6 +122,7 @@ public final class BubbleHeightCache: @unchecked Sendable {
         bubbleWidth: Double,
         outgoing: Bool,
         showsAuthorName: Bool,
+        showsKeyboard: Bool,
         textHeight: (@Sendable (String, Double) -> Double)?
     ) -> Double {
         let content = message.content
@@ -148,7 +150,7 @@ public final class BubbleHeightCache: @unchecked Sendable {
         if content.reply != nil { height += reply }
         if content.forward != nil { height += forward }
         if content.linkPreview != nil { height += linkPreview }
-        if let rows = content.keyboard?.rows, !rows.isEmpty {
+        if showsKeyboard, let rows = content.keyboard?.rows, !rows.isEmpty {
             height += Double(rows.count) * keyboardRow
         }
         if content.comments != nil { height += commentsFooter }
@@ -157,7 +159,7 @@ public final class BubbleHeightCache: @unchecked Sendable {
             // Время с галочками стоит в конце последней строки: если строка полная, оно
             // переносит её. Место под время меряется вместе с текстом, как его резервирует пузырь.
             let reserve = layout.metadata == .text ? BubbleMetrics.timeReserve(outgoing: outgoing) : ""
-            let width = BubbleMetrics.textWidth(bubbleWidth: bubbleWidth)
+            let width = BubbleMetrics.textWidth(bubbleWidth: columnWidth(content, bubbleWidth: bubbleWidth, hasFill: layout.hasFill))
             if let textHeight {
                 height += textHeight(text + reserve, width)
             } else {
@@ -172,8 +174,18 @@ public final class BubbleHeightCache: @unchecked Sendable {
         return height
     }
 
+    /// Ширина колонки пузыря: одиночный кадр над подписью задаёт её сам (`captionedTile`),
+    /// иначе — вся ширина пузыря.
+    static func columnWidth(_ content: MessageContent, bubbleWidth: Double, hasFill: Bool) -> Double {
+        let visuals = content.visuals
+        guard hasFill, visuals.count == 1, visuals[0].video?.isRound != true else { return bubbleWidth }
+        let inset = BubbleMetrics.mediaInset
+        let tile = ChatContentFormat.captionedTile(aspect: BubbleMetrics.aspect(visuals[0]), width: max(1, bubbleWidth - inset * 2))
+        return tile.width + inset * 2
+    }
+
     /// Фото и видео той же раскладкой, что рисует пузырь (`MediaMosaic`): одиночный кадр у
-    /// подписи во всю ширину, иначе альбом рядами, кружок своим диаметром.
+    /// подписи — `captionedTile`, иначе альбом рядами, кружок своим диаметром.
     static func mediaHeight(_ content: MessageContent, bubbleWidth: Double, hasFill: Bool) -> Double {
         let visuals = content.visuals
         guard !visuals.isEmpty else { return 0 }
@@ -183,7 +195,7 @@ public final class BubbleHeightCache: @unchecked Sendable {
         let aspects = visuals.map(BubbleMetrics.aspect)
         let album: AlbumLayout
         if hasFill, visuals.count == 1, !round {
-            album = ChatContentFormat.fullWidthTile(aspect: aspects[0], width: width)
+            album = ChatContentFormat.captionedTile(aspect: aspects[0], width: width)
         } else {
             album = ChatContentFormat.album(
                 aspects: aspects,

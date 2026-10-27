@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import MaxlyDomain
 @testable import MaxlyPresentation
 
 @Suite("Подписи контента")
@@ -175,5 +176,32 @@ struct ChatContentFormatTests {
         let scan = ChatContentFormat.fullWidthTile(aspect: 3.2, width: 280)
         #expect(scan.width <= 280.01)
         #expect(abs(scan.width / scan.height - 3.2) < 0.01)
+    }
+
+    @Test("Кадр над подписью задаёт ширину: портрет выше обычного, совсем высокий не уже минимума")
+    func captionedTile() {
+        let portrait = ChatContentFormat.captionedTile(aspect: 9.0 / 16.0, width: 318)
+        #expect(abs(portrait.height - ChatContentFormat.captionedMaxHeight) < 0.01)
+        #expect(abs(portrait.width - ChatContentFormat.captionedMaxHeight * 9 / 16) < 0.01)
+        #expect(portrait.width >= ChatContentFormat.captionedMinWidth)
+        let photo = ChatContentFormat.captionedTile(aspect: 0.75, width: 318)
+        #expect(abs(photo.width - 318) < 0.01)
+        let strip = ChatContentFormat.captionedTile(aspect: 0.3, width: 318)
+        #expect(abs(strip.width - ChatContentFormat.captionedMinWidth) < 0.01)
+        #expect(abs(strip.height - ChatContentFormat.captionedMaxHeight) < 0.01)
+        let landscape = ChatContentFormat.captionedTile(aspect: 16.0 / 9.0, width: 318)
+        #expect(abs(landscape.width - 318) < 0.01)
+        let narrow = ChatContentFormat.captionedTile(aspect: 0.3, width: 200)
+        #expect(narrow.width <= 200.01)
+    }
+
+    @Test("Оценка высоты переносит подпись по кадру, а не по всей ширине пузыря")
+    func captionColumnWidth() {
+        let video = ChatAttachment.video(VideoContent(id: "v", url: URL(string: "https://example.com/v.mp4"), width: 720, height: 1280))
+        let content = MessageContent(attachments: [video])
+        let column = BubbleHeightCache.columnWidth(content, bubbleWidth: 324, hasFill: true)
+        #expect(abs(column - (ChatContentFormat.captionedMaxHeight * 9 / 16 + BubbleMetrics.mediaInset * 2)) < 0.01)
+        #expect(BubbleHeightCache.columnWidth(content, bubbleWidth: 324, hasFill: false) == 324)
+        #expect(BubbleHeightCache.columnWidth(MessageContent(), bubbleWidth: 324, hasFill: true) == 324)
     }
 }
