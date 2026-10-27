@@ -11,11 +11,7 @@ import MaxlyUI
 /// смещение — дело ленты (`FeedCollectionController`).
 struct TranscriptCollectionFeed: UIViewControllerRepresentable {
     /// Куда встать: строка `id` в доле `anchor` видимой области, `latest` — к последнему сообщению.
-    struct Reveal: Equatable {
-        var id: String
-        var anchor: Double
-        var latest: Bool
-    }
+    typealias Reveal = TranscriptPosition.Target
 
     /// Служебная строка над сообщениями.
     enum HeaderKind: Equatable {

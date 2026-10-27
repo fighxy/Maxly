@@ -40,15 +40,11 @@ struct ChatTranscript: View {
     /// Верх открытой клавиатуры в глобальных координатах; `nil` — клавиатуры нет.
     var keyboardTop: CGFloat? = nil
     var onAuthor: (Message) -> Void = { _ in }
-    /// Низ ленты виден (пока виден, новые сообщения прокручивают ленту сами), число новых
-    /// на кнопке «вниз» и прыжок к последнему сообщению.
-    @State private var bottom = TranscriptBottomState()
+    /// Куда встать и держаться ли низа (`TranscriptPosition`): открытие, команды прокрутки,
+    /// палец и замер низа ленты.
+    @State private var position = TranscriptPosition()
     /// Видимость кнопки «вниз» — по геометрии самой прокрутки (`ScrollDownVisibility`).
     @State private var downButton = ScrollDownVisibility()
-    @State private var isOpening = true
-    @State private var scroll = TranscriptScrollController()
-    @State private var userScrolling = false
-    @State private var openingTargetChosen = false
     /// Верх ленты на экране: не пришедшая страница старого спрашивается снова, пока он виден.
     @State private var headerVisible = false
     /// Рамки видимых строк для отметки прочтения. Не состояние экрана: прокрутка не
@@ -114,13 +110,13 @@ struct ChatTranscript: View {
             .overlay(alignment: .bottomTrailing) {
                 VStack(spacing: 14) {
                     // «@» над «вниз»: непрочитанные упоминания себя в группе.
-                    if !isOpening && rules.showsMentionsButton && !viewModel.unreadMentions.isEmpty {
+                    if !position.isOpening && rules.showsMentionsButton && !viewModel.unreadMentions.isEmpty {
                         ChatJumpButton(content: .mention, count: viewModel.unreadMentions.count) {
                             viewModel.jumpToNextMention()
                         }
                         .transition(.maxlyPop(reduceMotion: reduceMotion))
                     }
-                    if !isOpening && !viewModel.messages.isEmpty && (downButton.shown || viewModel.isJumped) {
+                    if !position.isOpening && !viewModel.messages.isEmpty && (downButton.shown || viewModel.isJumped) {
                         ChatJumpButton(content: .down, count: viewModel.unreadBelow) { goDown() }
                             .transition(.maxlyPop(reduceMotion: reduceMotion))
                     }
@@ -136,7 +132,7 @@ struct ChatTranscript: View {
                 noteBottomIfReached()
                 reportReads()
             }
-            .onChange(of: isOpening) { _, opening in
+            .onChange(of: position.isOpening) { _, opening in
                 if !opening { reportReads() }
             }
             .task(id: shouldPrefetchOlder) {
@@ -145,18 +141,18 @@ struct ChatTranscript: View {
             .onChange(of: headerBottom) { _, _ in measuredGeometry(); reportReads() }
             .onChange(of: bottomControlsTop) { _, _ in
                 measuredGeometry()
-                if bottom.followsLatest, !userScrolling, !isOpening, scroll.request == nil { requestLatest() }
+                position.chromeMoved(lastRowId: viewModel.rows.last?.id)
                 reportReads()
             }
             .onChange(of: keyboardTop) { _, _ in
                 measuredGeometry()
-                if bottom.followsLatest, !userScrolling, !isOpening, scroll.request == nil { requestLatest() }
+                position.chromeMoved(lastRowId: viewModel.rows.last?.id)
                 reportReads()
                 recordScroll("keyboard", immediate: true)
             }
             .onAppear {
                 recordScroll("appear", immediate: true)
-                if isOpening {
+                if position.isOpening {
                     viewModel.consumeScroll()
                     openAtStart()
                 } else { perform(viewModel.scrollTarget) }
@@ -170,16 +166,13 @@ struct ChatTranscript: View {
             }
             .onDisappear {
                 recordScroll("disappear", immediate: true)
-                viewModel.savePlace(visiblePlace ?? reads.place?.id, atBottom: bottom.atBottom)
-                scroll.cancel()
-                openingTargetChosen = false
-                isOpening = true
+                viewModel.savePlace(visiblePlace ?? reads.place?.id, atBottom: position.bottom.atBottom)
+                position.disappeared()
                 reads.reported = nil
                 nearTopPrefix = nil
             }
             .onChange(of: geo.size.height) { _, _ in
-                guard bottom.followsLatest, !userScrolling, !isOpening else { return }
-                requestLatest()
+                position.viewportResized(lastRowId: viewModel.rows.last?.id)
             }
             .task(id: viewModel.transcriptVersion) {
                 let plan = TranscriptImagePrefetch.plan(
@@ -201,7 +194,7 @@ struct ChatTranscript: View {
             canLoadOlder: viewModel.canLoadOlder,
             isLoadingOlder: viewModel.isLoadingOlder,
             isRestoringHistory: viewModel.isRestoringHistory,
-            isOpening: isOpening,
+            isOpening: position.isOpening,
             headerVisible: headerVisible,
             visiblePrefix: nearTopPrefix
         )
@@ -220,10 +213,10 @@ struct ChatTranscript: View {
             revealMode: reveal,
             feedInset: Self.feedInset,
             reduceMotion: reduceMotion,
-            liveChanges: !viewModel.isRestoringHistory && !isOpening,
-            scrollRequest: scroll.request,
-            stickToBottom: stickToBottom,
-            reveal: revealTarget,
+            liveChanges: !viewModel.isRestoringHistory && !position.isOpening,
+            scrollRequest: position.request,
+            stickToBottom: position.stickToBottom(isJumped: viewModel.isJumped),
+            reveal: position.reveal(positionFeed),
             header: headerKind,
             isJumped: viewModel.isJumped,
             headerBottom: headerBottom,
@@ -247,14 +240,8 @@ struct ChatTranscript: View {
                 if next.update(distance: distance, visibleHeight: visible) { downButton = next }
             },
             onUserScroll: { moving, takeover in
-                userScrolling = moving
-                if takeover {
-                    scroll.cancel()
-                    bottom.userTookOver()
-                    openingTargetChosen = true
-                    isOpening = false
-                    recordScroll("scroll-cancel=user", immediate: true)
-                }
+                position.userScroll(moving: moving, takeover: takeover)
+                if takeover { recordScroll("scroll-cancel=user", immediate: true) }
                 measuredGeometry()
             },
             onTopVisible: { visible in
@@ -266,9 +253,7 @@ struct ChatTranscript: View {
             onLoadOlder: { Task { await loadOlderFromTop() } },
             onLoadNewer: { Task { await viewModel.loadNewer() } },
             onScrollFinished: { token, confirmed in
-                guard scroll.finish(token) else { return }
-                isOpening = false
-                if !confirmed { bottom.beginReadingHistory() }
+                guard position.scrollFinished(token, confirmed: confirmed) else { return }
                 recordScroll(confirmed ? "scroll-confirmed" : "scroll-unconfirmed", immediate: true)
                 measuredGeometry()
                 noteBottomIfReached()
@@ -295,10 +280,10 @@ struct ChatTranscript: View {
         .onChange(of: viewModel.isRestoringHistory) { _, restoring in
             recordScroll("restoring-\(restoring)", immediate: true)
             guard !restoring else { return }
-            if isOpening { openAtStart() }
+            if position.isOpening { openAtStart() }
         }
         .onAppear {
-            if isOpening { openAtStart() }
+            if position.isOpening { openAtStart() }
         }
     }
 
@@ -372,14 +357,14 @@ struct ChatTranscript: View {
         }.count
         diagnostics.context = [
             "chat": DiagnosticEvent.id(viewModel.chatId), "rows": String(viewModel.rows.count),
-            "measured": String(reads.rows.count), "visible": String(visible), "opening": String(isOpening),
-            "restoring": String(viewModel.isRestoringHistory), "at_bottom": String(bottom.atBottom),
+            "measured": String(reads.rows.count), "visible": String(visible), "opening": String(position.isOpening),
+            "restoring": String(viewModel.isRestoringHistory), "at_bottom": String(position.bottom.atBottom),
             "jumped": String(viewModel.isJumped), "position": visiblePlace.map(DiagnosticEvent.id) ?? "nil",
-            "following_latest": String(bottom.followsLatest), "scroll_command": scroll.request.map { String($0.token) } ?? "nil",
+            "following_latest": String(position.bottom.followsLatest), "scroll_command": position.request.map { String($0.token) } ?? "nil",
             "last_frame": TranscriptDiagnostics.frame(last), "viewport_frame": TranscriptDiagnostics.frame(viewport?.frame),
             "composer_top": TranscriptDiagnostics.n(bottomControlsTop), "keyboard_top": keyboardTop.map(TranscriptDiagnostics.n) ?? "nil",
             "header_bottom": headerBottom.map(TranscriptDiagnostics.n) ?? "nil", "content_top": TranscriptDiagnostics.n(contentTop),
-            "visible_area": TranscriptDiagnostics.frame(visibleArea), "last_end_visible": String(bottom.lastEndVisible),
+            "visible_area": TranscriptDiagnostics.frame(visibleArea), "last_end_visible": String(position.bottom.lastEndVisible),
             "unread_below": String(viewModel.unreadBelow), "down_button": String(downButton.shown)
         ]
         diagnostics.record(event, immediate: immediate)
@@ -393,7 +378,7 @@ struct ChatTranscript: View {
     /// разделитель или на прежнее место), ничего не сообщается: промежуточное положение у низа
     /// прочитало бы весь чат. Модель узнаёт только смену результата.
     private func reportReads() {
-        guard !isOpening, scroll.request == nil, let viewport = reads.viewport else { return }
+        guard position.isSettled, let viewport = reads.viewport else { return }
         let area = ReadVisibility.area(
             viewport: ReadSpan(minY: Double(viewport.frame.minY), maxY: Double(viewport.frame.maxY)),
             safeTop: Double(viewport.safeTop),
@@ -407,7 +392,7 @@ struct ChatTranscript: View {
                 ReadRowFrame(id: id, order: $0, minY: Double(frame.minY), height: Double(frame.height))
             }
         }
-        let report = TranscriptReadReport(newest: ReadVisibility.newestSeen(rows, in: area), atBottom: bottom.atBottom)
+        let report = TranscriptReadReport(newest: ReadVisibility.newestSeen(rows, in: area), atBottom: position.bottom.atBottom)
         if let area = visibleArea {
             // Choose a row whose current placement can be represented by a normal scroll anchor.
             for (id, frame) in reads.rows.sorted(by: { $0.value.minY < $1.value.minY }) {
@@ -432,7 +417,7 @@ struct ChatTranscript: View {
         var failures = 0
         while (headerVisible || nearTopActive) && !Task.isCancelled {
             guard !viewModel.messages.isEmpty, !viewModel.isLoadingOlder,
-                  !viewModel.isRestoringHistory, !isOpening, viewModel.canLoadOlder else { return }
+                  !viewModel.isRestoringHistory, !position.isOpening, viewModel.canLoadOlder else { return }
             let oldest = viewModel.messages.first?.id
             await viewModel.loadOlder()
             if Task.isCancelled { return }
@@ -492,117 +477,62 @@ struct ChatTranscript: View {
         // прокрутки, а не низ шапки: короткая лента стоит сразу под шапкой и частью заходит
         // под её стекло, и прежняя проверка по шапке держала кнопку «вниз» в коротком чате.
         let fits = first.map { $0.minY >= contentTop - 2 } ?? false
-        var next = bottom
+        var next = position
         next.measuredLastRow(minY: last.map { Double($0.minY) }, maxY: last.map { Double($0.maxY) },
-            viewportMin: Double(area.minY), viewportMax: Double(area.maxY), userScrolling: userScrolling, contentFits: fits,
+            viewportMin: Double(area.minY), viewportMax: Double(area.maxY), contentFits: fits,
             buttonMin: Double(contentTop))
-        if next != bottom { bottom = next }
+        if next != position { position = next }
     }
 
-    private func requestLatest() {
-        guard let id = viewModel.rows.last?.id else { return }
-        bottom.beginFollowing()
-        scroll.start(id: id, anchor: 1, latest: true)
+    /// Что о ленте знает модель чата — для открытия и изменений ленты.
+    private var positionFeed: TranscriptPosition.Feed {
+        TranscriptPosition.Feed(
+            lastRowId: viewModel.rows.last?.id,
+            unreadAnchorId: viewModel.unreadAnchorId,
+            restoredPlace: viewModel.restoredPlace,
+            hasPendingOpen: viewModel.hasPendingOpen,
+            isJumped: viewModel.isJumped
+        )
     }
 
-    private func requestHistory(_ id: String, anchor: Double) {
-        bottom.beginReadingHistory()
-        scroll.start(id: id, anchor: anchor, latest: false)
-    }
-
-    /// Choose once per appearance: a later server response cannot replace a cache target.
     private func openAtStart() {
-        guard !openingTargetChosen, !viewModel.rows.isEmpty else { return }
-        if viewModel.hasPendingOpen {
-            if !viewModel.isRestoringHistory { viewModel.startPendingOpen() }
-            return
-        }
-        openingTargetChosen = true
-        if let anchor = viewModel.unreadAnchorId {
-            recordScroll("open-target=unread:\(anchor)", immediate: true)
-            requestHistory(anchor, anchor: 0.12)
-        } else if let place = viewModel.restoredPlace {
-            recordScroll("open-target=restored:\(place)", immediate: true)
-            requestHistory(place, anchor: 0)
-        } else {
-            recordScroll("open-target=latest", immediate: true)
-            requestLatest()
-        }
+        handle(position.open(positionFeed))
     }
 
-    /// Прилипать к последнему сообщению. Палец и открытие на непрочитанном это отменяют.
-    private var stickToBottom: Bool {
-        if userScrolling || isOpening || viewModel.isJumped { return false }
-        if let request = scroll.request { return request.latest }
-        return bottom.followsLatest
-    }
-
-    /// Куда встать в этом кадре. Команда прокрутки важнее, иначе — цель открытия.
-    private var revealTarget: TranscriptCollectionFeed.Reveal? {
-        if let request = scroll.request {
-            return .init(id: request.id, anchor: request.anchor, latest: request.latest)
+    private func handle(_ opening: TranscriptPosition.Opening) {
+        switch opening {
+        case .none: break
+        case .waitForWindow: if !viewModel.isRestoringHistory { viewModel.startPendingOpen() }
+        case .unread(let id): recordScroll("open-target=unread:\(id)", immediate: true)
+        case .restored(let id): recordScroll("open-target=restored:\(id)", immediate: true)
+        case .latest: recordScroll("open-target=latest", immediate: true)
         }
-        guard isOpening, !openingTargetChosen, !viewModel.hasPendingOpen, !viewModel.rows.isEmpty else { return nil }
-        if let id = viewModel.unreadAnchorId {
-            return .init(id: id, anchor: 0.12, latest: false)
-        }
-        if let id = viewModel.restoredPlace {
-            return .init(id: id, anchor: 0, latest: false)
-        }
-        if let id = viewModel.rows.last?.id {
-            return .init(id: id, anchor: 1, latest: true)
-        }
-        return nil
     }
 
     private func followCollection() {
-        guard !viewModel.rows.isEmpty, viewModel.scrollTarget == nil else { return }
-        if isOpening { openAtStart(); return }
-        switch viewModel.messagesChange {
-        case .prepended, .trimmed, .reload:
-            // Снимок коллекции сам держит видимую строку. Вторая команда прокрутки её сдвигает.
-            return
-        default:
-            followShared()
+        guard viewModel.scrollTarget == nil else { return }
+        let place = reads.place.flatMap { place in
+            viewModel.rowOrder(of: place.id).map { _ in TranscriptPosition.Place(id: place.id, anchor: place.anchor) }
         }
-    }
-
-    private func followShared() {
-        let preservesPlace: Bool
-        switch viewModel.messagesChange {
-        case .prepended, .reload, .trimmed: preservesPlace = true
-        default: preservesPlace = viewModel.changeFromPaging
-        }
-        if preservesPlace {
-            if !userScrolling, scroll.request == nil, let place = reads.place,
-               viewModel.rowOrder(of: place.id) != nil {
-                if bottom.followsLatest && !viewModel.isJumped { requestLatest() }
-                else { requestHistory(place.id, anchor: place.anchor) }
-            }
-            return
-        }
-        guard !viewModel.isJumped else { return }
-        if case .appended(let count) = viewModel.messagesChange, count > 0 {
-            if bottom.followsLatest || viewModel.messages.suffix(count).contains(where: viewModel.isOutgoing) {
-                requestLatest()
-            }
-        }
+        let opening = position.feedChanged(
+            viewModel.messagesChange,
+            fromPaging: viewModel.changeFromPaging,
+            place: place,
+            feed: positionFeed
+        ) { count in viewModel.messages.suffix(count).contains(where: viewModel.isOutgoing) }
+        handle(opening)
     }
 
     private func goDown() {
         if viewModel.returnFromJump() { return }
         recordScroll("scroll-target=latest", immediate: true)
-        requestLatest()
+        position.goDown(lastRowId: viewModel.rows.last?.id)
     }
 
     private func perform(_ target: ChatScrollTarget?) {
         guard let target else { return }
         viewModel.consumeScroll()
-        openingTargetChosen = true
-        switch target {
-        case .message(let id, _): requestHistory(id, anchor: 0.5)
-        case .bottom: requestLatest()
-        }
+        position.perform(target, lastRowId: viewModel.rows.last?.id)
     }
 
     private func applyCollectionFrames(_ frames: [String: CGRect], viewport: CGRect) {
@@ -618,9 +548,8 @@ struct ChatTranscript: View {
         reads.viewport = TranscriptReadViewport(frame: viewport, safeTop: 0, safeBottom: 0)
         refreshNearTopPrefix()
         measuredGeometry()
-        let heightChanged = frames.contains { id, frame in oldHeights[id] != frame.height }
-        if heightChanged, !bottom.atBottom, bottom.followsLatest, !userScrolling, !isOpening, scroll.request == nil {
-            requestLatest()
+        if frames.contains(where: { id, frame in oldHeights[id] != frame.height }) {
+            position.rowsResized(lastRowId: viewModel.rows.last?.id)
         }
         reportReads()
     }
@@ -640,12 +569,12 @@ struct ChatTranscript: View {
     }
 
     /// Признаки низа ленты, за которыми следит `body`.
-    private var bottomSignal: [Bool] { [bottom.atBottom, bottom.lastEndVisible] }
+    private var bottomSignal: [Bool] { [position.bottom.atBottom, position.bottom.lastEndVisible] }
 
     /// Низ живой ленты на экране — прижата к нему или виден конец последнего сообщения:
     /// непрочитанных ниже нет. Во время команды прокрутки не отмечается, после неё — сразу.
     private func noteBottomIfReached() {
-        guard !isOpening, scroll.request == nil, bottom.atBottom || bottom.lastEndVisible else { return }
+        guard position.isSettled, position.bottom.atBottom || position.bottom.lastEndVisible else { return }
         viewModel.noteAtBottom()
     }
 
