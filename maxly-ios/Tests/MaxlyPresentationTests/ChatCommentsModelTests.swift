@@ -9,6 +9,7 @@ private actor CountingComments: CommentsRepository {
     var failure: MaxlyError?
 
     func comments(chatId: String, postId: String, before: Date?, limit: Int) async throws(MaxlyError) -> [Message] { [] }
+    func comments(chatId: String, postId: String, after: Date, limit: Int) async throws(MaxlyError) -> [Message] { [] }
     func send(text: String, chatId: String, postId: String) async throws(MaxlyError) -> Message { throw .invalidRequest }
 
     func counts(chatId: String, postIds: [String]) async throws(MaxlyError) -> [String: Int] {

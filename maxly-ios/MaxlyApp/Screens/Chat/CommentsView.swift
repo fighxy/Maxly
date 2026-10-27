@@ -15,7 +15,8 @@ struct CommentsView: View {
     var onBlockAuthor: ((Message) async throws -> Void)? = nil
     @State private var blockNotice: String?
     @State private var reveal = PrivateModeReveal()
-    @State private var atBottom = true
+    /// Окно открывается на посте и первых комментариях, а не внизу обсуждения.
+    @State private var atBottom = false
     /// Верх поля ввода в глобальных координатах. `0` — ещё не измерен.
     @State private var composerTop: CGFloat = 0
     @Environment(\.scenePhase) private var scenePhase
@@ -94,6 +95,8 @@ struct CommentsView: View {
                         .frame(minHeight: 44)
                         .maxlyGlassRounded(radius: 22)
                     Button {
+                        // Свой комментарий встаёт в конец: лента едет к нему.
+                        atBottom = true
                         Task { await model.send() }
                     } label: {
                         Image(systemName: "arrow.up")

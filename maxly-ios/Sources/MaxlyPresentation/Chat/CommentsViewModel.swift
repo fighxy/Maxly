@@ -4,7 +4,8 @@ import MaxlyDomain
 
 /// Комментарии одного поста канала.
 ///
-/// Первая страница грузится при открытии, более ранние — страницами при прокрутке вверх.
+/// Обсуждение открывается с первого комментария: первая страница — сразу после поста, более
+/// новые — страницами при прокрутке вниз.
 /// Свой комментарий сразу виден со статусом «отправляется» и заменяется ответом сервера;
 /// при ошибке он помечается неотправленным, а текст возвращается в поле ввода.
 @MainActor
@@ -23,11 +24,12 @@ public final class CommentsViewModel {
     public private(set) var comments: [Message] = [] {
         didSet { commentsChange = CollectionChange.between(oldValue.map(\.id), comments.map(\.id)) }
     }
-    /// Как обсуждение изменилось последним обновлением: подгрузка старых — без анимации.
+    /// Как обсуждение изменилось последним обновлением: подгрузка страниц — без анимации.
     public private(set) var commentsChange: CollectionChange = .none
     public private(set) var state: State = .loading
-    public private(set) var hasMore = true
-    public private(set) var isLoadingOlder = false
+    /// На сервере есть комментарии новее загруженных.
+    public private(set) var hasNewer = true
+    public private(set) var isLoadingNewer = false
     public var draft = ""
     public private(set) var error: MaxlyError?
 
@@ -39,6 +41,10 @@ public final class CommentsViewModel {
     /// Через сколько повторить первую страницу, если сервер ответил `too.many.requests`.
     @ObservationIgnored private let rateLimitRetry: Duration
     @ObservationIgnored private var loaded = false
+    /// Время последнего комментария из страниц по порядку: следующая страница — после него.
+    /// Свои только что отправленные комментарии его не двигают, иначе середина обсуждения
+    /// осталась бы незагруженной.
+    @ObservationIgnored private var newestLoaded: Date?
     /// Последний запрос реакции по id комментария: поздние ответы на прежние не применяются.
     @ObservationIgnored private var pendingReactions: [String: Int] = [:]
     @ObservationIgnored private var reactionRequest = 0
@@ -91,21 +97,30 @@ public final class CommentsViewModel {
         await reload()
     }
 
-    /// Свежая последняя страница: при открытии, по «Повторить» и по жесту обновления.
+    /// Первая страница заново: при открытии, по «Повторить» и по жесту обновления.
     public func reload() async {
         if comments.isEmpty { state = .loading }
-        await fetchLatest(retryOnLimit: true)
+        await fetchFirst(retryOnLimit: true)
     }
 
-    /// Последняя страница. На `too.many.requests` окно не сдаётся сразу: оно ждёт паузу сервера,
-    /// показывая загрузку, и спрашивает ещё раз. Второй отказ уже показывается с «Повторить».
-    private func fetchLatest(retryOnLimit: Bool) async {
+    /// Первая страница — сразу после поста. На `too.many.requests` окно не сдаётся сразу: оно
+    /// ждёт паузу сервера, показывая загрузку, и спрашивает ещё раз. Второй отказ уже
+    /// показывается с «Повторить».
+    private func fetchFirst(retryOnLimit: Bool) async {
         do {
-            let page = try await repository.comments(chatId: chatId, postId: postId, before: nil, limit: pageSize)
+            var page = try await repository.comments(chatId: chatId, postId: postId, after: post.timestamp, limit: pageSize)
+            var fromStart = true
+            if page.isEmpty, (post.content.comments?.count ?? 0) > 0 {
+                // Счётчик поста говорит, что комментарии есть, а страница от поста пуста:
+                // показать хотя бы последние, как раньше, а не «пока нет комментариев».
+                page = try await repository.comments(chatId: chatId, postId: postId, before: nil, limit: pageSize)
+                fromStart = false
+            }
             let pending = comments.filter { $0.status != .sent }
             comments = Self.merged(page, pending)
             commentsChange = .reload
-            hasMore = page.count >= pageSize
+            newestLoaded = page.last?.timestamp
+            hasNewer = fromStart && page.count >= pageSize
             loaded = true
             state = .loaded
         } catch {
@@ -113,7 +128,7 @@ public final class CommentsViewModel {
             if retryOnLimit, error.isRateLimit {
                 try? await Task.sleep(for: rateLimitRetry)
                 guard !Task.isCancelled else { return }
-                await fetchLatest(retryOnLimit: false)
+                await fetchFirst(retryOnLimit: false)
                 return
             }
             if comments.isEmpty {
@@ -124,15 +139,16 @@ public final class CommentsViewModel {
         }
     }
 
-    /// Страница комментариев раньше самого старого из загруженных.
-    public func loadOlder() async {
-        guard loaded, hasMore, !isLoadingOlder, let oldest = comments.first(where: { $0.status == .sent }) else { return }
-        isLoadingOlder = true
-        defer { isLoadingOlder = false }
+    /// Страница комментариев после последнего из загруженных по порядку.
+    public func loadNewer() async {
+        guard loaded, hasNewer, !isLoadingNewer, let after = newestLoaded else { return }
+        isLoadingNewer = true
+        defer { isLoadingNewer = false }
         do {
-            let page = try await repository.comments(chatId: chatId, postId: postId, before: oldest.timestamp, limit: pageSize)
+            let page = try await repository.comments(chatId: chatId, postId: postId, after: after, limit: pageSize)
             comments = Self.merged(page, comments)
-            hasMore = page.count >= pageSize
+            if let last = page.last?.timestamp { newestLoaded = last }
+            hasNewer = page.count >= pageSize
         } catch {
             if error != .cancelled { self.error = error }
         }

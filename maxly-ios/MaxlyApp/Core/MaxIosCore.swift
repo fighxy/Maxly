@@ -272,6 +272,18 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
         }
     }
 
+    func loadCommentsAfter(chatId: String, postId: String, afterMs: Int64, limit: Int) async throws -> [CoreMessage] {
+        try await call("loadCommentsAfter") { done in
+            self.client.loadCommentsAfter(chatId: chatId, postId: postId, afterMs: afterMs, limit: Int32(limit)) { list, kind, key in
+                if let kind {
+                    done(.failure(Self.failed(kind: kind, key: key)))
+                } else {
+                    done(.success(list.map(Self.message)))
+                }
+            }
+        }
+    }
+
     func sendComment(chatId: String, postId: String, text: String) async throws -> CoreMessage {
         try await call("sendComment") { done in
             self.client.sendComment(chatId: chatId, postId: postId, text: text, replyTo: "") { message, kind, key in
@@ -681,7 +693,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
     /// закрепу или поиску и листание от его краёв; старые страницы ленты — листание вверх
     /// (раньше они ждали паузы от чужих отказов, и лента молча вставала).
     private static let limitAwareCalls: Set<String> = pacedCalls.union([
-        "loadComments", "loadOpenedHistory", "loadOwnerStories", "loadHistoryAround", "loadOlderHistory", "ownStoryArchive",
+        "loadComments", "loadCommentsAfter", "loadOpenedHistory", "loadOwnerStories", "loadHistoryAround", "loadOlderHistory", "ownStoryArchive",
     ])
 
     /// Текст сервера читается сразу в колбэке, пока `IosErrors.current()` ещё жив.

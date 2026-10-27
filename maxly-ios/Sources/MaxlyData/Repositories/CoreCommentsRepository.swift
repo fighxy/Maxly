@@ -21,6 +21,17 @@ public struct CoreCommentsRepository: CommentsRepository {
         }
     }
 
+    public func comments(chatId: String, postId: String, after: Date, limit: Int) async throws(MaxlyError) -> [Message] {
+        do {
+            let page = try await core.loadCommentsAfter(chatId: chatId, postId: postId, afterMs: after.unixMillis, limit: limit)
+            Log.info(.messages, "Комментарии поста \(postId) в чате \(chatId) по порядку: \(page.count)")
+            return page.map { Self.comment($0, postId: postId) }
+        } catch {
+            Log.warning(.messages, "Комментарии поста \(postId) в чате \(chatId) не загрузились: \(error)")
+            throw CoreMapping.apiError(error).maxlyError
+        }
+    }
+
     public func send(text: String, chatId: String, postId: String) async throws(MaxlyError) -> Message {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { throw .invalidRequest }
