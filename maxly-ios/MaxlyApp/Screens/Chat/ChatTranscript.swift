@@ -607,12 +607,6 @@ struct ChatTranscript: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 32)
-            .overlay {
-                if !viewModel.isLoadingOlder {
-                    Button("Загрузить предыдущие сообщения") { Task { await loadOlderFromTop() } }
-                        .font(.app(.caption))
-                }
-            }
             .onGeometryChange(for: Bool.self) { geometry in
                 let frame = geometry.frame(in: .named("transcript-viewport"))
                 return frame.maxY >= 0 && frame.minY < 100

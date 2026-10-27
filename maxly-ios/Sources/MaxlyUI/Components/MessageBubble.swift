@@ -227,11 +227,16 @@ public struct MessageBubble: View {
                 authorMark
             }
             VStack(alignment: isOutgoing ? .trailing : .leading, spacing: 4) {
-                bubbleContent
-                    // Сжатие — внутри рамки, по которой меню ставит копию пузыря: копия встаёт
-                    // в настоящий размер.
-                    .modifier(PressFeedback(anchor: isOutgoing ? .trailing : .leading, enabled: menuPresenter != nil))
-                    .modifier(MenuFrameReader(frame: menuFrame, enabled: menuPresenter != nil))
+                if let keyboard = message.content.keyboard {
+                    // Кнопки бота ровно по ширине пузыря.
+                    KeyboardAttached(trailing: isOutgoing, spacing: InlineKeyboardView.spacing) {
+                        pressableBubble
+                        InlineKeyboardView(keyboard: keyboard) { button in onButton?(button) }
+                            .disabled(onButton == nil)
+                    }
+                } else {
+                    pressableBubble
+                }
                 if message.status == .failed {
                     Button("Не отправлено. Повторить", action: onRetry)
                         .font(.app(.caption2))
@@ -245,10 +250,6 @@ public struct MessageBubble: View {
                         interactive: allowsReactions,
                         onToggle: onReact
                     )
-                }
-                if let keyboard = message.content.keyboard {
-                    InlineKeyboardView(keyboard: keyboard) { button in onButton?(button) }
-                        .disabled(onButton == nil)
                 }
             }
             .frame(maxWidth: bubbleWidth, alignment: isOutgoing ? .trailing : .leading)
@@ -306,6 +307,14 @@ public struct MessageBubble: View {
             }
         }
         .modifier(QuickDoubleTap(action: onDoubleTap))
+    }
+
+    /// Пузырь с откликом на удержание. Сжатие — внутри рамки, по которой меню ставит копию
+    /// пузыря: копия встаёт в настоящий размер.
+    private var pressableBubble: some View {
+        bubbleContent
+            .modifier(PressFeedback(anchor: isOutgoing ? .trailing : .leading, enabled: menuPresenter != nil))
+            .modifier(MenuFrameReader(frame: menuFrame, enabled: menuPresenter != nil))
     }
 
     /// Сам пузырь: стикер или эмодзи без подложки либо пузырь с подложкой.
@@ -703,7 +712,8 @@ public struct MessageBubble: View {
                 commentsFooter
             }
         }
-        .frame(minWidth: 64, alignment: .leading)
+        // С кнопками бота пузырь берёт ширину, которую даёт `KeyboardAttached`: она не уже кнопок.
+        .frame(minWidth: 64, maxWidth: message.content.keyboard == nil ? nil : .infinity, alignment: .leading)
         .background(fill, in: shape)
         .clipShape(shape)
         // Тень — под обрезанным пузырём, иначе форма срезала бы её.

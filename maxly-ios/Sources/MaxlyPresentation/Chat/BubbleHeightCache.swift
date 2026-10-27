@@ -30,7 +30,7 @@ public final class BubbleHeightCache: @unchecked Sendable {
     public static let linkPreview: Double = 88
     public static let contactCard: Double = 72
     public static let callRow: Double = 64
-    public static let keyboardRow: Double = 44
+    public static let keyboardRow: Double = 40
     public static let commentsFooter: Double = 36
 
     private var heights: [String: Double] = [:]
