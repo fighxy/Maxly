@@ -84,9 +84,9 @@ struct MessageActionsModelTests {
         let repository = ActionMessages()
         let chat = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
         let target = sent("5")
-        chat.beginReply(to: target)
-        #expect(chat.replyTarget?.id == "5")
+        chat.composer.beginReply(to: target)
+        #expect(chat.composer.replyTarget?.id == "5")
         await chat.actions.confirmDelete(target, forEveryone: false)
-        #expect(chat.replyTarget == nil)
+        #expect(chat.composer.replyTarget == nil)
     }
 }

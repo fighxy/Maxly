@@ -585,12 +585,12 @@ struct ChatDraftTests {
         let messages = FakeMessageRepository()
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: messages, drafts: drafts, draftDelay: .milliseconds(10))
         model.activate()
-        #expect(await eventually { model.draft == "привет" })
+        #expect(await eventually { model.composer.draft == "привет" })
         try? await Task.sleep(for: .milliseconds(30))
         #expect(await drafts.saves == 0)
-        model.draft = "привет, как дела"
+        model.composer.draft = "привет, как дела"
         #expect(await eventually { await drafts.drafts["c"] == "привет, как дела" })
-        await model.send()
+        await model.composer.send()
         #expect(await eventually { await drafts.drafts["c"] == nil })
     }
 
@@ -605,11 +605,11 @@ struct ChatDraftTests {
         model.activate()
         try? await Task.sleep(for: .milliseconds(30))
         await drafts.changeRemotely("с ноутбука", chatId: "c")
-        #expect(await eventually { model.draft == "с ноутбука" })
-        model.draft = "своё"
+        #expect(await eventually { model.composer.draft == "с ноутбука" })
+        model.composer.draft = "своё"
         await drafts.changeRemotely(nil, chatId: "c")
         try? await Task.sleep(for: .milliseconds(30))
-        #expect(model.draft == "своё")
+        #expect(model.composer.draft == "своё")
         model.deactivate()
     }
 
@@ -618,7 +618,7 @@ struct ChatDraftTests {
         let drafts = FakeDrafts()
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository(), drafts: drafts, draftDelay: .seconds(60))
         model.activate()
-        model.beginReply(to: reply("12"))
+        model.composer.beginReply(to: reply("12"))
         model.deactivate()
         #expect(await eventually { await drafts.replies["c"] == "12" })
         #expect(await drafts.saves == 0)
@@ -631,7 +631,7 @@ struct ChatDraftTests {
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: messages, drafts: drafts, draftDelay: .milliseconds(10))
         model.activate()
         messages.emit([reply("12")])
-        #expect(await eventually { model.replyTarget?.serverId == "12" })
+        #expect(await eventually { model.composer.replyTarget?.serverId == "12" })
         try? await Task.sleep(for: .milliseconds(30))
         #expect(await drafts.replies["c"] == "12")
     }
@@ -641,7 +641,7 @@ struct ChatDraftTests {
         let drafts = FakeDrafts()
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository(), drafts: drafts, draftDelay: .seconds(60))
         model.activate()
-        model.draft = "текст"
+        model.composer.draft = "текст"
         model.deactivate()
         #expect(await eventually { await drafts.drafts["c"] == "текст" })
     }

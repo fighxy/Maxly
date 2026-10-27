@@ -103,48 +103,12 @@ public final class ChatViewModel {
     /// Растёт, когда у уже показанных сообщений поменялись реакции или текст: пузырь
     /// меняет размер, и лента плавно раздвигается, а не прыгает.
     public private(set) var contentVersion = 0
-    /// Текст в поле ввода. Сохраняется черновиком с короткой задержкой и при уходе с экрана.
-    public var draft = "" {
-        didSet {
-            format.textChanged(from: oldValue, to: draft)
-            if draft.isEmpty {
-                mentionDraft.clear()
-            } else {
-                mentionDraft.retainPresent(draft)
-            }
-            // Текст правки не черновик: его не сохраняем.
-            guard draft != oldValue, !isRestoringDraft, editTarget == nil else { return }
-            scheduleDraftSave()
-            refreshComposerHints()
-            if !draft.isEmpty { typingReporter?.textEdited(chatId: chatId, canWrite: typingAllowed) }
-        }
-    }
-    /// Подсказки `@` над полем ввода.
-    public private(set) var mentionHints: [ChatMemberRef] = []
-    /// Подсказки `/` для бота.
-    public private(set) var commandHints: [BotCommandRef] = []
     public private(set) var error: MaxlyError?
     public private(set) var stickToBottom = true
-    /// Цитата над полем ввода. Входит в черновик: черновик из одного ответа тоже сохраняется.
-    public private(set) var replyTarget: Message? {
-        didSet {
-            guard replyTarget?.id != oldValue?.id, !isRestoringDraft, editTarget == nil else { return }
-            pendingDraftReply = nil
-            scheduleDraftSave()
-        }
-    }
-    /// Ответ из черновика, сообщение которого ещё не в ленте (серверный id).
-    @ObservationIgnored private var pendingDraftReply: String?
-    /// Сообщение, текст которого сейчас правится в поле ввода.
-    public private(set) var editTarget: Message?
-    /// Черновик, отложенный на время правки.
-    @ObservationIgnored private var draftBeforeEdit = ""
     /// Просьба прокрутить ленту: переход к сообщению или вниз. Экран выполняет её и снимает.
     public private(set) var scrollTarget: ChatScrollTarget?
     public private(set) var scrollToken = 0
     public private(set) var highlightedId: String?
-    /// `edit-timeout` сервера в секундах; `nil` — неизвестен, срок правки не проверяется.
-    @ObservationIgnored private var editTimeoutSeconds: Int?
     @ObservationIgnored private var rulesLoaded = false
     /// Сообщение, с которого чат помечают непрочитанным: экран забирает его и закрывается.
     public var unreadMarkCandidate: Message?
@@ -159,11 +123,6 @@ public final class ChatViewModel {
     public private(set) var uploadProgress: [String: Double] = [:]
     @ObservationIgnored private var progressWatch: Task<Void, Never>?
     @ObservationIgnored private var failureWatch: Task<Void, Never>?
-    /// «Я печатаю» для собеседника (`MSG_TYPING` 65). `nil` — не отправляется.
-    @ObservationIgnored public var typingReporter: TypingReporter?
-    /// Можно ли писать в чат: экран ставит его по праву на поле ввода. Пока не поставил,
-    /// «печатаю» не уходит (канал без прав, чат из поиска).
-    @ObservationIgnored public var typingAllowed = false
     /// Когда уходит отметка прочтения (`ReadMarkRules`): пауза после последней смены
     /// кандидата, только самое новое, никогда не старее отправленного.
     @ObservationIgnored private(set) var readMarks: ReadMarkScheduler?
@@ -175,27 +134,13 @@ public final class ChatViewModel {
     @ObservationIgnored private var markingUnread = false
 
     @ObservationIgnored private let repository: any MessageRepository
-    @ObservationIgnored private let drafts: (any ChatDraftStore)?
     @ObservationIgnored private let chats: (any ChatRepository)?
-    @ObservationIgnored private var mentionDraft = MentionDraft()
-    @ObservationIgnored private var memberRows: [ChatMemberRef] = []
-    @ObservationIgnored private var commandRows: [BotCommandRef] = []
-    @ObservationIgnored private var membersAsked = false
-    @ObservationIgnored private var commandsAsked = false
     /// Собеседник личного чата: команды бота и сигнал звонка.
     @ObservationIgnored public var peerId: String?
     @ObservationIgnored public var peerIsBot = false
-    @ObservationIgnored private let draftDelay: Duration
     @ObservationIgnored private var watch: Task<Void, Never>?
-    @ObservationIgnored private var draftSave: Task<Void, Never>?
-    @ObservationIgnored private var isRestoringDraft = false
-    @ObservationIgnored private var saveChain: Task<Void, Never>?
-    /// Последний текст, отданный хранилищу: не пишем одно и то же дважды.
-    @ObservationIgnored private var savedDraft: String?
-    /// Ответ, записанный в черновик (серверный id).
-    @ObservationIgnored private var savedReply: String?
-    /// Подписка на черновики, изменённые не из этого поля.
-    @ObservationIgnored private var draftWatch: Task<Void, Never>?
+    /// Поле ввода: черновик, разметка, ответ и правка, отправка, «я печатаю».
+    public let composer: ComposerModel
     /// Выбор нескольких сообщений: копирование, пересылка, удаление одним запросом.
     public let selection: MessageSelectionModel
     /// Поиск по сообщениям чата.
@@ -238,9 +183,11 @@ public final class ChatViewModel {
         self.chatId = chatId
         self.currentUserId = currentUserId
         self.repository = messages
-        self.drafts = drafts
-        self.draftDelay = draftDelay
         self.chats = chats
+        self.composer = ComposerModel(
+            chatId: chatId, currentUserId: currentUserId, repository: messages,
+            drafts: drafts, draftDelay: draftDelay, chats: chats
+        )
         self.selection = MessageSelectionModel(chatId: chatId, currentUserId: currentUserId, repository: messages)
         self.search = ChatSearchModel(chatId: chatId, repository: messages)
         self.polls = ChatPollsModel(chatId: chatId, repository: messages)
@@ -254,10 +201,7 @@ public final class ChatViewModel {
         self.actions = MessageActionsModel(chatId: chatId, repository: messages, selection: selection)
         selection.onNotice = { [weak self] text in self?.showNotice(text) }
         selection.onError = { [weak self] failure in self?.show(failure) }
-        selection.onDeleted = { [weak self] ids in
-            guard let self, let reply = self.replyTarget, ids.contains(reply.id) else { return }
-            self.replyTarget = nil
-        }
+        selection.onDeleted = { [weak self] ids in self?.composer.dropReply(ifIn: ids) }
         readMarks = ReadMarkScheduler(sleep: readMarkSleep) { [weak self] mark in
             await self?.sendReadMark(mark) ?? false
         }
@@ -266,7 +210,7 @@ public final class ChatViewModel {
         polls.onSuccess = { [weak self] in self?.error = nil }
         polls.onNotice = { [weak self] text in self?.showNotice(text) }
         polls.onError = { [weak self] failure in self?.show(failure) }
-        scheduled.onScheduled = { [weak self] in self?.draft = "" }
+        scheduled.onScheduled = { [weak self] in self?.composer.draft = "" }
         voices.onWillPlay = { [weak self] in self?.attachments.stopRoundPlayback() }
         attachments.messages = { [weak self] in self?.messages ?? [] }
         attachments.isOutgoing = { [weak self] message in self?.isOutgoing(message) ?? false }
@@ -285,9 +229,25 @@ public final class ChatViewModel {
         scheduled.onNotice = { [weak self] text in self?.showNotice(text) }
         scheduled.onError = { [weak self] failure in self?.show(failure) }
         self.comments.reactionCatalog = { [weak self] in self?.reactions.catalog ?? [] }
-        actions.onWillDelete = { [weak self] id in
-            if self?.replyTarget?.id == id { self?.replyTarget = nil }
+        actions.onWillDelete = { [weak self] id in self?.composer.dropReply(ifIn: [id]) }
+        composer.findReply = { [weak self] id in
+            guard let self else { return nil }
+            return self.messages.first { $0.serverId == id } ?? self.live.first { $0.serverId == id }
         }
+        composer.bot = { [weak self] in
+            guard let self, self.peerIsBot else { return nil }
+            return self.peerId
+        }
+        composer.onWillSendText = { [weak self] in
+            self?.pendingUnread = 0
+            self?.unreadAnchorId = nil
+        }
+        composer.onWillSend = { [weak self] in
+            self?.stickToBottom = true
+            self?.returnToLiveForSending()
+        }
+        composer.onSuccess = { [weak self] in self?.error = nil }
+        composer.onError = { [weak self] failure in self?.show(failure) }
         actions.onSuccess = { [weak self] in self?.error = nil }
         actions.onNotice = { [weak self] text in self?.showNotice(text) }
         actions.onError = { [weak self] failure in self?.show(failure) }
@@ -345,10 +305,6 @@ public final class ChatViewModel {
     /// Пустое «Избранное»: вместо ленты плашка о том, что это за чат.
     public var showsSavedPlaceholder: Bool {
         chatId == Chat.savedMessagesId && latestLoaded && messages.isEmpty
-    }
-
-    public var canSend: Bool {
-        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// Чат открыт с `count` непрочитанными (до отметки прочтения): над первым из них встанет
@@ -445,31 +401,14 @@ public final class ChatViewModel {
         !currentUserId.isEmpty && message.authorId == currentUserId
     }
 
-    // MARK: «Я печатаю»
-
-    /// Запись голосового (`.audio`) или кружка (`.videoMessage`) пошла; `nil` — кончилась.
-    public func typingRecording(_ kind: TypingKind?) {
-        guard let typingReporter else { return }
-        if let kind {
-            typingReporter.recordingStarted(kind, chatId: chatId, canWrite: typingAllowed)
-        } else {
-            typingReporter.recordingStopped(chatId: chatId)
-        }
-    }
-
-    /// Открыта панель эмодзи и стикеров.
-    public func typingStickerPanelOpened() {
-        typingReporter?.stickerPanelOpened(chatId: chatId, canWrite: typingAllowed)
-    }
-
     /// Ход загрузки своих вложений этого чата: фото, видео или файл. Голосовое и кружок
     /// уже сообщены записью.
     private func reportUploads(_ snapshot: [String: Double]) {
-        guard let typingReporter, !snapshot.isEmpty else { return }
+        guard let typingReporter = composer.typingReporter, !snapshot.isEmpty else { return }
         for message in messages where message.chatId == chatId {
             guard let fraction = snapshot[message.id], fraction < 1,
                   let kind = Self.uploadKind(message) else { continue }
-            typingReporter.uploadProgress(kind, chatId: chatId, canWrite: typingAllowed)
+            typingReporter.uploadProgress(kind, chatId: chatId, canWrite: composer.typingAllowed)
             return
         }
     }
@@ -509,33 +448,7 @@ public final class ChatViewModel {
                 self.reportUploads(snapshot)
             }
         }
-        if let drafts {
-            let chatId = chatId
-            Task { [weak self] in
-                let saved = await drafts.draft(chatId: chatId)
-                let reply = await drafts.draftReply(chatId: chatId)
-                guard let self else { return }
-                if let saved, self.draft.isEmpty {
-                    self.savedDraft = saved
-                    self.isRestoringDraft = true
-                    self.draft = saved
-                    self.isRestoringDraft = false
-                }
-                if let reply, self.replyTarget == nil, self.editTarget == nil {
-                    self.savedReply = reply
-                    self.pendingDraftReply = reply
-                    self.resolveDraftReply()
-                }
-            }
-            draftWatch?.cancel()
-            draftWatch = Task { [weak self] in
-                let changes = await drafts.draftChanges()
-                for await changed in changes where changed == chatId {
-                    guard let self, !Task.isCancelled else { return }
-                    await self.reloadDraft()
-                }
-            }
-        }
+        composer.start()
     }
 
     private func startMessagesWatch(finishesRestoration: Bool = false, loaded: Bool = false) {
@@ -548,7 +461,7 @@ public final class ChatViewModel {
             for await page in stream {
                 guard let self, !Task.isCancelled, self.watchGeneration == generation else { return }
                 self.receiveLive(page)
-                self.resolveDraftReply()
+                self.composer.resolveDraftReply()
                 if first, finishesRestoration {
                     self.messagesChange = .reload
                     if loaded { self.latestLoaded = true }
@@ -560,7 +473,6 @@ public final class ChatViewModel {
     }
 
     public func deactivate() {
-        typingReporter?.recordingStopped(chatId: chatId)
         endReadSession()
         latestRetry?.cancel()
         latestRetry = nil
@@ -580,96 +492,10 @@ public final class ChatViewModel {
         // из аккаунта.
         attachments.cancel()
         selection.cancel()
-        draftWatch?.cancel()
-        draftWatch = nil
         pins.stopWatch()
         scheduled.stopWatch()
         polls.stopRefresh()
-        flushDraft()
-    }
-
-    /// Сохранить черновик сразу, не дожидаясь паузы в наборе.
-    public func flushDraft() {
-        draftSave?.cancel()
-        draftSave = nil
-        persistDraft()
-        commitDraft()
-    }
-
-    /// Из поля ушли: черновик сверяется с сервером после записи на устройстве.
-    private func commitDraft() {
-        guard let drafts, editTarget == nil else { return }
-        let chatId = chatId
-        let previous = saveChain
-        saveChain = Task {
-            await previous?.value
-            await drafts.commitDraft(chatId: chatId)
-        }
-    }
-
-    private func scheduleDraftSave() {
-        guard drafts != nil else { return }
-        draftSave?.cancel()
-        let delay = draftDelay
-        draftSave = Task { [weak self] in
-            try? await Task.sleep(for: delay)
-            guard !Task.isCancelled else { return }
-            self?.persistDraft()
-        }
-    }
-
-    private func persistDraft() {
-        guard let drafts else { return }
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Ответ, чьё сообщение ещё не загружено, остаётся в черновике как был.
-        let reply = replyTarget?.serverId ?? pendingDraftReply
-        let textChanged = text != (savedDraft ?? "")
-        let replyChanged = reply != savedReply
-        guard textChanged || replyChanged else { return }
-        savedDraft = text
-        savedReply = reply
-        let chatId = chatId
-        // Записи идут цепочкой: иначе поздний пустой черновик мог бы лечь раньше раннего.
-        let previous = saveChain
-        saveChain = Task {
-            await previous?.value
-            if replyChanged { await drafts.saveDraftReply(reply, chatId: chatId) }
-            if textChanged { await drafts.saveDraft(text, chatId: chatId) }
-        }
-    }
-
-    /// Ответ из черновика встаёт над полем, как только его сообщение появилось в ленте.
-    private func resolveDraftReply() {
-        guard let id = pendingDraftReply else { return }
-        guard replyTarget == nil, editTarget == nil else {
-            pendingDraftReply = nil
-            return
-        }
-        guard let message = messages.first(where: { $0.serverId == id }) ?? live.first(where: { $0.serverId == id }) else { return }
-        pendingDraftReply = nil
-        isRestoringDraft = true
-        replyTarget = message
-        isRestoringDraft = false
-    }
-
-    /// Черновик поменяли на другом устройстве: поле берёт его, если своих незаписанных правок нет.
-    private func reloadDraft() async {
-        guard let drafts, editTarget == nil else { return }
-        let current = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        let currentReply = replyTarget?.serverId ?? pendingDraftReply
-        guard current == (savedDraft ?? ""), currentReply == savedReply else { return }
-        let text = await drafts.draft(chatId: chatId) ?? ""
-        let reply = await drafts.draftReply(chatId: chatId)
-        // Пока ждали хранилище, поле могли начать править.
-        guard editTarget == nil, draft.trimmingCharacters(in: .whitespacesAndNewlines) == current else { return }
-        savedDraft = text
-        savedReply = reply
-        isRestoringDraft = true
-        draft = text
-        if reply != replyTarget?.serverId { replyTarget = nil }
-        isRestoringDraft = false
-        pendingDraftReply = replyTarget == nil ? reply : nil
-        resolveDraftReply()
+        composer.stop()
     }
 
     public func loadLatest() async {
@@ -753,33 +579,6 @@ public final class ChatViewModel {
         isRestoringHistory = false
     }
 
-    /// Вложения из листа: делятся на сообщения (`AttachmentBatchPlanner`), цитата уходит
-    /// с первым. Каждое сообщение появляется сразу и грузится в фоне.
-    /// `true`, если всё ушло; при ошибке её текст уже показан в чате.
-    @discardableResult
-    public func sendAttachments(_ drafts: [AttachmentDraft], caption: String) async -> Bool {
-        let plan = AttachmentBatchPlanner.plan(drafts, caption: caption)
-        guard !plan.batches.isEmpty else { return false }
-        var reply = replyTarget?.id
-        replyTarget = nil
-        stickToBottom = true
-        returnToLiveForSending()
-        do {
-            for batch in plan.batches {
-                try await repository.sendAttachments(batch.drafts, caption: batch.caption, chatId: chatId, replyTo: reply)
-                reply = nil
-            }
-            if !plan.trailingText.isEmpty {
-                try await repository.send(text: plan.trailingText, chatId: chatId, replyTo: nil)
-            }
-            error = nil
-            return true
-        } catch {
-            show(error)
-            return false
-        }
-    }
-
     /// Остановить загрузку своего сообщения и убрать его.
     public func cancelUpload(_ message: Message) async {
         await repository.cancelUpload(messageId: message.id)
@@ -814,193 +613,15 @@ public final class ChatViewModel {
         }
     }
 
-    public func send() async {
-        let marked = MessageMarkup.trimmed(draft, spans: format.spans)
-        let text = marked.text
-        guard !text.isEmpty else { return }
-        if let target = editTarget {
-            await saveEdit(target)
-            return
-        }
-        let reply = replyTarget
-        let animoji = animojiDraft
-        let mentions = mentionDraft
-        let spans = marked.spans + animoji.spans(in: text) + mentions.spans(in: text)
-        draft = ""
-        format = ComposerFormat()
-        // Ответил — значит, прочитал: разделитель непрочитанных больше не нужен.
-        pendingUnread = 0
-        unreadAnchorId = nil
-        animojiDraft.clear()
-        mentionDraft.clear()
-        replyTarget = nil
-        stickToBottom = true
-        returnToLiveForSending()
-        do {
-            try await repository.send(text: text, chatId: chatId, replyTo: reply?.id, formatting: spans)
-            error = nil
-        } catch {
-            draft = text
-            format = ComposerFormat(spans: marked.spans)
-            animojiDraft = animoji
-            mentionDraft = mentions
-            replyTarget = reply
-            show(error)
-        }
-    }
-
-    // MARK: Разметка поля
-
-    /// Разметка поля ввода (панель «Жирный», «Курсив», …), смещения UTF-16 по `draft`.
-    public internal(set) var format = ComposerFormat()
-    /// Выделение в поле (UTF-16 по `draft`); `nil` — ничего не выделено, панели нет.
-    /// Задаёт экран: выделение в SwiftUI-поле видно с iOS 18.
-    public var formatSelection: Range<Int>?
-    /// Разметка, отложенная на время правки.
-    @ObservationIgnored private var formatBeforeEdit = ComposerFormat()
-
-    /// Выделение, к которому применяется панель: внутри текста и не пустое.
-    private var selectedRange: Range<Int>? {
-        guard let range = formatSelection, !range.isEmpty, range.upperBound <= draft.utf16.count else { return nil }
-        return range
-    }
-
-    public func isFormatActive(_ kind: TextSpan.Kind) -> Bool {
-        guard let range = selectedRange else { return false }
-        return kind == .link ? format.link(in: range) != nil : format.isActive(kind, in: range)
-    }
-
-    public func toggleFormat(_ kind: TextSpan.Kind) {
-        guard let range = selectedRange else { return }
-        format.toggle(kind, in: range)
-    }
-
-    /// Адрес ссылки на выделении — для поля «Ссылка».
-    public var selectedLink: String? {
-        selectedRange.flatMap { format.link(in: $0) }
-    }
-
-    /// `false` — адрес не похож на ссылку.
-    @discardableResult
-    public func setLink(_ raw: String) -> Bool {
-        guard let range = selectedRange else { return false }
-        return format.setLink(raw, in: range)
-    }
-
-    public var canClearFormat: Bool {
-        selectedRange.map { format.hasFormatting(in: $0) } ?? false
-    }
-
-    public func clearFormat() {
-        guard let range = selectedRange else { return }
-        format.clear(in: range)
-    }
-
-    /// Анимодзи, вставленные в поле из панели: уходят с текстом отметками `ANIMOJI`.
-    @ObservationIgnored public private(set) var animojiDraft = AnimojiDraft()
-
-    /// Эмодзи из панели встаёт в конец поля (курсор SwiftUI-полю не известен).
-    public func insertEmoji(_ emoji: String, animated: AnimatedEmoji? = nil) {
-        draft += emoji
-        if let animated { animojiDraft.insert(animated) }
-    }
-
-    /// Стрелка «стереть» панели эмодзи: убирает последний символ, эмодзи целиком.
-    public func deleteBackward() {
-        guard !draft.isEmpty else { return }
-        draft.removeLast()
-    }
-
-    /// Стикер уходит сразу отдельным сообщением; цитата — если отвечали.
-    public func sendSticker(_ sticker: Sticker) async {
-        await sendAttachments([.sticker(sticker)], caption: "")
-    }
-
-    public func beginReply(to message: Message) {
-        if editTarget != nil { cancelEdit() }
-        replyTarget = message
-    }
-
-    // MARK: Правка
-
-    /// Править можно свой отправленный текст (не пересланный), пока не вышел `edit-timeout`
-    /// сервера (если ядро его знает).
-    public func canEdit(_ message: Message) -> Bool {
-        isOutgoing(message) && message.status == .sent && message.serverId != nil
-            && message.content.forward == nil
-            && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && editTimeoutSeconds.map { Date().timeIntervalSince(message.timestamp) <= TimeInterval($0) } ?? true
-    }
-
     /// Срок правки и права в чате от ядра — один раз при открытии чата.
     private func loadMessageRules() async {
         guard !rulesLoaded else { return }
         rulesLoaded = true
         if let seconds = await repository.editTimeoutSeconds() {
-            editTimeoutSeconds = seconds
+            composer.editTimeoutSeconds = seconds
             selection.editTimeout = .seconds(seconds)
         }
         selection.coreAdmin = await repository.canDeleteOthers(chatId: chatId)
-    }
-
-    /// Текст сообщения переходит в поле ввода; прежний черновик откладывается.
-    public func beginEdit(_ message: Message) {
-        guard canEdit(message) else { return }
-        replyTarget = nil
-        if editTarget == nil {
-            draftBeforeEdit = draft
-            formatBeforeEdit = format
-        }
-        editTarget = message
-        draft = message.text
-        // Правка начинается со всей разметки сообщения: `MSG_EDIT` заменяет её целиком.
-        format = ComposerFormat(spans: message.content.formatting ?? [])
-    }
-
-    public func cancelEdit() {
-        guard editTarget != nil else { return }
-        editTarget = nil
-        draft = draftBeforeEdit
-        format = formatBeforeEdit
-        draftBeforeEdit = ""
-        formatBeforeEdit = ComposerFormat()
-    }
-
-    /// Текст и весь список разметки: на сервер уходит полный список, пустой снимает разметку.
-    /// Ничего не изменилось — правка просто закрывается.
-    private func saveEdit(_ target: Message) async {
-        let spans = format.spans + animojiDraft.spans(in: draft) + mentionDraft.spans(in: draft)
-        let original = target.content.formatting ?? []
-        guard MessageMarkup.editRequest(originalText: target.text, originalSpans: original, draft: draft, spans: spans) != nil else {
-            cancelEdit()
-            return
-        }
-        let edited = MessageMarkup.trimmed(draft, spans: spans)
-        editTarget = nil
-        let restore = draftBeforeEdit
-        let restoreFormat = formatBeforeEdit
-        draftBeforeEdit = ""
-        formatBeforeEdit = ComposerFormat()
-        isRestoringDraft = true
-        draft = restore
-        format = restoreFormat
-        isRestoringDraft = false
-        do {
-            try await repository.edit(messageId: target.id, chatId: chatId, text: edited.text, formatting: edited.spans)
-            error = nil
-        } catch {
-            // Правка не ушла: вернуть её в поле ввода.
-            draftBeforeEdit = draft
-            formatBeforeEdit = format
-            editTarget = target
-            draft = edited.text
-            format = ComposerFormat(spans: edited.spans)
-            show(error)
-        }
-    }
-
-    public func cancelReply() {
-        replyTarget = nil
     }
 
     // MARK: Реакции
@@ -1499,71 +1120,6 @@ public final class ChatViewModel {
         peerIsBot = isBot
     }
 
-    public func insertMention(_ member: ChatMemberRef) {
-        guard let at = draft.range(of: "@", options: .backwards) else { return }
-        let token = "@\(member.name)"
-        let prefix = String(draft[..<at.lowerBound])
-        mentionDraft.insert(text: token, userId: member.id)
-        draft = prefix + token + " "
-        mentionHints = []
-    }
-
-    public func insertCommand(_ command: BotCommandRef) {
-        let raw = command.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let name = raw.hasPrefix("/") ? String(raw.dropFirst()) : raw
-        guard !name.isEmpty else { return }
-        draft = "/" + name + " "
-        commandHints = []
-    }
-
-    private func refreshComposerHints() {
-        let mention = Self.query(in: draft, marker: "@")
-        let command = Self.query(in: draft, marker: "/")
-        if mention != nil, !membersAsked, let chats {
-            membersAsked = true
-            Task { [weak self] in
-                guard let self else { return }
-                do {
-                    memberRows = try await chats.members(chatId: chatId)
-                } catch {
-                    membersAsked = false
-                }
-                publishHints()
-            }
-        }
-        if command != nil, peerIsBot, let peerId, !commandsAsked, let chats {
-            commandsAsked = true
-            Task { [weak self] in
-                guard let self else { return }
-                do {
-                    commandRows = try await chats.botCommands(botId: peerId)
-                } catch {
-                    commandsAsked = false
-                }
-                publishHints()
-            }
-        }
-        publishHints()
-    }
-
-    private func publishHints() {
-        let mention = Self.query(in: draft, marker: "@")
-        let command = Self.query(in: draft, marker: "/")
-        mentionHints = mention.map { needle in
-            memberRows.filter { $0.name.localizedCaseInsensitiveContains(needle) }.prefix(8).map { $0 }
-        } ?? []
-        commandHints = (command == nil || !peerIsBot) ? [] : commandRows.filter {
-            let name = $0.name.hasPrefix("/") ? String($0.name.dropFirst()) : $0.name
-            return name.localizedCaseInsensitiveContains(command ?? "")
-        }.prefix(8).map { $0 }
-    }
-
-    private static func query(in text: String, marker: Character) -> String? {
-        guard let at = text.lastIndex(of: marker) else { return nil }
-        let tail = text[text.index(after: at)...]
-        if tail.contains(where: \.isWhitespace) { return nil }
-        return String(tail)
-    }
 }
 
 /// Запуск мини-приложения бота из чата: кнопка «Открыть приложение» или inline-кнопка `OPEN_APP`.

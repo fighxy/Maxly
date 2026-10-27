@@ -10,14 +10,14 @@ struct ChatViewModelTests {
     func send() async {
         let repository = FakeMessageRepository()
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
-        model.draft = "   "
-        #expect(!model.canSend)
-        await model.send()
+        model.composer.draft = "   "
+        #expect(!model.composer.canSend)
+        await model.composer.send()
         #expect(await repository.sent.isEmpty)
-        model.draft = "  Привет \n"
-        await model.send()
+        model.composer.draft = "  Привет \n"
+        await model.composer.send()
         #expect(await repository.sent == ["Привет"])
-        #expect(model.draft == "")
+        #expect(model.composer.draft == "")
         #expect(model.error == nil)
     }
 
@@ -26,12 +26,12 @@ struct ChatViewModelTests {
         let repository = FakeMessageRepository()
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
         await repository.set(sendError: .storageError)
-        model.draft = "Текст"
-        await model.send()
-        #expect(model.draft == "Текст")
+        model.composer.draft = "Текст"
+        await model.composer.send()
+        #expect(model.composer.draft == "Текст")
         #expect(model.errorMessage == "Не удалось сохранить данные на устройстве")
         await repository.set(sendError: .cancelled)
-        await model.send()
+        await model.composer.send()
         #expect(model.errorMessage == "Не удалось сохранить данные на устройстве")
     }
 
@@ -78,12 +78,12 @@ struct ChatViewModelTests {
         let repository = FakeMessageRepository()
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
         let target = Message(id: "p", chatId: "c", authorId: "bob", text: "Исходное", timestamp: .now, status: .sent)
-        model.beginReply(to: target)
-        model.draft = "Ответ"
+        model.composer.beginReply(to: target)
+        model.composer.draft = "Ответ"
         await repository.set(sendError: .storageError)
-        await model.send()
-        #expect(model.draft == "Ответ")
-        #expect(model.replyTarget?.id == "p")
+        await model.composer.send()
+        #expect(model.composer.draft == "Ответ")
+        #expect(model.composer.replyTarget?.id == "p")
         #expect(await repository.sent == ["Ответ"])
         #expect(await repository.replyIds == ["p"])
     }

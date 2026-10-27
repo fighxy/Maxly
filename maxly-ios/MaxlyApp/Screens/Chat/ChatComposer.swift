@@ -73,17 +73,17 @@ struct ChatComposer: View {
                     .frame(maxWidth: .infinity)
                     .transition(.maxlyBar(edge: .bottom, reduceMotion: reduceMotion))
             }
-            if !viewModel.mentionHints.isEmpty {
-                hintRow(viewModel.mentionHints.map(\.name)) { name in
-                    if let member = viewModel.mentionHints.first(where: { $0.name == name }) {
-                        viewModel.insertMention(member)
+            if !viewModel.composer.mentionHints.isEmpty {
+                hintRow(viewModel.composer.mentionHints.map(\.name)) { name in
+                    if let member = viewModel.composer.mentionHints.first(where: { $0.name == name }) {
+                        viewModel.composer.insertMention(member)
                     }
                 }
             }
-            if !viewModel.commandHints.isEmpty {
-                hintRow(viewModel.commandHints.map(\.name)) { name in
-                    if let command = viewModel.commandHints.first(where: { $0.name == name }) {
-                        viewModel.insertCommand(command)
+            if !viewModel.composer.commandHints.isEmpty {
+                hintRow(viewModel.composer.commandHints.map(\.name)) { name in
+                    if let command = viewModel.composer.commandHints.first(where: { $0.name == name }) {
+                        viewModel.composer.insertCommand(command)
                     }
                 }
             }
@@ -96,13 +96,13 @@ struct ChatComposer: View {
                     .frame(maxWidth: .infinity)
                     .transition(.maxlyBar(edge: .bottom, reduceMotion: reduceMotion))
             }
-            if let target = viewModel.editTarget {
+            if let target = viewModel.composer.editTarget {
                 editBar(target)
-            } else if let reply = viewModel.replyTarget {
+            } else if let reply = viewModel.composer.replyTarget {
                 replyBar(reply)
             }
-            if canWrite, viewModel.formatSelection != nil, !recording.isActive {
-                ComposerFormatBar(viewModel: viewModel)
+            if canWrite, viewModel.composer.formatSelection != nil, !recording.isActive {
+                ComposerFormatBar(composer: viewModel.composer)
                     .frame(maxWidth: .infinity)
                     .transition(.maxlyBar(edge: .bottom, reduceMotion: reduceMotion))
             }
@@ -115,11 +115,11 @@ struct ChatComposer: View {
         .padding(.horizontal, Self.trailingInset(canWrite: canWrite))
         .padding(.top, 6)
         .padding(.bottom, 8)
-        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.editTarget?.id)
-        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.replyTarget?.id)
+        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.composer.editTarget?.id)
+        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.composer.replyTarget?.id)
         .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: recording.hint)
         .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.errorMessage)
-        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.formatSelection != nil)
+        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.composer.formatSelection != nil)
     }
 
     /// Поле ввода и кнопка отправки (при правке — галочка).
@@ -150,15 +150,15 @@ struct ChatComposer: View {
                         .maxlyGlassID("attach", in: composerGlass)
                         // При правке слот сохраняется: длинный текст не получает
                         // дополнительный перенос из-за смены ширины на 52 pt.
-                        .opacity(viewModel.editTarget == nil ? 1 : 0)
-                        .disabled(viewModel.editTarget != nil)
-                        .accessibilityHidden(viewModel.editTarget != nil)
+                        .opacity(viewModel.composer.editTarget == nil ? 1 : 0)
+                        .disabled(viewModel.composer.editTarget != nil)
+                        .accessibilityHidden(viewModel.composer.editTarget != nil)
                         .transition(.maxlyPop(reduceMotion: reduceMotion))
                         .accessibilityLabel("Прикрепить")
                     }
                     if !recording.isActive {
                         HStack(alignment: .bottom, spacing: 0) {
-                            ComposerTextField(viewModel: viewModel, focus: focus)
+                            ComposerTextField(composer: viewModel.composer, focus: focus)
                                 .lineLimit(1...5)
                                 .textFieldStyle(.plain)
                                 .padding(.leading, 16)
@@ -186,7 +186,7 @@ struct ChatComposer: View {
         }
         .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: recording.isActive)
         // Скрепка прячется при правке и возвращается после неё.
-        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.editTarget == nil)
+        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.composer.editTarget == nil)
         .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: showsAppButton)
     }
 
@@ -198,9 +198,9 @@ struct ChatComposer: View {
             && !focus.wrappedValue
             && !panelShown
             && !recording.isActive
-            && viewModel.editTarget == nil
-            && viewModel.replyTarget == nil
-            && viewModel.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && viewModel.composer.editTarget == nil
+            && viewModel.composer.replyTarget == nil
+            && viewModel.composer.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// Капсула «Открыть» с заливкой акцентом, той же высоты, что круглые кнопки строки.
@@ -284,14 +284,14 @@ struct ChatComposer: View {
     /// Кнопки записи видны, пока поле пустое (и не идёт правка) или пока идёт запись.
     private var showsRecordButton: Bool {
         recording.phase != .idle
-            || (viewModel.editTarget == nil && viewModel.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            || (viewModel.composer.editTarget == nil && viewModel.composer.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 
     private var sendButton: some View {
         Button {
-            Task { await viewModel.send() }
+            Task { await viewModel.composer.send() }
         } label: {
-            Image(systemName: viewModel.editTarget == nil ? "arrow.up" : "checkmark")
+            Image(systemName: viewModel.composer.editTarget == nil ? "arrow.up" : "checkmark")
                 .font(.system(size: 17, weight: .semibold))
                 .frame(width: 30, height: 30)
                 .contentTransition(.symbolEffect(.replace))
@@ -299,8 +299,8 @@ struct ChatComposer: View {
         .maxlyProminentButtonStyle()
         .buttonBorderShape(.circle)
         .tint(Color.maxlyAccent)
-        .disabled(!viewModel.canSend)
-        .accessibilityLabel(viewModel.editTarget == nil ? "Отправить" : "Сохранить правку")
+        .disabled(!viewModel.composer.canSend)
+        .accessibilityLabel(viewModel.composer.editTarget == nil ? "Отправить" : "Сохранить правку")
     }
 
     /// Вместо поля ввода: у бота — «Начать», вне списка — «Подписаться» или «Вступить», у
@@ -372,7 +372,7 @@ struct ChatComposer: View {
             }
             Spacer(minLength: 8)
             Button {
-                viewModel.cancelEdit()
+                viewModel.composer.cancelEdit()
             } label: {
                 Image(systemName: "xmark")
                     .font(.app(.caption, .bold))
@@ -417,7 +417,7 @@ struct ChatComposer: View {
             }
             Spacer(minLength: 8)
             Button {
-                viewModel.cancelReply()
+                viewModel.composer.cancelReply()
             } label: {
                 Image(systemName: "xmark")
                     .font(.app(.caption, .bold))

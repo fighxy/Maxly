@@ -38,13 +38,13 @@ struct ChatFormattingTests {
     func sendFormatted() async {
         let repo = FormattedMessages()
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repo)
-        model.draft = "  Привет, мир"
-        model.formatSelection = 10..<13
-        model.toggleFormat(.strong)
-        #expect(model.isFormatActive(.strong))
-        await model.send()
+        model.composer.draft = "  Привет, мир"
+        model.composer.formatSelection = 10..<13
+        model.composer.toggleFormat(.strong)
+        #expect(model.composer.isFormatActive(.strong))
+        await model.composer.send()
         #expect(await repo.sent == [.init(text: "Привет, мир", formatting: [TextSpan(kind: .strong, from: 8, length: 3)])])
-        #expect(model.format.spans.isEmpty)
+        #expect(model.composer.format.spans.isEmpty)
     }
 
     @Test("Правка уходит со всем списком разметки; снятая разметка — пустым списком")
@@ -54,17 +54,17 @@ struct ChatFormattingTests {
         let bold = TextSpan(kind: .strong, from: 0, length: 6)
         let message = Message(id: "m1", serverId: "77", chatId: "c", authorId: "me", text: "Привет, мир",
                               timestamp: .now, status: .sent, content: MessageContent(formatting: [bold]))
-        model.beginEdit(message)
-        #expect(model.format.spans == [bold])
+        model.composer.beginEdit(message)
+        #expect(model.composer.format.spans == [bold])
         // Без изменений правка закрывается без запроса.
-        await model.send()
+        await model.composer.send()
         #expect(await repo.edits.isEmpty)
-        #expect(model.editTarget == nil)
+        #expect(model.composer.editTarget == nil)
 
-        model.beginEdit(message)
-        model.formatSelection = 0..<6
-        model.toggleFormat(.strong)
-        await model.send()
+        model.composer.beginEdit(message)
+        model.composer.formatSelection = 0..<6
+        model.composer.toggleFormat(.strong)
+        await model.composer.send()
         #expect(await repo.edits == [.init(text: "Привет, мир", formatting: [])])
     }
 }

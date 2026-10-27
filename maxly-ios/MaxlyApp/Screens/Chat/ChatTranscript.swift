@@ -952,7 +952,7 @@ struct ChatTranscript: View {
             uploadProgress: viewModel.uploadFraction(of: message),
             reacts: reacts,
             quickReactions: reacts ? viewModel.reactions.quickReactions(for: message) : [],
-            canEdit: viewModel.canEdit(message),
+            canEdit: viewModel.composer.canEdit(message),
             savesToPhotos: viewModel.attachments.canSave(message, to: .photos),
             savesToFiles: viewModel.attachments.canSave(message, to: .files),
             roundPlayback: round,

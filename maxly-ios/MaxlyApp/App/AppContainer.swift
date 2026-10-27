@@ -632,7 +632,7 @@ final class AppContainer {
             isNewDialog: isNew,
             chats: chats
         )
-        model.typingReporter = typingReporter
+        model.composer.typingReporter = typingReporter
         model.voices.nowPlaying = nowPlaying
         if let stickerRepository {
             // Анимодзи сервера (тот же каталог, что у панели эмодзи): эмодзи → Lottie и эффект реакции.

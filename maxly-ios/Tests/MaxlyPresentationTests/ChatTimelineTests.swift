@@ -177,8 +177,8 @@ struct ChatPositionTests {
         let model = await opened(repository, feed: messages(50...55))
         await repository.queueAround(messages(5...15))
         await model.jump(to: "10")
-        model.draft = "Привет"
-        await model.send()
+        model.composer.draft = "Привет"
+        await model.composer.send()
         #expect(!model.isJumped)
         #expect(model.scrollTarget == .bottom)
         #expect(await repository.sent == ["Привет"])
