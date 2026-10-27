@@ -110,26 +110,8 @@ struct RootView: View {
     }
 }
 
-/// Сжатие нижней панели при прокрутке вниз (iOS 26, `tabBarMinimizeBehavior`). Сжатая панель
-/// показывает кнопку текущей вкладки; раскрывают её прокрутка вверх или нажатие. Раньше iOS 26
-/// панель не сжимается.
-private struct TabBarMinimize: ViewModifier {
-    let enabled: Bool
-
-    func body(content: Content) -> some View {
-        #if compiler(>=6.2)
-        if #available(iOS 26.0, *) {
-            content.tabBarMinimizeBehavior(enabled ? .onScrollDown : .never)
-        } else {
-            content
-        }
-        #else
-        content
-        #endif
-    }
-}
-
-/// Нижняя панель вкладок. На iOS 26 система рисует её плавающей стеклянной капсулой.
+/// Вкладки. На iPhone внизу своя компактная капсула (`CompactTabBar`) на корневом экране
+/// каждой вкладки, системная панель спрятана. На iPad — системная панель.
 struct MainTabView: View {
     @Bindable var container: AppContainer
     @Bindable var router: AppRouter
@@ -143,15 +125,13 @@ struct MainTabView: View {
         TabView(selection: $router.tab) {
             ForEach(AppTab.order, id: \.self) { tab in
                 content(for: tab)
-                    .toolbar(tabBarVisibility(for: tab), for: .tabBar)
+                    // Пока класс размера неизвестен, нет никакой панели: не мелькает ни одна.
+                    .toolbar(sizeClass == .regular ? .visible : .hidden, for: .tabBar)
                     .tabItem { Label(tab.title, systemImage: tab.systemImage) }
                     .tag(tab)
                     .badge(badge(for: tab))
             }
         }
-        // iOS 26: прокрутка списка чатов вниз сжимает панель до кнопки вкладки, прокрутка вверх
-        // или нажатие раскрывают её. Только во «Чатах» и только на iPhone.
-        .modifier(TabBarMinimize(enabled: router.tab == .chats && sizeClass != .regular))
         // Приватный режим: вид для строк и пузырей, а сама настройка — для кнопок-переключателей.
         .environment(\.privateMode, container.privateMode.display)
         .environment(container.privateMode)
@@ -201,11 +181,14 @@ struct MainTabView: View {
         }
     }
 
-    /// Один владелец preference на стабильных корнях вкладок, без конкурирующих
-    /// требований от списка и destination во время интерактивного push/pop.
-    private func tabBarVisibility(for tab: AppTab) -> Visibility {
-        guard sizeClass != .regular, tab == .chats else { return .visible }
-        return router.chatId != nil || list.isEditing || list.isSearchActive ? .hidden : .visible
+    /// iPhone: своя компактная панель вместо системной.
+    private var usesCompactTabBar: Bool { sizeClass == .compact }
+
+    /// Компактная панель на корневом экране вкладки. Открытый поверх экран (чат, профиль,
+    /// раздел настроек) уводит её вместе с корнем; в списке чатов её прячут ещё правка и поиск.
+    private func withTabBar<Root: View>(_ root: Root, tab: AppTab) -> some View {
+        let shown = usesCompactTabBar && (tab != .chats || !(list.isEditing || list.isSearchActive))
+        return root.compactTabBar(shown, selection: $router.tab, badge: { badge(for: $0) })
     }
 
     private func badge(for tab: AppTab) -> Int {
@@ -223,28 +206,28 @@ struct MainTabView: View {
             chats
         case .contacts:
             NavigationStack {
-                ContactsView(
+                withTabBar(ContactsView(
                     viewModel: container.contactsViewModel(),
                     makeProfile: { container.profileViewModel(dialog: $0) }
                 ) { dialog in
                     container.openDialog(dialog)
                     router.openChat(dialog.chatId)
-                }
+                }, tab: .contacts)
             }
         case .calls:
             NavigationStack {
-                CallsView(
+                withTabBar(CallsView(
                     viewModel: container.callsViewModel(),
                     onOpenChat: { chatId in router.openChat(chatId) },
                     onJoin: { link in container.joinCall(link: link) },
                     onCall: { row, video in
                         container.startCall(CallCenter.Peer(id: row.peerId, name: row.name, avatarURL: row.avatarURL), video: video)
                     }
-                )
+                ), tab: .calls)
             }
         case .settings:
             NavigationStack {
-                SettingsView(
+                withTabBar(SettingsView(
                     container: container,
                     account: container.accountSettingsModel(),
                     list: list,
@@ -257,7 +240,7 @@ struct MainTabView: View {
                         router.tab = .chats
                         Task { await container.logout() }
                     }
-                )
+                ), tab: .settings)
             }
             // В настройках ничего не прячется: там включают и выключают сам режим.
             .environment(\.privateMode, .visible)
@@ -296,17 +279,17 @@ struct MainTabView: View {
     @ViewBuilder
     private var chats: some View {
         if sizeClass == .compact {
-            // iPhone: обычный стек. Чат прячет панель вкладок сам, и система анимирует её
-            // вместе с переходом, в том числе при свайпе назад.
+            // iPhone: обычный стек. Панель вкладок стоит на списке и уезжает вместе с ним, когда
+            // открывается чат, — в том числе возвращается вместе со свайпом назад.
             NavigationStack(path: chatPath) {
-                ChatListView(
+                withTabBar(ChatListView(
                     viewModel: list, selection: $router.chatId, newChat: container.newChatModel(), onOpened: openCreated,
                     onOpenMessage: openFound,
                     selfAvatar: selfAvatar, onAddStory: { pickingStory = true },
                     makeBotApp: { container.botAppModel($0) },
                     nowPlaying: listNowPlaying, onOpenVoice: { openVoice($0) },
                     makeFoldersModel: { container.foldersModel() }
-                )
+                ), tab: .chats)
                 .safeAreaInset(edge: .top, spacing: 0) { loginHoldBanner }
                     .navigationDestination(for: String.self) { id in
                         chatScreen(id)
