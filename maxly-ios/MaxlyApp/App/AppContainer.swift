@@ -646,7 +646,7 @@ final class AppContainer {
         }
         nowPlaying.applySpeed = { [voicePlayer] speed in voicePlayer.rate = speed }
         model.attachPins(pinHub)
-        model.attachScheduled(scheduledHub)
+        model.scheduled.attach(scheduledHub)
         let playing = nowPlaying.track?.chatId
         for evicted in chatModels.insert(model, for: id, keep: { $0 == playing }) {
             evicted.deactivate()

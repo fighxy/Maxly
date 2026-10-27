@@ -517,7 +517,7 @@ struct ChatView: View {
             .sheet(isPresented: $searchShown) { searchSheet }
             .sheet(isPresented: $pollShown) {
                 PollComposerSheet { title, answers in
-                    Task { await viewModel.sendPoll(title: title, answers: answers) }
+                    Task { await viewModel.polls.send(title: title, answers: answers) }
                 }
             }
             .sheet(isPresented: $viewModel.pinListShown) { pinList }

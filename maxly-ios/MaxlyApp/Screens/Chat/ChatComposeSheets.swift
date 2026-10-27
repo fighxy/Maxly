@@ -57,16 +57,16 @@ struct ScheduleMessageSheet: View {
                         DatePicker("Когда", selection: $date, in: Date()..., displayedComponents: [.date, .hourAndMinute])
                         Button("Запланировать") {
                             dismiss()
-                            Task { await viewModel.schedule(text: viewModel.draft, at: date) }
+                            Task { await viewModel.scheduled.schedule(text: viewModel.draft, at: date) }
                         }
                     }
                 }
                 Section("Запланированные") {
-                    if viewModel.scheduledItems.isEmpty {
+                    if viewModel.scheduled.items.isEmpty {
                         Text("Пока ничего не ждёт отправки")
                             .foregroundStyle(.secondary)
                     }
-                    ForEach(viewModel.scheduledItems, id: \.messageId) { item in
+                    ForEach(viewModel.scheduled.items, id: \.messageId) { item in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(item.text).lineLimit(2)
                             if let date = item.date {
@@ -76,9 +76,9 @@ struct ScheduleMessageSheet: View {
                             }
                         }
                         .swipeActions {
-                            Button("Сейчас") { Task { await viewModel.sendScheduledNow(item) } }
+                            Button("Сейчас") { Task { await viewModel.scheduled.sendNow(item) } }
                                 .tint(.maxlyAccent)
-                            Button("Отменить", role: .destructive) { Task { await viewModel.cancelScheduled(item) } }
+                            Button("Отменить", role: .destructive) { Task { await viewModel.scheduled.cancel(item) } }
                         }
                         .onTapGesture {
                             editing = item
@@ -94,7 +94,7 @@ struct ScheduleMessageSheet: View {
                         Button("Сохранить") {
                             guard let item = editing else { return }
                             editing = nil
-                            Task { await viewModel.editScheduled(item, text: editText, at: date) }
+                            Task { await viewModel.scheduled.edit(item, text: editText, at: date) }
                         }
                         .disabled(editText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
@@ -106,7 +106,7 @@ struct ScheduleMessageSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { dismiss() } }
             }
             .task {
-                await viewModel.loadScheduled()
+                await viewModel.scheduled.load()
             }
         }
     }
