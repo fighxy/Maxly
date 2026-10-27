@@ -139,16 +139,16 @@ struct TranscriptBubble: View, Equatable {
             group: state.row.group,
             loadingId: state.loadingId,
             commentCount: state.commentCount,
-            onRetry: { Task { await viewModel.retry(id: message.id) } },
+            onRetry: { Task { await viewModel.actions.retry(id: message.id) } },
             onReply: { viewModel.beginReply(to: message) },
             onReact: { emoji in Task { await viewModel.reactions.toggle(messageId: message.id, emoji: emoji) } },
-            onComments: { viewModel.openComments(message) },
+            onComments: { viewModel.comments.open(message) },
             onOpen: { viewModel.attachments.presentMedia(message, startId: $0) },
             onVoice: { viewModel.voices.toggle(message) },
             onFile: { viewModel.attachments.openFile(message, attachmentId: $0) },
             onFocusReply: { viewModel.focusReply($0, from: message.id) },
-            onForward: { viewModel.requestForward(message) },
-            onDelete: { viewModel.requestDelete(message) },
+            onForward: { viewModel.actions.requestForward(message) },
+            onDelete: { viewModel.actions.requestDelete(message) },
             onEdit: state.canEdit ? { viewModel.beginEdit(message) } : nil,
             allowsReply: state.canWrite,
             allowsReactions: state.reacts,
@@ -164,7 +164,7 @@ struct TranscriptBubble: View, Equatable {
             // В одной анимации с лентой: пузырь растёт и сжимается, а соседние строки
             // сдвигаются плавно, а не скачком после него.
             onTranscribe: state.canTranscribe ? {
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { viewModel.toggleTranscript(message) }
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { viewModel.transcripts.toggle(message) }
             } : nil,
             onSeekVoice: { viewModel.voices.seek(message, to: $0) },
             onDoubleTap: state.reacts ? state.quickReaction.map { emoji in

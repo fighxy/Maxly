@@ -19,12 +19,12 @@ struct TranscriptToggleTests {
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository())
         let message = voice(transcript: "Привет")
         let clip = message.content.voices[0]
-        #expect(model.canTranscribe(message))
-        #expect(model.transcriptPhase(for: clip) == .collapsed)
-        model.toggleTranscript(message)
-        #expect(model.transcriptPhase(for: clip) == .expanded)
-        model.toggleTranscript(message)
-        #expect(model.transcriptPhase(for: clip) == .collapsed)
+        #expect(model.transcripts.canTranscribe(message))
+        #expect(model.transcripts.phase(for: clip) == .collapsed)
+        model.transcripts.toggle(message)
+        #expect(model.transcripts.phase(for: clip) == .expanded)
+        model.transcripts.toggle(message)
+        #expect(model.transcripts.phase(for: clip) == .collapsed)
     }
 
     @Test("Неотправленное голосовое расшифровать нельзя")
@@ -33,7 +33,7 @@ struct TranscriptToggleTests {
         var message = voice(transcript: nil)
         message.status = .sending
         message.serverId = nil
-        #expect(model.canTranscribe(message) == false)
+        #expect(model.transcripts.canTranscribe(message) == false)
     }
 
     @Test("Ошибка запроса: ошибка раскрыта в пузыре, «^» сворачивает, кнопка снова «→Т»")
@@ -41,11 +41,11 @@ struct TranscriptToggleTests {
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository())
         let message = voice(transcript: nil)
         let clip = message.content.voices[0]
-        model.toggleTranscript(message)
-        #expect(model.transcriptPhase(for: clip) == .loading)
-        #expect(await eventually { model.transcriptPhase(for: clip) == .failed })
+        model.transcripts.toggle(message)
+        #expect(model.transcripts.phase(for: clip) == .loading)
+        #expect(await eventually { model.transcripts.phase(for: clip) == .failed })
         #expect(model.errorMessage == nil)
-        model.toggleTranscript(message)
-        #expect(model.transcriptPhase(for: clip) == .collapsed)
+        model.transcripts.toggle(message)
+        #expect(model.transcripts.phase(for: clip) == .collapsed)
     }
 }

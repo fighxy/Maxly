@@ -368,7 +368,7 @@ struct ChatTranscript: View {
             row: row,
             style: style,
             isRevealed: reveal.isRevealed(message.id),
-            transcript: voice.map { viewModel.transcriptPhase(for: $0) } ?? .collapsed,
+            transcript: voice.map { viewModel.transcripts.phase(for: $0) } ?? .collapsed,
             roundPlaying: round
         ))
     }
@@ -948,7 +948,7 @@ struct ChatTranscript: View {
             highlighted: viewModel.highlightedId == message.id,
             phase: message.content.voices.first.map { viewModel.voices.phase(for: $0.id) } ?? .idle,
             loadingId: loading,
-            commentCount: viewModel.commentCount(for: message),
+            commentCount: viewModel.comments.count(for: message),
             uploadProgress: viewModel.uploadFraction(of: message),
             reacts: reacts,
             quickReactions: reacts ? viewModel.reactions.quickReactions(for: message) : [],
@@ -956,8 +956,8 @@ struct ChatTranscript: View {
             savesToPhotos: viewModel.attachments.canSave(message, to: .photos),
             savesToFiles: viewModel.attachments.canSave(message, to: .files),
             roundPlayback: round,
-            transcript: message.content.voices.first.map { viewModel.transcriptPhase(for: $0) } ?? .collapsed,
-            canTranscribe: viewModel.canTranscribe(message),
+            transcript: message.content.voices.first.map { viewModel.transcripts.phase(for: $0) } ?? .collapsed,
+            canTranscribe: viewModel.transcripts.canTranscribe(message),
             quickReaction: quickReaction,
             chatType: rules.kind,
             showsInfo: viewModel.canShowInfo(message),

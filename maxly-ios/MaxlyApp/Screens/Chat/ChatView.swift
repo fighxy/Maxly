@@ -487,9 +487,9 @@ struct ChatView: View {
     /// Листы: комментарии, реакции, поиск, опрос, отложенная отправка, мини-приложение, вложения.
     private var sheetsLayer: some View {
         navigationLayer
-            .sheet(item: $viewModel.openedComments, onDismiss: { viewModel.closeComments() }) { post in
-                if let model = viewModel.commentsModel(for: post) {
-                    CommentsView(model: model, onClose: { viewModel.closeComments() }, onBlockAuthor: { comment in
+            .sheet(item: Bindable(viewModel.comments).opened, onDismiss: { viewModel.comments.close() }) { post in
+                if let model = viewModel.comments.model(for: post) {
+                    CommentsView(model: model, onClose: { viewModel.comments.close() }, onBlockAuthor: { comment in
                         guard let chatAdmin else { throw MaxlyError.rejected("Управление чатом недоступно") }
                         let messageId = comment.serverId ?? comment.id
                         try await chatAdmin.blockCommentAuthor(
@@ -740,18 +740,18 @@ struct ChatView: View {
             .alert(
                 "Удалить сообщение?",
                 isPresented: deletionShown,
-                presenting: viewModel.deletionCandidate
+                presenting: viewModel.actions.deletionCandidate
             ) { message in
                 deletionActions(message)
             }
             .sheet(isPresented: forwardShown) {
                 ForwardPickerView(
                     targets: forwardList,
-                    onPick: { id in Task { await viewModel.forward(to: id) } },
-                    onCancel: { viewModel.forwardCandidate = nil }
+                    onPick: { id in Task { await viewModel.actions.forward(to: id) } },
+                    onCancel: { viewModel.actions.forwardCandidate = nil }
                 )
             }
-            .onChange(of: viewModel.forwardCandidate?.id) { _, id in
+            .onChange(of: viewModel.actions.forwardCandidate?.id) { _, id in
                 if id != nil { forwardList = forwardTargets() }
             }
             .onChange(of: viewModel.unreadMarkCandidate?.id) { _, id in
@@ -784,32 +784,32 @@ struct ChatView: View {
 
     @ViewBuilder
     private func deletionActions(_ message: Message) -> some View {
-        if viewModel.deletesWithoutChoice {
+        if viewModel.actions.deletesWithoutChoice {
             Button("Удалить", role: .destructive) {
-                Task { await viewModel.confirmDelete(message, forEveryone: viewModel.deletesEverywhere(message)) }
+                Task { await viewModel.actions.confirmDelete(message, forEveryone: viewModel.actions.deletesEverywhere(message)) }
             }
-        } else if viewModel.deletionForcesEveryone {
+        } else if viewModel.actions.deletionForcesEveryone {
             Button("Удалить", role: .destructive) {
-                Task { await viewModel.confirmDelete(message, forEveryone: true) }
+                Task { await viewModel.actions.confirmDelete(message, forEveryone: true) }
             }
         } else {
             // Вариант по умолчанию от ядра (`forEveryoneByDefault`) — первым.
-            if viewModel.deletionShowsEveryone, viewModel.deletionPrefersEveryone {
+            if viewModel.actions.deletionShowsEveryone, viewModel.actions.deletionPrefersEveryone {
                 deleteForEveryoneButton(message)
             }
             Button("Удалить у меня", role: .destructive) {
-                Task { await viewModel.confirmDelete(message, forEveryone: false) }
+                Task { await viewModel.actions.confirmDelete(message, forEveryone: false) }
             }
-            if viewModel.deletionShowsEveryone, !viewModel.deletionPrefersEveryone {
+            if viewModel.actions.deletionShowsEveryone, !viewModel.actions.deletionPrefersEveryone {
                 deleteForEveryoneButton(message)
             }
         }
-        Button("Отмена", role: .cancel) { viewModel.deletionCandidate = nil }
+        Button("Отмена", role: .cancel) { viewModel.actions.deletionCandidate = nil }
     }
 
     private func deleteForEveryoneButton(_ message: Message) -> some View {
         Button(rules.deleteForAllTitle, role: .destructive) {
-            Task { await viewModel.confirmDelete(message, forEveryone: true) }
+            Task { await viewModel.actions.confirmDelete(message, forEveryone: true) }
         }
     }
 
@@ -1245,8 +1245,8 @@ struct ChatView: View {
 
     private var deletionShown: Binding<Bool> {
         Binding(
-            get: { viewModel.deletionCandidate != nil },
-            set: { if !$0 { viewModel.deletionCandidate = nil } }
+            get: { viewModel.actions.deletionCandidate != nil },
+            set: { if !$0 { viewModel.actions.deletionCandidate = nil } }
         )
     }
 
@@ -1279,8 +1279,8 @@ struct ChatView: View {
 
     private var forwardShown: Binding<Bool> {
         Binding(
-            get: { viewModel.forwardCandidate != nil },
-            set: { if !$0 { viewModel.forwardCandidate = nil } }
+            get: { viewModel.actions.forwardCandidate != nil },
+            set: { if !$0 { viewModel.actions.forwardCandidate = nil } }
         )
     }
 
