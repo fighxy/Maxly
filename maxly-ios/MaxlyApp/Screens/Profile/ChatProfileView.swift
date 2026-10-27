@@ -1056,9 +1056,9 @@ struct ChatProfileView: View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 1), count: 3), spacing: 1) {
             ForEach(items) { item in
                 Button {
-                    chat.presentMedia(item.message, startId: item.attachmentId)
+                    chat.attachments.presentMedia(item.message, startId: item.attachmentId)
                 } label: {
-                    SharedMediaCell(item: item, isLoading: chat.loadingMediaId == item.attachmentId)
+                    SharedMediaCell(item: item, isLoading: chat.attachments.loadingMediaId == item.attachmentId)
                 }
                 .buttonStyle(.plain)
                 .contextMenu { showInChat(item.message) }
@@ -1070,13 +1070,13 @@ struct ChatProfileView: View {
         LazyVStack(spacing: 0) {
             ForEach(items) { item in
                 Button {
-                    chat.openFile(item.message, attachmentId: item.file.id)
+                    chat.attachments.openFile(item.message, attachmentId: item.file.id)
                 } label: {
                     SharedRow {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(Color.maxlyAccent)
                             .overlay {
-                                if chat.loadingMediaId == item.file.id {
+                                if chat.attachments.loadingMediaId == item.file.id {
                                     ProgressView().tint(Color.maxlyOnAccent)
                                 } else {
                                     Text(item.ext)
@@ -1137,9 +1137,9 @@ struct ChatProfileView: View {
     private func voiceList(_ items: [SharedMedia.Voice], chat: ChatViewModel) -> some View {
         LazyVStack(spacing: 0) {
             ForEach(items) { item in
-                let phase = chat.voicePhase(for: item.voice.id)
+                let phase = chat.voices.phase(for: item.voice.id)
                 Button {
-                    chat.toggleVoice(item.message)
+                    chat.voices.toggle(item.message)
                 } label: {
                     SharedRow {
                         Circle()
@@ -1214,21 +1214,21 @@ private struct ProfileChatCovers: ViewModifier {
 
     func body(content: Content) -> some View {
         if let chat {
-            @Bindable var model = chat
+            @Bindable var attachments = chat.attachments
             content
-                .mediaViewerCover(item: $model.viewer) { request in
+                .mediaViewerCover(item: $attachments.viewer) { request in
                     MediaViewer(
                         request: request,
-                        download: { await chat.downloadVideo($0, progress: $1) },
+                        download: { await chat.attachments.downloadVideo($0, progress: $1) },
                         notice: chat.notice,
-                        isSaving: chat.isSaving,
-                        onSave: { chat.saveViewerSlide($0, to: $1) },
+                        isSaving: chat.attachments.isSaving,
+                        onSave: { chat.attachments.saveViewerSlide($0, to: $1) },
                         onShowInChat: showAction(request)
-                    ) { chat.viewer = nil }
-                        .fileExportSheet(chat, fromViewer: true)
+                    ) { chat.attachments.viewer = nil }
+                        .fileExportSheet(chat.attachments, fromViewer: true)
                 }
-                .fullScreenCover(item: $model.openedFile) { file in
-                    FileQuickLook(url: file.url, title: file.name) { chat.openedFile = nil }
+                .fullScreenCover(item: $attachments.openedFile) { file in
+                    FileQuickLook(url: file.url, title: file.name) { chat.attachments.openedFile = nil }
                 }
         } else {
             content

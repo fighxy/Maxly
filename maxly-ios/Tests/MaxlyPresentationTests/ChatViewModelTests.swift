@@ -108,9 +108,9 @@ struct ChatViewModelTests {
             content: MessageContent(attachments: [.photo(photo), .video(video), .video(posterOnly)])
         )
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository())
-        model.presentMedia(message, startId: "v")
-        let slides = try #require(model.viewer?.slides)
-        #expect(model.viewer?.id == "v")
+        model.attachments.presentMedia(message, startId: "v")
+        let slides = try #require(model.attachments.viewer?.slides)
+        #expect(model.attachments.viewer?.id == "v")
         #expect(slides.map(\.id) == ["p", "v", "poster"])
         #expect(slides[1].stillURL == video.posterURL)
         #expect(slides[1].playURL == video.url)
@@ -133,7 +133,7 @@ struct ChatViewModelTests {
             status: .sent,
             content: MessageContent(attachments: [.voice(voice)])
         )
-        model.toggleVoice(message)
-        #expect(await eventually { model.voicePhase(for: "a") == .failed })
+        model.voices.toggle(message)
+        #expect(await eventually { model.voices.phase(for: "a") == .failed })
     }
 }

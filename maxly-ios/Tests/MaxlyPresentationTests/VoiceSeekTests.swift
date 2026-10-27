@@ -82,7 +82,7 @@ struct VoiceSeekTests {
 
     /// Фаза голосового — пауза.
     private func isPaused(_ model: ChatViewModel) -> Bool {
-        if case .paused = model.voicePhase(for: "v1") { return true }
+        if case .paused = model.voices.phase(for: "v1") { return true }
         return false
     }
 
@@ -92,12 +92,12 @@ struct VoiceSeekTests {
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository(), voice: player)
         let message = try voiceMessage()
 
-        model.seekVoice(message, to: 0.4)
+        model.voices.seek(message, to: 0.4)
         #expect(await eventually { !player.played.isEmpty })
         #expect(player.played.count == 1)
         #expect(player.seeks == [0.4])
-        #expect(model.voicePhase(for: "v1") == .playing(0.4))
-        model.stopVoice()
+        #expect(model.voices.phase(for: "v1") == .playing(0.4))
+        model.voices.stop()
     }
 
     @Test("Играющее продолжает с нового места, без нового запуска")
@@ -105,15 +105,15 @@ struct VoiceSeekTests {
         let player = FakeVoicePlayer()
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository(), voice: player)
         let message = try voiceMessage()
-        model.toggleVoice(message)
-        #expect(await eventually { model.voicePhase(for: "v1").isPlaying })
+        model.voices.toggle(message)
+        #expect(await eventually { model.voices.phase(for: "v1").isPlaying })
         #expect(player.played.count == 1)
 
-        model.seekVoice(message, to: 0.75)
+        model.voices.seek(message, to: 0.75)
         #expect(player.played.count == 1)
         #expect(player.seeks == [0.75])
-        #expect(model.voicePhase(for: "v1") == .playing(0.75))
-        model.stopVoice()
+        #expect(model.voices.phase(for: "v1") == .playing(0.75))
+        model.voices.stop()
     }
 
     @Test("С паузы перемотка продолжает играть с нового места")
@@ -124,22 +124,22 @@ struct VoiceSeekTests {
         // Запуск и пауза идут задачами модели: ждём саму смену фазы, а не число проходов
         // цикла — на загруженной машине их не хватало, и вторая кнопка снимала ещё не
         // начавшийся запуск.
-        model.toggleVoice(message)
-        #expect(await eventually { model.voicePhase(for: "v1").isPlaying })
+        model.voices.toggle(message)
+        #expect(await eventually { model.voices.phase(for: "v1").isPlaying })
         #expect(player.played.count == 1)
-        model.toggleVoice(message)
+        model.voices.toggle(message)
         #expect(await eventually { isPaused(model) })
-        guard case .paused = model.voicePhase(for: "v1") else {
+        guard case .paused = model.voices.phase(for: "v1") else {
             Issue.record("голосовое не встало на паузу")
             return
         }
 
-        model.seekVoice(message, to: 0.2)
+        model.voices.seek(message, to: 0.2)
         #expect(player.resumes == 1)
         #expect(player.played.count == 1)
         #expect(player.seeks == [0.2])
-        #expect(model.voicePhase(for: "v1") == .playing(0.2))
-        model.stopVoice()
+        #expect(model.voices.phase(for: "v1") == .playing(0.2))
+        model.voices.stop()
     }
 
     @Test("Уход из чата (deactivate) голосовое не останавливает")
@@ -147,13 +147,13 @@ struct VoiceSeekTests {
         let player = FakeVoicePlayer()
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository(), voice: player)
         let message = try voiceMessage()
-        model.toggleVoice(message)
-        #expect(await eventually { model.voicePhase(for: "v1").isPlaying })
+        model.voices.toggle(message)
+        #expect(await eventually { model.voices.phase(for: "v1").isPlaying })
 
         model.deactivate()
         #expect(player.isPlaying)
-        #expect(model.voicePhase(for: "v1").isPlaying)
-        model.stopVoice()
+        #expect(model.voices.phase(for: "v1").isPlaying)
+        model.voices.stop()
         #expect(!player.isPlaying)
     }
 
@@ -162,12 +162,12 @@ struct VoiceSeekTests {
         let player = FakeVoicePlayer()
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository(), voice: player)
         let message = try voiceMessage()
-        model.seekVoice(message, to: 1.7)
+        model.voices.seek(message, to: 1.7)
         #expect(await eventually { !player.played.isEmpty })
         #expect(player.seeks == [1])
-        model.seekVoice(message, to: -0.3)
+        model.voices.seek(message, to: -0.3)
         #expect(player.seeks == [1, 0])
-        #expect(model.voicePhase(for: "v1") == .playing(0))
-        model.stopVoice()
+        #expect(model.voices.phase(for: "v1") == .playing(0))
+        model.voices.stop()
     }
 }

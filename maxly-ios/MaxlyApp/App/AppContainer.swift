@@ -633,7 +633,7 @@ final class AppContainer {
             chats: chats
         )
         model.typingReporter = typingReporter
-        model.nowPlaying = nowPlaying
+        model.voices.nowPlaying = nowPlaying
         if let stickerRepository {
             // Анимодзи сервера (тот же каталог, что у панели эмодзи): эмодзи → Lottie и эффект реакции.
             model.loadAnimoji = {
@@ -1074,7 +1074,7 @@ final class AppContainer {
         }
         voicePlayer.stop()
         chatModels.all.forEach {
-            $0.stopVoice()
+            $0.voices.stop()
             $0.deactivate()
         }
         chatModels.removeAll()
