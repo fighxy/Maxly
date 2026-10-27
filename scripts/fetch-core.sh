@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Собирает статический MaxlyCore.xcframework из ревизии maxly-ios/core.lock.
+#
+# revision= — коммит, ветка или `latest` (последний зелёный коммит main ядра, см.
+# scripts/core-revision.sh).
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -10,6 +13,10 @@ repository="$(grep '^repository=' "$lock" | head -n 1 | cut -d= -f2- | tr -d '[:
 if [[ -z "$revision" || -z "$repository" ]]; then
   echo "В core.lock нужны строки revision= и repository=" >&2
   exit 1
+fi
+
+if [[ -z "${MAX_KMP_CORE_DIR:-}" ]]; then
+  revision="$(bash "$root/scripts/core-revision.sh" "$lock")"
 fi
 
 # Локальная копия ядра вместо GitHub: MAX_KMP_CORE_DIR=~/src/maxly-core bash scripts/fetch-core.sh
@@ -37,6 +44,12 @@ core_git() {
 core_git remote add origin "$repository"
 core_git fetch --depth 1 origin "$revision"
 git -C "$dest" checkout --detach FETCH_HEAD
+revision="$(git -C "$dest" rev-parse HEAD)"
+echo "Ядро $repository @ $revision"
+# В сводке прогона видно, из какого коммита ядра собрано приложение.
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+  echo "Ядро: [\`${revision:0:7}\`](${repository%.git}/commit/$revision)" >> "$GITHUB_STEP_SUMMARY"
+fi
 fi
 
 if [[ "$(uname -s)" != "Darwin" ]]; then

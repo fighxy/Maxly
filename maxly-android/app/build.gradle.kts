@@ -82,10 +82,11 @@ kotlin {
     jvmToolchain(17)
 }
 
+// Коммит, из которого собраны AAR ядра: его пишет scripts/fetch-core.sh (в core.lock может стоять `latest`).
 fun coreRevision(): String {
-    val lock = rootProject.file("core.lock")
-    if (!lock.exists()) return "unknown"
-    return lock.readLines().firstOrNull { it.startsWith("revision=") }?.substringAfter('=')?.take(7) ?: "unknown"
+    val file = rootProject.file("vendor/REVISION")
+    if (!file.exists()) return "unknown"
+    return file.readText().trim().take(7).ifEmpty { "unknown" }
 }
 
 val coreAars = listOf("../vendor/max-core.aar", "../vendor/max-shared.aar")

@@ -1,6 +1,7 @@
 # Кладёт исходники max-kmp-core ревизии из maxly-desktop/core.lock в .build\max-kmp-core
 # в корне репозитория: десктоп собирает ядро из них сам. Для Linux и macOS то же делает
-# maxly-desktop/scripts/fetch-core.sh.
+# maxly-desktop/scripts/fetch-core.sh, ревизию `latest` он разбирает так же
+# (scripts/core-revision.sh).
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $lockPath = Join-Path (Join-Path $root "maxly-desktop") "core.lock"
@@ -19,6 +20,29 @@ if (-not $revision -or -not $repository) {
 if ($env:MAX_KMP_CORE_DIR) {
     Write-Host "Ядро из локальной папки $($env:MAX_KMP_CORE_DIR), core.lock: $revision. Скачивание не нужно."
     exit 0
+}
+
+# latest — последний коммит main ядра, на котором прошёл его CI (ios-core.yml); без GitHub API —
+# main. MAX_CORE_REVISION важнее core.lock.
+if ($env:MAX_CORE_REVISION) {
+    $revision = $env:MAX_CORE_REVISION
+} elseif ($revision -eq "latest") {
+    $slug = ($repository -replace '^https://github\.com/', '') -replace '\.git$', ''
+    $headers = @{ Accept = "application/vnd.github+json" }
+    if ($env:MAX_KMP_CORE_TOKEN) { $headers.Authorization = "Bearer $($env:MAX_KMP_CORE_TOKEN)" }
+    $revision = $null
+    try {
+        $runs = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$slug/actions/workflows/ios-core.yml/runs?branch=main&status=success&per_page=1"
+        if ($runs.workflow_runs) { $revision = $runs.workflow_runs[0].head_sha }
+    } catch {
+        $revision = $null
+    }
+    if ($revision) {
+        Write-Host "Ядро: последний зелёный коммит main — $revision"
+    } else {
+        Write-Host "::warning::Не удалось узнать последний зелёный коммит ядра, берётся main."
+        $revision = "main"
+    }
 }
 
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
@@ -53,4 +77,6 @@ Invoke-CoreGit remote add origin $repository
 Invoke-CoreGit fetch -q --depth 1 origin $revision
 Invoke-CoreGit checkout -q --detach FETCH_HEAD
 
+$revision = (& git -C $dest rev-parse HEAD)
 Write-Host "Ядро $revision лежит в $dest."
+if ($env:GITHUB_STEP_SUMMARY) { Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "Ядро: ``$revision``" }

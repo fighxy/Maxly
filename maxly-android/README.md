@@ -148,14 +148,17 @@ adb shell am start -n app.maxly.android.debug/app.maxly.demo.DemoActivity --es s
 
 ## Ядро
 
-Ревизия ядра закреплена в `core.lock` (та же схема, что `maxly-ios/core.lock`).
-`scripts/fetch-core.sh` клонирует эту ревизию в `.build/max-kmp-core`, собирает Android-AAR
-модулей `core` и `shared` и кладёт их в `vendor/` (в git не попадает). Приложение
+Ревизия ядра записана в `core.lock` (та же схема, что `maxly-ios/core.lock`): `latest` —
+последний коммит `main` ядра с зелёным CI (`../scripts/core-revision.sh`), либо конкретный
+коммит. `scripts/fetch-core.sh` клонирует эту ревизию в `.build/max-kmp-core`, собирает
+Android-AAR модулей `core` и `shared` и кладёт их в `vendor/` (в git не попадает) вместе с
+`vendor/REVISION` — коммитом, из которого они собраны. Приложение
 подключает их файлами, поэтому версии Gradle, AGP и Kotlin у приложения и ядра независимы.
 Транзитивные зависимости ядра (корутины, kotlinx-serialization, OkHttp) объявлены в
 `app/build.gradle.kts`.
 
-Обновить ядро: поменять `revision=` в `core.lock` и снова запустить скрипт. Для работы с
+С `latest` новое ядро приходит само при следующем запуске скрипта; закрепить версию —
+вписать коммит в `revision=`. Для работы с
 локальной копией: `MAX_KMP_CORE_DIR=~/src/maxly-core bash scripts/fetch-core.sh`.
 
 ## Ghost mode, privacy and activity

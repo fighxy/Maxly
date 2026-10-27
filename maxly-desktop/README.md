@@ -6,7 +6,8 @@
 
 Сеть, протокол, вход и хранение сессии — в общем ядре
 [maxly-core](https://github.com/fighxy/maxly-core). В сборку входят его исходники для JVM
-(`commonMain`, `jvmMain`, `jvmAndroidShared`), ревизия записана в `core.lock`. Клиент
+(`commonMain`, `jvmMain`, `jvmAndroidShared`), ревизия записана в `core.lock` (`latest` —
+последний коммит `main` ядра с зелёным CI). Клиент
 представляется сервису Android-устройством (`DeviceProfile.android` ядра). Сессия лежит в
 пространстве `maxly-desktop` и не пересекается с приложением на телефоне.
 
