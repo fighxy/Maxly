@@ -5,9 +5,10 @@ import MaxlyDomain
 import MaxlyPresentation
 import MaxlyUI
 
-/// Панель эмодзи и стикеров на месте клавиатуры: сверху полоса
-/// разделов (нажатие прокручивает к разделу, текущий подсвечен), сетка с заголовками,
-/// снизу переключатель «Эмодзи | Стикеры | GIF» и «стереть».
+/// Панель эмодзи и стикеров на месте клавиатуры: сверху ручка (тянуть вверх — панель
+/// вытягивается почти на весь экран, вниз — возвращается и закрывается), полоса разделов
+/// (нажатие прокручивает к разделу, текущий подсвечен), сетка с заголовками, снизу
+/// переключатель «Эмодзи | Стикеры | GIF» и «стереть».
 struct StickerPanel: View {
     @Bindable var model: StickerPanelModel
     let height: CGFloat
@@ -18,6 +19,14 @@ struct StickerPanel: View {
     let gifPanel: GifPanelModel
     /// Выбрана гифка или стикер gifka.me: чат ставит файл в очередь отправки.
     let onPickGifka: (GifkaMedia, GifkaClient) -> Void
+    /// Панель вытянута почти на весь экран.
+    var expanded = false
+    /// Ручку тянут: сдвиг пальца вверх (вниз — меньше нуля).
+    var onDrag: ((CGFloat) -> Void)?
+    /// Ручку отпустили: сдвиг и куда его донесла бы инерция.
+    var onDragEnd: ((_ translation: CGFloat, _ predicted: CGFloat) -> Void)?
+    /// Вытянуть или вернуть панель без жеста (VoiceOver).
+    var onToggleExpanded: (() -> Void)?
 
     @State private var currentEmoji: String?
     @State private var currentStickers: String?
@@ -25,6 +34,7 @@ struct StickerPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            grabber
             Group {
                 switch model.mode {
                 case .emoji: emojiPane
@@ -40,6 +50,26 @@ struct StickerPanel: View {
         .overlay(alignment: .top) { Divider() }
         .onAppear { model.prepare() }
         .onDisappear { model.refreshRecents() }
+    }
+
+    /// Ручка размера. Сдвиг считается в координатах экрана: панель растёт под пальцем, и в
+    /// своих координатах ручка уезжала бы вместе с ним.
+    private var grabber: some View {
+        Capsule()
+            .fill(Color.secondary.opacity(0.45))
+            .frame(width: 36, height: 5)
+            .frame(maxWidth: .infinity)
+            .frame(height: 16)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                    .onChanged { onDrag?(-$0.translation.height) }
+                    .onEnded { onDragEnd?(-$0.translation.height, -$0.predictedEndTranslation.height) }
+            )
+            .accessibilityElement()
+            .accessibilityLabel("Размер панели")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(named: Text(expanded ? "Свернуть панель" : "Развернуть панель")) { onToggleExpanded?() }
     }
 
     // MARK: Эмодзи

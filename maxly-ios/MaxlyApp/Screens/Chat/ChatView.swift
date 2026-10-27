@@ -62,6 +62,10 @@ struct ChatView: View {
     /// Меню долгого нажатия на сообщение (`MessageMenuHost`).
     @State private var messageMenu = MessageMenuPresenter()
     @State private var panelShown = false
+    /// Панель стикеров вытянута ручкой почти на весь экран.
+    @State private var panelExpanded = false
+    /// Ручку панели тянут: сдвиг пальца вверх.
+    @State private var panelDrag: CGFloat?
     /// Высота последней клавиатуры без нижнего отступа: панель встаёт на её место.
     @State private var keyboardHeight: CGFloat = 300
     /// Экранная клавиатура на экране: поле ввода стоит над ней, а без неё опускается ниже.
@@ -303,7 +307,13 @@ struct ChatView: View {
                 onBackspace: { viewModel.composer.deleteBackward() },
                 onSticker: { sticker in Task { await viewModel.composer.sendSticker(sticker) } },
                 gifPanel: gifPanel,
-                onPickGifka: { media, client in sendGif(media, client: client) }
+                onPickGifka: { media, client in sendGif(media, client: client) },
+                expanded: panelExpanded,
+                onDrag: { panelDrag = $0 },
+                onDragEnd: { translation, predicted in settlePanel(translation: translation, predicted: predicted) },
+                onToggleExpanded: {
+                    withAnimation(reduceMotion ? nil : .spring(duration: 0.3)) { panelExpanded.toggle() }
+                }
             )
             .transition(.move(edge: .bottom))
         }
@@ -311,10 +321,47 @@ struct ChatView: View {
 
     private var muted: Bool { mutedNow?() ?? isMuted }
 
-    /// Панель стоит на месте клавиатуры. Пока ищут GIF, клавиатура открыта под ней: панель
-    /// сжимается до поля поиска и ряда выдачи, чтобы лента осталась видна.
+    /// Панель стоит на месте клавиатуры или вытянута ручкой. Пока ищут GIF, клавиатура открыта
+    /// под ней: панель сжимается до поля поиска и ряда выдачи, чтобы лента осталась видна.
     private var stickerPanelHeight: CGFloat {
-        gifPanel.isSearching ? min(keyboardHeight, Self.gifSearchPanelHeight) : keyboardHeight
+        if gifPanel.isSearching { return min(keyboardHeight, Self.gifSearchPanelHeight) }
+        if let panelDrag {
+            return CGFloat(StickerPanelDetent.height(
+                expanded: panelExpanded,
+                collapsedHeight: Double(keyboardHeight),
+                expandedHeight: Double(expandedPanelHeight),
+                translation: Double(panelDrag)
+            ))
+        }
+        return panelExpanded ? expandedPanelHeight : keyboardHeight
+    }
+
+    /// Вытянутая панель: экран без шапки, поля ввода и полоски ленты над ними.
+    private var expandedPanelHeight: CGFloat {
+        guard let window = UIApplication.shared.connectedScenes
+            .compactMap({ ($0 as? UIWindowScene)?.keyWindow })
+            .first else { return keyboardHeight }
+        let usable = window.bounds.height - window.safeAreaInsets.top - window.safeAreaInsets.bottom
+        return max(keyboardHeight, usable - Self.expandedPanelClearance)
+    }
+
+    /// Сколько экрана остаётся над вытянутой панелью: шапка, поле ввода и край ленты.
+    static let expandedPanelClearance: CGFloat = 190
+
+    /// Ручку отпустили: панель встаёт на место клавиатуры, вытягивается или закрывается.
+    private func settlePanel(translation: CGFloat, predicted: CGFloat) {
+        let detent = StickerPanelDetent.settle(
+            expanded: panelExpanded,
+            collapsedHeight: Double(keyboardHeight),
+            expandedHeight: Double(expandedPanelHeight),
+            translation: Double(translation),
+            predicted: Double(predicted)
+        )
+        withAnimation(reduceMotion ? nil : .spring(duration: 0.3)) {
+            panelDrag = nil
+            panelExpanded = detent == .expanded
+            if detent == .closed { panelShown = false }
+        }
     }
 
     /// Поле поиска, разделы, ряд выдачи и переключатель панели.
@@ -692,6 +739,11 @@ struct ChatView: View {
             .onChange(of: writable, initial: true) { _, value in viewModel.composer.typingAllowed = value }
             .onChange(of: panelShown) { _, shown in
                 if shown { viewModel.composer.typingStickerPanelOpened() }
+                // Панель всегда открывается на месте клавиатуры.
+                if !shown {
+                    panelExpanded = false
+                    panelDrag = nil
+                }
             }
             .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.notice)
     }
