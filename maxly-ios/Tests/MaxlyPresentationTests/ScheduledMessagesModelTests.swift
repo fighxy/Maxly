@@ -96,9 +96,9 @@ struct ScheduledMessagesModelTests {
     func chatViewModelWiring() async {
         let repository = ScheduledMessages()
         let chat = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
-        chat.draft = "на потом"
-        await chat.scheduled.schedule(text: chat.draft, at: Date(timeIntervalSince1970: 1_000))
-        #expect(chat.draft.isEmpty)
+        chat.composer.draft = "на потом"
+        await chat.scheduled.schedule(text: chat.composer.draft, at: Date(timeIntervalSince1970: 1_000))
+        #expect(chat.composer.draft.isEmpty)
         #expect(chat.notice == "Сообщение запланировано")
         #expect(chat.scheduled.items.map(\.text) == ["на потом"])
     }

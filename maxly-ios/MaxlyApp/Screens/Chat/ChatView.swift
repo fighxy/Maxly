@@ -299,9 +299,9 @@ struct ChatView: View {
             StickerPanel(
                 model: stickerPanel,
                 height: stickerPanelHeight,
-                onEmoji: { viewModel.insertEmoji($0.emoji, animated: $0.animated) },
-                onBackspace: { viewModel.deleteBackward() },
-                onSticker: { sticker in Task { await viewModel.sendSticker(sticker) } },
+                onEmoji: { viewModel.composer.insertEmoji($0.emoji, animated: $0.animated) },
+                onBackspace: { viewModel.composer.deleteBackward() },
+                onSticker: { sticker in Task { await viewModel.composer.sendSticker(sticker) } },
                 gifPanel: gifPanel,
                 onPickGifka: { media, client in sendGif(media, client: client) }
             )
@@ -545,7 +545,7 @@ struct ChatView: View {
                 CameraCaptureFlow(
                     onSend: { drafts, caption in
                         cameraFlowShown = false
-                        Task { await viewModel.sendAttachments(drafts, caption: caption) }
+                        Task { await viewModel.composer.sendAttachments(drafts, caption: caption) }
                     },
                     onClose: { cameraFlowShown = false }
                 )
@@ -589,7 +589,7 @@ struct ChatView: View {
     private func sendGif(_ media: GifkaMedia, client: GifkaClient) {
         let viewModel = viewModel
         gifQueue.enqueue(media, client: client) { draft in
-            await viewModel.sendAttachments([draft], caption: "")
+            await viewModel.composer.sendAttachments([draft], caption: "")
         }
     }
 
@@ -598,7 +598,7 @@ struct ChatView: View {
             contactList: contactList,
             onSend: { drafts, caption in
                 attachmentsShown = false
-                Task { await viewModel.sendAttachments(drafts, caption: caption) }
+                Task { await viewModel.composer.sendAttachments(drafts, caption: caption) }
             },
             onClose: { attachmentsShown = false }
         )
@@ -657,10 +657,10 @@ struct ChatView: View {
                     case .video?: kind = .videoMessage
                     case nil: kind = nil
                     }
-                    viewModel.typingRecording(kind)
+                    viewModel.composer.typingRecording(kind)
                 }
                 recording.onRecorded = { [viewModel] draft in
-                    Task { await viewModel.sendAttachments([draft], caption: "") }
+                    Task { await viewModel.composer.sendAttachments([draft], caption: "") }
                 }
                 // Короткое нажатие камеры — снимок. Без камеры (симулятор) — лист вложений.
                 recording.onCameraTap = {
@@ -689,9 +689,9 @@ struct ChatView: View {
                 }
             }
             // «Я печатаю» уходит, только пока сюда можно писать; панель стикеров — «выбирает стикер».
-            .onChange(of: writable, initial: true) { _, value in viewModel.typingAllowed = value }
+            .onChange(of: writable, initial: true) { _, value in viewModel.composer.typingAllowed = value }
             .onChange(of: panelShown) { _, shown in
-                if shown { viewModel.typingStickerPanelOpened() }
+                if shown { viewModel.composer.typingStickerPanelOpened() }
             }
             .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.notice)
     }
@@ -760,10 +760,10 @@ struct ChatView: View {
                 onMarkUnread?(message.timestamp)
             }
             // Выбрали сообщение для ответа — клавиатура сразу открывается.
-            .onChange(of: viewModel.replyTarget?.id) { _, id in
+            .onChange(of: viewModel.composer.replyTarget?.id) { _, id in
                 if id != nil { composerFocused = true }
             }
-            .onChange(of: viewModel.editTarget?.id) { _, id in
+            .onChange(of: viewModel.composer.editTarget?.id) { _, id in
                 if id != nil { composerFocused = true }
             }
             .onChange(of: scenePhase) { _, phase in
@@ -773,7 +773,7 @@ struct ChatView: View {
                 if phase != .active {
                     messageMenu.dismiss()
                     recording.cancel()
-                    viewModel.flushDraft()
+                    viewModel.composer.flushDraft()
                     // Свернули приложение — открытые сообщения снова закрыты.
                     reveal.hideAll()
                 }

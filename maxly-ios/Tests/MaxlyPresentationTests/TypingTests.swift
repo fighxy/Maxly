@@ -160,13 +160,13 @@ struct TypingChatTests {
     func textEdits() async {
         let sender = RecordingSender()
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository())
-        model.typingReporter = TypingReporter(sender: sender)
-        model.draft = "п"
-        model.typingAllowed = true
-        model.draft = "пр"
-        model.draft = "при"
-        model.typingStickerPanelOpened()
-        model.draft = ""
+        model.composer.typingReporter = TypingReporter(sender: sender)
+        model.composer.draft = "п"
+        model.composer.typingAllowed = true
+        model.composer.draft = "пр"
+        model.composer.draft = "при"
+        model.composer.typingStickerPanelOpened()
+        model.composer.draft = ""
         #expect(await eventually { await sender.frames.count == 1 })
         try? await Task.sleep(for: .milliseconds(50))
         #expect(await sender.frames == [TypingFrame(chatId: "c", type: "TEXT")])
@@ -176,14 +176,14 @@ struct TypingChatTests {
     func recording() async {
         let sender = RecordingSender()
         let closed = ChatViewModel(chatId: "ch", currentUserId: "me", messages: FakeMessageRepository())
-        closed.typingReporter = TypingReporter(sender: sender)
-        closed.typingRecording(.audio)
-        closed.typingStickerPanelOpened()
+        closed.composer.typingReporter = TypingReporter(sender: sender)
+        closed.composer.typingRecording(.audio)
+        closed.composer.typingStickerPanelOpened()
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository())
-        model.typingReporter = TypingReporter(sender: sender)
-        model.typingAllowed = true
-        model.typingRecording(.videoMessage)
-        model.typingRecording(nil)
+        model.composer.typingReporter = TypingReporter(sender: sender)
+        model.composer.typingAllowed = true
+        model.composer.typingRecording(.videoMessage)
+        model.composer.typingRecording(nil)
         model.deactivate()
         #expect(await eventually { await sender.frames.count == 1 })
         try? await Task.sleep(for: .milliseconds(50))

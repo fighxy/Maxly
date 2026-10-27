@@ -52,12 +52,12 @@ struct ScheduleMessageSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                if !viewModel.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if !viewModel.composer.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Section("Новое") {
                         DatePicker("Когда", selection: $date, in: Date()..., displayedComponents: [.date, .hourAndMinute])
                         Button("Запланировать") {
                             dismiss()
-                            Task { await viewModel.scheduled.schedule(text: viewModel.draft, at: date) }
+                            Task { await viewModel.scheduled.schedule(text: viewModel.composer.draft, at: date) }
                         }
                     }
                 }

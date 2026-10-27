@@ -5,14 +5,14 @@ import MaxlyUI
 
 /// Поле ввода чата. С iOS 18 знает выделение: по нему над полем появляется панель разметки.
 struct ComposerTextField: View {
-    @Bindable var viewModel: ChatViewModel
+    @Bindable var composer: ComposerModel
     var focus: FocusState<Bool>.Binding
 
     var body: some View {
         if #available(iOS 18.0, *) {
-            SelectingComposerField(viewModel: viewModel, focus: focus)
+            SelectingComposerField(composer: composer, focus: focus)
         } else {
-            TextField("Сообщение", text: $viewModel.draft, axis: .vertical)
+            TextField("Сообщение", text: $composer.draft, axis: .vertical)
                 .focused(focus)
         }
     }
@@ -20,19 +20,19 @@ struct ComposerTextField: View {
 
 @available(iOS 18.0, *)
 private struct SelectingComposerField: View {
-    @Bindable var viewModel: ChatViewModel
+    @Bindable var composer: ComposerModel
     var focus: FocusState<Bool>.Binding
     @State private var selection: TextSelection?
 
     var body: some View {
-        TextField("Сообщение", text: $viewModel.draft, selection: $selection, axis: .vertical)
+        TextField("Сообщение", text: $composer.draft, selection: $selection, axis: .vertical)
             .focused(focus)
             .onChange(of: selection) { _, new in
-                viewModel.formatSelection = Self.range(new, in: viewModel.draft)
+                composer.formatSelection = Self.range(new, in: composer.draft)
             }
-            .onChange(of: viewModel.draft) { _, text in
+            .onChange(of: composer.draft) { _, text in
                 // Текст ушёл или сменился целиком: прежнее выделение больше не про него.
-                if text.isEmpty { viewModel.formatSelection = nil }
+                if text.isEmpty { composer.formatSelection = nil }
             }
     }
 
@@ -51,7 +51,7 @@ private struct SelectingComposerField: View {
 /// Панель разметки над полем: жирный, курсив, подчёркнутый, зачёркнутый, моноширинный,
 /// ссылка и «Обычный». Видна, пока в поле что-то выделено; нажатая кнопка подсвечена.
 struct ComposerFormatBar: View {
-    @Bindable var viewModel: ChatViewModel
+    @Bindable var composer: ComposerModel
     @State private var linkShown = false
     @State private var linkText = ""
     @State private var linkRejected = false
@@ -63,15 +63,15 @@ struct ComposerFormatBar: View {
             }
             Divider().frame(height: 22)
             Button {
-                viewModel.clearFormat()
+                composer.clearFormat()
             } label: {
                 Image(systemName: "textformat")
                     .frame(width: 40, height: 40)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(!viewModel.canClearFormat)
-            .opacity(viewModel.canClearFormat ? 1 : 0.4)
+            .disabled(!composer.canClearFormat)
+            .opacity(composer.canClearFormat ? 1 : 0.4)
             .accessibilityLabel("Обычный текст")
         }
         .font(.system(size: 17, weight: .medium))
@@ -83,10 +83,10 @@ struct ComposerFormatBar: View {
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
             Button("Готово") {
-                if !viewModel.setLink(linkText) { linkRejected = true }
+                if !composer.setLink(linkText) { linkRejected = true }
             }
-            if viewModel.selectedLink != nil {
-                Button("Убрать ссылку", role: .destructive) { viewModel.setLink("") }
+            if composer.selectedLink != nil {
+                Button("Убрать ссылку", role: .destructive) { composer.setLink("") }
             }
             Button("Отмена", role: .cancel) {}
         } message: {
@@ -98,13 +98,13 @@ struct ComposerFormatBar: View {
     }
 
     private func button(_ kind: TextSpan.Kind) -> some View {
-        let active = viewModel.isFormatActive(kind)
+        let active = composer.isFormatActive(kind)
         return Button {
             if kind == .link {
-                linkText = viewModel.selectedLink ?? ""
+                linkText = composer.selectedLink ?? ""
                 linkShown = true
             } else {
-                viewModel.toggleFormat(kind)
+                composer.toggleFormat(kind)
             }
         } label: {
             Image(systemName: Self.symbol(kind))

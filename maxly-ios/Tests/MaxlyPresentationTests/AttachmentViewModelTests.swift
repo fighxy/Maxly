@@ -94,15 +94,15 @@ struct AttachmentChatTests {
     func send() async throws {
         let repository = FakeMessageRepository()
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
-        model.beginReply(to: Message(id: "m1", serverId: "m1", chatId: "c", authorId: "bob", text: "привет", timestamp: .now, status: .sent))
-        await model.sendAttachments([photo(1), video], caption: "подпись")
+        model.composer.beginReply(to: Message(id: "m1", serverId: "m1", chatId: "c", authorId: "bob", text: "привет", timestamp: .now, status: .sent))
+        await model.composer.sendAttachments([photo(1), video], caption: "подпись")
         let sends = await repository.attachmentSends
         #expect(sends.map(\.drafts) == [[photo(1)], [video]])
         #expect(sends.map(\.caption) == ["подпись", ""])
         #expect(sends.map(\.replyTo) == ["m1", nil])
-        #expect(model.replyTarget == nil)
+        #expect(model.composer.replyTarget == nil)
 
-        await model.sendAttachments([card], caption: "это он")
+        await model.composer.sendAttachments([card], caption: "это он")
         #expect(await repository.sent == ["это он"])
     }
 
@@ -111,7 +111,7 @@ struct AttachmentChatTests {
         let repository = FakeMessageRepository()
         await repository.set(attachmentError: .storageError)
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
-        await model.sendAttachments([file], caption: "")
+        await model.composer.sendAttachments([file], caption: "")
         #expect(model.errorMessage != nil)
     }
 

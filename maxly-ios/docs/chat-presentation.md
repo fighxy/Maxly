@@ -35,7 +35,8 @@ Liquid Glass для элементов управления. Изменения 
   открывают клавиатуру; панель стикеров уступает ей место. Листы опроса и «Отправить позже» —
   отдельные виды со своим состоянием (`ChatComposeSheets.swift`).
 - `ChatViewModel` держит ленту и состояние экрана; отдельные части — во вложенных моделях:
-  поиск (`search`, `ChatSearchModel`), опросы (`polls`, `ChatPollsModel`), отложенные
+  поле ввода (`composer`, `ComposerModel`: черновик, разметка, ответ и правка, отправка,
+  подсказки `@` и `/`, «печатаю»), поиск (`search`, `ChatSearchModel`), опросы (`polls`, `ChatPollsModel`), отложенные
   (`scheduled`, `ScheduledMessagesModel`), голосовые (`voices`, `VoicePlaybackModel`, он же владелец
   полосы «играет голосовое»), вложения (`attachments`, `ChatMediaModel`: просмотр, кружки в ленте,
   файлы, сохранение), реакции (`reactions`, `ChatReactionsModel`), закрепы (`pins`, `ChatPinsModel`: плашка, список, подтверждение), расшифровки

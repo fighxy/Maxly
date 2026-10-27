@@ -188,15 +188,15 @@ struct ChatEditTests {
     @Test("Править можно только свой отправленный текст; правка откладывает черновик и возвращает его")
     func editMode() {
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository())
-        #expect(model.canEdit(own("Привет")))
-        #expect(!model.canEdit(own("Привет", status: .sending, serverId: nil)))
-        #expect(!model.canEdit(Message(id: "x", chatId: "c", authorId: "bob", text: "чужое", timestamp: .now, status: .sent)))
-        model.draft = "черновик"
-        model.beginEdit(own("Привет"))
-        #expect(model.editTarget?.id == "m1")
-        #expect(model.draft == "Привет")
-        model.cancelEdit()
-        #expect(model.editTarget == nil)
-        #expect(model.draft == "черновик")
+        #expect(model.composer.canEdit(own("Привет")))
+        #expect(!model.composer.canEdit(own("Привет", status: .sending, serverId: nil)))
+        #expect(!model.composer.canEdit(Message(id: "x", chatId: "c", authorId: "bob", text: "чужое", timestamp: .now, status: .sent)))
+        model.composer.draft = "черновик"
+        model.composer.beginEdit(own("Привет"))
+        #expect(model.composer.editTarget?.id == "m1")
+        #expect(model.composer.draft == "Привет")
+        model.composer.cancelEdit()
+        #expect(model.composer.editTarget == nil)
+        #expect(model.composer.draft == "черновик")
     }
 }
