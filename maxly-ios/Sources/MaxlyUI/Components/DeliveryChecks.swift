@@ -24,12 +24,14 @@ public struct DeliveryChecks: View {
                 .offset(x: read ? 0 : 2.5)
             if read {
                 // У второй галочки виден только длинный штрих: короткий прячется за первой.
-                // Маска прорисовки — до сдвига: иначе она осталась бы на месте, а галочка уехала.
+                // Сдвиг — отступом, а не `offset`: переход ветки (маска прорисовки) ложится на
+                // её рамку, а `offset` рамку не двигает. Маска оставалась на месте первой
+                // галочки и навсегда срезала вторую до огрызка у её угла.
                 CheckShape(full: false)
                     .stroke(style: style)
                     .frame(width: 11, height: Self.size.height)
+                    .padding(.leading, 5)
                     .transition(.maxlyCheckDraw(reduceMotion: reduceMotion))
-                    .offset(x: 5)
             }
         }
         .frame(width: Self.size.width, height: Self.size.height, alignment: .leading)
