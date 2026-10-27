@@ -7,60 +7,37 @@ import MaxlyUI
 
 struct ChatView: View {
     @Bindable var viewModel: ChatViewModel
-    var title: String
-    /// Комментарии канала: `true` включены, `false` выключены, `nil` сервер не сказал —
-    /// тогда кнопка есть только у постов, к которым сервер прислал счётчик.
-    var commentsEnabled: Bool?
-    /// В группе у чужих сообщений видны имя и аватар автора, в личном чате и канале — нет.
-    var chatType: ChatType = .private
-    /// Чаты для пересылки (без текущего).
-    var forwardTargets: () -> [ChatListItem] = { [] }
-    /// Можно ли писать. Нет — вместо поля ввода плашка (в канале — уведомления).
-    /// `nil` — чата нет в списке (открыт из поиска или по ссылке): решает карточка чата.
-    var canWrite: Bool? = true
-    var isMuted = false
-    /// Звук чата прямо из списка чатов. Читается в `body`, поэтому экран обновляется сразу,
-    /// как переключили звук; снимок `isMuted` мог остаться прежним.
-    var mutedNow: (() -> Bool)? = nil
-    var onToggleMute: (() -> Void)?
-    /// Контакты для вкладки «Контакт» листа вложений. `nil` — вкладка пустая.
-    var contactList: (() -> AsyncStream<[Contact]>)? = nil
-    /// Панель эмодзи и стикеров (одна на приложение: каталог грузится раз).
-    var stickerPanel: StickerPanelModel? = nil
-    /// Сеть, «печатает…», звук и галочка — живые данные из списка чатов для шапки.
-    var live: () -> ChatHeaderLive = { ChatHeaderLive() }
-    /// Модель профиля чата: шапка берёт из неё статус, нажатие на шапку открывает профиль.
-    var makeProfile: (() -> ChatProfileViewModel?)?
-    /// Управление группой или каналом. `nil` — до входа ядра.
-    var chatAdmin: (any ChatAdminRepository)? = nil
-    /// Очистка переписки или удаление чата из профиля. Первый флаг — очистка, второй — у всех.
-    var onEraseChat: ((Bool, Bool) -> Void)? = nil
-    /// Выйти из группы или отписаться от канала из профиля.
-    var onLeave: (() -> Void)? = nil
-    /// Открыть другой чат из профиля (общий чат собеседника).
-    var onOpenChat: ((String) -> Void)? = nil
-    /// Открыть личный диалог (из «Кем прочитано»): черновик запоминается, чат открывается.
-    var onOpenDialog: ((DialogDraft) -> Void)? = nil
-    /// Пометка «непрочитано» с сообщения, отправленного в эту дату. Экран закрывает тот, кто
-    /// открыл чат, когда сервер принял пометку.
-    var onMarkUnread: ((Date) -> Void)? = nil
-    /// Эмодзи двойного нажатия. `nil` — сервер выключил быструю реакцию.
-    var quickReaction: String? = nil
-    /// Мини-приложение бота: кнопка «Открыть приложение» и inline-кнопки `OPEN_APP`.
-    var makeBotApp: ((BotAppRequest) -> MiniAppModel)? = nil
-    /// Позвонить собеседнику личного чата (из профиля): аудио или видео.
-    var onCall: ((CallCenter.Peer, Bool) -> Void)? = nil
-    var makeParticipantProfile: ((DialogDraft) -> ChatProfileViewModel?)? = nil
-    /// Открыть профиль, как только он готов («Перейти в профиль» из истории); `onProfileOpened` —
-    /// просьба выполнена.
-    var opensProfile = false
-    var onProfileOpened: () -> Void = {}
-    /// Звук на срок и папки для профиля (через список чатов).
-    var listActions: ChatProfileListActions? = nil
-    /// Полоса «играет голосовое»; `nil` — без неё.
-    var nowPlaying: VoiceNowPlaying? = nil
-    /// Касание полосы, когда голосовое из другого чата: открыть тот чат на сообщении.
-    var onOpenVoice: ((VoiceNowPlaying.Track) -> Void)? = nil
+    /// Данные чата, службы и действия снаружи (`ChatScreenFactory`).
+    let context: ChatScreenContext
+
+    // Короткие имена входов: тело экрана читает их как раньше.
+    private var title: String { context.info.title }
+    private var commentsEnabled: Bool? { context.info.commentsEnabled }
+    private var chatType: ChatType { context.info.chatType }
+    private var canWrite: Bool? { context.info.canWrite }
+    private var isMuted: Bool { context.info.isMuted }
+    private var quickReaction: String? { context.info.quickReaction }
+    private var opensProfile: Bool { context.info.opensProfile }
+    private var forwardTargets: () -> [ChatListItem] { context.services.forwardTargets }
+    private var mutedNow: (() -> Bool)? { context.services.mutedNow }
+    private var contactList: (() -> AsyncStream<[Contact]>)? { context.services.contactList }
+    private var stickerPanel: StickerPanelModel? { context.services.stickerPanel }
+    private var live: () -> ChatHeaderLive { context.services.live }
+    private var makeProfile: (() -> ChatProfileViewModel?)? { context.services.makeProfile }
+    private var makeParticipantProfile: ((DialogDraft) -> ChatProfileViewModel?)? { context.services.makeParticipantProfile }
+    private var chatAdmin: (any ChatAdminRepository)? { context.services.chatAdmin }
+    private var makeBotApp: ((BotAppRequest) -> MiniAppModel)? { context.services.makeBotApp }
+    private var listActions: ChatProfileListActions? { context.services.listActions }
+    private var nowPlaying: VoiceNowPlaying? { context.services.nowPlaying }
+    private var onToggleMute: (() -> Void)? { context.actions.toggleMute }
+    private var onEraseChat: ((Bool, Bool) -> Void)? { context.actions.eraseChat }
+    private var onLeave: (() -> Void)? { context.actions.leave }
+    private var onOpenChat: ((String) -> Void)? { context.actions.openChat }
+    private var onOpenDialog: ((DialogDraft) -> Void)? { context.actions.openDialog }
+    private var onMarkUnread: ((Date) -> Void)? { context.actions.markUnread }
+    private var onCall: ((CallCenter.Peer, Bool) -> Void)? { context.actions.call }
+    private var onProfileOpened: () -> Void { context.actions.profileOpened }
+    private var onOpenVoice: ((VoiceNowPlaying.Track) -> Void)? { context.actions.openVoice }
     @State private var participant: DialogDraft?
     /// Только что поставленная реакция: анимация значка и эффект вокруг (`ReactionBurstHost`).
     @State private var reactionBurst = ReactionBurstHost()
@@ -99,12 +76,6 @@ struct ChatView: View {
     @State private var searchShown = false
     @State private var pollShown = false
     @State private var scheduleShown = false
-    @State private var pollTitle = ""
-    @State private var pollFirst = ""
-    @State private var pollSecond = ""
-    @State private var scheduleDate = Date().addingTimeInterval(3600)
-    @State private var editingScheduled: FoundMessage?
-    @State private var scheduleEditText = ""
     /// Верх нижних кнопок на экране, для мягкого размытия низа ленты.
     @State private var bottomControlsTop: CGFloat = 0
     /// Обои из «Оформления» и где они лежат на экране (для перехода в них у низа ленты).
@@ -544,7 +515,11 @@ struct ChatView: View {
                 .environment(\.privateMode, .visible)
             }
             .sheet(isPresented: $searchShown) { searchSheet }
-            .sheet(isPresented: $pollShown) { pollSheet }
+            .sheet(isPresented: $pollShown) {
+                PollComposerSheet { title, answers in
+                    Task { await viewModel.sendPoll(title: title, answers: answers) }
+                }
+            }
             .sheet(isPresented: $viewModel.pinListShown) { pinList }
             .confirmationDialog("Закрепить сообщение", isPresented: pinPromptShown, titleVisibility: .visible) {
                 pinPromptButtons
@@ -553,7 +528,7 @@ struct ChatView: View {
                 Button("Открепить", role: .destructive) { Task { await viewModel.unpin() } }
                 Button("Отмена", role: .cancel) {}
             }
-            .sheet(isPresented: $scheduleShown) { scheduleSheet }
+            .sheet(isPresented: $scheduleShown) { ScheduleMessageSheet(viewModel: viewModel) }
             .sheet(item: $viewModel.botAppRequest) { request in
                 if let makeBotApp {
                     MiniAppSheet(model: makeBotApp(request))
@@ -605,97 +580,6 @@ struct ChatView: View {
         ChatSearchSheet(model: viewModel) { hit in
             searchShown = false
             viewModel.focusReply(hit.messageId, at: hit.date)
-        }
-    }
-
-    private var pollSheet: some View {
-        NavigationStack {
-            Form {
-                TextField("Вопрос", text: $pollTitle)
-                TextField("Ответ 1", text: $pollFirst)
-                TextField("Ответ 2", text: $pollSecond)
-            }
-            .navigationTitle("Опрос")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Отмена") { pollShown = false } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Отправить") {
-                        pollShown = false
-                        Task { await viewModel.sendPoll(title: pollTitle, answers: [pollFirst, pollSecond]) }
-                    }
-                    .disabled(!pollReady)
-                }
-            }
-        }
-    }
-
-    /// Опрос уходит, когда заполнены оба ответа.
-    private var pollReady: Bool {
-        let first = pollFirst.trimmingCharacters(in: .whitespacesAndNewlines)
-        let second = pollSecond.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !first.isEmpty && !second.isEmpty
-    }
-
-    private var scheduleSheet: some View {
-        NavigationStack {
-            Form {
-                if !viewModel.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Section("Новое") {
-                        DatePicker("Когда", selection: $scheduleDate, in: Date()..., displayedComponents: [.date, .hourAndMinute])
-                        Button("Запланировать") {
-                            scheduleShown = false
-                            Task { await viewModel.schedule(text: viewModel.draft, at: scheduleDate) }
-                        }
-                    }
-                }
-                Section("Запланированные") {
-                    if viewModel.scheduledItems.isEmpty {
-                        Text("Пока ничего не ждёт отправки")
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(viewModel.scheduledItems, id: \.messageId) { item in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(item.text).lineLimit(2)
-                            if let date = item.date {
-                                Text(date.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.app(.caption))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .swipeActions {
-                            Button("Сейчас") { Task { await viewModel.sendScheduledNow(item) } }
-                                .tint(.maxlyAccent)
-                            Button("Отменить", role: .destructive) { Task { await viewModel.cancelScheduled(item) } }
-                        }
-                        .onTapGesture {
-                            editingScheduled = item
-                            scheduleEditText = item.text
-                            scheduleDate = item.date ?? Date().addingTimeInterval(3600)
-                        }
-                    }
-                }
-                if editingScheduled != nil {
-                    Section("Изменить") {
-                        TextField("Текст", text: $scheduleEditText, axis: .vertical)
-                        DatePicker("Когда", selection: $scheduleDate, in: Date()..., displayedComponents: [.date, .hourAndMinute])
-                        Button("Сохранить") {
-                            guard let item = editingScheduled else { return }
-                            editingScheduled = nil
-                            Task { await viewModel.editScheduled(item, text: scheduleEditText, at: scheduleDate) }
-                        }
-                        .disabled(scheduleEditText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                }
-            }
-            .navigationTitle("Отправить позже")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { scheduleShown = false } }
-            }
-            .task {
-                await viewModel.loadScheduled()
-            }
         }
     }
 

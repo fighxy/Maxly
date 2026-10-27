@@ -350,67 +350,19 @@ struct MainTabView: View {
         )
     }
 
+    /// Входы экрана чата: данные из списка, службы и действия.
+    private var chatFactory: ChatScreenFactory {
+        ChatScreenFactory(container: container, router: router, openVoice: { openVoice($0) })
+    }
+
     @ViewBuilder
     private func chatScreen(_ id: String) -> some View {
         if let model = container.chatViewModel(id: id) {
             // Свой экран на каждый чат: иначе при смене выбора SwiftUI переиспользует
             // прежний ChatView, его `.task` не перезапускается, и модель нового чата
             // так и не подписывается на сообщения.
-            let settings = container.accountSettingsModel().settings
-            ChatView(
-                viewModel: model,
-                title: container.chatTitle(id: id),
-                commentsEnabled: container.commentsEnabled(id: id),
-                chatType: container.chatType(id: id),
-                forwardTargets: { container.forwardTargets(excluding: id) },
-                canWrite: container.canWrite(id: id),
-                isMuted: container.isMuted(id: id),
-                mutedNow: { container.isMuted(id: id) },
-                onToggleMute: { Task { await container.toggleMute(id: id) } },
-                contactList: { container.attachmentContacts() },
-                stickerPanel: container.stickerPanelModel(),
-                live: { container.headerLive(id: id) },
-                makeProfile: { container.profileViewModel(chatId: id) },
-                chatAdmin: container.chatAdmin,
-                onEraseChat: { clear, everyone in
-                    Task {
-                        let gone = await container.eraseChat(id: id, clearHistory: clear, forEveryone: everyone)
-                        if gone { router.chatId = nil }
-                    }
-                },
-                onLeave: {
-                    Task {
-                        if await container.leaveChat(id: id), router.chatId == id { router.chatId = nil }
-                    }
-                },
-                onOpenChat: { other in
-                    if other != id { router.chatId = other }
-                },
-                onOpenDialog: { draft in
-                    container.openDialog(draft)
-                    if draft.chatId != id { router.chatId = draft.chatId }
-                },
-                onMarkUnread: { date in
-                    Task {
-                        if await container.markUnread(id: id, from: date), router.chatId == id { router.chatId = nil }
-                    }
-                },
-                quickReaction: settings.quickReactionEnabled ? settings.quickReaction : nil,
-                makeBotApp: { container.botAppModel($0) },
-                onCall: { peer, video in container.startCall(peer, video: video) },
-                makeParticipantProfile: { container.profileViewModel(dialog: $0) },
-                opensProfile: router.profileRequest == id,
-                onProfileOpened: { if router.profileRequest == id { router.profileRequest = nil } },
-                listActions: ChatProfileListActions(
-                    muteFor: { choice in Task { await container.muteFor(id: id, choice) } },
-                    folders: { container.folderChoices(id: id) },
-                    toggleFolder: { folder in Task { await container.toggleFolder(id: id, folderId: folder) } },
-                    createFolder: { title in Task { await container.createFolder(id: id, title: title) } }
-                ),
-                nowPlaying: container.nowPlaying,
-                onOpenVoice: { track in openVoice(track) }
-            )
-            .id(id)
+            ChatView(viewModel: model, context: chatFactory.context(chatId: id))
+                .id(id)
         }
     }
 

@@ -62,7 +62,9 @@ final class AppContainer {
     @ObservationIgnored private var presenceService: CorePresenceService?
     /// Ядро для `setAppActive`: от него сервер решает, «в сети» ли аккаунт.
     @ObservationIgnored private var activityCore: (any MaxCore)?
-    @ObservationIgnored private var chatModels: [String: ChatViewModel] = [:]
+    /// Модели последних открытых чатов. Вытесненная деактивируется; чат, где играет голосовое,
+    /// не вытесняется: полоса плеера управляет его моделью.
+    @ObservationIgnored private var chatModels = RecentModels<String, ChatViewModel>(capacity: 8)
     /// Диалоги, открытые из контактов: по ним экран знает имя собеседника, пока чата нет в списке.
     @ObservationIgnored private var dialogDrafts: [String: DialogDraft] = [:]
     @ObservationIgnored private var contactsModel: ContactsViewModel?
@@ -611,7 +613,7 @@ final class AppContainer {
     }
 
     func chatViewModel(id: String) -> ChatViewModel? {
-        if let existing = chatModels[id] { return existing }
+        if let existing = chatModels.value(for: id) { return existing }
         guard let messages else { return nil }
         let me: String
         if case .signedIn(let userId) = phase { me = userId } else { me = "" }
@@ -645,7 +647,10 @@ final class AppContainer {
         nowPlaying.applySpeed = { [voicePlayer] speed in voicePlayer.rate = speed }
         model.attachPins(pinHub)
         model.attachScheduled(scheduledHub)
-        chatModels[id] = model
+        let playing = nowPlaying.track?.chatId
+        for evicted in chatModels.insert(model, for: id, keep: { $0 == playing }) {
+            evicted.deactivate()
+        }
         return model
     }
 
@@ -1068,7 +1073,7 @@ final class AppContainer {
             await actions?.reset()
         }
         voicePlayer.stop()
-        chatModels.values.forEach {
+        chatModels.all.forEach {
             $0.stopVoice()
             $0.deactivate()
         }
