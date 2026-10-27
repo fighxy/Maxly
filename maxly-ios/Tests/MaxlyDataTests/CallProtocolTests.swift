@@ -53,7 +53,8 @@ struct Ws2SignalingTests {
         server.notify("hungup", ["participantId": 5])
         let hungup = await iterator.next()
         #expect(hungup?["notification"]?.string == "hungup")
-        #expect(server.texts.contains("pong"))
+        // «pong» уходит через очередь отправки, «hungup» — сразу в поток: ответ может прийти позже.
+        #expect(await eventually { server.texts.contains("pong") })
         await signaling.close()
     }
 
