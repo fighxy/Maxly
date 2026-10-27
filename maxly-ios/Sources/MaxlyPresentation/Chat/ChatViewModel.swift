@@ -104,7 +104,6 @@ public final class ChatViewModel {
     /// меняет размер, и лента плавно раздвигается, а не прыгает.
     public private(set) var contentVersion = 0
     public private(set) var error: MaxlyError?
-    public private(set) var stickToBottom = true
     /// Просьба прокрутить ленту: переход к сообщению или вниз. Экран выполняет её и снимает.
     public private(set) var scrollTarget: ChatScrollTarget?
     public private(set) var scrollToken = 0
@@ -243,7 +242,6 @@ public final class ChatViewModel {
             self?.unreadAnchorId = nil
         }
         composer.onWillSend = { [weak self] in
-            self?.stickToBottom = true
             self?.returnToLiveForSending()
         }
         composer.onSuccess = { [weak self] in self?.error = nil }
@@ -599,7 +597,6 @@ public final class ChatViewModel {
         olderFailed = false
         let generation = loadGeneration
         defer { if generation == loadGeneration { isLoadingOlder = false } }
-        stickToBottom = false
         do {
             let grew = try await repository.loadOlder(chatId: chatId)
             if !grew, generation == loadGeneration { liveReachedOldest = true }
