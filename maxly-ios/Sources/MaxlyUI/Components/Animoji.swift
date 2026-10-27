@@ -14,12 +14,13 @@ private struct AnimojiCatalogKey: EnvironmentKey {
 @MainActor
 @Observable
 public final class ReactionBurstHost {
-    /// Пространство координат ленты: в нём значок сообщает своё место.
-    public nonisolated static let space = "maxly.reactionBurst"
     public nonisolated static let limit: Duration = .seconds(4)
 
     public private(set) var burst: ReactionBurst?
-    /// Где значок, в координатах `space`.
+    /// Где значок на экране (глобальные координаты). Не своё пространство ленты: пузыри живут
+    /// в ячейках `UICollectionView`, и имя пространства из-за границы UIKit до них не доходит —
+    /// значок мерился бы от верха своей ячейки, и эффект уезжал вниз на столько, на сколько
+    /// ячейка ушла за верх экрана.
     var anchor: CGRect?
     private(set) var bodyDone = true
     private(set) var effectDone = true
@@ -95,7 +96,7 @@ struct ReactionGlyph: View {
                         }) { letter }
                     }
                 }
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(ReactionBurstHost.space)) } action: { host.anchor = $0 }
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { host.anchor = $0 }
                 .id(burst.id)
         } else {
             letter
@@ -121,13 +122,17 @@ public struct ReactionEffectLayer: View {
 
     public var body: some View {
         if let burst = host.burst, let url = burst.effectURL, !host.effectDone, let anchor = host.anchor, !reduceMotion {
-            AnimatedSticker(lottieURL: url, stillURL: nil, size: size, loops: false, onFinished: {
-                host.effectFinished(burst.id)
-            }) { Color.clear }
-                .id(burst.id)
-                .position(x: anchor.midX, y: anchor.midY)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+            // Место значка глобальное: слой переводит его в свои координаты.
+            GeometryReader { geo in
+                let origin = geo.frame(in: .global).origin
+                AnimatedSticker(lottieURL: url, stillURL: nil, size: size, loops: false, onFinished: {
+                    host.effectFinished(burst.id)
+                }) { Color.clear }
+                    .id(burst.id)
+                    .position(x: anchor.midX - origin.x, y: anchor.midY - origin.y)
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
         }
     }
 }
