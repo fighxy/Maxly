@@ -636,7 +636,7 @@ final class AppContainer {
         model.voices.nowPlaying = nowPlaying
         if let stickerRepository {
             // Анимодзи сервера (тот же каталог, что у панели эмодзи): эмодзи → Lottie и эффект реакции.
-            model.loadAnimoji = {
+            model.reactions.loadAnimoji = {
                 let cached = await stickerRepository.cachedAnimatedEmoji()
                 // В кэше прежней версии нет эффектов: тогда каталог берётся заново.
                 let stale = cached.isEmpty || !cached.contains { $0.effectURL != nil }
@@ -645,7 +645,7 @@ final class AppContainer {
             }
         }
         nowPlaying.applySpeed = { [voicePlayer] speed in voicePlayer.rate = speed }
-        model.attachPins(pinHub)
+        model.pins.attach(pinHub)
         model.scheduled.attach(scheduledHub)
         let playing = nowPlaying.track?.chatId
         for evicted in chatModels.insert(model, for: id, keep: { $0 == playing }) {

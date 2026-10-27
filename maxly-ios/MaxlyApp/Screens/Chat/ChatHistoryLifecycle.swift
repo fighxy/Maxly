@@ -27,7 +27,7 @@ struct ChatHistoryLifecycle: ViewModifier {
                 do { try await Task.sleep(for: .milliseconds(300)) }
                 catch { return }
                 guard !Task.isCancelled else { return }
-                model.requestReactions(for: model.messages)
+                model.reactions.request(for: model.messages)
                 if requestsComments { model.requestCommentCounts(for: model.messages) }
             }
     }

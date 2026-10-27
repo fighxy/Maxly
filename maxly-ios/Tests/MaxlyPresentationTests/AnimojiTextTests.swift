@@ -51,25 +51,25 @@ struct ReactionBurstTests {
         let firePlay = URL(string: "https://lottie/fire-play.json")!
         let laughPlay = URL(string: "https://lottie/laugh-play.json")!
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: FakeMessageRepository())
-        model.loadAnimoji = { AnimojiAssets(animoji: ["🔥": fire], effects: ["🔥": firePlay, "😂": laughPlay]) }
-        #expect(await eventually { !model.animoji.isEmpty })
-        await model.toggleReaction(messageId: "m1", emoji: "🔥")
-        let burst = model.reactionBurst
+        model.reactions.loadAnimoji = { AnimojiAssets(animoji: ["🔥": fire], effects: ["🔥": firePlay, "😂": laughPlay]) }
+        #expect(await eventually { !model.reactions.animoji.isEmpty })
+        await model.reactions.toggle(messageId: "m1", emoji: "🔥")
+        let burst = model.reactions.burst
         #expect(burst?.messageId == "m1")
         #expect(burst?.lottieURL == fire)
         #expect(burst?.effectURL == firePlay)
         #expect(burst?.matches(messageId: "m1", emoji: "🔥") == true)
         #expect(burst?.matches(messageId: "m2", emoji: "🔥") == false)
-        model.reactionBurstShown((burst?.id ?? 0) + 1)
-        #expect(model.reactionBurst == burst)
-        model.reactionBurstShown(burst?.id ?? 0)
-        #expect(model.reactionBurst == nil)
-        await model.toggleReaction(messageId: "m1", emoji: "😀")
-        #expect(model.reactionBurst == nil)
+        model.reactions.burstShown((burst?.id ?? 0) + 1)
+        #expect(model.reactions.burst == burst)
+        model.reactions.burstShown(burst?.id ?? 0)
+        #expect(model.reactions.burst == nil)
+        await model.reactions.toggle(messageId: "m1", emoji: "😀")
+        #expect(model.reactions.burst == nil)
         // Только эффект, без анимации самого значка, — тоже играет.
-        await model.toggleReaction(messageId: "m1", emoji: "😂")
-        #expect(model.reactionBurst?.lottieURL == nil)
-        #expect(model.reactionBurst?.effectURL == laughPlay)
+        await model.reactions.toggle(messageId: "m1", emoji: "😂")
+        #expect(model.reactions.burst?.lottieURL == nil)
+        #expect(model.reactions.burst?.effectURL == laughPlay)
     }
 
     @Test("Каталог: эмодзи и эффекты по своим адресам, без пустых")

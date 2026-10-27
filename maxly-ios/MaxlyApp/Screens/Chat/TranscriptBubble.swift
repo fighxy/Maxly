@@ -141,7 +141,7 @@ struct TranscriptBubble: View, Equatable {
             commentCount: state.commentCount,
             onRetry: { Task { await viewModel.retry(id: message.id) } },
             onReply: { viewModel.beginReply(to: message) },
-            onReact: { emoji in Task { await viewModel.toggleReaction(messageId: message.id, emoji: emoji) } },
+            onReact: { emoji in Task { await viewModel.reactions.toggle(messageId: message.id, emoji: emoji) } },
             onComments: { viewModel.openComments(message) },
             onOpen: { viewModel.attachments.presentMedia(message, startId: $0) },
             onVoice: { viewModel.voices.toggle(message) },
@@ -153,8 +153,8 @@ struct TranscriptBubble: View, Equatable {
             allowsReply: state.canWrite,
             allowsReactions: state.reacts,
             quickReactions: state.reacts ? state.quickReactions : ReactionPalette.fallback,
-            onMoreReactions: state.reacts ? { viewModel.showMoreReactions(message) } : nil,
-            onReactionUsers: state.reacts && state.showsReactionUsers ? { viewModel.showReactionUsers(message) } : nil,
+            onMoreReactions: state.reacts ? { viewModel.reactions.showMore(message) } : nil,
+            onReactionUsers: state.reacts && state.showsReactionUsers ? { viewModel.reactions.showUsers(message) } : nil,
             uploadProgress: state.uploadProgress,
             onCancelUpload: { Task { await viewModel.cancelUpload(message) } },
             roundPlayer: roundPlayer,
@@ -168,10 +168,10 @@ struct TranscriptBubble: View, Equatable {
             } : nil,
             onSeekVoice: { viewModel.voices.seek(message, to: $0) },
             onDoubleTap: state.reacts ? state.quickReaction.map { emoji in
-                { Task { await viewModel.toggleReaction(messageId: message.id, emoji: emoji) } }
+                { Task { await viewModel.reactions.toggle(messageId: message.id, emoji: emoji) } }
             } : nil,
             onPin: message.status == .sent && Int64(message.id) != nil && !message.content.isService
-                ? { viewModel.requestPin(message) }
+                ? { viewModel.pins.request(message) }
                 : nil,
             onMarkUnread: viewModel.canMarkUnread(message) ? { viewModel.requestMarkUnread(message) } : nil,
             onInfo: state.showsInfo ? { [chatType = state.chatType] in viewModel.showMessageInfo(message, chatType: chatType) } : nil,

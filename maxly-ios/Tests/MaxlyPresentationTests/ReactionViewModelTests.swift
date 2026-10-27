@@ -110,16 +110,16 @@ struct ChatReactionTests {
     func toggleAndFailure() async {
         let repository = ReactionMessages()
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
-        await model.toggleReaction(messageId: "m1", emoji: "👍")
+        await model.reactions.toggle(messageId: "m1", emoji: "👍")
         #expect(await repository.toggles == ["m1:👍"])
         #expect(model.errorMessage == nil)
 
         await repository.set(toggleError: .networkUnavailable)
-        await model.toggleReaction(messageId: "m1", emoji: "🔥")
+        await model.reactions.toggle(messageId: "m1", emoji: "🔥")
         #expect(model.errorMessage == "Не удалось обновить реакцию")
 
         await repository.set(toggleError: nil)
-        await model.toggleReaction(messageId: "m1", emoji: "🔥")
+        await model.reactions.toggle(messageId: "m1", emoji: "🔥")
         #expect(model.errorMessage == nil)
     }
 
@@ -128,10 +128,10 @@ struct ChatReactionTests {
         let repository = ReactionMessages()
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
         await repository.set(toggleError: .cancelled)
-        await model.toggleReaction(messageId: "m1", emoji: "👍")
+        await model.reactions.toggle(messageId: "m1", emoji: "👍")
         #expect(model.errorMessage == nil)
         await repository.set(toggleError: .rejected("Сообщение ещё не отправлено"))
-        await model.toggleReaction(messageId: "m1", emoji: "👍")
+        await model.reactions.toggle(messageId: "m1", emoji: "👍")
         #expect(model.errorMessage == "Сообщение ещё не отправлено")
     }
 
@@ -140,15 +140,15 @@ struct ChatReactionTests {
         let repository = ReactionMessages()
         await repository.set(catalog: ["😀", "😁", "😂", "🤣", "😃", "😄", "😅"])
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
-        #expect(model.quickReactions(for: message("m1")) == ReactionPalette.fallback)
+        #expect(model.reactions.quickReactions(for: message("m1")) == ReactionPalette.fallback)
         model.activate()
-        for _ in 0..<200 where model.reactionCatalog.isEmpty {
+        for _ in 0..<200 where model.reactions.catalog.isEmpty {
             try? await Task.sleep(for: .milliseconds(5))
         }
-        #expect(model.reactionCatalog.count == 7)
-        #expect(model.quickReactions(for: message("m1")) == ["😀", "😁", "😂", "🤣", "😃", "😄"])
+        #expect(model.reactions.catalog.count == 7)
+        #expect(model.reactions.quickReactions(for: message("m1")) == ["😀", "😁", "😂", "🤣", "😃", "😄"])
         let mine = message("m2", reactions: [MessageReaction(emoji: "🦄", count: 1, mine: true)])
-        #expect(model.quickReactions(for: mine).first == "🦄")
+        #expect(model.reactions.quickReactions(for: mine).first == "🦄")
         model.deactivate()
         model.activate()
         try? await Task.sleep(for: .milliseconds(20))
@@ -159,22 +159,22 @@ struct ChatReactionTests {
     @Test("Реакции только у принятых сервером сообщений")
     func canReact() {
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: ReactionMessages())
-        #expect(model.canReact(message("m1")))
-        #expect(!model.canReact(message("local-1", serverId: nil, status: .sending)))
-        #expect(!model.canReact(message("m2", status: .failed)))
-        #expect(!model.canReact(message("m3", serverId: "local-3")))
+        #expect(model.reactions.canReact(message("m1")))
+        #expect(!model.reactions.canReact(message("local-1", serverId: nil, status: .sending)))
+        #expect(!model.reactions.canReact(message("m2", status: .failed)))
+        #expect(!model.reactions.canReact(message("m3", serverId: "local-3")))
     }
 
     @Test("Полный выбор ставит реакцию на своё сообщение и закрывается")
     func picker() async {
         let repository = ReactionMessages()
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
-        model.showMoreReactions(message("local-1", serverId: nil, status: .sending))
-        #expect(model.reactionPickerTarget == nil)
-        model.showMoreReactions(message("m1"))
-        #expect(model.reactionPickerTarget?.id == "m1")
-        await model.pickReaction("🦄")
-        #expect(model.reactionPickerTarget == nil)
+        model.reactions.showMore(message("local-1", serverId: nil, status: .sending))
+        #expect(model.reactions.pickerTarget == nil)
+        model.reactions.showMore(message("m1"))
+        #expect(model.reactions.pickerTarget?.id == "m1")
+        await model.reactions.pick("🦄")
+        #expect(model.reactions.pickerTarget == nil)
         #expect(await repository.toggles == ["m1:🦄"])
     }
 
@@ -182,7 +182,7 @@ struct ChatReactionTests {
     func refresh() async {
         let repository = ReactionMessages()
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
-        await model.refreshReactions()
+        await model.reactions.refresh()
         #expect(await repository.refreshed == ["c"])
     }
 
@@ -194,14 +194,14 @@ struct ChatReactionTests {
             ReactionUser(userId: "2", name: " ", avatarURL: nil, emoji: "🔥"),
         ])
         let model = ChatViewModel(chatId: "c", currentUserId: "me", messages: repository)
-        model.showReactionUsers(message("m0"))
-        #expect(model.reactionUsers == nil)
+        model.reactions.showUsers(message("m0"))
+        #expect(model.reactions.users == nil)
         let reacted = message("m1", reactions: [
             MessageReaction(emoji: "👍", count: 1, mine: false),
             MessageReaction(emoji: "🔥", count: 1, mine: false),
         ])
-        model.showReactionUsers(reacted)
-        let list = try? #require(model.reactionUsers)
+        model.reactions.showUsers(reacted)
+        let list = try? #require(model.reactions.users)
         guard let list else { return }
         #expect(list.title == "Реакции: 2")
         #expect(list.state == .loading)

@@ -928,7 +928,7 @@ struct ChatTranscript: View {
     private func state(for row: TranscriptRow, width: CGFloat) -> TranscriptBubble.Snapshot {
         let message = row.message
         let showsAuthors = rules.showsAuthors
-        let reacts = viewModel.canReact(message)
+        let reacts = viewModel.reactions.canReact(message)
         let loading = viewModel.attachments.loadingMediaId.flatMap { id in
             message.content.attachments.contains { $0.id == id } ? id : nil
         }
@@ -951,7 +951,7 @@ struct ChatTranscript: View {
             commentCount: viewModel.commentCount(for: message),
             uploadProgress: viewModel.uploadFraction(of: message),
             reacts: reacts,
-            quickReactions: reacts ? viewModel.quickReactions(for: message) : [],
+            quickReactions: reacts ? viewModel.reactions.quickReactions(for: message) : [],
             canEdit: viewModel.canEdit(message),
             savesToPhotos: viewModel.attachments.canSave(message, to: .photos),
             savesToFiles: viewModel.attachments.canSave(message, to: .files),
