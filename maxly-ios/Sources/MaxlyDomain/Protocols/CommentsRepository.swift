@@ -4,6 +4,9 @@ import Foundation
 public protocol CommentsRepository: Sendable {
     /// До `limit` комментариев строго старше `before` (самые новые, если `nil`), от старых к новым.
     func comments(chatId: String, postId: String, before: Date?, limit: Int) async throws(MaxlyError) -> [Message]
+    /// До `limit` комментариев строго новее `after` (для первой страницы — время поста), от старых
+    /// к новым: обсуждение читается с начала.
+    func comments(chatId: String, postId: String, after: Date, limit: Int) async throws(MaxlyError) -> [Message]
     /// Отправляет комментарий и возвращает его в том виде, в каком его принял сервер.
     func send(text: String, chatId: String, postId: String) async throws(MaxlyError) -> Message
     /// Число комментариев под постами: id поста → число.

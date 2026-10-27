@@ -57,6 +57,10 @@ private actor ReactionComments: CommentsRepository {
         before == nil ? stored : []
     }
 
+    func comments(chatId: String, postId: String, after: Date, limit: Int) async throws(MaxlyError) -> [Message] {
+        stored
+    }
+
     func send(text: String, chatId: String, postId: String) async throws(MaxlyError) -> Message {
         throw .invalidRequest
     }

@@ -5,7 +5,8 @@ import MaxlyPresentation
 import MaxlyUI
 
 /// Комментарии на той же ленте, что и чат (`FeedCollectionController`): пост сверху,
-/// обсуждение под ним, старое сверху, новое снизу. Те же правила высот, места и низа.
+/// обсуждение под ним, старое сверху, новое снизу. Окно открывается на посте и первых
+/// комментариях, более новые догружаются при прокрутке вниз. Те же правила высот, места и низа.
 struct CommentsCollectionFeed: UIViewControllerRepresentable {
     @Bindable var model: CommentsViewModel
     let width: CGFloat
@@ -64,11 +65,11 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
         /// Обновление SwiftUI идёт: состояние экрана меняется после него.
         private var applying = false
         private var pendingReport = false
-        /// Страница старых уже запрошена для этого состава ленты.
-        private var olderRequested = false
+        /// Страница новых уже запрошена для этого состава ленты.
+        private var newerRequested = false
 
         static let postID = FeedItemID.top("post")
-        static let olderID = FeedItemID.top("older")
+        static let newerID = FeedItemID.bottom("newer")
         static let statusID = FeedItemID.bottom("status")
 
         init(_ parent: CommentsCollectionFeed) { self.parent = parent }
@@ -108,12 +109,12 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
                     rows.append(FeedEntry(id: .row(row.id), key: key(row.message, row: row)))
                 }
             }
-            if Set(byID.keys) != Set(rowsByID.keys) { olderRequested = false }
+            if Set(byID.keys) != Set(rowsByID.keys) { newerRequested = false }
             rowsByID = byID
             var content = FeedContent(rows: rows)
             content.top = [FeedEntry(id: Self.postID, key: key(feed.model.post, row: nil))]
-            if feed.model.hasMore {
-                content.top.append(FeedEntry(id: Self.olderID, key: FeedLayoutKey(feed.model.isLoadingOlder)))
+            if case .loaded = feed.model.state, feed.model.hasNewer {
+                content.bottom.append(FeedEntry(id: Self.newerID, key: FeedLayoutKey(feed.model.isLoadingNewer)))
             }
             let showsStatus: Bool
             switch feed.model.state {
@@ -121,10 +122,10 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
             case .loaded: showsStatus = rows.isEmpty && feed.model.emptyText != nil
             }
             if showsStatus {
-                content.bottom = [FeedEntry(
+                content.bottom.append(FeedEntry(
                     id: Self.statusID,
                     key: FeedLayoutKey(StatusKey(state: feed.model.state, emptyText: feed.model.emptyText, width: feed.width))
-                )]
+                ))
             }
             controller.setChrome(headerBottom: nil, composerTop: feed.composerTop)
             controller.update(content, follow: feed.atBottom.wrappedValue ? .bottom : .anchor)
@@ -166,14 +167,14 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
                     onBlockAuthor: parent.onBlockAuthor,
                     onBlockNotice: parent.onBlockNotice
                 ))
-            case .top("post"):
-                return AnyView(postView)
             case .top:
+                return AnyView(postView)
+            case .bottom("newer"):
                 return AnyView(
                     ProgressView()
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
-                        .opacity(parent.model.isLoadingOlder ? 1 : 0.4)
+                        .opacity(parent.model.isLoadingNewer ? 1 : 0.4)
                 )
             case .bottom:
                 return AnyView(statusView)
@@ -185,10 +186,10 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
             case .row(let rowID):
                 guard let row = rowsByID[rowID] else { return 44 }
                 return CGFloat(BubbleHeightCache.estimate(row: row, maxWidth: Double(parent.width * MaxlyTheme.bubbleMax)))
-            case .top("post"):
+            case .top:
                 guard let row = TranscriptLayout.rows([parent.model.post], currentUserId: "").first else { return 180 }
                 return CGFloat(BubbleHeightCache.estimate(row: row, maxWidth: Double(parent.width * MaxlyTheme.bubbleMax))) + 10
-            case .top:
+            case .bottom("newer"):
                 return 36
             case .bottom:
                 return 96
@@ -217,11 +218,11 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
         }
 
         func feedWillDisplay(_ id: FeedItemID) {
-            guard id == Self.olderID else { return }
-            loadOlderIfNeeded()
+            guard id == Self.newerID else { return }
+            loadNewerIfNeeded()
         }
 
-        /// Низ ленты для прилипания и страница старых, когда загрузчик на экране.
+        /// Низ ленты для прилипания и страница новых, когда загрузчик на экране.
         private func report() {
             guard let controller else { return }
             let distance = controller.bottomDistance.distance
@@ -229,17 +230,17 @@ struct CommentsCollectionFeed: UIViewControllerRepresentable {
             if next != parent.atBottom.wrappedValue {
                 parent.atBottom.wrappedValue = next
             }
-            if controller.visibleFrame(of: Self.olderID) != nil { loadOlderIfNeeded() }
+            if controller.visibleFrame(of: Self.newerID) != nil { loadNewerIfNeeded() }
         }
 
-        /// Пока лента не встала на место, загрузчик историю не тянет: иначе первая же раскладка
-        /// с коротким постом сразу просила бы старые страницы.
-        private func loadOlderIfNeeded() {
-            guard let controller, controller.hasSettled, !olderRequested,
-                  parent.model.hasMore, !parent.model.isLoadingOlder else { return }
-            olderRequested = true
+        /// Пока лента не встала на место, загрузчик страницы не тянет: иначе первая же раскладка
+        /// с коротким обсуждением сразу просила бы следующие.
+        private func loadNewerIfNeeded() {
+            guard let controller, controller.hasSettled, !newerRequested,
+                  parent.model.hasNewer, !parent.model.isLoadingNewer else { return }
+            newerRequested = true
             let model = parent.model
-            Task { await model.loadOlder() }
+            Task { await model.loadNewer() }
         }
 
         private func prefetchImages(force: Bool) {

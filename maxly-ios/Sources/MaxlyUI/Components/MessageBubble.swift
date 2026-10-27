@@ -636,6 +636,7 @@ public struct MessageBubble: View {
                     phase: phase,
                     outgoing: isOutgoing,
                     time: layout.metadata == .voice(voice.id) ? AnyView(meta) : nil,
+                    timeReserve: layout.metadata == .voice(voice.id) ? metaReserve : nil,
                     transcript: transcript,
                     onTranscribe: onTranscribe,
                     onToggle: onVoice,

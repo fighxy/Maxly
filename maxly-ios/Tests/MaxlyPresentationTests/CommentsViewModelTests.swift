@@ -25,12 +25,34 @@ private actor FakeComments: CommentsRepository {
         return Array(older.suffix(limit))
     }
 
+    func comments(chatId: String, postId: String, after: Date, limit: Int) async throws(MaxlyError) -> [Message] {
+        requests.append(after)
+        if !loadErrors.isEmpty { throw loadErrors.removeFirst() }
+        let newer = stored.filter { $0.timestamp > after }.sorted { $0.timestamp < $1.timestamp }
+        return Array(newer.prefix(limit))
+    }
+
     func send(text: String, chatId: String, postId: String) async throws(MaxlyError) -> Message {
         if let sendError { throw sendError }
         let message = Message(id: "srv-\(stored.count)", chatId: chatId, authorId: "me", text: text, timestamp: .now, status: .sent)
         stored.append(message)
         return message
     }
+}
+
+/// Сервер, который не отдаёт страницу вперёд от поста: остаются последние комментарии.
+private actor FakeEmptyForward: CommentsRepository {
+    private let stored: [Message]
+
+    init(_ stored: [Message]) { self.stored = stored }
+
+    func comments(chatId: String, postId: String, before: Date?, limit: Int) async throws(MaxlyError) -> [Message] {
+        Array(stored.suffix(limit))
+    }
+
+    func comments(chatId: String, postId: String, after: Date, limit: Int) async throws(MaxlyError) -> [Message] { [] }
+
+    func send(text: String, chatId: String, postId: String) async throws(MaxlyError) -> Message { throw .invalidRequest }
 }
 
 @Suite("Комментарии поста")
@@ -48,7 +70,7 @@ struct CommentsViewModelTests {
         )
     }
 
-    @Test("Первая страница, затем более ранние, без повторов и по времени")
+    @Test("Обсуждение с первого комментария, затем более новые, без повторов и по времени")
     func paging() async {
         let repository = FakeComments((0..<5).map(comment))
         let model = CommentsViewModel(chatId: "c", post: post, currentUserId: "me", comments: repository, pageSize: 3)
@@ -56,13 +78,35 @@ struct CommentsViewModelTests {
         #expect(model.state == .loading)
         await model.load()
         #expect(model.state == .loaded)
-        #expect(model.comments.map(\.id) == ["k2", "k3", "k4"])
-        #expect(model.hasMore)
-        await model.loadOlder()
+        #expect(model.comments.map(\.id) == ["k0", "k1", "k2"])
+        #expect(model.hasNewer)
+        await model.loadNewer()
         #expect(model.comments.map(\.id) == ["k0", "k1", "k2", "k3", "k4"])
-        #expect(!model.hasMore)
+        #expect(!model.hasNewer)
         await model.load()
-        #expect(await repository.requests.count == 2)
+        // Первая страница — от времени поста, следующая — от последнего загруженного.
+        #expect(await repository.requests == [post.timestamp, comment(2).timestamp])
+    }
+
+    @Test("Свой отправленный комментарий не сдвигает страницы: середина обсуждения догружается")
+    func sentCommentKeepsCursor() async {
+        let repository = FakeComments((0..<5).map(comment))
+        let model = CommentsViewModel(chatId: "c", post: post, currentUserId: "me", comments: repository, pageSize: 3)
+        await model.load()
+        model.draft = "Мой"
+        await model.send()
+        await model.loadNewer()
+        #expect(model.comments.map(\.id).prefix(5) == ["k0", "k1", "k2", "k3", "k4"])
+        #expect(model.comments.last?.text == "Мой")
+    }
+
+    @Test("Страница от поста пуста, а счётчик говорит, что комментарии есть: показываются последние")
+    func fallsBackToLatest() async {
+        let undated = FakeEmptyForward((0..<2).map(comment))
+        let model = CommentsViewModel(chatId: "c", post: post, currentUserId: "me", comments: undated, pageSize: 3)
+        await model.load()
+        #expect(model.comments.map(\.id) == ["k0", "k1"])
+        #expect(!model.hasNewer)
     }
 
     @Test("Сервер просит подождать: окно само повторяет загрузку один раз")

@@ -659,6 +659,8 @@ public protocol MaxCore: Sendable {
     func sendText(chatId: String, text: String, replyTo: String) async throws -> CoreMessage
     /// Комментарии поста канала старше `beforeMs` (самые новые при `0`), от старых к новым.
     func loadComments(chatId: String, postId: String, beforeMs: Int64, limit: Int) async throws -> [CoreMessage]
+    /// Комментарии поста канала новее `afterMs` (для первой страницы — время поста), от старых к новым.
+    func loadCommentsAfter(chatId: String, postId: String, afterMs: Int64, limit: Int) async throws -> [CoreMessage]
     func sendComment(chatId: String, postId: String, text: String) async throws -> CoreMessage
     /// Заменить текст отправленного сообщения. Возвращает сообщение после правки.
     func editMessage(chatId: String, messageId: String, text: String) async throws -> CoreMessage
@@ -1013,6 +1015,7 @@ public extension MaxCore {
         try await sendText(chatId: chatId, text: text)
     }
     func loadComments(chatId: String, postId: String, beforeMs: Int64, limit: Int) async throws -> [CoreMessage] { [] }
+    func loadCommentsAfter(chatId: String, postId: String, afterMs: Int64, limit: Int) async throws -> [CoreMessage] { [] }
     func sendComment(chatId: String, postId: String, text: String) async throws -> CoreMessage {
         throw CoreFailure(kind: "UNKNOWN", key: "unsupported")
     }

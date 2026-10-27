@@ -19,6 +19,8 @@ struct VoiceMessageView: View {
     let phase: VoicePhase
     let outgoing: Bool
     var time: AnyView?
+    /// Невидимое место под время в конце расшифровки — те же знаки, что у текста пузыря.
+    var timeReserve: Text?
     var transcript: TranscriptPhase = .collapsed
     /// `nil` — расшифровать нельзя (ещё не отправлено): кнопки нет.
     var onTranscribe: (() -> Void)?
@@ -188,7 +190,9 @@ struct VoiceMessageView: View {
 
     private var transcriptBody: some View {
         ZStack(alignment: .bottomTrailing) {
-            (transcriptText + Text(verbatim: time == nil ? "" : "\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}").font(.app(.caption2)))
+            // Под время — видимые знаки прозрачным цветом, а не пробелы: пробелы в конце строки
+            // «висят» за её краем, и последнее слово расшифровки заезжало под время.
+            (transcriptText + (time == nil ? Text(verbatim: "") : (timeReserve ?? Text(verbatim: "\u{2007}00:00").font(.app(.caption2))).foregroundStyle(.clear)))
                 .font(.app(.body))
                 .foregroundStyle(transcript == .failed ? secondary : (outgoing ? Color.maxlyOutgoingText : Color.primary))
                 .fixedSize(horizontal: false, vertical: true)
