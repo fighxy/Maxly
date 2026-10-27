@@ -111,7 +111,9 @@ struct InlineKeyboardView: View {
                             .foregroundStyle(.primary)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .frame(maxWidth: .infinity, minHeight: Self.height)
+                            // Кнопки ряда одной высоты: короткая растягивается до соседней,
+                            // чья подпись ушла на две строки.
+                            .frame(maxWidth: .infinity, minHeight: Self.height, maxHeight: .infinity)
                             // Стекло на обоях: кнопки не спорят с пузырём, а лежат под ним.
                             .maxlyGlassRounded(radius: Self.radius)
                             .contentShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
@@ -119,6 +121,7 @@ struct InlineKeyboardView: View {
                         .buttonStyle(InlineKeyboardButtonStyle())
                     }
                 }
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

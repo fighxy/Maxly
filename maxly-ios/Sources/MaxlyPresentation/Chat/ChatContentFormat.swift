@@ -396,12 +396,35 @@ public enum ChatContentFormat {
                 fitted = (grownWidth, minHeight)
             }
         }
+        return singleTile(width: fitted.width, height: fitted.height)
+    }
+
+    /// Один кадр над подписью. Ширину пузыря задаёт он, подпись переносится по нему
+    /// (`BubbleColumn`): иначе портретный кадр, суженный по высоте, оставлял справа пустую
+    /// полосу во всю подпись. Портрет здесь выше обычного (`captionedMaxHeight`), чтобы колонка
+    /// подписи не была узкой, а совсем высокий кадр не уже `captionedMinWidth`: лишнее сверху
+    /// и снизу обрезается.
+    public static func captionedTile(aspect: Double, width: Double) -> AlbumLayout {
+        let ratio = aspect.isFinite && aspect > 0 ? aspect : 1
+        let limit = max(1, width)
+        let tile = fullWidthTile(aspect: ratio, width: limit, maxHeight: captionedMaxHeight)
+        let minWidth = min(limit, captionedMinWidth)
+        guard tile.width < minWidth else { return tile }
+        return singleTile(width: minWidth, height: min(captionedMaxHeight, minWidth / ratio))
+    }
+
+    /// Наибольшая высота кадра над подписью.
+    public static let captionedMaxHeight = 440.0
+    /// Наименьшая ширина кадра над подписью (и колонки подписи под ним).
+    public static let captionedMinWidth = 240.0
+
+    private static func singleTile(width: Double, height: Double) -> AlbumLayout {
         let corners = AlbumCorners(topLeft: true, topRight: true, bottomLeft: true, bottomRight: true)
         return AlbumLayout(
-            width: fitted.width,
-            height: fitted.height,
+            width: width,
+            height: height,
             gap: 0,
-            tiles: [AlbumTile(index: 0, x: 0, y: 0, width: fitted.width, height: fitted.height, corners: corners)]
+            tiles: [AlbumTile(index: 0, x: 0, y: 0, width: width, height: height, corners: corners)]
         )
     }
 

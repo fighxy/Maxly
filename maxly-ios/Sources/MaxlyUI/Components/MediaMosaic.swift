@@ -15,7 +15,7 @@ struct MediaMosaic: View {
     var isRead = false
     var cornerRadius: CGFloat = 12
     var loadingId: String?
-    /// Одиночный кадр занимает всю ширину (пузырь с подписью не должен быть шире фото).
+    /// Кадр над подписью: одиночный ставится `captionedTile` и задаёт ширину пузыря.
     var fillsWidth = false
     /// Играющий в ленте кружок (плеер от приложения): рисуется в круге поверх обложки,
     /// а сам круг на время воспроизведения крупнее.
@@ -34,7 +34,7 @@ struct MediaMosaic: View {
         let visuals = attachments.filter(\.isVisual)
         let round = visuals.count == 1 && visuals[0].video?.isRound == true
         let layout = fillsWidth && visuals.count == 1 && !round
-            ? ChatContentFormat.fullWidthTile(aspect: aspect(visuals[0]), width: Double(maxWidth))
+            ? ChatContentFormat.captionedTile(aspect: aspect(visuals[0]), width: Double(maxWidth))
             : ChatContentFormat.album(
                 aspects: visuals.map(aspect),
                 maxWidth: Double(round ? min(maxWidth, roundPlayer == nil ? Self.roundSide : Self.playingRoundSide) : maxWidth),
@@ -46,7 +46,8 @@ struct MediaMosaic: View {
             Color.clear.frame(width: layout.width, height: layout.height)
             ForEach(Array(visuals.enumerated()), id: \.element.id) { index, item in
                 if let tile = layout.tiles.first(where: { $0.index == index }) {
-                    cell(item, tile: tile)
+                    // Совсем высокий кадр над подписью шире своей пропорции: он обрезается.
+                    cell(item, tile: tile, crops: fillsWidth && visuals.count == 1)
                 }
             }
         }
@@ -61,7 +62,7 @@ struct MediaMosaic: View {
         return Double(width) / Double(height)
     }
 
-    private func cell(_ item: ChatAttachment, tile: AlbumTile) -> some View {
+    private func cell(_ item: ChatAttachment, tile: AlbumTile, crops: Bool) -> some View {
         let round = item.video?.isRound == true
         let width = CGFloat(tile.width)
         let height = CGFloat(tile.height)
@@ -71,7 +72,7 @@ struct MediaMosaic: View {
         // Не `Button`: кнопка ловит касание в начале прокрутки и подсвечивается, а жест
         // касания срабатывает только на короткое нажатие без движения.
         return ZStack {
-            RemoteImage(url: url, maxPixel: decode, fillsFrame: false) {
+            RemoteImage(url: url, maxPixel: decode, fillsFrame: crops) {
                 placeholder(item)
             }
             .frame(width: width, height: height)
@@ -92,7 +93,8 @@ struct MediaMosaic: View {
                 }
                 .frame(width: width, height: height)
             } else if item.video != nil {
-                videoBadge(loading: loadingId == item.id)
+                // Кнопка не больше половины плитки: в узкой плитке альбома она её перекрывала.
+                videoBadge(loading: loadingId == item.id, side: min(48, max(28, min(width, height) * 0.5)))
             } else if loadingId == item.id {
                 ProgressView()
                     .tint(.white)
@@ -118,11 +120,16 @@ struct MediaMosaic: View {
         .opacity(registry.hiddenId == item.id ? 0 : 1)
         // Подписи поверх маски: у кружка углы квадрата вне круга, и маска их срезала бы.
         .overlay(alignment: round ? .bottomLeading : .topLeading) {
-            if let video = item.video, video.durationMs > 0, !(round && roundPlayer != nil) {
-                overlayCapsule(ChatContentFormat.clock(ms: video.durationMs))
-            } else if item.photo?.isGif == true {
-                overlayCapsule("GIF")
+            // В узкой плитке альбома подпись не переносится («0:1» / «0»): не влезла — её нет.
+            ViewThatFits(in: .horizontal) {
+                if let video = item.video, video.durationMs > 0, !(round && roundPlayer != nil) {
+                    overlayCapsule(ChatContentFormat.clock(ms: video.durationMs), compact: width < Self.compactTile)
+                } else if item.photo?.isGif == true {
+                    overlayCapsule("GIF", compact: width < Self.compactTile)
+                }
+                Color.clear.frame(width: 0, height: 0)
             }
+            .frame(width: width, height: height, alignment: round ? .bottomLeading : .topLeading)
         }
         .overlay(alignment: .bottomTrailing) {
             if tile.corners.bottomRight, let time {
@@ -148,30 +155,37 @@ struct MediaMosaic: View {
         }
     }
 
-    private func videoBadge(loading: Bool) -> some View {
+    private func videoBadge(loading: Bool, side: CGFloat) -> some View {
         ZStack {
             Circle().fill(.black.opacity(0.45))
             if loading {
                 ProgressView().tint(.white)
             } else {
                 Image(systemName: "play.fill")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.system(size: side * 20 / 48, weight: .semibold))
                     .foregroundStyle(.white)
-                    .offset(x: 2)
+                    .offset(x: side * 2 / 48)
             }
         }
-        .frame(width: 48, height: 48)
+        .frame(width: side, height: side)
     }
 
-    private func overlayCapsule(_ text: String) -> some View {
+    /// Длительность или «GIF» в углу плитки, одной строкой. `compact` — узкая плитка альбома:
+    /// меньше отступы.
+    private func overlayCapsule(_ text: String, compact: Bool = false) -> some View {
         Text(text)
             .font(.app(.caption2, .medium).monospacedDigit())
-            .padding(.horizontal, 6)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, compact ? 4 : 6)
             .padding(.vertical, 2)
             .background(.black.opacity(0.45), in: Capsule())
             .foregroundStyle(.white)
-            .padding(6)
+            .padding(compact ? 3 : 6)
     }
+
+    /// Плитка уже этого — подпись в углу с меньшими отступами.
+    static let compactTile: CGFloat = 72
 
     private func timeCapsule(_ time: String) -> some View {
         HStack(spacing: 3) {

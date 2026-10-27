@@ -80,6 +80,10 @@ public struct MessageBubble: View {
     private let onSelect: (() -> Void)?
     /// Фото или видео сообщения, на которое этот ответ: миниатюра в цитате. `nil` — без неё.
     private let replyMedia: ChatAttachment?
+    /// Автор цитаты, известный ленте или экрану (название канала); `nil` — имя из самой цитаты.
+    private let replyAuthor: String?
+    /// Кнопки бота под пузырём. В чате с ботом видны только у его последнего меню.
+    private let showsKeyboard: Bool
 
     /// Копия пузыря в меню долгого нажатия: только сам пузырь, без жестов.
     private var isMenuPreview = false
@@ -153,11 +157,15 @@ public struct MessageBubble: View {
         onButton: ((InlineButton) -> Void)? = nil,
         onAuthor: (() -> Void)? = nil,
         onSelect: (() -> Void)? = nil,
-        replyMedia: ChatAttachment? = nil
+        replyMedia: ChatAttachment? = nil,
+        replyAuthor: String? = nil,
+        showsKeyboard: Bool = true
     ) {
         self.onAuthor = onAuthor
         self.onSelect = onSelect
         self.replyMedia = replyMedia
+        self.replyAuthor = replyAuthor
+        self.showsKeyboard = showsKeyboard
         self.message = message
         self.layout = MessageBubbleLayout(message: message, showsAuthorName: showsAuthorName, showsComments: allowsComments)
         self.isOutgoing = isOutgoing
@@ -227,7 +235,7 @@ public struct MessageBubble: View {
                 authorMark
             }
             VStack(alignment: isOutgoing ? .trailing : .leading, spacing: 4) {
-                if let keyboard = message.content.keyboard {
+                if showsKeyboard, let keyboard = message.content.keyboard {
                     // Кнопки бота ровно по ширине пузыря.
                     KeyboardAttached(trailing: isOutgoing, spacing: InlineKeyboardView.spacing) {
                         pressableBubble
@@ -638,6 +646,9 @@ public struct MessageBubble: View {
             header
             if !visuals.isEmpty {
                 media
+                    // Одиночный кадр над подписью задаёт ширину пузыря: подпись и цитата
+                    // переносятся по нему (`ChatContentFormat.captionedTile`).
+                    .bubbleWidthLeader(hasFill && visuals.count == 1 && visuals[0].video?.isRound != true)
             }
             ForEach(message.content.voices, id: \.id) { voice in
                 VoiceMessageView(
@@ -713,7 +724,7 @@ public struct MessageBubble: View {
             }
         }
         // С кнопками бота пузырь берёт ширину, которую даёт `KeyboardAttached`: она не уже кнопок.
-        .frame(minWidth: 64, maxWidth: message.content.keyboard == nil ? nil : .infinity, alignment: .leading)
+        .frame(minWidth: 64, maxWidth: showsKeyboard && message.content.keyboard != nil ? .infinity : nil, alignment: .leading)
         .background(fill, in: shape)
         .clipShape(shape)
         // Тень — под обрезанным пузырём, иначе форма срезала бы её.
@@ -989,7 +1000,7 @@ public struct MessageBubble: View {
                     .accessibilityHidden(true)
                 }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(reply.authorName)
+                    Text(replyAuthor ?? reply.authorName)
                         .font(.app(.subheadline, .semibold))
                         .foregroundStyle(quoteTint)
                         .lineLimit(1)

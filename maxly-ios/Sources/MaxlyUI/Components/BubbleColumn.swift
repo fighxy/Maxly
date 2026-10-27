@@ -35,6 +35,12 @@ struct BubbleColumn: Layout {
 
     private func columnWidth(proposal: ProposedViewSize, subviews: Subviews) -> CGFloat {
         let limit = proposal.width ?? .infinity
+        // Кадр над подписью задаёт ширину сам: остальное переносится по нему.
+        let leaders = subviews.filter { $0[BubbleWidthLeaderKey.self] }
+        if !leaders.isEmpty {
+            let widest = leaders.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
+            return limit.isFinite ? min(widest, limit) : widest
+        }
         let widest = subviews.reduce(CGFloat(0)) { widest, subview in
             guard !subview[BubbleCornerKey.self] else { return widest }
             let ideal = subview.sizeThatFits(.unspecified).width
@@ -50,9 +56,18 @@ private struct BubbleCornerKey: LayoutValueKey {
     static let defaultValue = false
 }
 
+private struct BubbleWidthLeaderKey: LayoutValueKey {
+    static let defaultValue = false
+}
+
 extension View {
     /// Строка `BubbleColumn` в правом нижнем углу предыдущей строки: без своей высоты и ширины.
     func bubbleCorner() -> some View {
         layoutValue(key: BubbleCornerKey.self, value: true)
+    }
+
+    /// Строка `BubbleColumn`, чья ширина — ширина всей колонки (`enabled`): кадр над подписью.
+    func bubbleWidthLeader(_ enabled: Bool) -> some View {
+        layoutValue(key: BubbleWidthLeaderKey.self, value: enabled)
     }
 }

@@ -19,13 +19,28 @@ public struct TranscriptRow: Identifiable, Equatable, Sendable {
     public var startsUnread: Bool = false
     /// Фото или видео сообщения, на которое этот ответ, если оно есть в ленте: миниатюра в цитате.
     public var replyMedia: ChatAttachment? = nil
+    /// Автор сообщения, на которое этот ответ, если оно есть в ленте: «Вы» или его имя. Сервер
+    /// часто не присылает имя в самой цитате, и без ленты в ней было бы «Сообщение».
+    public var replyAuthor: String? = nil
+    /// Показывать кнопки бота под сообщением. В чате с ботом — только у его последнего меню:
+    /// каждое нажатие приносит новое, и прежние копились бы столбиком.
+    public var showsKeyboard: Bool = true
 
     public var id: String { message.id }
 }
 
 public enum TranscriptLayout {
-    public static func rows(_ messages: [Message], currentUserId: String, unreadAnchorId: String? = nil, now: Date = Date()) -> [TranscriptRow] {
-        let replied = repliedMedia(messages)
+    /// `latestKeyboardOnly` — чат с ботом: кнопки остаются только у последнего сообщения с
+    /// кнопками от того же автора.
+    public static func rows(
+        _ messages: [Message],
+        currentUserId: String,
+        unreadAnchorId: String? = nil,
+        latestKeyboardOnly: Bool = false,
+        now: Date = Date()
+    ) -> [TranscriptRow] {
+        let replied = repliedMessages(messages, currentUserId: currentUserId)
+        let keyboards = latestKeyboardOnly ? latestKeyboards(messages) : nil
         return messages.indices.map { index in
             let message = messages[index]
             let previous = index > 0 ? messages[index - 1] : nil
@@ -53,23 +68,44 @@ public enum TranscriptLayout {
                 showsAuthorAvatar: !service && !outgoing && !group.joinsNext,
                 isOutgoing: outgoing,
                 startsUnread: startsUnread,
-                replyMedia: message.content.reply.flatMap { replied[$0.messageId] }
+                replyMedia: message.content.reply.flatMap { replied[$0.messageId]?.media },
+                replyAuthor: message.content.reply.flatMap { replied[$0.messageId]?.author },
+                showsKeyboard: keyboards.map { message.content.keyboard == nil || $0.contains(message.id) } ?? true
             )
         }
     }
 
-    /// Первое фото или видео сообщений, на которые в ленте есть ответы, по `id` и `serverId`.
-    /// Пусто, если ответов нет: ленту без них не перебираем второй раз.
-    static func repliedMedia(_ messages: [Message]) -> [String: ChatAttachment] {
+    /// Сообщение из ленты, на которое есть ответ: первое фото или видео и автор.
+    struct Replied: Equatable {
+        var media: ChatAttachment?
+        var author: String?
+    }
+
+    /// Сообщения, на которые в ленте есть ответы, по `id` и `serverId`. Пусто, если ответов
+    /// нет: ленту без них не перебираем второй раз.
+    static func repliedMessages(_ messages: [Message], currentUserId: String) -> [String: Replied] {
         let targets = Set(messages.compactMap { $0.content.reply?.messageId })
         guard !targets.isEmpty else { return [:] }
-        var media: [String: ChatAttachment] = [:]
+        var replied: [String: Replied] = [:]
         for message in messages {
-            guard let visual = message.content.visuals.first else { continue }
-            if targets.contains(message.id) { media[message.id] = visual }
-            if let serverId = message.serverId, targets.contains(serverId) { media[serverId] = visual }
+            let keys = [message.id, message.serverId].compactMap { $0 }.filter(targets.contains)
+            guard !keys.isEmpty else { continue }
+            let name = message.authorName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let own = !currentUserId.isEmpty && message.authorId == currentUserId
+            let info = Replied(media: message.content.visuals.first, author: own ? "Вы" : (name.isEmpty ? nil : name))
+            for key in keys { replied[key] = info }
         }
-        return media
+        return replied
+    }
+
+    /// Сообщения, чьи кнопки видны: у каждого автора — последнее сообщение с кнопками.
+    static func latestKeyboards(_ messages: [Message]) -> Set<String> {
+        var seenAuthors = Set<String>()
+        var shown = Set<String>()
+        for message in messages.reversed() where message.content.keyboard != nil {
+            if seenAuthors.insert(message.authorId).inserted { shown.insert(message.id) }
+        }
+        return shown
     }
 
     /// Первое непрочитанное по своей отметке прочтения `readMark` (мс, `OwnReadMark`): первое
