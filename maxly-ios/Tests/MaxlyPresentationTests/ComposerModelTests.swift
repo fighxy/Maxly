@@ -59,12 +59,13 @@ struct ComposerModelTests {
 
     @Test("Цитата из черновика встаёт, когда её сообщение пришло в ленту")
     func draftReplyWaitsForFeed() async {
-        let drafts = FakeDrafts(replies: ["c": "12"])
+        let drafts = FakeDrafts(["c": "текст"], replies: ["c": "12"])
         let model = composer(drafts: drafts)
         var feed: [Message] = []
         model.findReply = { id in feed.first { $0.serverId == id } }
         model.start()
-        try? await Task.sleep(for: .milliseconds(50))
+        // Текст и ответ черновика встают в одном шаге: текст в поле — ответ уже искали в пустой ленте.
+        #expect(await eventually { model.draft == "текст" })
         #expect(model.replyTarget == nil)
         feed = [message("12", author: "bob")]
         model.resolveDraftReply()
