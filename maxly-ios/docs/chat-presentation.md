@@ -167,25 +167,18 @@ Liquid Glass для элементов управления. Изменения 
 Тесты проверяют правила и стабильность размеров; визуальная оценка всей композиции выполняется на устройстве.
 
 
-## One scroll owner (October 12 diagnostic follow-up)
+## Один владелец прокрутки
 
-`TranscriptScrollController` serializes all explicit commands. The SwiftUI transcript has
-one `scrollTo` call site, targeting a message ID. It no longer combines an ID-position
-binding, an empty bottom sentinel, size-change anchors and UIKit offset writes.
-The UIKit observer only records geometry and disables status-bar scroll-to-top.
+Все явные команды прокрутки (открытие, переход к сообщению, «вниз», следование за новыми)
+идут через `TranscriptScrollController`: одна команда за раз, новая отменяет прежнюю.
+Выполняет её лента на `UICollectionView` (`FeedCollectionController`): она ставит строку в
+нужную долю видимой области и сообщает, встала ли (`onScrollFinished`, подтверждена или нет).
+Неподтверждённая команда оставляет кнопку «вниз». Палец, замена команды и уход с экрана её
+отменяют.
 
-A command gets at most two corrections, only when the target has measured geometry
-and the layout revision changed. Two aligned samples confirm completion; after roughly
-1.4 seconds without confirmation it records `scroll-unconfirmed` and leaves the down
-button available. Touch, replacement and disappearance cancel pending work.
+`atBottom` меряется по последнему сообщению и видимой области, без учёта пустот.
+`followsLatest` — отдельное намерение: переход не сбрасывает непрочитанное. Открытие выбирает
+цель один раз (непрочитанное, сохранённое место или низ), поздняя сверка её не меняет.
+Страница сверху держит видимую строку на месте, если нет жеста и команды.
 
-`atBottom` is measured from the last message and the effective visible area. Missing
-rows or a large blank gap cannot confirm it. `followsLatest` is independent intent,
-so requesting a jump cannot clear unread state. Opening chooses one cache/history
-anchor; a later refresh cannot select another opening target. Prepends preserve a
-previously measured row alignment when there is no user gesture or explicit request.
-
-Regression cases come from the October 12 log: 50 loaded rows with no measured row,
-a last-row bottom at 492 in a viewport ending at 772, and a tall post extending below
-the viewport. Unit tests validate command cancellation and geometry rules; actual
-lazy layout/keyboard behavior still needs simulator/device verification.
+Запасной ленты на `LazyVStack` больше нет: лента на `UICollectionView` проверена на устройствах.
