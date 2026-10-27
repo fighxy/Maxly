@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Кладёт исходники maxly-core ревизии из maxly-desktop/core.lock в .build/max-kmp-core
-# в корне репозитория: десктоп собирает ядро из них сам. Для Windows то же делает
-# scripts/fetch-core.ps1.
+# Кладёт исходники maxly-core ревизии из maxly-desktop/core.lock (коммит, ветка или `latest` —
+# см. scripts/core-revision.sh) в .build/max-kmp-core в корне репозитория: десктоп собирает ядро
+# из них сам. Для Windows то же делает scripts/fetch-core.ps1.
 set -euo pipefail
 
 # root — корень репозитория.
@@ -13,6 +13,10 @@ repository="$(grep '^repository=' "$lock" | head -n 1 | cut -d= -f2- | tr -d '[:
 if [[ -z "$revision" || -z "$repository" ]]; then
   echo "В core.lock нужны строки revision= и repository=" >&2
   exit 1
+fi
+
+if [[ -z "${MAX_KMP_CORE_DIR:-}" ]]; then
+  revision="$(bash "$root/scripts/core-revision.sh" "$lock")"
 fi
 
 # Локальная копия ядра вместо GitHub: MAX_KMP_CORE_DIR=~/src/maxly-core ./gradlew build
@@ -47,4 +51,6 @@ core_git() {
 core_git remote add origin "$repository"
 core_git fetch -q --depth 1 origin "$revision"
 git -C "$dest" checkout -q --detach FETCH_HEAD
+revision="$(git -C "$dest" rev-parse HEAD)"
 echo "Ядро $revision лежит в $dest."
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then echo "Ядро: \`$revision\`" >> "$GITHUB_STEP_SUMMARY"; fi

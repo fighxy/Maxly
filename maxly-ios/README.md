@@ -46,7 +46,7 @@ iOS-клиент Maxly на SwiftUI. Слои описаны в [`docs/architect
 
 ## Сборка
 
-Ревизия ядра записана в `core.lock`. На macOS с JDK 17 и Xcode:
+Ревизия ядра записана в `core.lock`: `latest` — последний коммит `main` ядра с зелёным CI (`../scripts/core-revision.sh`), либо конкретный коммит. На macOS с JDK 17 и Xcode:
 
 ```bash
 bash scripts/fetch-core.sh

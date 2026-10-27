@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Собирает Android-библиотеки ядра (core и shared, .aar) из ревизии maxly-android/core.lock
-# и кладёт их в maxly-android/vendor. Приложение подключает их как файлы, поэтому версии
-# Gradle, AGP и Kotlin у приложения и ядра не обязаны совпадать.
+# (коммит, ветка или `latest` — см. scripts/core-revision.sh) и кладёт их в maxly-android/vendor.
+# Приложение подключает их как файлы, поэтому версии Gradle, AGP и Kotlin у приложения и ядра не
+# обязаны совпадать.
 set -euo pipefail
 
 # root — папка maxly-android.
@@ -13,6 +14,10 @@ repository="$(grep '^repository=' "$lock" | head -n 1 | cut -d= -f2- | tr -d '[:
 if [[ -z "$revision" || -z "$repository" ]]; then
   echo "В core.lock нужны строки revision= и repository=" >&2
   exit 1
+fi
+
+if [[ -z "${MAX_KMP_CORE_DIR:-}" ]]; then
+  revision="$(bash "$root/../scripts/core-revision.sh" "$lock")"
 fi
 
 # Локальная копия ядра вместо GitHub: MAX_KMP_CORE_DIR=~/src/maxly-core bash maxly-android/scripts/fetch-core.sh
@@ -41,6 +46,8 @@ else
     core_git fetch -q --depth 1 origin "$revision"
     git -C "$dest" checkout -q --detach FETCH_HEAD
   fi
+  # `main` или ветка — дальше в REVISION и в «О приложении» идёт настоящий коммит.
+  revision="$(git -C "$dest" rev-parse HEAD)"
 fi
 
 sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"

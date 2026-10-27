@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 # Собирает статический MaxlyCore.xcframework из ревизии maxly-ios/core.lock.
 #
-# revision= — коммит, ветка или `latest`. `latest` — последний коммит `main` ядра, на котором
-# прошёл его CI (workflow `ios-core.yml`); если GitHub API недоступен — просто `main`.
-# Пока CI только что влитого ядра идёт, `latest` — ещё прежний коммит: приложению, которому
-# уже нужно новое ядро (или ядро из незалитой ветки), коммит вписывается в core.lock явно.
+# revision= — коммит, ветка или `latest` (последний зелёный коммит main ядра, см.
+# scripts/core-revision.sh).
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -17,27 +15,8 @@ if [[ -z "$revision" || -z "$repository" ]]; then
   exit 1
 fi
 
-# Последний зелёный коммит `main` ядра: прогоны `ios-core.yml` на `main` со статусом success.
-latest_green() {
-  local slug="${repository#https://github.com/}"
-  slug="${slug%.git}"
-  local auth=()
-  if [[ -n "${MAX_KMP_CORE_TOKEN:-}" ]]; then auth=(-H "Authorization: Bearer ${MAX_KMP_CORE_TOKEN}"); fi
-  curl -fsSL "${auth[@]}" -H "Accept: application/vnd.github+json" \
-    "https://api.github.com/repos/${slug}/actions/workflows/ios-core.yml/runs?branch=main&status=success&per_page=1" 2>/dev/null \
-    | python3 -c 'import json, sys; runs = json.load(sys.stdin).get("workflow_runs") or []; print(runs[0]["head_sha"] if runs else "")' 2>/dev/null \
-    || true
-}
-
-if [[ "$revision" == "latest" && -z "${MAX_KMP_CORE_DIR:-}" ]]; then
-  green="$(latest_green)"
-  if [[ -n "$green" ]]; then
-    echo "Ядро: последний зелёный коммит main — $green"
-    revision="$green"
-  else
-    echo "::warning::Не удалось узнать последний зелёный коммит ядра, берётся main."
-    revision="main"
-  fi
+if [[ -z "${MAX_KMP_CORE_DIR:-}" ]]; then
+  revision="$(bash "$root/scripts/core-revision.sh" "$lock")"
 fi
 
 # Локальная копия ядра вместо GitHub: MAX_KMP_CORE_DIR=~/src/maxly-core bash scripts/fetch-core.sh

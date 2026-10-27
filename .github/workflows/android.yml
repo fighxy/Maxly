@@ -58,17 +58,31 @@ jobs:
           sdkmanager --install "platforms;android-37.1" "platforms;android-37.0" "platforms;android-35" "build-tools;37.0.0" "build-tools;35.0.0" > /dev/null
           echo "sdk.dir=$ANDROID_HOME" > local.properties
       - uses: gradle/actions/setup-gradle@v4
-      # AAR ядра зависят только от ревизии в core.lock: кэш экономит сборку ядра.
+      # Коммит ядра по core.lock (`latest` — последний зелёный main) узнаётся один раз: по нему ключ
+      # кэша, и его же собирает fetch-core. Если коммит не узнать (ветка `main`), кэш не находится.
+      - name: Resolve core revision
+        id: core
+        env:
+          MAX_KMP_CORE_TOKEN: ${{ secrets.MAX_KMP_CORE_TOKEN }}
+        run: |
+          revision="$(bash ../scripts/core-revision.sh core.lock)"
+          key="$revision"
+          if [[ ! "$revision" =~ ^[0-9a-f]{40}$ ]]; then key="$revision-$GITHUB_RUN_ID"; fi
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "Ядро: \`$revision\`" >> "$GITHUB_STEP_SUMMARY"
+      # AAR ядра зависят только от его коммита: кэш экономит сборку ядра.
       - name: Cache core AAR
         id: core-cache
         uses: actions/cache@v4
         with:
           path: maxly-android/vendor
-          key: max-core-aar-${{ hashFiles('maxly-android/core.lock', 'maxly-android/scripts/fetch-core.sh') }}
+          key: max-core-aar-${{ steps.core.outputs.key }}-${{ hashFiles('maxly-android/scripts/fetch-core.sh') }}
       - name: Fetch maxly-core
         if: steps.core-cache.outputs.cache-hit != 'true'
         env:
           MAX_KMP_CORE_TOKEN: ${{ secrets.MAX_KMP_CORE_TOKEN }}
+          MAX_CORE_REVISION: ${{ steps.core.outputs.revision }}
         run: bash scripts/fetch-core.sh
       - name: Unit tests
         run: ./gradlew --console=plain testDebugUnitTest

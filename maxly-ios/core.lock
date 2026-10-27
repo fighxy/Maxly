@@ -1,4 +1,4 @@
 repository=https://github.com/fighxy/maxly-core.git
-# latest — последний коммит main ядра с зелёным CI (scripts/fetch-core.sh). Чтобы закрепить
+# latest — последний коммит main ядра с зелёным CI (scripts/core-revision.sh). Чтобы закрепить
 # версию, впишите сюда коммит.
 revision=latest

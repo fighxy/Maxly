@@ -8,7 +8,7 @@ plugins {
     id("org.jetbrains.compose") version "1.12.1"
 }
 
-// Исходники ядра: по умолчанию .build/max-kmp-core в корне репозитория (ревизия из core.lock),
+// Исходники ядра: по умолчанию .build/max-kmp-core в корне репозитория (их кладёт fetch-core по core.lock),
 // MAX_KMP_CORE_DIR — своя локальная копия.
 val coreDir = System.getenv("MAX_KMP_CORE_DIR")?.takeIf { it.isNotBlank() }?.let(::file)
     ?: rootProject.file("../.build/max-kmp-core")
@@ -87,12 +87,16 @@ val prepareFfmpegBundle = tasks.register<Sync>("prepareFfmpegBundle") {
     }
 }
 
-/** Ревизия ядра из core.lock: короткий хеш для экрана «О приложении». */
-val coreRevision: String = file("core.lock").readLines()
-    .firstOrNull { it.startsWith("revision=") }?.substringAfter('=')?.trim()?.take(7)
-    ?: throw GradleException("В maxly-desktop/core.lock нет строки revision=")
+/**
+ * Коммит ядра, из которого идёт сборка: короткий хеш для экрана «О приложении». В core.lock может
+ * стоять `latest`, поэтому хеш берётся из git самих исходников.
+ */
+val coreRevision: String = providers.exec {
+    commandLine("git", "-C", coreDir.path, "rev-parse", "--short=7", "HEAD")
+    isIgnoreExitValue = true
+}.standardOutput.asText.get().trim().ifEmpty { "unknown" }
 
-// BuildConfig собирается из core.lock и переменных CI при каждой сборке, поэтому не устаревает.
+// BuildConfig собирается из ревизии ядра и переменных CI при каждой сборке, поэтому не устаревает.
 val generateBuildConfig = tasks.register("generateBuildConfig") {
     val outputDir = layout.buildDirectory.dir("generated/buildConfig")
     val versionName = "0.1.0"
@@ -112,7 +116,7 @@ val generateBuildConfig = tasks.register("generateBuildConfig") {
             """
             |package app.maxly
             |
-            |/** Сведения сборки для экрана «О приложении». Файл пишет задача generateBuildConfig из core.lock. */
+            |/** Сведения сборки для экрана «О приложении». Файл пишет задача generateBuildConfig. */
             |object BuildConfig {
             |    const val VERSION_NAME = "$versionName"
             |    const val BUILD_SHA = "$buildSha"
