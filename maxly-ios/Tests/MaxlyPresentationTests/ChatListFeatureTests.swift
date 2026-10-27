@@ -199,6 +199,67 @@ struct ChatListUnreadMarkTests {
         #expect(await repository.marked == ["b", "a"])
     }
 
+    @Test("В архив из режима правки: выбранные без «Избранного», правка закрывается, уведомление")
+    func archiveSelected() async {
+        let (model, repository) = makeFeatureList(capabilities: [.archive, .delete])
+        repository.emit([chat("a", at: 3), chat("b", at: 2), chat(Chat.savedMessagesId, at: 1, type: .private)])
+        #expect(await eventually { model.items.count == 3 })
+        model.isEditing = true
+        #expect(model.archivableSelection.isEmpty)
+        model.editSelection = ["b", "a", Chat.savedMessagesId]
+        #expect(model.archivableSelection == ["a", "b"])
+        await model.archiveSelected()
+        #expect(await repository.actions == ["archive a", "archive b"])
+        #expect(!model.isEditing)
+        #expect(model.notice == "2 чата перенесены в архив")
+    }
+
+    @Test("Без архива у сервера кнопки нечего архивировать")
+    func archiveNeedsCapability() async {
+        let (model, repository) = makeFeatureList(capabilities: [.delete])
+        repository.emit([chat("a", at: 1)])
+        #expect(await eventually { model.items.count == 1 })
+        model.isEditing = true
+        model.editSelection = ["a"]
+        #expect(model.archivableSelection.isEmpty)
+        #expect(model.deletableSelection == ["a"])
+    }
+
+    @Test("Удалить из режима правки: один — обычный диалог, несколько — общий вопрос и только у себя")
+    func deleteSelected() async {
+        let (model, repository) = makeFeatureList(capabilities: [.archive, .delete])
+        repository.emit([chat("a", at: 3), chat("b", at: 2), chat("c", at: 1)])
+        #expect(await eventually { model.items.count == 3 })
+        model.isEditing = true
+        model.editSelection = ["b"]
+        model.requestDeleteSelected()
+        #expect(model.deletionCandidate?.id == "b")
+        #expect(model.bulkDeletion == nil)
+        await model.confirmDelete(chatId: "b", forEveryone: true)
+        #expect(!model.isEditing)
+
+        model.isEditing = true
+        model.editSelection = ["c", "a"]
+        model.requestDeleteSelected()
+        #expect(model.bulkDeletion == ["a", "c"])
+        model.cancelBulkDelete()
+        #expect(model.bulkDeletion == nil)
+        #expect(model.isEditing)
+        model.requestDeleteSelected()
+        await model.confirmBulkDelete(["a", "c"])
+        #expect(await repository.actions == ["delete b true", "delete a false", "delete c false"])
+        #expect(!model.isEditing)
+        #expect(model.bulkDeletion == nil)
+    }
+
+    @Test("Число чатов по-русски")
+    func chatCount() {
+        #expect(ChatListViewModel.chatCount(1) == "1 чат")
+        #expect(ChatListViewModel.chatCount(3) == "3 чата")
+        #expect(ChatListViewModel.chatCount(11) == "11 чатов")
+        #expect(ChatListViewModel.chatCount(21) == "21 чат")
+    }
+
     @Test("Бейдж вкладки не считает чаты без звука")
     func tabBadge() async {
         let (model, repository) = makeFeatureList()
