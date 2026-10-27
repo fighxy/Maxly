@@ -228,6 +228,9 @@ public struct MessageBubble: View {
             }
             VStack(alignment: isOutgoing ? .trailing : .leading, spacing: 4) {
                 bubbleContent
+                    // Сжатие — внутри рамки, по которой меню ставит копию пузыря: копия встаёт
+                    // в настоящий размер.
+                    .modifier(PressFeedback(anchor: isOutgoing ? .trailing : .leading, enabled: menuPresenter != nil))
                     .modifier(MenuFrameReader(frame: menuFrame, enabled: menuPresenter != nil))
                 if message.status == .failed {
                     Button("Не отправлено. Повторить", action: onRetry)
@@ -260,7 +263,7 @@ public struct MessageBubble: View {
         // подложки подсвечиваются полосой строки.
         .background(highlighted && standalone != nil ? Color.maxlyAccent.opacity(0.12) : Color.clear)
         .animation(MaxlyMotion.fade, value: highlighted)
-        .messageMenu(enabled: menuPresenter != nil, anchor: isOutgoing ? .trailing : .leading, onOpen: openMenu) {
+        .messageMenu(enabled: menuPresenter != nil, onOpen: openMenu) {
             if allowsReactions {
                 reactionMenu
             }
@@ -1250,44 +1253,101 @@ private struct MenuFrameReader: ViewModifier {
 extension View {
     /// Долгое нажатие: меню (`MessageMenuPresenter`) или системное меню.
     @ViewBuilder
-    func messageMenu<Items: View>(
-        enabled: Bool,
-        anchor: UnitPoint,
-        onOpen: @escaping () -> Void,
-        @ViewBuilder items: () -> Items
-    ) -> some View {
+    func messageMenu<Items: View>(enabled: Bool, onOpen: @escaping () -> Void, @ViewBuilder items: () -> Items) -> some View {
         if enabled {
-            modifier(MessageMenuPress(anchor: anchor, onOpen: onOpen))
+            simultaneousGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in onOpen() })
+                .accessibilityAction(named: Text("Действия"), onOpen)
         } else {
             contextMenu { items() }
         }
     }
 }
 
-/// Пока палец держит пузырь, тот чуть сжимается от своего края, затем открывается меню.
-/// Сжатие начинается с задержкой: касание при прокрутке и короткое нажатие пузырь не сжимают.
-/// С «Уменьшением движения» пузырь не сжимается.
-private struct MessageMenuPress: ViewModifier {
+/// Пока палец держит пузырь, тот чуть сжимается к своему краю; меню открывает долгое нажатие
+/// (`messageMenu`). Касание отслеживает распознаватель UIKit, который распознаётся вместе с
+/// прокруткой ленты и ничего не задерживает. Жест SwiftUI с состоянием нажатия
+/// (`LongPressGesture.updating`) забирал касание с первого же прикосновения, и лента не
+/// прокручивалась, если палец начинал жест на пузыре. На iOS 17 и с «Уменьшением движения»
+/// пузырь не сжимается.
+private struct PressFeedback: ViewModifier {
     let anchor: UnitPoint
-    let onOpen: () -> Void
-    @GestureState private var pressing = false
+    let enabled: Bool
+    @State private var pressing = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
+        #if canImport(UIKit)
+        if #available(iOS 18.0, *) {
+            if enabled, !reduceMotion {
+                content
+                    .scaleEffect(pressing ? 0.96 : 1, anchor: anchor)
+                    .animation(pressing ? .easeOut(duration: 0.25) : MaxlyMotion.quick(reduceMotion: false), value: pressing)
+                    .gesture(PressRecognizer { pressing = $0 })
+            } else {
+                content
+            }
+        } else {
+            content
+        }
+        #else
         content
-            .scaleEffect(pressing && !reduceMotion ? 0.96 : 1, anchor: anchor)
-            .animation(
-                pressing ? .easeOut(duration: 0.3).delay(0.08) : MaxlyMotion.quick(reduceMotion: reduceMotion),
-                value: pressing
-            )
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.35)
-                    .updating($pressing) { value, state, _ in state = value }
-                    .onEnded { _ in onOpen() }
-            )
-            .accessibilityAction(named: Text("Действия"), onOpen)
+        #endif
     }
 }
+
+#if canImport(UIKit)
+/// Удержание пальца на пузыре для `PressFeedback`: начинается через 0,1 с без движения, пускает
+/// касания дальше без задержки и распознаётся вместе с любыми другими жестами — прокруткой
+/// ленты, меню, двойным нажатием, свайпом ответа и кнопками внутри пузыря.
+@available(iOS 18.0, *)
+private struct PressRecognizer: UIGestureRecognizerRepresentable {
+    /// `true` — палец держит пузырь, `false` — отпустил или повёл ленту.
+    let onPressing: (Bool) -> Void
+
+    /// Сдвиг пальца, после которого это уже прокрутка, а не удержание.
+    private static let slop: CGFloat = 10
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
+        let press = UILongPressGestureRecognizer()
+        press.minimumPressDuration = 0.1
+        press.allowableMovement = Self.slop
+        press.cancelsTouchesInView = false
+        press.delaysTouchesBegan = false
+        press.delaysTouchesEnded = false
+        press.delegate = context.coordinator
+        return press
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UILongPressGestureRecognizer, context: Context) {
+        let point = recognizer.location(in: recognizer.view)
+        switch recognizer.state {
+        case .began:
+            context.coordinator.start = point
+            onPressing(true)
+        case .changed:
+            let start = context.coordinator.start
+            if hypot(point.x - start.x, point.y - start.y) > Self.slop { onPressing(false) }
+        default:
+            onPressing(false)
+        }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var start: CGPoint = .zero
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
+        }
+    }
+}
+#endif
 
 /// Вспышка пузыря при переходе к нему (цитата, упоминание, закреп): заливка его формы дважды
 /// проявляется и гаснет за 1,2 с — столько держится подсветка (`ChatViewModel.focus`). Вспышка
