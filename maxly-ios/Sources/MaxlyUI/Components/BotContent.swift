@@ -83,16 +83,17 @@ struct LinkPreviewCard: View {
     }
 }
 
-/// Inline-кнопки бота под пузырём: ряды кнопок цвета пузыря во всю его ширину. Значок справа
-/// подсказывает, что будет: ссылка, приложение или копирование.
+/// Inline-кнопки бота под пузырём: ряды стеклянных кнопок ровно по ширине пузыря
+/// (`KeyboardAttached`). Значок справа подсказывает, что будет: ссылка, приложение или
+/// копирование.
 struct InlineKeyboardView: View {
     let keyboard: InlineKeyboard
     let onPress: (InlineButton) -> Void
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: Self.spacing) {
             ForEach(Array(keyboard.rows.enumerated()), id: \.offset) { _, row in
-                HStack(spacing: 4) {
+                HStack(spacing: Self.spacing) {
                     ForEach(Array(row.enumerated()), id: \.offset) { _, button in
                         Button {
                             onPress(button)
@@ -108,16 +109,32 @@ struct InlineKeyboardView: View {
                                 }
                             }
                             .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, minHeight: 40)
-                            .padding(.horizontal, 8)
-                            // Цвет входящего пузыря: на обоях кнопка читается так же, как пост над ней.
-                            .background(Color.maxlyIncomingOnWallpaper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity, minHeight: Self.height)
+                            // Стекло на обоях: кнопки не спорят с пузырём, а лежат под ним.
+                            .maxlyGlassRounded(radius: Self.radius)
+                            .contentShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(InlineKeyboardButtonStyle())
                     }
                 }
             }
+        }
+    }
+
+    /// Высота строки, зазор между кнопками и скругление. Высота ряда для оценки ленты —
+    /// `BubbleHeightCache.keyboardRow`.
+    static let height: CGFloat = 36
+    static let spacing: CGFloat = 4
+    static let radius: CGFloat = 12
+
+    /// Отклик на касание: кнопка слегка гаснет, пока палец на ней.
+    private struct InlineKeyboardButtonStyle: ButtonStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .opacity(configuration.isPressed ? 0.55 : 1)
+                .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
         }
     }
 
@@ -128,5 +145,38 @@ struct InlineKeyboardView: View {
         case .copy: "doc.on.doc"
         case .callback: nil
         }
+    }
+}
+
+/// Пузырь бота и его кнопки одной ширины: шире из двух — текста одной строкой или ряда кнопок
+/// без переносов, но не шире колонки. Пузырь растягивается до ширины кнопок, кнопки — до
+/// ширины пузыря, и меню не торчит из-под сообщения.
+struct KeyboardAttached: Layout {
+    var trailing = false
+    var spacing: CGFloat = 4
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = width(proposal: proposal, subviews: subviews)
+        let height = subviews.reduce(CGFloat(0)) { sum, subview in
+            sum + subview.sizeThatFits(ProposedViewSize(width: width, height: nil)).height
+        }
+        return CGSize(width: width, height: height + spacing * CGFloat(max(subviews.count - 1, 0)))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let width = width(proposal: ProposedViewSize(width: bounds.width, height: nil), subviews: subviews)
+        let x = trailing ? bounds.maxX - width : bounds.minX
+        var y = bounds.minY
+        for subview in subviews {
+            let size = subview.sizeThatFits(ProposedViewSize(width: width, height: nil))
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(width: width, height: size.height))
+            y += size.height + spacing
+        }
+    }
+
+    private func width(proposal: ProposedViewSize, subviews: Subviews) -> CGFloat {
+        let limit = proposal.width ?? .infinity
+        let widest = subviews.reduce(CGFloat(0)) { max($0, $1.sizeThatFits(.unspecified).width) }
+        return limit.isFinite ? min(widest, limit) : widest
     }
 }

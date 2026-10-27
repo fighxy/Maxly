@@ -329,14 +329,10 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
                     .padding(24)
                     .frame(maxWidth: .infinity)
             case .olderLoader(let loading):
-                let onLoadOlder = parent.onLoadOlder
+                // Страница старше грузится сама, когда верх ленты на экране: кнопки нет, только
+                // индикатор, пока страница идёт.
                 ZStack {
-                    if loading {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Button("Загрузить предыдущие сообщения", action: onLoadOlder)
-                            .font(.app(.caption))
-                    }
+                    if loading { ProgressView().controlSize(.small) }
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 44)
