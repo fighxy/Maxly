@@ -111,6 +111,8 @@ public final class ChatListViewModel {
     public var editSelection: Set<String> = []
     /// Чат, удаление которого ждёт подтверждения.
     public private(set) var deletionCandidate: ChatListItem?
+    /// Несколько чатов из режима правки, удаление которых ждёт подтверждения.
+    public private(set) var bulkDeletion: [String]?
     /// Чат, очистка переписки которого ждёт подтверждения.
     public private(set) var clearCandidate: ChatListItem?
 
@@ -505,6 +507,87 @@ public final class ChatListViewModel {
         isEditing = false
     }
 
+    /// Выбранные в режиме правки чаты, которые можно убрать в архив: «Избранное» и уже
+    /// архивные туда не уходят.
+    public var archivableSelection: [String] {
+        guard capabilities.contains(.archive) else { return [] }
+        return selectedChats.filter { $0.id != Chat.savedMessagesId && !$0.isArchived }.map(\.id)
+    }
+
+    /// Выбранные в режиме правки чаты, которые можно удалить.
+    public var deletableSelection: [String] {
+        guard capabilities.contains(.delete) else { return [] }
+        return selectedChats.map(\.id)
+    }
+
+    /// Выбранные чаты в порядке списка: так же идут запросы и уведомление.
+    private var selectedChats: [Chat] {
+        chats.filter { editSelection.contains($0.id) }
+    }
+
+    /// «В архив» в режиме правки: выбранные чаты уходят в архив, правка заканчивается.
+    public func archiveSelected() async {
+        let ids = archivableSelection
+        guard !ids.isEmpty else { return }
+        isEditing = false
+        var moved = 0
+        for id in ids {
+            do {
+                try await repository.setArchived(true, chatId: id)
+                moved += 1
+            } catch {
+                show(error)
+            }
+        }
+        if moved > 0 {
+            notice = moved == 1 ? "Чат перенесён в архив" : "\(moved) \(Self.plural(moved, "чат перенесён", "чата перенесены", "чатов перенесено")) в архив"
+        }
+    }
+
+    /// «Удалить» в режиме правки. Один чат — обычный диалог удаления (с «у всех»), несколько —
+    /// общий вопрос (`bulkDeletion`), и удаляются они только у себя.
+    public func requestDeleteSelected() {
+        let ids = deletableSelection
+        if ids.count == 1, let id = ids.first {
+            requestDelete(chatId: id)
+        } else if !ids.isEmpty {
+            bulkDeletion = ids
+        }
+    }
+
+    public func cancelBulkDelete() {
+        bulkDeletion = nil
+    }
+
+    /// Удалить чаты из общего вопроса. Экран передаёт `ids` из диалога: к этому времени
+    /// диалог уже закрыт и `bulkDeletion` сброшен.
+    public func confirmBulkDelete(_ ids: [String]) async {
+        guard capabilities.contains(.delete), !ids.isEmpty else { return }
+        bulkDeletion = nil
+        isEditing = false
+        for id in ids {
+            do {
+                try await repository.delete(chatId: id, forEveryone: false)
+            } catch {
+                show(error)
+            }
+        }
+    }
+
+    /// «1 чат», «3 чата», «11 чатов».
+    public static func chatCount(_ count: Int) -> String {
+        "\(count) \(plural(count, "чат", "чата", "чатов"))"
+    }
+
+    static func plural(_ count: Int, _ one: String, _ few: String, _ many: String) -> String {
+        let tens = count % 100
+        let units = count % 10
+        if (11...14).contains(tens) { return many }
+        if units == 1 { return one }
+        if (2...4).contains(units) { return few }
+        return many
+    }
+
     // MARK: Закреплённые
 
     /// Закрепить или открепить. Новый закреплённый встаёт первым; при лимите показывается ошибка.
@@ -797,6 +880,8 @@ public final class ChatListViewModel {
     public func confirmDelete(chatId: String? = nil, forEveryone: Bool) async {
         guard let id = chatId ?? deletionCandidate?.id else { return }
         deletionCandidate = nil
+        // Удаление одного выбранного чата из режима правки заканчивает правку.
+        if isEditing { isEditing = false }
         do {
             try await repository.delete(chatId: id, forEveryone: forEveryone)
         } catch {

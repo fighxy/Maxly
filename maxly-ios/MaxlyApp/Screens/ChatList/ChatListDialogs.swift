@@ -99,6 +99,31 @@ struct ChatListEraseDialogs: ViewModifier {
             eraseButtons(item, clearing: true)
             Button("Отмена", role: .cancel) { viewModel.cancelClear() }
         }
+        // Несколько чатов из режима правки: удаляются только у себя.
+        .confirmationDialog(
+            bulkTitle,
+            isPresented: bulkShown,
+            titleVisibility: .visible,
+            presenting: viewModel.bulkDeletion
+        ) { ids in
+            Button("Удалить у меня", role: .destructive) {
+                Task { await viewModel.confirmBulkDelete(ids) }
+            }
+            Button("Отмена", role: .cancel) { viewModel.cancelBulkDelete() }
+        } message: { _ in
+            Text("Чаты удалятся только у вас.")
+        }
+    }
+
+    private var bulkShown: Binding<Bool> {
+        Binding(
+            get: { viewModel.bulkDeletion != nil },
+            set: { if !$0 { viewModel.cancelBulkDelete() } }
+        )
+    }
+
+    private var bulkTitle: String {
+        "Удалить \(ChatListViewModel.chatCount(viewModel.bulkDeletion?.count ?? 0))?"
     }
 
     private var deletionShown: Binding<Bool> {

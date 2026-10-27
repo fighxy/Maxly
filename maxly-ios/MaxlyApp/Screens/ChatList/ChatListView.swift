@@ -653,23 +653,58 @@ struct ChatListView: View {
         }
     }
 
+    /// Нижняя панель правки: «Прочитать», «В архив», «Удалить». Без выбора «Прочитать все»
+    /// читает всю папку, а архив и удаление ждут выбора; над ними — подсказка про порядок
+    /// закреплённых.
     private var editBar: some View {
-        HStack {
-            Button(viewModel.editSelection.isEmpty ? "Прочитать все" : "Прочитать (\(viewModel.editSelection.count))") {
-                Task { await viewModel.readSelected() }
-            }
-            .disabled(viewModel.editSelection.isEmpty && viewModel.tabBadge == 0 && !viewModel.items.contains { $0.badge != nil })
-            Spacer()
-            if viewModel.capabilities.contains(.reorderPins), viewModel.pinnedCount > 1 {
+        let archivable = viewModel.archivableSelection.count
+        let deletable = viewModel.deletableSelection.count
+        return VStack(spacing: 8) {
+            if viewModel.editSelection.isEmpty, viewModel.capabilities.contains(.reorderPins), viewModel.pinnedCount > 1 {
                 Text("Перетащите закреплённые, чтобы поменять порядок")
                     .font(.app(.caption))
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.trailing)
+                    .frame(maxWidth: .infinity)
+                    .multilineTextAlignment(.center)
             }
+            HStack {
+                Button(viewModel.editSelection.isEmpty ? "Прочитать все" : "Прочитать") {
+                    Task { await viewModel.readSelected() }
+                }
+                .disabled(!canRead)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if viewModel.capabilities.contains(.archive) {
+                    Button(archivable > 1 ? "В архив (\(archivable))" : "В архив") {
+                        Task { await viewModel.archiveSelected() }
+                    }
+                    .disabled(archivable == 0)
+                    .frame(maxWidth: .infinity)
+                }
+                if viewModel.capabilities.contains(.delete) {
+                    Button(deletable > 1 ? "Удалить (\(deletable))" : "Удалить", role: .destructive) {
+                        viewModel.requestDeleteSelected()
+                    }
+                    .foregroundStyle(deletable == 0 ? Color.secondary : Color.red)
+                    .disabled(deletable == 0)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+            }
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
         }
         .padding(.horizontal, MaxlyTheme.pad)
         .padding(.vertical, 12)
         .background(.bar)
+        .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.editSelection.isEmpty)
+    }
+
+    /// «Прочитать все» — есть непрочитанные в папке; «Прочитать» — среди выбранных есть
+    /// непрочитанные.
+    private var canRead: Bool {
+        if viewModel.editSelection.isEmpty {
+            return viewModel.tabBadge > 0 || viewModel.items.contains { $0.badge != nil }
+        }
+        return viewModel.items.contains { viewModel.editSelection.contains($0.id) && $0.badge != nil }
     }
 
     @ViewBuilder
