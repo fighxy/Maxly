@@ -54,7 +54,14 @@ struct ChatListView: View {
 
     var body: some View {
         // Части отдельно: одно выражение со всеми окнами компилятор не успевал проверить.
-        dialogs(screen)
+        screen
+            .modifier(ChatListRowDialogs(
+                viewModel: viewModel,
+                blockCandidate: $blockCandidate,
+                botStopCandidate: $botStopCandidate,
+                botDeleteCandidate: $botDeleteCandidate,
+                botReport: $botReport
+            ))
             .createFolderAlert(for: $newFolderChat) { chatId, title in
                 Task { await viewModel.createFolder(chatId: chatId, title: title) }
             }
@@ -62,7 +69,14 @@ struct ChatListView: View {
     }
 
     private var screen: some View {
-        folderSheets(chatList)
+        chatList
+        .modifier(ChatListFolderSheets(
+            viewModel: viewModel,
+            makeFoldersModel: makeFoldersModel,
+            folderEdit: $folderEdit,
+            foldersScreen: $foldersScreen,
+            folderDelete: $folderDelete
+        ))
         .toolbar { toolbar }
         .onAppear { wireScroll() }
         .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: viewModel.isSearchActive)
@@ -112,86 +126,7 @@ struct ChatListView: View {
                 ComposeSheet()
             }
         }
-        .confirmationDialog(
-            deletionTitle,
-            isPresented: deletionShown,
-            titleVisibility: .visible,
-            presenting: viewModel.deletionCandidate
-        ) { item in
-            eraseButtons(item, clearing: false)
-            Button("Отмена", role: .cancel) { viewModel.cancelDelete() }
-        }
-        .confirmationDialog(
-            clearTitle,
-            isPresented: clearShown,
-            titleVisibility: .visible,
-            presenting: viewModel.clearCandidate
-        ) { item in
-            eraseButtons(item, clearing: true)
-            Button("Отмена", role: .cancel) { viewModel.cancelClear() }
-        }
-    }
-
-    /// Подтверждения блокировки и действий с ботом из меню строки.
-    private func dialogs(_ content: some View) -> some View {
-        content
-        .confirmationDialog(
-            blockTitle,
-            isPresented: Binding(get: { blockCandidate != nil }, set: { if !$0 { blockCandidate = nil } }),
-            titleVisibility: .visible,
-            presenting: blockCandidate
-        ) { item in
-            Button("Заблокировать", role: .destructive) { Task { await viewModel.block(chatId: item.id) } }
-            Button("Отмена", role: .cancel) {}
-        } message: { _ in
-            Text("Он не сможет писать вам и звонить. Разблокировать можно в настройках конфиденциальности.")
-        }
-        .confirmationDialog(
-            botTitle(botStopCandidate, "Остановить"),
-            isPresented: Binding(get: { botStopCandidate != nil }, set: { if !$0 { botStopCandidate = nil } }),
-            titleVisibility: .visible,
-            presenting: botStopCandidate
-        ) { item in
-            Button("Остановить", role: .destructive) { Task { await viewModel.stopBot(chatId: item.id) } }
-            Button("Отмена", role: .cancel) {}
-        } message: { _ in
-            Text("Бот больше не сможет писать вам. Перезапустить его можно в меню чата.")
-        }
-        .confirmationDialog(
-            botTitle(botDeleteCandidate, "Удалить чат и остановить"),
-            isPresented: Binding(get: { botDeleteCandidate != nil }, set: { if !$0 { botDeleteCandidate = nil } }),
-            titleVisibility: .visible,
-            presenting: botDeleteCandidate
-        ) { item in
-            Button("Удалить и остановить", role: .destructive) { Task { await viewModel.deleteAndStopBot(chatId: item.id) } }
-            Button("Отмена", role: .cancel) {}
-        } message: { _ in
-            Text("Переписка удалится у вас, бот больше не сможет писать вам.")
-        }
-        .confirmationDialog(
-            botTitle(botReport?.item, "Пожаловаться на"),
-            isPresented: Binding(get: { botReport?.reasons.isEmpty == false }, set: { if !$0 { botReport = nil } }),
-            titleVisibility: .visible,
-            presenting: botReport
-        ) { report in
-            ForEach(report.reasons) { reason in
-                Button(reason.title.isEmpty ? "Причина \(reason.id)" : reason.title) {
-                    Task { await viewModel.reportBot(chatId: report.item.id, reasonId: reason.id) }
-                }
-            }
-            Button("Отмена", role: .cancel) {}
-        }
-    }
-
-    /// «Остановить бота?» / «Остановить «Имя»?»; в приватном режиме без имени.
-    private func botTitle(_ item: ChatListItem?, _ verb: String) -> String {
-        guard let item, privateMode == .visible else { return "\(verb) бота?" }
-        return verb == "Пожаловаться на" ? "\(verb) «\(item.title)»" : "\(verb) «\(item.title)»?"
-    }
-
-    private var blockTitle: String {
-        guard let item = blockCandidate, privateMode == .visible else { return "Заблокировать пользователя?" }
-        return "Заблокировать \(item.title)?"
+        .modifier(ChatListEraseDialogs(viewModel: viewModel))
     }
 
     /// Итог действия из меню строки («Чат добавлен в «Работа»», ошибка): гаснет сам.
@@ -337,17 +272,6 @@ struct ChatListView: View {
 
     // MARK: Меню вкладки папки
 
-    struct FolderEdit: Identifiable {
-        let id: String
-        /// «Настроить папку» — с названием; «Добавить чаты» — только чаты.
-        let withTitle: Bool
-    }
-
-    struct FoldersScreenRequest: Identifiable {
-        let editing: Bool
-        var id: Bool { editing }
-    }
-
     private func folderMenu(_ id: String) -> AnyView? {
         let entries = viewModel.folderMenu(id)
         guard !entries.isEmpty else { return nil }
@@ -364,47 +288,6 @@ struct ChatListView: View {
         case .mute(let muted): Task { await viewModel.setFolderMuted(id, muted: !muted) }
         case .delete: folderDelete = viewModel.serverFolder(id)
         }
-    }
-
-    /// Окна из меню вкладки: выбор чатов, экран «Папки», подтверждение удаления.
-    private func folderSheets<Content: View>(_ content: Content) -> some View {
-        content
-            .sheet(item: $folderEdit) { edit in
-                if let folder = viewModel.serverFolder(edit.id) {
-                    ChatPickerSheet(
-                        title: edit.withTitle ? "Папка" : folder.title,
-                        chats: viewModel.chats.filter { !$0.isArchived },
-                        initial: Set(folder.chatIds),
-                        askTitle: edit.withTitle,
-                        initialTitle: folder.title
-                    ) { title, ids in
-                        Task { await viewModel.saveFolder(edit.id, title: edit.withTitle ? title : "", chatIds: ids) }
-                    }
-                }
-            }
-            .sheet(item: $foldersScreen) { request in
-                if let makeFoldersModel {
-                    NavigationStack {
-                        FoldersView(model: makeFoldersModel(), list: viewModel, startsEditing: request.editing)
-                            .toolbar {
-                                ToolbarItem(placement: .cancellationAction) {
-                                    Button("Закрыть") { foldersScreen = nil }
-                                }
-                            }
-                    }
-                }
-            }
-            .confirmationDialog(
-                "Удалить папку «\(folderDelete?.title ?? "")»?",
-                isPresented: Binding(get: { folderDelete != nil }, set: { if !$0 { folderDelete = nil } }),
-                titleVisibility: .visible,
-                presenting: folderDelete
-            ) { folder in
-                Button("Удалить папку", role: .destructive) { Task { await viewModel.deleteFolder(folder.id) } }
-                Button("Отмена", role: .cancel) {}
-            } message: { _ in
-                Text("Чаты останутся в списке «Все».")
-            }
     }
 
     private var isPlaying: Bool { nowPlaying?.track != nil }
@@ -486,7 +369,7 @@ struct ChatListView: View {
     @ViewBuilder
     private var rows: some View {
         if viewModel.isSearchActive {
-            searchResults
+            ChatListSearchResults(viewModel: viewModel, selection: $selection, rowInsets: rowInsets, onOpenMessage: onOpenMessage)
         } else {
             placeholder
                 .listRowSeparator(.hidden)
@@ -721,84 +604,6 @@ struct ChatListView: View {
         }
     }
 
-    // MARK: Поиск
-
-    @ViewBuilder
-    private var searchResults: some View {
-        let search = viewModel.search
-        if viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            if search.recent.isEmpty {
-                Text("Поиск по чатам и сообщениям")
-                    .foregroundStyle(.secondary)
-                    .listRowSeparator(.hidden)
-                    .selectionDisabled()
-            } else {
-                HStack {
-                    Text("Недавние").font(.app(.subheadline, .semibold))
-                    Spacer()
-                    Button("Очистить") { Task { await viewModel.clearRecent() } }
-                        .buttonStyle(.plain)
-                }
-                .listRowSeparator(.hidden)
-                .selectionDisabled()
-                ForEach(search.recent) { item in
-                    ChatRow(item: item)
-                        .tag(item.id)
-                        .listRowInsets(rowInsets)
-                        .swipeActions {
-                            Button("Убрать", systemImage: "xmark", role: .destructive) {
-                                Task { await viewModel.removeRecent(chatId: item.id) }
-                            }
-                        }
-                }
-            }
-        } else {
-            if !search.chats.isEmpty {
-                searchHeading("Чаты")
-                ForEach(search.chats) { item in
-                    ChatRow(item: item).tag(item.id).listRowInsets(rowInsets)
-                }
-            }
-            if !search.global.isEmpty {
-                searchHeading("Глобальный поиск")
-                ForEach(search.global) { result in
-                    GlobalResultRow(result: result).tag(result.id)
-                }
-            }
-            if !search.messages.isEmpty {
-                searchHeading("Сообщения")
-                ForEach(search.messages) { message in
-                    Button {
-                        onOpenMessage(message)
-                        selection = message.chatId
-                    } label: {
-                        FoundMessageRow(message: message).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .selectionDisabled()
-                }
-            }
-            if search.isSearchingServer {
-                HStack { Spacer(); ProgressView("Поиск…"); Spacer() }
-                    .listRowSeparator(.hidden)
-                    .selectionDisabled()
-            } else if search.isEmpty {
-                ContentUnavailableView.search(text: viewModel.searchQuery)
-                    .listRowSeparator(.hidden)
-                    .selectionDisabled()
-            }
-        }
-    }
-
-    private func searchHeading(_ title: String) -> some View {
-        Text(title)
-            .font(.app(.subheadline, .semibold))
-            .foregroundStyle(.secondary)
-            .accessibilityAddTraits(.isHeader)
-            .listRowSeparator(.hidden)
-            .selectionDisabled()
-    }
-
     // MARK: Панели
 
     @ToolbarContentBuilder
@@ -929,339 +734,4 @@ struct ChatListView: View {
             .transition(.maxlyPop(reduceMotion: reduceMotion))
         }
     }
-
-    // MARK: Удаление
-
-    private var deletionShown: Binding<Bool> {
-        Binding(
-            get: { viewModel.deletionCandidate != nil },
-            set: { if !$0 { viewModel.cancelDelete() } }
-        )
-    }
-
-    private var deletionTitle: String {
-        guard let item = viewModel.deletionCandidate else { return "" }
-        // Название чата не должно всплыть в диалоге, пока включён приватный режим.
-        if privateMode.isMasked { return "Удалить этот чат?" }
-        return "Удалить чат «\(item.title)»?"
-    }
-
-    private var clearShown: Binding<Bool> {
-        Binding(
-            get: { viewModel.clearCandidate != nil },
-            set: { if !$0 { viewModel.cancelClear() } }
-        )
-    }
-
-    private var clearTitle: String {
-        "Стереть переписку?"
-    }
-
-    /// «Только у меня» всегда. «У всех» — кроме «Избранного», где собеседника нет.
-    /// Кнопки передают id чата сами: к началу задачи диалог уже закрыт и кандидат сброшен.
-    @ViewBuilder
-    private func eraseButtons(_ item: ChatListItem, clearing: Bool) -> some View {
-        let saved = item.id == Chat.savedMessagesId
-        if !saved {
-            let everyone = clearing
-                ? (item.type == .private ? "Очистить у меня и у собеседника" : "Очистить у всех")
-                : (item.type == .private ? "Удалить у меня и у собеседника" : "Удалить у всех")
-            Button(everyone, role: .destructive) {
-                Task {
-                    if clearing { await viewModel.confirmClear(chatId: item.id, forEveryone: true) }
-                    else { await viewModel.confirmDelete(chatId: item.id, forEveryone: true) }
-                }
-            }
-        }
-        Button(clearing ? (saved ? "Очистить" : "Очистить только у меня") : (saved ? "Удалить" : "Удалить только у меня"), role: .destructive) {
-            Task {
-                if clearing { await viewModel.confirmClear(chatId: item.id, forEveryone: false) }
-                else { await viewModel.confirmDelete(chatId: item.id, forEveryone: false) }
-            }
-        }
-    }
-}
-
-/// Прокрутка списка чатов прямо из его `UIScrollView`.
-///
-/// Смещение из `onScrollGeometryChange` по-разному учитывает отступы под панели, поэтому
-/// смещение, палец и инерция берутся у самого `UIScrollView`, а места строк шапки — у меток в
-/// них (`ChatListProbe`), в координатах содержимого. Класс, а не состояние экрана: меняется
-/// каждый кадр прокрутки, и экран не должен пересобираться из-за этого.
-@MainActor
-private final class ChatListScroll {
-    static let storiesId = "stories"
-    static let searchId = "search"
-    static let foldersId = "folders"
-
-    /// Сдвиг прокрутки: прежний и новый верх видимой части, палец, инерция.
-    var onScroll: ((_ previous: CGFloat, _ top: CGFloat, _ dragging: Bool, _ decelerating: Bool) -> Void)?
-    /// Прокрутка остановилась.
-    var onIdle: (() -> Void)?
-    /// Истории уже вытянуты пальцем целиком: отклик один раз, пока они снова не спрячутся.
-    var revealedByPull = false
-
-    private weak var scrollView: UIScrollView?
-    private var observation: NSKeyValueObservation?
-    private var idleTask: Task<Void, Never>?
-    private var lastTop: CGFloat = 0
-    private var probes: [String: WeakView] = [:]
-    /// Последние известные места строк: строка, ушедшая далеко за экран, переиспользуется.
-    private var frames: [String: CGRect] = [:]
-
-    private final class WeakView {
-        weak var view: UIView?
-        init(_ view: UIView) { self.view = view }
-    }
-
-    /// Верх видимой части в координатах содержимого: `0` — список у самого верха.
-    var top: CGFloat {
-        guard let scrollView else { return 0 }
-        return scrollView.contentOffset.y + scrollView.adjustedContentInset.top
-    }
-
-    var isInteracting: Bool {
-        guard let scrollView else { return false }
-        return scrollView.isTracking || scrollView.isDragging || scrollView.isDecelerating
-    }
-
-    func attach(_ scroll: UIScrollView) {
-        guard scroll !== scrollView else { return }
-        scrollView = scroll
-        lastTop = top
-        // Изменения приходят на главном потоке: их делает UIKit или SwiftUI.
-        observation = scroll.observe(\.contentOffset) { [weak self] view, _ in
-            MainActor.assumeIsolated { self?.moved(view) }
-        }
-    }
-
-    func register(_ view: UIView, id: String) {
-        probes[id] = WeakView(view)
-    }
-
-    func geometry(stories: Bool, search: Bool, folders: Bool) -> ChatListHeaderGeometry {
-        ChatListHeaderGeometry(
-            stories: stories ? range(Self.storiesId) : nil,
-            search: search ? range(Self.searchId) : nil,
-            folders: folders ? frame(Self.foldersId)?.minY : nil
-        )
-    }
-
-    /// Доехать до `target` (верх видимой части в координатах содержимого).
-    func scroll(to target: CGFloat, animated: Bool) {
-        guard let scroll = scrollView else { return }
-        let insets = scroll.adjustedContentInset
-        let maxY = max(-insets.top, scroll.contentSize.height + insets.bottom - scroll.bounds.height)
-        let y = min(max(target - insets.top, -insets.top), maxY)
-        scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x, y: y), animated: animated)
-    }
-
-    /// Остановить инерцию и встать на `target`.
-    func stop(at target: CGFloat) {
-        guard let scroll = scrollView else { return }
-        scroll.setContentOffset(scroll.contentOffset, animated: false)
-        self.scroll(to: target, animated: false)
-    }
-
-    private func range(_ id: String) -> ClosedRange<CGFloat>? {
-        frame(id).map { $0.minY...$0.maxY }
-    }
-
-    private func frame(_ id: String) -> CGRect? {
-        if let view = probes[id]?.view, let scroll = scrollView, view.window != nil, view.isDescendant(of: scroll) {
-            let frame = view.convert(view.bounds, to: scroll)
-            frames[id] = frame
-            return frame
-        }
-        return frames[id]
-    }
-
-    private func moved(_ scroll: UIScrollView) {
-        let now = scroll.contentOffset.y + scroll.adjustedContentInset.top
-        let previous = lastTop
-        lastTop = now
-        onScroll?(previous, now, scroll.isTracking || scroll.isDragging, scroll.isDecelerating)
-        idleTask?.cancel()
-        idleTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(120))
-            guard let self, !Task.isCancelled, !self.isInteracting else { return }
-            self.onIdle?()
-        }
-    }
-}
-
-/// Метка в строке шапки: находит `UIScrollView` списка и сообщает, где лежит строка.
-private struct ChatListProbe: UIViewRepresentable {
-    let id: String
-    let scroll: ChatListScroll
-
-    func makeUIView(context: Context) -> ProbeView { ProbeView(id: id, scroll: scroll) }
-    func updateUIView(_ view: ProbeView, context: Context) {}
-
-    final class ProbeView: UIView {
-        private let id: String
-        private let scroll: ChatListScroll
-
-        init(id: String, scroll: ChatListScroll) {
-            self.id = id
-            self.scroll = scroll
-            super.init(frame: .zero)
-            isHidden = true
-            isUserInteractionEnabled = false
-        }
-
-        required init?(coder: NSCoder) { nil }
-
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            guard window != nil else { return }
-            scroll.register(self, id: id)
-            var view = superview
-            while let current = view {
-                if let list = current as? UIScrollView {
-                    scroll.attach(list)
-                    return
-                }
-                view = current.superview
-            }
-        }
-    }
-}
-
-/// Подложка закреплённых папок: размытие под панелью навигации и под капсулой, которое к
-/// низу тает, а не обрывается линией.
-private struct PinnedHeaderBackdrop: View {
-    var body: some View {
-        Rectangle()
-            .fill(.bar)
-            .mask {
-                LinearGradient(
-                    stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.8), .init(color: .clear, location: 1)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
-            .padding(.bottom, -16)
-            .ignoresSafeArea(edges: .top)
-            .allowsHitTesting(false)
-    }
-}
-
-/// Значок новой истории: пунктирный круг с плюсом.
-private struct AddStoryGlyph: View {
-    var body: some View {
-        ZStack {
-            Image(systemName: "circle.dashed")
-            Image(systemName: "plus")
-                .font(.system(size: 9, weight: .bold))
-        }
-    }
-}
-
-/// Найденный на сервере чат, которого нет в списке.
-/// В приватном режиме вместо имени «Чат», подпись (ник, число участников) скрыта.
-private struct GlobalResultRow: View {
-    let result: ChatSearchResult
-    @Environment(\.privateMode) private var privateMode
-
-    var body: some View {
-        HStack(spacing: 12) {
-            AvatarView(title: result.title, id: result.id, url: result.avatarURL, size: MaxlyTheme.smallAvatar)
-            VStack(alignment: .leading, spacing: 2) {
-                PrivateText(result.title, placeholder: PrivateModeMask.searchResultTitle)
-                    .font(.app(.body, .semibold))
-                    .lineLimit(1)
-                if let subtitle = result.subtitle, !privateMode.isMasked {
-                    Text(subtitle).font(.app(.subheadline)).foregroundStyle(.secondary).lineLimit(1)
-                }
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-}
-
-/// Найденное на сервере сообщение. В приватном режиме вместо названия «Чат», текст скрыт.
-private struct FoundMessageRow: View {
-    let message: ChatSearchMessage
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                PrivateText(message.chatTitle, placeholder: PrivateModeMask.searchResultTitle)
-                    .font(.app(.body, .semibold))
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                if !message.time.isEmpty {
-                    Text(message.time)
-                        .font(.app(.footnote))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            PrivateText(message.snippet, placeholder: PrivateModeMask.archivePreview)
-                .font(.app(.subheadline))
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-        }
-        .accessibilityElement(children: .combine)
-    }
-}
-
-/// Чаты из архива.
-struct ArchivedChatsView: View {
-    @Bindable var viewModel: ChatListViewModel
-    @Binding var selection: String?
-
-    var body: some View {
-        List(selection: $selection) {
-            ForEach(viewModel.archivedItems) { item in
-                ChatRow(item: item)
-                    .tag(item.id)
-                    .swipeActions {
-                        if viewModel.capabilities.contains(.archive) {
-                            Button { Task { await viewModel.toggleArchive(chatId: item.id) } } label: {
-                                Label("Вернуть", systemImage: "tray.and.arrow.up.fill")
-                            }
-                        }
-                    }
-            }
-        }
-        .listStyle(.plain)
-        .navigationTitle("Архив чатов")
-        .navigationBarTitleDisplayMode(.inline)
-        .overlay {
-            if viewModel.archivedItems.isEmpty {
-                ContentUnavailableView("Архив пуст", systemImage: "archivebox")
-            }
-        }
-    }
-}
-
-/// Новое сообщение. Выбрать собеседника можно будет, когда появится список контактов.
-private struct ComposeSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ContentUnavailableView(
-                "Новое сообщение",
-                systemImage: "square.and.pencil",
-                description: Text("Выбор собеседника появится вместе со списком контактов. Пока напишите из существующего чата.")
-            )
-            .navigationTitle("Новое сообщение")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") { dismiss() }
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-    }
-}
-
-/// Жалоба на бота из меню строки: чат и причины сервера.
-private struct BotReport: Identifiable {
-    let item: ChatListItem
-    let reasons: [ComplaintReason]
-    var id: String { item.id }
 }
