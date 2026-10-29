@@ -135,9 +135,8 @@ struct ChatView: View {
         )
         .environment(\.chatWallpaper, shownWallpaper)
         .environment(\.chatHasPhotoWallpaper, customWallpaper != nil)
-        // Только что поставленная реакция: значок играет в плашке и сообщает своё место в этом
-        // пространстве, эффект вокруг — слоем поверх ленты.
-        .coordinateSpace(.named(ReactionBurstHost.space))
+        // Только что поставленная реакция: значок играет в плашке и сообщает своё место на
+        // экране, эффект вокруг — слоем поверх ленты.
         .overlay { ReactionEffectLayer(host: reactionBurst) }
         .environment(\.messageMenuPresenter, messageMenu)
         // Анимодзи в сообщениях.
