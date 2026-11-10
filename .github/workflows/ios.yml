@@ -36,22 +36,11 @@ jobs:
           swift --version
       - name: Test libraries
         run: |
-          set -euo pipefail
-          # Журнал прогона теряет строки Swift Testing (одна ошибка без текста).
-          # У Swift 6.2 / Xcode 26.3 есть --xunit-output и --event-stream-output-path:
-          # отчёты пишутся в файлы. Код выхода swift test не подменяется.
-          mkdir -p build/swift-test
-          set +e
           swift test --package-path maxly-ios \
             -Xlinker=-sectcreate \
             -Xlinker=__TEXT \
             -Xlinker=__info_plist \
-            -Xlinker="$GITHUB_WORKSPACE/maxly-ios/Tests/MaxlyDataTests/Info.plist" \
-            --xunit-output "$GITHUB_WORKSPACE/build/swift-test/results.xml" \
-            --event-stream-output-path "$GITHUB_WORKSPACE/build/swift-test/events.jsonl"
-          status=$?
-          python3 scripts/swift-test-issues.py "$GITHUB_WORKSPACE/build/swift-test" || true
-          exit "$status"
+            -Xlinker="$GITHUB_WORKSPACE/maxly-ios/Tests/MaxlyDataTests/Info.plist"
       - name: Test IPA validation
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Crash reports
@@ -63,14 +52,6 @@ jobs:
             head -c 60000 "$report"
             echo "::endgroup::"
           done
-      - name: Upload Swift test results
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: swift-test-results-${{ github.sha }}
-          path: build/swift-test/
-          if-no-files-found: warn
-          retention-days: 14
 
   app:
     name: App and MaxlyCore
