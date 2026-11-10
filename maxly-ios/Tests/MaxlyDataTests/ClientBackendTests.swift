@@ -82,8 +82,19 @@ actor FakeMaxCore: MaxCore {
     func setDiscardMark(_ time: Int64, chatId: String) { discardMarks[chatId] = time }
     func draftDiscardedAt(chatId: String) async -> Int64 { discardMarks[chatId] ?? 0 }
 
+    /// `saveDraft` ждёт, пока тест не отпустит: запрос, который ждёт сети.
+    private var holdsSaves = false
+    private var heldSaves: [CheckedContinuation<Void, Never>] = []
+    func holdSaves() { holdsSaves = true }
+    func releaseSaves() {
+        holdsSaves = false
+        heldSaves.forEach { $0.resume() }
+        heldSaves = []
+    }
+
     func saveDraft(chatId: String, text: String, elementsJSON: String, replyTo: String) async throws -> Int64 {
         draftCalls.append(replyTo.isEmpty ? "save \(chatId) \(text)" : "save \(chatId) \(text) ↩\(replyTo)")
+        if holdsSaves { await withCheckedContinuation { heldSaves.append($0) } }
         // Как ядро: сохранённый черновик сразу в списке черновиков сервера.
         serverDraftList.removeAll { $0.chatId == chatId }
         serverDraftList.insert(CoreDraft(chatId: chatId, text: text, elementsJSON: elementsJSON, replyTo: replyTo, updateTime: 9_000), at: 0)

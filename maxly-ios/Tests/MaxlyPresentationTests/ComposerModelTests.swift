@@ -73,6 +73,37 @@ struct ComposerModelTests {
         model.stop()
     }
 
+    @Test("Отправка стирает черновик сразу, не дожидаясь паузы в наборе")
+    func sendConsumesDraft() async {
+        let drafts = FakeDrafts()
+        let model = composer(drafts: drafts, delay: .seconds(60))
+        model.beginReply(to: message("7", author: "bob"))
+        model.draft = "привет"
+        model.flushDraft()
+        #expect(await eventually { await drafts.drafts["c"] == "привет" })
+        #expect(await drafts.replies["c"] == "7")
+        await model.send()
+        #expect(await eventually { await drafts.drafts["c"] == nil })
+        #expect(await eventually { await drafts.replies["c"] == nil })
+    }
+
+    @Test("Ответ черновика, чьё сообщение не загрузилось, после отправки не всплывает")
+    func sendDropsPendingDraftReply() async {
+        let drafts = FakeDrafts(replies: ["c": "12"])
+        let model = composer(drafts: drafts, delay: .seconds(60))
+        var feed: [Message] = []
+        model.findReply = { id in feed.first { $0.serverId == id } }
+        model.start()
+        try? await Task.sleep(for: .milliseconds(30))
+        model.draft = "без цитаты"
+        await model.send()
+        #expect(await eventually { await drafts.replies["c"] == nil })
+        feed = [message("12", author: "bob")]
+        model.resolveDraftReply()
+        #expect(model.replyTarget == nil)
+        model.stop()
+    }
+
     @Test("Отправка: хуки ленты, цитата уходит с текстом; ошибка возвращает текст, разметку и цитату")
     func sendAndFailure() async {
         let repository = ComposerMessages()

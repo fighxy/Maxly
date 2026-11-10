@@ -87,6 +87,60 @@ struct ServerSyncedDraftStoreTests {
         #expect(await fresh.draftReply(chatId: "-7") == "44")
     }
 
+    @Test("Отправка стирает текст и ответ на устройстве; серверу слать нечего")
+    func sentClearsDevice() async {
+        let core = FakeMaxCore()
+        let device = DeviceDrafts()
+        let store = ServerSyncedDraftStore(local: device, core: core, replies: .memory(), now: { Date(timeIntervalSince1970: 6) })
+        await store.saveDraft("ответ", chatId: "-7")
+        await store.saveDraftReply("12", chatId: "-7")
+        await store.draftSent(chatId: "-7")
+        #expect(await device.texts["-7"] == nil)
+        #expect(await store.draftReply(chatId: "-7") == nil)
+        await store.commitDraft(chatId: "-7")
+        #expect(await core.draftCalls.isEmpty)
+    }
+
+    @Test("Ответ отправили, пока его черновик шёл на сервер: сохранённое стирается и в поле не возвращается")
+    func sentWhileSaving() async {
+        let core = FakeMaxCore()
+        let store = ServerSyncedDraftStore(local: DeviceDrafts(), core: core, replies: .memory(), now: { Date(timeIntervalSince1970: 6) })
+        await store.saveDraftReply("12", chatId: "-7")
+        await core.holdSaves()
+        let commit = Task { await store.commitDraft(chatId: "-7") }
+        #expect(await eventually { await core.draftCalls == ["save -7  ↩12"] })
+        // Сообщение ушло: поле пустое, а запрос с прежним ответом ещё ждёт сети.
+        await store.draftSent(chatId: "-7")
+        // Сервер сохранил его уже после отправки. Событие об этом приходит, пока сверка идёт.
+        await core.setServerDrafts([CoreDraft(chatId: "-7", text: "", replyTo: "12", updateTime: 9_000)])
+        await store.serverDraftChanged(chatId: "-7")
+        #expect(await store.draftReply(chatId: "-7") == nil)
+        await core.releaseSaves()
+        await commit.value
+        #expect(await core.draftCalls == ["save -7  ↩12", "discard -7 9000"])
+        #expect(await store.draftReply(chatId: "-7") == nil)
+        #expect(await store.draft(chatId: "-7") == nil)
+        // Событие о стирании разобрано после сверки: черновик не вернулся.
+        await store.serverDraftChanged(chatId: "-7")
+        #expect(await store.draftReply(chatId: "-7") == nil)
+    }
+
+    @Test("Ответ сняли, пока черновик шёл на сервер: на сервере остаётся текст без ответа")
+    func changedWhileSaving() async {
+        let core = FakeMaxCore()
+        let device = DeviceDrafts()
+        let store = ServerSyncedDraftStore(local: device, core: core, replies: .memory(), now: { Date(timeIntervalSince1970: 6) })
+        await store.saveDraft("текст", chatId: "-7")
+        await store.saveDraftReply("12", chatId: "-7")
+        await core.holdSaves()
+        let commit = Task { await store.commitDraft(chatId: "-7") }
+        #expect(await eventually { await core.draftCalls == ["save -7 текст ↩12"] })
+        await store.saveDraftReply(nil, chatId: "-7")
+        await core.releaseSaves()
+        await commit.value
+        #expect(await core.draftCalls == ["save -7 текст ↩12", "save -7 текст"])
+    }
+
     @Test("Черновик с другого устройства новее — встаёт на устройство, экран узнаёт об этом")
     func remoteDraft() async {
         let core = FakeMaxCore()
