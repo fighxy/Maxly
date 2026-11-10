@@ -23,6 +23,8 @@ public struct ChatRow: View {
     @ScaledMetric(relativeTo: .body) private var avatarSize = MaxlyTheme.avatar
     @Environment(\.privateMode) private var privateMode
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.displayScale) private var displayScale
+    @Environment(\.imageURLSizing) private var imageURLSizing
 
     public init(
         item: ChatListItem, storyRing: StoryRing? = nil, onStoryTap: (() -> Void)? = nil, onOpenApp: (() -> Void)? = nil
@@ -191,7 +193,10 @@ public struct ChatRow: View {
                     .accessibilityLabel("Переслано")
             }
             if let url = item.thumbnailURL {
-                RemoteImage(url: url, maxPixel: 64) {
+                RemoteImage(
+                    url: ChatListImages.thumbnailURL(url, media: item.media, scale: Double(displayScale), sizing: imageURLSizing),
+                    maxPixel: 64
+                ) {
                     RoundedRectangle(cornerRadius: 3).fill(Color.maxlyField)
                 }
                 .frame(width: 18, height: 18)

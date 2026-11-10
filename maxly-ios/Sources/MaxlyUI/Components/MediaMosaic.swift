@@ -230,20 +230,15 @@ struct MediaMosaic: View {
     /// Размер декодирования плитки: сторона в точках ×3, ступенями по 256, чтобы соседние
     /// размеры одного фото делили кэш.
     static func decodeSize(width: CGFloat, height: CGFloat) -> Int {
-        let pixels = Int((max(width, height) * 3).rounded(.up))
-        return min(ImagePipeline.fullSize, max(256, (pixels + 255) / 256 * 256))
+        BubbleMetrics.tileDecodeSize(width: Double(width), height: Double(height))
     }
 
-    /// Миниатюра фото идёт через ядро (`w_N`). Файл на диске и видео не меняются.
-    /// Полный экран берёт исходный адрес сам.
+    /// Миниатюра фото идёт через ядро (`w_N`), видео — обложкой; своя копия на диске важнее.
+    /// Полный экран берёт исходный адрес сам. Тот же выбор делает предзагрузка ленты.
     private func thumbnail(_ item: ChatAttachment, width: CGFloat, height: CGFloat) -> URL? {
-        if let photo = item.photo, photo.localPath == nil {
-            return ImageURLRequests.url(
-                photo.url, shape: .width, pointSize: max(width, height), scale: displayScale,
-                fullScreen: false, sizing: imageURLSizing
-            )
-        }
-        return item.photo?.displayURL ?? item.video?.displayURL
+        TranscriptImagePrefetch.tileURL(
+            item, pointSize: Double(max(width, height)), scale: Double(displayScale), sizing: imageURLSizing
+        )
     }
 
 }

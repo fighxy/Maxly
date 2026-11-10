@@ -701,11 +701,14 @@ public struct PhotoContent: Hashable, Sendable, Codable {
     /// Гифка: флаг `gif` или ролик рядом с картинкой.
     public var isGif: Bool { gif == true || mp4URL != nil }
 
+    /// Своя копия фото на диске, если файл ещё на месте.
+    public var localFileURL: URL? {
+        guard let localPath, FileManager.default.fileExists(atPath: localPath) else { return nil }
+        return URL(fileURLWithPath: localPath)
+    }
+
     public var displayURL: URL? {
-        if let localPath, FileManager.default.fileExists(atPath: localPath) {
-            return URL(fileURLWithPath: localPath)
-        }
-        return url
+        localFileURL ?? url
     }
 
     public func cacheItem() -> MediaItem? {

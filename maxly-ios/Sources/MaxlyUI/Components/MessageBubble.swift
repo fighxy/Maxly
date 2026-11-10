@@ -1043,7 +1043,9 @@ public struct MessageBubble: View {
 
     /// Миниатюра цитаты: фото — уменьшенным адресом ядра, видео — его обложкой.
     private func replyThumbnailURL(_ item: ChatAttachment) -> URL? {
-        if let photo = item.photo, photo.localPath == nil {
+        // Своя копия на диске важнее. Её могли убрать (кэш, обновление приложения): тогда
+        // уменьшенный адрес, а не оригинал.
+        if let photo = item.photo, photo.localFileURL == nil {
             return ImageURLRequests.url(
                 photo.url, shape: .square, pointSize: Self.replyThumbnail, scale: displayScale,
                 fullScreen: false, sizing: imageURLSizing

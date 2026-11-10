@@ -80,6 +80,10 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     static let reactionsPage = 100
     /// Когда последняя страница чата в последний раз пришла с сервера.
     private var latestFetchedAt: [String: Date] = [:]
+    /// Когда страницу кэша перечитывали с сервера из-за просроченных адресов фото: ключ — чат
+    /// и курсор страницы. Та же страница не спрашивается чаще `staleRefetchPause`.
+    private var staleRefetches: [String: Date] = [:]
+    static let staleRefetchPause: TimeInterval = 600
     /// Сколько секунд свежая страница считается актуальной. Возврат из профиля, опрос и
     /// повторное открытие чата в это окно сервер не спрашивают: на частые `CHAT_HISTORY`
     /// он отвечает `too.many.requests`. Новые сообщения в это время приходят пушами.
@@ -418,6 +422,24 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         case .server(let code, let text): text ?? code
         case .rejected(let text): text
         default: ""
+        }
+    }
+
+    /// Вложения сервера с путями, которые устройство уже знает (скачанный файл, своя копия).
+    /// Пары ищутся по id вложения: это одно и то же сообщение сервера.
+    static func keepingLocalPaths(_ server: [ChatAttachment], stored: [ChatAttachment]) -> [ChatAttachment] {
+        var paths: [String: String] = [:]
+        for attachment in stored {
+            let path = attachment.photo?.localPath ?? attachment.video?.localPath
+                ?? attachment.voice?.localPath ?? attachment.file?.localPath
+            if let path { paths[attachment.id] = path }
+        }
+        guard !paths.isEmpty else { return server }
+        return server.map { attachment in
+            let known = attachment.photo?.localPath ?? attachment.video?.localPath
+                ?? attachment.voice?.localPath ?? attachment.file?.localPath
+            guard known == nil, let path = paths[attachment.id] else { return attachment }
+            return attachment.withLocalPath(path, id: attachment.id)
         }
     }
 
@@ -1151,7 +1173,10 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     }
 
     private func loadMore(chatId: String, before: Date?, requiresSuccess: Bool) async throws(MaxlyError) -> [Message] {
-        let local = try page(chatId: chatId, before: before)
+        var local = try page(chatId: chatId, before: before)
+        if await refreshExpiredPage(local, chatId: chatId, before: before) {
+            local = try page(chatId: chatId, before: before)
+        }
         guard local.count < Self.pageSize else { return local.map(\.domain) }
 
         let cursor = local.last?.timestamp ?? before
@@ -1181,6 +1206,45 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             }
             if local.isEmpty { throw error.maxlyError }
             return local.map(\.domain)
+        }
+    }
+
+    /// Адрес фото живёт ограниченно (`expires`): у давней истории в кэше он просрочен, и
+    /// картинка не грузится, если её нет на диске. Свежую страницу обновляет открытие чата, а
+    /// страницы старше берутся из кэша и сами не перечитывались. Такая страница спрашивается
+    /// у сервера заново: сообщения те же, адреса свежие. `true` — кэш обновлён.
+    private func refreshExpiredPage(_ local: [MessageRecord], chatId: String, before: Date?) async -> Bool {
+        let now = Date().unixMillis
+        guard local.contains(where: { hasExpiredPhoto($0.contentJSON, now: now) }) else { return false }
+        let key = "\(chatId)|\(before?.unixMillis ?? 0)"
+        if let last = staleRefetches[key], Date().timeIntervalSince(last) < Self.staleRefetchPause { return false }
+        if staleRefetches.count > 256 { staleRefetches.removeAll() }
+        staleRefetches[key] = Date()
+        let started = generation
+        let response: Result<[MessageRecord], MaxAPIError>
+        if let before {
+            response = await api.fetchOlderMessages(chatId: chatId, before: before, limit: Self.pageSize)
+        } else {
+            response = await api.fetchMessages(chatId: chatId, before: nil, limit: Self.pageSize)
+        }
+        guard started == generation, case .success(let fetched) = response, !fetched.isEmpty else {
+            // Не вышло (нет сети, пауза сервера): следующая попытка не ждёт.
+            staleRefetches[key] = nil
+            return false
+        }
+        let records = await withReactions(fetched, chatId: chatId)
+        guard started == generation else { return false }
+        return (try? upsert(records)) != nil
+    }
+
+    /// У фото или обложки видео в содержимом просроченный адрес.
+    private func hasExpiredPhoto(_ contentJSON: String, now: Int64) -> Bool {
+        // Без `expires` в адресе срока нет: содержимое можно не разбирать.
+        guard contentJSON.contains("expires") else { return false }
+        return MessageContentCodec.decode(contentJSON).attachments.contains { attachment in
+            let url = attachment.photo?.url ?? attachment.video?.posterURL
+            guard let url, !url.isFileURL else { return false }
+            return photoURLExpired(url.absoluteString, now)
         }
     }
 
@@ -1713,6 +1777,20 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             let keys = page.map { $0.serverId ?? $0.id }
             let byId = (try? messages(ids: keys)) ?? [:]
             let byServerId = (try? messages(serverIds: keys)) ?? [:]
+            // У сообщений из кэша адреса фото могли выйти из срока: свежие с сервера
+            // записываются в них. Новые строки в кэш по-прежнему не добавляются.
+            let now = Date().unixMillis
+            var refreshed = false
+            for record in page where !record.contentJSON.isEmpty {
+                let key = record.serverId ?? record.id
+                guard let row = byServerId[key] ?? byId[key], hasExpiredPhoto(row.contentJSON, now: now) else { continue }
+                Self.merge(record, into: row, keepReactions: pendingReactions[row.id] != nil)
+                refreshed = true
+            }
+            if refreshed {
+                try? modelContext.save()
+                notify(chatId: chatId)
+            }
             let mark = peerReadMark(chatId)
             return page
                 .map { record -> Message in
@@ -1757,6 +1835,9 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             // Счётчик комментариев приходит отдельным запросом: история его не несёт, и без
             // этого полоса комментариев пропадала бы до следующего запроса — пузырь прыгал.
             if content.comments == nil { content.comments = stored.comments }
+            // Пути к скачанным файлам и своим копиям история не несёт: без этого каждая сверка
+            // с сервером забывала бы, что вложение уже лежит на устройстве.
+            content.attachments = Self.keepingLocalPaths(content.attachments, stored: stored.attachments)
             // Расшифровку история не несёт: текст, полученный по запросу, не пропадает.
             let transcripts = Dictionary(stored.voices.compactMap { voice in voice.transcript.map { (voice.id, $0) } }, uniquingKeysWith: { first, _ in first })
             if !transcripts.isEmpty {
