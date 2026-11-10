@@ -11,6 +11,11 @@ import MaxlyDomain
 /// ядро, порядок 176/177 в чате тоже держит ядро. Черновики с других устройств и метки
 /// стирания приходят событиями `draft` (`serverDraftChanged`).
 ///
+/// Запрос черновика ждёт сети и переподключения, а поле за это время могут отправить
+/// (`draftSent`) или поменять. Тогда на сервере осталось бы уже отправленное, и оно вернулось
+/// бы в поле черновиком. Поэтому после запроса `commitDraft` сверяет ещё раз, а события
+/// `draft` этого чата ждут конца сверки.
+///
 /// Текст хранит база устройства, ответ — `replies` (серверный id сообщения и время). Разметку
 /// черновика база пока не хранит: на сервер уходят текст и ответ.
 public actor ServerSyncedDraftStore: ChatDraftStore {
@@ -61,6 +66,19 @@ public actor ServerSyncedDraftStore: ChatDraftStore {
     /// а сверять такой черновик надо по серверному.
     private var adopted: [String: (text: String, time: Int64)] = [:]
     private var listeners: [UUID: AsyncStream<String>.Continuation] = [:]
+    /// Сверки с сервером, которые ещё идут, по чатам.
+    private var commits: [String: Commit] = [:]
+    /// Чаты, чей черновик сервера поменялся, пока шла своя сверка: разбираются после неё.
+    private var deferredChanges: Set<String> = []
+
+    /// Очередь сверок одного чата: последняя задача и сколько их не закончилось.
+    private struct Commit {
+        var tail: Task<Void, Never>
+        var count: Int
+    }
+
+    /// Сколько раз подряд сверяется чат, если поле менялось, пока шёл запрос.
+    private static let commitRounds = 2
 
     public init(
         local: any ChatDraftStore,
@@ -99,29 +117,75 @@ public actor ServerSyncedDraftStore: ChatDraftStore {
         setReply(messageId.map { ReplyMark(messageId: $0, time: Self.millis(now())) }, chatId: chatId)
     }
 
+    /// Черновик ушёл сообщением: текст и ответ на устройстве стираются разом. Черновик сервера
+    /// стирает ядро; сохранение, которое ещё в пути, поправит сама сверка (`commitDraft`).
+    public func draftSent(chatId: String) async {
+        if replies[chatId] != nil { setReply(nil, chatId: chatId) }
+        adopted[chatId] = nil
+        await local.saveDraft("", chatId: chatId)
+    }
+
+    /// Сверки одного чата идут по одной: следующая считает запрос уже по итогу предыдущей.
     public func commitDraft(chatId: String) async {
         guard Self.syncs(chatId) else { return }
-        let device = await deviceDraft(chatId) ?? SyncedDraft(text: "", updateTime: 0)
-        let server = await core.serverDrafts().first { $0.chatId == chatId }.map(Self.synced)
-        switch DraftSync.request(local: device, server: server, address: .chat(chatId)) {
+        let previous = commits[chatId]
+        let task = Task {
+            await previous?.tail.value
+            await self.runCommit(chatId)
+        }
+        commits[chatId] = Commit(tail: task, count: (previous?.count ?? 0) + 1)
+        await task.value
+    }
+
+    private func runCommit(_ chatId: String) async {
+        for _ in 0..<Self.commitRounds {
+            let device = await deviceDraft(chatId) ?? SyncedDraft(text: "", updateTime: 0)
+            let server = await core.serverDrafts().first { $0.chatId == chatId }.map(Self.synced)
+            guard let request = DraftSync.request(local: device, server: server, address: .chat(chatId)) else { break }
+            guard await send(request, chatId: chatId) else { break }
+            // Пока запрос шёл, поле отправили или поменяли: на сервере осталось не то, что в
+            // поле. Сверяем ещё раз, уже по новому черновику устройства.
+            let current = await deviceDraft(chatId)
+            guard (current?.text ?? "") != device.text || current?.replyTo != device.replyTo else { break }
+        }
+        await commitFinished(chatId)
+    }
+
+    /// `false` — запрос не прошёл.
+    private func send(_ request: DraftSync.Request, chatId: String) async -> Bool {
+        switch request {
         case let .save(_, text, elements, replyTo):
             do {
                 // `0` без ошибки: сохранение перекрыла отправка, черновика больше нет.
                 _ = try await core.saveDraft(
                     chatId: chatId, text: text, elementsJSON: MessageMarkup.json(elements), replyTo: replyTo ?? ""
                 )
+                return true
             } catch {
                 Log.warning(.messages, "Черновик не сохранён на сервере: \(error)")
+                return false
             }
         case let .discard(_, serverTime):
             do {
                 try await core.discardDraft(chatId: chatId, time: serverTime)
+                return true
             } catch {
                 Log.warning(.messages, "Черновик не стёрт на сервере: \(error)")
+                return false
             }
-        case nil:
-            break
         }
+    }
+
+    /// Сверка закончилась. Если она была последней в чате, разбираются события `draft`,
+    /// пришедшие за это время.
+    private func commitFinished(_ chatId: String) async {
+        let left = (commits[chatId]?.count ?? 1) - 1
+        guard left <= 0 else {
+            commits[chatId]?.count = left
+            return
+        }
+        commits[chatId] = nil
+        if deferredChanges.remove(chatId) != nil { await applyServerChange(chatId) }
     }
 
     /// Черновик или метка стирания сервера изменились (событие `draft` ядра: другое
@@ -129,6 +193,16 @@ public actor ServerSyncedDraftStore: ChatDraftStore {
     /// поменялся, экран чата узнаёт об этом из `draftChanges`.
     public func serverDraftChanged(chatId: String) async {
         guard Self.syncs(chatId) else { return }
+        // Своя сверка ещё идёт: событие может быть её же сохранением, которое она сейчас
+        // сотрёт. Разбирается после неё, по итогу.
+        if commits[chatId] != nil {
+            deferredChanges.insert(chatId)
+            return
+        }
+        await applyServerChange(chatId)
+    }
+
+    private func applyServerChange(_ chatId: String) async {
         let before = (await local.draft(chatId: chatId), replies[chatId]?.messageId)
         let after = await reconcile(chatId)
         guard before.0 != after.text || before.1 != after.reply else { return }

@@ -159,15 +159,42 @@ public final class ComposerModel {
         commitDraft()
     }
 
-    /// Из поля ушли: черновик сверяется с сервером после записи на устройстве.
+    /// Из поля ушли: черновик сверяется с сервером после записи на устройстве. Сверка ждёт
+    /// сети и переподключения, поэтому в цепочку записей не встаёт: иначе запись после
+    /// отправки ждала бы её, и отправленное всё это время лежало бы черновиком.
     private func commitDraft() {
         guard let drafts, editTarget == nil else { return }
+        let chatId = chatId
+        let writes = saveChain
+        Task {
+            await writes?.value
+            await drafts.commitDraft(chatId: chatId)
+        }
+    }
+
+    /// Черновик ушёл сообщением: хранилище забывает текст и ответ сразу, не дожидаясь паузы
+    /// в наборе. Ответ, чьё сообщение так и не загрузилось, тоже снимается: иначе он всплыл
+    /// бы над полем позже.
+    private func consumeDraft() {
+        draftSave?.cancel()
+        draftSave = nil
+        pendingDraftReply = nil
+        guard let drafts else { return }
+        savedDraft = ""
+        savedReply = nil
         let chatId = chatId
         let previous = saveChain
         saveChain = Task {
             await previous?.value
-            await drafts.commitDraft(chatId: chatId)
+            await drafts.draftSent(chatId: chatId)
         }
+    }
+
+    /// Запись на устройство сразу, без паузы и без сверки с сервером.
+    private func persistDraftNow() {
+        draftSave?.cancel()
+        draftSave = nil
+        persistDraft()
     }
 
     private func scheduleDraftSave() {
@@ -223,8 +250,9 @@ public final class ComposerModel {
         guard current == (savedDraft ?? ""), currentReply == savedReply else { return }
         let text = await drafts.draft(chatId: chatId) ?? ""
         let reply = await drafts.draftReply(chatId: chatId)
-        // Пока ждали хранилище, поле могли начать править.
-        guard editTarget == nil, draft.trimmingCharacters(in: .whitespacesAndNewlines) == current else { return }
+        // Пока ждали хранилище, поле могли начать править, выбрать или отправить ответ.
+        guard editTarget == nil, draft.trimmingCharacters(in: .whitespacesAndNewlines) == current,
+              (replyTarget?.serverId ?? pendingDraftReply) == currentReply else { return }
         savedDraft = text
         savedReply = reply
         isRestoringDraft = true
@@ -256,6 +284,7 @@ public final class ComposerModel {
         animojiDraft.clear()
         mentionDraft.clear()
         replyTarget = nil
+        consumeDraft()
         onWillSend?()
         do {
             try await repository.send(text: text, chatId: chatId, replyTo: reply?.id, formatting: spans)
@@ -279,6 +308,8 @@ public final class ComposerModel {
         guard !plan.batches.isEmpty else { return false }
         var reply = replyTarget?.id
         replyTarget = nil
+        // Цитата ушла с вложением: в черновике её больше нет. Текст поля остаётся черновиком.
+        if reply != nil { persistDraftNow() }
         onWillSend?()
         do {
             for batch in plan.batches {
