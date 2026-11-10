@@ -88,6 +88,9 @@ public final class ComposerModel {
     @ObservationIgnored private var savedDraft: String?
     /// Ответ, записанный в черновик (серверный id).
     @ObservationIgnored private var savedReply: String?
+    /// Сколько раз черновик ушёл сообщением. Загрузка, которая ещё читала хранилище,
+    /// не возвращает ответ в поле, если за это время его уже отправили.
+    @ObservationIgnored private var consumedDrafts = 0
     /// Подписка на черновики, изменённые не из этого поля.
     @ObservationIgnored private var draftWatch: Task<Void, Never>?
 
@@ -117,10 +120,13 @@ public final class ComposerModel {
     func start() {
         guard let drafts else { return }
         let chatId = chatId
+        let consumed = consumedDrafts
         Task { [weak self] in
             let saved = await drafts.draft(chatId: chatId)
             let reply = await drafts.draftReply(chatId: chatId)
-            guard let self else { return }
+            // Пока хранилище отвечали, сообщение уже ушло: ответ из той выборки
+            // всплыл бы над пустым полем, когда его сообщение доедет в ленту.
+            guard let self, self.consumedDrafts == consumed else { return }
             if let saved, self.draft.isEmpty {
                 self.savedDraft = saved
                 self.isRestoringDraft = true
@@ -178,6 +184,7 @@ public final class ComposerModel {
     private func consumeDraft() {
         draftSave?.cancel()
         draftSave = nil
+        consumedDrafts += 1
         pendingDraftReply = nil
         guard let drafts else { return }
         savedDraft = ""
@@ -245,11 +252,13 @@ public final class ComposerModel {
     /// Черновик поменяли на другом устройстве: поле берёт его, если своих незаписанных правок нет.
     private func reloadDraft() async {
         guard let drafts, editTarget == nil else { return }
+        let consumed = consumedDrafts
         let current = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let currentReply = replyTarget?.serverId ?? pendingDraftReply
         guard current == (savedDraft ?? ""), currentReply == savedReply else { return }
         let text = await drafts.draft(chatId: chatId) ?? ""
         let reply = await drafts.draftReply(chatId: chatId)
+        guard consumed == consumedDrafts else { return }
         // Пока ждали хранилище, поле могли начать править, выбрать или отправить ответ.
         guard editTarget == nil, draft.trimmingCharacters(in: .whitespacesAndNewlines) == current,
               (replyTarget?.serverId ?? pendingDraftReply) == currentReply else { return }
