@@ -80,6 +80,10 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     static let reactionsPage = 100
     /// Когда последняя страница чата в последний раз пришла с сервера.
     private var latestFetchedAt: [String: Date] = [:]
+    /// Когда страницу кэша перечитывали с сервера из-за просроченных адресов фото: ключ — чат
+    /// и курсор страницы. Та же страница не спрашивается чаще `staleRefetchPause`.
+    private var staleRefetches: [String: Date] = [:]
+    static let staleRefetchPause: TimeInterval = 600
     /// Сколько секунд свежая страница считается актуальной. Возврат из профиля, опрос и
     /// повторное открытие чата в это окно сервер не спрашивают: на частые `CHAT_HISTORY`
     /// он отвечает `too.many.requests`. Новые сообщения в это время приходят пушами.
@@ -1169,7 +1173,10 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
     }
 
     private func loadMore(chatId: String, before: Date?, requiresSuccess: Bool) async throws(MaxlyError) -> [Message] {
-        let local = try page(chatId: chatId, before: before)
+        var local = try page(chatId: chatId, before: before)
+        if await refreshExpiredPage(local, chatId: chatId, before: before) {
+            local = try page(chatId: chatId, before: before)
+        }
         guard local.count < Self.pageSize else { return local.map(\.domain) }
 
         let cursor = local.last?.timestamp ?? before
@@ -1199,6 +1206,45 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             }
             if local.isEmpty { throw error.maxlyError }
             return local.map(\.domain)
+        }
+    }
+
+    /// Адрес фото живёт ограниченно (`expires`): у давней истории в кэше он просрочен, и
+    /// картинка не грузится, если её нет на диске. Свежую страницу обновляет открытие чата, а
+    /// страницы старше берутся из кэша и сами не перечитывались. Такая страница спрашивается
+    /// у сервера заново: сообщения те же, адреса свежие. `true` — кэш обновлён.
+    private func refreshExpiredPage(_ local: [MessageRecord], chatId: String, before: Date?) async -> Bool {
+        let now = Date().unixMillis
+        guard local.contains(where: { hasExpiredPhoto($0.contentJSON, now: now) }) else { return false }
+        let key = "\(chatId)|\(before?.unixMillis ?? 0)"
+        if let last = staleRefetches[key], Date().timeIntervalSince(last) < Self.staleRefetchPause { return false }
+        if staleRefetches.count > 256 { staleRefetches.removeAll() }
+        staleRefetches[key] = Date()
+        let started = generation
+        let response: Result<[MessageRecord], MaxAPIError>
+        if let before {
+            response = await api.fetchOlderMessages(chatId: chatId, before: before, limit: Self.pageSize)
+        } else {
+            response = await api.fetchMessages(chatId: chatId, before: nil, limit: Self.pageSize)
+        }
+        guard started == generation, case .success(let fetched) = response, !fetched.isEmpty else {
+            // Не вышло (нет сети, пауза сервера): следующая попытка не ждёт.
+            staleRefetches[key] = nil
+            return false
+        }
+        let records = await withReactions(fetched, chatId: chatId)
+        guard started == generation else { return false }
+        return (try? upsert(records)) != nil
+    }
+
+    /// У фото или обложки видео в содержимом просроченный адрес.
+    private func hasExpiredPhoto(_ contentJSON: String, now: Int64) -> Bool {
+        // Без `expires` в адресе срока нет: содержимое можно не разбирать.
+        guard contentJSON.contains("expires") else { return false }
+        return MessageContentCodec.decode(contentJSON).attachments.contains { attachment in
+            let url = attachment.photo?.url ?? attachment.video?.posterURL
+            guard let url, !url.isFileURL else { return false }
+            return photoURLExpired(url.absoluteString, now)
         }
     }
 
@@ -1731,6 +1777,20 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             let keys = page.map { $0.serverId ?? $0.id }
             let byId = (try? messages(ids: keys)) ?? [:]
             let byServerId = (try? messages(serverIds: keys)) ?? [:]
+            // У сообщений из кэша адреса фото могли выйти из срока: свежие с сервера
+            // записываются в них. Новые строки в кэш по-прежнему не добавляются.
+            let now = Date().unixMillis
+            var refreshed = false
+            for record in page where !record.contentJSON.isEmpty {
+                let key = record.serverId ?? record.id
+                guard let row = byServerId[key] ?? byId[key], hasExpiredPhoto(row.contentJSON, now: now) else { continue }
+                Self.merge(record, into: row, keepReactions: pendingReactions[row.id] != nil)
+                refreshed = true
+            }
+            if refreshed {
+                try? modelContext.save()
+                notify(chatId: chatId)
+            }
             let mark = peerReadMark(chatId)
             return page
                 .map { record -> Message in
