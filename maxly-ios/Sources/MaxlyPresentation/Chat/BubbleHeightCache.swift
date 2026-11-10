@@ -187,23 +187,27 @@ public final class BubbleHeightCache: @unchecked Sendable {
     /// Фото и видео той же раскладкой, что рисует пузырь (`MediaMosaic`): одиночный кадр у
     /// подписи — `captionedTile`, иначе альбом рядами, кружок своим диаметром.
     static func mediaHeight(_ content: MessageContent, bubbleWidth: Double, hasFill: Bool) -> Double {
+        guard let album = mediaLayout(content, bubbleWidth: bubbleWidth, hasFill: hasFill) else { return 0 }
+        return album.height + (hasFill ? BubbleMetrics.mediaInset : 0) * 2
+    }
+
+    /// Плитки фото и видео сообщения, как их ставит пузырь; `nil` — их нет. По ним же
+    /// предзагрузка считает адреса и размеры картинок (`TranscriptImagePrefetch`).
+    static func mediaLayout(_ content: MessageContent, bubbleWidth: Double, hasFill: Bool) -> AlbumLayout? {
         let visuals = content.visuals
-        guard !visuals.isEmpty else { return 0 }
+        guard !visuals.isEmpty else { return nil }
         let inset = hasFill ? BubbleMetrics.mediaInset : 0
         let width = max(1, bubbleWidth - inset * 2)
         let round = visuals.count == 1 && visuals[0].video?.isRound == true
         let aspects = visuals.map(BubbleMetrics.aspect)
-        let album: AlbumLayout
         if hasFill, visuals.count == 1, !round {
-            album = ChatContentFormat.captionedTile(aspect: aspects[0], width: width)
-        } else {
-            album = ChatContentFormat.album(
-                aspects: aspects,
-                maxWidth: round ? min(width, BubbleMetrics.roundSide) : width,
-                maxHeight: hasFill && !round ? 620 : 360
-            )
+            return ChatContentFormat.captionedTile(aspect: aspects[0], width: width)
         }
-        return album.height + inset * 2
+        return ChatContentFormat.album(
+            aspects: aspects,
+            maxWidth: round ? min(width, BubbleMetrics.roundSide) : width,
+            maxHeight: hasFill && !round ? 620 : 360
+        )
     }
 }
 
@@ -234,6 +238,21 @@ public enum BubbleMetrics {
     /// при оценке совпадает с тем, что нарисует пузырь.
     public static func timeReserve(outgoing: Bool) -> String {
         outgoing ? "\u{00A0}0000000" : "\u{00A0}00000"
+    }
+
+    /// Наибольший размер декодирования картинки (он же у `ImagePipeline.fullSize`).
+    public static let maxDecodeSize = 1600
+
+    /// Размер декодирования плитки: сторона в точках ×3, ступенями по 256, чтобы соседние
+    /// размеры одного фото делили кэш.
+    public static func tileDecodeSize(width: Double, height: Double) -> Int {
+        let pixels = Int((max(width, height) * 3).rounded(.up))
+        return min(maxDecodeSize, max(256, (pixels + 255) / 256 * 256))
+    }
+
+    /// Размер декодирования аватара со стороной `size` точек (как у `AvatarView`).
+    public static func avatarDecodeSize(_ size: Double) -> Int {
+        max(16, Int(size * 3))
     }
 
     /// Пропорция кадра по размерам из сервера; неизвестные — квадрат, кружок — всегда квадрат.

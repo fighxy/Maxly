@@ -54,7 +54,8 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
     var onLoadOlder: () -> Void
     var onLoadNewer: () -> Void
     var onScrollFinished: (_ token: Int, _ confirmed: Bool) -> Void
-    var onPrefetchURLs: ([URL]) -> Void
+    /// Видимые строки сдвинулись: пора греть картинки вокруг них (в сторону прокрутки).
+    var onPrefetch: (_ visible: Range<Int>?, _ towardOlder: Bool) -> Void
 
     func makeUIViewController(context: Context) -> FeedCollectionController {
         let controller = FeedCollectionController()
@@ -270,16 +271,13 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
             guard let controller else { return }
             let indices = controller.visibleRowFrames().map(\.index)
             let range: Range<Int>? = indices.min().flatMap { first in indices.max().map { first..<($0 + 1) } }
-            let plan = TranscriptImagePrefetch.plan(
-                messages: parent.viewModel.messages,
-                visibleRange: range,
-                scrollingTowardOlder: controller.scrollingTowardOlder
-            )
-            let key = plan.urls.map(\.absoluteString).joined(separator: "|")
+            let towardOlder = controller.scrollingTowardOlder
+            let rows = parent.rows
+            let key = "\(range?.lowerBound ?? -1)|\(range?.upperBound ?? -1)|\(towardOlder)|\(rows.count)|\(rows.first?.id ?? "")|\(rows.last?.id ?? "")"
             guard force || key != lastPrefetchKey else { return }
             lastPrefetchKey = key
-            guard !plan.urls.isEmpty else { return }
-            parent.onPrefetchURLs(plan.urls)
+            guard !rows.isEmpty else { return }
+            parent.onPrefetch(range, towardOlder)
         }
 
         // MARK: Служебные строки

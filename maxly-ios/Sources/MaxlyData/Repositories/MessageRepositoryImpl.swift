@@ -421,6 +421,24 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
         }
     }
 
+    /// Вложения сервера с путями, которые устройство уже знает (скачанный файл, своя копия).
+    /// Пары ищутся по id вложения: это одно и то же сообщение сервера.
+    static func keepingLocalPaths(_ server: [ChatAttachment], stored: [ChatAttachment]) -> [ChatAttachment] {
+        var paths: [String: String] = [:]
+        for attachment in stored {
+            let path = attachment.photo?.localPath ?? attachment.video?.localPath
+                ?? attachment.voice?.localPath ?? attachment.file?.localPath
+            if let path { paths[attachment.id] = path }
+        }
+        guard !paths.isEmpty else { return server }
+        return server.map { attachment in
+            let known = attachment.photo?.localPath ?? attachment.video?.localPath
+                ?? attachment.voice?.localPath ?? attachment.file?.localPath
+            guard known == nil, let path = paths[attachment.id] else { return attachment }
+            return attachment.withLocalPath(path, id: attachment.id)
+        }
+    }
+
     /// Вложения сервера с путями к своим копиям: фото и видео видны сразу, без скачивания.
     /// Пары ищутся по порядку внутри вида: сервер держит порядок `attaches`.
     static func keepingLocalCopies(_ server: [ChatAttachment], local: [ChatAttachment]) -> [ChatAttachment] {
@@ -1757,6 +1775,9 @@ public actor MessageRepositoryImpl: MessageRepository, OutboxStore, ModelActor {
             // Счётчик комментариев приходит отдельным запросом: история его не несёт, и без
             // этого полоса комментариев пропадала бы до следующего запроса — пузырь прыгал.
             if content.comments == nil { content.comments = stored.comments }
+            // Пути к скачанным файлам и своим копиям история не несёт: без этого каждая сверка
+            // с сервером забывала бы, что вложение уже лежит на устройстве.
+            content.attachments = Self.keepingLocalPaths(content.attachments, stored: stored.attachments)
             // Расшифровку история не несёт: текст, полученный по запросу, не пропадает.
             let transcripts = Dictionary(stored.voices.compactMap { voice in voice.transcript.map { (voice.id, $0) } }, uniquingKeysWith: { first, _ in first })
             if !transcripts.isEmpty {

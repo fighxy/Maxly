@@ -44,6 +44,10 @@ struct ChatListView: View {
     @Environment(PrivateModeSettings.self) private var privateModeSettings: PrivateModeSettings?
     @Environment(\.privateMode) private var privateMode
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.displayScale) private var displayScale
+    @Environment(\.imageURLSizing) private var imageURLSizing
+    /// Сторона аватара строки, как у `ChatRow`: по ней предзагрузка берёт тот же адрес.
+    @ScaledMetric(relativeTo: .body) private var avatarSize = MaxlyTheme.avatar
     /// Истории спрятаны над поиском: у заголовка — стопка их аватаров. Меняется только на
     /// границе, а не каждый кадр прокрутки.
     @State private var storiesHidden = true
@@ -94,7 +98,9 @@ struct ChatListView: View {
         }
         // Аватары первых строк качаются заранее: при прокрутке они проявляются сразу.
         .task(id: viewModel.itemsVersion) {
-            let urls = viewModel.prefetchImageURLs()
+            let urls = viewModel.prefetchImageURLs(
+                avatarSize: Double(min(avatarSize, 76)), scale: Double(displayScale), sizing: imageURLSizing
+            )
             guard !urls.isEmpty else { return }
             await ImagePipeline.shared.prefetch(urls)
         }

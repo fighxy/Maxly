@@ -59,12 +59,23 @@ public final class ChatListViewModel {
 
     /// Аватары и миниатюры первых строк — их качают заранее, пока список докручивается.
     public func prefetchImageURLs(limit: Int = 40) -> [URL] {
+        prefetchImageURLs(limit: limit, avatarSize: 0, scale: 1, sizing: PassthroughImageURLSizing())
+    }
+
+    /// То же адресами, какими картинки запросят строки (`ChatListImages`): аватар — квадратом
+    /// сервера под `avatarSize` точек, фото превью — уменьшенным. Иначе на диск лёг бы оригинал
+    /// под другим адресом, и строка всё равно шла бы в сеть.
+    public func prefetchImageURLs(limit: Int = 40, avatarSize: Double, scale: Double, sizing: any ImageURLSizing) -> [URL] {
         var seen = Set<URL>()
         var urls: [URL] = []
         for item in items.prefix(limit) {
             var candidates: [URL] = []
-            if case .photo(let url, _) = item.avatar.kind { candidates.append(url) }
-            if let thumbnail = item.thumbnailURL { candidates.append(thumbnail) }
+            if case .photo(let url, _) = item.avatar.kind {
+                candidates.append(ChatListImages.avatarURL(url, size: avatarSize, scale: scale, sizing: sizing))
+            }
+            if let thumbnail = item.thumbnailURL {
+                candidates.append(ChatListImages.thumbnailURL(thumbnail, media: item.media, scale: scale, sizing: sizing))
+            }
             for url in candidates where !url.isFileURL && seen.insert(url).inserted { urls.append(url) }
         }
         return urls

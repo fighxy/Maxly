@@ -60,6 +60,7 @@ struct ChatTranscript: View {
     // Окружение пузырей для ячеек ленты: через границу UIKit оно само не проходит.
     @Environment(\.privateMode) private var privateMode
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.displayScale) private var displayScale
     @Environment(\.animojiCatalog) private var animojiCatalog
     @Environment(\.reactionBurst) private var reactionBurst
     @Environment(\.messageMenuPresenter) private var messageMenuPresenter
@@ -69,8 +70,6 @@ struct ChatTranscript: View {
 
     static let feedInset: CGFloat = 8
     static let prefetchCount = 40
-    /// Декод картинок под пузырь (~ширина экрана × bubbleMax × 2× scale).
-    static let prefetchMaxPixel = 900
 
     var body: some View {
         GeometryReader { geo in
@@ -177,15 +176,14 @@ struct ChatTranscript: View {
                 position.viewportResized(lastRowId: viewModel.rows.last?.id)
             }
             .task(id: viewModel.transcriptVersion) {
-                let plan = TranscriptImagePrefetch.plan(
-                    messages: viewModel.messages,
+                let requests = TranscriptImagePrefetch.requests(
+                    rows: viewModel.rows,
                     visibleRange: nil,
-                    scrollingTowardOlder: false
+                    scrollingTowardOlder: false,
+                    frame: prefetchFrame(width: geo.size.width)
                 )
-                guard !plan.urls.isEmpty else { return }
-                await ImagePipeline.shared.prefetchDecoded(
-                    plan.urls.map { ($0, TranscriptImagePrefetch.maxPixel) }
-                )
+                guard !requests.isEmpty else { return }
+                await ImagePipeline.shared.prefetchDecoded(requests.map { ($0.url, $0.maxPixel) })
             }
         }
     }
@@ -261,11 +259,16 @@ struct ChatTranscript: View {
                 noteBottomIfReached()
                 reportReads()
             },
-            onPrefetchURLs: { urls in
+            onPrefetch: { visible, towardOlder in
+                let requests = TranscriptImagePrefetch.requests(
+                    rows: viewModel.rows,
+                    visibleRange: visible,
+                    scrollingTowardOlder: towardOlder,
+                    frame: prefetchFrame(width: width)
+                )
+                guard !requests.isEmpty else { return }
                 Task {
-                    await ImagePipeline.shared.prefetchDecoded(
-                        urls.map { ($0, Self.prefetchMaxPixel) }
-                    )
+                    await ImagePipeline.shared.prefetchDecoded(requests.map { ($0.url, $0.maxPixel) })
                 }
             }
         )
@@ -316,6 +319,18 @@ struct ChatTranscript: View {
     /// Ширина колонки пузыря по ширине строки ленты (лента без полей по краям).
     static func bubbleMaxWidth(rowWidth: CGFloat) -> CGFloat {
         min(520, max(0, rowWidth) * MaxlyTheme.bubbleMax)
+    }
+
+    /// От чего зависят адреса и размеры картинок в пузырях: предзагрузка берёт те же, что
+    /// запросят ячейки (`TranscriptImagePrefetch.requests`).
+    private func prefetchFrame(width: CGFloat) -> TranscriptImagePrefetch.Frame {
+        TranscriptImagePrefetch.Frame(
+            bubbleMaxWidth: Double(Self.bubbleMaxWidth(rowWidth: width - Self.feedInset * 2)),
+            showsAuthors: rules.showsAuthors,
+            allowsComments: rules.allowsComments,
+            scale: Double(displayScale),
+            sizing: imageURLSizing
+        )
     }
 
     /// Общее для всех строк, от чего зависит высота: ширина, шрифт и размер текста, вид чата,

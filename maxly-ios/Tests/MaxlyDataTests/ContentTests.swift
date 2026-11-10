@@ -412,6 +412,26 @@ struct MessageContentStoreTests {
         #expect(clip.durationMs == 3200)
     }
 
+    @Test("Сверка с сервером не забывает, что вложение уже скачано")
+    func historyKeepsDownload() async throws {
+        let (repository, _) = try await makeMessageStack(api: FakeMaxAPI())
+        let voice = VoiceContent(id: "a1", url: URL(string: "https://cdn.example/a.ogg"), durationMs: 3200)
+        let photo = PhotoContent(id: "p1", url: URL(string: "https://cdn.example/p.jpg"), width: 10, height: 10)
+        let server = row(
+            "m1",
+            text: "",
+            contentJSON: MessageContentCodec.encode(MessageContent(attachments: [.voice(voice), .photo(photo)]))
+        )
+        try await repository.upsert([server])
+        await repository.noteDownloaded(messageId: "m1", attachmentId: "a1", localPath: "/tmp/a1.ogg")
+        // История пришла ещё раз: та же запись сервера, без путей.
+        try await repository.upsert([server])
+
+        let stored = try #require(try await repository.page(chatId: "c1", before: nil).first)
+        #expect(stored.domain.content.voices.first?.localPath == "/tmp/a1.ogg")
+        #expect(stored.domain.content.visuals.first?.photo?.localPath == nil)
+    }
+
     @Test("Пустое имя не стирает уже известного автора")
     func authorSurvivesEmptyEcho() async throws {
         let (repository, _) = try await makeMessageStack(api: FakeMaxAPI())
