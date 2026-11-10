@@ -174,6 +174,21 @@ struct ComposerModelTests {
         #expect(await repository.sent.first?.spans.isEmpty == false)
     }
 
+    @Test("Отмена ответа снимает цитату и стирает ответ из черновика")
+    func cancelReplyClearsDraft() async {
+        let drafts = FakeDrafts()
+        let model = composer(drafts: drafts, delay: .seconds(60))
+        model.beginReply(to: message("12", author: "bob"))
+        model.flushDraft()
+        #expect(await eventually { await drafts.replies["c"] == "12" })
+        #expect(await drafts.drafts["c"] == nil)
+        model.cancelReply()
+        model.flushDraft()
+        #expect(model.replyTarget == nil)
+        #expect(await eventually { await drafts.replies["c"] == nil })
+        #expect(await drafts.drafts["c"] == nil)
+    }
+
     @Test("Удаление цитируемого сообщения снимает ответ")
     func dropReply() {
         let model = composer()
