@@ -71,14 +71,29 @@ struct ServerSyncedDraftStoreTests {
         #expect(await core.draftCalls.isEmpty)
     }
 
-    @Test("Черновик из одного ответа сохраняется на сервере и возвращается с сервера")
+    @Test("Черновик из одного ответа остаётся на устройстве и на сервер не уходит")
     func replyOnly() async {
         let core = FakeMaxCore()
         let store = ServerSyncedDraftStore(local: DeviceDrafts(), core: core, replies: .memory(), now: { Date(timeIntervalSince1970: 6) })
         await store.saveDraftReply("12", chatId: "-7")
         await store.commitDraft(chatId: "-7")
-        #expect(await core.draftCalls == ["save -7  ↩12"])
+        // Пустой текст + replyTo сервер отвергает (`proto.payload`) и рвёт соединение.
+        #expect(await core.draftCalls.isEmpty)
+        #expect(await store.draftReply(chatId: "-7") == "12")
+        #expect(await store.draft(chatId: "-7") == nil)
 
+        // Текст из одних пробелов — тот же пустой черновик: тоже не уходит.
+        await store.saveDraft("   ", chatId: "-7")
+        await store.commitDraft(chatId: "-7")
+        #expect(await core.draftCalls.isEmpty)
+        #expect(await store.draftReply(chatId: "-7") == "12")
+
+        // Чужой черновик с текстом при своём ответе без текста не затирается этим сохранением.
+        await core.setServerDrafts([CoreDraft(chatId: "-7", text: "было", updateTime: 1_000)])
+        await store.commitDraft(chatId: "-7")
+        #expect(await core.draftCalls.isEmpty)
+
+        // Пришедший с сервера ответ без текста по-прежнему читается.
         let other = FakeMaxCore()
         await other.setServerDrafts([CoreDraft(chatId: "-7", text: "", replyTo: "44", updateTime: 8_000)])
         let device = DeviceDrafts()
@@ -105,19 +120,21 @@ struct ServerSyncedDraftStoreTests {
     func sentWhileSaving() async {
         let core = FakeMaxCore()
         let store = ServerSyncedDraftStore(local: DeviceDrafts(), core: core, replies: .memory(), now: { Date(timeIntervalSince1970: 6) })
+        // Текст нужен: черновик из одного ответа на сервер не уходит, гонки сохранения нет.
+        await store.saveDraft("цитата", chatId: "-7")
         await store.saveDraftReply("12", chatId: "-7")
         await core.holdSaves()
         let commit = Task { await store.commitDraft(chatId: "-7") }
-        #expect(await eventually { await core.draftCalls == ["save -7  ↩12"] })
+        #expect(await eventually { await core.draftCalls == ["save -7 цитата ↩12"] })
         // Сообщение ушло: поле пустое, а запрос с прежним ответом ещё ждёт сети.
         await store.draftSent(chatId: "-7")
         // Сервер сохранил его уже после отправки. Событие об этом приходит, пока сверка идёт.
-        await core.setServerDrafts([CoreDraft(chatId: "-7", text: "", replyTo: "12", updateTime: 9_000)])
+        await core.setServerDrafts([CoreDraft(chatId: "-7", text: "цитата", replyTo: "12", updateTime: 9_000)])
         await store.serverDraftChanged(chatId: "-7")
         #expect(await store.draftReply(chatId: "-7") == nil)
         await core.releaseSaves()
         await commit.value
-        #expect(await core.draftCalls == ["save -7  ↩12", "discard -7 9000"])
+        #expect(await core.draftCalls == ["save -7 цитата ↩12", "discard -7 9000"])
         #expect(await store.draftReply(chatId: "-7") == nil)
         #expect(await store.draft(chatId: "-7") == nil)
         // Событие о стирании разобрано после сверки: черновик не вернулся.

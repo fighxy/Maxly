@@ -30,7 +30,8 @@ public final class ComposerModel {
     public private(set) var mentionHints: [ChatMemberRef] = []
     /// Подсказки `/` для бота.
     public private(set) var commandHints: [BotCommandRef] = []
-    /// Цитата над полем ввода. Входит в черновик: черновик из одного ответа тоже сохраняется.
+    /// Цитата над полем ввода. Входит в черновик на устройстве: черновик из одного ответа тоже
+    /// сохраняется. На сервер без текста не уходит: такой `saveDraft` сервер отвергает и рвёт сессию.
     public private(set) var replyTarget: Message? {
         didSet {
             guard replyTarget?.id != oldValue?.id, !isRestoringDraft, editTarget == nil else { return }

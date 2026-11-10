@@ -371,20 +371,9 @@ struct ChatComposer: View {
                     .frame(width: 3)
             }
             Spacer(minLength: 8)
-            Button {
-                viewModel.composer.cancelEdit()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.app(.caption, .bold))
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Отменить правку")
+            dismissButton("Отменить правку") { viewModel.composer.cancelEdit() }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .fixedSize(horizontal: false, vertical: true)
-        .maxlyGlassRounded(radius: 20)
+        .modifier(ComposerContextBar())
         .transition(.maxlyBar(edge: .bottom, reduceMotion: reduceMotion))
     }
 
@@ -416,20 +405,54 @@ struct ChatComposer: View {
                     .frame(width: 3)
             }
             Spacer(minLength: 8)
-            Button {
-                viewModel.composer.cancelReply()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.app(.caption, .bold))
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Отменить ответ")
+            dismissButton("Отменить ответ") { viewModel.composer.cancelReply() }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .fixedSize(horizontal: false, vertical: true)
-        .maxlyGlassRounded(radius: 20)
+        .modifier(ComposerContextBar())
         .transition(.maxlyBar(edge: .bottom, reduceMotion: reduceMotion))
+    }
+
+    /// Крестик плашки ответа и правки. Цель 44×44 pt (минимум HIG), подсветка при нажатии.
+    /// `.plain` её не даёт, а глиф меньше цели: без `contentShape` касание ловит только сам знак.
+    private func dismissButton(_ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "xmark")
+                .font(.app(.caption, .bold))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(ComposerDismissButtonStyle())
+        .accessibilityLabel(label)
+    }
+}
+
+/// Стекло плашки — только подложка. Модификатор `glassEffect` на всей плашке ставит
+/// платформенное стекло поверх содержимого, и оно забирает касание крестика: кнопка
+/// не нажимается и не подсвечивается, а касание проваливается в поле ввода.
+private struct ComposerContextBar: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(.leading, 14)
+            .padding(.trailing, 2)
+            .padding(.vertical, 2)
+            .fixedSize(horizontal: false, vertical: true)
+            .background {
+                Color.clear
+                    .maxlyGlassRounded(radius: 20)
+                    .allowsHitTesting(false)
+            }
+    }
+}
+
+/// Подсветка нажатия как у системной кнопки iOS: круг и приглушение, без волны.
+private struct ComposerDismissButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background {
+                Circle()
+                    .fill(Color.primary.opacity(configuration.isPressed ? 0.16 : 0))
+                    .frame(width: 32, height: 32)
+            }
+            .opacity(configuration.isPressed ? 0.55 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
