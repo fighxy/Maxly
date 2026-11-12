@@ -99,6 +99,7 @@ public struct MessageBubble: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Обои за лентой: входящий пузырь светлой темы на них белый.
     @Environment(\.chatWallpaperHasImage) private var wallpaperHasImage
+    @Environment(\.colorScheme) private var colorScheme
     /// Анимодзи чата: крупные эмодзи играют и без отметки сервера.
     @Environment(\.animojiCatalog) private var animojiCatalog
     @Environment(\.displayScale) private var displayScale
@@ -729,6 +730,7 @@ public struct MessageBubble: View {
         .clipShape(shape)
         // Тень — под обрезанным пузырём, иначе форма срезала бы её.
         .background { wallpaperShadow }
+        .overlay { incomingEdge }
         .overlay {
             BubbleFlash(active: highlighted, shape: shape, tint: quoteTint)
         }
@@ -748,6 +750,15 @@ public struct MessageBubble: View {
             shape
                 .fill(fill)
                 .shadow(color: .black.opacity(0.14), radius: 1.5, x: 0, y: 0.5)
+        }
+    }
+
+    /// В тёмной теме без фото-обоев чужой пузырь близок к фону ленты: тонкая светлая кромка
+    /// очерчивает его. На фото-обоях его отделяет тень, в светлой теме — белая заливка.
+    @ViewBuilder
+    private var incomingEdge: some View {
+        if hasFill, !isOutgoing, !wallpaperHasImage, colorScheme == .dark {
+            shape.stroke(Color.white.opacity(0.07), lineWidth: 0.5)
         }
     }
 
@@ -906,7 +917,7 @@ public struct MessageBubble: View {
                 .accessibilityLabel("Отправляется")
         case .sent:
             // Часы сменяются галочкой, которая прорисовывается; вторая галочка «прочитано» — тоже.
-            DeliveryChecks(read: message.isRead)
+            DeliveryChecks(read: message.isRead, readTint: isOutgoing ? .maxlyOutgoingText : .maxlyReadMark)
                 .transition(.maxlyCheckDraw(reduceMotion: reduceMotion))
                 .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: message.isRead)
         case .failed:

@@ -5,16 +5,19 @@ public extension Color {
     static let maxlyAccent = adaptive(light: 0x0070E0, dark: 0x64B5F6)
     static let maxlyOnAccent = adaptive(light: 0xFFFFFF, dark: 0x102030)
 
-    /// Спокойные поверхности чата: серо-голубой фон ленты, белые входящие и светло-зелёные
-    /// исходящие (в тёмной теме — тёмные и приглушённые синие); текст и контролы имеют свои токены.
+    /// Поверхности чата: серо-голубой фон ленты, белые входящие (в тёмной теме — тёмные) и
+    /// исходящие фирменного индиго с белым текстом в обеих темах. Оттенок один на день и ночь:
+    /// свой пузырь узнаётся по цвету. Текст и контролы на заливке имеют свои токены; белый текст
+    /// на заливке — не ниже 5:1, время и вторичный текст — около 3.5:1.
     static let maxlyChatBackground = adaptive(light: 0xE9EEF2, dark: 0x101A24)
-    static let maxlyOutgoing = adaptive(light: 0xE1FFC7, dark: 0x2B5278)
-    static let maxlyOutgoingText = adaptive(light: 0x15251A, dark: 0xFFFFFF)
-    static let maxlyOutgoingSecondary = adaptive(light: 0x48643F, dark: 0xC0D4E5)
-    static let maxlyOutgoingAccent = adaptive(light: 0x356B37, dark: 0xC0E1FF)
-    static let maxlyOnOutgoingAccent = adaptive(light: 0xFFFFFF, dark: 0x18344D)
-    /// Две галочки «прочитано»: голубые на исходящем пузыре и в списке чатов; одна галочка
-    /// «отправлено» остаётся цвета времени.
+    static let maxlyOutgoing = adaptive(light: 0x4B59E6, dark: 0x3D49C9)
+    static let maxlyOutgoingText = adaptive(light: 0xFFFFFF, dark: 0xFFFFFF)
+    static let maxlyOutgoingSecondary = adaptive(light: 0xD7DAF9, dark: 0xCED1F1)
+    static let maxlyOutgoingAccent = adaptive(light: 0xFFFFFF, dark: 0xDDE1FF)
+    static let maxlyOnOutgoingAccent = adaptive(light: 0x3A47D6, dark: 0x2F3AA8)
+    /// Две галочки «прочитано» в списке чатов — голубые. На исходящем пузыре они цвета его
+    /// текста (`maxlyOutgoingText`): голубое на индиго не читается. Одна галочка «отправлено»
+    /// остаётся цвета времени.
     static let maxlyReadMark = adaptive(light: 0x1E9AE8, dark: 0x7ACBFF)
     /// Синий круг «Избранного» и архива.
     static let maxlySpecialAvatar = Color(red: 0.30, green: 0.62, blue: 0.98)
@@ -22,7 +25,8 @@ public extension Color {
     /// Серый бейдж чата без звука.
     static let maxlyMutedBadge = Color.gray.opacity(0.55)
     #if os(iOS)
-    static let maxlyIncoming = adaptive(light: 0xFFFFFF, dark: 0x182533)
+    /// Тёмный входящий заметно светлее фона ленты, плюс тонкая кромка в `MessageBubble`.
+    static let maxlyIncoming = adaptive(light: 0xFFFFFF, dark: 0x1F2B38)
     static let maxlyIncomingOnWallpaper = maxlyIncoming
     /// Подложка плоского поля поиска.
     static let maxlyField = Color(uiColor: .tertiarySystemFill)
@@ -30,7 +34,7 @@ public extension Color {
     static let maxlyPinnedBackground = Color(uiColor: .secondarySystemBackground)
     static let maxlyBackground = Color(uiColor: .systemBackground)
     #else
-    static let maxlyIncoming = adaptive(light: 0xFFFFFF, dark: 0x182533)
+    static let maxlyIncoming = adaptive(light: 0xFFFFFF, dark: 0x1F2B38)
     static let maxlyIncomingOnWallpaper = maxlyIncoming
     static let maxlyField = Color.gray.opacity(0.12)
     static let maxlyPinnedBackground = Color.gray.opacity(0.08)
