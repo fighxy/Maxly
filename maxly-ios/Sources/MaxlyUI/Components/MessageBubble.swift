@@ -726,7 +726,7 @@ public struct MessageBubble: View {
         }
         // С кнопками бота пузырь берёт ширину, которую даёт `KeyboardAttached`: она не уже кнопок.
         .frame(minWidth: 64, maxWidth: showsKeyboard && message.content.keyboard != nil ? .infinity : nil, alignment: .leading)
-        .background(fill, in: shape)
+        .background(bubbleFill, in: shape)
         .clipShape(shape)
         // Тень — под обрезанным пузырём, иначе форма срезала бы её.
         .background { wallpaperShadow }
@@ -917,7 +917,7 @@ public struct MessageBubble: View {
                 .accessibilityLabel("Отправляется")
         case .sent:
             // Часы сменяются галочкой, которая прорисовывается; вторая галочка «прочитано» — тоже.
-            DeliveryChecks(read: message.isRead, readTint: isOutgoing ? .maxlyOutgoingText : .maxlyReadMark)
+            DeliveryChecks(read: message.isRead)
                 .transition(.maxlyCheckDraw(reduceMotion: reduceMotion))
                 .animation(MaxlyMotion.quick(reduceMotion: reduceMotion), value: message.isRead)
         case .failed:
@@ -1092,6 +1092,18 @@ public struct MessageBubble: View {
         guard hasFill else { return .clear }
         if isOutgoing { return Color.maxlyOutgoing }
         return wallpaperHasImage ? Color.maxlyIncomingOnWallpaper : Color.maxlyIncoming
+    }
+
+    /// Заливка пузыря: свой — мягкий градиент сверху вниз в пределах своего цвета, чужой — сплошной.
+    /// Градиент в рамке пузыря, а не экрана: ячейки ленты живут в `UICollectionView`, и SwiftUI
+    /// не узнаёт их положение на экране при прокрутке без пересчёта каждой ячейки на каждом кадре.
+    private var bubbleFill: AnyShapeStyle {
+        guard hasFill, isOutgoing else { return AnyShapeStyle(fill) }
+        return AnyShapeStyle(LinearGradient(
+            colors: [Color.maxlyOutgoingTop, Color.maxlyOutgoingBottom],
+            startPoint: .top,
+            endPoint: .bottom
+        ))
     }
 
     private var textColor: Color {

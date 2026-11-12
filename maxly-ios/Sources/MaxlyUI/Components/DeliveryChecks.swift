@@ -1,21 +1,18 @@
 import SwiftUI
 
 /// Галочки доставки: тонкие, со скруглёнными концами. Одна — отправлено, цвета времени
-/// рядом (наследует стиль); две внахлёст — прочитано, цвета `readTint` (по умолчанию голубые,
-/// `maxlyReadMark`; на исходящем пузыре — цвета его текста). Ширина одна
+/// рядом (наследует стиль); две внахлёст — прочитано, голубые (`maxlyReadMark`). Ширина одна
 /// и та же, чтобы время не сдвигалось, когда вторая галочка появляется.
 public struct DeliveryChecks: View {
     private let read: Bool
     private let lineWidth: CGFloat
-    private let readTint: Color
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public static let size = CGSize(width: 16, height: 10)
 
-    public init(read: Bool, lineWidth: CGFloat = 1.4, readTint: Color = .maxlyReadMark) {
+    public init(read: Bool, lineWidth: CGFloat = 1.4) {
         self.read = read
         self.lineWidth = lineWidth
-        self.readTint = readTint
     }
 
     public var body: some View {
@@ -38,7 +35,7 @@ public struct DeliveryChecks: View {
             }
         }
         .frame(width: Self.size.width, height: Self.size.height, alignment: .leading)
-        .foregroundStyle(read ? AnyShapeStyle(readTint) : AnyShapeStyle(.foreground))
+        .foregroundStyle(read ? AnyShapeStyle(Color.maxlyReadMark) : AnyShapeStyle(.foreground))
         .accessibilityLabel(read ? "Прочитано" : "Отправлено")
     }
 }
