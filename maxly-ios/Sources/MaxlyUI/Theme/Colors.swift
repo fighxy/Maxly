@@ -10,11 +10,11 @@ public extension Color {
     /// свой пузырь узнаётся по цвету. Текст и контролы на заливке имеют свои токены; белый текст
     /// на заливке — не ниже 5:1, время и вторичный текст — около 3.5:1.
     static let maxlyChatBackground = adaptive(light: 0xE9EEF2, dark: 0x101A24)
-    static let maxlyOutgoing = adaptive(light: 0x4B59E6, dark: 0x3D49C9)
+    static let maxlyOutgoing = adaptive(light: 0x4B59E6, dark: 0x3A43A6)
     static let maxlyOutgoingText = adaptive(light: 0xFFFFFF, dark: 0xFFFFFF)
-    static let maxlyOutgoingSecondary = adaptive(light: 0xD7DAF9, dark: 0xCED1F1)
+    static let maxlyOutgoingSecondary = adaptive(light: 0xD7DAF9, dark: 0xCED0E9)
     static let maxlyOutgoingAccent = adaptive(light: 0xFFFFFF, dark: 0xDDE1FF)
-    static let maxlyOnOutgoingAccent = adaptive(light: 0x3A47D6, dark: 0x2F3AA8)
+    static let maxlyOnOutgoingAccent = adaptive(light: 0x3A47D6, dark: 0x2C3590)
     /// Две галочки «прочитано» в списке чатов — голубые. На исходящем пузыре они цвета его
     /// текста (`maxlyOutgoingText`): голубое на индиго не читается. Одна галочка «отправлено»
     /// остаётся цвета времени.
