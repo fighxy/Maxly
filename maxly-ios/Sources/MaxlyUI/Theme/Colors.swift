@@ -13,6 +13,10 @@ public extension Color {
     static let maxlyOutgoingSecondary = adaptive(light: 0x48643F, dark: 0xC0D4E5)
     static let maxlyOutgoingAccent = adaptive(light: 0x356B37, dark: 0xC0E1FF)
     static let maxlyOnOutgoingAccent = adaptive(light: 0xFFFFFF, dark: 0x18344D)
+    /// Края мягкого градиента своего пузыря, сверху вниз: тот же цвет `maxlyOutgoing`, чуть светлее
+    /// вверху и чуть глубже внизу. Плоские места (цитата пересылки, кнопки) берут сплошной цвет.
+    static let maxlyOutgoingTop = adaptive(light: 0xE8FFD3, dark: 0x33608F)
+    static let maxlyOutgoingBottom = adaptive(light: 0xD9F7BD, dark: 0x25486B)
     /// Две галочки «прочитано»: голубые на исходящем пузыре и в списке чатов; одна галочка
     /// «отправлено» остаётся цвета времени.
     static let maxlyReadMark = adaptive(light: 0x1E9AE8, dark: 0x7ACBFF)

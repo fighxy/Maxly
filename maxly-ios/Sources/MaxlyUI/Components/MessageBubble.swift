@@ -99,6 +99,7 @@ public struct MessageBubble: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Обои за лентой: входящий пузырь светлой темы на них белый.
     @Environment(\.chatWallpaperHasImage) private var wallpaperHasImage
+    @Environment(\.colorScheme) private var colorScheme
     /// Анимодзи чата: крупные эмодзи играют и без отметки сервера.
     @Environment(\.animojiCatalog) private var animojiCatalog
     @Environment(\.displayScale) private var displayScale
@@ -725,10 +726,11 @@ public struct MessageBubble: View {
         }
         // С кнопками бота пузырь берёт ширину, которую даёт `KeyboardAttached`: она не уже кнопок.
         .frame(minWidth: 64, maxWidth: showsKeyboard && message.content.keyboard != nil ? .infinity : nil, alignment: .leading)
-        .background(fill, in: shape)
+        .background(bubbleFill, in: shape)
         .clipShape(shape)
         // Тень — под обрезанным пузырём, иначе форма срезала бы её.
         .background { wallpaperShadow }
+        .overlay { incomingEdge }
         .overlay {
             BubbleFlash(active: highlighted, shape: shape, tint: quoteTint)
         }
@@ -748,6 +750,15 @@ public struct MessageBubble: View {
             shape
                 .fill(fill)
                 .shadow(color: .black.opacity(0.14), radius: 1.5, x: 0, y: 0.5)
+        }
+    }
+
+    /// В тёмной теме без фото-обоев чужой пузырь близок к фону ленты: тонкая светлая кромка
+    /// очерчивает его. На фото-обоях его отделяет тень, в светлой теме — белая заливка.
+    @ViewBuilder
+    private var incomingEdge: some View {
+        if hasFill, !isOutgoing, !wallpaperHasImage, colorScheme == .dark {
+            shape.stroke(Color.white.opacity(0.07), lineWidth: 0.5)
         }
     }
 
@@ -1081,6 +1092,18 @@ public struct MessageBubble: View {
         guard hasFill else { return .clear }
         if isOutgoing { return Color.maxlyOutgoing }
         return wallpaperHasImage ? Color.maxlyIncomingOnWallpaper : Color.maxlyIncoming
+    }
+
+    /// Заливка пузыря: свой — мягкий градиент сверху вниз в пределах своего цвета, чужой — сплошной.
+    /// Градиент в рамке пузыря, а не экрана: ячейки ленты живут в `UICollectionView`, и SwiftUI
+    /// не узнаёт их положение на экране при прокрутке без пересчёта каждой ячейки на каждом кадре.
+    private var bubbleFill: AnyShapeStyle {
+        guard hasFill, isOutgoing else { return AnyShapeStyle(fill) }
+        return AnyShapeStyle(LinearGradient(
+            colors: [Color.maxlyOutgoingTop, Color.maxlyOutgoingBottom],
+            startPoint: .top,
+            endPoint: .bottom
+        ))
     }
 
     private var textColor: Color {
