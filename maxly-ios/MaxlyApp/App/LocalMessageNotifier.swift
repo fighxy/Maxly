@@ -15,6 +15,8 @@ final class LocalMessageNotifier: NSObject, IncomingMessageSink, UNUserNotificat
     private let enabled: @MainActor () -> Bool
     /// Нажали на уведомление: открыть этот чат.
     var onOpenChat: ((String) -> Void)?
+    /// Сообщение пришло, пока приложение открыто, и чат не «без звука»: звук входящего.
+    var onActiveIncoming: ((IncomingMessageNotice) -> Void)?
 
     init(enabled: @escaping @MainActor () -> Bool) {
         self.enabled = enabled
@@ -39,6 +41,7 @@ final class LocalMessageNotifier: NSObject, IncomingMessageSink, UNUserNotificat
     }
 
     func incoming(_ notice: IncomingMessageNotice) async {
+        if InAppSoundRules.playsIncoming(notice, appActive: appActive) { onActiveIncoming?(notice) }
         guard let content = MessageNotificationRules.content(for: notice, appActive: appActive, enabled: enabled()) else { return }
         let payload = UNMutableNotificationContent()
         payload.title = content.title

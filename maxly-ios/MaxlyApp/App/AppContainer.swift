@@ -133,6 +133,8 @@ final class AppContainer {
     let backgroundKeepAlive: BackgroundKeepAlive
     /// Уведомления о новых сообщениях, пока приложение в фоне.
     let messageNotifier: LocalMessageNotifier
+    /// Звуки открытого приложения: отправка и входящее сообщение.
+    let sounds = InAppSoundCenter()
     /// Переключатель «Звонки и сообщения в фоне» в настройках.
     private(set) var keepsAliveInBackground: Bool
 
@@ -191,6 +193,8 @@ final class AppContainer {
         }
         // Нажатие на уведомление о сообщении приходит сюда (`LocalMessageNotifier`).
         UNUserNotificationCenter.current().delegate = messageNotifier
+        messageNotifier.onActiveIncoming = { [sounds] _ in sounds.play(.incoming) }
+        sounds.inCall = { [weak self] in self?.callCenter?.call != nil }
     }
 
     /// «Звонки и сообщения в фоне»: держать приложение живым свёрнутым. Включение спрашивает
@@ -633,6 +637,7 @@ final class AppContainer {
             chats: chats
         )
         model.composer.typingReporter = typingReporter
+        model.onWillSendMessage = { [sounds] in sounds.play(.sent) }
         model.voices.nowPlaying = nowPlaying
         if let stickerRepository {
             // Анимодзи сервера (тот же каталог, что у панели эмодзи): эмодзи → Lottie и эффект реакции.

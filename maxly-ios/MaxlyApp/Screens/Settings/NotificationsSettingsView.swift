@@ -1,17 +1,29 @@
 import SwiftUI
 import UIKit
 import UserNotifications
+import MaxlyPresentation
 import MaxlyUI
 
-/// «Уведомления и звук»: звонки и сообщения в свёрнутом приложении (`docs/background.md`).
+/// «Уведомления и звук»: звонки и сообщения в свёрнутом приложении (`docs/background.md`) и
+/// звуки открытого приложения (`InAppSound`).
 struct NotificationsSettingsView: View {
     @Bindable var container: AppContainer
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
     @State private var denied = false
+    @AppStorage(InAppSoundSettings.sentKey) private var sentSound = true
+    @AppStorage(InAppSoundSettings.incomingKey) private var incomingSound = true
 
     var body: some View {
         List {
+            Section {
+                Toggle("Отправка сообщения", isOn: $sentSound)
+                Toggle("Новое сообщение", isOn: $incomingSound)
+            } header: {
+                Text("Звуки в приложении")
+            } footer: {
+                Text("Короткий звук, когда вы отправляете сообщение и когда приходит новое, пока Maxly открыт. Чаты без звука молчат. Звуки следуют переключателю «Звонок/Бесшумно» и не звучат во время звонка.")
+            }
             Section {
                 Toggle("Звонки и сообщения в фоне", isOn: Binding(
                     get: { container.keepsAliveInBackground },
