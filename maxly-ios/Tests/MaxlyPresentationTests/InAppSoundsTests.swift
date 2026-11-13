@@ -29,11 +29,16 @@ struct InAppSoundsTests {
     }
 
     @Test func burstPlaysOnce() {
+        // Изменяющий вызов — вне `#expect`: макрос разбирает вызов и не может менять значение.
         var throttle = SoundThrottle()
-        #expect(throttle.allows(.incoming, at: 10))
-        #expect(!throttle.allows(.incoming, at: 10.3))
+        let first = throttle.allows(.incoming, at: 10)
+        let burst = throttle.allows(.incoming, at: 10.3)
         // Другой звук не ждёт.
-        #expect(throttle.allows(.sent, at: 10.3))
-        #expect(throttle.allows(.incoming, at: 10 + SoundThrottle.interval))
+        let other = throttle.allows(.sent, at: 10.3)
+        let later = throttle.allows(.incoming, at: 10 + SoundThrottle.interval)
+        #expect(first)
+        #expect(!burst)
+        #expect(other)
+        #expect(later)
     }
 }
