@@ -42,6 +42,7 @@ struct ChatTranscript: View {
     /// Верх открытой клавиатуры в глобальных координатах; `nil` — клавиатуры нет.
     var keyboardTop: CGFloat? = nil
     var onAuthor: (Message) -> Void = { _ in }
+    var onContact: (ContactContent) -> Void = { _ in }
     /// Куда встать и держаться ли низа (`TranscriptPosition`): открытие, команды прокрутки,
     /// палец и замер низа ленты.
     @State private var position = TranscriptPosition()
@@ -232,6 +233,7 @@ struct ChatTranscript: View {
                 ))
             },
             onAuthor: onAuthor,
+            onContact: onContact,
             onFrames: { frames, viewport in
                 applyCollectionFrames(frames, viewport: viewport)
             },

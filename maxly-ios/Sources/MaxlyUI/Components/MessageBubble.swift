@@ -76,6 +76,8 @@ public struct MessageBubble: View {
     private let onButton: ((InlineButton) -> Void)?
     /// Профиль автора: отдельное действие имени и аватара.
     private let onAuthor: (() -> Void)?
+    /// Нажатие на карточку контакта; `nil` — карточка не нажимается.
+    private let onContact: ((ContactContent) -> Void)?
     /// «Выбрать»: режим выбора нескольких сообщений. `nil` — пункта нет.
     private let onSelect: (() -> Void)?
     /// Фото или видео сообщения, на которое этот ответ: миниатюра в цитате. `nil` — без неё.
@@ -157,12 +159,14 @@ public struct MessageBubble: View {
         onCast: (([String]) -> Void)? = nil,
         onButton: ((InlineButton) -> Void)? = nil,
         onAuthor: (() -> Void)? = nil,
+        onContact: ((ContactContent) -> Void)? = nil,
         onSelect: (() -> Void)? = nil,
         replyMedia: ChatAttachment? = nil,
         replyAuthor: String? = nil,
         showsKeyboard: Bool = true
     ) {
         self.onAuthor = onAuthor
+        self.onContact = onContact
         self.onSelect = onSelect
         self.replyMedia = replyMedia
         self.replyAuthor = replyAuthor
@@ -677,7 +681,7 @@ public struct MessageBubble: View {
                     .padding(.vertical, 8)
             }
             ForEach(message.content.contacts, id: \.id) { contact in
-                ContactCardRow(contact: contact, outgoing: isOutgoing)
+                contactRow(contact)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
             }
@@ -926,6 +930,23 @@ public struct MessageBubble: View {
                 .foregroundStyle(.red)
                 .frame(width: DeliveryChecks.size.width)
                 .accessibilityLabel("Не отправлено")
+        }
+    }
+
+    // MARK: Контакты
+
+    /// Карточка контакта: нажатие открывает профиль или номер (`ContactCardTarget`).
+    @ViewBuilder
+    private func contactRow(_ contact: ContactContent) -> some View {
+        if let onContact {
+            Button { onContact(contact) } label: {
+                ContactCardRow(contact: contact, outgoing: isOutgoing)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Открыть контакт")
+        } else {
+            ContactCardRow(contact: contact, outgoing: isOutgoing)
         }
     }
 
