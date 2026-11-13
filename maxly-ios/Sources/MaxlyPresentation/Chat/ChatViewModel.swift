@@ -165,6 +165,9 @@ public final class ChatViewModel {
     /// Меню сообщения: удаление, пересылка, повтор отправки.
     public let actions: MessageActionsModel
 
+    /// Сообщение уходит (текст, вложение, голосовое, стикер, опрос; не правка): звук отправки.
+    @ObservationIgnored public var onWillSendMessage: (() -> Void)?
+
     public init(
         chatId: String,
         currentUserId: String,
@@ -207,7 +210,10 @@ public final class ChatViewModel {
             await self?.sendReadMark(mark) ?? false
         }
         polls.messages = { [weak self] in self?.messages ?? [] }
-        polls.beforeSend = { [weak self] in self?.returnToLiveForSending() }
+        polls.beforeSend = { [weak self] in
+            self?.returnToLiveForSending()
+            self?.onWillSendMessage?()
+        }
         polls.onSuccess = { [weak self] in self?.error = nil }
         polls.onNotice = { [weak self] text in self?.showNotice(text) }
         polls.onError = { [weak self] failure in self?.show(failure) }
@@ -245,6 +251,7 @@ public final class ChatViewModel {
         }
         composer.onWillSend = { [weak self] in
             self?.returnToLiveForSending()
+            self?.onWillSendMessage?()
         }
         composer.onSuccess = { [weak self] in self?.error = nil }
         composer.onError = { [weak self] failure in self?.show(failure) }

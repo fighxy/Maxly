@@ -35,7 +35,7 @@ let package = Package(
         .target(
             name: "MaxlyUI",
             dependencies: ["MaxlyDomain", "MaxlyPresentation", .product(name: "Lottie", package: "lottie-spm")],
-            resources: [.process("Resources/Fonts")]
+            resources: [.process("Resources/Fonts"), .process("Resources/Sounds")]
         ),
         // ViewModel экранов: чистый Swift поверх протоколов домена, без SwiftUI и ядра.
         // Так логика экранов проходит `swift test` без Xcode-таргета приложения.
