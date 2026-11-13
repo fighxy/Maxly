@@ -16,12 +16,34 @@ public final class MediaSourceRegistry {
         public let url: URL?
         public let maxPixel: Int
         public let cornerRadius: CGFloat
+        /// Скругление каждого угла: у плитки альбома внутренние углы почти прямые, и летящий
+        /// кадр начинает с той же формы, что в ленте. Без них — `cornerRadius` у всех углов.
+        public let corners: Corners
 
-        public init(frame: CGRect, url: URL?, maxPixel: Int, cornerRadius: CGFloat) {
+        public init(frame: CGRect, url: URL?, maxPixel: Int, cornerRadius: CGFloat, corners: Corners? = nil) {
             self.frame = frame
             self.url = url
             self.maxPixel = maxPixel
             self.cornerRadius = cornerRadius
+            self.corners = corners ?? Corners(uniform: cornerRadius)
+        }
+    }
+
+    public struct Corners: Equatable, Sendable {
+        public var topLeading: CGFloat
+        public var bottomLeading: CGFloat
+        public var bottomTrailing: CGFloat
+        public var topTrailing: CGFloat
+
+        public init(topLeading: CGFloat, bottomLeading: CGFloat, bottomTrailing: CGFloat, topTrailing: CGFloat) {
+            self.topLeading = topLeading
+            self.bottomLeading = bottomLeading
+            self.bottomTrailing = bottomTrailing
+            self.topTrailing = topTrailing
+        }
+
+        public init(uniform radius: CGFloat) {
+            self.init(topLeading: radius, bottomLeading: radius, bottomTrailing: radius, topTrailing: radius)
         }
     }
 

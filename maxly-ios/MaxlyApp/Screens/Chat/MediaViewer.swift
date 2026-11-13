@@ -9,11 +9,15 @@ import MaxlyUI
 /// Просмотр фото и видео.
 ///
 /// - Открывается полётом кадра из плитки в ленте и закрывается полётом обратно; плитка, которой
-///   нет на экране (или фото увеличено, повёрнуто, экран боком), — просто гаснет.
+///   нет на экране (или фото увеличено, повёрнуто, экран боком), — просто гаснет. Кадр начинает
+///   с формы плитки (у альбома свои углы) и возвращается тем, что виден в просмотре: оригинал,
+///   если он загрузился, а не размытая миниатюра. Шапка и низ гаснут и проявляются плавно.
+///   С «Уменьшением движения» полёта нет, просмотр проявляется и гаснет.
 /// - Касание прячет и показывает шапку (кто, когда, «3 из 7»), подпись, ленту миниатюр альбома и
 ///   кнопки вместе со строкой состояния; у играющего ролика они уходят сами (`MediaViewerChrome`).
-/// - Смахивание вверх или вниз ведёт кадр за пальцем, фон гаснет; далеко или броском —
-///   закрыть, иначе кадр возвращается (`MediaDismissRule`).
+/// - Смахивание вверх или вниз ведёт кадр за пальцем, кадр чуть уменьшается, фон гаснет;
+///   далеко или броском — закрыть: кадр летит в плитку, продолжая движение пальца. Иначе кадр
+///   возвращается (`MediaDismissRule`).
 /// - Фото: щипок и двойное касание увеличивают, поворот четвертями.
 /// - Видео: свой плеер — полоса с подгруженной частью, двойное касание у края ±10 с,
 ///   удержание — 2×, скорость, звук; поток не открылся — ролик скачивается с прогрессом.
@@ -37,6 +41,10 @@ struct MediaViewer: View {
     let onClose: () -> Void
 
     @State private var selection: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Оригиналы, которые показывает просмотр: с ними кадр летит обратно в плитку. Держим только
+    /// открытый кадр и соседей.
+    @State private var originals: [String: UIImage] = [:]
     @State private var zoomed = false
     @State private var scrubbing = false
     @State private var chrome = MediaViewerChrome()
@@ -60,7 +68,7 @@ struct MediaViewer: View {
     private struct Hero {
         let image: UIImage
         let source: CGRect
-        let cornerRadius: CGFloat
+        let corners: MediaSourceRegistry.Corners
     }
 
     init(
@@ -82,7 +90,7 @@ struct MediaViewer: View {
         self.onShowInChat = onShowInChat
         self.onClose = onClose
         _selection = State(initialValue: request.id)
-        _hero = State(initialValue: Self.tile(request.id).map { Hero(image: $0.image, source: $0.frame, cornerRadius: $0.cornerRadius) })
+        _hero = State(initialValue: Self.tile(request.id).map { Hero(image: $0.image, source: $0.frame, corners: $0.corners) })
     }
 
     var body: some View {
@@ -96,17 +104,21 @@ struct MediaViewer: View {
                         if phase == .opening { open() }
                     }
                 pager
+                    .scaleEffect(pagerScale)
                     .offset(y: dragOffset)
                     .opacity(pagerOpacity)
                     .allowsHitTesting(phase == .open)
-                if phase == .open && chrome.visible && dragOffset == 0 {
-                    VStack(spacing: 0) {
-                        header
-                        Spacer(minLength: 0)
-                        bottomBar
-                    }
-                    .transition(.opacity)
+                // Шапка и низ всегда в иерархии: гаснут и проявляются плавно, в том числе когда
+                // кадр взлетает, садится или его уводят пальцем.
+                VStack(spacing: 0) {
+                    header
+                    Spacer(minLength: 0)
+                    bottomBar
                 }
+                .opacity(chromeShown ? 1 : 0)
+                .allowsHitTesting(chromeShown)
+                .accessibilityHidden(!chromeShown)
+                .animation(.easeOut(duration: 0.18), value: chromeShown)
                 if let hero, phase != .open {
                     flyingFrame(hero)
                 }
@@ -138,13 +150,35 @@ struct MediaViewer: View {
         return hero == nil ? progress : 0
     }
 
+    private var chromeShown: Bool {
+        phase == .open && chrome.visible && dragOffset == 0
+    }
+
+    /// Кадр под пальцем уменьшается (`MediaDismissRule.scale`).
+    private var dragScale: CGFloat {
+        MediaDismissRule.scale(offset: dragOffset, height: screen.height)
+    }
+
+    /// Без полёта просмотр не только проявляется, но и чуть подрастает из 94 % (с «Уменьшением
+    /// движения» — только проявляется).
+    private var pagerScale: CGFloat {
+        let grows = hero == nil && phase != .open && !reduceMotion
+        let fade: CGFloat = grows ? 0.94 + 0.06 * progress : 1
+        return dragScale * fade
+    }
+
+    /// Где кадр стоит сейчас: вписан в экран, уменьшен и сдвинут пальцем.
+    private func shownFrame(_ image: UIImage) -> CGRect {
+        MediaHeroGeometry.scaled(fullFrame(image), by: dragScale).offsetBy(dx: 0, dy: dragOffset)
+    }
+
     // MARK: Полёт
 
     /// Плитка ленты: где стоит и её картинка из кэша — та же, что видна в ленте.
-    private static func tile(_ id: String) -> (frame: CGRect, image: UIImage, cornerRadius: CGFloat)? {
+    private static func tile(_ id: String) -> (frame: CGRect, image: UIImage, corners: MediaSourceRegistry.Corners)? {
         guard let source = MediaSourceRegistry.shared.source(for: id), let url = source.url,
               let image = ImagePipeline.shared.cached(url, maxPixel: source.maxPixel)?.image else { return nil }
-        return (source.frame, image, source.cornerRadius)
+        return (source.frame, image, source.corners)
     }
 
     /// Где кадр стоит в открытом просмотре: картинка, вписанная в экран.
@@ -155,15 +189,24 @@ struct MediaViewer: View {
     }
 
     private func flyingFrame(_ hero: Hero) -> some View {
-        let full = fullFrame(hero.image).offsetBy(dx: 0, dy: dragOffset)
+        let full = shownFrame(hero.image)
         let rect = MediaHeroGeometry.interpolate(from: hero.source, to: full, progress: progress)
+        // Углы плитки к открытому кадру распрямляются; пружина может чуть перелететь за 1.
+        let rounding = max(0, 1 - progress)
+        let corners = hero.corners
         return Color.clear
             .overlay(alignment: .topLeading) {
                 Image(uiImage: hero.image)
                     .resizable()
                     .scaledToFill()
                     .frame(width: max(1, rect.width), height: max(1, rect.height))
-                    .clipShape(RoundedRectangle(cornerRadius: hero.cornerRadius * (1 - progress), style: .continuous))
+                    .clipShape(UnevenRoundedRectangle(
+                        topLeadingRadius: corners.topLeading * rounding,
+                        bottomLeadingRadius: corners.bottomLeading * rounding,
+                        bottomTrailingRadius: corners.bottomTrailing * rounding,
+                        topTrailingRadius: corners.topTrailing * rounding,
+                        style: .continuous
+                    ))
                     .offset(x: rect.minX - screen.minX, y: rect.minY - screen.minY)
             }
             .ignoresSafeArea()
@@ -173,6 +216,7 @@ struct MediaViewer: View {
     /// Первое измерение экрана: кадр вылетает из плитки (или просмотр проявляется).
     private func open() {
         guard screen.width > 0, progress == 0 else { return }
+        if reduceMotion { hero = nil }
         if hero != nil { MediaSourceRegistry.shared.hiddenId = request.id }
         let animation: Animation = hero == nil ? .easeOut(duration: 0.2) : .spring(duration: 0.34, bounce: 0.12)
         withAnimation(animation) {
@@ -230,10 +274,23 @@ struct MediaViewer: View {
                 url: slide.stillURL,
                 fallbacks: slide.fallbackURLs,
                 placeholder: Self.tile(slide.id)?.image,
+                onOriginal: { keepOriginal($0, for: slide.id) },
                 turns: turns[slide.id] ?? 0,
                 onTap: { chrome.toggle() }
             ) { zoomed = $0 }
         }
+    }
+
+    /// Запомнить оригинал кадра; дальние от открытого забываются, чтобы альбом не копил память.
+    private func keepOriginal(_ image: UIImage, for id: String) {
+        let slides = request.slides
+        let center = slides.firstIndex { $0.id == (selection ?? request.id) } ?? 0
+        var kept = originals.filter { key, _ in
+            guard let index = slides.firstIndex(where: { $0.id == key }) else { return false }
+            return abs(index - center) <= 1
+        }
+        kept[id] = image
+        originals = kept
     }
 
     private var current: MediaSlide? { request.slides.first { $0.id == selection } }
@@ -377,18 +434,23 @@ struct MediaViewer: View {
 
     // MARK: Закрытие
 
-    /// Кадр летит обратно в свою плитку, если она на экране; иначе просмотр гаснет. [then] —
+    /// Кадр летит обратно в свою плитку, если она на экране; иначе просмотр гаснет. [velocity] —
+    /// скорость пальца по вертикали, если закрыли броском: кадр продолжает его движение. [then] —
     /// что сделать после закрытия (перейти к сообщению).
-    private func close(then: (() -> Void)? = nil) {
+    private func close(velocity: CGFloat = 0, then: (() -> Void)? = nil) {
         guard phase != .closing else { return }
         afterClose = then
         let id = selection ?? request.id
-        let upright = screen.height >= screen.width && (turns[id] ?? 0) % 4 == 0 && !zoomed
+        let upright = screen.height >= screen.width && (turns[id] ?? 0) % 4 == 0 && !zoomed && !reduceMotion
         if upright, let tile = Self.tile(id), MediaHeroGeometry.canReturn(to: tile.frame, screen: screen) {
-            hero = Hero(image: tile.image, source: tile.frame, cornerRadius: tile.cornerRadius)
+            // Летит то, что видно в просмотре: оригинал, а миниатюра — только если его нет.
+            let image = originals[id] ?? tile.image
+            let start = shownFrame(image)
+            hero = Hero(image: image, source: tile.frame, corners: tile.corners)
             MediaSourceRegistry.shared.hiddenId = id
             phase = .closing
-            withAnimation(.spring(duration: 0.3, bounce: 0)) {
+            let speed = MediaHeroGeometry.returnVelocity(velocity: velocity, from: start.midY, to: tile.frame.midY)
+            withAnimation(.interpolatingSpring(duration: 0.32, bounce: 0, initialVelocity: speed)) {
                 progress = 0
                 dragOffset = 0
             } completion: { finish() }
@@ -425,7 +487,7 @@ struct MediaViewer: View {
                 defer { dragAxis = nil }
                 guard phase == .open, dragAxis == .vertical else { return }
                 if MediaDismissRule.shouldClose(offset: dragOffset, velocity: value.velocity.height, height: height) {
-                    close()
+                    close(velocity: value.velocity.height)
                 } else {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { dragOffset = 0 }
                 }
@@ -569,6 +631,8 @@ struct PhotoPage: View {
     /// Что пробовать по порядку, если `url` не загрузился.
     var fallbacks: [URL] = []
     var placeholder: UIImage?
+    /// Оригинал загрузился и показан (не повёрнутым).
+    var onOriginal: ((UIImage) -> Void)?
     let turns: Int
     let onTap: () -> Void
     let onZoom: (Bool) -> Void
@@ -576,7 +640,7 @@ struct PhotoPage: View {
 
     var body: some View {
         ZStack {
-            ZoomableImage(url: url, fallbacks: fallbacks, placeholder: placeholder, turns: turns, onTap: onTap, onLoaded: { loaded = $0 }, onZoom: onZoom)
+            ZoomableImage(url: url, fallbacks: fallbacks, placeholder: placeholder, turns: turns, onTap: onTap, onLoaded: { loaded = $0 }, onOriginal: onOriginal, onZoom: onZoom)
             if !loaded && placeholder == nil {
                 ProgressView()
                     .tint(.white)
@@ -609,6 +673,7 @@ private struct ZoomableImage: UIViewRepresentable {
     var turns = 0
     let onTap: () -> Void
     let onLoaded: (Bool) -> Void
+    var onOriginal: ((UIImage) -> Void)?
     let onZoom: (Bool) -> Void
 
     func makeUIView(context: Context) -> PhotoScrollView {
@@ -722,10 +787,21 @@ private struct ZoomableImage: UIViewRepresentable {
             }
         }
 
+        /// Оригинал пришёл: поверх миниатюры плитки он проявляется, а не подменяет её скачком.
         private func show(_ image: UIImage?) {
             original = image
-            imageView?.image = image.map { Self.rotated($0, turns: turns) }
+            let shown = image.map { Self.rotated($0, turns: turns) }
+            if let imageView, imageView.image != nil, shown != nil {
+                UIView.transition(with: imageView, duration: 0.18, options: [.transitionCrossDissolve, .allowUserInteraction]) {
+                    imageView.image = shown
+                }
+            } else {
+                imageView?.image = shown
+            }
             report(image != nil)
+            if let image, let onOriginal = parent.onOriginal {
+                DispatchQueue.main.async { onOriginal(image) }
+            }
             relayout()
         }
 

@@ -109,7 +109,10 @@ struct MediaMosaic: View {
         // в ленте и в просмотр не открывается.
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
             guard !round, !isSizing else { return }
-            registry.update(item.id, .init(frame: frame, url: url, maxPixel: decode, cornerRadius: cornerRadius))
+            registry.update(item.id, .init(
+                frame: frame, url: url, maxPixel: decode, cornerRadius: cornerRadius,
+                corners: radii(tile.corners)
+            ))
         }
         .onDisappear {
             // Строка замера уходит, а настоящая плитка остаётся на экране: её рамку не трогаем.
@@ -213,13 +216,24 @@ struct MediaMosaic: View {
 
     private func mask(round: Bool, corners: AlbumCorners) -> AnyShape {
         if round { return AnyShape(Circle()) }
+        let radii = radii(corners)
         return AnyShape(UnevenRoundedRectangle(
-            topLeadingRadius: corners.topLeft ? cornerRadius : 2,
-            bottomLeadingRadius: corners.bottomLeft ? cornerRadius : 2,
-            bottomTrailingRadius: corners.bottomRight ? cornerRadius : 2,
-            topTrailingRadius: corners.topRight ? cornerRadius : 2,
+            topLeadingRadius: radii.topLeading,
+            bottomLeadingRadius: radii.bottomLeading,
+            bottomTrailingRadius: radii.bottomTrailing,
+            topTrailingRadius: radii.topTrailing,
             style: .continuous
         ))
+    }
+
+    /// Углы плитки: внешние скруглены как пузырь, внутренние почти прямые.
+    private func radii(_ corners: AlbumCorners) -> MediaSourceRegistry.Corners {
+        MediaSourceRegistry.Corners(
+            topLeading: corners.topLeft ? cornerRadius : 2,
+            bottomLeading: corners.bottomLeft ? cornerRadius : 2,
+            bottomTrailing: corners.bottomRight ? cornerRadius : 2,
+            topTrailing: corners.topRight ? cornerRadius : 2
+        )
     }
 
     /// Диаметр кружка в ленте: не во всю ширину.
