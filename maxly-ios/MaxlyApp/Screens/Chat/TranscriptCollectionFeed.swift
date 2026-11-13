@@ -46,6 +46,7 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
     /// Оценка высоты строки далеко от экрана при ширине строки.
     var estimate: (TranscriptRow, CGFloat) -> CGFloat
     var onAuthor: (Message) -> Void
+    var onContact: (ContactContent) -> Void
     var onFrames: (_ rows: [String: CGRect], _ viewport: CGRect) -> Void
     var onBottomDistance: (Double, Double) -> Void
     var onUserScroll: (_ moving: Bool, _ takeover: Bool) -> Void
@@ -186,7 +187,8 @@ struct TranscriptCollectionFeed: UIViewControllerRepresentable {
                         state: state,
                         viewModel: parent.viewModel,
                         reveal: parent.revealMode,
-                        onAuthor: parent.onAuthor
+                        onAuthor: parent.onAuthor,
+                        onContact: parent.onContact
                     )
                     .equatable()
                 )

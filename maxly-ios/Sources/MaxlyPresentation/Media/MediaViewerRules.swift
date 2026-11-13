@@ -98,6 +98,14 @@ public enum MediaDismissRule {
         guard height > 0 else { return 1 }
         return max(0.2, 1 - abs(offset) / height * 1.6)
     }
+
+    /// Кадр под пальцем уменьшается по мере увода: на пороге закрытия — около 0,93, не меньше 0,8.
+    public static let minimumScale: Double = 0.8
+
+    public static func scale(offset: Double, height: Double) -> Double {
+        guard height > 0 else { return 1 }
+        return max(minimumScale, 1 - abs(offset) / height * 0.5)
+    }
 }
 
 /// Скорость ролика: меню 0,5…2× и удержание — 2×.
@@ -163,6 +171,25 @@ public enum MediaHeroGeometry {
             height: from.height + (to.height - from.height) * t
         )
     }
+
+    /// [rect], уменьшенный в [scale] раз вокруг своего центра.
+    public static func scaled(_ rect: CGRect, by scale: Double) -> CGRect {
+        let width = rect.width * scale
+        let height = rect.height * scale
+        return CGRect(x: rect.midX - width / 2, y: rect.midY - height / 2, width: width, height: height)
+    }
+
+    /// Начальная скорость пружины возврата в плитку после броска, в долях пути в секунду:
+    /// кадр продолжает движение пальца. Бросок от плитки даёт отрицательную скорость — кадр
+    /// чуть уходит дальше и разворачивается. [velocity] — точек в секунду по вертикали,
+    /// [from] и [to] — центр кадра сейчас и центр плитки по вертикали.
+    public static func returnVelocity(velocity: Double, from: Double, to: Double) -> Double {
+        let distance = to - from
+        guard abs(distance) > 1, velocity.isFinite else { return 0 }
+        return min(maximumReturnVelocity, max(-maximumReturnVelocity / 2, velocity / distance))
+    }
+
+    public static let maximumReturnVelocity: Double = 12
 
     /// Возвращаться в плитку, только если она видна на экране хоть наполовину: иначе кадр
     /// улетел бы за край, и лучше просто погасить просмотр.

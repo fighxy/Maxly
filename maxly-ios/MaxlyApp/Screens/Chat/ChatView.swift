@@ -39,6 +39,8 @@ struct ChatView: View {
     private var onProfileOpened: () -> Void { context.actions.profileOpened }
     private var onOpenVoice: ((VoiceNowPlaying.Track) -> Void)? { context.actions.openVoice }
     @State private var participant: DialogDraft?
+    /// Карточка контакта без аккаунта MAX: номер, которому можно позвонить или скопировать.
+    @State private var contactPhone: ContactPhone?
     /// Только что поставленная реакция: анимация значка и эффект вокруг (`ReactionBurstHost`).
     @State private var reactionBurst = ReactionBurstHost()
     /// Крестик у закрепа: открепить после подтверждения.
@@ -131,7 +133,8 @@ struct ChatView: View {
             chatTitle: headerTitle,
             headerBottom: headerBottom,
             keyboardTop: keyboardTop,
-            onAuthor: openParticipant
+            onAuthor: openParticipant,
+            onContact: openContact
         )
         .environment(\.chatWallpaper, shownWallpaper)
         .environment(\.chatHasPhotoWallpaper, customWallpaper != nil)
@@ -571,6 +574,21 @@ struct ChatView: View {
             .confirmationDialog("Закрепить сообщение", isPresented: pinPromptShown, titleVisibility: .visible) {
                 pinPromptButtons
             }
+            .confirmationDialog(
+                contactPhone?.display ?? "",
+                isPresented: Binding(get: { contactPhone != nil }, set: { if !$0 { contactPhone = nil } }),
+                titleVisibility: .visible,
+                presenting: contactPhone
+            ) { phone in
+                if let call = phone.call {
+                    Button("Позвонить") { openURL(call) }
+                }
+                Button("Скопировать номер") {
+                    UIPasteboard.general.string = phone.display
+                    viewModel.announce("Скопировано")
+                }
+                Button("Отмена", role: .cancel) {}
+            }
             .confirmationDialog("Открепить сообщение?", isPresented: $unpinAsked, titleVisibility: .visible) {
                 Button("Открепить", role: .destructive) { Task { await viewModel.pins.unpin() } }
                 Button("Отмена", role: .cancel) {}
@@ -920,6 +938,20 @@ struct ChatView: View {
                   title: message.authorName, avatarURL: message.authorAvatarURL) else { return }
         composerFocused = false
         participant = dialog
+    }
+
+    /// Карточка контакта в пузыре: профиль собеседника MAX или его номер.
+    private func openContact(_ contact: ContactContent) {
+        switch ContactCardTarget.resolve(contact, me: viewModel.currentUserId) {
+        case .profile(let dialog) where makeParticipantProfile != nil:
+            composerFocused = false
+            participant = dialog
+        case .phone(let display, let call):
+            composerFocused = false
+            contactPhone = ContactPhone(display: display, call: call)
+        default:
+            break
+        }
     }
 
     private func openProfile() {
@@ -1357,4 +1389,10 @@ enum StrangerBarDismissals {
         ids.append(chatId)
         UserDefaults.standard.set(ids, forKey: key(account))
     }
+}
+
+/// Номер из карточки контакта для меню «Позвонить» / «Скопировать номер».
+private struct ContactPhone: Equatable {
+    let display: String
+    let call: URL?
 }
