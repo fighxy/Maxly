@@ -1,9 +1,9 @@
 import Foundation
 
 /// Папка списка чатов: серверная или локальный фильтр по типу.
-public struct ChatFolder: Identifiable, Hashable, Sendable {
+public struct ChatFolder: Identifiable, Hashable, Sendable, Codable {
     /// Какие чаты попадают в папку.
-    public enum Filter: Hashable, Sendable {
+    public enum Filter: Hashable, Sendable, Codable {
         /// Все чаты, кроме архива.
         case all
         case privateChats
@@ -63,8 +63,8 @@ public struct ChatFolder: Identifiable, Hashable, Sendable {
 /// Сервер может прислать и имена (`CHANNEL`, `BOT`…). Типы объединяются по «или»,
 /// состояния сужают по «и». Роли в чате, контакты и организации клиент не знает:
 /// «контакты» и «не контакты» считаются диалогами, роли и организации не сужают.
-public struct ChatFolderRules: Hashable, Sendable {
-    public enum Code: Int, Sendable, CaseIterable {
+public struct ChatFolderRules: Hashable, Sendable, Codable {
+    public enum Code: Int, Sendable, CaseIterable, Codable {
         case unread = 0, read, channel, group, dialog, owner, admin, muted, contact, notContact, bot, notMuted, markedUnread, organization
 
         static let names: [String: Code] = [

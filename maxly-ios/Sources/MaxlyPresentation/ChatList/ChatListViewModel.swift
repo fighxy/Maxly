@@ -275,9 +275,17 @@ public final class ChatListViewModel {
     @ObservationIgnored public var folderDisplay: (any FolderDisplayStore)? {
         didSet {
             hidesAllChats = folderDisplay?.hidesAllChats ?? false
+            // Папки прошлого входа — сразу: полоса папок на месте с первого кадра, а не
+            // вставляется через секунду после входа, сдвигая список. Пришедшие с сервера заменят их.
+            if !hasServerFolders, let saved = folderDisplay?.lastFolders {
+                serverFolders = saved.filter { $0.id != ChatFolder.allId }
+            }
             rebuildFolders()
+            rebuildItems()
         }
     }
+    /// Папки уже пришли из ядра в этом запуске: сохранённые больше не нужны.
+    @ObservationIgnored private var hasServerFolders = false
 
     /// Скрыть «Все» есть смысл, только когда есть другие вкладки.
     public var canHideAllChats: Bool { folderDefinitions().count > 1 }
@@ -340,7 +348,11 @@ public final class ChatListViewModel {
         watches.append(Task { [weak self] in
             for await folders in folderStream {
                 guard let self else { return }
-                self.serverFolders = folders.filter { $0.id != ChatFolder.allId }
+                let next = folders.filter { $0.id != ChatFolder.allId }
+                self.hasServerFolders = true
+                self.folderDisplay?.lastFolders = next
+                guard next != self.serverFolders else { continue }
+                self.serverFolders = next
                 self.rebuildFolders()
                 self.rebuildItems()
             }
