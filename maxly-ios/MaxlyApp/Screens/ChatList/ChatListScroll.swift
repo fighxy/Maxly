@@ -28,6 +28,8 @@ final class ChatListScroll {
     private var probes: [String: WeakView] = [:]
     /// Последние известные места строк: строка, ушедшая далеко за экран, переиспользуется.
     private var frames: [String: CGRect] = [:]
+    /// Строка историй уже легла на место после своего появления (`rowLaidOut`).
+    private var storiesPlaced = false
 
     private final class WeakView {
         weak var view: UIView?
@@ -57,6 +59,26 @@ final class ChatListScroll {
 
     func register(_ view: UIView, id: String) {
         probes[id] = WeakView(view)
+    }
+
+    /// Строка шапки получила размер. Истории, появившиеся над поиском, пока список стоит у самого
+    /// верха (лента пришла с сервера через секунду после запуска, или закрыли поиск), встают
+    /// спрятанными над ним в том же проходе раскладки. Иначе список на кадр уезжал вниз на их
+    /// высоту и прыгал обратно, когда `hideStoriesIfAtTop` прятал их.
+    func rowLaidOut(_ view: UIView, id: String) {
+        guard id == Self.storiesId, !storiesPlaced, let scroll = scrollView, view.isDescendant(of: scroll) else { return }
+        let frame = view.convert(view.bounds, to: scroll)
+        guard frame.height > 1 else { return }
+        storiesPlaced = true
+        frames[id] = frame
+        guard !isInteracting, top <= 1 else { return }
+        self.scroll(to: frame.maxY, animated: false)
+    }
+
+    /// Строка ушла из списка (поиск, правка) или далеко за экран: при следующем появлении она
+    /// снова ложится по `rowLaidOut`.
+    func rowLeft(id: String) {
+        if id == Self.storiesId { storiesPlaced = false }
     }
 
     func geometry(stories: Bool, search: Bool, folders: Bool) -> ChatListHeaderGeometry {
@@ -132,9 +154,17 @@ struct ChatListProbe: UIViewRepresentable {
 
         required init?(coder: NSCoder) { nil }
 
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            scroll.rowLaidOut(self, id: id)
+        }
+
         override func didMoveToWindow() {
             super.didMoveToWindow()
-            guard window != nil else { return }
+            guard window != nil else {
+                scroll.rowLeft(id: id)
+                return
+            }
             scroll.register(self, id: id)
             var view = superview
             while let current = view {

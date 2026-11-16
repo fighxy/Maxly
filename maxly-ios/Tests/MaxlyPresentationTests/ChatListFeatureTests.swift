@@ -360,6 +360,27 @@ struct ChatListFolderTests {
         #expect(model.folders.map(\.title) == ["Все", "Работа"])
     }
 
+    @Test("Папки прошлого входа видны сразу, пришедшие с сервера их заменяют и запоминаются")
+    func savedFoldersBeforeServer() async {
+        let (model, repository) = makeFeatureList()
+        let work = ChatFolder(id: "work", title: "Работа", filter: .chats(["g", "ch"]))
+        let display = InMemoryFolderDisplayStore(lastFolders: [work])
+        model.folderDisplay = display
+        // Полоса папок на месте до входа: сервер ещё ничего не прислал.
+        #expect(model.showsFolders)
+        #expect(model.folders.map(\.title) == ["Все", "Работа"])
+        repository.emit(sample())
+        #expect(await eventually { model.items.count == 5 })
+        let home = ChatFolder(id: "home", title: "Дом", filter: .chats(["p"]))
+        repository.emit(folders: [home])
+        #expect(await eventually { model.folders.map(\.title) == ["Все", "Дом"] })
+        #expect(display.lastFolders == [home])
+        // Папок на сервере не осталось: и полосы нет, и запомнено пустое.
+        repository.emit(folders: [])
+        #expect(await eventually { !model.showsFolders })
+        #expect(display.lastFolders == [])
+    }
+
     @Test("Пустая папка отличается от пустого списка")
     func emptyFolder() async {
         let (model, repository) = makeFeatureList()
