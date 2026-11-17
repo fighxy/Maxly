@@ -124,6 +124,21 @@ struct ReadStatusTests {
         #expect(await row(chats)?.unreadCount == 0)
     }
 
+    @Test("Своя отметка ниже последнего сообщения берёт подсчёт ядра, но не поднимает счётчик")
+    func partialOwnReadTakesCoreCount() async throws {
+        let (chats, _) = try makeRepository()
+        try await chats.upsert([chatRecord(unread: 5, sentMs: 100_000, updatedAt: 150)])
+        // На другом устройстве дочитали до середины: после отметки остались два.
+        try await chats.applyOwnRead(chatId: "c1", mark: 90_000, setAsUnread: false, unread: 2)
+        #expect(await row(chats)?.unreadCount == 2)
+        // Подсчёт выше местного счётчик не поднимает.
+        try await chats.applyOwnRead(chatId: "c1", mark: 95_000, setAsUnread: false, unread: 4)
+        #expect(await row(chats)?.unreadCount == 2)
+        // Отметка до последнего сообщения обнуляет, что бы ни сказал подсчёт.
+        try await chats.applyOwnRead(chatId: "c1", mark: 100_000, setAsUnread: false, unread: 1)
+        #expect(await row(chats)?.unreadCount == 0)
+    }
+
     @Test("Две галочки в строке по времени своего сообщения, а не по времени чата")
     func rowReadByMessageTime() async throws {
         let (chats, _) = try makeRepository()

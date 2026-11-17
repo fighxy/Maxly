@@ -580,6 +580,9 @@ public struct CoreEvent: Sendable, Equatable {
     /// Служебное вложение сообщения у `message` и `edited` (`IosEvent.control`), `nil` у
     /// обычного сообщения и остальных событий.
     public var control: CoreControl?
+    /// У своей отметки `read` (чат прочитан на другом устройстве): непрочитанных в чате после
+    /// неё по подсчёту ядра (`IosEvent.chatUnread`). `-1` у остальных событий и когда ядро не знает.
+    public var chatUnread: Int
 
     public init(
         kind: Kind,
@@ -599,9 +602,11 @@ public struct CoreEvent: Sendable, Equatable {
         muted: Int = -1,
         draft: CoreDraft? = nil,
         presence: Int = -1,
-        control: CoreControl? = nil
+        control: CoreControl? = nil,
+        chatUnread: Int = -1
     ) {
         self.control = control
+        self.chatUnread = chatUnread
         self.kind = kind
         self.chatId = chatId
         self.messageId = messageId
