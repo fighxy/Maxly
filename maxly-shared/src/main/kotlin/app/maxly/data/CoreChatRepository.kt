@@ -37,6 +37,8 @@ class CoreChatRepository(
     private val pinLock = Mutex()
     private val usersRequested = UserRequests()
     private val mutes = ChatMutes.of(client)
+    /** Аккаунт, для которого в этом запуске уже догружен весь список (`loadAllChats`). */
+    @Volatile private var fullListFor: Long? = null
 
     override val chats: Flow<List<Chat>?> =
         ChatMutes.chatList(client.store.state, client.accountConfig, loaded, mutes, clock, ChatMutes.configPushes(client))
@@ -65,7 +67,15 @@ class CoreChatRepository(
     override suspend fun refresh() {
         refreshGate.run {
             MaxCoreGateway.read {
-                if (client.store.state.value.chats.isEmpty()) client.loadAllChats() else client.loadChats()
+                // `LOGIN` приносит только первые чаты, и стор после входа уже не пуст: проверка
+                // «стор пуст» никогда не догружала остальное, и список обрывался на первой
+                // странице. Весь список — один раз на аккаунт за запуск, дальше первая страница.
+                if (needsFullList(client.store.state.value.me, fullListFor)) {
+                    client.loadAllChats()
+                    fullListFor = client.store.state.value.me
+                } else {
+                    client.loadChats()
+                }
             }
             runCatching { MaxCoreGateway.call { client.loadFolders() } }
             loaded.value = true
@@ -291,12 +301,20 @@ class CoreChatRepository(
 
     override fun clear() {
         loaded.value = false
+        fullListFor = null
         usersRequested.clear()
         mutes.clear()
     }
 
     companion object {
         private const val TYPING_TICK_MS = 1_000L
+
+        /**
+         * Догрузить ли весь список чатов (`loadAllChats`), а не только первую страницу: для
+         * аккаунта [me] это ещё не делалось в этом запуске ([fullListFor]). До входа ([me]
+         * `null`) — тоже весь: без `chatMarker` ядро всё равно спросит одну страницу.
+         */
+        internal fun needsFullList(me: Long?, fullListFor: Long?): Boolean = me == null || me != fullListFor
 
         /**
          * Новый список закреплённых для сервера: [wanted] сверху в своём порядке (только те, что
