@@ -746,12 +746,14 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
 
     /// Своя отметка прочтения с другого устройства (пуш `read` с нашим id).
     ///
-    /// `mark` — время прочитанного сообщения в миллисекундах. Счётчик обнуляется, только
-    /// если отметка не раньше последнего сообщения строки, иначе после неё пришли новые
-    /// и счётчик не трогается. Сравнение идёт со временем сообщения, а не события чата:
-    /// правка или реакция после него не должны оставлять бейдж. `setAsUnread` — чат помечен
+    /// `mark` — время прочитанного сообщения в миллисекундах. Отметка не раньше последнего
+    /// сообщения строки обнуляет счётчик. Сравнение идёт со временем сообщения, а не события
+    /// чата: правка или реакция после него не должны оставлять бейдж. Отметка ниже последнего
+    /// (на другом устройстве дочитали не до конца) берёт `unread` — подсчёт ядра после этой
+    /// отметки, — если он меньше местного: непрочитанным остаётся только то, что после отметки.
+    /// Без подсчёта счётчик не трогается до сверки списка. `setAsUnread` — чат помечен
     /// непрочитанным вручную.
-    public func applyOwnRead(chatId: String, mark: Int64, setAsUnread: Bool) throws(MaxlyError) {
+    public func applyOwnRead(chatId: String, mark: Int64, setAsUnread: Bool, unread: Int? = nil) throws(MaxlyError) {
         if setAsUnread {
             readMarkBook.forget(chatId)
         } else if mark > 0 {
@@ -764,8 +766,14 @@ public actor ChatRepositoryImpl: ChatRepository, ChatDraftStore, ModelActor {
                 chat.unreadCount = 1
             } else {
                 let readTime = ReadMarks.readTime(lastMessageAt: chat.lastMessageAt, updatedAt: chat.updatedAt)
-                guard mark > 0, mark >= readTime, chat.unreadCount != 0 else { return }
-                chat.unreadCount = 0
+                guard mark > 0, chat.unreadCount != 0 else { return }
+                if mark >= readTime {
+                    chat.unreadCount = 0
+                } else if let unread, unread >= 0, unread < chat.unreadCount {
+                    chat.unreadCount = unread
+                } else {
+                    return
+                }
             }
             try modelContext.save()
         } catch {
