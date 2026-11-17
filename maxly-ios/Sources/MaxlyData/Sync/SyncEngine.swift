@@ -307,10 +307,7 @@ public actor SyncEngine {
                 try? await chats.applyPeerRead(chatId: event.chatId, mark: event.timeMs)
                 return
             }
-            try? await chats.applyOwnRead(
-                chatId: event.chatId, mark: event.timeMs, setAsUnread: event.unread > 0,
-                unread: event.chatUnread >= 0 ? event.chatUnread : nil
-            )
+            try? await chats.applyOwnRead(chatId: event.chatId, mark: event.timeMs, setAsUnread: event.unread > 0)
         case .reactions:
             // Реакции без правки текста: пуш `NOTIF_MSG_REACTIONS_CHANGED`. В списке чатов их нет.
             guard !event.chatId.isEmpty, !event.messageId.isEmpty,

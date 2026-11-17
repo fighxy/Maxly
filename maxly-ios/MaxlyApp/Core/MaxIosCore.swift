@@ -891,8 +891,7 @@ final class MaxIosCore: MaxCore, @unchecked Sendable {
             muted: Int(event.muted),
             draft: event.draft.map(Self.draft),
             presence: Int(event.presence),
-            control: event.control.map(Self.control),
-            chatUnread: Int(event.chatUnread)
+            control: event.control.map(Self.control)
         )
     }
 }
