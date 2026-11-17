@@ -502,8 +502,10 @@ class ChatViewModel(
     /** До этого времени старые страницы не спрашиваются: прокрутка у верха после ошибки
      *  иначе повторяла бы запрос на каждое изменение ленты. */
     private var olderRetryAt = 0L
-    /** Отказы подряд при подгрузке старого: после паузы страница спрашивается снова сама, но
-     *  не больше [OLDER_AUTO_RETRIES] раз — дальше ждёт прокрутки. */
+    /** Отказы подряд при подгрузке старого: после паузы страница спрашивается снова сама —
+     *  первые [OLDER_AUTO_RETRIES] раз быстро, дальше раз в [OLDER_SLOW_RETRY_MS], пока чат
+     *  открыт. Раньше после трёх отказов лента ждала прокрутки, а у самого верха прокручивать
+     *  некуда: подгрузка вставала, пока не отлистать вниз и обратно. */
     private var olderFailures = 0
     private var olderRetry: Job? = null
 
@@ -529,16 +531,16 @@ class ChatViewModel(
                 } else {
                     OLDER_RETRY_MS
                 }
-                olderRetryAt = now() + wait
-                if (!limited) show(e)
                 // Читатель у верха ждёт страницу: после паузы она спрашивается снова сама.
-                if (++olderFailures <= OLDER_AUTO_RETRIES) {
-                    olderRetry?.cancel()
-                    olderRetry = viewModelScope.launch {
-                        delay(wait)
-                        olderRetryAt = 0L
-                        loadOlder()
-                    }
+                val pause = if (++olderFailures <= OLDER_AUTO_RETRIES) wait else maxOf(wait, OLDER_SLOW_RETRY_MS)
+                // Ошибка показывается один раз за серию отказов, а не с каждым повтором.
+                if (!limited && olderFailures == 1) show(e)
+                olderRetryAt = now() + pause
+                olderRetry?.cancel()
+                olderRetry = viewModelScope.launch {
+                    delay(pause)
+                    olderRetryAt = 0L
+                    if (active) loadOlder()
                 }
                 null
             }
@@ -2685,6 +2687,8 @@ class ChatViewModel(
         /** Пауза перед следующей старой страницей после ошибки. */
         const val OLDER_RETRY_MS = 5_000L
         const val OLDER_AUTO_RETRIES = 3
+        /** Пауза повторов после [OLDER_AUTO_RETRIES] быстрых: лента у верха не встаёт насовсем. */
+        const val OLDER_SLOW_RETRY_MS = 60_000L
         const val REACTION_FAILURE = "Не удалось поставить реакцию"
 
         /** Текст отказа реакции: свой текст отказа или текст сервера, иначе [REACTION_FAILURE]. */

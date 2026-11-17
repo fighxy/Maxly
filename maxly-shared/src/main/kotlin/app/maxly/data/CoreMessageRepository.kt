@@ -234,12 +234,20 @@ class CoreMessageRepository(
         return grown && page.messages.any { it.id != oldest.id }
     }
 
-    /** Имена авторов групп: неизвестных пользователей спросить у сервера. */
+    /**
+     * Авторы, которых уже спросили. Автора, которого сервер не вернул (удалённый аккаунт), иначе
+     * спрашивали заново с каждой страницей истории группы: лишний запрос перед каждой страницей
+     * доводил сервер до `too.many.requests`, и подгрузка старого вставала у верха ленты.
+     */
+    private val sendersRequested = UserRequests()
+
+    /** Имена авторов групп: неизвестных пользователей спросить у сервера, каждого один раз. */
     private suspend fun resolveSenders(chatId: Long) {
         val state = client.store.state.value
         val unknown = state.messagesOf(chatId).mapNotNull { it.sender }.distinct().filter { it !in state.users }
         if (unknown.isEmpty()) return
-        runCatching { MaxCoreGateway.read { client.loadUsers(unknown.take(100)) } }
+        // Порция с ошибкой (пауза после too.many.requests, сеть) снова в очереди: спросится со следующей страницей.
+        sendersRequested.load(unknown) { chunk -> MaxCoreGateway.read { client.loadUsers(chunk) } }
     }
 
     override suspend fun send(chatId: String, text: String, replyTo: String?) = enqueueText(chatId, text, replyTo, emptyList())

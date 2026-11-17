@@ -303,6 +303,25 @@ class ChatViewModelTest {
     }
 
     @Test
+    fun olderPageKeepsRetryingSlowlyAtTheTop() {
+        repo.list.value = listOf(msg("1"), msg("2"))
+        repo.olderFailure = MaxlyError.Server(MaxlyError.RATE_LIMIT_CODE)
+        val model = vm()
+        val scheduler = main.dispatcher.scheduler
+        model.loadOlder()
+        // Быстрые повторы: каждый не дольше паузы сервера.
+        scheduler.advanceTimeBy(ChatViewModel.RATE_LIMIT_RETRY_MS * ChatViewModel.OLDER_AUTO_RETRIES + 1_000)
+        scheduler.runCurrent()
+        val afterFast = repo.olderCalls
+        assertEquals(1 + ChatViewModel.OLDER_AUTO_RETRIES, afterFast)
+        // Дальше лента у верха не встаёт насовсем: страница спрашивается снова, реже.
+        repo.olderFailure = null
+        scheduler.advanceTimeBy(ChatViewModel.OLDER_SLOW_RETRY_MS + ChatViewModel.RATE_LIMIT_RETRY_MS)
+        scheduler.runCurrent()
+        assertTrue(repo.olderCalls > afterFast)
+    }
+
+    @Test
     fun composerOnlyWhereYouCanWrite() {
         // Чата нет в сторе (канал из поиска): поле ввода не показывается.
         assertFalse(vm().state.value.canWrite)
